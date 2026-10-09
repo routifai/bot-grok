@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
@@ -35,7 +36,7 @@ def _validation_message(exc: ValidationError) -> str:
 
 
 def build_document(
-    call: DisplayChartInput, *, source_name: str, truncated: bool, spec: ChartSpec,
+    *, source_name: str, source_path: str, truncated: bool, spec: ChartSpec,
     kept: list[str], rows: list[dict[str, Any]],
 ) -> dict[str, Any]:  # fmt: skip
     """The chart artifact's JSON: the spec (no source), where the data came from, the rows."""
@@ -44,13 +45,21 @@ def build_document(
         "spec": spec.model_dump(exclude_none=True),
         "source": {
             "file": source_name,
-            "path": call.source.path,
+            "path": source_path,
             "columns": kept,
             "rows": len(rows),
             "truncated": truncated,
         },
         "data": rows,
     }
+
+
+def _workspace_relative(file: Path) -> str:
+    """The file's path inside its workspace root (never an absolute path of the Computer)."""
+    for root in workspace_roots():
+        if file.is_relative_to(root):
+            return file.relative_to(root).as_posix()
+    return file.name
 
 
 def prepare_chart(args: dict[str, Any]) -> tuple[DisplayChartInput, dict[str, Any]] | str:
@@ -63,15 +72,22 @@ def prepare_chart(args: dict[str, Any]) -> tuple[DisplayChartInput, dict[str, An
     if isinstance(file, str):
         return file
     try:
-        columns, rows, truncated = read_rows(file, call.source.max_rows)
+        columns, rows, cut = read_rows(file)
         spec = ChartSpec.model_validate(call.model_dump(exclude={"source", "name"}))
-        spec, kept, shaped = shape_rows(spec, columns, rows, call.source.columns)
+        spec, kept, shaped, truncated = shape_rows(
+            spec, columns, rows, call.source.columns, call.source.max_rows, cut=cut
+        )
     except ChartDataError as exc:
         return str(exc)
     except ValidationError as exc:
         return _validation_message(exc)
     document = build_document(
-        call, source_name=file.name, truncated=truncated, spec=spec, kept=kept, rows=shaped
+        source_name=file.name,
+        source_path=_workspace_relative(file),
+        truncated=truncated,
+        spec=spec,
+        kept=kept,
+        rows=shaped,
     )
     return call, document
 

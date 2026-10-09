@@ -1,8 +1,10 @@
 """Read a chart's rows from a result file in the Computer (the replacement for nao's query_id).
 
 The model's own code (pandas, duckdb) writes the result; the chart reads it here, runner side,
-so the model never retypes values. CSV, JSON and JSON Lines read with the standard library;
-Parquet needs ``duckdb`` or ``pyarrow`` in the runner's Python and says so when neither is there.
+so the model never retypes values. CSV, TSV, JSON and JSON Lines read with the standard library.
+Nothing is guessed: a series cell that is not a plain number, a date that is not ISO, a ragged
+CSV row or an integer a browser cannot hold exactly is refused with a sentence naming it, so the
+model fixes the file in code instead of the chart quietly drawing wrong numbers.
 """
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ import datetime as dt
 import decimal
 import json
 import math
+import re
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -20,9 +23,20 @@ from omnigent.superchat.charts.spec import DEFAULT_MAX_ROWS, ChartSpec
 
 #: Largest result file the chart will read (bytes); aggregate in code first.
 MAX_SOURCE_BYTES = 50 * 1024 * 1024
-SOURCE_SUFFIXES = (".csv", ".tsv", ".json", ".jsonl", ".ndjson", ".parquet")
+#: Rows read from a file before the chart's own cap applies (a date chart keeps the newest rows).
+READ_CAP = 200_000
+SOURCE_SUFFIXES = (".csv", ".tsv", ".json", ".jsonl", ".ndjson")
+#: Integers beyond this are no longer exact in a browser (JSON numbers are doubles there).
+MAX_EXACT_INT = 2**53
 
 Row = dict[str, Any]
+
+_PLAIN_NUMBER = re.compile(r"^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$")
+_GROUPED_NUMBER = re.compile(r"^-?\d{1,3}(,\d{3})+(\.\d+)?$")
+_ISO_DATE = re.compile(
+    r"^\d{4}-\d{2}(-\d{2}([ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?)?$"
+)
+_MIDNIGHT = re.compile(r"^(\d{4}-\d{2}-\d{2})[ T]00:00(:00(\.0+)?)?(Z|[+-]00:?00)?$")
 
 
 class ChartDataError(ValueError):
@@ -35,12 +49,14 @@ def _json_safe(value: Any) -> Any:
         return value
     if isinstance(value, float):
         return value if math.isfinite(value) else None
-    if isinstance(value, (int,)):
-        return value
+    if isinstance(value, int):
+        return value if abs(value) <= MAX_EXACT_INT else str(value)
     if isinstance(value, decimal.Decimal):
         number = float(value)
         return number if math.isfinite(number) else None
-    if isinstance(value, (dt.datetime, dt.date, dt.time)):
+    if isinstance(value, dt.datetime):
+        return value.date().isoformat() if value.time() == dt.time(0) else value.isoformat()
+    if isinstance(value, (dt.date, dt.time)):
         return value.isoformat()
     if hasattr(value, "item"):  # numpy scalar
         return _json_safe(value.item())
@@ -49,12 +65,28 @@ def _json_safe(value: Any) -> Any:
 
 def _read_csv(path: Path, delimiter: str, limit: int) -> tuple[list[str], list[Row]]:
     with path.open(newline="", encoding="utf-8-sig") as handle:
-        reader = csv.DictReader(handle, delimiter=delimiter)
-        columns = [c for c in (reader.fieldnames or []) if c is not None]
+        reader = csv.reader(handle, delimiter=delimiter)
+        header = next(reader, None)
+        if not header:
+            raise ChartDataError("The result file has no header row")
+        columns = [c.strip() for c in header]
+        duplicated = sorted({c for c in columns if columns.count(c) > 1})
+        if duplicated:
+            raise ChartDataError(
+                f"The result file has duplicate column names ({', '.join(duplicated)}); "
+                "rename them in your code"
+            )
         rows: list[Row] = []
         for raw in reader:
-            rows.append({c: (raw.get(c) if raw.get(c) != "" else None) for c in columns})
-            if len(rows) >= limit + 1:
+            if not raw:
+                continue
+            if len(raw) != len(columns):
+                raise ChartDataError(
+                    f"Row {len(rows) + 1} of the result file has {len(raw)} fields but the header "
+                    f"has {len(columns)}; quote values that contain the delimiter"
+                )
+            rows.append({c: (v if v != "" else None) for c, v in zip(columns, raw, strict=True)})
+            if len(rows) > limit:
                 break
     return columns, rows
 
@@ -69,7 +101,7 @@ def _records(items: Iterable[Any], limit: int) -> tuple[list[str], list[Row]]:
             if key not in columns:
                 columns.append(key)
         rows.append(dict(item))
-        if len(rows) >= limit + 1:
+        if len(rows) > limit:
             break
     return columns, rows
 
@@ -79,11 +111,12 @@ def _read_json(path: Path, limit: int) -> tuple[list[str], list[Row]]:
     try:
         data = json.loads(text)
     except ValueError:
-        # JSON Lines: one object per line.
         lines = (line for line in text.splitlines() if line.strip())
         try:
             return _records((json.loads(line) for line in lines), limit)
         except ValueError as exc:
+            if isinstance(exc, ChartDataError):
+                raise
             raise ChartDataError(f"Could not parse the JSON file: {exc}") from exc
     if isinstance(data, dict):
         for key in ("data", "rows", "records", "results"):
@@ -103,61 +136,18 @@ def _read_json(path: Path, limit: int) -> tuple[list[str], list[Row]]:
     return _records(data, limit)
 
 
-def _read_jsonl(path: Path, limit: int) -> tuple[list[str], list[Row]]:
-    def lines() -> Iterable[Any]:
-        with path.open(encoding="utf-8-sig") as handle:
-            for line in handle:
-                if line.strip():
-                    yield json.loads(line)
-
-    try:
-        return _records(lines(), limit)
-    except ValueError as exc:
-        if isinstance(exc, ChartDataError):
-            raise
-        raise ChartDataError(f"Could not parse the JSON Lines file: {exc}") from exc
-
-
-def _read_parquet(path: Path, limit: int) -> tuple[list[str], list[Row]]:
-    try:
-        import duckdb  # type: ignore[import-not-found]
-    except ImportError:
-        duckdb = None
-    if duckdb is not None:
-        con = duckdb.connect()
-        try:
-            cur = con.execute("SELECT * FROM read_parquet(?) LIMIT ?", [str(path), limit + 1])
-            columns = [d[0] for d in cur.description]
-            return columns, [dict(zip(columns, r, strict=False)) for r in cur.fetchall()]
-        finally:
-            con.close()
-    try:
-        import pyarrow.parquet as pq  # type: ignore[import-not-found]
-    except ImportError as exc:
-        raise ChartDataError(
-            "This Computer cannot read Parquet (no duckdb or pyarrow). Write the result as CSV "
-            "or JSON with your code and chart that file."
-        ) from exc
-    table = pq.read_table(path)
-    columns = list(table.column_names)
-    return columns, table.slice(0, limit + 1).to_pylist()
-
-
-def read_rows(path: Path, max_rows: int | None) -> tuple[list[str], list[Row], bool]:
+def read_rows(path: Path) -> tuple[list[str], list[Row], bool]:
     """
-    Read up to ``max_rows`` rows of a result file.
+    Read a result file (up to :data:`READ_CAP` rows).
 
     :param path: A file already resolved inside the workspace.
-    :param max_rows: Row cap (default 2000).
-    :returns: ``(columns, rows, truncated)`` with JSON-safe cells.
+    :returns: ``(columns, rows, cut)``; ``cut`` is true when the file held more rows than read.
     :raises ChartDataError: The file is unreadable, empty or too big.
     """
-    limit = max_rows or DEFAULT_MAX_ROWS
     suffix = path.suffix.lower()
     if suffix not in SOURCE_SUFFIXES:
         raise ChartDataError(
-            f"Unsupported result file type '{suffix or path.name}'; "
-            "use .csv, .json, .jsonl or .parquet"
+            f"Unsupported result file type '{suffix or path.name}'; use .csv, .json or .jsonl"
         )
     size = path.stat().st_size
     if size == 0:
@@ -168,25 +158,18 @@ def read_rows(path: Path, max_rows: int | None) -> tuple[list[str], list[Row], b
             "aggregate it in code first (50 MB max)"
         )
     try:
-        if suffix == ".csv":
-            columns, rows = _read_csv(path, ",", limit)
-        elif suffix == ".tsv":
-            columns, rows = _read_csv(path, "\t", limit)
-        elif suffix == ".json":
-            columns, rows = _read_json(path, limit)
-        elif suffix in (".jsonl", ".ndjson"):
-            columns, rows = _read_jsonl(path, limit)
+        if suffix in (".csv", ".tsv"):
+            columns, rows = _read_csv(path, "," if suffix == ".csv" else "\t", READ_CAP)
         else:
-            columns, rows = _read_parquet(path, limit)
+            columns, rows = _read_json(path, READ_CAP)
     except ChartDataError:
         raise
     except (OSError, UnicodeDecodeError, csv.Error) as exc:
         raise ChartDataError(f"Could not read the result file: {exc}") from exc
     if not rows:
         raise ChartDataError("The result file has no rows")
-    truncated = len(rows) > limit
-    rows = rows[:limit]
-    return columns, [{k: _json_safe(v) for k, v in row.items()} for row in rows], truncated
+    cut = len(rows) > READ_CAP
+    return columns, rows[:READ_CAP], cut
 
 
 def _match_column(columns: list[str], name: str) -> str | None:
@@ -196,37 +179,69 @@ def _match_column(columns: list[str], name: str) -> str | None:
     return next((c for c in columns if c.lower() == lower), None)
 
 
-def _to_number(value: Any) -> float | int | None:
-    if value is None or isinstance(value, bool):
-        return None
+def _number(value: Any) -> tuple[float | int | None, str | None]:
+    """``(number, None)``, ``(None, None)`` for an empty cell, or ``(None, why)``."""
+    value = _json_safe(value)
+    if value is None:
+        return None, None
+    if isinstance(value, bool):
+        return None, "a boolean"
     if isinstance(value, (int, float)):
-        return value
-    if isinstance(value, str):
-        text = value.strip().replace(",", "")
-        if not text:
-            return None
-        try:
-            number = float(text)
-        except ValueError:
-            return None
-        if not math.isfinite(number):
-            return None
-        return (
-            int(number)
-            if number.is_integer() and "." not in text and "e" not in text.lower()
-            else number
-        )
-    return None
+        return value, None
+    text = str(value).strip()
+    if not text:
+        return None, None
+    if _GROUPED_NUMBER.match(text):
+        text = text.replace(",", "")
+    if not _PLAIN_NUMBER.match(text):
+        return None, "not a plain number"
+    if re.fullmatch(r"[+-]?\d+", text):
+        number = int(text)
+        if abs(number) > MAX_EXACT_INT:
+            return None, "larger than 2^53 (not exact in a browser; cast to float or scale it)"
+        return number, None
+    number = float(text)
+    if not math.isfinite(number):
+        return None, "not finite"
+    return number, None
+
+
+def _date_text(value: Any) -> str | None:
+    """The cell as ``YYYY-MM-DD`` (midnight) or ISO date-time text, or ``None`` if not ISO."""
+    value = _json_safe(value)
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not _ISO_DATE.match(text):
+        return None
+    midnight = _MIDNIGHT.match(text)
+    return midnight.group(1) if midnight else text
+
+
+def _bad_cells(found: list[tuple[int, Any, str]], column: str, role: str) -> ChartDataError:
+    shown = "; ".join(f"row {i}: {str(v)[:30]!r} ({why})" for i, v, why in found[:5])
+    more = f" (and {len(found) - 5} more)" if len(found) > 5 else ""
+    return ChartDataError(
+        f"{role} '{column}' has values the chart cannot read: {shown}{more}. "
+        "Clean the file in code (plain numbers, ISO dates) and chart it again."
+    )
 
 
 def shape_rows(
-    spec: ChartSpec, columns: list[str], rows: list[Row], keep: list[str] | None
-) -> tuple[ChartSpec, list[str], list[Row]]:
+    spec: ChartSpec,
+    columns: list[str],
+    rows: list[Row],
+    keep: list[str] | None,
+    max_rows: int | None,
+    *,
+    cut: bool = False,
+) -> tuple[ChartSpec, list[str], list[Row], bool]:
     """
-    Check the spec's columns against the file and return the spec (names resolved to the real
-    columns), the kept columns and the rows (series columns as numbers).
+    Check the spec's columns against the file and return what the chart stores.
 
-    :raises ChartDataError: A named column is not in the file, or a series column is not numeric.
+    :returns: ``(spec with the real column names, kept columns, rows, truncated)``. Series
+        columns are numbers; a date chart keeps its newest rows past the cap.
+    :raises ChartDataError: A named column is missing, or a cell cannot be read as asked.
     """
 
     def need(name: str, role: str) -> str:
@@ -243,27 +258,50 @@ def shape_rows(
         s.model_copy(update={"data_key": need(s.data_key, "series data_key")}) for s in spec.series
     ]
     resolved = spec.model_copy(update={"x_axis_key": x_key, "series": series})
-
     wanted = [x_key, *(s.data_key for s in series)]
     if keep is not None:
         wanted += [need(c, "source.columns entry") for c in keep]
     kept = list(dict.fromkeys(c for c in wanted if c))
+    series_keys = list(dict.fromkeys(s.data_key for s in series))
 
-    series_keys = {s.data_key for s in series}
+    indexed = list(enumerate(rows, start=1))
+    limit = max_rows or DEFAULT_MAX_ROWS
+    if spec.x_axis_type == "date" and x_key:
+        bad: list[tuple[int, Any, str]] = []
+        dated: list[tuple[str, int, Row]] = []
+        for index, row in indexed:
+            text = _date_text(row.get(x_key))
+            if text is None:
+                bad.append((index, row.get(x_key), "not an ISO date like 2026-01-31"))
+            else:
+                dated.append((text, index, row))
+        if bad:
+            raise _bad_cells(bad, x_key, "x_axis_key (x_axis_type date)")
+        dated.sort(key=lambda item: item[0])  # stable; the newest rows are the last ones
+        indexed = [(index, {**row, x_key: text}) for text, index, row in dated]
+        selected = indexed[-limit:]
+    else:
+        selected = indexed[:limit]
+    truncated = cut or len(indexed) > limit
+
     shaped: list[Row] = []
-    for row in rows:
+    problems: dict[str, list[tuple[int, Any, str]]] = {}
+    for index, row in selected:
         out: Row = {}
         for column in kept:
             value = row.get(column)
-            out[column] = _to_number(value) if column in series_keys else value
+            if column in series_keys or (column == x_key and spec.x_axis_type == "number"):
+                number, why = _number(value)
+                if why:
+                    problems.setdefault(column, []).append((index, value, why))
+                out[column] = number
+            else:
+                out[column] = _json_safe(value)
         shaped.append(out)
+    for column, found in problems.items():
+        role = "series column" if column in series_keys else "x_axis_key"
+        raise _bad_cells(found, column, role)
     for key in series_keys:
         if all(r[key] is None for r in shaped):
-            raise ChartDataError(
-                f"Column '{key}' has no numbers in the first {len(rows)} rows; "
-                "series columns must be numeric"
-            )
-    if resolved.x_axis_type == "number" and x_key:
-        for r in shaped:
-            r[x_key] = _to_number(r[x_key])
-    return resolved, kept, shaped
+            raise ChartDataError(f"Column '{key}' has no numbers; series columns must be numeric")
+    return resolved, kept, shaped, truncated

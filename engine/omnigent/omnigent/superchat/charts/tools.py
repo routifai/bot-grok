@@ -28,7 +28,7 @@ class DisplayChartTool(Tool):
         return (
             "Show the person a chart of data you already computed. First compute the numbers "
             "with code (pandas or duckdb) and write the result you want to plot to a file in "
-            "your workspace (.csv, .parquet, .json or .jsonl: one row per x value, one column "
+            "your workspace (.csv, .json or .jsonl: one row per x value, one column "
             "per series); then call this with `source.path` set to that file and the column "
             "names to plot. Never type data values into the call: the chart reads them from "
             "the file, and every column name is checked against it. The chart is saved to "

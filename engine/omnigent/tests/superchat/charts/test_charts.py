@@ -17,11 +17,23 @@ from omnigent.stores.artifact_store.local import LocalArtifactStore
 from omnigent.superchat.artifacts.routes import create_artifacts_router
 from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore
 from omnigent.superchat.charts import CHART_SUFFIX, chart_stem, is_chart_name
-from omnigent.superchat.charts.data import ChartDataError, read_rows, shape_rows
+from omnigent.superchat.charts.data import (
+    READ_CAP,
+    ChartDataError,
+    _json_safe,
+    read_rows,
+    shape_rows,
+)
 from omnigent.superchat.charts.feature import CHARTS_FEATURE
 from omnigent.superchat.charts.handlers import handle_chart_tool
 from omnigent.superchat.charts.names import chart_file_name
-from omnigent.superchat.charts.spec import CHART_TYPES, ChartSpec, DisplayChartInput
+from omnigent.superchat.charts.spec import (
+    CHART_COLOR_PATTERN,
+    CHART_TYPES,
+    ChartSpec,
+    DisplayChartInput,
+    display_chart_parameters,
+)
 from omnigent.superchat.charts.tools import DisplayChartTool
 from omnigent.superchat.feature import HandlerCtx
 
@@ -100,49 +112,120 @@ def test_kpi_card_needs_no_x_axis() -> None:
     assert spec.x_axis_key is None
 
 
+def _spec(**patch: Any) -> ChartSpec:
+    base = {k: v for k, v in _call("r.csv").items() if k != "source"}
+    return ChartSpec.model_validate({**base, **patch})
+
+
+def _shape(spec: ChartSpec, path: Path, max_rows: int | None = None):
+    columns, rows, cut = read_rows(path)
+    return shape_rows(spec, columns, rows, None, max_rows, cut=cut)
+
+
+def _csv(tmp_path: Path, text: str, name: str = "r.csv") -> Path:
+    path = tmp_path / name
+    path.write_text(text)
+    return path
+
+
 def test_read_csv_and_shape(tmp_path: Path) -> None:
-    path = tmp_path / "r.csv"
-    path.write_text(CSV)
-    columns, rows, truncated = read_rows(path, None)
-    assert columns == ["month", "revenue", "margin"] and len(rows) == 4 and not truncated
-    spec = ChartSpec.model_validate(
-        {k: v for k, v in _call("r.csv").items() if k != "source"} | {"x_axis_key": "MONTH"}
-    )
-    resolved, kept, shaped = shape_rows(spec, columns, rows, None)
-    assert resolved.x_axis_key == "month" and kept == ["month", "revenue"]
+    path = _csv(tmp_path, CSV)
+    columns, rows, cut = read_rows(path)
+    assert columns == ["month", "revenue", "margin"] and len(rows) == 4 and not cut
+    resolved, kept, shaped, truncated = _shape(_spec(x_axis_key="MONTH"), path)
+    assert resolved.x_axis_key == "month" and kept == ["month", "revenue"] and not truncated
     assert shaped[0] == {"month": "2026-01", "revenue": 100}
     assert shaped[2]["revenue"] is None  # an empty cell stays a gap
 
 
 def test_row_cap_and_truncation(tmp_path: Path) -> None:
-    path = tmp_path / "big.csv"
-    path.write_text("x,y\n" + "\n".join(f"{i},{i}" for i in range(50)))
-    _, rows, truncated = read_rows(path, 10)
-    assert len(rows) == 10 and truncated
+    path = _csv(tmp_path, "x,y\n" + "\n".join(f"{i},{i}" for i in range(50)))
+    _, _, shaped, truncated = _shape(_spec(x_axis_key="x", series=[{"data_key": "y"}]), path, 10)
+    assert (
+        len(shaped) == 10 and truncated and shaped[0]["y"] == 0
+    )  # a category chart keeps the head
+
+
+def test_a_date_chart_keeps_the_newest_rows(tmp_path: Path) -> None:
+    lines = [f"2026-01-{d:02d},{d}" for d in range(31, 0, -1)]  # newest first in the file
+    path = _csv(tmp_path, "day,v\n" + "\n".join(lines))
+    spec = _spec(x_axis_key="day", x_axis_type="date", series=[{"data_key": "v"}])
+    _, _, shaped, truncated = _shape(spec, path, 5)
+    assert truncated and [r["day"] for r in shaped] == [f"2026-01-{d}" for d in range(27, 32)]
+
+
+def test_dates_must_be_iso_and_midnight_is_a_plain_date(tmp_path: Path) -> None:
+    spec = _spec(x_axis_key="day", x_axis_type="date", series=[{"data_key": "v"}])
+    ok = _csv(
+        tmp_path, "day,v\n2026-01-01 00:00:00,1\n2026-01-02T00:00:00,2\n2026-01-03 10:30,3\n"
+    )
+    _, _, shaped, _ = _shape(spec, ok)
+    assert [r["day"] for r in shaped] == ["2026-01-01", "2026-01-02", "2026-01-03 10:30"]
+    bad = _csv(tmp_path, "day,v\n01/02/2026,1\n2026-01-02,2\n", "bad.csv")
+    with pytest.raises(ChartDataError, match=r"row 1: '01/02/2026'.*ISO"):
+        _shape(spec, bad)
+
+
+def test_datetime_values_from_json_midnight_are_dates(tmp_path: Path) -> None:
+    import datetime as dt
+
+    assert _json_safe(dt.datetime(2026, 1, 1, tzinfo=dt.UTC)) == "2026-01-01"
+    assert _json_safe(dt.datetime(2026, 1, 1, 9, 30, tzinfo=dt.UTC)) == "2026-01-01T09:30:00+00:00"
 
 
 def test_unknown_column_lists_the_real_ones(tmp_path: Path) -> None:
-    path = tmp_path / "r.csv"
-    path.write_text(CSV)
-    columns, rows, _ = read_rows(path, None)
-    spec = ChartSpec.model_validate(
-        {k: v for k, v in _call("r.csv").items() if k != "source"}
-        | {"series": [{"data_key": "revenu"}]}
-    )
+    path = _csv(tmp_path, CSV)
     with pytest.raises(ChartDataError, match=r"'revenu'.*Columns: month, revenue, margin"):
-        shape_rows(spec, columns, rows, None)
+        _shape(_spec(series=[{"data_key": "revenu"}]), path)
 
 
 def test_non_numeric_series_is_refused(tmp_path: Path) -> None:
-    path = tmp_path / "r.csv"
-    path.write_text(CSV)
-    columns, rows, _ = read_rows(path, None)
-    spec = ChartSpec.model_validate(
-        {k: v for k, v in _call("r.csv").items() if k != "source"}
-        | {"series": [{"data_key": "month"}]}
-    )
-    with pytest.raises(ChartDataError, match="numeric"):
-        shape_rows(spec, columns, rows, None)
+    path = _csv(tmp_path, CSV)
+    with pytest.raises(ChartDataError, match="not a plain number"):
+        _shape(_spec(series=[{"data_key": "month"}]), path)
+
+
+@pytest.mark.parametrize(
+    ("cell", "expected"),
+    [("1,234", 1234), ("1,234,567.5", 1234567.5), ("-12", -12), ("3.5e2", 350.0), ("0.25", 0.25)],
+)
+def test_numbers_parse_exactly(tmp_path: Path, cell: str, expected: float) -> None:
+    path = _csv(tmp_path, f'm,v\na,"{cell}"\n')
+    _, _, shaped, _ = _shape(_spec(x_axis_key="m", series=[{"data_key": "v"}]), path)
+    assert shaped[0]["v"] == expected
+
+
+@pytest.mark.parametrize("cell", ["1,5", "12%", "$10", "n/a", "NaN", "inf", "1 000", "1,23,456"])
+def test_ambiguous_or_unparseable_numbers_are_refused_by_name(tmp_path: Path, cell: str) -> None:
+    path = _csv(tmp_path, f'm,v\na,1\nb,"{cell}"\n')
+    with pytest.raises(ChartDataError, match=r"row 2: .*not a plain number"):
+        _shape(_spec(x_axis_key="m", series=[{"data_key": "v"}]), path)
+
+
+def test_integers_beyond_2_53_are_refused(tmp_path: Path) -> None:
+    path = _csv(tmp_path, "m,v\na,9007199254740993\n")
+    with pytest.raises(ChartDataError, match="2\\^53"):
+        _shape(_spec(x_axis_key="m", series=[{"data_key": "v"}]), path)
+    (tmp_path / "big.json").write_text(json.dumps([{"m": "a", "v": 2**60}]))
+    with pytest.raises(ChartDataError, match="2\\^53"):
+        _shape(_spec(x_axis_key="m", series=[{"data_key": "v"}]), tmp_path / "big.json")
+
+
+def test_csv_quirks_are_refused(tmp_path: Path) -> None:
+    with pytest.raises(ChartDataError, match="duplicate column names \\(a\\)"):
+        read_rows(_csv(tmp_path, "a,a,b\n1,2,3\n", "dup.csv"))
+    with pytest.raises(ChartDataError, match=r"Row 2 .* has 4 fields but the header has 3"):
+        read_rows(_csv(tmp_path, "a,b,c\n1,2,3\n1,2,3,4\n", "wide.csv"))
+    with pytest.raises(ChartDataError, match=r"Row 1 .* has 2 fields"):
+        read_rows(_csv(tmp_path, "a,b,c\n1,2\n", "short.csv"))
+
+
+def test_a_huge_file_is_cut_at_the_read_cap(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr("omnigent.superchat.charts.data.READ_CAP", 20)
+    path = _csv(tmp_path, "x,y\n" + "\n".join(f"{i},{i}" for i in range(50)))
+    _, rows, cut = read_rows(path)
+    assert len(rows) == 20 and cut
+    assert READ_CAP == 200_000
 
 
 def test_json_shapes(tmp_path: Path) -> None:
@@ -152,9 +235,9 @@ def test_json_shapes(tmp_path: Path) -> None:
     (tmp_path / "cols.json").write_text(json.dumps({"a": [1, 3], "b": [2, None]}))
     (tmp_path / "lines.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
     for name in ("list.json", "wrapped.json", "cols.json", "lines.jsonl"):
-        columns, got, _ = read_rows(tmp_path / name, None)
+        columns, got, _ = read_rows(tmp_path / name)
         assert columns == ["a", "b"] and len(got) == 2, name
-        assert got[1]["b"] is None, name  # NaN never reaches the JSON document
+        assert _json_safe(got[1]["b"]) is None, name  # NaN never reaches the JSON document
 
 
 def test_unreadable_files(tmp_path: Path) -> None:
@@ -169,7 +252,7 @@ def test_unreadable_files(tmp_path: Path) -> None:
         ("bad.json", "list of row objects"),
     ):
         with pytest.raises(ChartDataError, match=text):
-            read_rows(tmp_path / name, None)
+            read_rows(tmp_path / name)
 
 
 @pytest.fixture()
@@ -227,6 +310,7 @@ async def test_handler_saves_a_chart_artifact_and_versions(
     doc = json.loads(store.read(saved))
     assert doc["version"] == 1 and doc["spec"]["chart_type"] == "bar"
     assert "source" not in doc["spec"] and doc["source"]["file"] == "r.csv"
+    assert doc["source"]["path"] == "r.csv"  # relative to the workspace, never the Computer's path
     assert doc["data"][0] == {"month": "2026-01", "revenue": 100}
     (tmp_path / "r.csv").write_text(CSV + "2026-05,160,0.3\n")
     again = json.loads(await handle_chart_tool(_ctx(server), _call("r.csv")))
@@ -249,4 +333,95 @@ async def test_handler_errors_are_sentences(server, tmp_path: Path, monkeypatch)
     outside = tmp_path.parent / "outside.csv"
     outside.write_text(CSV)
     escaped = json.loads(await handle_chart_tool(ctx, _call(str(outside))))
-    assert "inside your workspace" in escaped["error"] or "not found" in escaped["error"]
+    assert "inside your workspace" in escaped["error"]
+
+
+@pytest.mark.asyncio
+async def test_source_path_is_stored_relative_to_the_workspace(
+    server, store, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("OMNIGENT_RUNNER_WORKSPACE", str(tmp_path))
+    (tmp_path / "out").mkdir()
+    (tmp_path / "out" / "r.csv").write_text(CSV)
+    out = json.loads(await handle_chart_tool(_ctx(server), _call(str(tmp_path / "out" / "r.csv"))))
+    saved = store.get(out["id"], user_id="alice")
+    assert saved is not None
+    assert json.loads(store.read(saved))["source"]["path"] == "out/r.csv"
+
+
+@pytest.mark.parametrize(
+    "color",
+    [
+        "#1d1d1f",
+        "#abc",
+        "rgb(0, 113, 227)",
+        "rgba(0,0,0,0.5)",
+        "hsl(210 50% 40%)",
+        "tomato",
+        "var(--chart-3)",
+    ],
+)
+def test_series_colors_that_are_safe(color: str) -> None:
+    DisplayChartInput.model_validate(
+        _call("r.csv", series=[{"data_key": "revenue", "color": color}])
+    )
+
+
+@pytest.mark.parametrize(
+    "color",
+    [
+        'red" onload="x',
+        "red;}</style>",
+        "url(http://x)",
+        "var(--background)",
+        "#12345g",
+        "a" * 80,
+        "<x>",
+    ],
+)
+def test_series_colors_that_could_break_out_are_rejected(color: str) -> None:
+    with pytest.raises(ValueError):
+        DisplayChartInput.model_validate(
+            _call("r.csv", series=[{"data_key": "revenue", "color": color}])
+        )
+
+
+def _surface(schema_fragment: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "properties": sorted(schema_fragment["properties"]),
+        "required": sorted(schema_fragment.get("required", [])),
+    }
+
+
+def spec_surface() -> dict[str, Any]:
+    """What both implementations of the spec must agree on (the zod twin reads the same file)."""
+    params = display_chart_parameters()
+    props = params["properties"]
+    chart = {k: v for k, v in props.items() if k not in ("source", "name")}
+    series = props["series"]["items"]
+    return {
+        "chart_types": props["chart_type"]["enum"],
+        "chart": {
+            "properties": sorted(chart),
+            "required": sorted(r for r in params["required"] if r != "source"),
+        },
+        "series": _surface(series),
+        "value_format": _surface(series["properties"]["value_format"]),
+        "source": _surface(props["source"]),
+        "enums": {
+            "x_axis_type": props["x_axis_type"]["enum"],
+            "series_type": series["properties"]["series_type"]["enum"],
+            "y_axis": series["properties"]["y_axis"]["enum"],
+            "comparison_mode": props["comparison_mode"]["enum"],
+            "compact": series["properties"]["value_format"]["properties"]["compact"]["enum"],
+        },
+        "color_pattern": CHART_COLOR_PATTERN,
+    }
+
+
+def test_the_spec_matches_the_web_twin() -> None:
+    """The zod side reads the same ``packages/charts/spec-parity.json`` (spec.parity.test.ts)."""
+    path = Path(__file__).resolve().parents[5] / "packages" / "charts" / "spec-parity.json"
+    assert json.loads(path.read_text()) == spec_surface(), (
+        "the pydantic and zod chart specs drifted: update both, then regenerate spec-parity.json"
+    )

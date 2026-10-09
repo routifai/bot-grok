@@ -42,6 +42,8 @@ ARTIFACT_SAVE_TOOL_NAME = "artifact_save"
 DECK_EXPORT_TOOL_NAME = "deck_export"
 #: Also returns the ``{"type": "artifact", ...}`` result: the saved chart shows as a file card.
 CHART_TOOL_NAME = "display_chart"
+#: The calls whose ``{"type": "artifact", ...}`` result shows as a file card.
+FILE_RESULT_TOOL_NAMES = (ARTIFACT_SAVE_TOOL_NAME, DECK_EXPORT_TOOL_NAME, CHART_TOOL_NAME)
 
 #: ``ResourceEventData`` fields of a file a person's own action delivered into the chat.
 DELIVERED_ARTIFACT_RESOURCE = "artifact"
@@ -321,11 +323,7 @@ def project_items(
                 block = _card_block(item, output)
             elif _is_call(item, VAULT_REQUEST_TOOL_NAME):
                 block = _secure_entry_block(output)
-            elif (
-                _is_call(item, ARTIFACT_SAVE_TOOL_NAME)
-                or _is_call(item, DECK_EXPORT_TOOL_NAME)
-                or _is_call(item, CHART_TOOL_NAME)
-            ):
+            elif any(_is_call(item, name) for name in FILE_RESULT_TOOL_NAMES):
                 block = _file_block(output)
             if block:
                 messages.append(_message(item, "assistant", [block]))

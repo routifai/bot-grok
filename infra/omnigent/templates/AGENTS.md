@@ -333,8 +333,10 @@ Markdown, CSV, XLSX). Searching is a deliberate step: you choose the tool, you r
 ## Charts
 
 - To show data as a chart, compute it first with code (pandas or duckdb) and write the result you
-  want to plot to a file in your workspace: a CSV (or JSON, or Parquet when the Computer reads it),
-  one row per x value, one column per series, already aggregated and sorted. Then call
+  want to plot to a file in your workspace: a CSV or JSON file, one row per x value, one column
+  per series, already aggregated and sorted, with plain numbers (no "$", "%" or thousands
+  separators) and ISO dates (2026-01-31). The chart refuses cells it cannot read and names them;
+  fix those in code. Then call
   `display_chart` with `source.path` set to that file and the column names. Never type data values
   into the call; the chart reads them from the file and checks every column name against it. If
   it names a column that is not there, fix the name from the list it gives you.

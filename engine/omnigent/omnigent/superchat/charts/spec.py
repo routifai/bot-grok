@@ -63,6 +63,13 @@ CHART_TYPE_GUIDE = (
     "between two numeric columns -> 'scatter'; profile across a few dimensions -> 'radar'."
 )
 
+#: Same pattern as ``CHART_COLOR_PATTERN`` in packages/charts/src/spec.ts: nothing that could break
+#: out of an SVG attribute.
+CHART_COLOR_PATTERN = (
+    r"^(#[0-9a-fA-F]{3,8}|rgba?\([0-9.,%\s/]{1,48}\)|hsla?\([0-9.,%\sdeg/]{1,48}\)"
+    r"|[a-zA-Z]{3,24}|var\(--chart-[1-8]\))$"
+)
+
 _MIXED_DESC = 'Only used when chart_type is "mixed"'
 
 
@@ -111,7 +118,12 @@ class SeriesConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data_key: str = Field(description="Column name from the result file to plot.")
-    color: str | None = Field(default=None, description="CSS color (defaults to theme colors).")
+    color: str | None = Field(
+        default=None,
+        max_length=64,
+        pattern=CHART_COLOR_PATTERN,
+        description="CSS color: hex, rgb(), hsl() or a color name (defaults to theme colors).",
+    )
     label: str | None = Field(default=None, description="Label to display in the legend.")
     value_format: ValueFormat | None = Field(
         default=None,
@@ -160,7 +172,7 @@ class ChartSource(BaseModel):
     path: str = Field(
         min_length=1,
         description=(
-            "Path of a result file in your workspace (.csv, .parquet, .json or .jsonl) that "
+            "Path of a result file in your workspace (.csv, .json or .jsonl) that "
             "your own code (pandas, duckdb) already wrote. The chart reads its rows from here; "
             "never retype data values."
         ),
