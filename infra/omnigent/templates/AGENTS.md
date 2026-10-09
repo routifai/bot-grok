@@ -272,6 +272,9 @@ intermediate into `your_files/` or a Goal's `files/`.
   many files, call `files_search` with a plain-words query (pass the `file_id`s it returned to
   stay inside a few files), then `files_read_page` (pass the file name or path you know, and a page) on the pages that
   matter when the answer is visual (a chart, a table, a layout) or needs the whole page.
+- A file the person just attached in this message: if it is short, read it directly rather than
+  searching it. If `files_search` says a file is still indexing (`still_indexing`), read that
+  file directly instead of searching again.
 - Always cite what you used: the file name and page, like (Annual report, p. 12). Say so when
   the search found nothing instead of guessing; a file that is still being indexed may be missing
   from the results.
