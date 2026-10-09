@@ -191,4 +191,67 @@ describe("mapTranscriptPage", () => {
     expect(result.messages[1]?.forks).toBeUndefined();
     expect(result.lineage).toEqual({ rootId: "s1", parentId: "s1", anchorItemId: "m0" });
   });
+  describe("a file card repeating a saved artifact", () => {
+    const saved = {
+      id: "m2",
+      role: "assistant" as const,
+      created_at: 2,
+      blocks: [
+        {
+          type: "file" as const,
+          artifact_id: "a1",
+          name: "nova.html",
+          mime: "text/html",
+          kind: "html",
+          size: 5200,
+          version: 1,
+        },
+      ],
+    };
+    const fileCard = (id: string, artifactId: string, version?: number) => ({
+      id,
+      role: "assistant" as const,
+      created_at: 3,
+      blocks: [
+        {
+          type: "card" as const,
+          card_id: null,
+          card: {
+            card: "file",
+            data: { name: "nova.html", kind: "html", artifactId, ...(version ? { version } : {}) },
+            fallback: "f",
+          },
+        },
+      ],
+    });
+    const user = { id: "u", role: "user" as const, created_at: 1, blocks: [] };
+    const done = {
+      id: "m4",
+      role: "assistant" as const,
+      created_at: 4,
+      blocks: [{ type: "text" as const, text: "Done." }],
+    };
+
+    it("shows the artifact once, with its size", () => {
+      const result = mapTranscriptPage("s1", page([user, saved, fileCard("m3", "a1", 1), done]));
+      expect(result.messages.map((m) => m.id)).toEqual(["u", "m2", "m4"]);
+      expect(result.messages[1]?.blocks[0]).toMatchObject({ data: { size: 5200 } });
+    });
+
+    it("keeps a card for another artifact or another version", () => {
+      const result = mapTranscriptPage(
+        "s1",
+        page([user, saved, fileCard("m3", "a2"), fileCard("m5", "a1", 2)]),
+      );
+      expect(result.messages.map((m) => m.id)).toEqual(["u", "m2", "m3", "m5"]);
+    });
+
+    it("shows the card again in a later turn", () => {
+      const result = mapTranscriptPage(
+        "s1",
+        page([user, saved, { ...user, id: "u2" }, fileCard("m3", "a1", 1)]),
+      );
+      expect(result.messages.map((m) => m.id)).toEqual(["u", "m2", "u2", "m3"]);
+    });
+  });
 });
