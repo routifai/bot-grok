@@ -42,6 +42,24 @@ const OVERSCAN = 8;
 /** Used until the grid is measured (and where there is no layout, e.g. tests). */
 const FALLBACK_VIEW_H = 640;
 
+/** The calls the viewer makes; the API by default (a fixture in the dev preview). */
+export interface SheetSource {
+  table(input: { artifactId: string }): Promise<ArtifactTable>;
+  listVersions(input: {
+    familyId: string;
+  }): Promise<Array<{ id: string; origin?: string; parentVersionId?: string | null }>>;
+  editTable(input: {
+    artifactId: string;
+    baseVersion: number;
+    edits: TableCellEdit[];
+  }): Promise<{ id: string; version: number }>;
+  tableRange(input: {
+    artifactId: string;
+    sheet: string;
+    range: string;
+  }): Promise<{ block: string }>;
+}
+
 type Artifact = { id: string; name: string; version: number };
 
 /** What the version history says about the table on screen. */
@@ -67,11 +85,13 @@ export function SheetView({
   artifact,
   onEdited,
   fallback,
+  source = rpc.artifacts,
 }: {
   artifact: Artifact;
   onEdited?: (artifactId: string) => void;
   /** Shown if the file cannot be read as a table. */
   fallback?: ReactNode;
+  source?: SheetSource;
 }) {
   const { t } = useLingui();
   const askAvailable = useSheetAskAvailable();
@@ -98,23 +118,26 @@ export function SheetView({
   const queue = useRef<Promise<void>>(Promise.resolve());
 
   const requestedId = useRef<string | null>(null);
-  const load = useCallback(async (id: string) => {
-    const seq = ++loadSeq.current;
-    requestedId.current = id;
-    try {
-      const next = await rpc.artifacts.table({ artifactId: id });
-      const versions = await rpc.artifacts.listVersions({ familyId: id }).catch(() => []);
-      const info = await readHistory(id, next, versions);
-      if (seq !== loadSeq.current) return;
-      headVersion.current = { id: next.artifactId, version: next.version };
-      setTable(next);
-      setHistory(info);
-      setOverlay(new Map());
-      setFailed(false);
-    } catch {
-      if (seq === loadSeq.current) setFailed(true);
-    }
-  }, []);
+  const load = useCallback(
+    async (id: string) => {
+      const seq = ++loadSeq.current;
+      requestedId.current = id;
+      try {
+        const next = await source.table({ artifactId: id });
+        const versions = await source.listVersions({ familyId: id }).catch(() => []);
+        const info = await readHistory(source, id, next, versions);
+        if (seq !== loadSeq.current) return;
+        headVersion.current = { id: next.artifactId, version: next.version };
+        setTable(next);
+        setHistory(info);
+        setOverlay(new Map());
+        setFailed(false);
+      } catch {
+        if (seq === loadSeq.current) setFailed(true);
+      }
+    },
+    [source],
+  );
 
   useEffect(() => {
     // A version this view just saved is already loading.
@@ -161,7 +184,7 @@ export function SheetView({
         let created: { id: string; version: number };
         const base = headVersion.current;
         try {
-          created = await rpc.artifacts.editTable({
+          created = await source.editTable({
             artifactId: base.id,
             baseVersion: base.version,
             edits,
@@ -169,10 +192,10 @@ export function SheetView({
         } catch (failure) {
           if (!isConflict(failure)) throw failure;
           // Someone saved in between: take the newest version and apply the change once more.
-          const newest = (await rpc.artifacts.listVersions({ familyId: base.id }))[0];
+          const newest = (await source.listVersions({ familyId: base.id }))[0];
           if (!newest) throw failure;
-          const fresh = await rpc.artifacts.table({ artifactId: newest.id });
-          created = await rpc.artifacts.editTable({
+          const fresh = await source.table({ artifactId: newest.id });
+          created = await source.editTable({
             artifactId: newest.id,
             baseVersion: fresh.version,
             edits,
@@ -186,7 +209,7 @@ export function SheetView({
         await load(headVersion.current.id);
       }
     },
-    [load, onEdited, t],
+    [load, onEdited, source, t],
   );
 
   const commit = useCallback(
@@ -347,7 +370,7 @@ export function SheetView({
     const label = rangeLabel(selection);
     setAsking(true);
     try {
-      const { block } = await rpc.artifacts.tableRange({
+      const { block } = await source.tableRange({
         artifactId: headVersion.current.id,
         sheet: sheetName,
         range: label,
@@ -690,6 +713,7 @@ function CellEditor({
 
 /** Which version this is, and what the person changed by hand since Nova's last save. */
 async function readHistory(
+  source: SheetSource,
   id: string,
   current: ArtifactTable,
   versions: ReadonlyArray<{
@@ -710,9 +734,9 @@ async function readHistory(
     baseId = entry.parentVersionId;
   }
   try {
-    const parent = await rpc.artifacts.table({ artifactId: here.parentVersionId });
+    const parent = await source.table({ artifactId: here.parentVersionId });
     const base =
-      baseId === here.parentVersionId ? parent : await rpc.artifacts.table({ artifactId: baseId });
+      baseId === here.parentVersionId ? parent : await source.table({ artifactId: baseId });
     const changed = new Set(
       diffTables(base.sheets, current.sheets).map((d) => cellKey(d.sheet, d.row, d.col)),
     );

@@ -104,9 +104,6 @@ msgstr "{activeCount} active · {waiting} need you"
 msgid "{botName}’s computer"
 msgstr "{botName}’s computer"
 
-msgid "{changedCount, plural, one {You changed # cell on {sheetName}. Nova sees this before its next reply.} other {You changed # cells on {sheetName}. Nova sees this before its next reply.}}"
-msgstr "{changedCount, plural, one {You changed # cell on {sheetName}. Nova sees this before its next reply.} other {You changed # cells on {sheetName}. Nova sees this before its next reply.}}"
-
 msgid "{count, plural, one {# reply} other {# replies}}"
 msgstr "{count, plural, one {# reply} other {# replies}}"
 
@@ -125,8 +122,8 @@ msgstr "{hours}h ago"
 msgid "{minutes}m ago"
 msgstr "{minutes}m ago"
 
-msgid "{n, plural, one {# cell} other {# cells}}"
-msgstr "{n, plural, one {# cell} other {# cells}}"
+msgid "{n} cells"
+msgstr "{n} cells"
 
 #. js-lingui-explicit-id
 msgid "{name} failed"
@@ -159,9 +156,6 @@ msgstr "{steps, plural, one {# step} other {# steps}}"
 msgid "{toolCount, plural, one {# tool} other {# tools}}"
 msgstr "{toolCount, plural, one {# tool} other {# tools}}"
 
-msgid "{total, plural, one {# cell} other {# cells}}"
-msgstr "{total, plural, one {# cell} other {# cells}}"
-
 msgid "{unloaded, plural, one {# fork in earlier history} other {# forks in earlier history}}"
 msgstr "{unloaded, plural, one {# fork in earlier history} other {# forks in earlier history}}"
 
@@ -183,6 +177,9 @@ msgstr "••••{hint} · Needs attention"
 
 msgid "✓ Sent · 9:42 AM"
 msgstr "✓ Sent · 9:42 AM"
+
+msgid "1 cell"
+msgstr "1 cell"
 
 msgid "2 of 5 · Next check-in Friday, 9:00"
 msgstr "2 of 5 · Next check-in Friday, 9:00"
@@ -4064,6 +4061,12 @@ msgstr "You can close this tab if it does not redirect automatically."
 
 msgid "You can close this window."
 msgstr "You can close this window."
+
+msgid "You changed {changedCount} cells on {sheetName}. Nova sees this before its next reply."
+msgstr "You changed {changedCount} cells on {sheetName}. Nova sees this before its next reply."
+
+msgid "You changed 1 cell on {sheetName}. Nova sees this before its next reply."
+msgstr "You changed 1 cell on {sheetName}. Nova sees this before its next reply."
 
 msgid "You have control"
 msgstr "You have control"
