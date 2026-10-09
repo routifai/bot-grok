@@ -28,6 +28,8 @@ export type OmnigentTranscriptBlock =
       title?: string;
       version?: number;
       versions?: number;
+      /** Set when the person's own action delivered the file (an export from the panel). */
+      by?: "user";
     }
   | { type: "secure_entry"; request_id: string; name: string; site: string; reason?: string }
   | { type: "error"; code: string; level?: "info" }

@@ -72,6 +72,8 @@ export const ReplyCardData = {
     artifactId: Text.optional(),
     version: z.number().int().positive().optional(),
     versions: z.number().int().positive().optional(),
+    /** The person delivered this file themselves (a panel export), not the Muse. */
+    byYou: z.boolean().optional(),
   }),
   /** The Muse's `vault_request_secret`: the person types a login into the card, which posts it
    * straight to the vault. Only the request id travels in chat; never a value. */

@@ -7,6 +7,9 @@ out. The rules a client would otherwise copy:
 * ``render_card`` / ``vault_request_secret`` / ``artifact_save`` / ``deck_export`` calls become
   ``card`` / ``secure_entry`` / ``file`` messages of their own (a call whose output says it
   failed shows nothing; a card still running is ``pending``);
+* a delivered file (a ``resource_event`` whose ``resource_type`` is ``artifact``: something the
+  person did, such as exporting a deck from the panel) becomes a ``file`` message marked
+  ``"by": "user"``; it is not a tool call, and the Muse's history never replays it;
 * a ``start_helper`` call becomes a ``helper`` block under the next assistant message;
 * one ``call_id`` is one block, however often the call repeats;
 * an ``error`` item is an ``error`` block carrying its code, never its text; the code is read
@@ -31,6 +34,10 @@ VAULT_REQUEST_TOOL_NAME = "vault_request_secret"
 ARTIFACT_SAVE_TOOL_NAME = "artifact_save"
 #: Returns the same ``{"type": "artifact", ...}`` result, so its file shows as the same card.
 DECK_EXPORT_TOOL_NAME = "deck_export"
+
+#: ``ResourceEventData`` fields of a file a person's own action delivered into the chat.
+DELIVERED_ARTIFACT_RESOURCE = "artifact"
+DELIVERED_EVENT = "session.resource.created"
 
 Item = Mapping[str, Any]
 
@@ -130,8 +137,22 @@ def _secure_entry_block(output: str | None) -> dict[str, Any] | None:
 
 
 def _file_block(output: str | None) -> dict[str, Any] | None:
-    saved = _object(output)
-    if not saved or saved.get("type") != "artifact":
+    return _file_block_of(_object(output))
+
+
+def _delivered_file_block(item: Item) -> dict[str, Any] | None:
+    """The ``file`` block of a file the person's own action delivered, marked ``by: user``."""
+    if (
+        item.get("event_type") != DELIVERED_EVENT
+        or item.get("resource_type") != DELIVERED_ARTIFACT_RESOURCE
+    ):
+        return None
+    block = _file_block_of(item.get("resource"))
+    return {**block, "by": "user"} if block else None
+
+
+def _file_block_of(saved: Any) -> dict[str, Any] | None:
+    if not isinstance(saved, dict) or saved.get("type") != "artifact":
         return None
     artifact_id, name = saved.get("id"), saved.get("name")
     if not isinstance(artifact_id, str) or not isinstance(name, str):
@@ -231,6 +252,10 @@ def project_items(
                 block = _file_block(output)
             if block:
                 messages.append(_message(item, "assistant", [block]))
+        elif kind == "resource_event":
+            delivered = _delivered_file_block(item)
+            if delivered:
+                messages.append(_message(item, "assistant", [delivered]))
         elif kind == "error":
             code = item.get("code")
             if isinstance(code, str) and code:

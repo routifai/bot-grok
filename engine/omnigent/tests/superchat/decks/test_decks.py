@@ -289,7 +289,10 @@ def test_route_relays_runner_result(store, route_client) -> None:
     }
 
 
-def test_route_shows_the_export_as_a_file_card_in_the_deck_chat(store, route_client) -> None:
+def test_route_shows_the_export_as_a_plain_file_card_the_muse_never_called(
+    store, route_client
+) -> None:
+    from omnigent.entities.conversation import NON_CONTENT_ITEM_TYPES
     from omnigent.superchat.transcript.blocks import project_items
 
     client, holder = route_client
@@ -300,13 +303,15 @@ def test_route_shows_the_export_as_a_file_card_in_the_deck_chat(store, route_cli
         f"/v1/decks/{deck.id}/export", json={"format": "pptx"}, headers=H
     ).is_success
     [(sid, items)] = holder["convs"].appended
-    assert sid == _CHAT and [i.type for i in items] == ["function_call", "function_call_output"]
-    assert items[0].data.name == "deck_export"
-    assert json.loads(items[0].data.arguments) == {"artifact_id": deck.id, "format": "pptx"}
+    # One plain item: no deck_export call in the Muse's history, and replay skips the type.
+    assert sid == _CHAT and [i.type for i in items] == ["resource_event"]
+    assert "resource_event" in NON_CONTENT_ITEM_TYPES
     flat = [{"id": f"i{n}", "type": i.type, **i.data.model_dump()} for n, i in enumerate(items)]
+    assert not any(i["type"] in ("function_call", "function_call_output") for i in flat)
     [message] = project_items(flat)
     [block] = message["blocks"]
     assert block["type"] == "file" and block["artifact_id"] == "abc" and block["name"] == "q3.pptx"
+    assert block["by"] == "user" and block["title"] == "Q3"
 
 
 def test_route_export_still_succeeds_when_the_chat_cannot_be_written(store, route_client) -> None:

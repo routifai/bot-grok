@@ -21,6 +21,7 @@ from omnigent.entities import (
 from omnigent.errors import OmnigentError
 from omnigent.stores.conversation_store import SIDE_CHAT_LABEL_KEY
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
+from omnigent.superchat.artifact_kinds import KIND_MIME
 from omnigent.superchat.transcript.blocks import project_items
 from omnigent.superchat.transcript.routes import register_transcript_routes
 
@@ -156,6 +157,26 @@ def test_deck_export_becomes_a_file_block() -> None:
     assert (
         project_items([_call("d2", "deck_export", "ke"), _out("eo", "ke", {"error": "x"})]) == []
     )
+
+
+def test_delivered_artifact_is_a_user_file_block_and_other_resources_show_nothing() -> None:
+    saved = {"type": "artifact", "id": "art_3", "name": "q3.pdf", "kind": "pdf", "size": 7}
+    event = {
+        "id": "r1",
+        "type": "resource_event",
+        "event_type": "session.resource.created",
+        "resource_id": "art_3",
+        "resource_type": "artifact",
+        "resource": saved,
+        "created_at": 100,
+    }
+    [message] = project_items([event])
+    assert message["blocks"] == [
+        {"type": "file", "artifact_id": "art_3", "name": "q3.pdf", "mime": KIND_MIME["pdf"],
+         "kind": "pdf", "size": 7, "by": "user"}
+    ]  # fmt: skip
+    upload = {**event, "id": "r2", "resource_type": "file", "resource_id": "file_1"}
+    assert project_items([upload, {**event, "id": "r3", "event_type": "x"}]) == []
 
 
 def test_artifact_save_becomes_a_file_block_and_secret_request_a_secure_entry() -> None:

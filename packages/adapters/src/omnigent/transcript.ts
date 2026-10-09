@@ -34,6 +34,7 @@ function fileCard(block: Extract<OmnigentTranscriptBlock, { type: "file" }>): Re
       ...(block.size !== undefined ? { size: block.size } : {}),
       ...(block.version !== undefined ? { version: block.version } : {}),
       ...(block.versions !== undefined ? { versions: block.versions } : {}),
+      ...(block.by === "user" ? { byYou: true } : {}),
     },
     fallback: `Saved **${label}**${revision}. Open it in Nova's Library.`,
   };

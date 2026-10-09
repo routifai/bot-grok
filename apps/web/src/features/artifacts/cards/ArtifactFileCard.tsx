@@ -64,7 +64,11 @@ function SavedFileCard({ title, data }: { title?: string; data: ReplyCardDataOf<
     if (panel) panel.open(artifactId, title);
     else setOpen(true);
   }
-  const meta = [data.kind?.toUpperCase(), data.size !== undefined ? formatSize(data.size) : null]
+  const meta = [
+    data.kind?.toUpperCase(),
+    data.size !== undefined ? formatSize(data.size) : null,
+    data.byYou ? t`Exported by you` : null,
+  ]
     .filter(Boolean)
     .join(" · ");
 

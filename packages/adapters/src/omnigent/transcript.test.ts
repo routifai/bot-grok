@@ -191,6 +191,23 @@ describe("mapTranscriptPage", () => {
     expect(result.messages[1]?.forks).toBeUndefined();
     expect(result.lineage).toEqual({ rootId: "s1", parentId: "s1", anchorItemId: "m0" });
   });
+  it("marks a file the person delivered, and leaves the Muse's own saves unmarked", () => {
+    const file = { type: "file" as const, artifact_id: "a1", name: "q3.pptx", mime: null };
+    const result = mapTranscriptPage(
+      "s1",
+      page([
+        { id: "m1", role: "assistant", created_at: 1, blocks: [{ ...file, by: "user" }] },
+        { id: "m2", role: "assistant", created_at: 2, blocks: [{ ...file, artifact_id: "a2" }] },
+      ]),
+    );
+    const data = (i: number) => {
+      const block = result.messages[i]?.blocks[0];
+      return block?.kind === "reply_card" ? block.data : null;
+    };
+    expect(data(0)).toMatchObject({ artifactId: "a1", byYou: true });
+    expect(data(1)).not.toHaveProperty("byYou");
+  });
+
   describe("a file card repeating a saved artifact", () => {
     const saved = {
       id: "m2",

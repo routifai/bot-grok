@@ -126,6 +126,25 @@ it("marks the earlier card Updated and opens the panel on Expand", async () => {
   expect(open).toHaveBeenLastCalledWith("a2", "Plan");
 });
 
+it("says Exported by you on a file the person delivered, and only then", async () => {
+  api.getById.mockResolvedValue({ id: "a1", name: "q3.pptx", mimeType: "x", contentBase64: "" });
+  const data = { name: "q3.pptx", artifactId: "a1", kind: "pptx", size: 2048 };
+  const view = await mount(
+    <ArtifactPanelProvider value={{ openId: null, open: () => {}, close: () => {} }}>
+      <ReplyCardThreadProvider messages={[] as never}>
+        <div data-testid="mine">
+          <ArtifactFileCard data={{ ...data, byYou: true }} />
+        </div>
+        <div data-testid="muse">
+          <ArtifactFileCard data={data} />
+        </div>
+      </ReplyCardThreadProvider>
+    </ArtifactPanelProvider>,
+  );
+  expect(view.querySelector("[data-testid=mine]")?.textContent).toContain("Exported by you");
+  expect(view.querySelector("[data-testid=muse]")?.textContent).not.toContain("Exported by you");
+});
+
 const htmlArtifact = (publish: unknown = null) => ({
   id: "h1",
   name: "todo.html",

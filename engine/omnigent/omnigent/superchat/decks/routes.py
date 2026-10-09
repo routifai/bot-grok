@@ -2,7 +2,7 @@
 
 Wakes the person's Computer the way a message does, then runs the ``deck_export`` tool on its
 runner (``/mcp/execute``) so the Chromium that renders the deck is the one in their Computer.
-The result is a new artifact in the deck's chat.
+The result is a new artifact in the deck's chat, shown as a file the person delivered.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from omnigent.entities import NewConversationItem
-from omnigent.entities.conversation import parse_item_data
+from omnigent.entities.conversation import ResourceEventData
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.server.auth import AuthProvider
 from omnigent.stores import ConversationStore
@@ -28,11 +28,11 @@ from omnigent.superchat.artifacts import (
 )
 from omnigent.superchat.decks.names import is_deck_name
 from omnigent.superchat.family.signals import notify_message_done
+from omnigent.superchat.transcript.blocks import DELIVERED_ARTIFACT_RESOURCE, DELIVERED_EVENT
 
 logger = logging.getLogger(__name__)
 
 _TOOL = "deck_export"
-_AGENT = "nova-deck-export"
 
 #: How long the export waits for the Computer to wake and its runner to connect.
 WAKE_TIMEOUT_S = 120.0
@@ -123,7 +123,7 @@ def create_decks_router(
             raise OmnigentError("The export didn't finish", code=ErrorCode.INVALID_INPUT)
         if result.get("error"):
             raise OmnigentError(str(result["error"])[:300], code=ErrorCode.INVALID_INPUT)
-        await _show_in_chat(conversation_store, session_id, item.id, body.format, result)
+        await _show_in_chat(conversation_store, session_id, result)
         result.pop("type", None)
         return result
 
@@ -133,45 +133,31 @@ def create_decks_router(
 async def _show_in_chat(
     conversation_store: ConversationStore,
     session_id: str,
-    deck_id: str,
-    fmt: str,
     result: dict[str, Any],
 ) -> None:
-    """Record the export as a ``deck_export`` call in the deck's chat, so its file shows as a card.
+    """Record the exported file in the deck's chat as a file the person delivered.
 
-    A ``deck_export`` the Muse makes lands in the chat as a tool call and its result; the panel's
-    export runs the same tool without a turn, so the same two items are stored. The transcript
-    then projects the same file card it does for ``artifact_save``. Best effort: the file is
-    already saved and in the Library, so a failure here never fails the export.
+    A ``resource_event`` item (``resource_type="artifact"``), not a tool call: the Muse never
+    made this call, so its history must not hold one. The transcript projects it as a file card
+    marked as the person's own action, and the agent loop skips it (``NON_CONTENT_ITEM_TYPES``).
+    Best effort: the file is already saved and in the Library, so a failure here never fails the
+    export.
     """
-    call_id = f"call_{uuid.uuid4().hex}"
-    response_id = f"deck-export-{uuid.uuid4().hex}"
     try:
         stored = await asyncio.to_thread(
             conversation_store.append,
             session_id,
             [
                 NewConversationItem(
-                    type="function_call",
-                    response_id=response_id,
-                    data=parse_item_data(
-                        "function_call",
-                        {
-                            "agent": _AGENT,
-                            "name": _TOOL,
-                            "arguments": json.dumps({"artifact_id": deck_id, "format": fmt}),
-                            "call_id": call_id,
-                        },
+                    type="resource_event",
+                    response_id=f"deck-export-{uuid.uuid4().hex}",
+                    data=ResourceEventData(
+                        event_type=DELIVERED_EVENT,
+                        resource_id=str(result.get("id") or ""),
+                        resource_type=DELIVERED_ARTIFACT_RESOURCE,
+                        resource=dict(result),
                     ),
-                ),
-                NewConversationItem(
-                    type="function_call_output",
-                    response_id=response_id,
-                    data=parse_item_data(
-                        "function_call_output",
-                        {"call_id": call_id, "output": json.dumps(result)},
-                    ),
-                ),
+                )
             ],
         )
     except Exception:  # noqa: BLE001

@@ -1755,6 +1755,9 @@ msgstr "Export renewals"
 msgid "Export this week's list from the CRM and drop it in the shared folder"
 msgstr "Export this week's list from the CRM and drop it in the shared folder"
 
+msgid "Exported by you"
+msgstr "Exported by you"
+
 msgid "External conversation"
 msgstr "External conversation"
 
