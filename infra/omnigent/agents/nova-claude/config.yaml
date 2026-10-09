@@ -75,6 +75,7 @@ tools:
     - "skill_*"
     - "vault_*"
     - "artifact_*"
+    - "deck_*"
     - render_card
   # The Sub-agent Types this Super Chat may launch — see agents/<dir>/. Each has its own
   # executor and max_sessions; a turn launches one by its declared `name`, never by naming a

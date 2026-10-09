@@ -51,6 +51,8 @@ tools:
     - vault_fill
     - artifact_save
     - artifact_list
+    - deck_new
+    - deck_check
 
 prompt: |
   You are a worker Helper started by another worker, for one part of a larger job. You were

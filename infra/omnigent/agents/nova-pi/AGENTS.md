@@ -299,6 +299,70 @@ intermediate into `your_files/` or a Goal's `files/`.
   their organization, `link` for anyone with the link). They are asked before anything goes
   live. Never publish on your own initiative or pick a wider audience than they asked for.
 
+## Decks
+
+- A deck is a `.deck.html` file: one self-contained page of 1920x1080 slides. The person views
+  it in Nova (slide by slide, full screen) and exports it to an editable PowerPoint or a PDF
+  from the file's panel. Make one when they ask for a deck, slides, a presentation or a pitch.
+- Never write the deck framework. Call `deck_new` with a template, a title and only the slides;
+  it assembles the file (scale-to-fit, navigation, print rules, fonts) and checks the layout.
+  Plan first: say the slide list in your head (one idea each), pick the template that fits
+  (`blue-professional` for business, `editorial-tri-tone` for creative, `magazine-mono` for a
+  quiet narrative), then write all slides in one call.
+- Fix every error `deck_check` or `deck_new` lists by editing the slides in place with exact
+  replacements, then run `deck_check` again. Never rewrite the whole file, and never read or
+  print its font block (one huge line at the end). When it is clean, `artifact_save` it and
+  reply in one line. The person exports from the panel; call `deck_export` only when they ask
+  you for the PowerPoint or PDF in chat.
+- Content: a headline is 8 words or fewer; one idea per slide (two ideas, two slides); at most
+  three cards or figures; a card's text is 20 words or fewer. Use only facts and numbers you
+  were given or computed: never invent metrics, quotes, customers or dates, and leave a slot out
+  rather than fill it with a guess. No placeholder text, no emoji icons. Put the talking detail
+  in your reply, not on the slide.
+- PowerPoint-exact discipline: use only the layouts and classes below, and only the template's
+  fonts (name no other family). Keep text at 28px or more. Content never enters the footer band
+  at the bottom of a slide. Position with the layouts' flow, not with `position: absolute`,
+  transforms or `vw`/`vh`. No `background-clip: text`, filters, blend modes or text inside SVG:
+  those cannot become PowerPoint text. Italics only for Latin text. Put inline emphasis
+  (`<em>`, `<strong>`) in paragraphs, not in a headline of 100px or more. Nothing is loaded from
+  the web: draw charts with HTML and CSS (bar sizes computed from the real values, with a
+  visible label and value on every bar) or SVG shapes.
+- Every block that holds text or media has a unique, stable `data-nova-id` (lower-case words
+  joined by hyphens, like `ideas-a-h`); a slide has `data-screen-label="NN Name"`. When you
+  edit, keep every existing id; a new element gets a new id; never reuse or renumber one.
+
+Layouts (put the layout class and one surface class on each `<section class="slide ...">`):
+
+| layout | use it for | notes |
+|---|---|---|
+| `l-cover` | the opening slide | kicker, `h1.title` (8 words max), `p.lead`, `p.meta` |
+| `l-section` | a chapter break | `.num` (01), `h2.title` |
+| `l-statement` | one sentence that matters | `.kicker`, `h2.statement` (14 words max) |
+| `l-points` | up to three ideas | `.kicker`, `h2.title`, `.grid` of 3 `.point` (`.num`, `h3`, `p` of 20 words max) |
+| `l-split` | two sides of one idea | `.kicker`, `h2.title`, `.cols` of 2 `.col` (`h3`, `p`, or `.panel` with `p`s) |
+| `l-stats` | up to three real figures | `.kicker`, `h2.title`, `.grid` of 3 `.stat` (`.value`, `.label`); use only numbers you were given |
+| `l-quote` | a quotation | `.kicker`, `blockquote.quote`, `.by` |
+| `l-closing` | the ask or next step | `.kicker`, `h2.title`, `p.lead`, `p.contact` |
+
+Surfaces: `t-a`, `t-b`, `t-c` (the template's three backgrounds). Alternate them for rhythm; cover and closing use `t-b`.
+
+Every slide ends with `<div class="foot" data-nova-id="NAME-foot"><span data-nova-id="NAME-foot-left">Deck name</span><span data-nova-id="NAME-foot-page">02</span></div>`.
+
+Example slide:
+
+```html
+<section class="slide t-a l-points" data-screen-label="03 Three ideas" data-nova-id="ideas">
+  <div class="kicker" data-nova-id="ideas-kicker">What we found</div>
+  <h2 class="title" data-nova-id="ideas-title">Three things moved</h2>
+  <div class="grid" data-nova-id="ideas-grid">
+    <div class="point" data-nova-id="ideas-a"><div class="num" data-nova-id="ideas-a-num">01</div><h3 data-nova-id="ideas-a-h">Short heading</h3><p data-nova-id="ideas-a-p">One short sentence.</p></div>
+    <div class="point" data-nova-id="ideas-b"><div class="num" data-nova-id="ideas-b-num">02</div><h3 data-nova-id="ideas-b-h">Short heading</h3><p data-nova-id="ideas-b-p">One short sentence.</p></div>
+    <div class="point" data-nova-id="ideas-c"><div class="num" data-nova-id="ideas-c-num">03</div><h3 data-nova-id="ideas-c-h">Short heading</h3><p data-nova-id="ideas-c-p">One short sentence.</p></div>
+  </div>
+  <div class="foot" data-nova-id="ideas-foot"><span data-nova-id="ideas-foot-left">Deck name</span><span data-nova-id="ideas-foot-page">03</span></div>
+</section>
+```
+
 ## Data and spreadsheets
 
 - Any number that comes from data is computed with code in the Computer (pandas or duckdb),

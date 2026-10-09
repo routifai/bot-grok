@@ -59,6 +59,8 @@ tools:
     - vault_fill
     - artifact_save
     - artifact_list
+    - deck_new
+    - deck_check
     - start_helper
     - sys_session_close
     - sys_session_list
