@@ -128,7 +128,8 @@ function dropRepeatedFileCards(
   const kept: OmnigentTranscriptPage["data"] = [];
   for (const message of messages) {
     if (message.role !== "assistant") {
-      shown = new Set();
+      // A message steered into the running turn is part of that turn's work.
+      if (message.delivered !== "steer") shown = new Set();
       kept.push(message);
       continue;
     }
@@ -160,6 +161,7 @@ export function mapTranscriptPage(chatId: string, page: OmnigentTranscriptPage):
     blocks: message.blocks.map(mapBlock),
     createdAt: epochSecondsToIso(message.created_at),
     ...(message.forks ? { forks: message.forks.map(mapFork) } : {}),
+    ...(message.delivered ? { delivered: message.delivered } : {}),
   }));
   return {
     threadId: chatId,
