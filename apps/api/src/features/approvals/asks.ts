@@ -61,7 +61,11 @@ function toAsk(ask: OmnigentAsk, chatId: string | null): Ask {
       choices: labelled(ask, APPROVAL_CHOICES),
       input: null,
       createdAt,
-      approval: { chatId },
+      approval: {
+        chatId,
+        arguments: subject.arguments ?? null,
+        alsoAsks: subject.also_asks ?? [],
+      },
     };
   }
   const goalId = ask.objective_id ?? ask.session_id;

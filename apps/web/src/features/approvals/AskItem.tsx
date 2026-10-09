@@ -132,6 +132,20 @@ export function AskItem({
         </div>
       </div>
 
+      {ask.approval?.alsoAsks?.length ? (
+        <ul className="flex flex-col gap-1 text-[13.5px] leading-[1.5] text-ink-2">
+          {ask.approval.alsoAsks.map((reason) => (
+            <li key={reason}>{reason}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {ask.approval?.arguments ? (
+        <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-muted px-3.5 py-3 font-mono text-[12.5px] leading-[1.7] text-muted-foreground">
+          {ask.approval.arguments}
+        </pre>
+      ) : null}
+
       {structuredDetail ? (
         detailRows ? (
           <DetailRows rows={detailRows} />

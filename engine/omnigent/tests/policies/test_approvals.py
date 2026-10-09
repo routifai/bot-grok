@@ -147,6 +147,7 @@ def test_pending_prompts_persist_and_come_back_after_a_restart(
         "params": {"message": reason},
     }
     attested = {
+        "session_id": "s1",
         "phase": "tool_call",
         "run_as": "a@x.io",
         "policy_reasons": {approvals.POLICY_NAME: reason},
@@ -160,12 +161,20 @@ def test_pending_prompts_persist_and_come_back_after_a_restart(
     pending_elicitations.attest("elicit_1", attested)
     pending_elicitations.record_publish("s1", event)
     pending_elicitations.resolve("s1", "elicit_1")
+    filed = {**event, "params": {**event["params"], "approval": {"c": "post"}}}
     store.put_pending(
         "elicit_2", "s2", user_id="a@x.io", category="post", target="git remote",
-        summary="Push", amount_usd=None, event=json.dumps({**event, "elicitation_id": "elicit_2"}),
+        summary="Push", amount_usd=None, event=json.dumps({**filed, "elicitation_id": "elicit_2"}),
+    )  # fmt: skip
+    # A row filed from event text before prompts were attested is purged, not restored.
+    store.put_pending(
+        "elicit_old", "s3", user_id="a@x.io", category="delete", target="*",
+        summary="Rename notes.txt", amount_usd=None, event=json.dumps(event),
     )  # fmt: skip
     assert install_pending_persistence(store) == 1
     assert pending_elicitations.count_for("s2") == 1
+    assert pending_elicitations.count_for("s3") == 0
+    assert [p.elicitation_id for p in store.list_pending()] == ["elicit_2"]
     pending_elicitations.resolve("s2", "elicit_2")
 
 
@@ -324,9 +333,11 @@ async def test_an_unknown_policy_ask_becomes_a_generic_visible_ask(
     [row] = store.list_pending(user_id="a@x.io")
     assert (row.elicitation_id, row.session_id, row.category) == (eid, "s_generic", "tool")
     assert row.target == "web_search"
-    assert row.summary.startswith("You've reached your $5.00 budget. Continue?")
-    assert "web_search" in row.summary and "q3" in row.summary
+    # The title is the reason and the tool; the agent's arguments are only shown quoted.
+    assert row.summary == "You've reached your $5.00 budget. Continue? (web_search)"
     ask = approval_ask(row, cap_usd=0)
+    assert ask["subject"]["arguments"] == json.dumps({"query": "q3"})
+    assert ask["subject"]["also_asks"] == []
     # One-off answers only: there is no standing rule for an arbitrary policy's ask.
     assert [c["id"] for c in ask["choices"]] == ["approve_once", "deny"]
     pending_elicitations.resolve("s_generic", eid)
@@ -375,3 +386,39 @@ def test_decode_reason_is_strict() -> None:
     assert approvals.decode_reason(reason)["c"] == "post"  # type: ignore[index]
     assert approvals.decode_reason(f"{approvals.POLICY_NAME}: {reason}") is None
     assert approvals.decode_reason(f"x{reason}") is None
+
+
+async def test_one_approve_shows_every_policy_it_covers(store: SqlAlchemyApprovalStore) -> None:
+    from omnigent.superchat.approvals.asks import approval_ask
+
+    install_pending_persistence(store)
+    reason = approvals.muse_approvals(_event("sys_os_shell", {"command": "git push"}))["reason"]  # type: ignore[index]
+    result = _ask_result({"cel_guard": "Pushes need a look.", approvals.POLICY_NAME: reason})
+    long_args = {"command": "git push " + "x" * 1500}
+    eid = await _raise(result, session="s_both", tool="sys_os_shell", args=long_args)
+    [row] = store.list_pending()
+    assert row.category == "post"
+    subject = approval_ask(row, cap_usd=0)["subject"]
+    assert subject["also_asks"] == ["Pushes need a look."]
+    assert subject["arguments"] == json.dumps(long_args)[:1024]
+    pending_elicitations.resolve("s_both", eid)
+
+
+def test_only_the_owning_session_drops_an_attestation() -> None:
+    pending_elicitations.attest("elicit_owned", {"session_id": "s_owner"})
+    pending_elicitations.resolve("s_other", "elicit_owned")
+    assert pending_elicitations.attested("elicit_owned") is not None
+    pending_elicitations.resolve("s_owner", "elicit_owned")
+    assert pending_elicitations.attested("elicit_owned") is None
+
+
+def test_an_attestation_for_another_session_is_not_filed(store: SqlAlchemyApprovalStore) -> None:
+    install_pending_persistence(store)
+    pending_elicitations.attest(
+        "elicit_x", {"session_id": "s_real", "phase": "tool_call", "policy_reasons": {"p": "?"}}
+    )
+    event = {"type": "response.elicitation_request", "elicitation_id": "elicit_x", "params": {}}
+    pending_elicitations.record_publish("s_elsewhere", event)
+    assert store.list_pending() == []
+    pending_elicitations.resolve("s_elsewhere", "elicit_x")
+    pending_elicitations.resolve("s_real", "elicit_x")

@@ -82,6 +82,8 @@ def approval_ask(pending: PendingApproval, cap_usd: float) -> dict[str, Any]:
             "amount_usd": row["amount_usd"],
             "can_always": row["can_always"],
             "always_label": row["always_label"],
+            "arguments": row["arguments"],
+            "also_asks": row["also_asks"],
         },
         "choices": choices,
     }
