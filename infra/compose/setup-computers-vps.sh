@@ -123,6 +123,27 @@ step "5/6 Build and start (the Computer image takes a while the first time)"
 # so it reads the new file instead of the old, deleted one.
 as_deploy 'cd ~/nova && sudo docker compose --env-file .env.computers -f infra/compose/docker-compose.computers.yml up -d --build && sudo docker compose --env-file .env.computers -f infra/compose/docker-compose.computers.yml up -d --force-recreate caddy && sudo docker builder prune -f >/dev/null'
 
+# Computers already running keep the image they started from. Remove any whose image is not the
+# freshly built one so the next use starts them on it (workspace volumes survive), then drop the
+# dangling images the rebuild left behind. Safe to rerun: nothing stale means nothing removed.
+# Runs on the VPS, hence the single quotes.
+# shellcheck disable=SC2016
+recycled="$(as_deploy 'sudo bash -s' <<'RECYCLE'
+set -eu
+new="$(docker image inspect --format '{{.Id}}' nova/computer:local)"
+count=0
+for id in $(docker ps -q --filter 'name=^nova-bot-'); do
+  if [ "$(docker inspect --format '{{.Image}}' "${id}")" != "${new}" ]; then
+    docker rm -f "${id}" >/dev/null
+    count=$((count + 1))
+  fi
+done
+docker image prune -f >/dev/null
+echo "${count}"
+RECYCLE
+)"
+echo "Recycled ${recycled} running Computer container(s) on an old image; they restart on next use"
+
 step "6/6 Check https://${COMPUTERS_HOST}"
 for _ in $(seq 1 30); do
   if curl -fsS "https://${COMPUTERS_HOST}/health" >/dev/null 2>&1; then break; fi
