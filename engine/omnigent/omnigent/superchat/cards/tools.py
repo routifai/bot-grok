@@ -227,7 +227,8 @@ def _build_card(args: dict[str, Any], schemas: dict[str, dict[str, Any]]) -> dic
     # Plan/progress cards are updated in place mid-work, so they must not stop the turn.
     if card in _TERMINAL_CARDS:
         out["note"] = (
-            "Shown to the person. A card ends your reply: end your turn now, with no more text."
+            "Shown to the person. Add no more text; only `suggest_follow_ups` may still follow, "
+            "then end your turn."
         )
     else:
         out["note"] = "Shown to the person. Do not repeat it in text; carry on with the work."
@@ -254,7 +255,8 @@ class RenderCardTool(Tool):
             f"(`?` = optional): {_kind_hints()}. "
             "`fallback` is a complete markdown summary of the card, used where it cannot be "
             "drawn and kept in your history; never repeat the card's content in your reply, "
-            "add one line of context at most, before the card; the card ends your reply. "
+            "add one line of context at most, before the card; after it add no more text "
+            "(only `suggest_follow_ups` may follow). "
             "Reuse the same `id` to update a plan or progress card in place."
         )
 

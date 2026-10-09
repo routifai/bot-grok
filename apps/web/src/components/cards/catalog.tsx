@@ -223,6 +223,8 @@ function Ask({
 }) {
   const send = useReplyCardSend();
   const [picked, setPicked] = useState<string | null>(null);
+  // A second click can land before the locked state paints: the ref makes one send certain.
+  const pickedRef = useRef(false);
   const chosen = picked ?? answer?.trim() ?? null;
   const locked = chosen !== null || !send;
   return (
@@ -241,7 +243,8 @@ function Ask({
               disabled={locked && !isChosen}
               aria-pressed={locked ? isChosen : undefined}
               onClick={() => {
-                if (locked) return;
+                if (locked || pickedRef.current) return;
+                pickedRef.current = true;
                 setPicked(option.label);
                 send?.(option.label);
               }}

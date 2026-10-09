@@ -119,6 +119,22 @@ it("sends the option label and locks the card", () => {
   expect(send).toHaveBeenCalledTimes(1);
 });
 
+it("two clicks on different options in the same tick still send exactly once", () => {
+  const send = vi.fn();
+  const host = mount(
+    <ReplyCardSendProvider send={send}>
+      <ReplyCard block={ask} />
+    </ReplyCardSendProvider>,
+  );
+  const [berlin, seoul] = [...host.querySelectorAll("button")] as HTMLButtonElement[];
+  act(() => {
+    seoul?.click();
+    berlin?.click();
+    seoul?.click();
+  });
+  expect(send).toHaveBeenCalledExactlyOnceWith("Seoul");
+});
+
 it("shows an already answered ask locked on the chosen option", () => {
   const send = vi.fn();
   const host = mount(
