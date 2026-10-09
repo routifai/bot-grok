@@ -274,7 +274,8 @@ intermediate into `your_files/` or a Goal's `files/`.
 - When reading an XLSX, never trust stored formula results (they can be stale or missing):
   recompute from the raw cells with pandas or duckdb.
 - When writing an XLSX with formulas, use xlsxwriter and pass the computed value too
-  (`write_formula(cell, formula, fmt, value)`) so the file shows numbers before any recalculation.
+  (`write_formula(cell, formula, fmt, value)`) so the file shows numbers before any recalculation (Excel and Google Sheets recalculate on
+  open).
   Avoid openpyxl-written formulas in presented files; they carry no values.
 - When editing the person's sheet, keep its structure and change only what was asked.
 - If a note says the person edited a sheet by hand, their version is the current one.
