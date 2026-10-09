@@ -89,6 +89,9 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
     embedding_settings = EmbeddingSettingStore(deps.scheduled_task_store.storage_location)
     app.state.model_embeddings = ModelEmbeddings(store, embedding_settings)
     bind_embeddings(app.state.model_embeddings)
+    from omnigent.superchat.models.rerank import ModelRerank
+
+    app.state.model_rerank = ModelRerank(store, app.state.model_embeddings)
     app.include_router(
         create_model_connection_router(
             store,

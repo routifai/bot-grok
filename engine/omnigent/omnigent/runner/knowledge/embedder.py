@@ -101,6 +101,23 @@ class NoEmbedder(Embedder):
         raise EmbeddingUnavailable(self._reason)
 
 
+def proxy_client(
+    base: str | None, credential: str | None, transport: httpx.BaseTransport | None = None
+) -> httpx.Client:
+    """An HTTP client for the engine's model proxy, signed with the Computer's launch token.
+
+    :raises EmbeddingUnavailable: ``no_connection`` outside a managed Computer.
+    """
+    if not base or not credential:
+        raise EmbeddingUnavailable(REASON_NO_CONNECTION, "no model proxy credential")
+    return httpx.Client(
+        base_url=base.rstrip("/"),
+        headers={"Authorization": f"Bearer {credential}"},
+        timeout=_TIMEOUT,
+        transport=transport,
+    )
+
+
 class ProxyEmbedder(Embedder):
     """Embeds through the engine's model proxy with the Computer's launch token."""
 
@@ -126,16 +143,7 @@ class ProxyEmbedder(Embedder):
     # ------------------------------------------------------------------ plumbing
 
     def _client(self) -> httpx.Client:
-        base = self._server_url()
-        credential = self._credential()
-        if not base or not credential:
-            raise EmbeddingUnavailable(REASON_NO_CONNECTION, "no model proxy credential")
-        return httpx.Client(
-            base_url=base.rstrip("/"),
-            headers={"Authorization": f"Bearer {credential}"},
-            timeout=_TIMEOUT,
-            transport=self._transport,
-        )
+        return proxy_client(self._server_url(), self._credential(), self._transport)
 
     def forget(self) -> None:
         """Drop the cached plan (a key was added: ask the engine again)."""

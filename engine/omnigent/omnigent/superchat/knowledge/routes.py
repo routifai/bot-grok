@@ -6,7 +6,8 @@ The engine keeps no file, passage or index. Each route asks the Computer's runne
 * ``status`` and ``thumbnail`` never wake a sleeping Computer: asleep, ``status`` answers the last
   state seen (kept in memory, so it is gone after an engine restart) and ``thumbnail`` answers 404
   unless that page was seen before.
-* ``search`` is the person acting: it wakes the Computer the way a message does.
+* ``ingest`` and ``search`` are the person acting: it wakes the Computer the way a message does.
+* ``ingest`` reads one attachment through every pass and answers when it is searchable.
 * ``reindex`` only runs on a Computer that is already awake.
 """
 
@@ -36,6 +37,8 @@ from omnigent.superchat.artifacts import SqlAlchemyArtifactStore, request_owner
 #: How long a search waits for the Computer to wake and its runner to connect.
 WAKE_TIMEOUT_S = 120.0
 CALL_TIMEOUT_S = 90.0
+#: Reading a big file (parse, embed, thumbnails) is one awaited call.
+INGEST_TIMEOUT_S = 300.0
 #: Sessions whose last status is remembered, and thumbnails kept for asleep Computers.
 _MAX_SNAPSHOTS = 256
 _MAX_THUMBNAILS = 256
@@ -50,6 +53,16 @@ class SearchBody(BaseModel):
     query: str = Field(min_length=1, max_length=2000)
     file_ids: list[str] | None = Field(default=None, max_length=200)
     k: int = Field(default=8, ge=1, le=25)
+
+
+class IngestBody(BaseModel):
+    """Body of ``POST /sessions/{id}/knowledge/ingest``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1, max_length=1024)
+    #: Also return the Markdown when it is short enough to travel with the message.
+    inline: bool = False
 
 
 class _Remembered:
@@ -93,12 +106,18 @@ def _result(payload: Any) -> dict[str, Any]:
     return output
 
 
-async def _call(client: httpx.AsyncClient, session_id: str, tool: str, args: Mapping[str, Any]):
+async def _call(
+    client: httpx.AsyncClient,
+    session_id: str,
+    tool: str,
+    args: Mapping[str, Any],
+    timeout: float = CALL_TIMEOUT_S,
+):
     try:
         resp = await client.post(
             f"/v1/sessions/{session_id}/mcp/execute",
             json={"method": "tools/call", "params": {"name": tool, "arguments": dict(args)}},
-            timeout=CALL_TIMEOUT_S,
+            timeout=timeout,
         )
         payload = resp.json()
     except (httpx.HTTPError, ValueError) as exc:
@@ -226,14 +245,32 @@ def create_knowledge_router(
         found = await _call(
             client,
             session_id,
-            "files_search",
-            {"query": body.query, "file_ids": body.file_ids, "k": body.k},
+            "files_query",
+            {"query": body.query, "file_ids": body.file_ids, "k": body.k, "rerank": False},
         )
         found.pop("type", None)
         results = await asyncio.to_thread(
             _with_artifact_ids, request, list(found.get("results") or [])
         )
         return {**found, "results": results}
+
+    @router.post("/sessions/{session_id}/knowledge/ingest")
+    async def ingest(request: Request, session_id: str, body: IngestBody) -> dict[str, Any]:
+        """Read one file in the workspace through every pass and answer when it is searchable.
+
+        The person's composer calls this once per attachment and waits for the answer before it
+        enables Send. It wakes the Computer the way a message does. Idempotent: an unchanged
+        file answers at once.
+        """
+        conv = await _conversation(request, session_id, LEVEL_READ)
+        client = await _woken(request, session_id, conv)
+        return await _call(
+            client,
+            session_id,
+            "files_ingest",
+            {"path": body.path, "inline": body.inline},
+            timeout=INGEST_TIMEOUT_S,
+        )
 
     @router.get("/sessions/{session_id}/knowledge/files/{file_id}/pages/{page}/thumbnail")
     async def thumbnail(request: Request, session_id: str, file_id: str, page: int) -> Response:

@@ -1,10 +1,10 @@
 """A file as one Markdown document, with a marker where each page starts.
 
-The same pages the passages are cut from (:mod:`omnigent.runner.knowledge.parse`) are written out as
-Markdown, so what a model reads whole (``files_get``, an attached file's text) and what a search
-cites (``page 3``) agree. A PDF keeps its real pages; a text, Markdown or CSV file keeps its virtual
-pages; a workbook has one page per sheet and its rows become Markdown tables. Pure: pages in, text
-out.
+The same pages the passages are cut from (:mod:`omnigent.runner.knowledge.parse`) are written
+out as Markdown, so what a model reads whole (``files_get``, an attached file's text) and what a
+search cites (``page 3``) agree. A PDF keeps its real pages; a text, Markdown or CSV file keeps
+its virtual pages; a workbook has one page per sheet and its rows become Markdown tables. Pure:
+pages in, text out.
 """
 
 from __future__ import annotations
