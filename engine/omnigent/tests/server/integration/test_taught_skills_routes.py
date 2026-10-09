@@ -20,7 +20,7 @@ from omnigent.stores.file_store.sqlalchemy_store import SqlAlchemyFileStore
 from omnigent.stores.scheduled_task_store.sqlalchemy_store import SqlAlchemyScheduledTaskStore
 from omnigent.superchat import _handler_http
 from omnigent.superchat.feature import HandlerCtx
-from omnigent.superchat.taught_skills.handlers import handle_taught_skill_tool
+from omnigent.superchat.skills.handlers import handle_taught_skill_tool
 
 pytestmark = pytest.mark.asyncio
 

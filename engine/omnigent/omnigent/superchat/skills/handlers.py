@@ -7,7 +7,7 @@ from typing import Any
 
 from omnigent.superchat._handler_http import HEX_ID_RE, error, finish, resolve_caller
 from omnigent.superchat.feature import HandlerCtx
-from omnigent.superchat.taught_skills.tools import SKILL_HELPER_TOOL_NAMES
+from omnigent.superchat.skills.tools import SKILL_HELPER_TOOL_NAMES
 
 
 async def handle_taught_skill_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:

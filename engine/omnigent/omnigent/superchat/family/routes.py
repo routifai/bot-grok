@@ -16,8 +16,8 @@ from omnigent.server.routes._errors import session_not_found as _session_not_fou
 from omnigent.server.routes._sessions.helpers import _format_sse
 from omnigent.stores import ConversationStore
 from omnigent.stores.permission_store import PermissionStore
-from omnigent.superchat.activity.derive import resolve_super_chat_id
 from omnigent.superchat.family.stream import watch_family
+from omnigent.superchat.family.tree import resolve_super_chat_id
 
 
 def register_family_routes(

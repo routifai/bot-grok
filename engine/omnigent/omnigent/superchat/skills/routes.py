@@ -19,11 +19,23 @@ from omnigent.db.db_models import InvalidUuidError, uuid_to_bytes
 from omnigent.db.utils import now_epoch
 from omnigent.entities.taught_skill import TaughtSkill
 from omnigent.errors import ErrorCode, OmnigentError
-from omnigent.server.auth import RESERVED_USER_LOCAL, AuthProvider
+from omnigent.server.auth import LEVEL_EDIT, RESERVED_USER_LOCAL, AuthProvider
+from omnigent.server.routes._auth_helpers import get_user_id as _get_user_id
+from omnigent.server.routes._auth_helpers import (
+    require_access_and_level as _require_access_and_level,
+)
 from omnigent.server.routes._auth_helpers import require_user
-from omnigent.superchat.taught_skills.doc import normalize_doc, render_skill, resolve_inputs
-from omnigent.superchat.taught_skills.store import SqlAlchemyTaughtSkillStore
-from omnigent.superchat.taught_skills.teach import expire_stale_draft
+from omnigent.stores import ConversationStore
+from omnigent.stores.permission_store import PermissionStore
+from omnigent.superchat.computer import require_target
+from omnigent.superchat.skills.doc import normalize_doc, render_skill, resolve_inputs
+from omnigent.superchat.skills.store import SqlAlchemyTaughtSkillStore
+from omnigent.superchat.skills.teach import (
+    distill_in_background,
+    expire_stale_draft,
+    new_id,
+    recording_launcher,
+)
 
 _MAX_DOC_BYTES = 64 * 1024
 
@@ -204,3 +216,105 @@ def create_taught_skills_router(
         return Response(status_code=204)
 
     return router
+
+
+def register_recording_routes(
+    router: APIRouter,
+    *,
+    conversation_store: ConversationStore,
+    auth_provider: AuthProvider | None = None,
+    permission_store: PermissionStore | None = None,
+) -> None:
+    """Register ``POST /sessions/{id}/computer/recording`` on the sessions router.
+
+    The route belongs to skills (it starts a taught skill) but sits under the session's computer,
+    which it reaches through the computer capability's public ``require_target``.
+    """
+
+    def _recording_ctx(request: Request, session_id: str) -> Any:  # noqa: ARG001
+        store = getattr(request.app.state, "taught_skill_store", None)
+        if store is None:
+            raise OmnigentError("recording is not enabled", code=ErrorCode.NOT_FOUND)
+        return store
+
+    @router.post(
+        "/sessions/{session_id}/computer/recording",
+        include_in_schema=False,
+        response_model=None,
+    )
+    async def computer_recording(
+        request: Request, session_id: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """
+        Start or stop recording what the person does on the computer (teaching a task).
+
+        :param session_id: Session identifier, e.g. ``"conv_abc123"``.
+        :param body: ``{"action": "start", "goal": str}`` or ``{"action": "stop"}``.
+        :returns: ``start``: ``{"recording_id", "skill_id", "status": "recording"}``. ``stop``:
+            ``{"recording_id", "skill_id", "status": "drafting", "actions": [...],
+            "keyframes": [...]}``: the ordered trace, secrets already redacted in the browser,
+            while the teacher Helper writes the draft skill (read it from ``/v1/taught-skills``).
+        :raises OmnigentError: 404 without a recording-capable computer, 409 when a recording is
+            already running (start) or none is (stop).
+        """
+        user_id = _get_user_id(request, auth_provider)
+        await _require_access_and_level(
+            user_id, session_id, LEVEL_EDIT, permission_store, conversation_store
+        )
+        owner = None if user_id in (None, RESERVED_USER_LOCAL) else user_id
+        action = body.get("action")
+        if action not in ("start", "stop"):
+            raise OmnigentError(
+                "recording requires action 'start' or 'stop'", code=ErrorCode.INVALID_INPUT
+            )
+        store = _recording_ctx(request, session_id)
+        launcher, sandbox_id, _host_id, _host_store = await asyncio.to_thread(
+            require_target, conversation_store, request, session_id
+        )
+        recorder = recording_launcher(launcher)
+        if recorder is None:
+            raise OmnigentError("this computer cannot record", code=ErrorCode.NOT_FOUND)
+        active = await asyncio.to_thread(store.active_recording, session_id, user_id=owner)
+        if action == "start":
+            goal = body.get("goal")
+            if not isinstance(goal, str) or not goal.strip() or len(goal) > 4000:
+                raise OmnigentError(
+                    "recording requires a 'goal' of 1 to 4000 characters",
+                    code=ErrorCode.INVALID_INPUT,
+                )
+            if active is not None:
+                raise OmnigentError("a recording is already running", code=ErrorCode.CONFLICT)
+            recording_id, skill_id = new_id(), new_id()
+            await asyncio.to_thread(recorder.start_recording, sandbox_id, recording_id)
+            await asyncio.to_thread(
+                store.start_recording,
+                recording_id,
+                skill_id,
+                user_id=owner,
+                session_id=session_id,
+                goal=goal.strip(),
+            )
+            return {"recording_id": recording_id, "skill_id": skill_id, "status": "recording"}
+        if active is None:
+            raise OmnigentError("no recording is running", code=ErrorCode.CONFLICT)
+        try:
+            trace = await asyncio.to_thread(recorder.stop_recording, sandbox_id, active.id)
+        except Exception:
+            await asyncio.to_thread(store.fail_recording, active.id)
+            raise
+        finished = await asyncio.to_thread(
+            store.finish_recording, active.id, actions=trace.actions, keyframes=trace.keyframes
+        )
+        if finished is None:
+            raise OmnigentError("no recording is running", code=ErrorCode.CONFLICT)
+        recording, skill = finished
+        fire_deps = getattr(request.app.state, "fire_deps", None)
+        if fire_deps is not None:
+            distill_in_background(store, fire_deps, skill, recording)
+        return {
+            "recording_id": recording.id,
+            "skill_id": skill.id,
+            "status": skill.status,
+            "actions": recording.actions,
+            "keyframes": sorted(trace.keyframes, key=lambda n: int(n[1:])),
+        }

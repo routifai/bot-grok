@@ -59,7 +59,6 @@ from omnigent.server.schemas import (
 )
 from omnigent.stores import AgentStore, ConversationStore
 from omnigent.stores.permission_store import PermissionStore
-from omnigent.superchat.activity.changes import watch_activity_changes
 from omnigent.superchat.activity.derive import (
     activities_missing_titles,
     activity_to_dict,
@@ -68,6 +67,7 @@ from omnigent.superchat.activity.derive import (
     resolve_super_chat_id,
     schedule_missing_titles,
 )
+from omnigent.superchat.family.changes import watch_activity_changes
 
 
 async def _caller_readable_ids(

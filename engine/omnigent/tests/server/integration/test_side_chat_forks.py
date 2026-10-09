@@ -22,10 +22,9 @@ from omnigent.stores.conversation_store import (
 )
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
 from omnigent.superchat.family.signals import listen_chats_changed, listen_message_done
+from omnigent.superchat.lineage import FORK_ANCHOR_LABEL_KEY, FORK_PARENT_LABEL_KEY
 from omnigent.superchat.side_chats.forks import (
     FORK_ADDED_RESPONSE_PREFIX,
-    FORK_ANCHOR_LABEL_KEY,
-    FORK_PARENT_LABEL_KEY,
     FORK_SUMMARY_LABEL_KEY,
     added_summary_text,
 )

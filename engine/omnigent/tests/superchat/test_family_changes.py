@@ -1,4 +1,4 @@
-"""The Activity Feed's live "changed" signal (omnigent.superchat.activity.changes)."""
+"""The Activity Feed's live "changed" signal (omnigent.superchat.family.changes)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import AsyncIterator
 
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
-from omnigent.superchat.activity.changes import (
+from omnigent.superchat.family.changes import (
     CHANGED_EVENT,
     HEARTBEAT_EVENT,
     watch_activity_changes,

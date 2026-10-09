@@ -24,7 +24,7 @@ from omnigent.server.routes._auth_helpers import (
 from omnigent.server.routes._errors import session_not_found as _session_not_found
 from omnigent.stores import ConversationStore
 from omnigent.stores.permission_store import PermissionStore
-from omnigent.superchat.activity.derive import sub_agent_status
+from omnigent.superchat.family.tree import sub_agent_status
 from omnigent.superchat.lineage import session_lineage
 from omnigent.superchat.side_chats.forks import attach_forks, forks_by_anchor
 from omnigent.superchat.transcript.blocks import helper_session_ids, project_items

@@ -18,8 +18,8 @@ from omnigent.entities.taught_skill import ComputerRecording, TaughtSkill
 from omnigent.onboarding.sandboxes.recording import RecordingMixin
 from omnigent.server.scheduled.fire import FireDeps
 from omnigent.server.scheduled.helper_fire import start_adhoc_helper
-from omnigent.superchat.taught_skills.doc import build_brief, pick_brief_keyframes
-from omnigent.superchat.taught_skills.store import SqlAlchemyTaughtSkillStore
+from omnigent.superchat.skills.doc import build_brief, pick_brief_keyframes
+from omnigent.superchat.skills.store import SqlAlchemyTaughtSkillStore
 
 _logger = logging.getLogger(__name__)
 

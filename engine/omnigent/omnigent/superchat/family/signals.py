@@ -13,7 +13,7 @@ from collections.abc import Callable
 from typing import Any
 
 from omnigent.stores.conversation_store import ConversationStore
-from omnigent.superchat.activity.derive import resolve_super_chat_id
+from omnigent.superchat.family.tree import resolve_super_chat_id
 
 _lock = threading.Lock()
 _listeners: dict[str, set[tuple[asyncio.AbstractEventLoop, asyncio.Queue[dict]]]] = {}

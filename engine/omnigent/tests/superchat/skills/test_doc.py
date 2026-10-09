@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from omnigent.superchat.taught_skills.doc import (
+from omnigent.superchat.skills.doc import (
     build_brief,
     describe_action,
     normalize_doc,

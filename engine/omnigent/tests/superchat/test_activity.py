@@ -12,6 +12,7 @@ import json
 
 import pytest
 
+from omnigent.context.labels import is_superside_chat
 from omnigent.entities import (
     Conversation,
     ConversationItem,
@@ -29,10 +30,9 @@ from omnigent.superchat.activity.derive import (
     _activities_for_conversation,
     _resolve_items_scan_limit,
     _turn_status,
-    is_superside_chat,
     step_title_for_call,
-    sub_agent_status,
 )
+from omnigent.superchat.family.tree import sub_agent_status
 
 
 def _conv(

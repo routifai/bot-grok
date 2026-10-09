@@ -17,8 +17,8 @@ from omnigent.superchat.feature import (
     is_helper,
     is_super_chat,
 )
-from omnigent.superchat.taught_skills.handlers import handle_taught_skill_tool
-from omnigent.superchat.taught_skills.tools import SKILL_TOOL_NAMES
+from omnigent.superchat.skills.handlers import handle_taught_skill_tool
+from omnigent.superchat.skills.tools import SKILL_TOOL_NAMES
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]:
     """A Super Chat lists and runs saved skills; a Helper only saves a draft."""
-    from omnigent.superchat.taught_skills.tools import (
+    from omnigent.superchat.skills.tools import (
         SkillDraftSaveTool,
         SkillListTool,
         SkillRunTool,
@@ -42,8 +42,8 @@ def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]
 
 
 def _install(app: FastAPI, deps: InstallDeps) -> None:
-    from omnigent.superchat.taught_skills.routes import create_taught_skills_router
-    from omnigent.superchat.taught_skills.store import SqlAlchemyTaughtSkillStore
+    from omnigent.superchat.skills.routes import create_taught_skills_router
+    from omnigent.superchat.skills.store import SqlAlchemyTaughtSkillStore
 
     if deps.scheduled_task_store is None:
         return

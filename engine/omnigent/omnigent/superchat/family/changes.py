@@ -1,6 +1,6 @@
 """A live "something changed" signal for one Super Chat's Activity Feed.
 
-The feed itself is derived on read (``derive.py``), so a client that wants it live only
+The feed itself is derived on read (``activity/derive.py``), so a client that wants it live only
 needs to know *when* to read again. This watches the session streams that can change a row
 and says ``activities.changed`` whenever one of them starts, steps, settles or is renamed.
 The payload carries no content: the client refetches the feed, which stays the one source of
@@ -22,7 +22,7 @@ from typing import Any
 
 from omnigent.runtime import session_stream
 from omnigent.stores.conversation_store import ConversationStore
-from omnigent.superchat.activity.derive import (
+from omnigent.superchat.family.tree import (
     is_helper_live,
     list_chat_family,
     list_chat_roots,

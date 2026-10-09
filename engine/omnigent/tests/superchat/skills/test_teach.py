@@ -8,8 +8,8 @@ from typing import Any
 
 import pytest
 
-from omnigent.superchat.taught_skills import teach
-from omnigent.superchat.taught_skills.store import SqlAlchemyTaughtSkillStore
+from omnigent.superchat.skills import teach
+from omnigent.superchat.skills.store import SqlAlchemyTaughtSkillStore
 
 pytestmark = pytest.mark.asyncio
 

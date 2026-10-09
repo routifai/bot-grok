@@ -12,8 +12,8 @@ from fastapi.responses import JSONResponse
 from omnigent.errors import OmnigentError
 from omnigent.onboarding.sandboxes.recording import RecordingMixin, RecordingTrace
 from omnigent.onboarding.sandboxes.types import SandboxCapabilities
-from omnigent.superchat.computer.routes import register_computer_routes
-from omnigent.superchat.taught_skills.store import SqlAlchemyTaughtSkillStore
+from omnigent.superchat.skills.routes import register_recording_routes
+from omnigent.superchat.skills.store import SqlAlchemyTaughtSkillStore
 
 pytestmark = pytest.mark.asyncio
 
@@ -50,7 +50,7 @@ def _app(launcher: StubRecorder, store: SqlAlchemyTaughtSkillStore | None) -> Fa
 
     router = APIRouter(prefix="/v1")
     conv = SimpleNamespace(host_id="host_1")
-    register_computer_routes(
+    register_recording_routes(
         router,
         conversation_store=SimpleNamespace(get_conversation=lambda _s: conv),  # type: ignore[arg-type]
     )

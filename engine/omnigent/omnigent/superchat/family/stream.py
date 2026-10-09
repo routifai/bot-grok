@@ -12,7 +12,7 @@ Events carry ids only; the client refetches what changed:
 * ``activities.changed {root_id}``: the Activity Feed may have changed;
 * ``session.heartbeat``: sent after ~15s of quiet.
 
-It reuses the Activity Feed watcher (``activity/changes.py``) for *which* sessions to follow
+It reuses the Activity Feed watcher (``family/changes.py``) for *which* sessions to follow
 and how Helpers come and go, and reads the very same per-session streams through it.
 """
 
@@ -25,13 +25,13 @@ from typing import Any
 
 from omnigent.runtime import session_stream
 from omnigent.stores.conversation_store import ConversationStore
-from omnigent.superchat.activity.changes import (
+from omnigent.superchat.family.changes import (
     CHANGED_EVENT,
     HEARTBEAT_EVENT,
     watch_activity_changes,
 )
-from omnigent.superchat.activity.derive import list_chat_roots
 from omnigent.superchat.family.signals import listen_chats_changed, listen_message_done
+from omnigent.superchat.family.tree import list_chat_roots
 
 #: Session events that mean the chat list changed: a rename, a Helper or part being started.
 _CHATS_EVENT_TYPES = frozenset({"session.title", "session.created"})
