@@ -32,9 +32,19 @@ export function useComputerStore() {
     }
   }
 
+  // Who wants every status event as it lands (an attachment waiting for the Computer to wake).
+  const listenersRef = useRef(new Set<(status: ComputerStatus | null) => void>());
+  function onComputerChange(listener: (status: ComputerStatus | null) => void) {
+    listenersRef.current.add(listener);
+    return () => {
+      listenersRef.current.delete(listener);
+    };
+  }
+
   function commitComputer(next: ComputerStatus | null) {
     computerRef.current = next;
     setComputer(next);
+    for (const listener of listenersRef.current) listener(next);
   }
   const computerOpenRef = useRef(false);
   const computerBotIdRef = useRef<string | undefined>(undefined);
@@ -47,6 +57,7 @@ export function useComputerStore() {
     computerCacheRef,
     cacheComputerFor,
     commitComputer,
+    onComputerChange,
     computerOpenRef,
     computerBotIdRef,
     computerVisible,

@@ -26,9 +26,9 @@ import {
 import { isRawEngineError, userFacingError } from "../../../lib/user-facing-error";
 import type { useCreateBot } from "../chrome/useCreateBot";
 import { markFirstRunSeen } from "../intro";
+import { type ComputerFeed, followComputerStart, runWhenComputerReady } from "./computerReady";
 import { quotedMessageText } from "./museTranscript";
 import { attachmentsBlockSend, type PendingAttachment, readFileAsBase64 } from "./shared";
-import { uploadWhenComputerReady } from "./uploadWhenComputerReady";
 import type { useThreadState } from "./useThreadState";
 import type { useThreadSync } from "./useThreadSync";
 
@@ -77,7 +77,10 @@ export function useComposerSend({
     refreshBots: (includeArchived?: boolean) => Promise<void>;
   };
   flushPendingBrowserNotifications: () => void;
-  computerStore: Pick<ReturnType<typeof useComputerStore>, "computerRef" | "commitComputer">;
+  computerStore: Pick<
+    ReturnType<typeof useComputerStore>,
+    "computerRef" | "commitComputer" | "onComputerChange"
+  >;
   focusPrompt: Pick<ReturnType<typeof useCreateBot>, "cancelFocusPrompt" | "focusPromptBotIdRef">;
 }) {
   const { t } = useLingui();
@@ -86,9 +89,15 @@ export function useComposerSend({
   const { terminalRunReceipts, refreshThreadRef, refreshGroupThreadRef, updateSnapshot } =
     threadOps;
   const { botsRef, refreshBots } = roster;
-  const { computerRef, commitComputer } = computerStore;
+  const { computerRef, commitComputer, onComputerChange } = computerStore;
+  const computerFeed = useMemo<ComputerFeed>(
+    () => ({ current: () => computerRef.current, subscribe: onComputerChange }),
+    [computerRef, onComputerChange],
+  );
   const { cancelFocusPrompt, focusPromptBotIdRef } = focusPrompt;
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+  const pendingRef = useRef<PendingAttachment[]>([]);
+  pendingRef.current = pendingAttachments;
   const [replyTarget, setReplyTarget] = useState<ThreadMessage | null>(null);
   const [replyQuote, setReplyQuote] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -195,41 +204,75 @@ export function useComposerSend({
       ),
     [],
   );
+  // One AbortController per attachment still being prepared: removing the chip, leaving the chat
+  // or closing the page cancels its wait for the Computer and its read.
+  const controllersRef = useRef(new Map<string, AbortController>());
+  // The send-time upload (a file picked without a chip read) is cancelled when the page goes.
+  const sendAbort = useRef(new AbortController());
+  useEffect(() => {
+    const controller = sendAbort.current;
+    return () => controller.abort();
+  }, []);
+  const abortAttachment = useCallback((id: string) => {
+    controllersRef.current.get(id)?.abort();
+    controllersRef.current.delete(id);
+  }, []);
+  useEffect(() => {
+    const controllers = controllersRef.current;
+    return () => {
+      for (const controller of controllers.values()) controller.abort();
+      controllers.clear();
+    };
+  }, []);
   /** A Muse attachment is written to the Computer and read there as soon as it is picked, so its
-   * text is ready before the message goes (uploading, reading, ready, or a calm error). */
+   * text is ready before the message goes (uploading, reading, ready, or a calm error). A sleeping
+   * Computer is waited for by its status events (the chip says so), never by a retry timer. */
   const prepareAttachment = useCallback(
     async (attachment: PendingAttachment, botId: string) => {
       const mimeType = inferAttachmentMimeType(attachment.file.name, attachment.file.type);
       if (!mimeType) return;
+      abortAttachment(attachment.id);
+      const controller = new AbortController();
+      controllersRef.current.set(attachment.id, controller);
+      const { signal } = controller;
+      let unfollow: (() => void) | undefined;
       try {
         let stored = uploadedRef.current.get(attachment.id);
         if (!stored) {
           setAttachmentState(attachment.id, "uploading");
           const contentBase64 = await readFileAsBase64(attachment.file);
-          stored = await uploadWhenComputerReady(
+          signal.throwIfAborted();
+          stored = await runWhenComputerReady(
             () =>
-              rpc.files.uploadAttachment({
-                botId,
-                name: attachment.file.name,
-                mimeType,
-                contentBase64,
-              }),
-            isComputerStarting,
-            () => setAttachmentState(attachment.id, "starting"),
+              rpc.files.uploadAttachment(
+                { botId, name: attachment.file.name, mimeType, contentBase64 },
+                { signal },
+              ),
+            {
+              isStarting: isComputerStarting,
+              onStarting: () => setAttachmentState(attachment.id, "starting"),
+              feed: computerFeed,
+              signal,
+            },
           );
           uploadedRef.current.set(attachment.id, stored);
         }
         if (isIngestableAttachmentMimeType(mimeType)) {
           const path = stored.path;
           setAttachmentState(attachment.id, "reading");
-          await uploadWhenComputerReady(
-            () => rpc.files.ingestAttachment({ botId, path }),
-            isComputerStarting,
-            () => setAttachmentState(attachment.id, "starting"),
-          );
+          // One call: the engine wakes the Computer and waits for the read. The chip follows the
+          // Computer's own status while it does.
+          unfollow = followComputerStart(computerFeed, {
+            onStarting: () => setAttachmentState(attachment.id, "starting"),
+            onUp: () => setAttachmentState(attachment.id, "reading"),
+          });
+          await rpc.files.ingestAttachment({ botId, path }, { signal });
+          unfollow();
+          unfollow = undefined;
         }
         setAttachmentState(attachment.id, "ready");
       } catch (error) {
+        if (signal.aborted) return; // the chip is gone, or the person left: nothing to report
         setAttachmentState(
           attachment.id,
           "error",
@@ -239,9 +282,14 @@ export function useComposerSend({
               ? t`Reading ${attachment.file.name} is taking too long. Try again in a moment.`
               : userFacingError(error, t`Couldn't read ${attachment.file.name}`),
         );
+      } finally {
+        unfollow?.();
+        if (controllersRef.current.get(attachment.id) === controller) {
+          controllersRef.current.delete(attachment.id);
+        }
       }
     },
-    [setAttachmentState, t],
+    [abortAttachment, computerFeed, setAttachmentState, t],
   );
   const retryAttachment = useCallback(
     (attachment: PendingAttachment) => {
@@ -289,11 +337,15 @@ export function useComposerSend({
     },
     [museMode, pendingAttachments, prepareAttachment, t],
   );
-  const removeAttachment = useCallback((attachment: PendingAttachment) => {
-    revokePendingAttachmentPreviews([attachment]);
-    uploadedRef.current.delete(attachment.id);
-    setPendingAttachments((current) => current.filter((item) => item.id !== attachment.id));
-  }, []);
+  const removeAttachment = useCallback(
+    (attachment: PendingAttachment) => {
+      abortAttachment(attachment.id);
+      revokePendingAttachmentPreviews([attachment]);
+      uploadedRef.current.delete(attachment.id);
+      setPendingAttachments((current) => current.filter((item) => item.id !== attachment.id));
+    },
+    [abortAttachment],
+  );
   /** Resolves `true` only when the message (or its routine/group action) really went out; every
    * other path resolves `false` so the composer gives the person's words back. */
   const sendMessage = useCallback(
@@ -382,7 +434,7 @@ export function useComposerSend({
               setUploadStatus(t`Uploading ${uploaded + 1} of ${attachments.length}`);
               const contentBase64 = await readFileAsBase64(pending.file);
               const progress = t`Uploading ${uploaded + 1} of ${attachments.length}`;
-              stored = await uploadWhenComputerReady(
+              stored = await runWhenComputerReady(
                 () =>
                   rpc.files.uploadAttachment({
                     botId: botTarget!,
@@ -390,8 +442,12 @@ export function useComposerSend({
                     mimeType,
                     contentBase64,
                   }),
-                isComputerStarting,
-                () => setUploadStatus(t`Starting your Computer…`),
+                {
+                  isStarting: isComputerStarting,
+                  onStarting: () => setUploadStatus(t`Starting your Computer…`),
+                  feed: computerFeed,
+                  signal: sendAbort.current.signal,
+                },
               );
               setUploadStatus(progress);
               uploadedRef.current.set(pending.id, stored);
@@ -570,6 +626,10 @@ export function useComposerSend({
 
   useEffect(() => {
     const threadKey = inGroup ? groupId : active?.id;
+    // Leaving a chat drops its pending files; their reads stop with them.
+    for (const attachment of pendingRef.current) {
+      if (attachment.threadKey !== threadKey) abortAttachment(attachment.id);
+    }
     setPendingAttachments((current) => {
       const stale = current.filter((attachment) => attachment.threadKey !== threadKey);
       revokePendingAttachmentPreviews(stale);
@@ -578,7 +638,7 @@ export function useComposerSend({
     clearReply();
     setAttachmentNotice(null);
     setSendError(null);
-  }, [active?.id, clearReply, groupId, inGroup]);
+  }, [abortAttachment, active?.id, clearReply, groupId, inGroup]);
   return {
     pendingAttachments,
     activePendingAttachments,

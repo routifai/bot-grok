@@ -7,7 +7,6 @@ import {
   ENGINE_INTERRUPTED_MESSAGE,
   failRunUnsupportedOnOmnigent,
   publicRunError,
-  readTurnAttachmentContext,
   readTurnImages,
   runTurnOnOmnigent,
 } from "./gateway.js";
@@ -615,93 +614,16 @@ describe("attached documents", () => {
     postOmnigentMessage.mockReset();
   });
 
-  const read = (over: Record<string, unknown>) => ({
-    file_id: "ab12",
-    name: "report.pdf",
-    path: "your_files/uploads/d/report.pdf",
-    pages: 2,
-    ...over,
-  });
-
-  it("reads each document once, asking for the text inline", async () => {
-    ingestOmnigentKnowledge.mockResolvedValue(read({ markdown: "<!-- page 1 -->\n\nHi" }));
-    const text = [
-      ref("your_files/uploads/d/report.pdf", "application/pdf"),
-      ref("your_files/uploads/d/report.pdf", "application/pdf"),
-      ref("your_files/uploads/d/a.png", "image/png"),
-      ref("your_files/uploads/d/page.html", "text/html"),
-    ].join("\n");
-    const items = await readTurnAttachmentContext(CLIENT, "p@example.test", "sess-1", text);
-    expect(items).toEqual([
-      {
-        name: "report.pdf",
-        fileId: "ab12",
-        pages: 2,
-        path: "your_files/uploads/d/report.pdf",
-        markdown: "<!-- page 1 -->\n\nHi",
-      },
-    ]);
-    expect(ingestOmnigentKnowledge).toHaveBeenCalledTimes(1);
-    expect(ingestOmnigentKnowledge).toHaveBeenCalledWith(CLIENT, "p@example.test", "sess-1", {
-      path: "your_files/uploads/d/report.pdf",
-      inline: true,
-    });
-  });
-
-  it("reads a spreadsheet as a table manifest and tells the model to compute with code", async () => {
-    const xlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-    ingestOmnigentKnowledge.mockResolvedValue(
-      read({
-        name: "budget.xlsx",
-        path: "your_files/uploads/d/budget.xlsx",
-        kind: "xlsx",
-        markdown: "Rows: 3. Columns: region (text)",
-      }),
-    );
-    const items = await readTurnAttachmentContext(
-      CLIENT,
-      "p@example.test",
-      "sess-1",
-      ref("your_files/uploads/d/budget.xlsx", xlsx),
-    );
-    expect(items).toEqual([
-      expect.objectContaining({
-        name: "budget.xlsx",
-        tabular: true,
-        path: "your_files/uploads/d/budget.xlsx",
-      }),
-    ]);
-    expect(ingestOmnigentKnowledge).toHaveBeenCalledWith(CLIENT, "p@example.test", "sess-1", {
-      path: "your_files/uploads/d/budget.xlsx",
-      inline: true,
-    });
-  });
-
-  it("sends the text of a short file, or a manifest line for a long one, with the turn", async () => {
+  it("posts the message exactly as the person wrote it: no file text, no ingest hop", async () => {
     getOmnigentMuse.mockResolvedValue({ session_id: "sess-1", agent: "agent", created: false });
     streamOmnigentSession.mockReturnValue(
       eventsFrom([{ type: "response.completed", response: { output: [] } }]),
     );
-    for (const [extra, expected] of [
-      [{ markdown: "SHORT TEXT" }, "SHORT TEXT"],
-      [{ pages: 40 }, "indexed: report.pdf, 40 pages, file_id ab12; use files_query / files_get"],
-    ] as const) {
-      ingestOmnigentKnowledge.mockResolvedValue(read(extra));
-      const prompt = `${ref("your_files/uploads/d/report.pdf", "application/pdf")}\n\nsummarise`;
-      const prisma = fakePrisma({
-        task: { findUniqueOrThrow: vi.fn(async () => ({ prompt })) },
-      });
-      await runTurnOnOmnigent({ prisma, events: fakeEvents(), ...DEPS_BASE }, "run-1", "worker-1");
-      const sent = postOmnigentMessage.mock.calls.at(-1)?.[3] as string;
-      expect(sent).toContain(expected);
-      expect(sent.startsWith(prompt.split("\n\n")[0] as string)).toBe(true);
-      expect(sent.endsWith("summarise")).toBe(true);
-    }
-  });
-
-  it("leaves the path line alone when the Computer cannot read the file", async () => {
-    ingestOmnigentKnowledge.mockRejectedValue(new Error("read file failed (503)"));
-    const text = ref("your_files/uploads/d/report.pdf", "application/pdf");
-    expect(await readTurnAttachmentContext(CLIENT, "p@example.test", "sess-1", text)).toEqual([]);
+    const xlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    const prompt = `${ref("your_files/uploads/d/report.pdf", "application/pdf")}\n${ref("your_files/uploads/d/b.xlsx", xlsx)}\n\nsummarise`;
+    const prisma = fakePrisma({ task: { findUniqueOrThrow: vi.fn(async () => ({ prompt })) } });
+    await runTurnOnOmnigent({ prisma, events: fakeEvents(), ...DEPS_BASE }, "run-1", "worker-1");
+    expect(postOmnigentMessage.mock.calls.at(-1)?.[3]).toBe(prompt);
+    expect(ingestOmnigentKnowledge).not.toHaveBeenCalled();
   });
 });

@@ -1,8 +1,11 @@
 // `files.*` for the Computer panel's Files tab: browse the Muse's Conversation workspace on the
 // engine (engine session filesystem routes), preview one file, or save one to the Library.
+
+import { createHash } from "node:crypto";
 import {
   confineWorkspacePath,
   createOmnigentArtifact,
+  findOmnigentKnowledge,
   ingestOmnigentKnowledge,
   listOmnigentFiles,
   looksBinary,
@@ -181,54 +184,6 @@ async function listOrEmpty(
   });
 }
 
-/** How many earlier upload days are searched for a copy of the same file. */
-const DUPLICATE_LOOKBACK_DAYS = 3;
-
-/** Whether `name` is `base` or one of its numbered copies (`base (2).ext`). */
-function isCopyOf(name: string, base: string): boolean {
-  const stemAndExt = (value: string): [string, string] => {
-    const dot = value.lastIndexOf(".");
-    return dot > 0 ? [value.slice(0, dot), value.slice(dot).toLowerCase()] : [value, ""];
-  };
-  const [stem, ext] = stemAndExt(base);
-  const [candidateStem, candidateExt] = stemAndExt(name);
-  return ext === candidateExt && candidateStem.replace(/ \(\d+\)$/, "") === stem;
-}
-
-/** An upload already in the workspace with exactly these bytes (today's folder and the last few
- * days'), so attaching the same file again reuses it and its index entry instead of storing and
- * indexing a copy. Different bytes under the same name are not a match: they get "(2)". */
-async function findIdenticalUpload(
-  client: OmnigentClientConfig,
-  email: string,
-  sessionId: string,
-  today: { dir: string; existing: OmnigentFileEntry[] },
-  name: string,
-  bytes: Uint8Array,
-): Promise<{ path: string; name: string } | null> {
-  const folders: OmnigentFileEntry[][] = [today.existing];
-  const root = WORKSPACE_UPLOADS_PREFIX.replace(/\/$/, "");
-  const days = (await listOrEmpty(client, email, sessionId, root))
-    .filter((entry) => entry.type === "directory" && entry.path !== today.dir)
-    .map((entry) => entry.path)
-    .sort()
-    .reverse()
-    .slice(0, DUPLICATE_LOOKBACK_DAYS);
-  for (const day of days) folders.push(await listOrEmpty(client, email, sessionId, day));
-  for (const entries of folders) {
-    for (const entry of entries) {
-      if (entry.type !== "file" || entry.size !== bytes.byteLength || !isCopyOf(entry.name, name)) {
-        continue;
-      }
-      const stored = await readOmnigentFile(client, email, sessionId, entry.path).catch(() => null);
-      if (stored && !stored.truncated && Buffer.from(stored.bytes).equals(Buffer.from(bytes))) {
-        return { path: entry.path, name: entry.name };
-      }
-    }
-  }
-  return null;
-}
-
 /** `name.ext` -> `name (2).ext`, `name (3).ext`, ... until it is not in `taken`. */
 export function dedupeUploadName(name: string, taken: ReadonlySet<string>): string {
   if (!taken.has(name)) return name;
@@ -269,16 +224,10 @@ export async function engineUploadAttachment(
   const dir = `${WORKSPACE_UPLOADS_PREFIX}${now.toISOString().slice(0, 10)}`;
   try {
     // A folder that does not exist yet (404) simply has nothing to collide with.
-    const existing = await listOrEmpty(client, email, sessionId, dir);
-    const duplicate = await findIdenticalUpload(
-      client,
-      email,
-      sessionId,
-      { dir, existing },
-      safeUploadName(input.name, input.mimeType),
-      bytes,
-    );
-    if (duplicate) {
+    // The same bytes attached again reuse the stored copy and its index entry: one call, by hash.
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    const duplicate = await findOmnigentKnowledge(client, email, sessionId, { sha256 });
+    if (duplicate.found && duplicate.path && duplicate.name) {
       return {
         path: duplicate.path,
         name: duplicate.name,
@@ -286,6 +235,7 @@ export async function engineUploadAttachment(
         size: bytes.byteLength,
       };
     }
+    const existing = await listOrEmpty(client, email, sessionId, dir);
     const name = dedupeUploadName(
       safeUploadName(input.name, input.mimeType),
       new Set(existing.map((entry) => entry.name)),

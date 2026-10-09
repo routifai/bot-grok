@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { PrismaClient } from "@nova/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -169,6 +170,7 @@ describe("engine attachment upload", () => {
 
   it("PUTs base64 under your_files/uploads/<date>/ and returns the path", async () => {
     const fetchMock = museOr((url, init) => {
+      if (url.pathname.endsWith("/knowledge/find")) return json({ found: false });
       if (init?.method === "PUT") return json({ bytes_written: 8, path: "x", created: true });
       expect(url.pathname).toMatch(/\/your_files\/uploads(\/2026-10-09)?$/);
       return json({ error: { code: "not_found" } }, 404);
@@ -190,19 +192,21 @@ describe("engine attachment upload", () => {
     });
   });
 
-  it("de-duplicates against the day's folder", async () => {
-    museOr((_url, init) =>
-      init?.method === "PUT"
-        ? json({ bytes_written: 8 })
-        : json({
-            data: ["report.pdf", "report (2).pdf"].map((name) => ({
-              name,
-              path: `your_files/uploads/2026-10-09/${name}`,
-              type: "file",
-              bytes: 1,
-              modified_at: 1,
-            })),
-          }),
+  it("de-duplicates names against the day's folder", async () => {
+    museOr((url, init) =>
+      url.pathname.endsWith("/knowledge/find")
+        ? json({ found: false })
+        : init?.method === "PUT"
+          ? json({ bytes_written: 8 })
+          : json({
+              data: ["report.pdf", "report (2).pdf"].map((name) => ({
+                name,
+                path: `your_files/uploads/2026-10-09/${name}`,
+                type: "file",
+                bytes: 1,
+                modified_at: 1,
+              })),
+            }),
     );
     const out = await engineUploadAttachment(upDeps, client, actor, input(), day);
     expect(out.path).toBe("your_files/uploads/2026-10-09/report (3).pdf");
@@ -210,60 +214,70 @@ describe("engine attachment upload", () => {
   });
 
   describe("re-attaching the same file", () => {
-    const entry = (dir: string, name: string, bytes: number, type = "file") => ({
-      name,
-      path: `${dir}/${name}`,
-      type,
-      bytes,
-      modified_at: 1,
-    });
     const DAY = "your_files/uploads/2026-10-09";
-    const PREV = "your_files/uploads/2026-10-08";
-    const same = Buffer.from("%PDF-1.4");
+    const sha = createHash("sha256").update("%PDF-1.4").digest("hex");
 
-    function world(contents: Record<string, Buffer>) {
+    function world(found: Record<string, unknown>) {
       const puts: string[] = [];
+      const finds: unknown[] = [];
       museOr((url, init) => {
+        if (url.pathname.endsWith("/knowledge/find")) {
+          finds.push(JSON.parse(String(init?.body)));
+          return json(found);
+        }
         if (init?.method === "PUT") {
           puts.push(decodeURIComponent(url.pathname));
           return json({ bytes_written: 8 });
         }
-        const path = decodeURIComponent(url.pathname.slice(FS.length + 1));
-        if (path === "your_files/uploads") {
-          return json({ data: [entry("your_files/uploads", "2026-10-08", 0, "directory")] });
-        }
-        if (path === DAY) return json({ data: [entry(DAY, "report.pdf", 8)] });
-        if (path === PREV) return json({ data: [entry(PREV, "report.pdf", 8)] });
-        const bytes = contents[path];
-        if (!bytes) return json({ error: { code: "not_found" } }, 404);
-        return json(
-          fileBody(bytes.toString("base64"), { path, encoding: "base64", bytes: bytes.length }),
-        );
+        return json({ data: [] });
       });
-      return puts;
+      return { puts, finds };
     }
 
-    it("reuses the identical copy: nothing is written, the existing path comes back", async () => {
-      const puts = world({ [`${DAY}/report.pdf`]: same });
-      const out = await engineUploadAttachment(upDeps, client, actor, input(), day);
-      expect(out.path).toBe(`${DAY}/report.pdf`);
-      expect(puts).toEqual([]);
-    });
-
-    it("finds the copy in an earlier day's folder", async () => {
-      const puts = world({
-        [`${PREV}/report.pdf`]: same,
-        [`${DAY}/report.pdf`]: Buffer.from("other!!!"),
+    it("asks the Computer once, by hash, and reuses the stored copy: nothing is written", async () => {
+      const { puts, finds } = world({
+        found: true,
+        file_id: "ab",
+        name: "report.pdf",
+        path: `${DAY}/report.pdf`,
+        pages: 1,
       });
       const out = await engineUploadAttachment(upDeps, client, actor, input(), day);
-      expect(out.path).toBe(`${PREV}/report.pdf`);
+      expect(out).toMatchObject({ path: `${DAY}/report.pdf`, name: "report.pdf", size: 8 });
+      expect(finds).toEqual([{ sha256: sha }]);
       expect(puts).toEqual([]);
     });
 
-    it("same name with different bytes is stored as a numbered copy", async () => {
-      const puts = world({
-        [`${DAY}/report.pdf`]: Buffer.from("other!!!"),
-        [`${PREV}/report.pdf`]: Buffer.from("another!"),
+    it("finds a copy from any earlier day: the answer does not depend on folders", async () => {
+      const { puts } = world({
+        found: true,
+        name: "report (2).pdf",
+        path: "your_files/uploads/2026-08-01/report (2).pdf",
+      });
+      const out = await engineUploadAttachment(upDeps, client, actor, input(), day);
+      expect(out.path).toBe("your_files/uploads/2026-08-01/report (2).pdf");
+      expect(puts).toEqual([]);
+    });
+
+    it("stores the file when no copy has these bytes; a name clash still gets a number", async () => {
+      const puts: string[] = [];
+      museOr((url, init) => {
+        if (url.pathname.endsWith("/knowledge/find")) return json({ found: false });
+        if (init?.method === "PUT") {
+          puts.push(decodeURIComponent(url.pathname));
+          return json({ bytes_written: 8 });
+        }
+        return json({
+          data: [
+            {
+              name: "report.pdf",
+              path: `${DAY}/report.pdf`,
+              type: "file",
+              bytes: 3,
+              modified_at: 1,
+            },
+          ],
+        });
       });
       const out = await engineUploadAttachment(upDeps, client, actor, input(), day);
       expect(out.path).toBe(`${DAY}/report (2).pdf`);
@@ -327,7 +341,7 @@ describe("engine attachment ingest", () => {
     expect(out).toEqual({ fileId: "ab12", name: "report.pdf", pages: 3, chars: 900 });
     const [url, init] = fetchMock.mock.calls.at(-1) as unknown as [URL, RequestInit];
     expect(url.pathname).toBe("/v1/sessions/muse-1/knowledge/ingest");
-    expect(JSON.parse(String(init.body))).toEqual({ path, inline: false });
+    expect(JSON.parse(String(init.body))).toEqual({ path });
   });
 
   it("only reads uploads, and says calmly when the file can't be read", async () => {
