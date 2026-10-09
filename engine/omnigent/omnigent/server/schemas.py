@@ -1358,7 +1358,8 @@ class SessionEventInput(BaseModel):
     model_override: str | None = None
     tools: list[dict[str, Any]] | None = None
     created_by: str | None = None
-    if_running: bool = False
+    # Read by the message forward only; never echoed when an event is relayed as is.
+    if_running: bool = Field(default=False, exclude=True)
 
     @field_validator("data")
     @classmethod
