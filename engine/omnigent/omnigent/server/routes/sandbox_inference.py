@@ -54,13 +54,21 @@ def managed_inference_configured(request: Request, provider: str | None) -> bool
     return bool(target and parse_inference_config(target.host_config or {}))
 
 
-def selected_catalog_model(catalog: dict[str, Any], model: str | None) -> str:
-    """Reject unavailable selections before persistence or prompt dispatch."""
+def selected_catalog_model(
+    catalog: dict[str, Any], model: str | None, preferred: str | None = None
+) -> str:
+    """Reject unavailable selections before persistence or prompt dispatch.
+
+    Order: the explicit *model*, then the caller's *preferred* default when this catalog serves
+    it, then the catalog's own default.
+    """
     if catalog.get("status") != "ready":
         raise OmnigentError(
             catalog.get("error") or "No available models match this harness's configuration",
             code=ErrorCode.INVALID_INPUT,
         )
+    if model is None and preferred in {row["id"] for row in catalog["models"]}:
+        model = preferred
     selected = model or catalog.get("default_model")
     if not selected or selected not in {row["id"] for row in catalog["models"]}:
         raise OmnigentError(
@@ -92,6 +100,7 @@ async def prepare_create_inference(
             code=ErrorCode.INVALID_INPUT,
         )
     snapshot = None
+    parent = None
     if body.parent_session_id:
         parent = await asyncio.to_thread(
             conversation_store.get_conversation, body.parent_session_id
@@ -135,8 +144,78 @@ async def prepare_create_inference(
         )
     catalog = await inference_service(request).catalog(snapshot)
     snapshot["catalog"] = catalog
-    selected = selected_catalog_model(catalog, model_override)
+    preferred = None
+    if parent is not None and parent.inference_snapshot is not None:
+        # A sub-agent pins its own model (a helper tier, a bundle's ``model:``) only where the
+        # owner's connection serves it; otherwise it inherits the parent's model.
+        served = {row["id"] for row in catalog.get("models", [])}
+        if model_override is not None and model_override not in served:
+            model_override = parent.model_override if parent.model_override in served else None
+    else:
+        preferred = await user_default_model(request, user_id, harness)
+    selected = selected_catalog_model(catalog, model_override, preferred)
     return snapshot, selected
+
+
+def snapshot_serves_model(snapshot: dict[str, Any] | None, model: str) -> bool:
+    """Whether a session's saved catalog serves *model*; a session without one serves anything."""
+    if not configured_snapshot(snapshot):
+        return True
+    assert snapshot is not None
+    catalog = snapshot.get("catalog")
+    if not isinstance(catalog, dict) or catalog.get("status") != "ready":
+        return True
+    return model in {row["id"] for row in catalog["models"]}
+
+
+async def user_default_model(request: Request, user_id: str | None, harness: str) -> str | None:
+    """The caller's saved default model for *harness*, if any."""
+    from omnigent.server.auth import RESERVED_USER_LOCAL
+
+    store = getattr(request.app.state, "model_preference_store", None)
+    if store is None:
+        return None
+    defaults = await asyncio.to_thread(store.get, user_id or RESERVED_USER_LOCAL)
+    return defaults.get(normalize_inference_harness(harness))
+
+
+async def preview_inference(
+    request: Request,
+    provider: str | None,
+    harness: str,
+    user_id: str | None,
+    auth: Any = None,
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    """The snapshot a new session would capture and its model catalog, never raising for config.
+
+    Shared by the model-options preview and ``GET /v1/me/models``.
+    """
+    try:
+        snapshot = await inference_service(request).prepare(
+            provider, harness, user_id, agent_auth=auth
+        )
+        if snapshot is not None:
+            return snapshot, snapshot["catalog"]
+    except (OmnigentError, ValueError) as exc:
+        return None, {
+            "configured": True,
+            "models": [],
+            "configuration_revision": None,
+            "provider_label": None,
+            "default_model": None,
+            "status": "unavailable",
+            "error": exc.message
+            if isinstance(exc, OmnigentError)
+            else "Invalid inference configuration",
+        }
+    return None, {
+        "configured": False,
+        "models": [],
+        "configuration_revision": None,
+        "provider_label": None,
+        "default_model": None,
+        "status": "unconfigured",
+    }
 
 
 async def validate_saved_selection(
@@ -185,31 +264,6 @@ def create_sandbox_inference_router(
             ).spec
             harness = actual_harness(spec, harness)
             auth = spec.executor.auth
-        try:
-            snapshot = await inference_service(request).prepare(
-                provider, harness, user_id, agent_auth=auth
-            )
-            if snapshot is not None:
-                return snapshot["catalog"]
-        except (OmnigentError, ValueError) as exc:
-            return {
-                "configured": True,
-                "models": [],
-                "configuration_revision": None,
-                "provider_label": None,
-                "default_model": None,
-                "status": "unavailable",
-                "error": exc.message
-                if isinstance(exc, OmnigentError)
-                else "Invalid inference configuration",
-            }
-        return {
-            "configured": False,
-            "models": [],
-            "configuration_revision": None,
-            "provider_label": None,
-            "default_model": None,
-            "status": "unconfigured",
-        }
+        return (await preview_inference(request, provider, harness, user_id, auth))[1]
 
     return router

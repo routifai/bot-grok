@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import dataclasses
 import shlex
 from typing import Any
 from urllib.parse import urlsplit
@@ -29,6 +30,7 @@ from omnigent.models.model_catalog import (
     ModelEntry,
     ResolvedModelProvider,
     model_family_conflict,
+    model_family_token,
 )
 from omnigent.models.model_metadata import ModelCapability, ModelWireAPI
 from omnigent.onboarding.provider_config import (
@@ -158,6 +160,44 @@ def _resolve_alias(provider: ProviderEntry, harness: str, model: str) -> str:
             f"Model alias {model!r} is ambiguous across provider families. Use an exact model ID."
         )
     return next(iter(resolved), model)
+
+
+def _unfit(provider: ProviderEntry, harness: str, model: str) -> bool:
+    """Whether *model* cannot run on *harness* through *provider*.
+
+    A Claude-only harness served by a person's own key (``connection: model``) must end on a
+    Claude id: an id whose family cannot be told (an alias or a custom name) is not trusted there.
+    """
+    if model_family_conflict(harness, model) is not None:
+        return True
+    return (
+        provider.connection == MODEL_CONNECTION
+        and harness_family(harness) == "claude"
+        and model_family_token(model) != "claude"
+    )
+
+
+def catalog_row_details(snapshot: dict[str, Any], model: str) -> dict[str, Any]:
+    """Wire API, family token and configured pricing for one catalog row of a saved snapshot."""
+    config = snapshot["runtime_config"]
+    harness = snapshot["harness"]
+    binding = binding_for_harness(config, harness)
+    details: dict[str, Any] = {
+        "family": model_family_token(model),
+        "wire_api": None,
+        "pricing": None,
+    }
+    if binding is None:
+        return details
+    provider = load_providers(config)[binding.provider]
+    try:
+        details["wire_api"] = _wire(provider, harness, model).value
+        family = provider.families[_family(provider, harness, model)]
+    except OmnigentError:
+        return details
+    if family.pricing is not None:
+        details["pricing"] = dataclasses.asdict(family.pricing)
+    return details
 
 
 class SandboxInferenceService:
@@ -424,7 +464,7 @@ class SandboxInferenceService:
                 "or a model_allowlist for this harness."
             )
             return result
-        ids = [m for m in binding.model_allowlist if model_family_conflict(harness, m) is None]
+        ids = [m for m in binding.model_allowlist if not _unfit(provider, harness, m)]
         if not ids:
             result.update(status="empty", error="No models are permitted for this harness.")
             return result
@@ -497,7 +537,7 @@ class SandboxInferenceService:
             available = {
                 entry.id: entry
                 for entry in entries
-                if model_family_conflict(harness, entry.id) is None
+                if not _unfit(provider, harness, entry.id)
                 and (
                     not entry.metadata.wire_apis
                     or (

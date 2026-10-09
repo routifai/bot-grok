@@ -33,6 +33,18 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
         return
     store = ModelConnectionStore(deps.scheduled_task_store.storage_location)
     app.state.model_connection_store = store
+    from omnigent.model_credentials.selection import (
+        ModelPreferenceStore,
+        create_model_selection_router,
+    )
+
+    preferences = ModelPreferenceStore(deps.scheduled_task_store.storage_location)
+    app.state.model_preference_store = preferences
+    app.include_router(
+        create_model_selection_router(preferences, auth_provider=deps.auth_provider),
+        prefix="/v1",
+        tags=["model-selection"],
+    )
     app.include_router(
         create_model_connection_router(
             store, auth_provider=deps.auth_provider, permission_store=deps.permission_store

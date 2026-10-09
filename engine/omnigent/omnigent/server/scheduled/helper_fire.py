@@ -391,7 +391,12 @@ async def _create_helper_session(
         task.model_override,
         harness=await _helper_harness(deps, parent, run_type),
     )
-    # Nothing configured for this harness: inherit the parent's model like a dispatch does.
+    # Nothing configured for this harness, or the owner's connection does not serve it: inherit
+    # the parent's model like a dispatch does.
+    from omnigent.server.routes.sandbox_inference import snapshot_serves_model
+
+    if run_model is not None and not snapshot_serves_model(parent.inference_snapshot, run_model):
+        run_model = None
     run_model = run_model or parent.model_override
     conv: Conversation | None = None
     for title in fire_title_candidates(task.agent_type, task.name, task.id, scheduled_at):
