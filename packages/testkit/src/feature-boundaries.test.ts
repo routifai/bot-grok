@@ -15,11 +15,51 @@ type LayerName = "engine" | "api" | "adapters" | "contracts" | "web";
 
 /** Capabilities already in capability layout, per layer. Add a name here as it moves. */
 const CAPABILITIES: Record<LayerName, readonly string[]> = {
-  engine: ["admin", "apps", "artifacts", "models", "sheets"],
-  api: ["admin", "apps", "artifacts", "models", "sheets"],
-  adapters: ["apps", "artifacts", "models", "sheets"],
-  contracts: ["admin", "apps", "artifacts", "models", "sheets"],
-  web: ["admin", "apps", "artifacts", "models", "sheets"],
+  engine: [
+    "activity",
+    "admin",
+    "apps",
+    "artifacts",
+    "daily-notes",
+    "memory",
+    "models",
+    "sheets",
+    "vault",
+  ],
+  api: [
+    "activity",
+    "admin",
+    "apps",
+    "artifacts",
+    "daily-notes",
+    "memory",
+    "models",
+    "sheets",
+    "vault",
+  ],
+  adapters: ["activity", "apps", "artifacts", "daily-notes", "memory", "models", "sheets", "vault"],
+  contracts: [
+    "activity",
+    "admin",
+    "apps",
+    "artifacts",
+    "daily-notes",
+    "memory",
+    "models",
+    "sheets",
+    "vault",
+  ],
+  web: [
+    "activity",
+    "admin",
+    "apps",
+    "artifacts",
+    "daily-notes",
+    "memory",
+    "models",
+    "sheets",
+    "vault",
+  ],
 };
 
 /** `capability -> capabilities it may import`, through their public entry point only. */
@@ -55,6 +95,24 @@ const BASELINE: readonly string[] = [
   "web:pages/muse/conversation/Composer.tsx -> sheets",
   "web:pages/muse/conversation/MessageView.tsx -> sheets",
   "web:pages/muse/conversation/messageText.ts -> sheets",
+  // The family routes (unread, search, signals, stream) and the transcript routes resolve a chat's
+  // Super Chat, its roots and a Helper's status with helpers that still live in activity/derive.py
+  // (resolve_super_chat_id, list_chat_roots, sub_agent_status). Goes away when those family-tree
+  // helpers move into a family module that activity builds on.
+  "engine:family/routes.py -> activity",
+  "engine:family/search.py -> activity",
+  "engine:family/signals.py -> activity",
+  "engine:family/stream.py -> activity",
+  "engine:transcript/routes.py -> activity",
+  // The conversation draws a Helper's row and the working line from the Activity feed (activity
+  // rows, tree, durations, the run dialog); goes away when the conversation moves into its folder
+  // and takes a Helper-row extension point.
+  "web:pages/muse/conversation/HelperTracker.test.tsx -> activity",
+  "web:pages/muse/conversation/HelperTracker.tsx -> activity",
+  "web:pages/muse/conversation/WorkingRow.tsx -> activity",
+  // The sidebar's status line counts Nova's running work (useNovaWork: runs + Activity feed);
+  // goes away when the sidebar moves into its folder or takes the count from the shell.
+  "web:pages/muse/chrome/MuseSidebar.tsx -> activity",
 ];
 
 const REPO = fileURLToPath(new URL("../../../", import.meta.url));
@@ -135,7 +193,7 @@ const LAYERS: readonly Layer[] = [
     /^App\.tsx$/,
     /^pages\/Shell(\.test)?\.tsx$/,
     /^pages\/SettingsOverlay(\.test)?\.tsx$/,
-    /^pages\/muse\/NovaSettingsPanel\.tsx$/,
+    /^pages\/muse\/NovaSettingsPanel(\.test)?\.tsx$/,
     /^pages\/muse\/chrome\/ContextPanel\.tsx$/,
     /^pages\/dev\//,
   ]),

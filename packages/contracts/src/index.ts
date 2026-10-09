@@ -1,4 +1,3 @@
-export * from "./activity.js";
 export * from "./ai-consent.js";
 export * from "./attachments.js";
 export * from "./bot-avatar.js";
@@ -16,6 +15,7 @@ export * from "./muse.js";
 export * from "./openai-compatible-ui.js";
 export * from "./reactions.js";
 export * from "./reply-cards.js";
+export * from "./rpc/activity.js";
 export * from "./rpc/admin.js";
 export * from "./rpc/apps.js";
 export * from "./rpc/artifacts.js";

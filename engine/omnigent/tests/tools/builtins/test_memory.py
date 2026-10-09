@@ -23,7 +23,7 @@ from pathlib import Path
 from omnigent.memory.index import MemoryIndex
 from omnigent.memory.service import MemoryService
 from omnigent.stores.memory_store.sqlalchemy_store import SqlAlchemyMemoryStore
-from omnigent.superchat.memory_tools.tools import (
+from omnigent.superchat.memory.tools import (
     MemoryExplainTool,
     MemoryForgetTool,
     MemoryGetTool,

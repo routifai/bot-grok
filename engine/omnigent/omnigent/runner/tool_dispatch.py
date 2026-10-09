@@ -668,7 +668,7 @@ def build_native_relay_tool_schemas(
         # here — session_history's and the memory_* tools' schemas are
         # spec-independent (static).
         if is_rollover(labels):
-            from omnigent.superchat.memory_tools.tools import (
+            from omnigent.superchat.memory.tools import (
                 MemoryExplainTool,
                 MemoryForgetTool,
                 MemoryGetTool,

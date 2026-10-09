@@ -3,13 +3,12 @@
 // (docs/omnigent-spike.md). Every call carries the identity/proxy
 // headers Omnigent's header auth mode expects — no SDK dependency, just fetch and a tiny
 // SSE line parser mirroring apps/mobile/lib/api.ts's `subscribeThread`.
-export * from "./client/activities.js";
+export * from "./activity.js";
 export * from "./client/approvals.js";
 export * from "./client/asks.js";
 export * from "./client/computer.js";
 export * from "./client/core.js";
 export * from "./client/feed.js";
-export * from "./client/memory.js";
 export * from "./client/muse.js";
 export * from "./client/objectives.js";
 export * from "./client/scheduled.js";
@@ -19,5 +18,7 @@ export * from "./client/side-chats.js";
 export * from "./client/suggestions.js";
 export * from "./client/taught-skills.js";
 export * from "./client/transcript.js";
-export * from "./client/vault.js";
+export * from "./daily-notes.js";
+export * from "./memory.js";
 export * from "./models.js";
+export * from "./vault.js";

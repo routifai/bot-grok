@@ -5,13 +5,13 @@ import { cn } from "@nova/ui-web";
 import { Check, ChevronRight } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { NovaOrb } from "../../components/ai/orb";
+import { VaultSettings } from "../../features/vault";
 import { authClient } from "../../lib/auth";
 import { ApprovalsSettings } from "./ApprovalsSettings";
 import { resetFirstRun } from "./intro";
 import { ProactivitySettings } from "./ProactivitySettings";
 import { SideChatArchiving } from "./SideChatArchiving";
 import { MUSE_INSET_GROUP } from "./ui";
-import { VaultSettings } from "./VaultSettings";
 
 /**
  * What the person tunes about their Muse, gathered in one place (docs/muse/DESIGN.md):

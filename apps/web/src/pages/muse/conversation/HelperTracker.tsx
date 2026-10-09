@@ -3,9 +3,13 @@ import { useLingui } from "@lingui/react/macro";
 import type { Activity } from "@nova/contracts";
 import { presentActivityTitle } from "@nova/core";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { ActivityBranch, ActivityLine } from "../chrome/ActivityLine";
-import { ActivityRunDialog } from "../chrome/ActivityRunDialog";
-import { activityDurationMs, formatDuration, isRunning } from "../chrome/activityGrouping";
+import { ActivityBranch, ActivityLine } from "../../../features/activity/ActivityLine";
+import { ActivityRunDialog } from "../../../features/activity/ActivityRunDialog";
+import {
+  activityDurationMs,
+  formatDuration,
+  isRunning,
+} from "../../../features/activity/activityGrouping";
 import {
   type ActivityNode,
   buildActivityForest,
@@ -13,8 +17,8 @@ import {
   isNodeRunning,
   latestStepTitle,
   stepCount,
-} from "../chrome/activityTree";
-import { activityFeedFor, LIVE_ACTIVITY_WIRE } from "../chrome/useActivities";
+} from "../../../features/activity/activityTree";
+import { activityFeedFor, LIVE_ACTIVITY_WIRE } from "../../../features/activity/useActivities";
 import { useNow } from "../chrome/useNow";
 
 function findActivity(node: ActivityNode, id: string): Activity | undefined {

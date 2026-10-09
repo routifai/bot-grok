@@ -12,8 +12,8 @@ vi.mock("react-dom/client", async (orig) =>
   ),
 );
 
-import type { ActivitiesState } from "../chrome/activityFeed";
-import { helper, step } from "../chrome/activityTestKit";
+import type { ActivitiesState } from "../../../features/activity/activityFeed";
+import { helper, step } from "../../../features/activity/activityTestKit";
 import { HelperTracker } from "./HelperTracker";
 
 vi.mock("@lingui/react/macro", () => {
@@ -28,7 +28,7 @@ vi.mock("@lingui/core/macro", () => ({
   plural: (n: number, forms: { one: string; other: string }) =>
     (n === 1 ? forms.one : forms.other).replace("#", String(n)),
 }));
-vi.mock("../chrome/ActivityRunDialog", () => ({
+vi.mock("../../../features/activity/ActivityRunDialog", () => ({
   ActivityRunDialog: ({ activity }: { activity: Activity | null }) =>
     activity ? <div data-testid="run-dialog">{activity.title}</div> : null,
 }));
@@ -56,7 +56,7 @@ const fake = vi.hoisted(() => {
     },
   };
 });
-vi.mock("../chrome/useActivities", () => ({
+vi.mock("../../../features/activity/useActivities", () => ({
   activityFeedFor: () => fake.feed,
   LIVE_ACTIVITY_WIRE: {},
 }));

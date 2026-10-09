@@ -29,7 +29,7 @@ export const TOOL_ICON_COMPONENT: Record<ToolIconKey, LucideIcon> = {
   generic: Circle,
 };
 
-/** An Activity's icon by where it came from (packages/contracts/src/activity.ts
+/** An Activity's icon by where it came from (packages/contracts/src/rpc/activity.ts
  * `ActivitySource`): a Conversation turn, a Side Chat turn, background work, a scheduled
  * Helper (standing task, followed topic) or a Goal's cadence. */
 export const ACTIVITY_SOURCE_ICON: Record<ActivitySource, LucideIcon> = {
