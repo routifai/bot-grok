@@ -95,8 +95,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     openssh-client \
     unzip \
-    # Headless Calc only (no GUI, no Java): recalculates formulas for nova-recalc.
-    libreoffice-calc-nogui \
   && rm -rf /var/lib/apt/lists/* \
   # Debian's novnc package creates an unused `nova` system account (from OpenStack Nova)
   # that owns no files; drop it so the Computer user can take the name.
@@ -120,7 +118,6 @@ COPY --from=capture-builder /build/libnova-xcapture.so /usr/local/lib/libnova-xc
 COPY --chmod=755 infra/sandboxes/computer/nova-browser /usr/local/bin/nova-browser
 COPY --chmod=755 infra/sandboxes/computer/nova-page-browser /usr/local/bin/nova-page-browser
 COPY --chmod=755 infra/sandboxes/computer/nova-recorder /usr/local/bin/nova-recorder
-COPY --chmod=755 infra/sandboxes/computer/nova-recalc /usr/local/bin/nova-recalc
 COPY --chmod=644 infra/sandboxes/computer/nova-recorder.js /usr/local/share/nova/nova-recorder.js
 COPY --chmod=644 infra/sandboxes/computer/nova-browser.desktop /usr/share/applications/nova-browser.desktop
 COPY --chmod=644 infra/sandboxes/computer/fluxbox.init /etc/nova/fluxbox/init
@@ -173,7 +170,7 @@ RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 # the recorder's page script unreadable to USER 1000.
 RUN ldconfig \
   && chmod 755 /usr/local/share/nova \
-  && sed -i 's/\r$//' /usr/local/bin/nova-computer /usr/local/bin/nova-computer-control /usr/local/bin/nova-browser /usr/local/bin/nova-page-browser /usr/local/bin/nova-recorder /usr/local/bin/nova-recalc \
+  && sed -i 's/\r$//' /usr/local/bin/nova-computer /usr/local/bin/nova-computer-control /usr/local/bin/nova-browser /usr/local/bin/nova-page-browser /usr/local/bin/nova-recorder \
     /etc/nova/fluxbox/init /etc/nova/fluxbox/apps /etc/nova/fluxbox/menu \
     /etc/profile.d/nova-local-bin.sh
 EXPOSE 7070 6080 6081 6082 6083 6084 6085 6086 6087 6088 6089 6090 6091 6092 6093 6094 6095

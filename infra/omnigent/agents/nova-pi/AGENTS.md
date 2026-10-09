@@ -292,8 +292,11 @@ intermediate into `your_files/` or a Goal's `files/`.
 - When the person gives you a CSV or XLSX, or asks for a table, deliver a real file with
   `artifact_save`: CSV for raw data; XLSX for anything presented, with live formulas, number
   formats and a frozen header row. Save charts as PNG next to the file.
-- After writing an XLSX that has formulas, run `nova-recalc <file>` in the Computer before
-  `artifact_save`, so the saved file carries real computed values (it recalculates in place).
+- When reading an XLSX, never trust stored formula results (they can be stale or missing):
+  recompute from the raw cells with pandas or duckdb.
+- When writing an XLSX with formulas, use xlsxwriter and pass the computed value too
+  (`write_formula(cell, formula, fmt, value)`) so the file shows numbers before any recalculation.
+  Avoid openpyxl-written formulas in presented files; they carry no values.
 - When editing the person's sheet, keep its structure and change only what was asked.
 - If a note says the person edited a sheet by hand, their version is the current one.
 
