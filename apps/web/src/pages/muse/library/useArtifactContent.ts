@@ -18,21 +18,37 @@ type Loaded = ContentState & {
   /** A new version saved from the viewer (a sheet edit): show it and refresh the list without
    * blanking the viewer. */
   adoptVersion: (versionId: string) => void;
+  /** A newer version than the one the person deliberately picked; null while following latest. */
+  newer: ArtifactVersion | null;
+  /** Jump to the newest version and follow it again. */
+  showNewest: () => void;
+  /** The newest version arrived while open (not the first load): who saved it, for a brief mark. */
+  arrived: ArtifactVersion | null;
 };
 
 /**
  * Loads one artifact's versions and the content of the chosen one (the latest until the person
  * picks another from the dialog's version menu).
  */
-export function useArtifactContent(artifactId: string | null): Loaded {
+export function useArtifactContent(
+  artifactId: string | null,
+  /** Changes when a newer version of this file may exist (see `useLatestSavedVersion`). */
+  refreshKey?: number,
+): Loaded {
   const [state, setState] = useState<ContentState>({ status: "loading" });
   const [versions, setVersions] = useState<ArtifactVersion[]>([]);
   const [picked, setPicked] = useState<string | null>(null);
   const silent = useRef(false);
+  // The person chose a version from the menu: stay on it instead of following the newest.
+  const pinned = useRef(false);
+  const [arrived, setArrived] = useState<ArtifactVersion | null>(null);
+  const firstKey = useRef(refreshKey);
+  const pickedRef = useRef<string | null>(null);
 
   const adoptVersion = useCallback(
     (versionId: string) => {
       silent.current = true;
+      pinned.current = false;
       setPicked(versionId);
       if (artifactId) {
         void rpc.artifacts
@@ -49,6 +65,8 @@ export function useArtifactContent(artifactId: string | null): Loaded {
     let cancelled = false;
     setState({ status: "loading" });
     setPicked(null);
+    pinned.current = false;
+    setArrived(null);
     void rpc.artifacts
       .listVersions({ familyId: artifactId })
       .then((list) => {
@@ -91,5 +109,57 @@ export function useArtifactContent(artifactId: string | null): Loaded {
     };
   }, [picked]);
 
-  return { ...state, versions, versionId: picked, selectVersion: setPicked, adoptVersion };
+  pickedRef.current = picked;
+
+  // A new version of the open file arrived: re-read the list, then follow it unless pinned.
+  useEffect(() => {
+    if (!artifactId || refreshKey === firstKey.current) return;
+    let cancelled = false;
+    void rpc.artifacts
+      .listVersions({ familyId: artifactId })
+      .then((list) => {
+        if (cancelled || !list[0]) return;
+        setVersions(list);
+        if (pinned.current) return;
+        if (pickedRef.current === list[0].id) return;
+        silent.current = true;
+        setArrived(list[0]);
+        setPicked(list[0].id);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [artifactId, refreshKey]);
+
+  useEffect(() => {
+    if (!arrived) return;
+    const timer = window.setTimeout(() => setArrived(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [arrived]);
+
+  const selectVersion = useCallback(
+    (versionId: string) => {
+      pinned.current = versionId !== versions[0]?.id;
+      setArrived(null);
+      setPicked(versionId);
+    },
+    [versions],
+  );
+  const newest = versions[0] ?? null;
+  const newer = pinned.current && newest && newest.id !== picked ? newest : null;
+  const showNewest = useCallback(() => {
+    if (newest) selectVersion(newest.id);
+  }, [newest, selectVersion]);
+
+  return {
+    ...state,
+    versions,
+    versionId: picked,
+    selectVersion,
+    adoptVersion,
+    newer,
+    showNewest,
+    arrived,
+  };
 }

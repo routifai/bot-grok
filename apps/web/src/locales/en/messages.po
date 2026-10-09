@@ -2446,6 +2446,9 @@ msgstr "NEW SKILL"
 msgid "New space"
 msgstr "New space"
 
+msgid "Newer version available, show it"
+msgstr "Newer version available, show it"
+
 msgid "Next steps — Review pricing with Maya on Thursday; send the deck Friday."
 msgstr "Next steps — Review pricing with Maya on Thursday; send the deck Friday."
 
@@ -3909,6 +3912,14 @@ msgstr "Update progress"
 #. placeholder {0}: superseded.version
 msgid "Updated — v{0}"
 msgstr "Updated — v{0}"
+
+#. placeholder {0}: state.arrived.version
+msgid "Updated by Nova · v{0}"
+msgstr "Updated by Nova · v{0}"
+
+#. placeholder {0}: state.arrived.version
+msgid "Updated by you · v{0}"
+msgstr "Updated by you · v{0}"
 
 msgid "Updates"
 msgstr "Updates"

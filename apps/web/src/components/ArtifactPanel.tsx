@@ -8,6 +8,7 @@ import { useObjectUrl } from "../lib/use-object-url";
 import { ArtifactPreview } from "../pages/Artifacts";
 import { useArtifactContent } from "../pages/muse/library/useArtifactContent";
 import { formatSize } from "./cards/catalog";
+import { useLatestSavedVersion } from "./cards/context";
 
 const EMPTY_BYTES = new Uint8Array(0);
 
@@ -25,7 +26,10 @@ export function ArtifactPanel({
   onClose: () => void;
 }) {
   const { t } = useLingui();
-  const state = useArtifactContent(artifactId);
+  // The name comes from the loaded file; the transcript's newest version of it drives refreshes.
+  const [fileName, setFileName] = useState<string | undefined>(undefined);
+  const latestVersion = useLatestSavedVersion(fileName);
+  const state = useArtifactContent(artifactId, latestVersion);
   const ready = state.status === "ready" ? state : null;
   const url = useObjectUrl(ready?.bytes ?? EMPTY_BYTES, ready?.artifact.mimeType ?? "");
 
@@ -45,8 +49,14 @@ export function ArtifactPanel({
   }, [onClose, fullScreen, extra.holdsEscape]);
 
   const name = ready?.artifact.name ?? "";
+  useEffect(() => setFileName(ready?.artifact.name), [ready?.artifact.name]);
+  const shown = ready ? state.versions.find((entry) => entry.id === ready.artifact.id) : undefined;
   const meta = ready
-    ? [(name.split(".").pop() ?? "").toUpperCase(), formatSize(ready.bytes.byteLength)]
+    ? [
+        (name.split(".").pop() ?? "").toUpperCase(),
+        formatSize(ready.bytes.byteLength),
+        state.versions.length > 1 && shown ? `v${shown.version}` : "",
+      ]
         .filter(Boolean)
         .join(" · ")
     : "";
@@ -70,7 +80,28 @@ export function ArtifactPanel({
             </div>
             {extra.badge}
           </div>
-          {meta ? <div className="truncate text-[12px] text-muted-foreground">{meta}</div> : null}
+          {meta || state.arrived || state.newer ? (
+            <div className="flex min-w-0 items-center gap-2 text-[12px] text-muted-foreground">
+              <span className="truncate">{meta}</span>
+              {state.arrived ? (
+                <span data-testid="artifact-arrived" className="shrink-0 text-foreground">
+                  {state.arrived.origin === "manual"
+                    ? t`Updated by you · v${state.arrived.version}`
+                    : t`Updated by Nova · v${state.arrived.version}`}
+                </span>
+              ) : null}
+              {state.newer ? (
+                <button
+                  type="button"
+                  data-testid="artifact-newer"
+                  onClick={state.showNewest}
+                  className="shrink-0 rounded-full bg-accent px-2 py-0.5 text-foreground hover:bg-accent/70"
+                >
+                  {t`Newer version available, show it`}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         {/* A sheet portals its Edit button and edited pill in here. */}
         <div ref={setToolbarHost} className="contents" />
