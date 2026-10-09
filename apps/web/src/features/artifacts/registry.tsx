@@ -17,6 +17,9 @@ export interface ArtifactPanelParts {
   overlay?: ReactNode;
   /** The panel is wider for this file (a sheet). */
   wide?: boolean;
+  /** The panel takes the room it can while this is on (a deck in edit mode); it returns to its
+   * usual width when it ends. */
+  expanded?: boolean;
   /** True while an overlay should take Escape instead of closing the panel. */
   holdsEscape?: boolean;
   /** `DropdownMenuItem`s for the header's `⋯` menu (shown only when some extension adds one). */
@@ -99,6 +102,7 @@ export function useArtifactPanelParts(
     below: slot((part) => part.below),
     overlay: slot((part) => part.overlay),
     wide: parts.some((part) => part.wide),
+    expanded: parts.some((part) => part.expanded),
     holdsEscape: parts.some((part) => part.holdsEscape),
     overflow: slot((part) => part.overflow),
     hasOverflow: parts.some((part) => !!part.overflow),

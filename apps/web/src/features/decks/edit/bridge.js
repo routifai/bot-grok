@@ -186,12 +186,14 @@
         if (!rule.style || rule.selectorText !== ":root") continue;
         for (var k = 0; k < rule.style.length; k++) {
           var name = rule.style[k];
-          if (name.indexOf("--") !== 0 || seen[name]) continue;
+          // --shell is the framework's own letterbox colour, not part of the deck's palette
+          if (name.indexOf("--") !== 0 || seen[name] || name === "--shell") continue;
           seen[name] = true;
           var value = root.getPropertyValue(name).trim();
           if (/^--font-/.test(name)) {
             var first = value.split(",")[0].replace(/^["'\s]+|["'\s]+$/g, "");
-            fonts.push({ name: name, value: value, label: first });
+            if (!fonts.some((f) => f.label === first))
+              fonts.push({ name: name, value: value, label: first });
           } else if (/^(#|rgb|hsl)/i.test(value)) {
             colors.push({ name: name, value: value });
           }
@@ -231,9 +233,52 @@
     var word = t === "slide" ? "Slide " + slideNumber(el) : el.tagName.toLowerCase();
     return word + " · " + el.getAttribute("data-nova-id");
   }
-  function chip(rect, text) {
+  // Where the label chip goes: above the selection, else below it, at its left or right end, the
+  // first spot that stays on screen and covers no other text of the slide.
+  var chipInset = 0;
+  function chipSpot(rect, el) {
+    var h = 26;
+    var w = 230;
+    var others = [];
+    var slide = slideOf(el);
+    if (slide) {
+      slide.querySelectorAll("[data-nova-id]").forEach((o) => {
+        if (o === el || o.contains(el) || el.contains(o) || !isLeaf(o) || !isVisible(o)) return;
+        others.push(o.getBoundingClientRect());
+      });
+    }
+    // Keep clear of the slide rail's drawer, which opens over the stage's left edge (the host
+    // says how far in).
+    var left = Math.max(chipInset, rect.left);
+    var right = Math.max(0, Math.min(rect.right - w, window.innerWidth - w));
+    var spots = [
+      { left: left, top: rect.top - h },
+      { left: right, top: rect.top - h },
+      { left: left, top: rect.bottom + 4 },
+      { left: right, top: rect.bottom + 4 },
+    ];
+    var best = null;
+    var fewest = 1e9;
+    for (var i = 0; i < spots.length; i++) {
+      var s = spots[i];
+      if (s.top < 0 || s.top + h > window.innerHeight) continue;
+      var hits = 0;
+      for (var j = 0; j < others.length; j++) {
+        var o = others[j];
+        if (s.left < o.right && s.left + w > o.left && s.top < o.bottom && s.top + h > o.top)
+          hits++;
+      }
+      if (hits < fewest) {
+        fewest = hits;
+        best = s;
+      }
+      if (!hits) break;
+    }
+    return best || { left: left, top: Math.max(0, rect.top - h) };
+  }
+  function chip(rect, text, el) {
     var c = document.createElement("div");
-    var above = rect.top > 24;
+    var spot = chipSpot(rect, el);
     var name = document.createElement("span");
     name.textContent = text;
     name.style.cssText =
@@ -249,9 +294,9 @@
     c.appendChild(ask);
     c.style.cssText =
       "position:absolute;display:flex;align-items:center;gap:8px;left:" +
-      Math.max(0, rect.left) +
+      spot.left +
       "px;top:" +
-      (above ? rect.top - 26 : rect.bottom + 4) +
+      spot.top +
       "px;padding:3px 4px 3px 8px;border-radius:6px;background:#0a84ff;color:#fff;" +
       "box-shadow:0 1px 4px rgba(0,0,0,.25)";
     return c;
@@ -291,7 +336,7 @@
             ? "outline:2px dashed #0a84ff;outline-offset:2px"
             : "outline:2px solid #0a84ff;outline-offset:-1px;background:rgba(10,132,255,.06)";
         l.appendChild(box(item.r, { css: css }));
-        if (item.primary && !editing) l.appendChild(chip(item.r, labelOf(item.el)));
+        if (item.primary && !editing) l.appendChild(chip(item.r, labelOf(item.el), item.el));
       });
     }
     if (selected.length || h || editing) schedule();
@@ -524,6 +569,9 @@
       });
       repaint();
       postSelection();
+    } else if (d.type === "nova:edit-chip-inset" && typeof d.left === "number") {
+      chipInset = d.left >= 0 && d.left <= 400 ? d.left : 0;
+      repaint();
     } else if (d.type === "nova:edit-text-finish") {
       finishEdit(d.commit !== false);
     }

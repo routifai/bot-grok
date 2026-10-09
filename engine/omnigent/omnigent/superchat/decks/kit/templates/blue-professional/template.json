@@ -3,8 +3,10 @@
   "name": "Blue Professional",
   "description": "Cream paper with electric cobalt accents; clean, modern, trustworthy.",
   "best_for": "business reviews, proposals, internal updates, anything decision-grade",
+  "category": "professional",
+  "mode": "light",
   "upstream": "https://github.com/zarazhangrui/beautiful-html-templates/tree/main/templates/blue-professional",
-  "license": "MIT (see LICENSE); fonts SIL OFL 1.1 (see fonts/OFL-*.txt)",
+  "license": "MIT (see LICENSE); fonts SIL OFL 1.1 (see ../../fonts/OFL-*.txt)",
   "fonts": [
     {
       "family": "Space Grotesk",

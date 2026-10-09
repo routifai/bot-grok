@@ -8,6 +8,7 @@ import type {
 } from "@nova/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { rpc } from "../../../lib/rpc";
+import { registerDeckFlush, takeDeckVersionEdit } from "../deck-ui-state";
 import { type CommitOutcome, Committer } from "./committer";
 import {
   isInexact,
@@ -42,6 +43,7 @@ export type PostToFrame = (message: Record<string, unknown>) => void;
  * always version-aware and a change from Nova ends it (the older sources would clobber hers).
  */
 export function useDeckEditor({
+  deckKey,
   artifactId,
   version,
   html,
@@ -49,6 +51,8 @@ export function useDeckEditor({
   post,
   source = defaultSource,
 }: {
+  /** The deck's file name: where outside edits and the flush hook are registered. */
+  deckKey: string;
   artifactId: string;
   version: number;
   /** The source of the version on screen. */
@@ -89,7 +93,11 @@ export function useDeckEditor({
   useEffect(() => {
     if (version === seen.current.version) return;
     const before = seen.current.html;
-    const kind = own.current.get(version);
+    let kind = own.current.get(version);
+    if (!kind && takeDeckVersionEdit(deckKey, version)) {
+      kind = "edit"; // the Theme gallery's switch: Undo steps back over it
+      saved.current = { id: artifactId, version };
+    }
     if (kind) {
       own.current.delete(version);
       if (kind === "edit") {
@@ -103,7 +111,7 @@ export function useDeckEditor({
       saved.current = { id: artifactId, version };
     }
     seen.current = { version, html };
-  }, [artifactId, version, html]);
+  }, [artifactId, version, html, deckKey]);
 
   const save = useCallback(async (patches: DeckPatch[]): Promise<CommitOutcome> => {
     const base = saved.current;
@@ -141,6 +149,14 @@ export function useDeckEditor({
   const committer = useMemo(() => new Committer(save), [save]);
   // Leaving edit mode (or the deck) saves whatever is still staged.
   useEffect(() => () => void committer.commit(), [committer]);
+  useEffect(
+    () =>
+      registerDeckFlush(deckKey, async () => {
+        await committer.commit();
+        return saved.current;
+      }),
+    [deckKey, committer],
+  );
 
   const preview = useCallback((patches: readonly DeckPatch[]) => {
     for (const patch of patches) {

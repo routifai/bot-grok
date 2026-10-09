@@ -55,7 +55,7 @@ vi.mock("@nova/ui-web", async (importOriginal) => {
 });
 
 import { FIXTURE_DECK } from "./deck-fixture";
-import { requestDeckPresent, resetDeckUi } from "./deck-ui-state";
+import { requestDeckPresent, resetDeckUi, setDeckEditing } from "./deck-ui-state";
 import { decksExtension } from "./extension";
 
 i18n.loadAndActivate({ locale: "en", messages: {} });
@@ -84,6 +84,7 @@ function Panel({ artifact }: { artifact: Artifact }) {
       <div data-testid="overflow">{parts.overflow}</div>
       <div data-testid="below">{parts.below}</div>
       <span data-testid="hide">{String(!!parts.hideDefaults)}</span>
+      <span data-testid="expanded">{String(!!parts.expanded)}</span>
     </div>
   );
 }
@@ -115,17 +116,28 @@ it("views and badges only decks", () => {
   expect(decksExtension.card(deck)).toEqual({ meta: "Slide deck" });
 });
 
+it("asks the panel for the room while a deck is in edit mode and gives it back after", async () => {
+  const c = await mount(deck);
+  const expanded = () => c.querySelector('[data-testid="expanded"]')?.textContent;
+  expect(expanded()).toBe("false");
+  await act(async () => setDeckEditing(deck.name, true));
+  expect(expanded()).toBe("true");
+  await act(async () => setDeckEditing(deck.name, false));
+  expect(expanded()).toBe("false");
+});
+
 it("leaves non-deck headers alone", async () => {
   const c = await mount(file("page.html"));
   expect(buttons(c)).toEqual([]);
   expect(c.querySelector('[data-testid="hide"]')?.textContent).toBe("false");
 });
 
-it("has Edit, Present and exactly one Download menu with the three formats", async () => {
+it("has Theme, Edit, Present and exactly one Download menu with the three formats", async () => {
   const c = await mount(deck);
   expect(c.querySelector('[data-testid="hide"]')?.textContent).toBe("true");
   expect(downloads(c)).toHaveLength(1);
   expect(buttons(c).map((b) => b.textContent)).toEqual([
+    "Theme",
     "Edit",
     "Present",
     "Download",

@@ -3,11 +3,13 @@
 import {
   editOmnigentDeck,
   exportOmnigentDeck,
+  getOmnigentDeckTheme,
+  listOmnigentDeckThemes,
   OmnigentApiError,
   type OmnigentClientConfig,
   OmnigentDeckConflictError,
 } from "@nova/adapters";
-import type { Actor, Artifact, DeckExportFormat, DeckPatch } from "@nova/contracts";
+import type { Actor, Artifact, DeckExportFormat, DeckPatch, DeckTheme } from "@nova/contracts";
 import { ORPCError } from "@orpc/server";
 import { type EngineArtifactsDeps, emailOf, notFound, toArtifact } from "../artifacts/index.js";
 
@@ -67,6 +69,39 @@ export async function engineEditDeck(
     if (error instanceof OmnigentApiError && error.code === "invalid_input") {
       throw new ORPCError("BAD_REQUEST", { message: error.detail ?? "That edit isn't allowed." });
     }
+    return notFound(error);
+  }
+}
+
+/** The theme dictionary the deck panel's Theme picker shows. */
+export async function engineDeckThemes(
+  deps: EngineArtifactsDeps,
+  client: OmnigentClientConfig,
+  actor: Actor,
+): Promise<{ themes: DeckTheme[]; defaultTheme: string }> {
+  try {
+    const found = await listOmnigentDeckThemes(client, await emailOf(deps, actor));
+    return {
+      defaultTheme: found.default,
+      themes: found.themes.map(({ best_for: bestFor, ...theme }) => ({ ...theme, bestFor })),
+    };
+  } catch (error) {
+    return notFound(error);
+  }
+}
+
+/** The theme a deck is on (null when it was not built on one). */
+export async function engineDeckTheme(
+  deps: EngineArtifactsDeps,
+  client: OmnigentClientConfig,
+  actor: Actor,
+  input: { artifactId: string },
+): Promise<{ theme: string | null }> {
+  try {
+    return {
+      theme: await getOmnigentDeckTheme(client, await emailOf(deps, actor), input.artifactId),
+    };
+  } catch (error) {
     return notFound(error);
   }
 }

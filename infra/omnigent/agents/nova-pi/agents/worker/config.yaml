@@ -71,6 +71,8 @@ tools:
     - files_status
     - deck_new
     - deck_check
+    - deck_themes
+    - deck_theme_set
     - start_helper
     - sys_session_close
     - sys_session_list

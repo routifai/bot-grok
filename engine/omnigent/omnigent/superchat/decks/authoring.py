@@ -155,14 +155,55 @@ async def handle_deck_check(args: dict[str, Any]) -> str:
     return json.dumps(_verdict(report))
 
 
+async def handle_deck_themes(_args: dict[str, Any]) -> str:
+    """The theme dictionary: what the Muse picks from."""
+    return json.dumps({"ok": True, "themes": kit.theme_dictionary(), "default": kit.DEFAULT_THEME})
+
+
+async def handle_deck_theme_set(args: dict[str, Any]) -> str:
+    """Swap a workspace deck's theme (slides untouched), then re-check the layout."""
+    raw = args.get("path")
+    theme_id = args.get("theme_id")
+    if not isinstance(raw, str) or not raw.strip():
+        return error("deck_theme_set requires the deck's path")
+    if not isinstance(theme_id, str) or theme_id not in kit.templates():
+        return error(f"deck_theme_set theme_id must be one of: {', '.join(kit.templates())}")
+    target = _resolve(raw.strip(), must_exist=True)
+    if isinstance(target, str):
+        return error(target)
+    document = await asyncio.to_thread(target.read_text, "utf-8")
+    before = kit.deck_theme_id(document)
+    if before == theme_id:
+        return json.dumps({"ok": True, "changed": False, "theme": theme_id, "path": str(target)})
+    try:
+        restyled = kit.restyle_deck(document, theme_id)
+    except kit.KitError as exc:
+        return error(str(exc))
+    await asyncio.to_thread(target.write_text, restyled, "utf-8")
+    report = await _layout_report(target)
+    report["errors"] = report.get("errors", [])
+    report.update(changed=True, theme=theme_id, previous=before, path=str(target))
+    return json.dumps(_verdict(report))
+
+
 async def handle_authoring_tool(tool_name: str, args: dict[str, Any]) -> str:
-    """Dispatch ``deck_new`` / ``deck_check``."""
+    """Dispatch ``deck_new`` / ``deck_check`` / ``deck_themes`` / ``deck_theme_set``."""
     try:
         if tool_name == "deck_new":
             return await handle_deck_new(args)
+        if tool_name == "deck_themes":
+            return await handle_deck_themes(args)
+        if tool_name == "deck_theme_set":
+            return await handle_deck_theme_set(args)
         return await handle_deck_check(args)
     except Exception as exc:  # noqa: BLE001
         return error(f"{tool_name} failed: {exc}")
 
 
-__all__ = ["handle_authoring_tool", "handle_deck_check", "handle_deck_new"]
+__all__ = [
+    "handle_authoring_tool",
+    "handle_deck_check",
+    "handle_deck_new",
+    "handle_deck_theme_set",
+    "handle_deck_themes",
+]

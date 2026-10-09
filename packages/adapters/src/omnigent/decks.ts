@@ -27,6 +27,45 @@ export async function exportOmnigentDeck(
   return (await response.json()) as OmnigentArtifact;
 }
 
+/** One theme of the dictionary (`GET /decks/themes`). */
+export interface OmnigentDeckTheme {
+  id: string;
+  name: string;
+  mood: string;
+  category: "professional" | "editorial" | "bold" | "dark";
+  mode: "light" | "dark";
+  best_for: string;
+  preview: string;
+}
+
+/** `GET /decks/themes` — the deck theme dictionary with thumbnails. */
+export async function listOmnigentDeckThemes(
+  config: OmnigentClientConfig,
+  email: string,
+): Promise<{ themes: OmnigentDeckTheme[]; default: string }> {
+  const response = await fetch(new URL("/v1/decks/themes", config.baseUrl), {
+    headers: omnigentHeaders(config, email),
+  });
+  await throwOnError(response, "list deck themes", config.secrets);
+  return (await response.json()) as { themes: OmnigentDeckTheme[]; default: string };
+}
+
+/** `GET /decks/{id}/theme` — the theme id a deck is on, `null` when hand-made. */
+export async function getOmnigentDeckTheme(
+  config: OmnigentClientConfig,
+  email: string,
+  id: string,
+): Promise<string | null> {
+  const response = await fetch(
+    new URL(`/v1/decks/${encodeURIComponent(id)}/theme`, config.baseUrl),
+    {
+      headers: omnigentHeaders(config, email),
+    },
+  );
+  await throwOnError(response, "read deck theme", config.secrets);
+  return ((await response.json()) as { theme: string | null }).theme;
+}
+
 /** One source patch (engine wire format; see engine superchat/decks/patches.py). */
 export type OmnigentDeckPatch =
   | { kind: "set-text"; id: string; text: string }
@@ -43,6 +82,7 @@ export type OmnigentDeckPatch =
     }
   | { kind: "remove-element"; id: string }
   | { kind: "duplicate-element"; id: string }
+  | { kind: "set-theme"; theme: string }
   | { kind: "set-full-source"; source: string };
 
 /** `PATCH /artifacts/{id}/edit` answered 409: a stale base, or a patch the engine would not apply
@@ -78,7 +118,7 @@ export async function editOmnigentDeck(
       error?: { message?: string };
     } | null;
     const message = body?.error?.message ?? "The deck changed.";
-    throw new OmnigentDeckConflictError(message, /^Stale edit/.test(message));
+    throw new OmnigentDeckConflictError(message, /^The deck changed since/.test(message));
   }
   await throwOnError(response, "edit deck", config.secrets);
   return (await response.json()) as OmnigentArtifact;

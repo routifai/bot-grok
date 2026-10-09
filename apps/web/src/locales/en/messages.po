@@ -652,6 +652,9 @@ msgstr "Bearer token"
 msgid "Blocked"
 msgstr "Blocked"
 
+msgid "Bold"
+msgstr "Bold"
+
 msgid "Booting live desktop…"
 msgstr "Booting live desktop…"
 
@@ -824,8 +827,8 @@ msgstr "Clear conversation"
 msgid "Clearing…"
 msgstr "Clearing…"
 
-msgid "Click an element on the slide. Double-click text to type."
-msgstr "Click an element on the slide. Double-click text to type."
+msgid "Click an element to edit it."
+msgstr "Click an element to edit it."
 
 msgid "Client ID"
 msgstr "Client ID"
@@ -874,6 +877,9 @@ msgstr "Code"
 
 msgid "Collapse sidebar"
 msgstr "Collapse sidebar"
+
+msgid "Collapse slides"
+msgstr "Collapse slides"
 
 msgid "Color"
 msgstr "Color"
@@ -1365,6 +1371,9 @@ msgstr "Couldn't index"
 msgid "Couldn't load messaging settings"
 msgstr "Couldn't load messaging settings"
 
+msgid "Couldn't load the themes. Try again in a moment."
+msgstr "Couldn't load the themes. Try again in a moment."
+
 msgid "Couldn't open this sheet."
 msgstr "Couldn't open this sheet."
 
@@ -1389,6 +1398,9 @@ msgstr "Couldn't run"
 
 msgid "Couldn't save that change."
 msgstr "Couldn't save that change."
+
+msgid "Couldn't switch the theme."
+msgstr "Couldn't switch the theme."
 
 msgid "Couldn't update avatars"
 msgstr "Couldn't update avatars"
@@ -1669,6 +1681,9 @@ msgstr "Edit Profile"
 msgid "Edited by you"
 msgstr "Edited by you"
 
+msgid "Editorial"
+msgstr "Editorial"
+
 msgid "Email"
 msgstr "Email"
 
@@ -1749,6 +1764,9 @@ msgstr "Expand {0}"
 
 msgid "Expand sidebar"
 msgstr "Expand sidebar"
+
+msgid "Expand slides"
+msgstr "Expand slides"
 
 msgid "Expired"
 msgstr "Expired"
@@ -2940,6 +2958,9 @@ msgstr "Pages"
 msgid "Pages, documents and files your Muse makes will appear here."
 msgstr "Pages, documents and files your Muse makes will appear here."
 
+msgid "Palette"
+msgstr "Palette"
+
 msgid "Panel sections"
 msgstr "Panel sections"
 
@@ -3067,6 +3088,9 @@ msgstr "Private workspace with its own bots and groups."
 
 msgid "Proactivity"
 msgstr "Proactivity"
+
+msgid "Professional"
+msgstr "Professional"
 
 msgid "Project ID"
 msgstr "Project ID"
@@ -3378,6 +3402,9 @@ msgstr "Restore the last saved workspace. Unsaved work on the computer is lost."
 msgid "Restoring your workspace"
 msgstr "Restoring your workspace"
 
+msgid "Restyles every slide; your content stays as it is."
+msgstr "Restyles every slide; your content stays as it is."
+
 msgid "Resume"
 msgstr "Resume"
 
@@ -3562,9 +3589,6 @@ msgstr "See summary"
 msgid "Select a bot"
 msgstr "Select a bot"
 
-msgid "Select an element"
-msgstr "Select an element"
-
 msgid "Send"
 msgstr "Send"
 
@@ -3723,6 +3747,9 @@ msgstr "Slide"
 
 msgid "Slide deck"
 msgstr "Slide deck"
+
+msgid "Slide rail"
+msgstr "Slide rail"
 
 msgid "Slides"
 msgstr "Slides"
@@ -3903,6 +3930,10 @@ msgstr "Suspend"
 msgid "Switch bot"
 msgstr "Switch bot"
 
+#. placeholder {0}: undo?.name ?? ""
+msgid "Switched to {0}"
+msgstr "Switched to {0}"
+
 msgid "Switching…"
 msgstr "Switching…"
 
@@ -3963,6 +3994,9 @@ msgstr "That change can't be made exactly by hand."
 msgid "That took too long. Try again."
 msgstr "That took too long. Try again."
 
+msgid "The deck changed since you opened it. Try again."
+msgstr "The deck changed since you opened it. Try again."
+
 msgid "The key is stored encrypted and only used for voice."
 msgstr "The key is stored encrypted and only used for voice."
 
@@ -3984,6 +4018,9 @@ msgstr "The Q3 report draft is ready. Revenue is up 8%, churn ticked up in Augus
 msgid "Their chats, Computer and keys are removed for good. This can't be undone."
 msgstr "Their chats, Computer and keys are removed for good. This can't be undone."
 
+msgid "Theme"
+msgstr "Theme"
+
 msgid "Thinking"
 msgstr "Thinking"
 
@@ -4004,6 +4041,12 @@ msgstr "this computer"
 
 msgid "This conversation is too long for the model."
 msgstr "This conversation is too long for the model."
+
+msgid "This deck can't be restyled by hand. Ask Nova to restyle it."
+msgstr "This deck can't be restyled by hand. Ask Nova to restyle it."
+
+msgid "This deck isn't on a theme. Ask Nova to restyle it."
+msgstr "This deck isn't on a theme. Ask Nova to restyle it."
 
 #. placeholder {0}: pendingDelete.versionCount
 msgid "This deletes all {0} versions of this artifact. This can't be undone."

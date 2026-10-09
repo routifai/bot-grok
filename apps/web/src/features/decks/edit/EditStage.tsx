@@ -29,6 +29,7 @@ export function EditStage({
   frameRef,
   onMessage,
   onReady,
+  chipInset = 0,
   postRef,
 }: {
   html: string;
@@ -43,6 +44,8 @@ export function EditStage({
   frameRef: MutableRefObject<HTMLIFrameElement | null>;
   onMessage: (message: DeckEditFromFrame) => void;
   onReady?: () => void;
+  /** How far in from the stage's left edge the selection chip stays (an overlapping drawer). */
+  chipInset?: number;
   /** Receives the function that posts to the visible frame. */
   postRef: MutableRefObject<(message: Record<string, unknown>) => void>;
 }) {
@@ -56,6 +59,8 @@ export function EditStage({
   onMessageRef.current = onMessage;
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
+  const chipInsetRef = useRef(chipInset);
+  chipInsetRef.current = chipInset;
 
   // A different source (or a forced reload) queues a new hidden frame; only the newest waits.
   useEffect(() => {
@@ -107,6 +112,7 @@ export function EditStage({
           index: activeRef.current,
         });
         post(key, { type: "nova:edit-select", ids: selectedIds.current });
+        post(key, { type: "nova:edit-chip-inset", left: chipInsetRef.current });
         if (key !== shownKeyRef.current) {
           setShownKey(key);
           setFrames((current) => current.filter((f) => f.key === key));

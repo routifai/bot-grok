@@ -10,7 +10,8 @@ from typing import Any
 
 from omnigent.tools.base import Tool
 
-DECK_TOOL_NAMES = ("deck_export", "deck_new", "deck_check")
+DECK_TOOL_NAMES = ("deck_export", "deck_new", "deck_check", "deck_themes", "deck_theme_set")
+DECK_AUTHORING_TOOL_NAMES = ("deck_new", "deck_check", "deck_themes", "deck_theme_set")
 DECK_EXPORT_FORMATS = ("pptx", "pdf")
 
 
@@ -72,12 +73,13 @@ class DeckNewTool(Tool):
         """:returns: Human-readable description of the tool."""
         from omnigent.superchat.decks import kit
 
-        names = "; ".join(f"{t['id']} ({t['description']})" for t in kit.template_summaries())
+        names = ", ".join(kit.templates())
         return (
             "Create a slide deck file. You write only the slides (HTML sections); this assembles "
             "the fixed 1920x1080 deck framework, the template's theme and embedded fonts around "
             "them, writes the `.deck.html` file, and checks the layout in the Computer. "
-            f"Templates: {names}. Returns problems to fix, then save the file with artifact_save."
+            f"Templates (themes; call deck_themes for what each is for): {names}. "
+            "Returns problems to fix, then save the file with artifact_save."
         )
 
     def get_schema(self) -> dict[str, Any]:
@@ -151,6 +153,82 @@ class DeckCheckTool(Tool):
                         }
                     },
                     "required": ["path"],
+                    "additionalProperties": False,
+                },
+            },
+        }
+
+
+class DeckThemesTool(Tool):
+    """List the deck theme dictionary; dispatched to the runner (no file access needed)."""
+
+    @classmethod
+    def name(cls) -> str:
+        """:returns: The tool name."""
+        return "deck_themes"
+
+    @classmethod
+    def description(cls) -> str:
+        """:returns: Human-readable description of the tool."""
+        return (
+            "List the deck themes you can choose from: id, name, mood, category "
+            "(professional, editorial, bold, dark), light or dark mode, and what it is best for. "
+            "Call it before deck_new and pick the theme that fits the request instead of "
+            "relying on remembered ids."
+        )
+
+    def get_schema(self) -> dict[str, Any]:
+        """:returns: The OpenAI-format tool schema."""
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name(),
+                "description": self.description(),
+                "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+            },
+        }
+
+
+class DeckThemeSetTool(Tool):
+    """Restyle a deck file with another theme, slides untouched; dispatched to the runner."""
+
+    @classmethod
+    def name(cls) -> str:
+        """:returns: The tool name."""
+        return "deck_theme_set"
+
+    @classmethod
+    def description(cls) -> str:
+        """:returns: Human-readable description of the tool."""
+        return (
+            "Switch a deck file to another theme: swaps its colours, type, theme CSS and embedded "
+            "fonts and leaves every slide's content alone, then re-checks the layout. Use it "
+            "when the person asks for a different look; the deck keeps its file, so save it "
+            "again with artifact_save. Custom CSS and token overrides the deck has outside the "
+            "theme markers (written after the closing marker) are kept. If something was edited "
+            "between the markers the call fails and says so, and the file is not changed. "
+            "Do not use it unless they asked for a new theme."
+        )
+
+    def get_schema(self) -> dict[str, Any]:
+        """:returns: The OpenAI-format tool schema."""
+        from omnigent.superchat.decks import kit
+
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name(),
+                "description": self.description(),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "The .deck.html file in your workspace.",
+                        },
+                        "theme_id": {"type": "string", "enum": list(kit.templates())},
+                    },
+                    "required": ["path", "theme_id"],
                     "additionalProperties": False,
                 },
             },
