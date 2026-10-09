@@ -22,8 +22,21 @@ import { OrgSignups } from "./OrgSignups";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const waiting = [
-  { userId: "u1", email: "ada@corp.test", name: "Ada", createdAt: "2026-10-01T00:00:00Z" },
+  {
+    userId: "u1",
+    email: "ada@corp.test",
+    name: "Ada",
+    emailVerified: true,
+    createdAt: "2026-10-01T09:30:00Z",
+  },
 ];
+const squatted = {
+  userId: "u2",
+  email: "dave@corp.test",
+  name: "Dave",
+  emailVerified: false,
+  createdAt: "2026-10-02T09:30:00Z",
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -62,6 +75,35 @@ it("lists who is waiting and approves or rejects them", async () => {
     await act(async () => named(row, "Reject").click());
     expect(api.reject).toHaveBeenCalledWith({ userId: "u1" });
     expect(api.pending).toHaveBeenCalledTimes(3);
+  } finally {
+    await view.cleanup();
+  }
+});
+
+it("shows unverified rows with a badge, the signup time and a warning to confirm another way", async () => {
+  api.pending.mockResolvedValue([...waiting, squatted]);
+  const view = await mount();
+  try {
+    const verified = view.container.querySelector('[data-testid="signup-u1"]')!;
+    const unverified = view.container.querySelector('[data-testid="signup-u2"]')!;
+    expect(verified.querySelector('[data-testid="signup-unverified"]')).toBeNull();
+    expect(unverified.querySelector('[data-testid="signup-unverified"]')?.textContent).toBe(
+      "Email not verified",
+    );
+    expect(unverified.querySelector("time")?.getAttribute("datetime")).toBe(squatted.createdAt);
+    expect(unverified.querySelector("time")?.textContent).toMatch(/2026/);
+    expect(view.container.textContent).toContain("only after confirming the person another way");
+    await act(async () => named(unverified, "Reject").click());
+    expect(api.reject).toHaveBeenCalledWith({ userId: "u2" });
+  } finally {
+    await view.cleanup();
+  }
+});
+
+it("does not warn when everyone waiting has verified their email", async () => {
+  const view = await mount();
+  try {
+    expect(view.container.textContent).not.toContain("confirming the person another way");
   } finally {
     await view.cleanup();
   }

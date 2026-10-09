@@ -10,6 +10,8 @@ type AuthResult<T> = Promise<{
  * The email-code endpoints, typed here because the plugin's inferred client types do not survive
  * this package's explicit client annotation (declaration emit).
  */
+type WithFetchOptions = { fetchOptions?: { headers?: Record<string, string> } };
+
 interface EmailCodeClient {
   emailOtp: {
     sendVerificationOtp(input: {
@@ -23,7 +25,9 @@ interface EmailCodeClient {
     }): AuthResult<{ user?: { createdAt?: string } }>;
   };
   signIn: {
-    emailOtp(input: { email: string; otp: string }): AuthResult<{ user?: { createdAt?: string } }>;
+    emailOtp(
+      input: { email: string; otp: string } & WithFetchOptions,
+    ): AuthResult<{ user?: { createdAt?: string } }>;
   };
 }
 

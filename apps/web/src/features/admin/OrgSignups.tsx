@@ -21,7 +21,7 @@ const fromLines = (text: string) =>
  * first moment a person gets a space, so nothing is spent on them before it.
  */
 export function OrgSignups() {
-  const { t } = useLingui();
+  const { t, i18n } = useLingui();
   const [settings, setSettings] = useState<SignupSettings | null>(null);
   const [pending, setPending] = useState<PendingSignup[]>([]);
   const [list, setList] = useState("");
@@ -126,44 +126,71 @@ export function OrgSignups() {
             <Trans>No one is waiting.</Trans>
           </p>
         ) : (
-          pending.map((person) => (
-            <div
-              key={person.userId}
-              data-testid={`signup-${person.userId}`}
-              className="flex items-center justify-between gap-3 px-3 py-2.5"
-            >
-              <span className="min-w-0 truncate text-[13px] text-foreground">{person.email}</span>
-              <span className="inline-flex shrink-0 items-center gap-1">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={busy === person.userId}
-                  onClick={() =>
-                    void run(
-                      person.userId,
-                      () => rpc.signups.reject({ userId: person.userId }),
-                      t`Could not reject this person.`,
-                    )
-                  }
-                >
-                  <Trans>Reject</Trans>
-                </Button>
-                <Button
-                  size="sm"
-                  disabled={busy === person.userId}
-                  onClick={() =>
-                    void run(
-                      person.userId,
-                      () => rpc.signups.approve({ userId: person.userId }),
-                      t`Could not approve this person.`,
-                    )
-                  }
-                >
-                  <Trans>Approve</Trans>
-                </Button>
-              </span>
-            </div>
-          ))
+          <>
+            {pending.some((person) => !person.emailVerified) ? (
+              <p className="px-3 py-2.5 text-[12.5px] text-ink-2">
+                <Trans>
+                  Approve unverified emails only after confirming the person another way.
+                </Trans>
+              </p>
+            ) : null}
+            {pending.map((person) => (
+              <div
+                key={person.userId}
+                data-testid={`signup-${person.userId}`}
+                className="flex items-center justify-between gap-3 px-3 py-2.5"
+              >
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate text-[13px] text-foreground">{person.email}</span>
+                  <span className="flex items-center gap-2 text-[11.5px] text-ink-3">
+                    <time dateTime={person.createdAt}>
+                      {new Date(person.createdAt).toLocaleString(i18n.locale, {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      })}
+                    </time>
+                    {person.emailVerified ? null : (
+                      <span
+                        data-testid="signup-unverified"
+                        className="rounded-full bg-warning/12 px-2 py-0.5 font-medium text-warning"
+                      >
+                        <Trans>Email not verified</Trans>
+                      </span>
+                    )}
+                  </span>
+                </span>
+                <span className="inline-flex shrink-0 items-center gap-1">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy === person.userId}
+                    onClick={() =>
+                      void run(
+                        person.userId,
+                        () => rpc.signups.reject({ userId: person.userId }),
+                        t`Could not reject this person.`,
+                      )
+                    }
+                  >
+                    <Trans>Reject</Trans>
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={busy === person.userId}
+                    onClick={() =>
+                      void run(
+                        person.userId,
+                        () => rpc.signups.approve({ userId: person.userId }),
+                        t`Could not approve this person.`,
+                      )
+                    }
+                  >
+                    <Trans>Approve</Trans>
+                  </Button>
+                </span>
+              </div>
+            ))}
+          </>
         )}
       </div>
     </section>

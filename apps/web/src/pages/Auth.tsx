@@ -9,12 +9,14 @@ import { clearSpaceSelection } from "../lib/rpc";
 import { WelcomeFrame, welcomeFieldClass, welcomeSubmitClass } from "./welcome/WelcomeFrame";
 
 type AuthMode = "in" | "up" | "forgot";
-type SocialProvider = "google" | "microsoft";
 type AuthCapabilities = {
   passwordReset: boolean;
   resetUrl: string | null;
   emailCode: boolean;
-  social: SocialProvider[];
+  /** The one OIDC connection, when configured; its name labels the button. */
+  sso: { name: string } | null;
+  /** True while the deployment owner seat is unclaimed and needs the operator setup token. */
+  ownerSetup: boolean;
   signupMode: "closed" | "invite" | "domain" | "approval" | "open";
 };
 /** What the code is for: signing in, or proving the mailbox of a password signup. */
@@ -24,7 +26,8 @@ const NO_CAPABILITIES: AuthCapabilities = {
   passwordReset: false,
   resetUrl: null,
   emailCode: false,
-  social: [],
+  sso: null,
+  ownerSetup: false,
   signupMode: "open",
 };
 const fieldClass = welcomeFieldClass;
@@ -34,13 +37,11 @@ const MAX_AUTH_CAPABILITIES_RESPONSE_BYTES = 64 * 1024;
 const CODE_LENGTH = 6;
 const RESEND_COOLDOWN_SECONDS = 30;
 const PENDING_CODE_KEY = "nova:auth-pending-code";
+const OWNER_TOKEN_KEY = "nova:auth-owner-token";
+const OWNER_SETUP_HEADER = "x-owner-setup-token";
 const FRESH_ACCOUNT_MS = 2 * 60_000;
 
 const linkClass = "font-medium text-welcome-night-ink underline-offset-4 hover:underline";
-const SOCIAL_LABEL: Record<SocialProvider, () => React.ReactNode> = {
-  google: () => <Trans>Continue with Google</Trans>,
-  microsoft: () => <Trans>Continue with Microsoft</Trans>,
-};
 
 /** The code step survives the session refresh that signup triggers, which remounts this page. */
 function readPendingCode(): { email: string; purpose: CodePurpose } | null {
@@ -67,6 +68,24 @@ function writePendingCode(value: { email: string; purpose: CodePurpose } | null)
   }
 }
 
+/** The operator's setup token, kept for the tab only so it survives the signup remount. */
+function readOwnerToken(): string {
+  try {
+    return sessionStorage.getItem(OWNER_TOKEN_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeOwnerToken(value: string) {
+  try {
+    if (value) sessionStorage.setItem(OWNER_TOKEN_KEY, value);
+    else sessionStorage.removeItem(OWNER_TOKEN_KEY);
+  } catch {
+    // Storage can be unavailable; the field is then simply asked for again.
+  }
+}
+
 export function AuthPage({ mode }: { mode: AuthMode }) {
   const { t } = useLingui();
   const navigate = useNavigate();
@@ -80,11 +99,15 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
   const [resetSent, setResetSent] = useState(false);
   const [capabilities, setCapabilities] = useState<AuthCapabilities | null>(null);
   const [usePassword, setUsePassword] = useState(false);
+  const [ownerToken, setOwnerToken] = useState(readOwnerToken);
   const restored = searchParams.get("verify") === "email" ? readPendingCode() : null;
   const [code, setCode] = useState<{ email: string; purpose: CodePurpose } | null>(restored);
   const [digits, setDigits] = useState("");
   const [cooldown, setCooldown] = useState(0);
   const caps = capabilities ?? NO_CAPABILITIES;
+  const tokenOptions = ownerToken
+    ? { fetchOptions: { headers: { [OWNER_SETUP_HEADER]: ownerToken } } }
+    : {};
   const codeLogin = caps.emailCode && !usePassword && mode !== "forgot";
   const passwordFieldId = mode === "in" ? "current-password" : "new-password";
   const title = code ? (
@@ -163,14 +186,19 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
     try {
       const result =
         code.purpose === "verify"
-          ? await authClient.emailOtp.verifyEmail({ email: code.email, otp: digits })
-          : await authClient.signIn.emailOtp({ email: code.email, otp: digits });
+          ? await authClient.emailOtp.verifyEmail({
+              email: code.email,
+              otp: digits,
+              ...tokenOptions,
+            })
+          : await authClient.signIn.emailOtp({ email: code.email, otp: digits, ...tokenOptions });
       if (result.error) {
         setDigits("");
         setError(result.error.message ?? t`That code did not work`);
         return;
       }
       writePendingCode(null);
+      writeOwnerToken("");
       clearSpaceSelection();
       const user = (result.data as { user?: { createdAt?: unknown } } | null)?.user;
       navigate(destination(user?.createdAt, mode === "up" && code.purpose === "verify"));
@@ -196,11 +224,11 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
     }
   }
 
-  async function continueWith(provider: SocialProvider) {
+  async function continueWithSso() {
     setError(null);
     try {
       const result = await authClient.signIn.social({
-        provider,
+        provider: "sso",
         callbackURL: new URL("/app", window.location.origin).href,
         newUserCallbackURL: new URL("/onboarding", window.location.origin).href,
         errorCallbackURL: new URL("/sign-in", window.location.origin).href,
@@ -232,6 +260,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
         setResetSent(true);
         return;
       }
+      writeOwnerToken(ownerToken);
       if (codeLogin) {
         const result = await authClient.emailOtp.sendVerificationOtp({
           email: email.trim(),
@@ -250,8 +279,9 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
               email,
               password,
               name: name || email.split("@")[0] || "User",
+              ...tokenOptions,
             })
-          : await authClient.signIn.email({ email, password });
+          : await authClient.signIn.email({ email, password, ...tokenOptions });
       if (result.error) {
         // An unverified address was just sent a fresh code by the server.
         if (result.error.code === "EMAIL_NOT_VERIFIED") {
@@ -348,20 +378,17 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
         </div>
       ) : (
         <>
-          {mode !== "forgot" && caps.social.length > 0 ? (
-            <div className="mb-6 flex w-full flex-col gap-3">
-              {caps.social.map((provider) => (
-                <Button
-                  key={provider}
-                  type="button"
-                  variant="outline"
-                  size="lg"
-                  onClick={() => void continueWith(provider)}
-                  className="h-12 w-full rounded-full border-welcome-night-line/16 bg-transparent text-[15px] font-medium text-welcome-night-ink hover:bg-welcome-night-bubble"
-                >
-                  {SOCIAL_LABEL[provider]()}
-                </Button>
-              ))}
+          {mode !== "forgot" && caps.sso ? (
+            <div className="mb-6 w-full">
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                onClick={() => void continueWithSso()}
+                className="h-12 w-full rounded-full border-welcome-night-line/16 bg-transparent text-[15px] font-medium text-welcome-night-ink hover:bg-welcome-night-bubble"
+              >
+                <Trans>Continue with {caps.sso.name}</Trans>
+              </Button>
             </div>
           ) : null}
           {mode === "up" && !codeLogin ? (
@@ -435,6 +462,22 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
               ) : null}
             </div>
           ) : null}
+          {mode !== "forgot" && caps.ownerSetup ? (
+            <div className="mt-4 w-full">
+              <Label htmlFor="owner-token" className="text-welcome-night-ink-2">
+                <Trans>Setup token</Trans>
+              </Label>
+              <Input
+                id="owner-token"
+                name="owner-token"
+                type="password"
+                autoComplete="off"
+                value={ownerToken}
+                onChange={(e) => setOwnerToken(e.target.value)}
+                className={fieldClass}
+              />
+            </div>
+          ) : null}
           {error ? (
             <p role="alert" className="mt-3 w-full text-sm text-destructive">
               {error}
@@ -451,7 +494,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
               <Trans>Create account</Trans>
             )}
           </Button>
-          {mode !== "forgot" && caps.emailCode ? (
+          {mode === "in" && caps.emailCode ? (
             <button
               type="button"
               onClick={() => {

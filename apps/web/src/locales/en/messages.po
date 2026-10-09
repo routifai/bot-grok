@@ -506,6 +506,9 @@ msgstr "Approve"
 msgid "Approve this server to let your agent use its tools."
 msgstr "Approve this server to let your agent use its tools."
 
+msgid "Approve unverified emails only after confirming the person another way."
+msgstr "Approve unverified emails only after confirming the person another way."
+
 msgid "Archive"
 msgstr "Archive"
 
@@ -1001,14 +1004,12 @@ msgstr "Continue"
 msgid "Continue in Background"
 msgstr "Continue in Background"
 
+#. placeholder {0}: caps.sso.name
+msgid "Continue with {0}"
+msgstr "Continue with {0}"
+
 msgid "Continue with email"
 msgstr "Continue with email"
-
-msgid "Continue with Google"
-msgstr "Continue with Google"
-
-msgid "Continue with Microsoft"
-msgstr "Continue with Microsoft"
 
 msgid "Conversation"
 msgstr "Conversation"
@@ -1704,6 +1705,9 @@ msgstr "Email"
 
 msgid "Email me a code"
 msgstr "Email me a code"
+
+msgid "Email not verified"
+msgstr "Email not verified"
 
 msgid "Email the file to Maya"
 msgstr "Email the file to Maya"
@@ -3665,6 +3669,9 @@ msgstr "Settings: Usage"
 
 msgid "Setup help"
 msgstr "Setup help"
+
+msgid "Setup token"
+msgstr "Setup token"
 
 msgid "Shared chat with 2-6 bots. They all reply in the same thread."
 msgstr "Shared chat with 2-6 bots. They all reply in the same thread."

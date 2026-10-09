@@ -66,13 +66,39 @@ it("tells the person they are waiting, with nothing to configure", async () => {
   expect(host.querySelector("input")).toBeNull();
 });
 
-it("rechecks the session so approval takes effect without a reload", async () => {
+it("rechecks with growing gaps and stops while the tab is hidden", async () => {
   vi.useFakeTimers();
   const refetch = await render();
   await act(async () => {
     vi.advanceTimersByTime(5_100);
   });
-  expect(refetch).toHaveBeenCalled();
+  expect(refetch).toHaveBeenCalledTimes(1);
+  // The next gap is longer than the first, not another 5 seconds.
+  await act(async () => {
+    vi.advanceTimersByTime(5_100);
+  });
+  expect(refetch).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    vi.advanceTimersByTime(5_000);
+  });
+  expect(refetch).toHaveBeenCalledTimes(2);
+  // Hidden: the chain stops, however long it waits.
+  Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+  await act(async () => {
+    vi.advanceTimersByTime(60_000);
+  });
+  const whileHidden = refetch.mock.calls.length;
+  await act(async () => {
+    vi.advanceTimersByTime(300_000);
+  });
+  expect(refetch.mock.calls.length).toBeLessThanOrEqual(whileHidden + 1);
+  // Back in view it checks at once.
+  Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+  const before = refetch.mock.calls.length;
+  await act(async () => {
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  expect(refetch.mock.calls.length).toBe(before + 1);
 });
 
 it("can sign out", async () => {

@@ -29,7 +29,8 @@ const capabilities = {
   passwordReset: true,
   resetUrl: "http://web.test/reset-password",
   emailCode: false,
-  social: [] as string[],
+  sso: null as { name: string } | null,
+  ownerSetup: false,
   signupMode: "open",
 };
 
@@ -208,11 +209,11 @@ it("resends only after the cooldown and can go back to another email", async () 
 });
 
 it("asks for the emailed code after a password signup, and verifies the mailbox with it", async () => {
-  serve({ emailCode: true });
+  // A server without code sign-in (the capabilities lack it) still verifies by code afterwards.
+  serve({ emailCode: false });
   client.signUp.email.mockResolvedValue({ data: { token: null, user: {} }, error: null });
   client.emailOtp.verifyEmail.mockResolvedValue({ data: { user: {} }, error: null });
   await render("up");
-  await act(async () => button("Use a password")!.click());
   type("#email", "ada@corp.test");
   type("#new-password", "correct-horse");
   await submit();
@@ -264,15 +265,42 @@ it("shows a server refusal on signup", async () => {
   expect(host.querySelector('[role="alert"]')?.textContent).toBe("Registration is closed");
 });
 
-it("shows Google and Microsoft only when the server has them", async () => {
-  serve({ social: ["google"] });
+it("shows the one SSO button, named by the server, only when it is configured", async () => {
+  serve({ sso: { name: "Contoso" } });
   client.signIn.social.mockResolvedValue({ data: {}, error: null });
   await render("in");
-  expect(button("Continue with Microsoft")).toBeUndefined();
-  await act(async () => button("Continue with Google")!.click());
-  expect(client.signIn.social).toHaveBeenCalledWith(
-    expect.objectContaining({ provider: "google" }),
+  expect(button(/google|microsoft/i)).toBeUndefined();
+  await act(async () => button("Continue with Contoso")!.click());
+  expect(client.signIn.social).toHaveBeenCalledWith(expect.objectContaining({ provider: "sso" }));
+});
+
+it("offers no password route on sign-up when email codes are available", async () => {
+  serve({ emailCode: true });
+  await render("up");
+  expect(button("Use a password")).toBeUndefined();
+  expect(host.querySelector("#new-password")).toBeNull();
+});
+
+it("asks for the setup token while the owner seat is open, and sends it with the sign-in", async () => {
+  serve({ ownerSetup: true, signupMode: "approval" });
+  client.signUp.email.mockResolvedValue({ data: { token: "t", user: {} }, error: null });
+  await render("up");
+  expect(host.querySelector("#owner-token")).not.toBeNull();
+  type("#email", "owner@corp.test");
+  type("#new-password", "correct-horse");
+  type("#owner-token", "operator-token");
+  await submit();
+  expect(client.signUp.email).toHaveBeenCalledWith(
+    expect.objectContaining({
+      fetchOptions: { headers: { "x-owner-setup-token": "operator-token" } },
+    }),
   );
+});
+
+it("does not show the setup token field once an owner exists", async () => {
+  serve({ ownerSetup: false });
+  await render("up");
+  expect(host.querySelector("#owner-token")).toBeNull();
 });
 
 it("hides the sign-up link while registration is closed", async () => {

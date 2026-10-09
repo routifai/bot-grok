@@ -42,7 +42,12 @@ export default function SignIn() {
   const tokens = useMobileTokens();
   const router = useRouter();
   const { mode: requestedMode } = useLocalSearchParams<{ mode?: string | string[] }>();
-  const [mode, setMode] = useState<AuthMode>(() => initialAuthMode(requestedMode));
+  // Signing up proves the mailbox with an emailed code, which this screen has no step for yet,
+  // so new accounts are created on the web.
+  const [mode, setMode] = useState<AuthMode>(() => {
+    const initial = initialAuthMode(requestedMode);
+    return initial === "up" ? "in" : initial;
+  });
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -288,7 +293,7 @@ export default function SignIn() {
                   >
                     <Text style={{ color: tokens.mutedForeground, fontSize: 15 }}>
                       {mode === "in"
-                        ? t("Don’t have an account?")
+                        ? t("Sign up on the web")
                         : mode === "up"
                           ? t("Already have an account?")
                           : ""}
@@ -300,7 +305,7 @@ export default function SignIn() {
                         setMode((current) => (current === "in" ? "up" : "in"));
                         setError(null);
                       }}
-                      style={{ marginLeft: 5 }}
+                      style={{ marginLeft: 5, display: mode === "in" ? "none" : "flex" }}
                     >
                       <Text style={{ color: tokens.foreground, fontSize: 15, fontWeight: "600" }}>
                         {mode === "in"
