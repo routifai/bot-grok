@@ -119,7 +119,9 @@ cpus="$(as_deploy nproc)"
 } | as_deploy 'umask 077; cat >~/nova/.env.computers; echo "DOCKER_GID=$(stat -c %g /var/run/docker.sock)" >>~/nova/.env.computers'
 
 step "5/6 Build and start (the Computer image takes a while the first time)"
-as_deploy 'cd ~/nova && sudo docker compose --env-file .env.computers -f infra/compose/docker-compose.computers.yml up -d --build && sudo docker builder prune -f >/dev/null'
+# Caddy bind-mounts its config from ~/nova, which step 2 replaces with a fresh copy; recreate it
+# so it reads the new file instead of the old, deleted one.
+as_deploy 'cd ~/nova && sudo docker compose --env-file .env.computers -f infra/compose/docker-compose.computers.yml up -d --build && sudo docker compose --env-file .env.computers -f infra/compose/docker-compose.computers.yml up -d --force-recreate caddy && sudo docker builder prune -f >/dev/null'
 
 step "6/6 Check https://${COMPUTERS_HOST}"
 for _ in $(seq 1 30); do
