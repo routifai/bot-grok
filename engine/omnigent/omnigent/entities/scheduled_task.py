@@ -41,6 +41,10 @@ class ScheduledTask:
     :param timezone: IANA timezone the trigger is evaluated in,
         e.g. ``"America/Los_Angeles"``.
     :param created_at: Unix epoch seconds at row creation.
+    :param anchor_at: Unix epoch seconds fixing the phase of ``INTERVAL>1`` rules and holding any
+        rule back until its day arrives: midnight of the person's start date in ``timezone``, else
+        the moment the rule was set (creation, or the update that changed ``rrule``). ``None`` on
+        rows that predate the column; read it through :attr:`anchor_epoch`.
     :param model_override: Per-task LLM model override, e.g.
         ``"claude-opus-4-7"``. ``None`` means use the agent default.
     :param reasoning_effort: Per-task reasoning-effort hint, e.g. ``"high"``.
@@ -105,6 +109,12 @@ class ScheduledTask:
     parent_session_id: str | None = None
     agent_type: str | None = None
     kind: str | None = None
+    anchor_at: int | None = None
+
+    @property
+    def anchor_epoch(self) -> int:
+        """The instant the rule's phase is counted from (``anchor_at``, else ``created_at``)."""
+        return self.anchor_at if self.anchor_at is not None else self.created_at
 
 
 @dataclass

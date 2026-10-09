@@ -4,6 +4,7 @@ from pathlib import Path
 
 import sqlalchemy as sa
 from alembic import command
+from alembic.script import ScriptDirectory
 
 from omnigent.db.utils import _build_alembic_config, get_or_create_engine
 
@@ -22,7 +23,8 @@ def test_drop_file_index_migration_round_trips(tmp_path: Path) -> None:
     config = _build_alembic_config(uri)
     with engine.begin() as connection:
         config.attributes["connection"] = connection
-        command.upgrade(config, REVISION)
+        command.upgrade(config, "head")
+        assert ScriptDirectory.from_config(config).get_revision(REVISION) is not None
     assert not INDEX_TABLES & _tables(engine)
     assert "artifact_publications" in _tables(engine)
 
@@ -35,5 +37,5 @@ def test_drop_file_index_migration_round_trips(tmp_path: Path) -> None:
 
     with engine.begin() as connection:
         config.attributes["connection"] = connection
-        command.upgrade(config, REVISION)
+        command.upgrade(config, "head")
     assert not INDEX_TABLES & _tables(engine)

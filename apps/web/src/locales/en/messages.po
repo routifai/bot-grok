@@ -757,6 +757,9 @@ msgstr "Changing…"
 msgid "Channels"
 msgstr "Channels"
 
+msgid "Chart"
+msgstr "Chart"
+
 msgid "Chart failed to render: {error}"
 msgstr "Chart failed to render: {error}"
 
@@ -3053,6 +3056,9 @@ msgstr "Preview isn't available for this file type — download it to view it."
 msgid "Preview isn't available for this file type."
 msgstr "Preview isn't available for this file type."
 
+msgid "Preview unavailable"
+msgstr "Preview unavailable"
+
 msgid "Previous slide"
 msgstr "Previous slide"
 
@@ -3738,6 +3744,24 @@ msgstr "Sound on"
 msgid "Source"
 msgstr "Source"
 
+#. placeholder {0}: source.file
+msgid "Source: {0}"
+msgstr "Source: {0}"
+
+#. placeholder {0}: source.file
+#. placeholder {1}: source.rows
+msgid "Source: {0} (first {1} rows)"
+msgstr "Source: {0} (first {1} rows)"
+
+#. placeholder {0}: source.file
+#. placeholder {1}: source.rows
+msgid "Source: {0} (latest {1} rows)"
+msgstr "Source: {0} (latest {1} rows)"
+
+#. placeholder {0}: source.file
+msgid "Source: {0} (long file, only its start was read)"
+msgstr "Source: {0} (long file, only its start was read)"
+
 msgid "Sources"
 msgstr "Sources"
 
@@ -3855,6 +3879,9 @@ msgstr "subagent"
 
 msgid "Submit"
 msgstr "Submit"
+
+msgid "Suggested follow-ups"
+msgstr "Suggested follow-ups"
 
 #. placeholder {0}: formatSum(stats.sum)
 msgid "Sum {0}"

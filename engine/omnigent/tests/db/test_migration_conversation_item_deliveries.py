@@ -8,7 +8,7 @@ from alembic.script import ScriptDirectory
 
 from omnigent.db.utils import _build_alembic_config, get_or_create_engine
 
-PREVIOUS = "kn2b3c4d5e6f"
+PREVIOUS = "sa1b2c3d4e5f"
 REVISION = "kn3b4c5d6e7f"
 TABLE = "conversation_item_deliveries"
 

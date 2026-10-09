@@ -71,6 +71,7 @@ def _to_entity(row: SqlScheduledTask) -> ScheduledTask:
         parent_session_id=row.parent_session_id,
         agent_type=row.agent_type,
         kind=row.kind,
+        anchor_at=row.anchor_at,
     )
 
 
@@ -152,8 +153,13 @@ class SqlAlchemyScheduledTaskStore(ScheduledTaskStore):
         parent_session_id: str | None = None,
         agent_type: str | None = None,
         kind: str | None = None,
+        anchor_at: int | None = None,
     ) -> ScheduledTask:
-        """Insert a new scheduled task with a required recurring ``rrule``."""
+        """Insert a new scheduled task with a required recurring ``rrule``.
+
+        ``anchor_at`` is the start date's midnight in the task timezone; without it the rule is
+        anchored at creation.
+        """
         created_at = now_epoch()
 
         def write(session: Session) -> ScheduledTask:
@@ -181,6 +187,7 @@ class SqlAlchemyScheduledTaskStore(ScheduledTaskStore):
                 parent_session_id=parent_session_id,
                 agent_type=agent_type,
                 kind=kind,
+                anchor_at=anchor_at if anchor_at is not None else created_at,
                 created_at=created_at,
                 updated_at=None,
             )
@@ -298,8 +305,12 @@ class SqlAlchemyScheduledTaskStore(ScheduledTaskStore):
         last_run_conversation_id: str | None = _UNSET,
         parent_session_id: str | None = _UNSET,
         agent_type: str | None = _UNSET,
+        anchor_at: int | None = None,
     ) -> ScheduledTask | None:
         """Update mutable fields.
+
+        ``anchor_at`` moves the rule's anchor to that instant. When ``rrule`` changes without
+        one, the anchor restarts at this update, so an edited interval rule counts from now.
 
         ``None`` leaves most fields unchanged. For the per-task overrides
         (``model_override``, ``reasoning_effort``, ``permission_mode``),
@@ -331,6 +342,10 @@ class SqlAlchemyScheduledTaskStore(ScheduledTaskStore):
                 changed = True
             if rrule is not None and row.rrule != rrule:
                 row.rrule = rrule
+                row.anchor_at = updated_at
+                changed = True
+            if anchor_at is not None and row.anchor_at != anchor_at:
+                row.anchor_at = anchor_at
                 changed = True
             if agent_id is not None and row.agent_id != agent_id:
                 row.agent_id = agent_id

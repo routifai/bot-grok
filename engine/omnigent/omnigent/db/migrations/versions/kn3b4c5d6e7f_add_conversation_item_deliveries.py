@@ -1,7 +1,7 @@
 """Add conversation_item_deliveries: how each message sent to a session was taken.
 
 Revision ID: kn3b4c5d6e7f
-Revises: kn2b3c4d5e6f
+Revises: sa1b2c3d4e5f
 Create Date: 2026-10-09 22:00:00.000000
 
 A message sent while a turn runs is steered into it or queued behind it, then runs as a turn
@@ -20,7 +20,7 @@ from alembic import op
 from omnigent.db.db_models import Uuid16
 
 revision: str = "kn3b4c5d6e7f"
-down_revision: str | None = "kn2b3c4d5e6f"
+down_revision: str | None = "sa1b2c3d4e5f"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -3,6 +3,7 @@ import { engineAdminRouter } from "./features/admin/router.js";
 import { approvalsRouter } from "./features/approvals/router.js";
 import { appsRouter } from "./features/apps/router.js";
 import { artifactsRouter } from "./features/artifacts/router.js";
+import { chartsRouter } from "./features/charts/router.js";
 import { filesRouter } from "./features/computer/files-router.js";
 import { computerRouter } from "./features/computer/router.js";
 import { dailyNotesRouter } from "./features/daily-notes/router.js";
@@ -45,6 +46,7 @@ export function createRouter(deps: RouterDeps) {
     ...approvalsRouter(c),
     ...artifactsRouter(c),
     ...botsRouter(c),
+    ...chartsRouter(c),
     ...computerRouter(c),
     ...dailyNotesRouter(c),
     ...decksRouter(c),

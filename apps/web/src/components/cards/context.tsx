@@ -5,6 +5,8 @@ import { type ResolvedReplyCard, replyCardKey, resolveReplyCards } from "./threa
 /** How a card talks back: the person's next message, through the thread's own send path. */
 const SendContext = createContext<((text: string) => void) | null>(null);
 const ThreadContext = createContext<Map<string, ResolvedReplyCard> | null>(null);
+/** Whether the Muse is working on this thread; follow-up chips stay hidden meanwhile. */
+const RunningContext = createContext(false);
 
 export function ReplyCardSendProvider({
   send,
@@ -19,16 +21,21 @@ export function ReplyCardSendProvider({
 /** Wrap a transcript once; its cards then update in place and lock once answered. */
 export function ReplyCardThreadProvider({
   messages,
+  running = false,
   children,
 }: {
   messages: readonly ThreadMessage[];
+  /** The Muse is working: follow-up chips are hidden until it settles. */
+  running?: boolean;
   children: ReactNode;
 }) {
   const resolved = useMemo(() => resolveReplyCards(messages), [messages]);
   const latest = useMemo(() => latestSavedFiles(messages), [messages]);
   return (
     <ThreadContext.Provider value={resolved}>
-      <LatestFilesContext.Provider value={latest}>{children}</LatestFilesContext.Provider>
+      <RunningContext.Provider value={running}>
+        <LatestFilesContext.Provider value={latest}>{children}</LatestFilesContext.Provider>
+      </RunningContext.Provider>
     </ThreadContext.Provider>
   );
 }
@@ -85,6 +92,8 @@ export function ReplyCardBotProvider({
 }
 
 export const useReplyCardBotId = () => useContext(BotIdContext);
+
+export const useReplyCardRunning = () => useContext(RunningContext);
 
 export const useReplyCardSend = () => useContext(SendContext);
 

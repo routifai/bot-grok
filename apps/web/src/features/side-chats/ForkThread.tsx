@@ -8,6 +8,7 @@ import {
   ReplyCardSendProvider,
   ReplyCardThreadProvider,
 } from "../../components/cards/context";
+import { hiddenFollowUpMessageIds } from "../../components/cards/thread";
 import type { ArtifactTarget } from "../../lib/artifact-open";
 import { RestoreButton } from "../../pages/muse/chrome/RestoreButton";
 import { MessageHoverActions } from "../../pages/muse/conversation/MessageHoverActions";
@@ -172,6 +173,10 @@ export function ForkThread({
   );
   const lastRole = messages.at(-1)?.role;
   const working = status === "live" && lastRole === "user";
+  const shownMessages = useMemo(() => {
+    const hidden = hiddenFollowUpMessageIds(messages, working);
+    return hidden.size === 0 ? messages : messages.filter((m) => !hidden.has(m.id));
+  }, [messages, working]);
 
   // Opens at the top, with the anchor; follows new replies while the person is near the end.
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -261,7 +266,7 @@ export function ForkThread({
         {anchor ? <LiftedMessage message={anchor} /> : null}
 
         <ReplyCardBotProvider botId={bot.id}>
-          <ReplyCardThreadProvider messages={messages}>
+          <ReplyCardThreadProvider messages={messages} running={working}>
             <ReplyCardSendProvider send={(text) => void thread.send(text)}>
               <div className="relative flex flex-col gap-3 ps-8 sm:ps-[52px]">
                 <span
@@ -276,7 +281,7 @@ export function ForkThread({
                     <Spinner className="size-3.5" />
                   </div>
                 ) : null}
-                {messages.map((message, index) => (
+                {shownMessages.map((message, index) => (
                   <ThreadReply
                     key={message.id}
                     message={message}
