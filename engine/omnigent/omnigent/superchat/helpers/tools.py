@@ -43,6 +43,14 @@ class StartHelperTool(Tool):
                             "type": "string",
                             "description": "The complete brief for the Helper.",
                         },
+                        "title": {
+                            "type": "string",
+                            "description": (
+                                "A short title the person will read for this work, 3 to 6 "
+                                "words, in their terms (e.g. 'Counting words in your PDFs'). "
+                                "Not the brief."
+                            ),
+                        },
                         "model": {
                             "type": "string",
                             "enum": list(HELPER_MODEL_CHOICES),
