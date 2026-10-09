@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { listVault, saveVaultEntry } from "./vault.js";
+import { listVault, saveVaultEntry } from "./service.js";
 
 const env = { OMNIGENT_URL: "http://engine.test", OMNIGENT_PROXY_SECRET: "k" } as NodeJS.ProcessEnv;
 const actor = { userId: "u1", spaceId: "s1" } as never;

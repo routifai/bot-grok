@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Shimmer } from "../../../components/ai/primitives";
-import { WorkingDot } from "../chrome/ActivityLine";
-import { formatDuration } from "../chrome/activityGrouping";
+import { WorkingDot } from "../../../features/activity/ActivityLine";
+import { formatDuration } from "../../../features/activity/activityGrouping";
 import { useNow } from "../chrome/useNow";
 
 /**

@@ -1,6 +1,6 @@
 import { ORPCError } from "@orpc/client";
 import { useSyncExternalStore } from "react";
-import { rpc } from "../../../lib/rpc";
+import { rpc } from "../../lib/rpc";
 import type { ActivityWire } from "./ActivityRunDialog";
 import { type ActivitiesState, ActivityFeed } from "./activityFeed";
 

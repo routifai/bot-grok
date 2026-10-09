@@ -1,10 +1,9 @@
 import { useLingui } from "@lingui/react/macro";
 import { ORPCError } from "@orpc/client";
-import { useEffect, useRef, useState } from "react";
-import { DaysSection, type DaysWire } from "./DaysSection";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { PanelRowSkeletonList } from "../../pages/muse/chrome/PanelSkeleton";
 import { type ClaimsWire, type MemoryClaim, MemorySections } from "./MemorySections";
 import { addressMemoryItem, type MemoryProfileSection, parseMemoryProfile } from "./memoryProfile";
-import { PanelRowSkeletonList } from "./PanelSkeleton";
 
 // `NOT_IMPLEMENTED`: `memory.profile` isn't served in this environment. `NOT_FOUND`: this
 // Muse has no Conversation yet (a brand new Muse) — both read as "nothing remembered
@@ -17,8 +16,7 @@ const isEmptyBackend = (error: unknown) =>
  * (ActivityRunDialog.tsx) and `SideChatWire` (SideChatSession.tsx). */
 export type MemoryWire = {
   profile: (input: { botId: string }) => Promise<{ profile: string | null }>;
-} & Partial<DaysWire> &
-  Partial<ClaimsWire>;
+} & Partial<ClaimsWire>;
 
 type MemoryState =
   | { status: "loading" }
@@ -30,17 +28,20 @@ type MemoryState =
  * (`rpc.memory.profile`) — what it remembers about the person, in its own words, grouped
  * under the headings the engine gives it. When the claim wire is there, the tab shows the
  * editable sections instead (About you, Commitments, Projects & focus, People, How Nova works
- * with you; see MemorySections.tsx). The Days section lists recent daily notes, editable inline; Memory settings
+ * with you; see MemorySections.tsx). The Days section (daily notes, supplied through `days`) sits under them; Memory settings
  * (apps/web/src/pages/muse/settings/MemoryPanel.tsx) owns changing it.
  */
-export function MemoryTab({ botId, wire }: { botId: string; wire: MemoryWire }) {
-  const days =
-    wire.dailyNotes && wire.saveDailyNote ? (
-      <DaysSection
-        botId={botId}
-        wire={{ dailyNotes: wire.dailyNotes, saveDailyNote: wire.saveDailyNote }}
-      />
-    ) : null;
+export function MemoryTab({
+  botId,
+  wire,
+  days = null,
+}: {
+  botId: string;
+  wire: MemoryWire;
+  /** The daily-notes (Days) section, owned by the daily-notes feature and composed in by the
+   * context panel; shown under the memory sections. */
+  days?: ReactNode;
+}) {
   const { t } = useLingui();
   const [state, setState] = useState<MemoryState>({ status: "loading" });
   const generation = useRef(0);

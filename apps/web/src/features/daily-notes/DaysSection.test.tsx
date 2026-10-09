@@ -6,9 +6,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 
 vi.mock("react-dom/client", async (orig) =>
-  (await import("../../../test/i18n")).withI18nRoot(
-    await orig<typeof import("react-dom/client")>(),
-  ),
+  (await import("../../test/i18n")).withI18nRoot(await orig<typeof import("react-dom/client")>()),
 );
 
 import { type DailyNote, DaysSection } from "./DaysSection";
@@ -51,12 +49,12 @@ const button = (container: HTMLElement, label: string) =>
   [...container.querySelectorAll("button")].find((b) => b.textContent === label) as HTMLElement;
 
 it("lists a day and saves an inline edit through the wire", async () => {
-  const saveDailyNote = vi.fn(async (input: { sections: Record<string, string> }) => ({
+  const save = vi.fn(async (input: { sections: Record<string, string> }) => ({
     ...note,
     sections: input.sections,
     editedByPerson: true,
   }));
-  const container = await mount({ dailyNotes: async () => ({ notes: [note] }), saveDailyNote });
+  const container = await mount({ list: async () => ({ notes: [note] }), save });
   expect(container.textContent).toContain("- send deck");
 
   await act(async () => button(container, "Edit").click());
@@ -70,19 +68,17 @@ it("lists a day and saves an inline edit through the wire", async () => {
   });
   await act(async () => button(container, "Save").click());
 
-  expect(saveDailyNote).toHaveBeenCalledWith(
-    expect.objectContaining({ botId: "b1", date: "2026-10-04" }),
-  );
+  expect(save).toHaveBeenCalledWith(expect.objectContaining({ botId: "b1", date: "2026-10-04" }));
   expect(container.textContent).toContain("- send deck monday");
   expect(container.querySelector("textarea")).toBeNull();
 });
 
 it("renders nothing when the load fails", async () => {
   const container = await mount({
-    dailyNotes: async () => {
+    list: async () => {
       throw new Error("down");
     },
-    saveDailyNote: vi.fn(),
+    save: vi.fn(),
   });
   expect(container.textContent).toBe("");
 });

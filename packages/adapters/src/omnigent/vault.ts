@@ -1,5 +1,10 @@
-import type { OmnigentClientConfig } from "./core.js";
-import { errorCodeFromBody, OmnigentApiError, omnigentHeaders, throwOnError } from "./core.js";
+import type { OmnigentClientConfig } from "./client/core.js";
+import {
+  errorCodeFromBody,
+  OmnigentApiError,
+  omnigentHeaders,
+  throwOnError,
+} from "./client/core.js";
 
 /** A saved login as the engine lists it (`routes/vault.py` `entry_to_response`): never a value. */
 export interface OmnigentVaultEntry {

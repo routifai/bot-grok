@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapActivity, mapActivityStep, plainFailureOutcome } from "./activities.js";
+import { mapActivity, mapActivityStep, plainFailureOutcome } from "./activity.js";
 
 describe("mapActivityStep", () => {
   it("maps snake_case fields to camelCase and defaults a missing tool/detail", () => {

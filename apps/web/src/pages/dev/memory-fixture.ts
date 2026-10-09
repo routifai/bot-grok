@@ -1,5 +1,5 @@
-import type { DailyNote } from "../muse/chrome/DaysSection";
-import type { MemoryClaim } from "../muse/chrome/MemorySections";
+import type { DailyNote } from "../../features/daily-notes";
+import type { MemoryClaim } from "../../features/memory";
 
 export const DEV_MEMORY_BOT_ID = "dev-memory-muse";
 

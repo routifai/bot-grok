@@ -1,5 +1,5 @@
 import type { Activity, ActivityStatus } from "@nova/contracts";
-import { markdownToLine } from "../../../lib/markdown-plain-text";
+import { markdownToLine } from "../../lib/markdown-plain-text";
 
 // Pure helpers for the Activity panel (docs/super-chat/README.md "The Activity panel";
 // docs/super-chat/WIRING.md "Activity panel"): grouping by day, the line shown under a title,

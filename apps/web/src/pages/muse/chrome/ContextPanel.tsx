@@ -6,6 +6,16 @@ import { cn } from "@nova/ui-web";
 import { Bell, BookmarkPlus, HelpCircle, ShieldCheck, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { MuseRailView } from "../../../components/AppRail";
+import {
+  type ActivitiesState,
+  ActivityPanel,
+  type ActivityWire,
+  GROUP_LABEL,
+  LIVE_ACTIVITY_WIRE,
+  useActivities,
+} from "../../../features/activity";
+import { DaysSection, type DaysWire } from "../../../features/daily-notes";
+import { MemoryTab, type MemoryWire } from "../../../features/memory";
 import { formatRelativeTime } from "../../../lib/relative-time";
 import { rpc } from "../../../lib/rpc";
 import { AskDecisionCard, useAsks } from "../asks";
@@ -17,17 +27,13 @@ import {
   taskCounts,
 } from "../goals/format";
 import { StatusPill } from "../ui";
-import { ActivityPanel, GROUP_LABEL } from "./ActivityPanel";
-import type { ActivityWire } from "./ActivityRunDialog";
 import {
   type ConnectionLatch,
   INITIAL_CONNECTION_LATCH,
   nextConnectionLatch,
 } from "./connectionStatus";
-import { MemoryTab, type MemoryWire } from "./MemoryTab";
 import { ChevronGlyph } from "./NovaGlyphs";
 import { NovaTile, type TileTone } from "./NovaTile";
-import { type ActivitiesState, LIVE_ACTIVITY_WIRE, useActivities } from "./useActivities";
 import type { ChatListState } from "./useChatList";
 
 // The right-hand context panel beside the Conversation (docs/muse/DESIGN.md, "Conversation"):
@@ -481,6 +487,7 @@ export function ContextPanel({
   chatListState,
   activitiesOverride,
   memoryWire,
+  daysWire,
   onNavigate,
   onOpenWaiting,
 }: {
@@ -501,6 +508,8 @@ export function ContextPanel({
   };
   /** Dev-preview seam only: a fixture Memory wire instead of `rpc.memory.profile`. */
   memoryWire?: MemoryWire;
+  /** Dev-preview seam only: a fixture daily-notes wire instead of `rpc.dailyNotes`. */
+  daysWire?: DaysWire;
   onNavigate: (view: MuseRailView) => void;
   onOpenWaiting: () => void;
 }) {
@@ -516,8 +525,13 @@ export function ContextPanel({
       claims: (input) => rpc.memory.claims(input),
       editClaim: (input) => rpc.memory.editClaim(input),
       forgetClaim: (input) => rpc.memory.forgetClaim(input),
-      dailyNotes: (input) => rpc.memory.dailyNotes(input),
-      saveDailyNote: (input) => rpc.memory.saveDailyNote(input),
+    }),
+    [],
+  );
+  const liveDaysWire = useMemo<DaysWire>(
+    () => ({
+      list: (input) => rpc.dailyNotes.list(input),
+      save: (input) => rpc.dailyNotes.save(input),
     }),
     [],
   );
@@ -618,7 +632,11 @@ export function ContextPanel({
             />
           </div>
         ) : tab === "memory" ? (
-          <MemoryTab botId={botId} wire={memoryWireToUse} />
+          <MemoryTab
+            botId={botId}
+            wire={memoryWireToUse}
+            days={<DaysSection botId={botId} wire={daysWire ?? liveDaysWire} />}
+          />
         ) : contextEmpty ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 py-8 text-center">
             <p className="text-[12.5px] text-ink-3">{tt`You're all caught up.`}</p>

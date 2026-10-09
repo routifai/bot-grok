@@ -23,7 +23,8 @@ import {
   UserRound,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { MemoryEmptyLine, MemorySection } from "./MemorySection";
+import { NovaTile } from "../../pages/muse/chrome/NovaTile";
+import { MemoryEmptyLine, MemorySection } from "../../pages/muse/ui/MemorySection";
 import {
   commitmentLabel,
   isOpenQuestion,
@@ -33,7 +34,6 @@ import {
   parsePerson,
   questionLabel,
 } from "./memoryProfile";
-import { NovaTile } from "./NovaTile";
 
 export type MemoryClaim = {
   id: string;

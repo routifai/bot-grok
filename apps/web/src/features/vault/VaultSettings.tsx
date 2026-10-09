@@ -3,7 +3,7 @@ import { Button } from "@nova/ui-web";
 import { useEffect, useState } from "react";
 import { hostOf } from "../../components/cards/links";
 import { rpc } from "../../lib/rpc";
-import { MUSE_INSET_GROUP } from "./ui";
+import { MUSE_INSET_GROUP } from "../../pages/muse/ui";
 
 type VaultEntry = Awaited<ReturnType<typeof rpc.vault.list>>["entries"][number];
 

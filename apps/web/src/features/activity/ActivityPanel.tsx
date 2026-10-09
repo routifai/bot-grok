@@ -3,6 +3,8 @@ import type { Activity } from "@nova/contracts";
 import { presentActivityTitle } from "@nova/core";
 import { Button } from "@nova/ui-web";
 import { useEffect, useMemo, useState } from "react";
+import { PanelRowSkeletonList } from "../../pages/muse/chrome/PanelSkeleton";
+import { useNow } from "../../pages/muse/chrome/useNow";
 import { ActivityBranch, ActivityLine } from "./ActivityLine";
 import { ActivityRunDialog, type ActivityWire } from "./ActivityRunDialog";
 import {
@@ -19,9 +21,7 @@ import {
   isNodeRunning,
   latestStepTitle,
 } from "./activityTree";
-import { PanelRowSkeletonList } from "./PanelSkeleton";
 import type { ActivitiesState } from "./useActivities";
-import { useNow } from "./useNow";
 
 /** One Activity as the "Working" line (ActivityLine): a status dot, its title, and a mono
  * figure on the right. Working, the line under the title is "Now · <live step>" and the figure

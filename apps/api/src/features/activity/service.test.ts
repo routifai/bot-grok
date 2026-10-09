@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@nova/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { watchActivities } from "./activities.js";
+import { watchActivities } from "./service.js";
 
 const env = { OMNIGENT_URL: "http://engine.test", OMNIGENT_PROXY_SECRET: "proxy" };
 const actor = { userId: "user-1", spaceId: "space-1" } as never;

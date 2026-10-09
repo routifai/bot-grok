@@ -1,8 +1,12 @@
+import { activityRouter } from "./features/activity/router.js";
 import { engineAdminRouter } from "./features/admin/router.js";
 import { appsRouter } from "./features/apps/router.js";
 import { artifactsRouter } from "./features/artifacts/router.js";
+import { dailyNotesRouter } from "./features/daily-notes/router.js";
+import { memoryRouter } from "./features/memory/router.js";
 import { engineModelsRouter } from "./features/models/router.js";
 import { sheetsRouter } from "./features/sheets/router.js";
+import { vaultRouter } from "./features/vault/router.js";
 import { accountRouter } from "./routers/account.js";
 import { approvalsRouter } from "./routers/approvals.js";
 import { botsRouter } from "./routers/bots.js";
@@ -15,7 +19,6 @@ import { filesRouter } from "./routers/files.js";
 import { goalsRouter } from "./routers/goals.js";
 import { integrationsRouter } from "./routers/integrations.js";
 import { mcpRouter } from "./routers/mcp.js";
-import { memoryRouter } from "./routers/memory.js";
 import { messagingRouter } from "./routers/messaging.js";
 import { modelsRouter } from "./routers/models.js";
 import { scheduledRouter } from "./routers/scheduled.js";
@@ -30,11 +33,13 @@ export function createRouter(deps: RouterDeps) {
   const c = createRouterContext(deps);
   return c.os.router({
     ...accountRouter(c),
+    ...activityRouter(c),
     ...appsRouter(c),
     ...approvalsRouter(c),
     ...artifactsRouter(c),
     ...botsRouter(c),
     ...computerRouter(c),
+    ...dailyNotesRouter(c),
     ...engineAdminRouter(c),
     ...engineModelsRouter(c),
     ...connectionsRouter(c),
@@ -51,5 +56,6 @@ export function createRouter(deps: RouterDeps) {
     ...sheetsRouter(c),
     ...skillsRouter(c),
     ...threadsRouter(c),
+    ...vaultRouter(c),
   });
 }

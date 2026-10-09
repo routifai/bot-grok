@@ -627,8 +627,8 @@ session (`engine/omnigent/omnigent/server/routes/session_memory.py`):
 - `GET .../memory/claims/{claim_id}` and `.../explain`, `GET .../memory/search?query=&kind=&limit=`,
   `POST .../memory/remember`, `GET .../memory/profile`.
 
-Nova relays these through its API (`apps/api/src/routers/memory.ts`,
-`packages/adapters/src/omnigent/client/memory.ts`) and redacts the profile, claims and notes before
+Nova relays these through its API (`apps/api/src/features/memory/router.ts`,
+`packages/adapters/src/omnigent/memory.ts`) and redacts the profile, claims and notes before
 showing them.
 
 ### Daily notes

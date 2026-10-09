@@ -1,11 +1,12 @@
+import { eventIterator, oc } from "@orpc/contract";
 import * as z from "zod";
-import { Id } from "./ids.js";
+import { Id } from "../ids.js";
 
 // The Activity panel (CONTEXT.md "Activity", "Activity Feed", "Step"; docs/super-chat/README.md
 // "The Activity panel"): every piece of multi-step work the Muse did — a Conversation or Side
 // Chat turn that used tools, or a Helper's whole task. Derived by Omnigent on read
 // (`GET /v1/sessions/{id}/activities`, engine/omnigent/rollover/SUPERSIDE-CHAT.md) and passed
-// through by `activities.list`/`activities.get` (packages/contracts/src/rpc.ts).
+// through by `activities.list`/`activities.get` (this file).
 
 export const ActivityKindSchema = z.enum(["turn", "sub_agent"]);
 export type ActivityKind = z.infer<typeof ActivityKindSchema>;
@@ -76,3 +77,22 @@ export type ActivityPage = z.infer<typeof ActivityPageSchema>;
  * means the watch is live; `heartbeat` only keeps the connection from idling out. */
 export const ActivityChangedSchema = z.object({ type: z.enum(["changed", "heartbeat"]) });
 export type ActivityChanged = z.infer<typeof ActivityChangedSchema>;
+
+export const activityContract = {
+  activities: {
+    list: oc
+      .input(
+        z.object({
+          botId: Id,
+          /** Epoch seconds; only Activities started strictly before this. */
+          before: z.number().int().nonnegative().optional(),
+          limit: z.number().int().positive().max(100).optional(),
+        }),
+      )
+      .output(ActivityPageSchema),
+    get: oc.input(z.object({ botId: Id, activityId: z.string().min(1) })).output(ActivitySchema),
+    /** Live signal: one event on connect and one each time the Activity Feed may have changed
+     * (a Helper started, stepped, settled). Carries no content; the client re-reads `list`. */
+    watch: oc.input(z.object({ botId: Id })).output(eventIterator(ActivityChangedSchema)),
+  },
+};

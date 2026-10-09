@@ -5,11 +5,11 @@ import { presentActivityTitle, presentStep } from "@nova/core";
 import { Button, cn, Dialog, DialogContent } from "@nova/ui-web";
 import { ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { RunStatusDot } from "../../pages/muse/chrome/RunStatusDot";
+import { MessageRow } from "../../pages/muse/chrome/SideChatSession";
+import { ACTIVITY_SOURCE_ICON, TOOL_ICON_COMPONENT } from "../../pages/muse/chrome/toolIcons";
 import { ActivityIconTile } from "./ActivityIconTile";
 import { formatClockTime, formatDayAndTime, isHelperActivity } from "./activityGrouping";
-import { RunStatusDot } from "./RunStatusDot";
-import { MessageRow } from "./SideChatSession";
-import { ACTIVITY_SOURCE_ICON, TOOL_ICON_COMPONENT } from "./toolIcons";
 
 /** The Activity run page's wire: full detail (Steps) and, for a Helper, its messages —
  * kept explicit (not the `rpc` client) so the dev fixture page can supply fakes. */

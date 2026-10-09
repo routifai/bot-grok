@@ -3,9 +3,9 @@ import type { Activity, ActivitySource } from "@nova/contracts";
 import { cn } from "@nova/ui-web";
 import { CircleAlert, CircleSlash } from "lucide-react";
 import type { ReactNode } from "react";
-import { ChevronGlyph } from "./NovaGlyphs";
-import { NovaTile, type TileTone } from "./NovaTile";
-import { ACTIVITY_SOURCE_ICON } from "./toolIcons";
+import { ChevronGlyph } from "../../pages/muse/chrome/NovaGlyphs";
+import { NovaTile, type TileTone } from "../../pages/muse/chrome/NovaTile";
+import { ACTIVITY_SOURCE_ICON } from "../../pages/muse/chrome/toolIcons";
 
 /** Live work: a small accent dot with a slow opacity pulse (still under reduced motion). The
  * orb itself lives in one place only (components/ai/orb/placement.tsx). */

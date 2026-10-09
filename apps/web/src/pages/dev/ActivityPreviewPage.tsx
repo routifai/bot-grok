@@ -1,9 +1,8 @@
 import type { Activity, ThreadMessagePage } from "@nova/contracts";
 import { useMemo, useState } from "react";
-import type { ActivityWire } from "../muse/chrome/ActivityRunDialog";
+import type { ActivitiesState, ActivityWire } from "../../features/activity";
+import type { MemoryWire } from "../../features/memory";
 import { ContextPanel } from "../muse/chrome/ContextPanel";
-import type { MemoryWire } from "../muse/chrome/MemoryTab";
-import type { ActivitiesState } from "../muse/chrome/useActivities";
 import {
   activityDetail,
   DEV_ACTIVITY_BOT_ID,

@@ -1,8 +1,8 @@
 import type { ThreadMessage } from "@nova/contracts";
 import { useMemo } from "react";
+import { type MuseLiveRun, useMuseLiveState } from "../../pages/muse/chrome/useMuseLiveState";
 import { deriveNovaWork, type NovaWork } from "./novaWork";
 import { useActivities } from "./useActivities";
-import { type MuseLiveRun, useMuseLiveState } from "./useMuseLiveState";
 
 /** Nova's live work (novaWork.ts) from the shell's runs and the shared Activity feed. */
 export function useNovaWork({

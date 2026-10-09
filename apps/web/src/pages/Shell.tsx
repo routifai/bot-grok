@@ -42,6 +42,7 @@ import {
 } from "../components/ai/orb";
 import { ComputerUpdateProgress } from "../components/ComputerUpdateProgress";
 import { ArtifactPanelProvider } from "../components/cards/context";
+import { useNovaWork } from "../features/activity";
 import { appsExtension } from "../features/apps";
 import { LibraryScreen } from "../features/artifacts/LibraryScreen";
 import { ArtifactRegistryProvider } from "../features/artifacts/registry";
@@ -76,7 +77,6 @@ import { useBrowserNotifications } from "./muse/chrome/useBrowserNotifications";
 import { useChatList } from "./muse/chrome/useChatList";
 import { useCreateBot } from "./muse/chrome/useCreateBot";
 import type { MuseLiveRun } from "./muse/chrome/useMuseLiveState";
-import { useNovaWork } from "./muse/chrome/useNovaWork";
 import { useReplyAlerts } from "./muse/chrome/useReplyAlerts";
 import { useVoice } from "./muse/chrome/useVoice";
 import { ClearConversationHost } from "./muse/conversation/ClearConversationHost";

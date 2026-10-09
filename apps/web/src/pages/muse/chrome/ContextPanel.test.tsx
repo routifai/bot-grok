@@ -23,9 +23,8 @@ const api = vi.hoisted(() => ({
     claims: vi.fn(),
     editClaim: vi.fn(),
     forgetClaim: vi.fn(),
-    dailyNotes: vi.fn(),
-    saveDailyNote: vi.fn(),
   },
+  dailyNotes: { list: vi.fn(), save: vi.fn() },
   chats: { transcript: vi.fn() },
 }));
 vi.mock("../../../lib/rpc", () => ({ rpc: api }));
@@ -177,8 +176,8 @@ beforeEach(() => {
   api.memory.claims.mockReset().mockResolvedValue({ claims: [] });
   api.memory.editClaim.mockReset();
   api.memory.forgetClaim.mockReset();
-  api.memory.dailyNotes.mockReset().mockResolvedValue({ notes: [] });
-  api.memory.saveDailyNote.mockReset();
+  api.dailyNotes.list.mockReset().mockResolvedValue({ notes: [] });
+  api.dailyNotes.save.mockReset();
   api.chats.transcript.mockReset();
   stubLocalStorage();
   // jsdom doesn't implement matchMedia, and the progress ring's draw-in reads it directly

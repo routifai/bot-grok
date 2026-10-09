@@ -1,6 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
 import { useCallback, useEffect, useState } from "react";
-import { MemorySection } from "./MemorySection";
+import { MemorySection } from "../../pages/muse/ui/MemorySection";
 
 export type DailyNote = {
   date: string;
@@ -10,10 +10,10 @@ export type DailyNote = {
   updatedAt: number;
 };
 
-/** The Days section's wire: `rpc.memory.dailyNotes` / `rpc.memory.saveDailyNote`. */
+/** The Days section's wire: `rpc.dailyNotes.list` / `rpc.dailyNotes.save`. */
 export type DaysWire = {
-  dailyNotes: (input: { botId: string }) => Promise<{ notes: DailyNote[] }>;
-  saveDailyNote: (input: {
+  list: (input: { botId: string }) => Promise<{ notes: DailyNote[] }>;
+  save: (input: {
     botId: string;
     date: string;
     sections: Record<string, string>;
@@ -57,7 +57,7 @@ function Day({
     setSaving(true);
     setFailed(false);
     try {
-      onSaved(await wire.saveDailyNote({ botId, date: note.date, sections: draft }));
+      onSaved(await wire.save({ botId, date: note.date, sections: draft }));
       setDraft(null);
     } catch {
       setFailed(true);
@@ -145,7 +145,7 @@ export function DaysSection({ botId, wire }: { botId: string; wire: DaysWire }) 
   useEffect(() => {
     let live = true;
     wire
-      .dailyNotes({ botId })
+      .list({ botId })
       .then((result) => {
         if (live) setNotes(result.notes);
       })

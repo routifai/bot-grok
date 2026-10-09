@@ -6,9 +6,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 
 vi.mock("react-dom/client", async (orig) =>
-  (await import("../../../test/i18n")).withI18nRoot(
-    await orig<typeof import("react-dom/client")>(),
-  ),
+  (await import("../../test/i18n")).withI18nRoot(await orig<typeof import("react-dom/client")>()),
 );
 
 import { type ClaimsWire, groupClaims, type MemoryClaim } from "./MemorySections";
@@ -23,7 +21,7 @@ vi.mock("@lingui/react/macro", () => {
   };
 });
 
-vi.mock("./PanelSkeleton", () => ({ PanelRowSkeletonList: () => null }));
+vi.mock("../../pages/muse/chrome/PanelSkeleton", () => ({ PanelRowSkeletonList: () => null }));
 
 const claim = (over: Partial<MemoryClaim>): MemoryClaim => ({
   id: "c1",

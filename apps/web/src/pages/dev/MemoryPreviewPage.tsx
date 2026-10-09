@@ -1,7 +1,7 @@
 import { useMemo } from "react";
+import type { DaysWire } from "../../features/daily-notes";
+import type { MemoryClaim, MemoryWire } from "../../features/memory";
 import { ContextPanel } from "../muse/chrome/ContextPanel";
-import type { MemoryClaim } from "../muse/chrome/MemorySections";
-import type { MemoryWire } from "../muse/chrome/MemoryTab";
 import { DEV_CLAIMS, DEV_MEMORY_BOT_ID, DEV_NOTES } from "./memory-fixture";
 import { DEV_MUSE_NAME } from "./side-chat-fixture";
 
@@ -35,14 +35,19 @@ export function MemoryPreviewPage() {
         claims = claims.filter((c) => c.id !== input.claimId);
         return { ok: true as const };
       },
-      dailyNotes: async () => ({ notes: DEV_NOTES }),
-      saveDailyNote: async (input) => ({
+    };
+  }, []);
+  const daysWire = useMemo<DaysWire>(
+    () => ({
+      list: async () => ({ notes: DEV_NOTES }),
+      save: async (input) => ({
         ...(DEV_NOTES.find((n) => n.date === input.date) ?? (DEV_NOTES[0] as never)),
         sections: input.sections,
         editedByPerson: true,
       }),
-    };
-  }, []);
+    }),
+    [],
+  );
 
   return (
     <div
@@ -71,6 +76,7 @@ export function MemoryPreviewPage() {
           loadingEarlier: false,
         }}
         memoryWire={wire}
+        daysWire={daysWire}
       />
     </div>
   );
