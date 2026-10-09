@@ -111,4 +111,19 @@ describe("space Computers", () => {
     expect(rows.find((row) => row.id === "c1")!.providerRef).toBeNull();
     expect(rows.find((row) => row.id === "c2")!.providerRef).toBe("team:shared");
   });
+
+  it("stops each Computer on its own: one failure does not leave the others running", async () => {
+    const { prisma, sandbox, rows } = fixture([
+      { id: "c1", spaceId: "s1", providerRef: "team:s1", state: "running" },
+      { id: "c2", spaceId: "s1", providerRef: "group:g1", state: "running" },
+    ]);
+    vi.mocked(sandbox.stop).mockRejectedValueOnce(new Error("provider down"));
+    await expect(stopSpaceComputers({ prisma, sandbox }, ["s1"], "test")).rejects.toThrow(
+      /c1: provider down/,
+    );
+    expect(sandbox.stop).toHaveBeenCalledTimes(2);
+    // The one that failed stays "running": that is what the hourly retry looks for.
+    expect(rows.find((row) => row.id === "c1")!.state).toBe("running");
+    expect(rows.find((row) => row.id === "c2")!.state).toBe("stopped");
+  });
 });

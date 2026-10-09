@@ -34,6 +34,9 @@ model User {
   /// pending = signed up, awaiting admin approval (no space, Computer or model spend yet);
   /// suspended = no access. Everyone else, and every pre-existing user, is active.
   status                      UserStatus                   @default(active)
+  /// The engine account was paused when a space of theirs was quarantined; approving or discarding
+  /// resets the engine account instead of resuming it, restoring resumes it.
+  engineQuarantinePaused      Boolean                      @default(false)
   /// IANA zone name (e.g. "America/Toronto"); validated server-side, invalid values fall
   /// back to "UTC" (preferences.update, apps/api/src/router.ts). Drives quiet hours and
   /// the daily Followed-topic digest (packages/adapters/src/muse/feed-jobs.ts).

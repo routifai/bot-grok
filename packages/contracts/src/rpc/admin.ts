@@ -103,8 +103,10 @@ export const PendingSignupSchema = z.object({
   name: z.string(),
   /** False when the mailbox was never proved (no email provider, or not yet verified). */
   emailVerified: z.boolean(),
-  /** A previous space is kept, detached, until the admin restores or discards it. */
-  quarantined: z.boolean(),
+  /** Set while a previous space is kept, detached, for the admin to restore or discard. */
+  previousSpace: z
+    .object({ createdAt: z.string(), lastActive: z.string().nullable(), muses: z.number() })
+    .nullable(),
   createdAt: z.string(),
 });
 export type PendingSignup = z.infer<typeof PendingSignupSchema>;
