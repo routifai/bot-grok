@@ -2643,12 +2643,36 @@ def _sub_agent_host(
         if isinstance(name := getattr(sub, "name", None), str)
     )
     from omnigent.superchat.helpers.handlers import helper_roles_for
+    from omnigent.superchat.subagents import is_live_child_row
+
+    async def send(child_id: str, text: str) -> str:
+        return await _send_to_existing_session(
+            child_id,
+            text,
+            server_client=server_client,
+            conversation_id=conversation_id,
+            publish_event=publish_event,
+        )
+
+    async def running() -> list[tuple[str, str]]:
+        rows = await _list_child_sessions(
+            server_client=server_client, conversation_id=conversation_id
+        )
+        if not isinstance(rows, list):
+            return []
+        return [
+            (str(row["id"]), str(row.get("title") or ""))
+            for row in rows
+            if isinstance(row.get("id"), str) and is_live_child_row(row)
+        ]
 
     return SubAgentHost(
         declared_types=declared,
         child_titles=child_titles,
         spawn=spawn,
         helper_roles=helper_roles_for(agent_spec),
+        send=send,
+        running=running,
     )
 
 

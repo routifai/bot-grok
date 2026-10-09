@@ -190,7 +190,7 @@ async def test_no_steer_is_accepted_once_the_turn_is_over_or_before_it_started()
     executor, cli, seen = ClaudeSDKExecutor(), _Cli(), []
     assert await executor.enqueue_session_message(SESSION, "too early") is False
 
-    task, events = await _start_turn(executor, cli, seen)
+    task, _ = await _start_turn(executor, cli, seen)
     cli.print_(_Result("ok"))
     await asyncio.wait_for(task, 5)
 

@@ -82,12 +82,18 @@ class SubAgentHost:
         role in their ``params.helper_type``; Types without one keep their literal name.
     :param child_titles: Titles of the caller's existing child sessions.
     :param spawn: Starts one child through the generic sub-agent create path.
+    :param send: Posts a message to one of the caller's own children (``child id, text``): a
+        running child reads it at its next step, an idle one starts a new turn on it. Returns
+        the generic ``sys_session_send`` output.
+    :param running: ``(child id, title)`` of the caller's children whose turn is running.
     """
 
     declared_types: tuple[str, ...]
     child_titles: Callable[[], Awaitable[list[str]]]
     spawn: Callable[[SpawnRequest], Awaitable[SpawnResult]]
     helper_roles: Mapping[str, str] = field(default_factory=dict)
+    send: Callable[[str, str], Awaitable[str]] | None = None
+    running: Callable[[], Awaitable[list[tuple[str, str]]]] | None = None
 
 
 @dataclass(frozen=True)
