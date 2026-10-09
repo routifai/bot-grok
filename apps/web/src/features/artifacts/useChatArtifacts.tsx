@@ -14,11 +14,11 @@ export function useChatArtifacts(resetKey: string | undefined): {
   isOpen: boolean;
   panel: ReactNode;
 } {
-  const [open, setOpen] = useState<{ id: string; title?: string } | null>(null);
+  const [open, setOpen] = useState<{ id: string; title?: string; page?: number } | null>(null);
   const api = useMemo<ArtifactPanelApi>(
     () => ({
       openId: open?.id ?? null,
-      open: (id, title) => setOpen({ id, title }),
+      open: (id, title, page) => setOpen({ id, title, page }),
       close: () => setOpen(null),
     }),
     [open?.id],
@@ -26,7 +26,13 @@ export function useChatArtifacts(resetKey: string | undefined): {
   useEffect(() => setOpen(null), [resetKey]);
   const panel = open ? (
     <Suspense fallback={null}>
-      <ArtifactPanel key={open.id} artifactId={open.id} title={open.title} onClose={api.close} />
+      <ArtifactPanel
+        key={open.id}
+        artifactId={open.id}
+        title={open.title}
+        page={open.page}
+        onClose={api.close}
+      />
     </Suspense>
   ) : null;
   return { api, isOpen: open !== null, panel };

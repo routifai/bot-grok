@@ -63,7 +63,8 @@ export const useLatestSavedFile = (name: string) => useContext(LatestFilesContex
 /** The artifact side panel: the shell owns what is open; cards ask to open or close it. */
 export type ArtifactPanelApi = {
   openId: string | null;
-  open: (artifactId: string, title?: string) => void;
+  /** `page` opens a PDF at that page. */
+  open: (artifactId: string, title?: string, page?: number) => void;
   close: () => void;
 };
 const ArtifactPanelContext = createContext<ArtifactPanelApi | null>(null);

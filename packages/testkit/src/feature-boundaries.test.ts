@@ -27,6 +27,7 @@ const CAPABILITIES: Record<LayerName, readonly string[]> = {
     "feed",
     "goals",
     "ideas",
+    "knowledge",
     "memory",
     "models",
     "sheets",
@@ -46,6 +47,7 @@ const CAPABILITIES: Record<LayerName, readonly string[]> = {
     "feed",
     "goals",
     "ideas",
+    "knowledge",
     "memory",
     "models",
     "sheets",
@@ -64,6 +66,7 @@ const CAPABILITIES: Record<LayerName, readonly string[]> = {
     "feed",
     "goals",
     "ideas",
+    "knowledge",
     "memory",
     "models",
     "sheets",
@@ -83,6 +86,7 @@ const CAPABILITIES: Record<LayerName, readonly string[]> = {
     "feed",
     "goals",
     "ideas",
+    "knowledge",
     "memory",
     "models",
     "sheets",
@@ -102,6 +106,7 @@ const CAPABILITIES: Record<LayerName, readonly string[]> = {
     "feed",
     "goals",
     "ideas",
+    "knowledge",
     "memory",
     "models",
     "sheets",
@@ -120,6 +125,9 @@ const BASES: Record<string, readonly string[]> = {
   admin: ["models"],
   skills: ["computer"],
   computer: ["artifacts"],
+  // Every file it indexes is an artifact (it follows their saves and deletes, lists them by id and
+  // marks them in the Library); embeddings run on the person's own model connection.
+  knowledge: ["artifacts", "models"],
 };
 
 /**
@@ -137,6 +145,9 @@ const BASELINE: readonly string[] = [
   "web:components/cards/ReplyCard.tsx -> artifacts",
   "web:pages/muse/conversation/MessageView.test.tsx -> artifacts",
   "web:pages/muse/conversation/MessageView.tsx -> artifacts",
+  // The transcript draws the pages a file search found (the `passages` reply card) as citation
+  // chips; goes away with the block extension point above.
+  "web:components/cards/ReplyCard.tsx -> knowledge",
   // Tests of the apps extension mount the artifact host (ArtifactPanel, LibraryCard) and stub its
   // preview/thumbnail modules by path; they test the seam from the host side.
   "web:features/apps/LibraryCardPublished.test.tsx -> artifacts",

@@ -39,6 +39,7 @@ def _load() -> list[Feature]:
     from omnigent.superchat.goals import FEATURE as goals
     from omnigent.superchat.helpers import FEATURE as helpers
     from omnigent.superchat.ideas import FEATURE as ideas
+    from omnigent.superchat.knowledge import FEATURE as knowledge
     from omnigent.superchat.memory import FEATURE as memory
     from omnigent.superchat.models import FEATURE as models
     from omnigent.superchat.projects import FEATURE as projects
@@ -61,6 +62,7 @@ def _load() -> list[Feature]:
         cards,
         memory,
         artifacts,
+        knowledge,
         apps,
         sheets,
         decks,

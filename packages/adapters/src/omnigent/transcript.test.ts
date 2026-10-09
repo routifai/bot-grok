@@ -272,3 +272,35 @@ describe("mapTranscriptPage", () => {
     });
   });
 });
+
+describe("file search citations", () => {
+  it("carries the engine's passages card through as a reply card", () => {
+    const items = [
+      { artifactId: "a".repeat(32), name: "finance.pdf", page: 2, hasThumbnail: true },
+    ];
+    const result = mapTranscriptPage(
+      "s1",
+      page([
+        {
+          id: "m1",
+          role: "assistant",
+          created_at: 1,
+          blocks: [
+            { type: "text", text: "Currency exposure (finance.pdf, p. 2)." },
+            {
+              type: "card",
+              card_id: null,
+              card: { card: "passages", data: { items }, fallback: "Sources: finance.pdf p. 2" },
+            },
+          ],
+        },
+      ]),
+    );
+    expect(result.messages[0]?.blocks[1]).toEqual({
+      kind: "reply_card",
+      card: "passages",
+      data: { items },
+      fallback: "Sources: finance.pdf p. 2",
+    });
+  });
+});

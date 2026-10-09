@@ -1894,6 +1894,113 @@ class SqlArtifactView(OmnigentBase):
     last_at: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
+class SqlFileIndexJob(OmnigentBase):
+    """
+    SQLAlchemy model for the ``file_index_jobs`` table.
+
+    One row per artifact version the knowledge worker indexes (or skips). ``state`` walks
+    ``queued -> text_ready -> ready`` or ends ``failed``; a failed attempt is retried with a
+    growing delay until ``attempts`` runs out.
+
+    :param artifact_id: The artifact version being indexed (bare 32-char hex id).
+    :param user_id: Owner identity; ``None`` in single-user mode.
+    :param name: File name, for the status list.
+    :param kind: Lower-case extension kind (``pdf``, ``txt``, ``md``, ``csv``, ``xlsx``).
+    :param sha256: Hex digest of the bytes; a repeat upload with the same digest is skipped.
+    :param state: ``queued``, ``text_ready``, ``ready`` or ``failed``.
+    :param attempts: Failed attempts so far.
+    :param last_error: Short reason of the last failure.
+    :param page_count: Pages (1 for a non-paged file).
+    :param text_pages: Pages that have a text layer (the rest wait for the deep parse).
+    :param chunk_count: Chunks stored in ``file_chunks``.
+    :param embed_status: ``pending``, ``embedded`` or ``keyword_only``.
+    :param embed_reason: Why a file is keyword-only (``no_connection``, ``budget``, ...).
+    :param duplicate_of: The artifact with the same bytes this one defers to, if any.
+    :param next_attempt_at: Epoch seconds before which the job is not picked up.
+    """
+
+    __tablename__ = "file_index_jobs"
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    artifact_id: Mapped[str] = mapped_column(Uuid16, primary_key=True)
+    user_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    name: Mapped[str] = mapped_column(String(512), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    state: Mapped[str] = mapped_column(String(16), nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    page_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    text_pages: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    embed_status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="pending")
+    embed_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    duplicate_of: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    next_attempt_at: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+
+    __table_args__ = (
+        Index("ix_file_index_jobs_state", "workspace_id", "state", "next_attempt_at"),
+        Index("ix_file_index_jobs_owner_sha", "workspace_id", "user_id", "sha256"),
+    )
+
+
+class SqlFileChunk(OmnigentBase):
+    """
+    SQLAlchemy model for the ``file_chunks`` table: the source of truth of the file search.
+
+    One row per passage of an indexed file. The per-user txtai index is a projection of these rows
+    and is rebuilt from them.
+
+    :param id: UUID primary key of the chunk (bare 32-char hex string).
+    :param user_id: Owner identity; ``None`` in single-user mode.
+    :param artifact_id: The artifact version the passage is from.
+    :param sha: Hex sha256 of that file's bytes.
+    :param ord: Position of the chunk within its file.
+    :param page_start: First page of the passage (1-based).
+    :param page_end: Last page of the passage.
+    :param kind: ``text``, ``sheet`` or ``csv``.
+    :param heading_path: Headings above the passage, joined with `` > ``.
+    :param text: The passage.
+    :param embedding: float32 vector bytes, or ``None`` for a keyword-only chunk.
+    :param embed_model: Tag of the model that made ``embedding`` (provider:model:dims).
+    """
+
+    __tablename__ = "file_chunks"
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    id: Mapped[str] = mapped_column(Uuid16, primary_key=True)
+    user_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    artifact_id: Mapped[str] = mapped_column(Uuid16, nullable=False)
+    sha: Mapped[str] = mapped_column(String(64), nullable=False)
+    ord: Mapped[int] = mapped_column(Integer, nullable=False)
+    page_start: Mapped[int] = mapped_column(Integer, nullable=False)
+    page_end: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    heading_path: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    embed_model: Mapped[str | None] = mapped_column(String(160), nullable=True)
+
+    __table_args__ = (
+        Index("ix_file_chunks_artifact", "workspace_id", "artifact_id", "ord"),
+        Index("ix_file_chunks_owner", "workspace_id", "user_id"),
+    )
+
+
 class SqlDailyNote(OmnigentBase):
     """
     SQLAlchemy model for the ``daily_notes`` table.

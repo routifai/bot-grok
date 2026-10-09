@@ -83,6 +83,21 @@ export const ReplyCardData = {
     site: Text,
     reason: Text.optional(),
   }),
+  /** The pages a `files_search` found (the engine's transcript adds it under the answer): small
+   * page-thumbnail chips that open the file at that page. Never rendered by the Muse itself. */
+  passages: z.object({
+    items: z
+      .array(
+        z.object({
+          artifactId: Text,
+          name: Text,
+          page: z.number().int().positive(),
+          hasThumbnail: z.boolean().optional(),
+        }),
+      )
+      .min(1)
+      .max(12),
+  }),
   progress: z.object({
     label: Text,
     value: z.number().min(0).max(100),

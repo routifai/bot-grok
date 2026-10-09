@@ -16,6 +16,7 @@ export * from "./daily-notes.js";
 export * from "./feed.js";
 export * from "./goals.js";
 export * from "./ideas.js";
+export * from "./knowledge.js";
 export * from "./memory.js";
 export * from "./models.js";
 export * from "./side-chats.js";

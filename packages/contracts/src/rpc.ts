@@ -13,6 +13,7 @@ import { feedContract } from "./rpc/feed.js";
 import { goalsContract } from "./rpc/goals.js";
 import { ideasContract } from "./rpc/ideas.js";
 import { integrationsContract } from "./rpc/integrations.js";
+import { knowledgeContract } from "./rpc/knowledge.js";
 import { modelsContract } from "./rpc/local-models.js";
 import { memoryContract } from "./rpc/memory.js";
 import { messagingContract } from "./rpc/messaging.js";
@@ -43,6 +44,7 @@ export const appContract = {
   ...goalsContract,
   ...ideasContract,
   ...integrationsContract,
+  ...knowledgeContract,
   ...memoryContract,
   ...messagingContract,
   ...modelsContract,

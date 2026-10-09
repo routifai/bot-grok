@@ -10,6 +10,7 @@ import { decksRouter } from "./features/decks/router.js";
 import { feedRouter } from "./features/feed/router.js";
 import { goalsRouter } from "./features/goals/router.js";
 import { ideasRouter } from "./features/ideas/router.js";
+import { knowledgeRouter } from "./features/knowledge/router.js";
 import { memoryRouter } from "./features/memory/router.js";
 import { engineModelsRouter } from "./features/models/router.js";
 import { sheetsRouter } from "./features/sheets/router.js";
@@ -55,6 +56,7 @@ export function createRouter(deps: RouterDeps) {
     ...goalsRouter(c),
     ...ideasRouter(c),
     ...integrationsRouter(c),
+    ...knowledgeRouter(c),
     ...mcpRouter(c),
     ...memoryRouter(c),
     ...messagingRouter(c),
