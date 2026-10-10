@@ -1,4 +1,4 @@
-"""Harness fit: a harness's declared vendor family picks connections and filters models."""
+"""Harness fit: a harness's wire picks connections; models are never filtered by name."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ def test_providers_that_cannot_serve_the_family_are_excluded() -> None:
     every = ("anthropic", "openrouter", "litellm")
     assert preferred_providers(harness_family("claude-sdk")) == every
     assert preferred_providers(harness_family("pi")) == every
-    # A Claude-only upstream cannot serve a GPT-family harness.
+    # A Messages-only upstream cannot serve a harness that speaks Chat Completions.
     assert preferred_providers(harness_family("codex")) == ("openrouter", "litellm")
 
 
@@ -150,14 +150,12 @@ def _post(client, provider, cred, body):
     return client.post(f"/v1/model/{provider}/v1/messages", json=body, headers={"x-api-key": cred})
 
 
-def test_claude_only_upstream_rejects_a_non_claude_model(proxy) -> None:
+def test_a_model_is_never_refused_by_its_name(proxy) -> None:
+    """The proxy forwards whatever model the harness names; the upstream answers for it."""
     client, seen = proxy
-    r = _post(client, "anthropic", "host-a:t", {"model": "openai/gpt-5"})
-    assert r.status_code == 400 and r.json() == {"code": "model_not_supported"}
-    assert seen == []
-    assert (
-        _post(client, "anthropic", "host-a:t", {"model": "claude-sonnet-5-5"}).status_code == 200
-    )
+    for model in ("team-model", "openai/gpt-5", "claude-sonnet-5-5"):
+        assert _post(client, "anthropic", "host-a:t", {"model": model}).status_code == 200
+        assert seen[-1].read() == f'{{"model":"{model}"}}'.encode()
     assert _post(client, "anthropic", "host-a:t", {"stream": True}).status_code == 200
 
 

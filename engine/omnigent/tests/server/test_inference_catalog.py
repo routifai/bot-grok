@@ -796,4 +796,4 @@ async def test_model_connection_without_a_key_needs_one():
         await SandboxInferenceService(state).prepare("computer", "claude-sdk", "bob")
     assert str(caught.value.code) == "model_key_required"
     assert caught.value.http_status == 412
-    assert "Anthropic or OpenRouter API key in Settings" in str(caught.value)
+    assert "Add a model API key in Settings" in str(caught.value)

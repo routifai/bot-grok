@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from omnigent.db.db_models import OmnigentBase
 from omnigent.db.utils import get_or_create_engine
 from omnigent.inner.pi_executor import _build_models_json, _only_configured_family
+from omnigent.models import model_catalog
 from omnigent.onboarding.provider_config import load_providers
 from omnigent.runtime.workflow import _apply_provider_to_pi
 from omnigent.server.inference_catalog import SandboxInferenceService
@@ -27,6 +28,26 @@ from omnigent.superchat.vault.store import VAULT_KEY_ENV
 
 TEMPLATE = Path(__file__).resolve().parents[4] / "infra/railway/engine.config.byok.yaml.tmpl"
 AUTH = "python3 -m omnigent.host.model_credential token"
+
+
+#: What each provider's model listing answers: the template names no model, so the catalog is
+#: the connection's own list.
+LISTINGS = {
+    "api.anthropic.com": ["claude-sonnet-5-5", "claude-haiku-4-5"],
+    "openrouter.ai": ["deepseek/deepseek-chat", "qwen/qwen3-coder", "anthropic/claude-sonnet-4.5"],
+}
+
+
+def _listing() -> httpx.MockTransport:
+    def respond(request: httpx.Request) -> httpx.Response:
+        ids = LISTINGS.get(request.url.host or "", [])
+        return httpx.Response(200, json={"data": [{"id": m, "type": "model"} for m in ids]})
+
+    return httpx.MockTransport(respond)
+
+
+def _service(state: SimpleNamespace) -> SandboxInferenceService:
+    return SandboxInferenceService(state, transport=_listing())
 
 
 def _hosted_state(creds: dict[str, tuple[str, str]]) -> SimpleNamespace:
@@ -41,12 +62,15 @@ def _hosted_state(creds: dict[str, tuple[str, str]]) -> SimpleNamespace:
             found = creds.get(owner_id) if scope == "user" else None
             return found if found and found[0] in preferred else None
 
-    return SimpleNamespace(
+    model_catalog.clear_model_catalog_cache()
+    state = SimpleNamespace(
         sandbox_config=deployment,
         databricks_store=None,
         databricks_client=None,
         model_connection_store=_Store(),
     )
+    state.inference_catalog = _service(state)
+    return state
 
 
 def _pi_models_json(snapshot: dict, model: str) -> tuple[dict, dict[str, str]]:
@@ -68,7 +92,7 @@ def _pi_models_json(snapshot: dict, model: str) -> tuple[dict, dict[str, str]]:
 @pytest.mark.asyncio
 async def test_hosted_template_parses_and_pi_on_anthropic_is_ready() -> None:
     state = _hosted_state({"alice": ("anthropic", "sk-ant-x")})
-    snapshot = await SandboxInferenceService(state).prepare("computer", "pi", "alice")
+    snapshot = await _service(state).prepare("computer", "pi", "alice")
     assert snapshot is not None and snapshot["catalog"]["status"] == "ready"
     assert snapshot["catalog"]["default_model"] == "claude-sonnet-5-5"
     config, env = _pi_models_json(snapshot, "claude-sonnet-5-5")
@@ -83,7 +107,7 @@ async def test_hosted_template_parses_and_pi_on_anthropic_is_ready() -> None:
 @pytest.mark.asyncio
 async def test_pi_on_openrouter_uses_chat_completions_through_the_proxy() -> None:
     state = _hosted_state({"bob": ("openrouter", "sk-or-x")})
-    snapshot = await SandboxInferenceService(state).prepare("computer", "pi", "bob")
+    snapshot = await _service(state).prepare("computer", "pi", "bob")
     assert snapshot is not None and snapshot["catalog"]["status"] == "ready"
     ids = [m["id"] for m in snapshot["catalog"]["models"]]
     assert "deepseek/deepseek-chat" in ids and "anthropic/claude-sonnet-4.5" in ids
@@ -109,7 +133,7 @@ async def test_pi_on_openrouter_uses_chat_completions_through_the_proxy() -> Non
 @pytest.mark.asyncio
 async def test_claude_sdk_binding_is_unchanged_on_openrouter() -> None:
     state = _hosted_state({"bob": ("openrouter", "sk-or-x")})
-    snapshot = await SandboxInferenceService(state).prepare("computer", "claude-sdk", "bob")
+    snapshot = await _service(state).prepare("computer", "claude-sdk", "bob")
     assert snapshot is not None
     family = snapshot["runtime_config"]["providers"]["byok"]["anthropic"]
     assert family["base_url"] == "https://eng.example/v1/model/openrouter"
@@ -121,7 +145,7 @@ async def test_pi_without_a_key_needs_one() -> None:
     from omnigent.errors import OmnigentError
 
     with pytest.raises(OmnigentError) as caught:
-        await SandboxInferenceService(_hosted_state({})).prepare("computer", "pi", "carol")
+        await _service(_hosted_state({})).prepare("computer", "pi", "carol")
     assert str(caught.value.code) == "model_key_required"
 
 

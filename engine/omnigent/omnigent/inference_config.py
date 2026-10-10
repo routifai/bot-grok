@@ -80,6 +80,26 @@ def normalize_inference_harness(harness: str) -> str:
     return harness if harness.startswith("acp:") else (canonicalize_harness(harness) or harness)
 
 
+#: The credential command a Computer's harness runs to reach the engine's model proxy: a
+#: provider family authenticated with it is a person's (or organization's) model connection.
+MODEL_PROXY_AUTH_COMMAND = "python3 -m omnigent.host.model_credential token"
+
+
+def _is_model_connection(provider: object) -> bool:
+    """Whether a raw provider entry is a model connection: ``connection: model`` in the server
+    config, or (in a session's saved runtime configuration) families that all authenticate
+    through the engine's model proxy."""
+    if not isinstance(provider, dict):
+        return False
+    if provider.get("connection") == "model":
+        return True
+    families = [provider.get(name) for name in ("anthropic", "openai", "gemini")]
+    present = [family for family in families if isinstance(family, dict)]
+    return bool(present) and all(
+        family.get("auth_command") == MODEL_PROXY_AUTH_COMMAND for family in present
+    )
+
+
 def parse_inference_config(config: dict[str, object]) -> dict[str, HarnessInferenceBinding]:
     """Validate profile shape without resolving credentials or contacting providers."""
     raw = config.get("inference")
@@ -132,9 +152,12 @@ def parse_inference_config(config: dict[str, object]) -> dict[str, HarnessInfere
             raise ValueError(f"Duplicate inference binding for harness {key!r}")
         from omnigent.models.model_catalog import model_family_conflict
 
-        for model in (*(allowed or ()), *([default] if default else [])):
-            if reason := model_family_conflict(key, model):
-                raise ValueError(f"Harness {name!r} cannot use model {model!r}: {reason}")
+        # A model connection's ids are its upstream's own names: whether it serves one is the
+        # upstream's answer, not a name rule.
+        if not _is_model_connection(providers.get(provider)):
+            for model in (*(allowed or ()), *([default] if default else [])):
+                if reason := model_family_conflict(key, model):
+                    raise ValueError(f"Harness {name!r} cannot use model {model!r}: {reason}")
         result[key] = HarnessInferenceBinding(
             provider=provider,
             default_model=default,

@@ -29,6 +29,9 @@ PROVIDER_CONFIGS: dict[str, str | None] = {
     "openrouter": "https://openrouter.ai/api/v1",
     "ollama": "http://localhost:11434/v1",
     "moonshot": "https://api.moonshot.cn/v1",
+    # Any OpenAI-compatible Chat Completions endpoint (a LiteLLM proxy, a gateway): the base URL
+    # comes from connection_params.
+    "openai_compatible": None,
 }
 
 _DEFAULT_PROVIDER = "openai"

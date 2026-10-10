@@ -216,19 +216,29 @@ def _compaction_event_body(
     return body
 
 
-def summarizer_model(model: str, connection: Mapping[str, str] | None) -> str:
+def summarizer_model(
+    model: str, connection: Mapping[str, str] | None, wire: str | None = None
+) -> str:
     """
     The model string the summarizer is called with: provider-prefixed.
 
     A harness reports its model bare (``claude-sonnet-5-5``), and the LLM router reads a bare
-    name as OpenAI's, so a Claude model would be sent as an OpenAI Responses call to Anthropic's
-    host (a 404, and no checkpoint). A bare Claude model, or any bare model on an Anthropic base
-    URL, is routed to the Anthropic adapter; anything already prefixed is left as it is.
+    name as OpenAI's. When the session's own connection is known, its *wire* decides (the
+    session's provider speaks Anthropic Messages, or Chat Completions), whatever the model is
+    called: ``team-model`` on an Anthropic-wire connection is an Anthropic call. Without one (a
+    session with no saved inference binding), a bare Claude model, or any bare model on an
+    Anthropic base URL, is routed to the Anthropic adapter; anything already prefixed is left
+    as it is.
 
     :param model: The turn's reported model.
     :param connection: The summarizer's connection overrides, if any.
+    :param wire: The LLM client provider the session's connection speaks (``anthropic``,
+        ``openai_compatible`` or ``openai``), from
+        :func:`omnigent.llms.background.provider_connection`; ``None`` when unknown.
     :returns: ``provider/model``.
     """
+    if wire is not None:
+        return f"{wire}/{model}"
     if "/" in model:
         return model
     base_url = (connection or {}).get("base_url", "")
@@ -246,6 +256,7 @@ async def roll_over_session(
     llm_client: Any = None,
     connection: dict[str, str] | None = None,
     on_rolled_over: Callable[[], Awaitable[None]] | None = None,
+    wire: str | None = None,
 ) -> bool:
     """Build and persist the next rollover compaction item for *conversation_id*.
 
@@ -264,6 +275,9 @@ async def roll_over_session(
     POST, or *on_rolled_over* itself) is logged and swallowed — the turn that
     triggered this call has already been delivered, so a rollover failure
     must never fail it.
+
+    *connection* and *wire* are the session's own provider (see :func:`summarizer_model`): the
+    summary is written through the connection the session runs on.
 
     :returns: ``True`` iff a new compaction item was posted.
     """
@@ -291,7 +305,7 @@ async def roll_over_session(
                 items_since,
                 previous_summary=previous_summary,
                 keep_tokens=resolve_keep_tokens(labels),
-                model=summarizer_model(model, connection),
+                model=summarizer_model(model, connection, wire),
                 llm_client=llm_client,
                 connection=connection,
                 conversation_id=conversation_id,

@@ -61,13 +61,13 @@ Add overlays with more `-f` files:
 
 `.env` keys beyond the app's own: `OMNIGENT_PROXY_SECRET` and `OMNIGENT_VAULT_KEY` (engine
 secrets), `ANTHROPIC_API_KEY` (models without LiteLLM), `LITELLM_BASE_URL` and `LITELLM_API_KEY`
-(LiteLLM), optionally `SUPERCHAT_CLAUDE_MODEL` and `OMNIGENT_HELPER_MODEL_FAST` (model ids as the
-provider or proxy names them), `TAVILY_API_KEY`, and `ENGINE_PUBLIC_URL` (where each Computer
-reaches the engine; default `http://host.docker.internal:8012`).
+(LiteLLM), `TAVILY_API_KEY`, and `ENGINE_PUBLIC_URL` (where each Computer reaches the engine;
+default `http://host.docker.internal:8012`). No model is configured by name: an admin picks the
+default, fast and strong models from the connection's list in Settings > Models.
 
-With LiteLLM, claude-sdk calls the proxy's Anthropic Messages endpoint (`/v1/messages`) and Pi
-calls its Chat Completions (`/v1/chat/completions`, or `/v1/messages` for Claude models); the
-model pickers list the proxy's `/v1/models`.
+With LiteLLM, every model call goes through the engine's model proxy, which adds the LiteLLM key
+(it never enters a Computer): claude-sdk reaches the proxy's Anthropic Messages endpoint
+(`/v1/messages`) and Pi its Chat Completions; the model pickers list the proxy's chat models.
 
 A shared runner host container (`omnigent host`) is not offered: the engine trusts identity only
 from the API's signed headers, and `omnigent host` has no way to present them or to sign in, so it

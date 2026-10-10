@@ -952,3 +952,33 @@ def build_upkeep_llm_caller() -> UpkeepLLMCaller | None:
         return extract_summary_text(response)
 
     return _call
+
+
+async def resolve_upkeep_llm_caller(user_id: str) -> UpkeepLLMCaller | None:
+    """The upkeep caller for *user_id*'s run: the server ``llm:`` config when present, else the
+    deployment's background model for that owner (:mod:`omnigent.llms.background`).
+
+    ``None`` when neither can call a model yet; the run is then recorded as skipped.
+    """
+    from omnigent.llms.background import resolve_background_llm
+
+    resolved = await resolve_background_llm(user_id)
+    if resolved is None:
+        return None
+    model, connection = resolved
+    from omnigent.llms.client import Client
+
+    client = Client()
+
+    async def _call(*, instructions: str, input_text: str) -> str:
+        from omnigent.llms.summarize import extract_summary_text
+
+        response = await client.responses.create(
+            input=[{"role": "user", "content": input_text}],
+            instructions=instructions,
+            model=model,
+            connection_params=connection,
+        )
+        return extract_summary_text(response)
+
+    return _call

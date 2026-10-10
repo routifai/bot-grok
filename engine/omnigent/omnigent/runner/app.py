@@ -9388,7 +9388,7 @@ def create_runner_app(
         except (httpx.HTTPError, ValueError):
             return None
         model = body.get("model_override") or body.get("llm_model")
-        return _summarize_model_id(model) if isinstance(model, str) and model else None
+        return model if isinstance(model, str) and model else None
 
     async def _maybe_superside_chat_idle_rollover(conv_id: str) -> None:
         """Roll over a superside-chat session on its first message back from idle.
@@ -9430,13 +9430,15 @@ def create_runner_app(
         # THIS turn, which already holds its own _active_turns slot (claimed
         # by the caller before this turn's task was even created) — the
         # default deferral check would otherwise always (wrongly) defer.
+        wire, connection = _summarize_route(conv_id, resolved_model)
         await roll_over_session(
             conv_id,
             labels=labels,
             model=resolved_model,
             server_client=server_client,
             llm_client=_get_runner_llm_client(),
-            connection=_resolve_summarize_connection(conv_id, resolved_model),
+            connection=connection,
+            wire=wire,
             on_rolled_over=lambda: _drop_superside_chat_warm_client(
                 conv_id, defer_if_active=False
             ),
@@ -9492,13 +9494,15 @@ def create_runner_app(
             )
             if not should_roll_over_for_threshold(labels, context_tokens=context_tokens):
                 return
+            wire, connection = _summarize_route(conv_id, resolved_model)
             await roll_over_session(
                 conv_id,
                 labels=labels,
                 model=resolved_model,
                 server_client=server_client,
                 llm_client=_get_runner_llm_client(),
-                connection=_resolve_summarize_connection(conv_id, resolved_model),
+                connection=connection,
+                wire=wire,
                 on_rolled_over=lambda: _drop_superside_chat_warm_client(conv_id),
             )
         except Exception:  # noqa: BLE001 — background task; never fail the turn that scheduled it
@@ -14624,6 +14628,44 @@ def create_runner_app(
     def _summarize_model_id(model: str) -> str:
         """Provider-prefix a bare Claude id; the LLM client routes bare ids to OpenAI."""
         return f"anthropic/{model}" if model.startswith("claude") else model
+
+    def _bound_summarize_route(session_id: str) -> tuple[str, dict[str, str]] | None:
+        """The session's own provider, from its saved inference binding: the wire and
+        connection its harness uses (the engine's model proxy, for a model connection).
+
+        ``None`` when the session's harness has no binding (or it cannot be resolved here).
+        """
+        harness = _session_harness_name(session_id)
+        if not harness:
+            return None
+        from omnigent.inference_config import (
+            load_runtime_inference_config,
+            resolve_bound_provider,
+        )
+        from omnigent.llms.background import provider_connection
+
+        try:
+            provider = resolve_bound_provider(
+                load_runtime_inference_config(), harness, allow_empty=True
+            )
+            return provider_connection(provider) if provider is not None else None
+        except Exception:  # noqa: BLE001 - fall back to the legacy resolution
+            _logger.warning(
+                "summarizer: could not resolve %s's bound provider",
+                session_id,
+                exc_info=True,
+                extra={"session_id": session_id},
+            )
+            return None
+
+    def _summarize_route(session_id: str, model: str) -> tuple[str | None, dict[str, str] | None]:
+        """``(wire, connection)`` the summarizer calls *model* with for *session_id*: the
+        session's bound provider when it has one, else the legacy per-spec resolution (whose
+        wire is told from the model id)."""
+        bound = _bound_summarize_route(session_id)
+        if bound is not None:
+            return bound
+        return None, _resolve_summarize_connection(session_id, _summarize_model_id(model))
 
     def _resolve_summarize_connection(
         session_id: str,

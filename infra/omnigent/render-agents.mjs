@@ -40,8 +40,6 @@ const MUSE_BUNDLES = [
     skillsFilter: "skills: none",
   },
 ];
-/** Env var naming documented in docs/omnigent-spike.md / docs/super-chat/README.md. */
-const MODEL_ENV = "SUPERCHAT_CLAUDE_MODEL";
 /** One directory per Sub-agent Type (CONTEXT.md), each a config.yaml template rendered with the
  * bundle's harness keys. */
 const SUB_AGENT_TYPES = ["worker", "worker/agents/subworker"];
@@ -94,7 +92,6 @@ function main() {
     writeFileSync(
       join(outDir, "config.yaml"),
       render(configTemplate, {
-        MODEL_ENV,
         BUNDLE_NAME: bundle.name,
         HARNESS: bundle.harness,
         EXECUTOR_EXTRA: bundle.executorExtra,

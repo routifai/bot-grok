@@ -3318,7 +3318,7 @@ def create_app(
     # below.
     memory_upkeep_coordinator: Any = None
     if memory_service is not None and memory_upkeep_store is not None:
-        from omnigent.memory.upkeep import build_upkeep_llm_caller
+        from omnigent.memory.upkeep import build_upkeep_llm_caller, resolve_upkeep_llm_caller
         from omnigent.server.memory_upkeep import MemoryUpkeepCoordinator
 
         memory_upkeep_coordinator = MemoryUpkeepCoordinator(
@@ -3326,6 +3326,7 @@ def create_app(
             memory_service=memory_service,
             upkeep_store=memory_upkeep_store,
             llm_caller_factory=build_upkeep_llm_caller,
+            llm_caller_resolver=resolve_upkeep_llm_caller,
         )
     app.state.memory_upkeep_coordinator = memory_upkeep_coordinator
     if scheduled_task_store is not None:

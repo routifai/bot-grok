@@ -25,12 +25,15 @@ from omnigent.db.utils import (
     now_epoch,
     run_write_transaction,
 )
-from omnigent.superchat.models.upstreams import PROVIDERS
+from omnigent.superchat.models.upstreams import PROVIDERS, UPSTREAMS
 from omnigent.superchat.sealing import seal, unseal
 
 STATUS_VALID = "valid"
 SCOPE_USER = "user"
 SCOPE_ORG = "org"
+#: The operator's own key for an upstream it runs (``Upstream.operator_key_env``): never saved,
+#: read from the engine's environment when no person or organization key exists.
+SCOPE_OPERATOR = "operator"
 ORG_OWNER = ""
 MAX_LABEL = 64
 
@@ -225,20 +228,27 @@ class ModelConnectionStore:
 
 
 def resolve_model_connection(
-    store: ModelConnectionStore, *, owner_id: str, preferred: Sequence[str]
+    store: ModelConnectionStore | None, *, owner_id: str, preferred: Sequence[str]
 ) -> ResolvedConnection | None:
     """The connection a run uses, for the run path; server side.
 
-    Order: the user's own connection, then the organization's, else ``None``. Within a scope the
-    first of *preferred* (providers, best first) wins. Operator-configured env providers are
-    config, not connections: the caller handles them when this returns ``None``.
+    Order: the user's own connection, then the organization's, then the operator's key for an
+    upstream the operator runs (``Upstream.operator_key_env``, read from the engine's
+    environment, configured upstreams only), else ``None``. Within a scope the first of
+    *preferred* (providers, best first) wins.
 
     :raises VaultUnavailableError: the vault key is missing or cannot open the value.
     """
-    for scope, scope_owner in ((SCOPE_USER, owner_id), (SCOPE_ORG, ORG_OWNER)):
-        if scope == SCOPE_USER and not scope_owner:
-            continue
-        found = store.get_plaintext(scope, scope_owner, preferred)
-        if found is not None:
-            return ResolvedConnection(provider=found[0], plaintext=found[1], scope=scope)
+    if store is not None:
+        for scope, scope_owner in ((SCOPE_USER, owner_id), (SCOPE_ORG, ORG_OWNER)):
+            if scope == SCOPE_USER and not scope_owner:
+                continue
+            found = store.get_plaintext(scope, scope_owner, preferred)
+            if found is not None:
+                return ResolvedConnection(provider=found[0], plaintext=found[1], scope=scope)
+    for provider in preferred:
+        upstream = UPSTREAMS.get(provider)
+        key = upstream.operator_key if upstream is not None and upstream.configured else None
+        if key is not None:
+            return ResolvedConnection(provider=provider, plaintext=key, scope=SCOPE_OPERATOR)
     return None

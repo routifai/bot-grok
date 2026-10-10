@@ -38,7 +38,7 @@ def test_origin_comes_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> N
 
 def test_registry_facts() -> None:
     assert LITELLM.auth == "bearer" and LITELLM.wire_apis == {"messages", "chat"}
-    assert LITELLM.vendors_served == "any" and LITELLM.lists_models
+    assert LITELLM.lists_models and LITELLM.operator_key_env == "LITELLM_API_KEY"
     # Its ids are the proxy's own names: passed through unchanged.
     assert LITELLM.upstream_model("claude-sonnet-team") == "claude-sonnet-team"
     assert LITELLM.key_header(LITELLM_KEY) == {"Authorization": f"Bearer {LITELLM_KEY}"}
@@ -146,15 +146,74 @@ async def test_catalog_lists_the_endpoint_models_for_pi(monkeypatch, litellm_url
     assert LITELLM_KEY not in json.dumps(snapshot)
 
 
-@pytest.mark.asyncio
-async def test_catalog_keeps_claude_sdk_on_claude_models(monkeypatch, litellm_url: str) -> None:
-    from omnigent.server.inference_catalog import SandboxInferenceService
+def _listing_with_info(models: list[str], info: list[dict]) -> httpx.MockTransport:
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/model/info":
+            return httpx.Response(200, json={"data": info})
+        return httpx.Response(200, json={"object": "list", "data": [{"id": m} for m in models]})
 
+    return httpx.MockTransport(respond)
+
+
+@pytest.mark.asyncio
+async def test_catalog_offers_claude_sdk_every_chat_model_whatever_its_name(
+    monkeypatch, litellm_url: str
+) -> None:
+    from omnigent.server.inference_catalog import SandboxInferenceService
+    from omnigent.superchat.models.listing import clear_model_info_cache
+
+    clear_model_info_cache()
     state = _litellm_state(monkeypatch, harness="claude-sdk")
-    service = SandboxInferenceService(state, transport=_listing(["gpt-team", "claude-team"], []))
-    snapshot = await service.prepare("computer", "claude-sdk", "alice")
-    assert snapshot is not None
-    assert [row["id"] for row in snapshot["catalog"]["models"]] == ["claude-team"]
+    info = [
+        {"model_name": "gpt-team", "model_info": {"mode": "chat"}},
+        {"model_name": "embed-team", "model_info": {"mode": "embedding"}},
+        {
+            "model_name": "no-tools",
+            "model_info": {"mode": "chat", "supports_function_calling": False},
+        },
+    ]
+    transport = _listing_with_info(["gpt-team", "claude-team", "embed-team", "no-tools"], info)
+    snapshot = await SandboxInferenceService(state, transport=transport).prepare(
+        "computer", "claude-sdk", "alice"
+    )
+    assert snapshot is not None and snapshot["catalog"]["status"] == "ready"
+    # Fit is the proxy's wire (LiteLLM serves /v1/messages for any model) and what it reports
+    # about each model, never the name: the embedding and tool-less models are left out.
+    assert [row["id"] for row in snapshot["catalog"]["models"]] == ["gpt-team", "claude-team"]
+    assert snapshot["catalog"]["default_model"] == "gpt-team"
+    # The saved binding keeps the non-Claude default: the runner parses it without a name rule.
+    from omnigent.inference_config import parse_inference_config
+
+    assert parse_inference_config(snapshot["runtime_config"])["claude-sdk"].default_model == (
+        "gpt-team"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_operator_key_serves_people_without_one_and_stays_in_the_engine(
+    monkeypatch, litellm_url: str
+) -> None:
+    from omnigent.server.inference_catalog import SandboxInferenceService
+    from omnigent.superchat.models.store import SCOPE_OPERATOR, resolve_model_connection
+    from omnigent.superchat.models.upstreams import offered_providers
+
+    monkeypatch.setenv("LITELLM_API_KEY", LITELLM_KEY)
+    state = _litellm_state(monkeypatch, harness="pi")
+    seen: list[httpx.Request] = []
+    snapshot = await SandboxInferenceService(state, transport=_listing(["team"], seen)).prepare(
+        "computer", "pi", "nobody"
+    )
+    assert snapshot is not None and snapshot["catalog"]["status"] == "ready"
+    assert seen[0].headers["authorization"] == f"Bearer {LITELLM_KEY}"
+    assert LITELLM_KEY not in json.dumps(snapshot)
+    found = resolve_model_connection(None, owner_id="nobody", preferred=("anthropic", "litellm"))
+    assert found is not None and (found.provider, found.scope) == ("litellm", SCOPE_OPERATOR)
+    # Hosted vendors never fall back to an operator key.
+    assert resolve_model_connection(None, owner_id="nobody", preferred=("anthropic",)) is None
+    assert {"provider": "litellm", "label": "LiteLLM", "operator_key": True} in (
+        offered_providers()
+    )
+    assert [p["provider"] for p in offered_providers({"litellm"})] == ["litellm"]
 
 
 @pytest.mark.asyncio

@@ -1876,6 +1876,37 @@ def _subagent_model_from_args(args: _JsonObject) -> str | None:
     return validate_model_override(raw_model)
 
 
+async def _helper_tier_models(
+    *,
+    server_client: httpx.AsyncClient,
+    conversation_id: str,
+    harness: str | None,
+) -> dict[str, str | None] | None:
+    """The organization's ``fast``/``strong`` picks for a Helper on *harness*.
+
+    Asked of the engine (``GET /v1/sessions/{id}/helper-models``): the picks live in its
+    database, never in this Computer's configuration. ``None`` when the harness is unknown or the
+    engine cannot answer, which makes the dispatch inherit the parent's model.
+    """
+    if not harness:
+        return None
+    try:
+        resp = await server_client.get(
+            f"/v1/sessions/{conversation_id}/helper-models",
+            params={"harness": harness},
+            timeout=10.0,
+        )
+        body = resp.json() if resp.status_code == 200 else None
+    except (httpx.HTTPError, ValueError):
+        return None
+    if not isinstance(body, dict):
+        return None
+    return {
+        tier: value if isinstance(value := body.get(tier), str) and value else None
+        for tier in ("fast", "strong")
+    }
+
+
 async def _inherited_parent_model(
     *,
     server_client: httpx.AsyncClient,
@@ -2784,15 +2815,22 @@ async def _execute_subagent_tool(
 
     if is_superside_chat(labels):
         named_agent = args.get("agent")
-        try:
-            model, reasoning_effort = resolve_helper_dispatch(
-                model=model,
-                reasoning_effort=reasoning_effort,
+        tiers = (
+            await _helper_tier_models(
+                server_client=server_client,
+                conversation_id=conversation_id,
                 harness=(
                     _subagent_harness(named_agent, agent_spec)
                     if isinstance(named_agent, str)
                     else None
                 ),
+            )
+            if model is not None
+            else None
+        )
+        try:
+            model, reasoning_effort = resolve_helper_dispatch(
+                model=model, reasoning_effort=reasoning_effort, tiers=tiers
             )
         except ValueError as exc:
             return f"Error: sys_session_send {exc}"

@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 from collections.abc import Iterable, Mapping
 
 from omnigent.util.session_lifecycle import is_session_closed
@@ -187,74 +186,33 @@ def refuse_subagent_dispatch_override(
     return None
 
 
-# ── Helper model choice: only ``fast`` or ``strong``, mapped in config ────
+# ── Helper model choice: only ``fast`` or ``strong``, picked by the organization ────
 
-#: Env vars mapping the two choices to real model ids; the product sets them. A choice with no
-#: id configured inherits the parent session's model (the existing inheritance). Model ids
-#: never appear in prompts.
-#:
-#: The unsuffixed ids belong to the single-vendor harnesses (Claude SDK, codex, ...), whose
-#: vocabulary they are written in. A multi-model harness (``pi``) has no vendor to match them
-#: against, so it reads only its own ``<VAR>_<HARNESS>`` id (e.g. ``..._FAST_PI``) and
-#: otherwise inherits the parent's model: a Claude id from the global setting never reaches a
-#: Helper running on a GPT-class parent model.
-FAST_MODEL_ENV = "OMNIGENT_HELPER_MODEL_FAST"
-STRONG_MODEL_ENV = "OMNIGENT_HELPER_MODEL_STRONG"
+#: The two choices a dispatch may name. The organization's admin picks the model behind each,
+#: per harness, from the connection's own list (Settings, Models; see
+#: :mod:`omnigent.superchat.models.tiers`). A choice with no pick inherits the parent session's
+#: model (the existing inheritance). Model ids never appear in prompts or configuration.
 HELPER_MODEL_CHOICES = ("fast", "strong")
 HELPER_EFFORT_CHOICES = ("low", "medium", "high")
-
-
-def _is_multi_model_harness(harness: str) -> bool:
-    from omnigent.harness_aliases import canonicalize_harness
-    from omnigent.harness_capabilities import ModelFamily
-    from omnigent.harness_plugins import harness_capabilities
-
-    capabilities = harness_capabilities().get(canonicalize_harness(harness) or harness)
-    return capabilities is not None and capabilities.model_family is ModelFamily.MULTI
-
-
-def helper_model_id(choice: str, harness: str | None, env: Mapping[str, str]) -> str | None:
-    """The configured model id behind ``fast``/``strong`` for a Helper on ``harness``.
-
-    :param choice: ``"fast"`` or ``"strong"``.
-    :param harness: The Helper's harness (e.g. ``"claude-sdk"``, ``"pi"``); ``None`` when
-        unknown, which reads the global ids.
-    :param env: Environment mapping to read.
-    :returns: The id, or ``None`` for "inherit the parent's model".
-    """
-    base = FAST_MODEL_ENV if choice == "fast" else STRONG_MODEL_ENV
-    if harness is not None:
-        from omnigent.harness_aliases import canonicalize_harness
-
-        canonical = canonicalize_harness(harness) or harness
-        scoped = env.get(f"{base}_{re.sub(r'[^A-Za-z0-9]+', '_', canonical).upper()}")
-        if scoped:
-            return scoped
-        if _is_multi_model_harness(canonical):
-            return None
-    return env.get(base) or None
 
 
 def resolve_helper_dispatch(
     *,
     model: str | None,
     reasoning_effort: str | None,
-    harness: str | None = None,
-    env: Mapping[str, str] | None = None,
+    tiers: Mapping[str, str | None] | None = None,
 ) -> tuple[str | None, str | None]:
     """Map a Super Chat dispatch's ``fast``/``strong`` choice to a model id.
 
     :param model: The dispatch's ``model`` argument: ``None``, ``"fast"`` or ``"strong"``.
     :param reasoning_effort: The dispatch's reasoning level: ``None``, ``low``, ``medium`` or
         ``high``.
-    :param harness: The harness the Helper runs on, which decides whose ids apply
-        (:func:`helper_model_id`).
-    :param env: Environment mapping to read; ``os.environ`` when ``None``.
+    :param tiers: ``{"fast": id | None, "strong": id | None}``: the organization's picks for
+        the harness the Helper runs on; ``None`` when unknown (nothing picked).
     :returns: ``(model_id, reasoning_effort)``; ``model_id`` is ``None`` for "inherit the
-        parent's model" (nothing configured for this harness, or no choice made).
+        parent's model" (nothing picked for this harness, or no choice made).
     :raises ValueError: When the choice is anything else; the message is shown to the model.
     """
-    source = env if env is not None else os.environ
     if reasoning_effort is not None and reasoning_effort not in HELPER_EFFORT_CHOICES:
         raise ValueError(
             f"reasoning_effort must be one of {', '.join(HELPER_EFFORT_CHOICES)} in this chat"
@@ -262,7 +220,7 @@ def resolve_helper_dispatch(
     if model is None:
         return None, reasoning_effort
     if model in HELPER_MODEL_CHOICES:
-        return helper_model_id(model, harness, source), reasoning_effort
+        return (tiers or {}).get(model) or None, reasoning_effort
     raise ValueError(f"model must be 'fast' or 'strong' in this chat, not {model!r}")
 
 
@@ -282,26 +240,23 @@ def scheduled_helper_type(agent_type: str) -> str:
 def resolve_scheduled_helper(
     agent_type: str,
     model_override: str | None,
-    env: Mapping[str, str] | None = None,
-    *,
-    harness: str | None = None,
+    tiers: Mapping[str, str | None] | None = None,
 ) -> tuple[str, str | None]:
     """The Type and model a scheduled or background Helper really runs with.
 
-    A retired Type runs as ``worker``. Background work is pinned to the fast model unless the
-    task names ``fast`` or ``strong``; a Type's own ``config.yaml`` pin still applies on top.
+    A retired Type runs as ``worker``. Background work runs on the fast tier unless the task
+    names ``fast`` or ``strong``; a Type's own ``config.yaml`` pin still applies on top.
 
     :param agent_type: The stored Sub-agent Type, e.g. ``"researcher"``.
     :param model_override: The stored per-run model: ``None``, ``fast``, ``strong`` or a model id.
-    :param env: Environment mapping for the fast/strong ids; ``os.environ`` when ``None``.
-    :param harness: The harness the resolved Type runs on (the bundle's choice), which decides
-        whose fast/strong ids apply, as for a dispatch.
+    :param tiers: The organization's tier picks for the harness the resolved Type runs on (the
+        bundle's choice), as for a dispatch.
     :returns: ``(type, model_override)`` to run with; ``None`` means inherit the parent's model.
     """
     resolved_type = scheduled_helper_type(agent_type)
     if model_override in HELPER_MODEL_CHOICES or model_override is None:
         model_override, _ = resolve_helper_dispatch(
-            model=model_override or "fast", reasoning_effort=None, harness=harness, env=env
+            model=model_override or "fast", reasoning_effort=None, tiers=tiers
         )
     return resolved_type, model_override
 

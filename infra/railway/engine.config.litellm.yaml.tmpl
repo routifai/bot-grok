@@ -3,55 +3,34 @@
 # ENGINE_CONFIG_TEMPLATE=/opt/superchat/config.litellm.yaml.tmpl. NON-SECRET: engine-start.sh
 # fills __NAME__ from the environment; ${...} is expanded by the engine.
 #
-# LITELLM_BASE_URL is the proxy's root URL (no /v1). Model ids are the proxy's own model names:
-# SUPERCHAT_CLAUDE_MODEL (the Muse) and OMNIGENT_HELPER_MODEL_FAST (titles, summaries).
-llm:
-  # Server-side helper model, over LiteLLM's OpenAI-compatible Chat Completions.
-  model: openai/__OMNIGENT_HELPER_MODEL_FAST__
-  connection:
-    api_key: ${LITELLM_API_KEY}
-    base_url: __LITELLM_BASE_URL__/v1
+# The engine reads LITELLM_BASE_URL (the proxy's root URL, no /v1) and LITELLM_API_KEY from its
+# own environment. The key never enters a Computer: each harness calls the engine's model proxy
+# with its Computer's launch token, and the engine adds the key (a person's or the
+# organization's saved LiteLLM key wins over it). No model is named here: the pickers list the
+# proxy's chat models, and an admin picks the default, fast and strong models in
+# Settings > Models.
 sandbox:
   provider: computer
   # Where the runner inside each Computer dials back.
   server_url: __ENGINE_PUBLIC_URL__
   # NAMES only. Resolved from this service's environment and handed to each Computer's runner.
-  # The LiteLLM key travels as an operator key (readable inside the Computer, like any operator
-  # key). To keep it in the engine instead, save it as the organization's LiteLLM model
-  # connection and bind the harnesses to a `connection: model` provider (see the BYOK template).
   runner_env:
-    - LITELLM_API_KEY
     - TAVILY_API_KEY
-    - SUPERCHAT_CLAUDE_MODEL
-    - OMNIGENT_HELPER_MODEL_FAST
-    - OMNIGENT_HELPER_MODEL_STRONG
     - OMNIGENT_BROWSER_BACKEND
     - OMNIGENT_SUBAGENT_MAX_CONCURRENT
   host_config:
     providers:
+      # A model connection: claude-sdk (and pi) reach LiteLLM's /v1/messages and pi its
+      # /v1/chat/completions, both through the engine's model proxy (/v1/model/litellm). Only
+      # the LiteLLM upstream: every call goes through the proxy.
       litellm:
         kind: gateway
         display_name: LiteLLM
-        # claude-sdk (and pi with a Claude model) speak Anthropic Messages: LiteLLM's /v1/messages.
-        anthropic:
-          base_url: __LITELLM_BASE_URL__
-          api_key_ref: env:LITELLM_API_KEY
-        # pi with any other model speaks Chat Completions: LiteLLM's /v1/chat/completions.
-        openai:
-          base_url: __LITELLM_BASE_URL__/v1
-          api_key_ref: env:LITELLM_API_KEY
-          wire_api: chat
+        connection: model
+        upstreams: [litellm]
     inference:
       harnesses:
         claude-sdk:
           provider: litellm
-          default_model: __SUPERCHAT_CLAUDE_MODEL__
         pi:
           provider: litellm
-          default_model: __SUPERCHAT_CLAUDE_MODEL__
-  # The model pickers list what the proxy serves (GET /v1/models), read server-side.
-  model_discovery:
-    litellm:
-      base_url: __LITELLM_BASE_URL__/v1
-      api_key_ref: env:LITELLM_API_KEY
-      family: openai

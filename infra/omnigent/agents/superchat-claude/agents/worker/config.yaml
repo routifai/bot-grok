@@ -14,8 +14,8 @@ params:
   helper_type: worker
 
 # Sub-agent Type: worker. Claude Agent SDK, same engine as the Super Chat (ADR 0001, ADR 0007).
-# No model pinned: the Muse picks `fast` or `strong` per dispatch (engine config maps them), and
-# an unpinned Helper otherwise inherits the Muse's model.
+# No model pinned: the Muse picks `fast` or `strong` per dispatch (the organization picks the model
+# behind each in Settings > Models), and an unpinned Helper otherwise inherits the Muse's model.
 executor:
   type: omnigent
   config:

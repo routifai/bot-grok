@@ -2,8 +2,9 @@
 # Renders the engine config from the environment, then starts the Omnigent server.
 #
 # The template is ENGINE_CONFIG_TEMPLATE (default: the Anthropic-key one). Its __NAME__
-# placeholders are literal values filled in here (URLs, model ids: the engine does not expand
-# them); its ${NAME} references are secrets the engine expands itself. Every one must be set.
+# placeholders are literal values filled in here (URLs: the engine does not expand them); its
+# ${NAME} references are secrets the engine expands itself. Every one must be set. No template
+# names a model: they are picked in Settings > Models.
 set -euo pipefail
 
 : "${DATABASE_URL:?Set DATABASE_URL to the engine Postgres reference}"
@@ -11,9 +12,6 @@ set -euo pipefail
 : "${OMNIGENT_COMPUTER_SUPERVISOR_URL:?Set OMNIGENT_COMPUTER_SUPERVISOR_URL}"
 : "${OMNIGENT_COMPUTER_SUPERVISOR_TOKEN:?Set OMNIGENT_COMPUTER_SUPERVISOR_TOKEN}"
 : "${OMNIGENT_VAULT_KEY:?Set OMNIGENT_VAULT_KEY}"
-
-# Default the strong helper model to the Muse model unless set explicitly.
-export OMNIGENT_HELPER_MODEL_STRONG="${OMNIGENT_HELPER_MODEL_STRONG:-$SUPERCHAT_CLAUDE_MODEL}"
 
 mkdir -p "$OMNIGENT_DATA_DIR" "$OMNIGENT_CONFIG_HOME" "$ARTIFACT_DIR"
 template="${ENGINE_CONFIG_TEMPLATE:-/opt/superchat/config.yaml.tmpl}"

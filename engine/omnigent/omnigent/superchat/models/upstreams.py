@@ -2,15 +2,16 @@
 
 The probe (key validation), the model proxy (where a call goes and how it is authenticated) and
 the connection routes (which providers exist) all read this table; nothing else hardcodes a
-provider. ``vendors_served`` and ``wire_apis`` are the facts later slices filter on (which model
-vendors a harness can reach through an upstream, and over which wire protocol).
+provider. ``wire_apis`` is the fact harness fit is decided on (which wire protocol a harness
+speaks and whether the upstream serves it), never a model's name: a model id is whatever the
+upstream calls it, and the upstream's own answer says whether it serves it.
 """
 
 from __future__ import annotations
 
 import os
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -45,7 +46,6 @@ class Upstream:
     :param auth: How the key is sent: an ``x-api-key`` header or ``Authorization: Bearer``.
     :param wire_apis: Wire protocols served: ``messages`` (Anthropic), ``chat`` (OpenAI Chat
         Completions), later ``responses``.
-    :param vendors_served: ``claude`` (only Anthropic models) or ``any``.
     :param probe_path: Cheap authenticated GET under ``base_url`` that answers 200 for a good key.
     :param extra_headers: Static headers every request to this upstream needs.
     :param id_mapper: Rewrites a catalog model id into the spelling this upstream expects (the
@@ -54,9 +54,17 @@ class Upstream:
         connection to it cannot embed files).
     :param base_url_env: Environment variable naming the origin, for an upstream the operator
         runs (a LiteLLM proxy); unset means the upstream is not offered on this deployment.
-    :param lists_models: Whether a connection's model catalog is read from the upstream's
-        OpenAI-compatible ``/v1/models`` (with the owner's key) instead of the harness's static
-        list: the upstream's model ids are the deployment's own names.
+    :param lists_models: Whether a connection's model catalog is always read from the upstream
+        (with the owner's key), even when the harness binding names a static list: the upstream's
+        model ids are the deployment's own names. Any upstream is listed when the binding names no
+        list.
+    :param models_info_path: Authenticated GET under the origin that reports per-model facts
+        (LiteLLM's ``/model/info``: mode, tool calling, context size), used to keep non-chat
+        models out of the pickers; ``None`` when the upstream reports none.
+    :param operator_key_env: Environment variable holding the operator's own key for an
+        upstream the operator runs (a LiteLLM proxy): used, in the engine only, when neither the
+        person nor the organization saved a key. ``None`` for hosted vendors, where every call is
+        billed to a saved key.
     """
 
     name: str
@@ -64,13 +72,14 @@ class Upstream:
     base_url: str
     auth: AuthStyle
     wire_apis: frozenset[str]
-    vendors_served: Literal["claude", "any"]
     probe_path: str
     extra_headers: tuple[tuple[str, str], ...] = ()
     id_mapper: Callable[[str], str] | None = None
     embeddings: EmbeddingRoute | None = None
     base_url_env: str | None = None
     lists_models: bool = False
+    models_info_path: str | None = None
+    operator_key_env: str | None = None
 
     @property
     def origin(self) -> str:
@@ -93,9 +102,35 @@ class Upstream:
             return None
         return self.embeddings.api_base or f"{self.origin}/v1"
 
-    def serves_model(self, model: str) -> bool:
-        """:returns: Whether this upstream can serve *model* (a claude-only one serves Claude)."""
-        return self.vendors_served == "any" or "claude" in model.lower()
+    @property
+    def operator_key(self) -> str | None:
+        """:returns: The operator's key for this upstream from the environment, if it has one."""
+        if self.operator_key_env is None:
+            return None
+        return os.environ.get(self.operator_key_env, "").strip() or None
+
+    @property
+    def lists_with_anthropic_api(self) -> bool:
+        """:returns: Whether its model list is the Anthropic models API (an upstream that speaks
+        only Messages) rather than an OpenAI-compatible ``/v1/models``."""
+        return "chat" not in self.wire_apis
+
+    def serves_wire(self, wire: str) -> bool:
+        """:returns: Whether this upstream serves the wire protocol *wire*."""
+        return wire in self.wire_apis
+
+    def llm_route(self, model: str) -> tuple[str, str]:
+        """How the engine itself calls *model* on this upstream (background work).
+
+        Decided by the upstream's wire and auth, never the model's name: an ``x-api-key``
+        upstream that speaks Messages is called as Anthropic; a bearer upstream over its Chat
+        Completions.
+
+        :returns: ``(model string for the LLM client, base URL)``.
+        """
+        if self.auth == "x-api-key" and "messages" in self.wire_apis:
+            return f"anthropic/{self.upstream_model(model)}", f"{self.origin}/v1"
+        return f"openai_compatible/{self.upstream_model(model)}", f"{self.origin}/v1"
 
     def upstream_model(self, model: str) -> str:
         """:returns: *model* spelled the way this upstream expects it."""
@@ -150,7 +185,6 @@ UPSTREAMS: dict[str, Upstream] = {
         base_url="https://api.anthropic.com",
         auth="x-api-key",
         wire_apis=frozenset({"messages"}),
-        vendors_served="claude",
         probe_path="/v1/models",
         extra_headers=(("anthropic-version", "2023-06-01"),),
     ),
@@ -161,14 +195,14 @@ UPSTREAMS: dict[str, Upstream] = {
         base_url="https://openrouter.ai/api",
         auth="bearer",
         wire_apis=frozenset({"messages", "chat"}),
-        vendors_served="any",
         probe_path="/v1/key",
         id_mapper=openrouter_model_id,
         embeddings=EmbeddingRoute(api_base="https://openrouter.ai/api/v1"),
     ),
     # The operator's own LiteLLM proxy (a company gateway): OpenAI-compatible, plus the Anthropic
     # Messages passthrough LiteLLM serves at /v1/messages. Model ids are the proxy's own names,
-    # so the model list comes from it. Offered only when LITELLM_BASE_URL is set.
+    # so the model list comes from it. Offered only when LITELLM_BASE_URL is set; the operator's
+    # LITELLM_API_KEY serves everyone who saved no key of their own (it stays in the engine).
     "litellm": Upstream(
         name="litellm",
         label="LiteLLM",
@@ -176,10 +210,11 @@ UPSTREAMS: dict[str, Upstream] = {
         base_url_env="LITELLM_BASE_URL",
         auth="bearer",
         wire_apis=frozenset({"messages", "chat"}),
-        vendors_served="any",
         probe_path="/v1/models",
         lists_models=True,
+        models_info_path="/model/info",
         embeddings=EmbeddingRoute(),
+        operator_key_env="LITELLM_API_KEY",
     ),
     # OpenAI is deliberately not wired yet (needs the "responses" wire API):
     # "openai": Upstream("openai", "OpenAI", "https://api.openai.com", "bearer",
@@ -198,18 +233,57 @@ def harness_family(harness: str) -> str:
     return caps.model_family.value if caps is not None else "multi"
 
 
-# Providers per family, best first; a later slice may order claude and multi differently.
+# Providers, best first; a later slice may order claude and multi differently.
 _PREFERENCE = ("anthropic", "openrouter", "litellm")
+
+#: The wire protocol a harness family speaks through a model connection: the Claude family
+#: speaks Anthropic Messages, the GPT/Gemini families Chat Completions (until ``responses`` is
+#: wired), a multi-model harness either.
+_FAMILY_WIRES: dict[str, frozenset[str]] = {
+    "claude": frozenset({"messages"}),
+    "gpt": frozenset({"chat"}),
+    "gemini": frozenset({"chat"}),
+}
 
 
 def preferred_providers(family: str) -> tuple[str, ...]:
-    """:returns: Providers to try, best first, among those that can serve *family*.
+    """:returns: Providers to try, best first, among those whose wire *family* speaks.
 
-    An upstream with ``vendors_served == "claude"`` only serves the ``claude`` and ``multi``
-    families (``multi`` harnesses reach Claude ids through it).
+    Decided by the upstream's wire protocols: a Messages-only upstream (Anthropic) serves the
+    ``claude`` and ``multi`` families, not a harness that only speaks Chat Completions.
     """
+    wires = _FAMILY_WIRES.get(family)
     return tuple(
-        name
-        for name in _PREFERENCE
-        if UPSTREAMS[name].vendors_served == "any" or family in ("claude", "multi")
+        name for name in _PREFERENCE if wires is None or wires & UPSTREAMS[name].wire_apis
     )
+
+
+def connection_upstreams(provider: object, family: str) -> tuple[str, ...]:
+    """The upstreams a ``connection: model`` provider entry may use for a harness *family*,
+    best first: :func:`preferred_providers`, narrowed by the entry's optional ``upstreams``
+    list (a deployment that routes every call through its LiteLLM proxy names only
+    ``litellm``)."""
+    preferred = preferred_providers(family)
+    only = provider.get("upstreams") if isinstance(provider, dict) else None
+    if not isinstance(only, list):
+        return preferred
+    return tuple(name for name in preferred if name in only)
+
+
+def offered_providers(only: Iterable[str] | None = None) -> list[dict[str, object]]:
+    """:returns: The providers a key can be saved for on this deployment, best first:
+    ``[{"provider", "label", "operator_key"}]`` (an operator-run upstream only when it is
+    configured; ``operator_key`` when the operator's own key serves people without one).
+
+    :param only: The upstreams the deployment's connections may use, when it narrows them.
+    """
+    allowed = set(only) if only is not None else None
+    return [
+        {
+            "provider": name,
+            "label": UPSTREAMS[name].label,
+            "operator_key": UPSTREAMS[name].operator_key is not None,
+        }
+        for name in PROVIDERS
+        if UPSTREAMS[name].configured and (allowed is None or name in allowed)
+    ]

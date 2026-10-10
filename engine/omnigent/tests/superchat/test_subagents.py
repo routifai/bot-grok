@@ -157,79 +157,52 @@ def test_dispatch_override_refuses_reasoning_effort() -> None:
 
 # ── resolve_helper_dispatch ─────────────────────────────────────────────────
 
-_ENV = {"OMNIGENT_HELPER_MODEL_FAST": "fast-id", "OMNIGENT_HELPER_MODEL_STRONG": "strong-id"}
+#: The organization's picks for the Helper's harness (Settings > Models), never configuration.
+_TIERS = {"fast": "fast-id", "strong": "strong-id"}
 
 
 def test_helper_dispatch_without_a_choice_inherits() -> None:
-    assert resolve_helper_dispatch(model=None, reasoning_effort=None, env={}) == (None, None)
+    assert resolve_helper_dispatch(model=None, reasoning_effort=None, tiers=_TIERS) == (
+        None,
+        None,
+    )
 
 
-def test_helper_dispatch_maps_fast_and_strong_from_config() -> None:
-    assert resolve_helper_dispatch(model="fast", reasoning_effort="low", env=_ENV) == (
+def test_helper_dispatch_maps_fast_and_strong_to_the_organizations_picks() -> None:
+    assert resolve_helper_dispatch(model="fast", reasoning_effort="low", tiers=_TIERS) == (
         "fast-id",
         "low",
     )
-    assert resolve_helper_dispatch(model="strong", reasoning_effort="high", env=_ENV) == (
+    assert resolve_helper_dispatch(model="strong", reasoning_effort="high", tiers=_TIERS) == (
         "strong-id",
         "high",
     )
 
 
-def test_helper_dispatch_with_nothing_configured_inherits_the_parent_model() -> None:
+def test_helper_dispatch_with_nothing_picked_inherits_the_parent_model() -> None:
     for choice in ("fast", "strong"):
-        assert resolve_helper_dispatch(model=choice, reasoning_effort=None, env={})[0] is None
-    # No product's model variable is read: only the generic helper variables count.
-    env = {"SUPERCHAT_CLAUDE_MODEL": "muse-model"}
-    assert resolve_helper_dispatch(model="strong", reasoning_effort=None, env=env)[0] is None
-
-
-def test_helper_dispatch_rejects_any_other_model() -> None:
-    with pytest.raises(ValueError, match="'fast' or 'strong'"):
-        resolve_helper_dispatch(model="claude-opus-4-7", reasoning_effort=None, env=_ENV)
-
-
-def test_helper_dispatch_rejects_unknown_effort() -> None:
-    with pytest.raises(ValueError, match="reasoning_effort"):
-        resolve_helper_dispatch(model="fast", reasoning_effort="ultra", env=_ENV)
-
-
-def test_helper_dispatch_on_a_multi_model_harness_ignores_the_global_ids() -> None:
-    # A pi Helper under a GPT-class parent must inherit it, not get the global Claude ids.
-    for choice in ("fast", "strong"):
-        assert resolve_helper_dispatch(
-            model=choice, reasoning_effort=None, harness="pi", env=_ENV
-        ) == (None, None)
-
-
-def test_helper_dispatch_on_a_multi_model_harness_reads_its_own_scoped_ids() -> None:
-    env = {**_ENV, "OMNIGENT_HELPER_MODEL_FAST_PI": "pi-fast-id"}
-    assert resolve_helper_dispatch(model="fast", reasoning_effort=None, harness="pi", env=env) == (
-        "pi-fast-id",
-        None,
-    )
-    # strong has no pi id: inherit, never the global one.
+        assert resolve_helper_dispatch(model=choice, reasoning_effort=None)[0] is None
+        assert (
+            resolve_helper_dispatch(
+                model=choice, reasoning_effort=None, tiers={"fast": None, "strong": None}
+            )[0]
+            is None
+        )
+    # Only the picked tier counts.
     assert (
-        resolve_helper_dispatch(model="strong", reasoning_effort=None, harness="pi", env=env)[0]
+        resolve_helper_dispatch(model="strong", reasoning_effort=None, tiers={"fast": "f"})[0]
         is None
     )
 
 
-def test_helper_dispatch_on_a_single_vendor_harness_keeps_the_global_ids() -> None:
-    assert resolve_helper_dispatch(
-        model="fast", reasoning_effort=None, harness="claude-sdk", env=_ENV
-    ) == ("fast-id", None)
-    scoped = {**_ENV, "OMNIGENT_HELPER_MODEL_FAST_CLAUDE_SDK": "scoped-id"}
-    assert resolve_helper_dispatch(
-        model="fast", reasoning_effort=None, harness="claude-sdk", env=scoped
-    ) == ("scoped-id", None)
+def test_helper_dispatch_rejects_any_other_model() -> None:
+    with pytest.raises(ValueError, match="'fast' or 'strong'"):
+        resolve_helper_dispatch(model="claude-opus-4-7", reasoning_effort=None, tiers=_TIERS)
 
 
-def test_scheduled_helper_follows_the_bundles_harness_for_its_model() -> None:
-    assert resolve_scheduled_helper("goal", None, env=_ENV, harness="pi") == ("goal", None)
-    assert resolve_scheduled_helper("goal", None, env=_ENV, harness="claude-sdk") == (
-        "goal",
-        "fast-id",
-    )
+def test_helper_dispatch_rejects_unknown_effort() -> None:
+    with pytest.raises(ValueError, match="reasoning_effort"):
+        resolve_helper_dispatch(model="fast", reasoning_effort="ultra", tiers=_TIERS)
 
 
 # ── memory_profile_for / prepend_memory_profile ─────────────────────────────
@@ -362,13 +335,15 @@ def test_wake_target_unchanged_when_fork_source_unknown(
 
 @pytest.mark.parametrize("retired", ["researcher", "analyst", "drafter"])
 def test_retired_types_run_as_worker_on_the_fast_model(retired: str) -> None:
-    assert resolve_scheduled_helper(retired, None, env=_ENV) == ("worker", "fast-id")
+    assert resolve_scheduled_helper(retired, None, _TIERS) == ("worker", "fast-id")
 
 
 def test_declared_types_keep_their_name_and_background_runs_fast() -> None:
-    assert resolve_scheduled_helper("goal", None, env=_ENV) == ("goal", "fast-id")
-    assert resolve_scheduled_helper("worker", "strong", env=_ENV) == ("worker", "strong-id")
+    assert resolve_scheduled_helper("goal", None, _TIERS) == ("goal", "fast-id")
+    assert resolve_scheduled_helper("worker", "strong", _TIERS) == ("worker", "strong-id")
+    # Nothing picked: the Helper inherits the parent's model.
+    assert resolve_scheduled_helper("goal", None) == ("goal", None)
 
 
 def test_a_stored_model_id_is_left_alone() -> None:
-    assert resolve_scheduled_helper("worker", "some-model", env=_ENV) == ("worker", "some-model")
+    assert resolve_scheduled_helper("worker", "some-model", _TIERS) == ("worker", "some-model")

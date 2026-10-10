@@ -4,7 +4,11 @@
 same catalog a new managed session validates against). ``GET``/``PUT /v1/me/model-preferences``
 keep the person's default model per harness in the generic ``preferences`` table. A new session
 picks: explicit model, then this default when the catalog still serves it, then the catalog default
-(see :func:`omnigent.server.routes.sandbox_inference.selected_catalog_model`).
+(the organization's pick, else the connection's own first model; see
+:func:`omnigent.server.routes.sandbox_inference.selected_catalog_model`).
+``GET /v1/me/model-providers`` lists the providers a key can be saved for on this deployment.
+``GET /v1/sessions/{id}/helper-models?harness=<h>`` answers a Computer's runner which model the
+organization picked for the ``fast`` and ``strong`` Helper tiers.
 """
 
 from __future__ import annotations
@@ -24,8 +28,12 @@ from omnigent.db.utils import (
 )
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.inference_config import normalize_inference_harness
-from omnigent.server.auth import RESERVED_USER_LOCAL, AuthProvider
-from omnigent.server.routes._auth_helpers import require_user
+from omnigent.server.auth import LEVEL_READ, RESERVED_USER_LOCAL, AuthProvider
+from omnigent.server.routes._auth_helpers import (
+    get_user_id,
+    require_access_and_level,
+    require_user,
+)
 
 PREFERENCE_KEY = "model_defaults"
 
@@ -73,6 +81,22 @@ class ModelPreferenceStore:
         run_write_transaction(self._session_immediate, "upsert_model_defaults", write)
 
 
+def _deployment_upstreams(request: Request) -> set[str] | None:
+    """The upstreams the deployment's ``connection: model`` providers are narrowed to (their
+    ``upstreams`` lists), or ``None`` when any of them may use every upstream."""
+    deployment = getattr(request.app.state, "sandbox_config", None)
+    target = deployment.for_provider(None) if deployment is not None else None
+    providers = ((target.host_config or {}).get("providers") or {}) if target is not None else {}
+    lists = [
+        entry.get("upstreams")
+        for entry in providers.values()
+        if isinstance(entry, dict) and entry.get("connection") == "model"
+    ]
+    if not lists or not all(isinstance(only, list) for only in lists):
+        return None
+    return {name for only in lists for name in only}
+
+
 class ModelPreferencesBody(BaseModel):
     """Body of ``PUT /v1/me/model-preferences``: replaces the whole map."""
 
@@ -82,13 +106,42 @@ class ModelPreferencesBody(BaseModel):
 
 
 def create_model_selection_router(
-    store: ModelPreferenceStore, *, auth_provider: AuthProvider | None = None
+    store: ModelPreferenceStore,
+    *,
+    auth_provider: AuthProvider | None = None,
+    permission_store: Any = None,
+    conversation_store: Any = None,
 ) -> APIRouter:
-    """``/me/models`` and ``/me/model-preferences`` (mount with ``prefix="/v1"``)."""
+    """``/me/models``, ``/me/model-preferences``, ``/me/model-providers`` and
+    ``/sessions/{id}/helper-models`` (mount with ``prefix="/v1"``)."""
     from omnigent.server.inference_catalog import catalog_row_details
     from omnigent.server.routes.sandbox_inference import preview_inference
+    from omnigent.superchat.models.tiers import tier_models
+    from omnigent.superchat.models.upstreams import offered_providers
 
     router = APIRouter()
+
+    @router.get("/me/model-providers")
+    async def list_providers(request: Request) -> dict[str, Any]:
+        """The providers a key can be saved for here, best first (the engine's registry, kept
+        to the upstreams the deployment's model connections may use)."""
+        require_user(request, auth_provider)
+        return {"object": "list", "data": offered_providers(_deployment_upstreams(request))}
+
+    @router.get("/sessions/{session_id}/helper-models")
+    async def helper_models(request: Request, session_id: str, harness: str) -> dict[str, Any]:
+        """``{"fast": id | null, "strong": id | null}``: the organization's Helper tier picks
+        for *harness*, for a Helper dispatched from this session (``null`` = not chosen: the
+        Helper inherits the session's model)."""
+        if conversation_store is not None:
+            await require_access_and_level(
+                get_user_id(request, auth_provider),
+                session_id,
+                LEVEL_READ,
+                permission_store,
+                conversation_store,
+            )
+        return await asyncio.to_thread(tier_models, normalize_inference_harness(harness))
 
     @router.get("/me/models")
     async def list_models(

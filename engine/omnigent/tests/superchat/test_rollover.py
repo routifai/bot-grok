@@ -447,3 +447,59 @@ def test_summarizer_model_routes_a_bare_claude_model_to_anthropic() -> None:
     assert summarizer_model("openrouter/anthropic/claude-sonnet-5-5", anthropic) == (
         "openrouter/anthropic/claude-sonnet-5-5"
     )
+
+
+def test_summarizer_model_follows_the_connection_wire_not_the_name() -> None:
+    """With the session's connection known, its wire decides whatever the model is called."""
+    from omnigent.superchat.rollover import summarizer_model
+
+    assert summarizer_model("team-model", None, "anthropic") == "anthropic/team-model"
+    assert summarizer_model("claude-sonnet-5-5", None, "openai_compatible") == (
+        "openai_compatible/claude-sonnet-5-5"
+    )
+    assert summarizer_model("deepseek/deepseek-chat", None, "openai_compatible") == (
+        "openai_compatible/deepseek/deepseek-chat"
+    )
+
+
+class _RecordingClient(_ReturnsTextClient):
+    """Returns a summary and records what each model call was made with."""
+
+    def __init__(self, text: str) -> None:
+        super().__init__(text)
+        self.calls: list[dict[str, Any]] = []
+
+    @property
+    def responses(self) -> Any:
+        outer = self
+
+        class _Responses:
+            async def create(self, **kwargs: Any) -> Response:
+                outer.calls.append(kwargs)
+                return Response(
+                    output=[MessageOutput(content=[OutputText(text=outer._text)])],
+                    model="test-model",
+                )
+
+        return _Responses()
+
+
+@pytest.mark.asyncio
+async def test_a_non_claude_model_on_an_anthropic_wire_connection_is_summarized_over_it() -> None:
+    """``team-model`` on a session whose connection speaks Anthropic Messages (a LiteLLM proxy
+    through the engine's model proxy) is summarized as an Anthropic call on that connection."""
+    proxy = {"base_url": "https://engine.example/v1/model/litellm/v1", "api_key": "host-a:tok"}
+    client = _FakeServerClient(items=[_msg("u1", "user", "hi"), _msg("a1", "assistant", "yo")])
+    llm = _RecordingClient("SUMMARY")
+    ok = await roll_over_session(
+        "conv_wire",
+        labels=_SUPERSIDE,
+        model="team-model",
+        server_client=client,  # type: ignore[arg-type]
+        llm_client=llm,
+        connection=proxy,
+        wire="anthropic",
+    )
+    assert ok is True and llm.calls
+    assert {call["model"] for call in llm.calls} == {"anthropic/team-model"}
+    assert all(proxy["base_url"] in str(call) for call in llm.calls)

@@ -497,7 +497,8 @@ async def _launch_helper(
 
 
 async def _helper_harness(deps: FireDeps, parent: Conversation, sub_agent_name: str) -> str | None:
-    """The harness the bundle gives the Helper Type ``sub_agent_name`` (``None`` if unknown)."""
+    """The harness the bundle gives the Helper Type ``sub_agent_name`` (the bundle's own for a
+    Type it does not declare; ``None`` if unknown)."""
     if deps.agent_cache is None or parent.agent_id is None:
         return None
     from omnigent.models.model_catalog import spec_harness
@@ -509,7 +510,8 @@ async def _helper_harness(deps: FireDeps, parent: Conversation, sub_agent_name: 
             return None
         loaded = await asyncio.to_thread(deps.agent_cache.load, agent.id, agent.bundle_location)
         sub = _find_spec_by_name(loaded.spec, sub_agent_name)
-        return spec_harness(sub) if sub is not None else None
+        # A Type the bundle does not declare runs on the bundle's own harness.
+        return spec_harness(sub if sub is not None else loaded.spec)
     except Exception:
         _logger.exception("scheduled fire: could not resolve the Helper harness; using defaults")
         return None
@@ -543,12 +545,11 @@ async def _create_helper_session(
     # ``"<agent_type>:<task name>"``: Activity splits on the first colon, so it reads
     # "<Type>: <task name>" instead of an opaque id (format owned by superchat.activity.titles).
     run_type = scheduled_helper_type(task.agent_type)
-    _, run_model = resolve_scheduled_helper(
-        task.agent_type,
-        task.model_override,
-        harness=await _helper_harness(deps, parent, run_type),
-    )
-    # Nothing configured for this harness, or the owner's connection does not serve it: inherit
+    from omnigent.superchat.models.tiers import tier_models
+
+    tiers = await asyncio.to_thread(tier_models, await _helper_harness(deps, parent, run_type))
+    _, run_model = resolve_scheduled_helper(task.agent_type, task.model_override, tiers)
+    # Nothing picked for this harness, or the owner's connection does not serve it: inherit
     # the parent's model like a dispatch does.
     from omnigent.server.routes.sandbox_inference import snapshot_serves_model
 

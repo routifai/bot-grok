@@ -79,18 +79,18 @@ def test_committed_bundles_match_a_fresh_render(tmp_path: Path) -> None:
             assert sub.diff_files == sub.left_only == sub.right_only == [], name
 
 
-@pytest.mark.parametrize(("name", "harness"), [("superchat-claude", "claude-sdk"), ("superchat-pi", "pi")])
-def test_real_loader_loads_both_bundles(
+@pytest.mark.parametrize(
+    ("name", "harness"), [("superchat-claude", "claude-sdk"), ("superchat-pi", "pi")]
+)
+def test_spec_loader_loads_both_bundles(
     name: str, harness: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from omnigent.inner.loader import load_agent_def_from_path
     from omnigent.spec import parse
 
     monkeypatch.setenv("TAVILY_API_KEY", "x")
-    monkeypatch.setenv("SUPERCHAT_CLAUDE_MODEL", "m")
-    agent = load_agent_def_from_path(str(AGENTS / name))
-    assert agent is not None
     spec = parse(AGENTS / name)
+    # No model is named: a session runs on the model picked from its connection.
+    assert spec.executor.model is None
     assert spec.executor.config["harness"] == harness
     assert {a.name for a in spec.sub_agents} == {"worker"}
     worker = next(a for a in spec.sub_agents if a.name == "worker")
@@ -117,7 +117,6 @@ def test_helpers_are_offered_web_search_and_web_fetch(
     from omnigent.tools.manager import ToolManager
 
     monkeypatch.setenv("TAVILY_API_KEY", "x")
-    monkeypatch.setenv("SUPERCHAT_CLAUDE_MODEL", "m")
     root = parse(AGENTS / name)
     worker = next(a for a in root.sub_agents if a.name == "worker")
     spec = worker if helper == "worker" else next(a for a in worker.sub_agents)

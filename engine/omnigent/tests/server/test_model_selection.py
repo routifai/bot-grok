@@ -14,7 +14,7 @@ from omnigent.db.db_models import OmnigentBase
 from omnigent.db.utils import get_or_create_engine
 from omnigent.errors import OmnigentError
 from omnigent.inference_config import HarnessInferenceBinding
-from omnigent.onboarding.provider_config import MODEL_CONNECTION, ProviderEntry
+from omnigent.onboarding.provider_config import ProviderEntry
 from omnigent.server.inference_catalog import SandboxInferenceService
 from omnigent.server.routes.sandbox_inference import (
     prepare_create_inference,
@@ -67,8 +67,9 @@ def test_models_are_filtered_per_harness_and_flagged(app: FastAPI) -> None:
     sonnet = sdk["models"][0]
     assert sonnet["is_default"] is True and sonnet["is_user_default"] is False
     assert sonnet["family"] == "claude" and sonnet["wire_api"] == "anthropic-messages"
+    # pi on an Anthropic key: the key's own list, nothing named in configuration.
     pi = {m["id"]: m for m in _models(client, "pi")["models"]}
-    assert pi["deepseek/deepseek-chat"]["family"] == "other"
+    assert list(pi) == ["claude-sonnet-5-5", "claude-haiku-4-5"]
 
 
 def test_preferences_round_trip_and_flag(app: FastAPI) -> None:
@@ -139,15 +140,52 @@ async def test_sub_agent_pin_outside_the_catalog_inherits_the_parent(app: FastAP
     assert snapshot_serves_model(None, "anything")
 
 
-def test_claude_sdk_on_a_person_key_never_lists_an_unknown_family_id() -> None:
+def test_a_model_connection_is_never_filtered_by_name() -> None:
+    """A connection's ids are its upstream's names: claude-sdk is offered all of them; an
+    operator gateway's curated list keeps the rule for ids recognizably of another vendor."""
     service = SandboxInferenceService(SimpleNamespace())
-    allow = ("claude-sonnet-5-5", "gateway/fast")
-    for connection, expected in ((MODEL_CONNECTION, ["claude-sonnet-5-5"]), (None, list(allow))):
-        provider = ProviderEntry(name="gw", kind="gateway", connection=connection)
+    allow = ("claude-sonnet-5-5", "gateway/fast", "gpt-5-4", "team-model")
+    for connection, expected in (
+        (True, list(allow)),
+        (False, ["claude-sonnet-5-5", "gateway/fast", "team-model"]),
+    ):
         result = service._static_catalog(
             {"provider_label": "x"},
             HarnessInferenceBinding("gw", None, allow),
-            provider,
+            ProviderEntry(name="gw", kind="gateway"),
             "claude-sdk",
+            connection=connection,
         )
         assert [row["id"] for row in result["models"]] == expected
+
+
+def test_providers_are_the_engines_registry(app: FastAPI, monkeypatch: pytest.MonkeyPatch) -> None:
+    client = TestClient(app)
+    monkeypatch.delenv("LITELLM_BASE_URL", raising=False)
+    data = client.get("/v1/me/model-providers").json()["data"]
+    assert data == [
+        {"provider": "anthropic", "label": "Anthropic", "operator_key": False},
+        {"provider": "openrouter", "label": "OpenRouter", "operator_key": False},
+    ]
+    # An operator-run upstream is offered once it is configured.
+    monkeypatch.setenv("LITELLM_BASE_URL", "http://litellm.internal:4000")
+    names = [p["provider"] for p in client.get("/v1/me/model-providers").json()["data"]]
+    assert names == ["anthropic", "openrouter", "litellm"]
+
+
+def test_helper_models_answer_the_organizations_picks(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnigent.superchat.models import tiers
+
+    picks = {"pi": {"allow": None, "default": None, "fast": "team-fast", "strong": None}}
+    monkeypatch.setattr(tiers, "_overlay", SimpleNamespace(get=lambda: picks))
+    client = TestClient(app)
+
+    def ask(harness: str) -> dict:
+        return client.get("/v1/sessions/s1/helper-models", params={"harness": harness}).json()
+
+    assert ask("pi") == {"fast": "team-fast", "strong": None}
+    assert ask("claude-sdk") == {"fast": None, "strong": None}
+    monkeypatch.setattr(tiers, "_overlay", None)
+    assert ask("pi") == {"fast": None, "strong": None}

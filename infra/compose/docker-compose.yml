@@ -127,10 +127,6 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       TAVILY_API_KEY: ${TAVILY_API_KEY:-}
-      # Passed through only when set (in .env or the shell); otherwise the image's defaults hold.
-      SUPERCHAT_CLAUDE_MODEL:
-      OMNIGENT_HELPER_MODEL_FAST:
-      OMNIGENT_HELPER_MODEL_STRONG:
       HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
       HTTPS_PROXY: ${HTTPS_PROXY:-${https_proxy:-}}
       NO_PROXY: ${NO_PROXY:-${no_proxy:-}}

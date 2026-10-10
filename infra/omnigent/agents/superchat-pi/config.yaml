@@ -19,8 +19,8 @@ description: >-
 skills: none
 executor:
   type: omnigent
-  # The engine reads the launch model from executor.model (not config.model).
-  model: ${SUPERCHAT_CLAUDE_MODEL}
+  # No model named here: a chat runs on the model picked in Settings > Models (the person's
+  # default, else the organization's, else the connection's own first model).
   config:
     harness: pi
     context_files: false

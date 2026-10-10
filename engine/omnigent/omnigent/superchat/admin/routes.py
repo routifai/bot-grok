@@ -1,7 +1,8 @@
 """Organization admin routes (``/v1/admin/...``), admin-only; the organization is the workspace.
 
-* ``GET``/``PUT /admin/models``: the model overlay ``{harnesses: {h: {allow, default}}}`` that
-  narrows what each harness's connection binding offers (see :mod:`omnigent.superchat.models.org`).
+* ``GET``/``PUT /admin/models``: the model overlay ``{harnesses: {h: {allow, default, fast,
+  strong}}}`` that narrows what each harness's connection binding offers and picks the Helper
+  tiers (see :mod:`omnigent.superchat.models.org`).
 * ``GET /admin/models/catalog?harness=``: the binding's full model list the overlay narrows.
 * ``GET /admin/users``: every person with role, status, spend, sessions, connections, budget and
   Computer; ``GET /admin/usage?window=day|month``: org totals, per-person and per-day.
@@ -50,12 +51,15 @@ _WINDOWS = ("day", "month")
 
 
 class OverlayEntry(BaseModel):
-    """One harness's overlay: ``allow`` (``null`` = no restriction) and ``default`` model."""
+    """One harness's overlay: ``allow`` (``null`` = no restriction), the ``default`` model and
+    the ``fast``/``strong`` Helper tiers (``null`` = not chosen)."""
 
     model_config = ConfigDict(extra="forbid")
 
     allow: list[str] | None = None
     default: str | None = None
+    fast: str | None = None
+    strong: str | None = None
 
 
 class PutOverlay(BaseModel):
@@ -128,12 +132,14 @@ def create_org_admin_router(
         result: Overlay = {}
         for raw_harness, entry in body.harnesses.items():
             harness = normalize_inference_harness(raw_harness)
-            if entry.allow is None and entry.default is None:
+            chosen = {"default": entry.default, "fast": entry.fast, "strong": entry.strong}
+            if entry.allow is None and not any(chosen.values()):
                 continue
             if entry.allow is not None and not entry.allow:
                 raise _invalid("allow must list at least one model, or be null for no restriction")
-            if entry.allow is not None and entry.default and entry.default not in entry.allow:
-                raise _invalid(f"default for {harness!r} must be one of its allowed models")
+            for role, model in chosen.items():
+                if entry.allow is not None and model and model not in entry.allow:
+                    raise _invalid(f"{role} for {harness!r} must be one of its allowed models")
             try:  # the bare binding, as the admin's own connection resolves it
                 snapshot = await inference_service(request).prepare(
                     None, harness, admin_id, org_overlay=False
@@ -149,7 +155,7 @@ def create_org_admin_router(
                     or f"No models are managed for harness {harness!r}"
                 )
             served = {row["id"] for row in catalog["models"]}
-            for model in [*(entry.allow or []), *([entry.default] if entry.default else [])]:
+            for model in [*(entry.allow or []), *(m for m in chosen.values() if m)]:
                 if model not in served:
                     raise OmnigentError(
                         f"Model {model!r} is not served for {harness!r}",
@@ -157,7 +163,7 @@ def create_org_admin_router(
                     )
             result[harness] = {
                 "allow": list(dict.fromkeys(entry.allow)) if entry.allow is not None else None,
-                "default": entry.default,
+                **chosen,
             }
         await asyncio.to_thread(overlay.set, result)
         return {"harnesses": result}

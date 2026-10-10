@@ -22,7 +22,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 
 from omnigent.memory.service import MemoryService
@@ -49,6 +49,7 @@ class MemoryUpkeepCoordinator:
         upkeep_store: MemoryUpkeepStore,
         llm_caller_factory: Callable[[], UpkeepLLMCaller | None],
         max_concurrency: int | None = None,
+        llm_caller_resolver: Callable[[str], Awaitable[UpkeepLLMCaller | None]] | None = None,
     ) -> None:
         resolved_max_concurrency = (
             max_concurrency if max_concurrency is not None else resolve_upkeep_max_concurrency()
@@ -59,6 +60,8 @@ class MemoryUpkeepCoordinator:
         self._memory_service = memory_service
         self._upkeep_store = upkeep_store
         self._llm_caller_factory = llm_caller_factory
+        # Per-owner resolution (the owner's own connection); wins over the factory when set.
+        self._llm_caller_resolver = llm_caller_resolver
         self._slots = asyncio.Semaphore(resolved_max_concurrency)
         self._pending: set[asyncio.Task[None]] = set()
         self._scheduled_user_ids: set[str] = set()
@@ -85,12 +88,17 @@ class MemoryUpkeepCoordinator:
     async def _run(self, user_id: str) -> None:
         try:
             async with self._slots:
+                llm_caller = (
+                    await self._llm_caller_resolver(user_id)
+                    if self._llm_caller_resolver is not None
+                    else self._llm_caller_factory()
+                )
                 await run_upkeep_once(
                     user_id=user_id,
                     conversation_store=self._conversation_store,
                     memory=self._memory_service,
                     upkeep_store=self._upkeep_store,
-                    llm_caller=self._llm_caller_factory(),
+                    llm_caller=llm_caller,
                 )
         except asyncio.CancelledError:
             raise

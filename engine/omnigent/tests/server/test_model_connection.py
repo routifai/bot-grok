@@ -151,7 +151,7 @@ def test_probe_uses_the_registry(uri: str) -> None:
     assert str(probe.requests[-1].url) == upstream.probe_url == "https://openrouter.ai/api/v1/key"
     assert probe.requests[-1].headers["authorization"] == f"Bearer {OR_KEY}"
     assert upstream.auth == "bearer" and upstream.wire_apis == {"messages", "chat"}
-    assert UPSTREAMS["anthropic"].vendors_served == "claude"
+    assert UPSTREAMS["anthropic"].wire_apis == {"messages"}
 
 
 def test_one_key_per_provider_and_put_replaces(uri: str) -> None:

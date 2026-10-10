@@ -21,7 +21,6 @@ from omnigent.db.utils import (
 from omnigent.errors import OmnigentError
 from omnigent.runtime.public_error_codes import classify_provider_failure
 from omnigent.server.auth import LEVEL_OWNER
-from omnigent.server.inference_catalog import SandboxInferenceService
 from omnigent.server.routes.sandbox_inference import selected_catalog_model
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
 from omnigent.stores.host_store import Host
@@ -40,7 +39,7 @@ from omnigent.superchat.models.org import (
 from omnigent.superchat.models.store import ModelConnectionStore
 from omnigent.superchat.vault.store import VAULT_KEY_ENV
 
-from .test_byok_pi import _hosted_state
+from .test_byok_pi import _hosted_state, _service
 from .test_model_proxy import store  # noqa: F401  (the proxy's seeded connection store)
 
 # 2026-10-14 12:26 UTC
@@ -139,6 +138,8 @@ def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
     app.state.model_connection_store = _Keys()
     app.state.model_org_overlay = overlay
     app.state.host_store = hosts
+    # The template names no model: catalogs are the key's own listing.
+    app.state.inference_catalog = _service(app.state)
     app.include_router(
         create_org_admin_router(
             overlay=overlay,
@@ -207,7 +208,7 @@ def test_every_route_needs_an_admin_with_a_neutral_message(
 
 
 async def _catalog(world: World, user: str = "alice") -> dict[str, Any]:
-    snapshot = await SandboxInferenceService(world.app.state).prepare(None, "claude-sdk", user)
+    snapshot = await _service(world.app.state).prepare(None, "claude-sdk", user)
     assert snapshot is not None
     return snapshot
 
@@ -292,6 +293,8 @@ def test_overlay_editor_lists_the_whole_binding_even_when_the_overlay_narrows_it
         ({"allow": []}, 400, "invalid_input"),
         ({"allow": ["claude-haiku-4-5"], "default": "claude-sonnet-5-5"}, 400, "invalid_input"),
         ({"allow": "claude-haiku-4-5"}, 422, None),
+        ({"fast": "claude-gone"}, 400, "model_not_supported"),
+        ({"allow": ["claude-sonnet-5-5"], "strong": "claude-haiku-4-5"}, 400, "invalid_input"),
     ],
 )
 def test_overlay_is_validated_against_what_the_binding_serves(
@@ -304,6 +307,32 @@ def test_overlay_is_validated_against_what_the_binding_serves(
     if code:
         assert r.json()["code"] == code
     assert world.overlay.get() == {}
+
+
+def test_fast_and_strong_picks_are_stored_and_read_as_the_helper_tiers(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnigent.superchat.models import tiers
+
+    r = world.client.put(
+        "/v1/admin/models",
+        json={"harnesses": {"claude-sdk": {"fast": "claude-haiku-4-5"}}},
+        headers=ROOT,
+    )
+    assert r.status_code == 200
+    assert r.json()["harnesses"]["claude-sdk"] == {
+        "allow": None,
+        "default": None,
+        "fast": "claude-haiku-4-5",
+        "strong": None,
+    }
+    monkeypatch.setattr(tiers, "_overlay", world.overlay)
+    assert tiers.tier_models("claude-sdk") == {"fast": "claude-haiku-4-5", "strong": None}
+    assert tiers.tier_models("pi") == {"fast": None, "strong": None}
+    assert tiers.org_fast_model() == "claude-haiku-4-5"
+    # A tier pick alone does not narrow the catalog or change its default.
+    catalog = world.client.get("/v1/admin/models/catalog?harness=claude-sdk", headers=ROOT)
+    assert catalog.json()["default_model"] == "claude-sonnet-5-5"
 
 
 def test_overlay_for_an_unmanaged_harness_is_rejected(world: World) -> None:

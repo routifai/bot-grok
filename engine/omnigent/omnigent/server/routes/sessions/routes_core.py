@@ -28,7 +28,6 @@ from fastapi.responses import Response
 from pydantic import ValidationError
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
-from omnigent.server.routes._sessions.orchestration import managed_first_launch_labels
 from omnigent.codex_approval_modes import (
     CODEX_NATIVE_PERMISSION_VALUES,
 )
@@ -189,6 +188,7 @@ from omnigent.server.routes._sessions.orchestration import (
     _spawn_archive_stop,
     _validate_session_model_selection,
     ensure_runner_connected,
+    managed_first_launch_labels,
 )
 from omnigent.server.schemas import (
     AutomaticSessionRenameRequest,
@@ -3063,16 +3063,16 @@ def register_core_routes(
         connection = None
         if runner_client is None:
             # The parent's runner isn't connected (idle or restarting): summarize with the
-            # server's own LLM config rather than failing the seed.
+            # server's own background model rather than failing the seed.
+            from omnigent.llms.background import resolve_background_llm
             from omnigent.llms.client import Client
-            from omnigent.runtime import get_caps
-            from omnigent.runtime.policies.builder import _resolve_server_llm_connection
 
-            server_llm = get_caps().llm
-            if server_llm is not None:
+            owner_of = getattr(conversation_store, "get_session_owner", None)
+            owner = await asyncio.to_thread(owner_of, source_id) if owner_of else None
+            background = await resolve_background_llm(owner)
+            if background is not None:
                 llm_client = Client()
-                connection = _resolve_server_llm_connection(server_llm)
-                model = server_llm.model
+                model, connection = background
         seed_labels = source_conv.labels if source_conv else None
         # Bounded: a message to the new chat waits for this seed.
         async with asyncio.timeout(SIDE_CHAT_SEED_TIMEOUT_S):

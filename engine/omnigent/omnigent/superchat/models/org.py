@@ -3,10 +3,14 @@
 Both are small JSON rows in the generic ``preferences`` table, so there is no new table:
 
 * the **overlay** (``model_org_overlay``, owned by :data:`WORKSPACE_OWNER`, the identity no person
-  can hold) narrows what the connection binding offers: per harness an optional allowlist and an
-  optional default model. :func:`apply_overlay` merges it into a harness binding while a session's
+  can hold) narrows what the connection binding offers: per harness an optional allowlist, an
+  optional default model and the two Helper tiers, ``fast`` (quick Helpers and all background
+  work: titles, memory upkeep, the daily note, Dreaming, summaries) and ``strong``.
+  :func:`apply_overlay` merges allow and default into a harness binding while a session's
   inference snapshot is prepared (``catalog = binding allowlist ∩ org allow``, org default replaces
-  the binding default, and the person's own default still wins over both);
+  the binding default, and the person's own default still wins over both); the tiers are read by
+  :mod:`omnigent.superchat.models.tiers`. Nothing is chosen until an admin picks it: no model
+  name lives in configuration;
 * a **suspension** (``account_suspended``, one row under the suspended user's id) stops that
   person's usage. The model proxy and the session create/turn routes read it through
   :func:`refuse_if_suspended`. Deleting the account deletes its preference rows, flag included.
@@ -37,8 +41,12 @@ WORKSPACE_OWNER = RESERVED_USER_WORKSPACE
 SUSPENDED_MESSAGE = "Your account is suspended. Contact an admin to continue."
 _CACHE_TTL_SECONDS = 5
 
-# {harness: {"allow": [model ids] | None, "default": model id | None}}
+# {harness: {"allow": [model ids] | None, "default": id | None, "fast": id | None,
+#            "strong": id | None}}
 Overlay = dict[str, dict[str, Any]]
+
+#: The Helper tiers an organization picks a model for.
+TIERS = ("fast", "strong")
 
 
 def parse_overlay(raw: Any) -> Overlay:
@@ -56,8 +64,12 @@ def parse_overlay(raw: Any) -> Overlay:
             else None
         )
         default = default if isinstance(default, str) and default else None
-        if allow is not None or default is not None:
-            result[harness] = {"allow": allow, "default": default}
+        tiers = {
+            tier: value if isinstance(value := entry.get(tier), str) and value else None
+            for tier in TIERS
+        }
+        if allow is not None or default is not None or any(tiers.values()):
+            result[harness] = {"allow": allow, "default": default, **tiers}
     return result
 
 

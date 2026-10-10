@@ -4,9 +4,10 @@
 #   docker compose --env-file .env -f infra/compose/docker-compose.yml \
 #     -f infra/compose/docker-compose.litellm.yml up -d --build
 #
-# .env: LITELLM_BASE_URL (the proxy's root URL, no /v1), LITELLM_API_KEY, and the proxy's model
-# names in SUPERCHAT_CLAUDE_MODEL / OMNIGENT_HELPER_MODEL_FAST. The URL must be reachable from the
-# engine and from each Computer (a host address, not a compose service name).
+# .env: LITELLM_BASE_URL (the proxy's root URL, no /v1) and LITELLM_API_KEY. The key stays in the
+# engine: each Computer calls the engine's model proxy, which adds it. The URL must be reachable
+# from the engine (a host address, not a compose service name). No model is named: an admin picks
+# the default, fast and strong models from the proxy's list in Settings > Models.
 # Engine config: infra/railway/engine.config.litellm.yaml.tmpl.
 
 services:
