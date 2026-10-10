@@ -390,6 +390,9 @@ msgstr "All"
 msgid "All bots"
 msgstr "All bots"
 
+msgid "All forks"
+msgstr "All forks"
+
 msgid "All models"
 msgstr "All models"
 
@@ -498,6 +501,9 @@ msgstr "Apps superchat builds for you will appear here."
 
 msgid "Archive"
 msgstr "Archive"
+
+msgid "Archive {title}"
+msgstr "Archive {title}"
 
 msgid "Archive side chats"
 msgstr "Archive side chats"
@@ -1910,6 +1916,9 @@ msgstr "Forgot password?"
 msgid "Fork"
 msgstr "Fork"
 
+msgid "Fork any message to explore it on the side."
+msgstr "Fork any message to explore it on the side."
+
 msgid "Forks"
 msgstr "Forks"
 
@@ -2713,6 +2722,9 @@ msgstr "Not in the plugin catalog"
 msgid "Not now"
 msgstr "Not now"
 
+msgid "Nothing archived."
+msgstr "Nothing archived."
+
 msgid "Nothing here yet."
 msgstr "Nothing here yet."
 
@@ -3336,6 +3348,9 @@ msgstr "Restart to update"
 
 msgid "Restore"
 msgstr "Restore"
+
+msgid "Restore {title}"
+msgstr "Restore {title}"
 
 msgid "Restore previous space"
 msgstr "Restore previous space"

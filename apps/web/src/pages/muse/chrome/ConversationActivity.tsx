@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import { ChevronDown, Clock } from "lucide-react";
+import { Clock } from "lucide-react";
 import { useState } from "react";
 import { HomeActivity } from "./HomeActivity";
 
@@ -23,18 +23,5 @@ export function ConversationActivity({ botId }: { botId: string }) {
       </button>
     );
   }
-  return (
-    <div className="relative">
-      <HomeActivity botId={botId} className="shadow-float" />
-      <button
-        type="button"
-        aria-label={t`Hide activity`}
-        title={t`Hide activity`}
-        onClick={() => setOpen(false)}
-        className="absolute -top-3 end-3 z-20 grid size-8 place-items-center rounded-full border border-glass-line bg-window text-foreground transition-colors hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-ring"
-      >
-        <ChevronDown size={16} strokeWidth={2} />
-      </button>
-    </div>
-  );
+  return <HomeActivity botId={botId} className="shadow-float" onHide={() => setOpen(false)} />;
 }

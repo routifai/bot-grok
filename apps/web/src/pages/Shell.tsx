@@ -900,7 +900,7 @@ export function ShellPage() {
           <SettingsButton onClick={() => openSettings("general")} />
         </div>
       ) : null}
-      {active ? null : <AppRail active="bots" />}
+      {museMode || active ? null : <AppRail active="bots" />}
 
       <main
         className={
@@ -972,17 +972,17 @@ export function ShellPage() {
                       ) : null}
                       <ConversationModelPicker botId={active.id} />
                       <ChatsPopover
+                        botId={active.id}
+                        state={chatList.state}
+                        forks={forks.rows}
                         current={!activeChat && !forks.thread}
+                        activeChatId={activeChat && activeChat !== "draft" ? activeChat.id : null}
                         onOpenConversation={() => {
                           forks.reset();
                           setActiveChat(null);
                         }}
-                        state={chatList.state}
-                        activeChatId={null}
                         onOpenChat={setActiveChat}
                         onNewDraft={() => setActiveChat("draft")}
-                        forks={forks.rows}
-                        activeForkId={forks.thread?.chat.id ?? null}
                         onOpenFork={(row) => {
                           setActiveChat(null);
                           forks.openRow(row);
@@ -991,10 +991,14 @@ export function ShellPage() {
                           setActiveChat(null);
                           forks.showForks(filter);
                         }}
+                        onChanged={() => {
+                          chatList.refresh();
+                          readTranscript();
+                        }}
                       />
                     </div>
                   </div>
-                ) : (
+                ) : museMode ? null : (
                   <div className="app-drag flex items-center justify-between border-b border-sidebar-border px-3 py-[17px] md:px-[22px]">
                     <div className="flex min-w-0 items-center gap-2">
                       <button

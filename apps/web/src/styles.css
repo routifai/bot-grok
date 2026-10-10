@@ -384,6 +384,20 @@ body {
     backdrop-filter: blur(14px);
     border: 1px solid var(--glass-line);
   }
+  /* Activity inside a superchat glass card: flat rows, no inner group box. */
+  .sc-activity .nova-group {
+    background-color: transparent;
+    box-shadow: none;
+    border-radius: 0;
+    overflow: visible;
+  }
+  .sc-activity .nova-group > .nova-row + .nova-row::before {
+    background: var(--glass-line);
+    inset-inline: 56px 8px;
+  }
+  .sc-activity .nova-row {
+    border-radius: 14px;
+  }
   /* The dim behind a dock sheet. */
   [data-slot="dialog-overlay"]:has(+ .sc-sheet) {
     background-color: color-mix(in srgb, var(--window) 55%, transparent);
