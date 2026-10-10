@@ -7,6 +7,7 @@ export * from "./activity.js";
 export * from "./approvals.js";
 export * from "./client/core.js";
 export * from "./client/muse.js";
+export * from "./client/runners.js";
 export * from "./client/scheduled.js";
 export * from "./client/sessions.js";
 export * from "./client/settings.js";

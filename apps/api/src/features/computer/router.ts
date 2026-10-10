@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { ORPCError } from "@orpc/server";
 import { computerControlExpireJobKey } from "@superchat/adapter-kit";
 import type { ComputerExecutionLease } from "@superchat/adapters";
 import {
@@ -16,11 +17,15 @@ import {
 } from "@superchat/adapters";
 import { ACTIVE_RUN_STATUSES } from "@superchat/core";
 import { IsolationError } from "@superchat/db";
-import { ORPCError } from "@orpc/server";
-import { engineComputerClient } from "../../engine-client.js";
+import { engineComputerClient, requireEngine } from "../../engine-client.js";
 import type { RouterContext } from "../../routers/context.js";
 import { computerContext } from "../../routers/shared.js";
 import { computerControlProcedures } from "./control.js";
+import {
+  engineComputerRuntime,
+  moveEngineComputerRunner,
+  setEngineComputerAgent,
+} from "./runtime.js";
 import { engineComputerHost, engineComputerStatus } from "./service.js";
 import { computerStatus, runComputerReplace } from "./support.js";
 
@@ -154,6 +159,31 @@ export function computerRouter(c: RouterContext) {
           ? engineComputerHost(deps, engine, context.actor, input.botId)
           : { hostId: null, agentName: null, harness: null };
       }),
+      runtime: authed.computer.runtime.handler(async ({ context, input }) =>
+        engineComputerRuntime(
+          deps,
+          requireEngine(engineComputerClient(context.actor), "Computer settings"),
+          context.actor,
+          input.botId,
+        ),
+      ),
+      setAgent: authed.computer.setAgent.handler(async ({ context, input }) =>
+        setEngineComputerAgent(
+          deps,
+          requireEngine(engineComputerClient(context.actor), "Computer settings"),
+          context.actor,
+          input.botId,
+          input.agent,
+        ),
+      ),
+      moveRunner: authed.computer.moveRunner.handler(async ({ context, input }) =>
+        moveEngineComputerRunner(
+          deps,
+          requireEngine(engineComputerClient(context.actor), "Computer settings"),
+          context.actor,
+          input,
+        ),
+      ),
       recover: authed.computer.recover.handler(async ({ context, input }) => {
         const bot = await repos.getBot(context.actor, input.botId);
         if (!bot.computer) throw new IsolationError();

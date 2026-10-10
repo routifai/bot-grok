@@ -11,6 +11,38 @@ import { Id } from "../ids.js";
 import { ArtifactSchema } from "./artifacts.js";
 import { botId } from "./shared.js";
 
+export const ComputerRunnerSchema = z.object({
+  /** The engine host; `null` for the managed Computer before it first starts. */
+  hostId: z.string().nullable(),
+  name: z.string(),
+  /** `computer`: the managed Computer the engine starts (sandbox provider); `host`: a machine
+   * the person connected with `omni host`. */
+  kind: z.enum(["computer", "host"]),
+  provider: z.string().nullable(),
+  online: z.boolean(),
+  current: z.boolean(),
+  /** Whether the Conversation can move here now. */
+  movable: z.boolean(),
+});
+export type ComputerRunner = z.infer<typeof ComputerRunnerSchema>;
+
+export const ComputerRuntimeSchema = z.object({
+  /** A reply is running: the engine refuses switching the harness until it ends. */
+  busy: z.boolean(),
+  /** The agent bundle the Conversation runs on, e.g. `superchat-claude`. */
+  agent: z.string().nullable(),
+  /** Superchat's agent bundles on the engine, with the harness each runs. */
+  agents: z.array(z.object({ name: z.string(), harness: z.string().nullable() })),
+  runners: z.array(ComputerRunnerSchema),
+  /** The managed Computer can't hand the Conversation to a host (or take it back): the engine
+   * keeps managed placement server-owned. */
+  managed: z.boolean(),
+  /** The command that connects this machine as a host, when the engine lets people sign in
+   * their own hosts; `null` otherwise. */
+  connectCommand: z.string().nullable(),
+});
+export type ComputerRuntime = z.infer<typeof ComputerRuntimeSchema>;
+
 export const computerContract = {
   computer: {
     status: oc.input(botId).output(ComputerStatusSchema),
@@ -52,6 +84,23 @@ export const computerContract = {
         harness: z.string().nullable(),
       }),
     ),
+    /** What the Muse's Conversation can run on and where (Settings > Computer). */
+    runtime: oc.input(botId).output(ComputerRuntimeSchema),
+    /** Runs the Conversation on another of the engine's agent bundles, from the next message. */
+    setAgent: oc
+      .input(z.object({ botId: Id, agent: z.string().min(1).max(200) }))
+      .output(z.object({ agent: z.string() })),
+    /** Moves the Conversation onto one of the person's own hosts (`omni host`). `workspace` is a
+     * folder on that host; its home when omitted. */
+    moveRunner: oc
+      .input(
+        z.object({
+          botId: Id,
+          hostId: z.string().min(1).max(200),
+          workspace: z.string().max(1024).optional(),
+        }),
+      )
+      .output(z.object({ hostId: z.string() })),
   },
   files: {
     list: oc.input(z.object({ botId: Id, path: z.string().max(1024).default("") })).output(
