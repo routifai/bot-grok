@@ -104,3 +104,25 @@ it("shows a cover for office documents", async () => {
   expect(c.textContent).toContain("deck.pptx");
   expect(c.querySelector("iframe")).toBeNull();
 });
+
+it("follows a deck that was still being saved when the card first rendered", async () => {
+  vi.useFakeTimers();
+  const files = { listVersions: vi.fn(), getById: api.getById };
+  Object.assign(api, { listVersions: files.listVersions });
+  api.getById.mockResolvedValueOnce({ mimeType: "text/html", contentBase64: b64("") });
+  api.getById.mockResolvedValue({
+    mimeType: "text/html",
+    contentBase64: b64('<section class="slide">hi</section>'),
+  });
+  api.listVersions.mockResolvedValue([{ id: "v2" }]);
+  const c = await render({ artifactId: "d1", name: "x.deck.html" });
+  const preview = () => c.querySelector("[data-testid=artifact-preview]");
+  expect(preview()?.getAttribute("data-preview")).toBe("cover");
+  expect(c.querySelector("[data-testid=html]")).toBeNull();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(3100);
+  });
+  expect(preview()?.getAttribute("data-preview")).toBe("html");
+  expect(c.querySelector("[data-testid=html]")).not.toBeNull();
+  vi.useRealTimers();
+});

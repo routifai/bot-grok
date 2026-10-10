@@ -1,6 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
 import { ChatMarkdown } from "@nova/chat-ui/web";
-import { isAttachmentImageMimeType } from "@nova/contracts";
+import { deckSlideCount, isAttachmentImageMimeType, isDeckArtifactName } from "@nova/contracts";
 import { cn } from "@nova/ui-web";
 import { File, FileText, Presentation, Table2 } from "lucide-react";
 import { type RefObject, useEffect, useRef, useState } from "react";
@@ -9,6 +9,7 @@ import { SandboxedHtmlViewer } from "../../../components/SandboxedHtmlViewer";
 import { decodeArtifactBase64 } from "../../../lib/artifact-open";
 import { rpc } from "../../../lib/rpc";
 import { useObjectUrl } from "../../../lib/use-object-url";
+import { useVisiblePoll } from "../../../lib/use-visible-poll";
 import { documentHeading } from "../ArtifactPreviewThumbnail";
 import { useArtifactExtensions } from "../registry";
 
@@ -19,9 +20,20 @@ const CSV_MAX_ROWS = 8;
 const CSV_MAX_COLUMNS = 6;
 /** Larger deliverables keep the cover: decoding them for a thumbnail is not worth it. */
 const PREVIEW_MAX_BYTES = 3_000_000;
+/** How often a card whose file is still being saved re-checks its version list. */
+const PENDING_POLL_MS = 3000;
+
+/** Bytes with nothing to show yet: an empty file, or a deck with no slide so far. */
+function isPendingContent(name: string, mimeType: string, bytes: Uint8Array): boolean {
+  if (mimeType.startsWith("image/") || mimeType === "application/pdf") return bytes.length === 0;
+  if (!mimeType.startsWith("text/")) return false;
+  const text = new TextDecoder("utf-8").decode(bytes);
+  if (!text.trim()) return true;
+  return isDeckArtifactName(name) && deckSlideCount(text) === 0;
+}
 
 type Loaded = { mimeType: string; bytes: Uint8Array };
-type State = { status: "idle" | "loading" | "failed" } | ({ status: "ready" } & Loaded);
+type State = { status: "idle" | "loading" | "pending" | "failed" } | ({ status: "ready" } & Loaded);
 
 /** True once the element nears the viewport, so a long chat only fetches what scrolls into view.
  * Without IntersectionObserver (tests) it never fires and the cover stays. */
@@ -73,7 +85,11 @@ export function ArtifactInlinePreview({
 }) {
   const [ref, near] = useNearViewport();
   const [state, setState] = useState<State>({ status: "idle" });
-  const key = `${artifactId}:${version ?? ""}`;
+  // The newest version the engine lists for this file: a card rendered while its file was still
+  // being saved follows it, so the preview refetches instead of staying on what it first saw.
+  const [latestVersionId, setLatestVersionId] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const key = `${artifactId}:${version ?? ""}:${latestVersionId}:${attempt}`;
   // A capability's own preview (a live chart) takes the box; the default fetch below stands down.
   const extensions = useArtifactExtensions();
   const custom = extensions
@@ -102,6 +118,11 @@ export function ArtifactInlinePreview({
           mimeType: artifact.mimeType,
           bytes: decodeArtifactBase64(artifact.contentBase64),
         };
+        // Nothing to draw yet: stay on the skeleton and let the poll bring the real content.
+        if (isPendingContent(name, loaded.mimeType, loaded.bytes)) {
+          setState({ status: "pending" });
+          return;
+        }
         bytesCache.set(key, loaded);
         setState({ status: "ready", ...loaded });
       })
@@ -114,6 +135,23 @@ export function ArtifactInlinePreview({
       cancelled = true;
     };
   }, [near, key, artifactId, size, custom]);
+
+  // While the file is empty, still loading or failed, watch its version list; a newer version
+  // changes the key above and the preview fetches again.
+  useVisiblePoll(
+    async () => {
+      const list = await rpc.artifacts.listVersions({ familyId: artifactId });
+      const top = list[0];
+      if (top) setLatestVersionId(top.id);
+      // Same version, still empty (or the first read failed): read it again.
+      if (state.status === "pending" || state.status === "failed") setAttempt((n) => n + 1);
+    },
+    PENDING_POLL_MS,
+    near &&
+      !custom &&
+      state.status !== "ready" &&
+      !(size !== undefined && size > PREVIEW_MAX_BYTES),
+  );
 
   useEffect(() => {
     if (state.status !== "ready" || state.mimeType.startsWith("image/")) return;
@@ -140,7 +178,12 @@ export function ArtifactInlinePreview({
       ) : state.status === "ready" ? (
         <PreviewBody name={name} kind={kind} size={size} {...state} />
       ) : (
-        <Cover name={name} kind={kind} size={size} busy={state.status === "loading"} />
+        <Cover
+          name={name}
+          kind={kind}
+          size={size}
+          busy={state.status === "loading" || state.status === "pending"}
+        />
       )}
     </div>
   );
