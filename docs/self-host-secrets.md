@@ -45,4 +45,4 @@ in `.env`, or change them in place with `ALTER ROLE`; recreate the volume only a
 
 ## Related
 
-- [Self-hosting](./self-host.md)
+- [Setup](./SETUP.md)

@@ -50,8 +50,6 @@ pnpm test:e2e -- --sandbox=box
 
 The Playwright workflow also accepts these providers through its manual **Sandbox provider** input.
 These runs provision real machines and destroy them after the suite. Automatic runs use `fake`.
-For the separate real-model desktop acceptance test, see
-[computer verification](docs/computer-runtime.md#verification).
 
 ## Secrets and configuration
 

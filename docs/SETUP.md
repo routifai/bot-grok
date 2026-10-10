@@ -129,7 +129,7 @@ Its relative paths, like the other two files', resolve against `engine/omnigent/
 existing local file written for Omnigent alone overrides `omnigent`; here the Omnigent image is
 built by `omnigent-server` (and `omnigent-host`), so move those `build:` settings there: `omnigent`
 is Superchat's thin engine layer. Pull Docker Hub images through the Docker daemon's registry
-mirror. See also [self-host-restricted-network.md](./self-host-restricted-network.md).
+mirror.
 
 ## First sign-up
 

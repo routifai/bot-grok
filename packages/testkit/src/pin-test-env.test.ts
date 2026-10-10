@@ -34,7 +34,7 @@ describeFast("pnpm test emulator pin", () => {
     expect(pkg.scripts.test).toBe("vitest run");
     expect(pkg.scripts["test:integration"]).toContain("harness.ts --integration");
     expect(pkg.scripts["test:e2e"]).toContain("harness.ts --e2e");
-    expect(pkg.scripts["test:topology"]).toContain("cli/topology.ts");
+    expect(pkg.scripts["test:topology"]).toBeUndefined();
     expect(pkg.scripts["test:canary"]).toContain("cli/canary.ts");
     expect(pkg.scripts["test:computer"]).toBeUndefined();
     expect(pkg.scripts["test:pi"]).toBeUndefined();
