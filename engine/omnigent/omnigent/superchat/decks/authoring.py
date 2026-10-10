@@ -107,7 +107,9 @@ async def handle_deck_new(args: dict[str, Any], ctx: HandlerCtx | None = None) -
     if check.problem is not None:
         if check.in_helper:  # no one would see a card: the Helper reports back, the Muse asks
             return error(f"{HELPER_REFUSAL} ({check.problem})")
-        return json.dumps(look_card(check.problem, f"{title} {check.message}"), ensure_ascii=False)
+        hint = f"{title} {check.message}"
+        card = look_card(check.problem, hint, seed=f"{check.chat}|{hint}", avoid=check.declined)
+        return json.dumps(card, ensure_ascii=False)
     if not isinstance(slides, str) or not slides.strip():
         return json.dumps(
             {

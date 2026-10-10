@@ -98,6 +98,7 @@ def test_tools_are_offered_to_the_muse_only() -> None:
     new = DeckNewTool().get_schema()["function"]["parameters"]
     assert new["required"] == ["path", "template", "look_from", "title"]
     assert "ask" in new["properties"]["look_from"]["enum"]
+    assert "preference" not in new["properties"]["look_from"]["enum"]
     assert new["properties"]["template"]["enum"] == list(kit.templates())
     assert DeckCheckTool().get_schema()["function"]["parameters"]["required"] == ["path"]
     setter = DeckThemeSetTool().get_schema()["function"]["parameters"]

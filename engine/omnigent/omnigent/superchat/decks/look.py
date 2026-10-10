@@ -7,9 +7,9 @@ each value is checked against something it cannot write itself:
   (:data:`MOODS`) whose themes include it;
 * ``picked``: the card shown just before that message offered deck themes, and the message picks
   exactly this one (the card's button sends the theme's name);
-* ``preference``: an active memory claim the person stated (or wrote) about decks or themes
-  names this theme; an inferred one does not count;
 * ``you_choose``: the message hands the choice over (:data:`YOU_CHOOSE_PHRASES`);
+* ``preference`` is not accepted: memory is not exact enough to stand in for the person's
+  choice (a remembered taste may only order the offered looks), so it gets the card;
 * ``background``: the work is a scheduled or ad-hoc Helper run, or a scheduled fire (server
   labels on the session or its parents), so there is no person to ask.
 
@@ -32,10 +32,11 @@ handing over the choice.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -86,7 +87,6 @@ YOU_CHOOSE_PHRASES = (
 )
 
 #: Words that make a memory claim about deck looks.
-_LOOK_WORDS = ("deck", "slide", "presentation", "theme", "look")
 #: Newest stored items read to find the latest message and the card before it.
 ITEMS_SCANNED = 60
 QUESTION = "Which look?"
@@ -137,14 +137,16 @@ class LookEvidence:
     :param message: The person's latest message, or ``""``.
     :param offered: ``(label, theme id)`` of the deck-theme card shown just before that message,
         or ``None`` when there was none.
-    :param claims: Texts of the person's active memory claims (read only for ``preference``).
+    :param chat: The person-facing chat the records were read from.
+    :param declined: Themes an earlier card offered that the person did not pick.
     """
 
     is_helper: bool = False
     background: bool = False
     message: str = ""
     offered: tuple[tuple[str, str], ...] | None = None
-    claims: tuple[str, ...] = field(default=())
+    chat: str = ""
+    declined: frozenset[str] = frozenset()
 
 
 def check_look(look_from: object, theme_id: str, evidence: LookEvidence) -> str | None:
@@ -165,12 +167,6 @@ def check_look(look_from: object, theme_id: str, evidence: LookEvidence) -> str 
         if picks == {theme_id}:
             return None
         return "the person's answer to the card does not pick this theme."
-    if look_from == "preference":
-        for claim in evidence.claims:
-            low = claim.lower()
-            if any(w in low for w in _LOOK_WORDS) and _named(low, theme_id):
-                return None
-        return "no saved preference names this theme."
     if look_from == "you_choose":
         if any(_has(message, p) for p in YOU_CHOOSE_PHRASES):
             return None
@@ -248,6 +244,26 @@ def evidence_from_items(items: Sequence[Mapping[str, Any]]) -> tuple[str, tuple 
     return message or "", None
 
 
+def declined_from_items(items: Sequence[Mapping[str, Any]]) -> set[str]:
+    """Themes offered on an earlier look card in *items* that the person never picked or named."""
+    callers = {
+        str(i.get("call_id")): str(i.get("name") or "")
+        for i in items
+        if i.get("type") == "function_call"
+    }
+    offered: set[str] = set()
+    said: list[str] = []
+    for item in items:
+        if item.get("type") == "function_call_output" and (
+            callers.get(str(item.get("call_id")), "").removeprefix(_MCP_PREFIX) in _CARD_TOOLS
+        ):
+            offered.update(t for _, t in _card_offer(item.get("output")) or ())
+        elif item.get("type") == "message" and item.get("role") == "user":
+            said.append(_text(item).lower())
+    chosen = {t for t in offered for text in said if _named(text, t)}
+    return offered - chosen
+
+
 async def _get(client: httpx.AsyncClient, url: str, **params: Any) -> Any:
     try:
         resp = await client.get(url, params=params or None, timeout=15.0)
@@ -261,14 +277,8 @@ async def _get(client: httpx.AsyncClient, url: str, **params: Any) -> Any:
         return None
 
 
-def _person_said(claim: Mapping[str, Any]) -> bool:
-    """A claim the person stated or wrote. A noticed (inferred) preference does not count: the
-    decks the Muse itself styled would teach it the person "prefers" that look."""
-    return claim.get("explicitness") == "stated" or claim.get("person_authored") is True
-
-
-async def gather_evidence(ctx: HandlerCtx | None, look_from: object) -> LookEvidence | str:
-    """Read the records for *look_from* from the server, or say why they cannot be read."""
+async def gather_evidence(ctx: HandlerCtx | None) -> LookEvidence | str:
+    """Read the records a look is checked against, or say why they cannot be read."""
     if ctx is None or ctx.server_client is None or not ctx.conversation_id:
         return "the look cannot be checked here."
     client, session = ctx.server_client, ctx.conversation_id
@@ -291,18 +301,15 @@ async def gather_evidence(ctx: HandlerCtx | None, look_from: object) -> LookEvid
     items = page.get("data") if isinstance(page, dict) else None
     if not isinstance(items, list):
         return "the conversation could not be read."
-    message, offered = evidence_from_items([i for i in items if isinstance(i, dict)])
-    claims: tuple[str, ...] = ()
-    if look_from == "preference":
-        body = await _get(client, f"/v1/sessions/{session}/memory/claims")
-        rows = body.get("claims") if isinstance(body, dict) else None
-        claims = tuple(
-            str(c.get("text") or "")
-            for c in rows or ()
-            if isinstance(c, dict) and c.get("status") == "active" and _person_said(c)
-        )
+    rows = [i for i in items if isinstance(i, dict)]
+    message, offered = evidence_from_items(rows)
     return LookEvidence(
-        is_helper=is_helper, background=background, message=message, offered=offered, claims=claims
+        is_helper=is_helper,
+        background=background,
+        message=message,
+        offered=offered,
+        chat=session,
+        declined=frozenset(declined_from_items(rows)),
     )
 
 
@@ -313,34 +320,136 @@ class LookCheck:
     problem: str | None
     message: str = ""
     in_helper: bool = False
+    chat: str = ""
+    declined: frozenset[str] = frozenset()
 
 
 async def verify_look(ctx: HandlerCtx | None, look_from: object, theme_id: str) -> LookCheck:
     """Whether a new deck in *theme_id* may be built, read from the chat the person sees."""
-    evidence = await gather_evidence(ctx, look_from)
+    evidence = await gather_evidence(ctx)
     if isinstance(evidence, str):
         return LookCheck(evidence)
     problem = check_look(look_from, theme_id, evidence)
-    return LookCheck(problem, evidence.message, evidence.is_helper)
+    return LookCheck(
+        problem, evidence.message, evidence.is_helper, evidence.chat, evidence.declined
+    )
 
 
-def pick_three(hint: str) -> list[str]:
-    """Three themes from different categories, those *hint* names or fits first.
+#: What a deck is about -> the category of look that suits it. A topic word adds weight to every
+#: theme of that category; the theme dictionary's own words (best for, mood, tagline) add more.
+TOPICS: dict[str, tuple[str, ...]] = {
+    "professional": (
+        "finance",
+        "financial",
+        "sales",
+        "revenue",
+        "quarter",
+        "quarterly",
+        "budget",
+        "board",
+        "review",
+        "report",
+        "results",
+        "earnings",
+        "forecast",
+        "metrics",
+        "kpi",
+        "kpis",
+        "operations",
+        "strategy",
+        "audit",
+        "compliance",
+        "bank",
+        "client",
+    ),
+    "editorial": (
+        "travel",
+        "trip",
+        "culture",
+        "food",
+        "story",
+        "history",
+        "art",
+        "city",
+        "museum",
+        "book",
+        "writing",
+        "festival",
+        "wine",
+        "journey",
+        "heritage",
+        "magazine",
+    ),
+    "bold": (
+        "pitch",
+        "launch",
+        "startup",
+        "investor",
+        "investors",
+        "product",
+        "campaign",
+        "marketing",
+        "brand",
+        "fundraising",
+        "event",
+        "kickoff",
+        "announcement",
+    ),
+    "dark": (
+        "tech",
+        "technical",
+        "engineering",
+        "engineers",
+        "developer",
+        "developers",
+        "api",
+        "architecture",
+        "platform",
+        "security",
+        "infrastructure",
+        "software",
+        "code",
+        "ai",
+    ),
+}
+_STOP = {"with", "from", "that", "this", "your", "deck", "slides", "make", "about", "into"}
 
-    Ties keep the dictionary's order (restrained first), with the default theme ahead.
+
+def _words(text: str) -> set[str]:
+    return set(re.findall(r"[a-z]{2,}", text.lower())) - _STOP
+
+
+def _turn(seed: str, theme_id: str) -> str:
+    """A stable tiebreak: the same request ranks equal themes the same way, others differently."""
+    return hashlib.sha256(f"{seed}|{theme_id}".encode()).hexdigest()
+
+
+def pick_three(hint: str, *, seed: str = "", avoid: frozenset[str] = frozenset()) -> list[str]:
+    """Three themes from different categories that fit *hint* (the deck's title and request).
+
+    Topic words favour a category (:data:`TOPICS`), the dictionary's ``best_for`` / ``mood`` /
+    ``tagline`` words favour single themes, a named theme or mood counts most. Equal themes are
+    ordered by a hash of *seed* (the chat and request), so offers vary without being random.
+    Themes in *avoid* (offered before and not picked) come last.
     """
+    words = _words(hint)
     named, moods = named_themes(hint), mood_themes(hint)
-    words = set(re.findall(r"[a-z]{4,}", hint.lower()))
-    order = [t["id"] for t in kit.theme_dictionary()]
-    order.remove(kit.DEFAULT_THEME)
-    order.insert(0, kit.DEFAULT_THEME)
+    favoured = {cat: 3 * len(words & set(keys)) for cat, keys in TOPICS.items()}
+    if favoured["dark"]:  # tech also suits the monochrome themes
+        favoured.update({t: 2 for t in kit.templates() if "mono" in t})
 
     def score(theme_id: str) -> int:
         t = kit.templates()[theme_id]
-        about = set(re.findall(r"[a-z]{4,}", f"{t.best_for} {t.tagline}".lower()))
-        return 4 * (theme_id in named) + 2 * (theme_id in moods) + len(words & about)
+        about = _words(f"{t.best_for} {t.description} {t.tagline}")
+        return (
+            8 * (theme_id in named)
+            + 4 * (theme_id in moods)
+            + favoured.get(t.category, 0)
+            + favoured.get(theme_id, 0)
+            + len({w for w in words if len(w) > 3} & about)
+        )
 
-    ranked = sorted(order, key=lambda t: (-score(t), order.index(t)))
+    ranked = sorted(kit.templates(), key=lambda t: (t in avoid, -score(t), _turn(seed or hint, t)))
     chosen: list[str] = []
     for theme_id in ranked:
         if kit.templates()[theme_id].category not in {kit.templates()[c].category for c in chosen}:
@@ -350,7 +459,9 @@ def pick_three(hint: str) -> list[str]:
     return chosen
 
 
-def look_card(reason: str, hint: str) -> dict[str, Any]:
+def look_card(
+    reason: str, hint: str, *, seed: str = "", avoid: frozenset[str] = frozenset()
+) -> dict[str, Any]:
     """The "Which look?" card ``deck_new`` returns instead of a deck; it ends the turn."""
     templates = kit.templates()
     card = build_clarification(
@@ -358,7 +469,7 @@ def look_card(reason: str, hint: str) -> dict[str, Any]:
             "question": QUESTION,
             "options": [
                 {"label": templates[t].name, "preview": {"kind": "deck-theme", "id": t}}
-                for t in pick_three(hint)
+                for t in pick_three(hint, seed=seed, avoid=avoid)
             ],
         }
     )
