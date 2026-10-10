@@ -1,7 +1,7 @@
 """Daily notes (one per owner per local day) and the quiet-moment job that tends them.
 
 Layout: ``notes`` (pure rendering + local-day helpers), ``store``, ``routes`` (daily-note
-endpoints), ``tools`` (tool defs), ``handlers`` (runner side).
+endpoints), ``tools`` (tool defs), ``handlers`` (runner side), ``quiet_moment`` (background job).
 Imports stay lazy so importing a submodule never loads the server.
 """
 
@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from omnigent.superchat.daily_notes.handlers import handle_daily_note_tool
 from omnigent.superchat.daily_notes.tools import DAILY_NOTE_TOOL_NAMES
 from omnigent.superchat.feature import (
+    BackgroundJob,
     Feature,
     InstallDeps,
     ToolManagerCtx,
@@ -53,9 +54,23 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
     )
 
 
+def _jobs(app: FastAPI) -> list[BackgroundJob]:
+    """The quiet-moment worker (daily note, Dreaming, People), when the app has fire deps."""
+    from omnigent.superchat.daily_notes.quiet_moment import QuietMoment
+
+    note_store = getattr(app.state, "daily_note_store", None)
+    fire_deps = getattr(app.state, "fire_deps", None)
+    if fire_deps is None or note_store is None:
+        return []
+    quiet_moment = QuietMoment(deps=fire_deps, note_store=note_store)
+    app.state.quiet_moment = quiet_moment
+    return [quiet_moment]
+
+
 FEATURE = Feature(
     name="daily_notes",
     tools=_tools,
     handlers=dict.fromkeys(DAILY_NOTE_TOOL_NAMES, handle_daily_note_tool),
     install=_install,
+    jobs=_jobs,
 )

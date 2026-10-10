@@ -58,8 +58,48 @@ async def test_jobs_listed_disabled_with_unknown_times_when_nothing_runs() -> No
     app = FastAPI()
     async with _client(app) as http:
         jobs = (await http.get("/v1/me/system-jobs")).json()["jobs"]
-    assert [j["id"] for j in jobs] == ["memory_upkeep", "side_chat_archiving"]
+    assert [j["id"] for j in jobs] == [
+        "memory_upkeep",
+        "side_chat_archiving",
+        "daily_note",
+        "dreaming",
+        "people",
+    ]
     for job in jobs:
         assert job["enabled"] is False
         assert job["last_run_at"] is None
         assert job["next_run_at"] is None
+
+
+async def test_note_jobs_report_last_runs_from_the_notes() -> None:
+    from omnigent.entities.daily_note import DailyNote
+
+    note = DailyNote(
+        owner="local",
+        note_date="2026-10-09",
+        quiet_passes=2,
+        finalized_at=900,
+        dreamed_at=950,
+        people_at=960,
+        updated_at=800,
+    )
+
+    class _Notes:
+        @staticmethod
+        def owner_key(_user_id: str | None) -> str:
+            return "local"
+
+        def list_range(self, owner: str, **_kw: object) -> list[DailyNote]:
+            return [note] if owner == "local" else []
+
+    app = FastAPI()
+    app.state.daily_note_store = _Notes()
+    app.state.quiet_moment = object()
+    async with _client(app) as http:
+        jobs = (await http.get("/v1/me/system-jobs")).json()["jobs"]
+    by_id = {j["id"]: j for j in jobs}
+    assert by_id["daily_note"]["last_run_at"] == 900
+    assert "20 minutes" in by_id["daily_note"]["schedule"]
+    assert by_id["dreaming"]["last_run_at"] == 950
+    assert by_id["people"]["last_run_at"] == 960
+    assert all(by_id[k]["enabled"] for k in ("daily_note", "dreaming", "people"))
