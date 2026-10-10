@@ -3,6 +3,7 @@
 // stream through its same-origin proxy. It keeps no Computer state: no providerRef, no lease row.
 import {
   getOmnigentComputer,
+  getOmnigentSession,
   type OmnigentClientConfig,
   openOmnigentComputerScreen,
   releaseOmnigentComputer,
@@ -98,7 +99,9 @@ export async function engineComputerTakeover(
 ): Promise<{ leaseId: string; expiresAt: string }> {
   const target = await resolveEngineComputer(deps, client, actor, botId);
   if (!target.sessionId || !(await state(target)).available) {
-    throw new ORPCError("BAD_REQUEST", { message: "Superchat's computer starts when Superchat needs it" });
+    throw new ORPCError("BAD_REQUEST", {
+      message: "Superchat's computer starts when Superchat needs it",
+    });
   }
   await openOmnigentComputerScreen(client, target.email, target.sessionId, true);
   return {
@@ -126,4 +129,34 @@ export async function withEngineComputer<
   if (!client || !snapshot.botId || !snapshot.computer) return snapshot;
   const computer = await engineComputerStatus(deps, client, actor, snapshot.botId);
   return { ...snapshot, computer };
+}
+
+/** The built-in agent bundles Superchat runs the Muse on, and the harness each runs. */
+const BUNDLE_HARNESS: Record<string, string> = {
+  "superchat-claude": "claude-sdk",
+  "superchat-pi": "pi",
+};
+
+/** Where the Muse's Conversation runs: the engine session's host and its agent bundle. */
+export async function engineComputerHost(
+  deps: EngineComputerDeps,
+  client: OmnigentClientConfig,
+  actor: Actor,
+  botId: string,
+): Promise<{ hostId: string | null; agentName: string | null; harness: string | null }> {
+  const target = await resolveEngineComputer(deps, client, actor, botId);
+  if (!target.sessionId) return { hostId: null, agentName: null, harness: null };
+  const [snapshot, row] = await Promise.all([
+    getOmnigentSession(client, target.email, target.sessionId).catch(() => null),
+    deps.prisma.omnigentSession.findUnique({
+      where: { botId },
+      select: { agentName: true },
+    }),
+  ]);
+  const agentName = row?.agentName ?? null;
+  return {
+    hostId: snapshot?.host_id ?? null,
+    agentName,
+    harness: (agentName && BUNDLE_HARNESS[agentName]) || null,
+  };
 }

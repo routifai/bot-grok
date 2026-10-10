@@ -21,7 +21,7 @@ import { engineComputerClient } from "../../engine-client.js";
 import type { RouterContext } from "../../routers/context.js";
 import { computerContext } from "../../routers/shared.js";
 import { computerControlProcedures } from "./control.js";
-import { engineComputerStatus } from "./service.js";
+import { engineComputerHost, engineComputerStatus } from "./service.js";
 import { computerStatus, runComputerReplace } from "./support.js";
 
 export function computerRouter(c: RouterContext) {
@@ -147,6 +147,12 @@ export function computerRouter(c: RouterContext) {
           computerControlExpireJobKey(bot.computer.id, controlLeaseId ?? undefined),
         );
         return computerStatus(deps, context.actor, input.botId);
+      }),
+      host: authed.computer.host.handler(async ({ context, input }) => {
+        const engine = engineComputerClient(context.actor);
+        return engine
+          ? engineComputerHost(deps, engine, context.actor, input.botId)
+          : { hostId: null, agentName: null, harness: null };
       }),
       recover: authed.computer.recover.handler(async ({ context, input }) => {
         const bot = await repos.getBot(context.actor, input.botId);

@@ -27,6 +27,7 @@ import { ModelSettingsOverlay } from "./ModelSettingsOverlay";
 import { SuperchatTile, type TileTone } from "./muse/chrome/SuperchatTile";
 import { SuperchatSettingsPanel } from "./muse/SuperchatSettingsPanel";
 import { GeneralPanel } from "./muse/settings/GeneralPanel";
+import { ComputerStatusPanel } from "./muse/settings/ComputerStatusPanel";
 import { VoicePanel } from "./muse/settings/VoicePanel";
 import { VoiceSettingsOverlay } from "./VoiceSettingsOverlay";
 
@@ -101,6 +102,7 @@ export function SettingsOverlay({
   const [section, setSection] = useState<SettingsSection>(initialSection);
   const [voiceBusy, setVoiceBusy] = useState(false);
   const showComputer = isDeploymentOwner && computersAreUnavailable(sandboxProvider);
+  const showComputerStatus = museMode && Boolean(museBot);
   const panelBusy = voiceBusy;
 
   useEffect(() => {
@@ -151,7 +153,9 @@ export function SettingsOverlay({
       : []),
     ...(isDeploymentOwner ? [{ id: "signups" as const, label: t`Signups`, icon: UserPlus }] : []),
     ...(museMode ? [] : [{ id: "usage" as const, label: t`Usage`, icon: Gauge }]),
-    ...(showComputer ? [{ id: "computer" as const, label: t`Computer`, icon: Monitor }] : []),
+    ...(showComputer || showComputerStatus
+      ? [{ id: "computer" as const, label: t`Computer`, icon: Monitor }]
+      : []),
     ...(museMode ? [] : [{ id: "updates" as const, label: t`Updates`, icon: CloudDownload }]),
   ];
 
@@ -214,7 +218,9 @@ export function SettingsOverlay({
             data-testid="settings-nav"
             aria-label={t`Settings`}
             className={`flex shrink-0 flex-row gap-1 overflow-x-auto overscroll-x-contain border-b border-border px-3 py-3 max-sm:justify-between md:w-[200px] md:flex-col md:overflow-y-auto md:border-b-0 md:border-e md:px-3 md:py-4 ${
-              museMode ? "md:m-2 md:gap-px md:rounded-[18px] md:border-e-0 md:px-2 superchat-glass" : ""
+              museMode
+                ? "md:m-2 md:gap-px md:rounded-[18px] md:border-e-0 md:px-2 superchat-glass"
+                : ""
             }`}
           >
             {navItems.map((item) => {
@@ -309,7 +315,15 @@ export function SettingsOverlay({
               {section === "usage" ? (
                 <UsageSettingsPanel usage={usage} panelRef={usageRef} />
               ) : null}
-              {section === "computer" && showComputer ? <ComputerSettingsPanel /> : null}
+              {section === "computer" && showComputerStatus && museBot ? (
+                <div className="space-y-5">
+                  <ComputerStatusPanel botId={museBot.id} sandboxProvider={sandboxProvider} />
+                  {showComputer ? <ComputerSettingsPanel /> : null}
+                </div>
+              ) : null}
+              {section === "computer" && !showComputerStatus && showComputer ? (
+                <ComputerSettingsPanel />
+              ) : null}
               {section === "updates" && !museMode ? <UpdatesSettingsPanel /> : null}
               {section === "models" && !museMode ? (
                 <ModelSettingsOverlay embedded onClose={requestClose} />

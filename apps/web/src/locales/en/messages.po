@@ -13,9 +13,6 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
-msgid "\"Hi Maya, the one-page brief for Thursday is attached. The two open points are on top.\""
-msgstr "\"Hi Maya, the one-page brief for Thursday is attached. The two open points are on top.\""
-
 #. placeholder {0}: messages.length
 msgid "{0, plural, one {# failed attempt} other {# failed attempts}}"
 msgstr "{0, plural, one {# failed attempt} other {# failed attempts}}"
@@ -188,23 +185,11 @@ msgstr "••••{hint} · Checked {checked}"
 msgid "••••{hint} · Needs attention"
 msgstr "••••{hint} · Needs attention"
 
-msgid "✓ Sent · 9:42 AM"
-msgstr "✓ Sent · 9:42 AM"
-
 msgid "1 cell"
 msgstr "1 cell"
 
-msgid "3 replies"
-msgstr "3 replies"
-
-msgid "3 WEEKS AGO"
-msgstr "3 WEEKS AGO"
-
 msgid "A bit of everything"
 msgstr "A bit of everything"
-
-msgid "A real computer in the cloud. Watch it work, or take over any time."
-msgstr "A real computer in the cloud. Watch it work, or take over any time."
 
 msgid "About groups"
 msgstr "About groups"
@@ -369,6 +354,9 @@ msgstr "After a month"
 msgid "After a week"
 msgstr "After a week"
 
+msgid "Agent"
+msgstr "Agent"
+
 msgid "Agent connections"
 msgstr "Agent connections"
 
@@ -526,9 +514,6 @@ msgstr "Artifact"
 msgid "Artifacts"
 msgstr "Artifacts"
 
-msgid "Ask"
-msgstr "Ask"
-
 msgid "Ask about this message"
 msgstr "Ask about this message"
 
@@ -569,9 +554,6 @@ msgstr "Ask me first"
 msgid "Ask me first before step {0}"
 msgstr "Ask me first before step {0}"
 
-msgid "Ask once and get on with your day."
-msgstr "Ask once and get on with your day."
-
 msgid "Ask superchat"
 msgstr "Ask superchat"
 
@@ -583,9 +565,6 @@ msgstr "Ask superchat instead"
 
 msgid "Ask the server owner to configure this provider."
 msgstr "Ask the server owner to configure this provider."
-
-msgid "ASKS FIRST"
-msgstr "ASKS FIRST"
 
 msgid "Asleep"
 msgstr "Asleep"
@@ -706,9 +685,6 @@ msgstr "Bots are working"
 
 msgid "Box"
 msgstr "Box"
-
-msgid "Branch"
-msgstr "Branch"
 
 msgid "Browse MCP servers"
 msgstr "Browse MCP servers"
@@ -1557,6 +1533,7 @@ msgid "Default"
 msgstr "Default"
 
 #. placeholder {0}: choices.defaultLabel
+#. placeholder {0}: model.defaultModel
 msgid "Default · {0}"
 msgstr "Default · {0}"
 
@@ -1636,9 +1613,6 @@ msgstr "Didn't finish"
 
 msgid "Didn’t send. Try again"
 msgstr "Didn’t send. Try again"
-
-msgid "Dig into one detail on the side. The main thread stays where it was."
-msgstr "Dig into one detail on the side. The main thread stays where it was."
 
 msgid "Direct MCP"
 msgstr "Direct MCP"
@@ -1747,9 +1721,6 @@ msgstr "Email me a code"
 msgid "Email not verified"
 msgstr "Email not verified"
 
-msgid "Email the file to Maya"
-msgstr "Email the file to Maya"
-
 msgid "Engage when... Ignore..."
 msgstr "Engage when... Ignore..."
 
@@ -1834,9 +1805,6 @@ msgstr "Explore"
 msgid "Export"
 msgstr "Export"
 
-msgid "Export renewals"
-msgstr "Export renewals"
-
 msgid "Export this week's list from the CRM and drop it in the shared folder"
 msgstr "Export this week's list from the CRM and drop it in the shared folder"
 
@@ -1857,6 +1825,9 @@ msgstr "Failed"
 
 msgid "Failed to send message"
 msgstr "Failed to send message"
+
+msgid "Failed to start"
+msgstr "Failed to start"
 
 msgid "Failed to stop"
 msgstr "Failed to stop"
@@ -1981,9 +1952,6 @@ msgstr "Getting ready"
 msgid "Git event"
 msgstr "Git event"
 
-msgid "Give it the first thing on your list."
-msgstr "Give it the first thing on your list."
-
 msgid "Goes to your vault, not the chat."
 msgstr "Goes to your vault, not the chat."
 
@@ -2005,9 +1973,6 @@ msgstr "Groups"
 msgid "Hand back to {museName}"
 msgstr "Hand back to {museName}"
 
-msgid "Hand it off.<0/>Superchat's already on it."
-msgstr "Hand it off.<0/>Superchat's already on it."
-
 msgid "Hang up"
 msgstr "Hang up"
 
@@ -2016,6 +1981,9 @@ msgstr "Hang up first, then enter the code on screen."
 
 msgid "Hang up, then enter the code on screen."
 msgstr "Hang up, then enter the code on screen."
+
+msgid "Harness"
+msgstr "Harness"
 
 msgid "header"
 msgstr "header"
@@ -2034,9 +2002,6 @@ msgstr "Hear a sample"
 
 msgid "Height"
 msgstr "Height"
-
-msgid "Here's a one-page brief for Maya. The two open points from last month are at the top."
-msgstr "Here's a one-page brief for Maya. The two open points from last month are at the top."
 
 msgid "Hi {name}, what can superchat <0>build with you?</0>"
 msgstr "Hi {name}, what can superchat <0>build with you?</0>"
@@ -2062,8 +2027,8 @@ msgstr "Hide password"
 msgid "High"
 msgstr "High"
 
-msgid "Highlights — Northwind expanded to two teams; Acme signed for two years."
-msgstr "Highlights — Northwind expanded to two teams; Acme signed for two years."
+msgid "Host"
+msgstr "Host"
 
 msgid "hour"
 msgstr "hour"
@@ -2204,9 +2169,6 @@ msgstr "Its conversation, files, and routines will be permanently deleted. Bots 
 msgid "Its Muses, memory and Computer are removed for good."
 msgstr "Its Muses, memory and Computer are removed for good."
 
-msgid "ITS OWN COMPUTER"
-msgstr "ITS OWN COMPUTER"
-
 msgid "Jump to latest"
 msgstr "Jump to latest"
 
@@ -2259,9 +2221,6 @@ msgstr "Last thing — connect the brain I'll think with."
 
 msgid "Later"
 msgstr "Later"
-
-msgid "Learn"
-msgstr "Learn"
 
 msgid "Learned"
 msgstr "Learned"
@@ -2400,9 +2359,6 @@ msgstr "Maximum images per request"
 
 msgid "Maximum output tokens"
 msgstr "Maximum output tokens"
-
-msgid "Maya likes a one-page summary before any client call."
-msgstr "Maya likes a one-page summary before any client call."
 
 msgid "MCP servers"
 msgstr "MCP servers"
@@ -2565,6 +2521,9 @@ msgstr "Navigate"
 msgid "Needs a restart"
 msgstr "Needs a restart"
 
+msgid "Needs attention"
+msgstr "Needs attention"
+
 msgid "Needs you"
 msgstr "Needs you"
 
@@ -2601,9 +2560,6 @@ msgstr "New side chat"
 msgid "New skill"
 msgstr "New skill"
 
-msgid "NEW SKILL"
-msgstr "NEW SKILL"
-
 msgid "New space"
 msgstr "New space"
 
@@ -2618,9 +2574,6 @@ msgstr "Next look"
 
 msgid "Next slide"
 msgstr "Next slide"
-
-msgid "Next steps — Review pricing with Maya on Thursday; send the deck Friday."
-msgstr "Next steps — Review pricing with Maya on Thursday; send the deck Friday."
 
 msgid "No agent connections yet."
 msgstr "No agent connections yet."
@@ -2745,6 +2698,12 @@ msgstr "Not in the plugin catalog"
 msgid "Not now"
 msgstr "Not now"
 
+msgid "Not run yet"
+msgstr "Not run yet"
+
+msgid "Not started"
+msgstr "Not started"
+
 msgid "Nothing archived."
 msgstr "Nothing archived."
 
@@ -2822,15 +2781,6 @@ msgstr "On day"
 msgid "on the 1st at {0}"
 msgstr "on the 1st at {0}"
 
-msgid "ONE CONVERSATION"
-msgstr "ONE CONVERSATION"
-
-msgid "One conversation that never ends. It remembers, works on its own computer, and asks before anything it can't undo."
-msgstr "One conversation that never ends. It remembers, works on its own computer, and asks before anything it can't undo."
-
-msgid "One thread that never resets. It keeps what matters about your work."
-msgstr "One thread that never resets. It keeps what matters about your work."
-
 msgid "One yes before I send this"
 msgstr "One yes before I send this"
 
@@ -2884,9 +2834,6 @@ msgstr "Open loops"
 
 msgid "Open questions"
 msgstr "Open questions"
-
-msgid "Open the CRM"
-msgstr "Open the CRM"
 
 msgid "Open what's waiting on you"
 msgstr "Open what's waiting on you"
@@ -3036,9 +2983,6 @@ msgstr "POST to"
 msgid "PowerPoint (.pptx)"
 msgstr "PowerPoint (.pptx)"
 
-msgid "Prep me for Thursday's call with Northwind."
-msgstr "Prep me for Thursday's call with Northwind."
-
 msgid "Preparing PDF…"
 msgstr "Preparing PDF…"
 
@@ -3119,9 +3063,6 @@ msgstr "Published"
 msgid "Pull request"
 msgstr "Pull request"
 
-msgid "Q3 Client Review"
-msgstr "Q3 Client Review"
-
 msgid "Questions"
 msgstr "Questions"
 
@@ -3133,6 +3074,9 @@ msgstr "Radius"
 
 msgid "Raise budget"
 msgstr "Raise budget"
+
+msgid "Ran"
+msgstr "Ran"
 
 msgid "React"
 msgstr "React"
@@ -3157,9 +3101,6 @@ msgstr "Reading {0}…"
 msgid "Ready"
 msgstr "Ready"
 
-msgid "REAL FILES"
-msgstr "REAL FILES"
-
 msgid "Reasoning effort"
 msgstr "Reasoning effort"
 
@@ -3168,9 +3109,6 @@ msgstr "Reconnect OAuth"
 
 msgid "Reconnecting"
 msgstr "Reconnecting"
-
-msgid "Recording · you show, superchat watches"
-msgstr "Recording · you show, superchat watches"
 
 msgid "Recording may have started, but the view could not refresh"
 msgstr "Recording may have started, but the view could not refresh"
@@ -3234,12 +3172,6 @@ msgstr "Release computer"
 msgid "Release interrupted computer?"
 msgstr "Release interrupted computer?"
 
-msgid "Remember"
-msgstr "Remember"
-
-msgid "Remembered: one page for Maya first"
-msgstr "Remembered: one page for Maya first"
-
 msgid "Remove"
 msgstr "Remove"
 
@@ -3290,12 +3222,6 @@ msgstr "Removing…"
 msgid "Rename section"
 msgstr "Rename section"
 
-msgid "Renewal · 14 days"
-msgstr "Renewal · 14 days"
-
-msgid "renewals.csv saved to Files"
-msgstr "renewals.csv saved to Files"
-
 msgid "Reopen"
 msgstr "Reopen"
 
@@ -3333,12 +3259,6 @@ msgstr "Replying to {replyName}"
 
 msgid "Replying to {replyName}: “{replyQuote}”"
 msgstr "Replying to {replyName}: “{replyQuote}”"
-
-msgid "REPORT · PDF · CREATED NOW"
-msgstr "REPORT · PDF · CREATED NOW"
-
-msgid "Reports, briefs and decks, ready to open, edit and share."
-msgstr "Reports, briefs and decks, ready to open, edit and share."
 
 msgid "Research"
 msgstr "Research"
@@ -3415,9 +3335,6 @@ msgstr "Review"
 msgid "Revoke"
 msgstr "Revoke"
 
-msgid "Risks — August churn from two paused accounts, both now renewed."
-msgstr "Risks — August churn from two paused accounts, both now renewed."
-
 msgid "Robot"
 msgstr "Robot"
 
@@ -3456,9 +3373,6 @@ msgstr "Running · Stop"
 
 msgid "Running…"
 msgstr "Running…"
-
-msgid "Runs every Monday · 8:00"
-msgstr "Runs every Monday · 8:00"
 
 msgid "Runs when this bot receives a verified message from this provider."
 msgstr "Runs when this bot receives a verified message from this provider."
@@ -3514,18 +3428,12 @@ msgstr "Say yes or no, or answer in a sentence."
 msgid "Screen"
 msgstr "Screen"
 
-msgid "SCROLL"
-msgstr "SCROLL"
-
 msgid "Search"
 msgstr "Search"
 
 #. placeholder {0}: counts.all
 msgid "Search {0} forks"
 msgstr "Search {0} forks"
-
-msgid "Search accounts"
-msgstr "Search accounts"
 
 msgid "Search activity"
 msgstr "Search activity"
@@ -3554,9 +3462,6 @@ msgstr "Search models"
 msgid "Search providers"
 msgstr "Search providers"
 
-msgid "Search the account"
-msgstr "Search the account"
-
 msgid "Search your apps"
 msgstr "Search your apps"
 
@@ -3578,9 +3483,6 @@ msgstr "Searching…"
 msgid "Sections"
 msgstr "Sections"
 
-msgid "See it work."
-msgstr "See it work."
-
 msgid "See summary"
 msgstr "See summary"
 
@@ -3601,12 +3503,6 @@ msgstr "Send it"
 
 msgid "Send reset link"
 msgstr "Send reset link"
-
-msgid "Send the follow-up to Maya?"
-msgstr "Send the follow-up to Maya?"
-
-msgid "Sending, paying, publishing: you say yes first. Everything else, it just does."
-msgstr "Sending, paying, publishing: you say yes first. Everything else, it just does."
 
 msgid "Sending…"
 msgstr "Sending…"
@@ -3659,9 +3555,6 @@ msgstr "Show earlier messages"
 msgid "Show hidden files"
 msgstr "Show hidden files"
 
-msgid "Show it a task once. From then on, it does it for you."
-msgstr "Show it a task once. From then on, it does it for you."
-
 msgid "Show list"
 msgstr "Show list"
 
@@ -3680,9 +3573,6 @@ msgstr "Showing the first {0} rows"
 
 msgid "Side chats"
 msgstr "Side chats"
-
-msgid "SIDE CHATS & FORKS"
-msgstr "SIDE CHATS & FORKS"
 
 msgid "Sign in"
 msgstr "Sign in"
@@ -3715,9 +3605,6 @@ msgstr "Skill instructions"
 msgid "Skills"
 msgstr "Skills"
 
-msgid "SKILLS"
-msgstr "SKILLS"
-
 msgid "Skip"
 msgstr "Skip"
 
@@ -3733,6 +3620,9 @@ msgstr "Slack message"
 
 msgid "Slack not enabled"
 msgstr "Slack not enabled"
+
+msgid "Sleeping"
+msgstr "Sleeping"
 
 msgid "Slide"
 msgstr "Slide"
@@ -3754,12 +3644,6 @@ msgstr "Something went wrong on my side. Try again."
 
 msgid "Something went wrong."
 msgstr "Something went wrong."
-
-msgid "Sound off"
-msgstr "Sound off"
-
-msgid "Sound on"
-msgstr "Sound on"
 
 msgid "Source"
 msgstr "Source"
@@ -3897,9 +3781,6 @@ msgstr "Sum {0}"
 msgid "Summarize what changed in my files this week and tell me what needs attention."
 msgstr "Summarize what changed in my files this week and tell me what needs attention."
 
-msgid "Summary — Revenue up 8% quarter on quarter, led by three renewals."
-msgstr "Summary — Revenue up 8% quarter on quarter, led by three renewals."
-
 msgid "superchat"
 msgstr "superchat"
 
@@ -3920,9 +3801,6 @@ msgstr "superchat starts fresh. You can still show earlier messages."
 
 msgid "superchat will see this after the current step"
 msgstr "superchat will see this after the current step"
-
-msgid "superchat's computer · Live"
-msgstr "superchat's computer · Live"
 
 msgid "Supports images"
 msgstr "Supports images"
@@ -3945,9 +3823,6 @@ msgstr "Switching…"
 
 msgid "System"
 msgstr "System"
-
-msgid "Take over"
-msgstr "Take over"
 
 msgid "Take over anytime."
 msgstr "Take over anytime."
@@ -4006,6 +3881,9 @@ msgstr "The deck changed since you opened it. Try again."
 msgid "The key is stored encrypted and only used for voice."
 msgstr "The key is stored encrypted and only used for voice."
 
+msgid "The machine your Conversation runs on. It starts when it is needed."
+msgstr "The machine your Conversation runs on. It starts when it is needed."
+
 msgid "The model account is out of credit."
 msgstr "The model account is out of credit."
 
@@ -4014,9 +3892,6 @@ msgstr "The model is busy. Try again in a moment."
 
 msgid "The model refused my key."
 msgstr "The model refused my key."
-
-msgid "The Q3 report draft is ready. Revenue is up 8%, churn ticked up in August."
-msgstr "The Q3 report draft is ready. Revenue is up 8%, churn ticked up in August."
 
 msgid "Their chats, Computer and keys are removed for good. This can't be undone."
 msgstr "Their chats, Computer and keys are removed for good. This can't be undone."
@@ -4116,9 +3991,6 @@ msgstr "To:"
 msgid "Today"
 msgstr "Today"
 
-msgid "TODAY"
-msgstr "TODAY"
-
 msgid "Too large to preview."
 msgstr "Too large to preview."
 
@@ -4140,14 +4012,14 @@ msgstr "Treg token"
 msgid "Try again"
 msgstr "Try again"
 
-msgid "Two large accounts paused in August. Both renewed in September."
-msgstr "Two large accounts paused in August. Both renewed in September."
-
 msgid "Type your answer"
 msgstr "Type your answer"
 
 msgid "Unassigned"
 msgstr "Unassigned"
+
+msgid "Unavailable"
+msgstr "Unavailable"
 
 msgid "Undo"
 msgstr "Undo"
@@ -4325,9 +4197,6 @@ msgstr "Waiting…"
 msgid "Watch {0} work"
 msgstr "Watch {0} work"
 
-msgid "Watch the film"
-msgstr "Watch the film"
-
 msgid "Watching you work…"
 msgstr "Watching you work…"
 
@@ -4339,9 +4208,6 @@ msgstr "Weekdays"
 
 msgid "Weekly"
 msgstr "Weekly"
-
-msgid "Weekly renewal report"
-msgstr "Weekly renewal report"
 
 msgid "Weekly summary"
 msgstr "Weekly summary"
@@ -4370,8 +4236,8 @@ msgstr "What do you want me on first?"
 msgid "What do you want to look at?"
 msgstr "What do you want to look at?"
 
-msgid "What drove it?"
-msgstr "What drove it?"
+msgid "What I do on my own, in the background."
+msgstr "What I do on my own, in the background."
 
 msgid "What result will you demonstrate?"
 msgstr "What result will you demonstrate?"
@@ -4388,9 +4254,6 @@ msgstr "What should superchat do?"
 
 msgid "What should this routine do each time it runs?"
 msgstr "What should this routine do each time it runs?"
-
-msgid "What superchat is"
-msgstr "What superchat is"
 
 msgid "What this bot is for"
 msgstr "What this bot is for"
@@ -4422,17 +4285,11 @@ msgstr "Who can open it"
 msgid "Whole workspace"
 msgstr "Whole workspace"
 
-msgid "Why did churn rise in August?"
-msgstr "Why did churn rise in August?"
-
 msgid "Width"
 msgstr "Width"
 
 msgid "With context"
 msgstr "With context"
-
-msgid "Work"
-msgstr "Work"
 
 msgid "Working"
 msgstr "Working"
@@ -4500,9 +4357,6 @@ msgstr "You've reached your monthly model budget."
 
 msgid "Your account is paused. Contact your admin."
 msgstr "Your account is paused. Contact your admin."
-
-msgid "Your computer · Your model · Your say"
-msgstr "Your computer · Your model · Your say"
 
 msgid "Your Computer is starting. Try again in a moment."
 msgstr "Your Computer is starting. Try again in a moment."

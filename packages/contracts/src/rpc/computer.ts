@@ -43,6 +43,15 @@ export const computerContract = {
       .output(z.object({ path: z.string(), content: z.string() })),
     screenUrl: oc.input(botId).output(z.object({ url: z.string().nullable() })),
     heartbeat: oc.input(botId).output(z.object({ ok: z.literal(true) })),
+    /** Which engine host and agent bundle the Muse's Conversation runs on (read-only; Settings). */
+    host: oc.input(botId).output(
+      z.object({
+        hostId: z.string().nullable(),
+        agentName: z.string().nullable(),
+        /** The harness the agent bundle runs, e.g. `claude-sdk` or `pi`; `null` when unknown. */
+        harness: z.string().nullable(),
+      }),
+    ),
   },
   files: {
     list: oc.input(z.object({ botId: Id, path: z.string().max(1024).default("") })).output(
