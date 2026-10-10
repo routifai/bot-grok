@@ -12,9 +12,7 @@
 FROM omnigent-host
 
 ARG PYPI_INDEX_URL=https://pypi.org/simple
-ARG PLAYWRIGHT_VERSION=1.63.0
-ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # Tools the Muse's shell uses beyond the host image's (patch: the pptx runtime install below).
 RUN apt-get update \
@@ -29,12 +27,13 @@ RUN /usr/local/bin/python3 -m pip install --no-cache-dir --break-system-packages
       python-pptx==1.0.2 "markitdown[pptx]==0.1.8"
 ENV MPLBACKEND=Agg
 
-# Headless Chromium (Playwright's build, with its system libraries) for deck and dashboard export
-# and the browser_* tools; `chromium` on PATH is what the superchat-* helpers look up.
-RUN npx -y "playwright@${PLAYWRIGHT_VERSION}" install --with-deps --no-shell chromium \
- && ln -s "$(ls -d /opt/ms-playwright/chromium-*/chrome-linux*/chrome | head -n 1)" /usr/local/bin/chromium \
- && chromium --version \
- && rm -rf /var/lib/apt/lists/* && npm cache clean --force
+# Headless Chromium from the distro's packages (so it comes through the same apt mirror as
+# everything else) for deck and dashboard export and the browser_* tools; `chromium` on PATH is what
+# the superchat-* helpers look up. Fonts so decks render the same as in the person's browser.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends chromium fonts-liberation fonts-dejavu-core fonts-noto-color-emoji \
+ && rm -rf /var/lib/apt/lists/* \
+ && chromium --version
 
 # The pptx-generator runtime (PptxGenJS with its pinned fixes, react-icons, sharp), on NODE_PATH so
 # `require('pptxgenjs')` works from any script the Muse writes.
