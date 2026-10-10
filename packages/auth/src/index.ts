@@ -7,6 +7,7 @@ import {
   isMessagingEmail,
   parseAllowlist,
   parseDomains,
+  parseSignupMode,
   quotaEmailKey,
   type SignupPolicy,
   type SignupPolicyEnv,
@@ -96,7 +97,9 @@ export async function resolveSignupPolicy(
   });
   if (settings?.signupPolicyInitialized) {
     return {
-      mode: settings.signupMode,
+      // A set SIGNUP_MODE is applied on every start (like SIGNUP_ALLOWLIST), so the operator's
+      // environment decides; unset, the mode the owner chose in Settings stands.
+      mode: parseSignupMode(env.signupMode) ?? settings.signupMode,
       invites: parseAllowlist(settings.signupAllowlist),
       domains: parseDomains(settings.signupDomains),
     };

@@ -54,6 +54,25 @@ describe("passwordResetEmail", () => {
 });
 
 describe("resolveSignupPolicy", () => {
+  it("lets a set SIGNUP_MODE decide over the stored mode, and keeps the stored mode when unset", async () => {
+    const stored = {
+      signupMode: "invite",
+      signupAllowlist: "you@example.com",
+      signupDomains: "",
+      signupPolicyInitialized: true,
+    };
+    const prisma = { deploymentSettings: { findUnique: vi.fn().mockResolvedValue(stored) } };
+    await expect(
+      resolveSignupPolicy(prisma as never, { signupMode: "approval" }),
+    ).resolves.toMatchObject({ mode: "approval", invites: ["you@example.com"] });
+    await expect(resolveSignupPolicy(prisma as never, {})).resolves.toMatchObject({
+      mode: "invite",
+    });
+    await expect(
+      resolveSignupPolicy(prisma as never, { signupMode: "nonsense" }),
+    ).resolves.toMatchObject({ mode: "invite" });
+  });
+
   it("uses environment defaults before deployment settings exist", async () => {
     const prisma = { deploymentSettings: { findUnique: vi.fn().mockResolvedValue(null) } };
     await expect(
@@ -95,7 +114,7 @@ describe("resolveSignupPolicy", () => {
         }),
       },
     };
-    await expect(resolveSignupPolicy(prisma as never, { signupMode: "open" })).resolves.toEqual({
+    await expect(resolveSignupPolicy(prisma as never, {})).resolves.toEqual({
       mode: "domain",
       invites: ["approved@example.com"],
       domains: ["corp.test", "other.test"],

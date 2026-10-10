@@ -190,8 +190,9 @@ Signup is controlled by the Nova API, not by the engine:
 
 - On a hosted deployment the owner is whoever signs up presenting `OWNER_SETUP_TOKEN` while no
   owner exists; being first does not count, in any mode.
-- `SIGNUP_MODE` (`closed`, `invite`, `domain`, `approval` or `open`) seeds the mode on the first
-  start; the owner changes it later in Settings > Organization > Signups. `SIGNUP_ALLOWLIST` is a
+- `SIGNUP_MODE` (`closed`, `invite`, `domain`, `approval` or `open`), when set, is applied on
+  every start, so Railway's value decides; unset it to let the owner change the mode in
+  Settings > Organization > Signups. `SIGNUP_ALLOWLIST` is a
   comma-separated list of exact emails or `@domain` entries for `invite` mode; a non-empty value is
   applied on **every** API start and replaces the stored list. `SIGNUP_DOMAINS` seeds `domain` mode.
 - Email delivery is **required** for `invite`, `domain` and `open`: new accounts prove their

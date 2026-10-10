@@ -62,7 +62,7 @@ import {
   oidcLabel,
   resolveSignupPolicy,
 } from "@nova/auth";
-import { signupAllowlistBootUpdate, signupPolicyFromEnv } from "@nova/core";
+import { parseSignupMode, signupAllowlistBootUpdate, signupPolicyFromEnv } from "@nova/core";
 import type { Pool, PrismaClient } from "@nova/db";
 import {
   createDb,
@@ -250,6 +250,20 @@ export async function createApp(
         data: { signupAllowlist },
       });
       logger.info("applied SIGNUP_ALLOWLIST from the environment");
+    }
+    // A set SIGNUP_MODE is applied on every start, like a non-empty SIGNUP_ALLOWLIST.
+    if (
+      parseSignupMode(env.signupMode) &&
+      environmentSignupPolicy.mode !== deploymentSettings.signupMode
+    ) {
+      await prisma.deploymentSettings.update({
+        where: { id: "default" },
+        data: {
+          signupMode: environmentSignupPolicy.mode,
+          signupsEnabled: environmentSignupPolicy.mode !== "closed",
+        },
+      });
+      logger.info("applied SIGNUP_MODE from the environment");
     }
   }
 
