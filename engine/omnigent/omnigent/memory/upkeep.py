@@ -144,6 +144,15 @@ standing): still extract it, but mark it "inferred", so repeating it later \
 builds the evidence. Extract nothing for one-off requests, small talk or doubt \
 about what the user said; most transcripts hold only a few claims.
 
+A choice is not a preference. A short message that merely answers the \
+assistant's question or picks one of its options (a tapped card option such as \
+"Corporate Clean", "the second one", "yes") applies to that one request only: \
+never extract a preference, instruction or working-style claim from it, and \
+never generalise it ("prefers X for presentations"). A preference needs a \
+permanence signal in the user's own words ("always", "from now on", "I prefer", \
+"I like", "by default"). The same pick repeated across conversations may at most \
+be extracted as "inferred", never "stated".
+
 A withdrawal is not a claim: when the user only takes something back ("I no \
 longer want French", "forget that", "stop doing that"), extract nothing for it \
 and never write a negation such as "The user no longer wants French." Forgetting \
@@ -599,6 +608,21 @@ def _parse_valid_until(value: Any) -> int | None:
     return int(parsed.timestamp())
 
 
+_PERMANENCE_RE = re.compile(
+    r"\b(always|never|from now on|every time|in general|by default|default to|"
+    r"i prefer|i like|i love|i want|i hate|i don't like|remember that|don't ever|going forward)\b",
+    re.IGNORECASE,
+)
+_CHOICE_KINDS = frozenset({"preference", "instruction", "working_style"})
+#: A message this short with no permanence signal is a pick answering a question, not a rule.
+_CHOICE_MAX_WORDS = 6
+
+
+def _is_choice_answer(text: str) -> bool:
+    """Whether *text* reads as a short pick (a tapped card option or a one-word reply)."""
+    return len(text.split()) <= _CHOICE_MAX_WORDS and not _PERMANENCE_RE.search(text)
+
+
 def verify_candidate(
     raw: Any, items_by_id: dict[str, WindowItem]
 ) -> tuple[VerifiedCandidate | None, str | None]:
@@ -638,6 +662,8 @@ def verify_candidate(
         return None, "one_time"
     if not _quote_is_verbatim(quote, item.text):
         return None, "quote_not_verbatim"
+    if kind in _CHOICE_KINDS and _is_choice_answer(item.text):
+        return None, "choice_answer"
     return (
         VerifiedCandidate(
             kind=kind,

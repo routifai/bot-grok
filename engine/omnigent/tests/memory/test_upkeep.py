@@ -388,6 +388,40 @@ def test_verify_accepts_a_verbatim_quote() -> None:
     assert candidate.session_id == "conv1"
 
 
+@pytest.mark.parametrize("pick", ["Corporate Clean", "the second one", "yes"])
+def test_verify_rejects_a_card_pick_as_a_preference(pick: str) -> None:
+    items_by_id = {"i1": _user_item("i1", pick)}
+    raw = _raw_candidate(
+        quote=pick,
+        claim_text="The user prefers the Corporate Clean visual style for presentations.",
+        explicitness="stated",
+    )
+    candidate, reason = upkeep.verify_candidate(raw, items_by_id)
+    assert candidate is None
+    assert reason == "choice_answer"
+
+
+def test_verify_accepts_an_explicit_standing_preference() -> None:
+    text = "I always want Corporate Clean"
+    items_by_id = {"i1": _user_item("i1", text)}
+    raw = _raw_candidate(
+        quote=text,
+        claim_text="The user always wants the Corporate Clean visual style.",
+        explicitness="stated",
+    )
+    candidate, reason = upkeep.verify_candidate(raw, items_by_id)
+    assert reason is None
+    assert candidate is not None
+    assert candidate.explicitness == "stated"
+
+
+def test_verify_keeps_short_profile_facts() -> None:
+    items_by_id = {"i1": _user_item("i1", "I'm a PM")}
+    raw = _raw_candidate(kind="fact", quote="I'm a PM", claim_text="The user is a PM.")
+    candidate, reason = upkeep.verify_candidate(raw, items_by_id)
+    assert reason is None and candidate is not None
+
+
 def test_verify_rejects_a_non_verbatim_quote() -> None:
     items_by_id = {"i1": _user_item("i1", "I'd like CAD figures, if possible")}
     candidate, reason = upkeep.verify_candidate(_raw_candidate(), items_by_id)
