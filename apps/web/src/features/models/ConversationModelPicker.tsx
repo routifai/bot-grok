@@ -14,7 +14,6 @@ import { Cpu } from "lucide-react";
 import { useState } from "react";
 import { errorText } from "../../lib/error-text";
 import { rpc } from "../../lib/rpc";
-import { TOOLBAR_BUTTON } from "../../pages/muse/chrome/ConversationHeader";
 import { modelOptionLabel } from "./DefaultModel";
 import { useEngineModelsStatus } from "./engine-models";
 
@@ -70,9 +69,10 @@ export function ConversationModelPicker({ botId }: { botId: string }) {
         data-testid="conversation-model-trigger"
         title={t`Model`}
         aria-label={t`Model`}
-        className={TOOLBAR_BUTTON}
+        className="sc-glass app-no-drag inline-flex h-11 items-center gap-2 rounded-xl px-3.5 text-[14px] font-medium text-foreground transition-colors hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-ring data-[popup-open]:bg-foreground/10"
       >
-        <Cpu strokeWidth={1.75} />
+        <Cpu size={18} strokeWidth={1.7} aria-hidden="true" />
+        <Trans>Model</Trans>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" data-testid="conversation-model-menu" className="min-w-52">
         <DropdownMenuGroup>

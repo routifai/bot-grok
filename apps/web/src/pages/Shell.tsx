@@ -57,7 +57,7 @@ import { DeckThemeChoice, decksExtension } from "../features/decks";
 import { knowledgeExtension } from "../features/knowledge";
 import { ConversationModelPicker } from "../features/models";
 import { sheetsExtension } from "../features/sheets";
-import { AllForks, ForkViewSwitch } from "../features/side-chats/AllForks";
+import { AllForks } from "../features/side-chats/AllForks";
 import { ForkAsk } from "../features/side-chats/ForkAsk";
 import { ForkGutter } from "../features/side-chats/ForkGutter";
 import type { ForkWire } from "../features/side-chats/ForkOverlay";
@@ -874,9 +874,6 @@ export function ShellPage() {
         ) : null}
         <span className="min-w-0 flex-1" />
         <div className="app-no-drag flex shrink-0 items-center gap-2">
-          {!activeChat && (forks.rows.length || forksView) ? (
-            <ForkViewSwitch view={forks.view} onChange={forks.setView} />
-          ) : null}
           <ConversationModelPicker botId={active.id} />
           <ChatsPopover
             botId={active.id}
