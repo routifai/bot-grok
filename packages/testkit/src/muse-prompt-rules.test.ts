@@ -66,6 +66,10 @@ describe("Muse deck theme choice", () => {
     '"kind": "deck-theme"',
     "do not ask again",
     "Never ask when redoing, fixing or extending an existing deck",
+    "three different categories and moods",
+    "Never offer two themes of the same category and mode",
+    "Asking ends your turn",
+    "build with exactly that theme, never another one",
   ];
   it.each(["templates/decks.md", "agents/nova-claude/AGENTS.md", "agents/nova-pi/AGENTS.md"])(
     "%s offers three themes before a new deck",

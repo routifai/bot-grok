@@ -237,6 +237,14 @@ def test_clarification_rejects_unknown_preview_ids_and_kinds() -> None:
     )
 
 
+def test_clarification_refuses_look_alike_deck_themes() -> None:
+    """The incident: three light professional themes are one choice, not three."""
+    alike = _themed("corporate-clean", "arctic-cool", "blue-professional")
+    assert "look alike" in _ask(question="Which look?", options=alike)["error"]
+    distinct = _themed("corporate-clean", "editorial-serif", "tokyo-night")
+    assert _ask(question="Which look?", options=distinct)["card"] == "ask"
+
+
 def test_transcript_carries_the_option_previews() -> None:
     card = build_clarification({"question": "Which look?", "options": _themed("nord", "bauhaus")})
     items = [_call("ask_clarification", "k1"), _output("k1", card)]
