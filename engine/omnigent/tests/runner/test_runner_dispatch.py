@@ -9984,6 +9984,62 @@ async def test_approval_event_without_content_flattened() -> None:
 
 
 @pytest.mark.asyncio
+async def test_decline_without_interrupt_lets_the_turn_carry_on() -> None:
+    """A decline marked ``interrupt: false`` resolves the approval but does not stop the turn."""
+    posted: list[dict[str, Any]] = []
+
+    class _CapturingHarnessClient:
+        async def post(
+            self, url: str, *, json: dict[str, Any], timeout: float | None = None
+        ) -> httpx.Response:
+            posted.append(json)
+            return httpx.Response(204)
+
+    mgr = _FakeProcessManager(harness_client=cast(Any, _CapturingHarnessClient()))
+    app = create_runner_app(
+        process_manager=cast(HarnessProcessManager, mgr),
+        server_client=NullServerClient(),  # type: ignore[arg-type]
+    )
+    async with _runner_test_client(app) as http:
+        resp = await http.post(
+            "/v1/sessions/conv_z/events",
+            json={
+                "type": "approval",
+                "data": {"elicitation_id": "e3", "action": "decline", "interrupt": False},
+            },
+        )
+
+    assert resp.status_code == 204
+    assert {"type": "interrupt"} not in posted
+    assert posted == [{"type": "approval", "elicitation_id": "e3", "action": "decline"}]
+
+
+@pytest.mark.asyncio
+async def test_plain_decline_still_interrupts_the_turn() -> None:
+    posted: list[dict[str, Any]] = []
+
+    class _CapturingHarnessClient:
+        async def post(
+            self, url: str, *, json: dict[str, Any], timeout: float | None = None
+        ) -> httpx.Response:
+            posted.append(json)
+            return httpx.Response(204)
+
+    mgr = _FakeProcessManager(harness_client=cast(Any, _CapturingHarnessClient()))
+    app = create_runner_app(
+        process_manager=cast(HarnessProcessManager, mgr),
+        server_client=NullServerClient(),  # type: ignore[arg-type]
+    )
+    async with _runner_test_client(app) as http:
+        await http.post(
+            "/v1/sessions/conv_w/events",
+            json={"type": "approval", "data": {"elicitation_id": "e4", "action": "decline"}},
+        )
+
+    assert posted[0] == {"type": "interrupt"}
+
+
+@pytest.mark.asyncio
 async def test_spawn_handle_round_trips_to_sys_cancel_async(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

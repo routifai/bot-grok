@@ -163,10 +163,14 @@ async def answer_approval(
                 target=target,
                 label=rule_label(pending.category, target),
             )
-    data = {
+    data: dict[str, object] = {
         "elicitation_id": elicitation_id,
         "action": "decline" if decision == "deny" else "accept",
     }
+    if decision == "deny":
+        # Answered from the inbox, maybe long after the ask: the agent gets "declined" and
+        # replies, instead of the turn being stopped.
+        data["interrupt"] = False
     await _resolve_elicitation(pending.session_id, data, runner_router, conversation_store)
     # Count the spend only once the verdict reached the waiting call.
     if decision != "deny" and pending.category == "spend" and pending.amount_usd:

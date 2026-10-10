@@ -12036,7 +12036,9 @@ def create_runner_app(
                 _elicit_action == "accept",
                 _elicit_content if isinstance(_elicit_content, dict) else None,
             )
-            if _elicit_action == "decline":
+            # A decline stops the turn, unless the verdict says not to: an approval answered
+            # later from an inbox wants the agent to see "declined" and carry on.
+            if _elicit_action == "decline" and _data.get("interrupt", True) is not False:
                 try:
                     _int_client = await process_manager.get_client(conversation_id, "any")
                     await _int_client.post(
@@ -12046,7 +12048,7 @@ def create_runner_app(
                     )
                 except Exception:  # noqa: BLE001 — best-effort; deny path continues
                     pass
-            body = {**_data, "type": "approval"}
+            body = {**{k: v for k, v in _data.items() if k != "interrupt"}, "type": "approval"}
 
         try:
             harness_client = await process_manager.get_client(conversation_id, "any")

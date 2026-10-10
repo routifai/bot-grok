@@ -2103,7 +2103,9 @@ async def _resolve_elicitation(
         # may resolve its server-side Future. A mismatch skips
         # resolution (the runner forward still fires below).
         if _harness_elicitation_owners.get(elicitation_id) == session_id:
-            result_payload = {k: v for k, v in data.items() if k != "elicitation_id"}
+            result_payload = {
+                k: v for k, v in data.items() if k not in ("elicitation_id", "interrupt")
+            }
             try:
                 verdict_result = ElicitationResult.model_validate(result_payload)
             except ValidationError:
