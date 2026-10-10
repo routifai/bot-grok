@@ -149,6 +149,26 @@ def _env_with_fallback(name: str, deprecated_name: str) -> str:
 
 _DEFAULT_HOME_ROOT: str = "./data"
 
+#: The Computer image's user (uid and gid 1000); it must own its home.
+_COMPUTER_UID: int = 1000
+
+
+def _ensure_home(home_path: str) -> None:
+    """
+    Create a Computer's home before asking the supervisor for it.
+
+    The supervisor never creates homes when it runs as root, so the side that picks the path
+    does. A root engine hands the new folder to the Computer's user.
+
+    :param home_path: ``<home root>/homes/<bot id>``, shared with the supervisor.
+    """
+    if os.path.isdir(home_path):
+        return
+    os.makedirs(home_path, exist_ok=True)
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        os.chown(home_path, _COMPUTER_UID, _COMPUTER_UID)
+
+
 _FALLBACK_DISPLAY: str = ":1"
 """Display the supervisor assigns the first screen of a computer; used only when an older
 supervisor does not echo ``display`` back from ``screen-mode``."""
@@ -347,6 +367,7 @@ class ComputerSandboxLauncher(RecordingMixin, ExecModelHostLauncher):
     def _ensure_container_id(self, bot_id: str, space_id: str) -> str:
         """Ensure-or-create the Muse's computer (``POST /computers``) and return its live id."""
         home_path = os.path.join(self._home_root, "homes", bot_id)
+        _ensure_home(home_path)
         response = self._request(
             "POST",
             "/computers",

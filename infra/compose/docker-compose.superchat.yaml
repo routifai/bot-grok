@@ -163,7 +163,9 @@ services:
       # The Docker socket, resolved inside the Docker VM: /var/run/docker.sock for Docker Desktop and colima alike.
       # DOCKER_SOCKET_PATH in .env overrides it only for unusual setups (e.g. rootless Docker).
       - ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:/var/run/docker.sock
-      - ../../../../data:/data
+      # Omnigent's data volume, shared with the engine: it creates each Computer's home there and
+      # the supervisor mounts that home into the Computer (a Mac folder can't be chowned to uid 1000).
+      - artifact-data:/data
     depends_on:
       computer:
         condition: service_completed_successfully
@@ -198,7 +200,9 @@ services:
     ports:
       - "127.0.0.1:${SUPERCHAT_API_PORT:-3100}:3100"
     volumes:
-      - ../../../../data:/data
+      # Omnigent's data volume, shared with the engine: it creates each Computer's home there and
+      # the supervisor mounts that home into the Computer (a Mac folder can't be chowned to uid 1000).
+      - artifact-data:/data
     depends_on:
       postgres:
         condition: service_healthy
@@ -235,7 +239,9 @@ services:
       OMNIGENT_PROXY_SECRET: ${OMNIGENT_PROXY_SECRET:?Set OMNIGENT_PROXY_SECRET in .env}
       SCREEN_PROXY_SECRET: ""
     volumes:
-      - ../../../../data:/data
+      # Omnigent's data volume, shared with the engine: it creates each Computer's home there and
+      # the supervisor mounts that home into the Computer (a Mac folder can't be chowned to uid 1000).
+      - artifact-data:/data
     depends_on:
       api:
         condition: service_healthy

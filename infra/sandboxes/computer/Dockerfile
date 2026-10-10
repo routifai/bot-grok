@@ -30,11 +30,12 @@ RUN apt-get update \
 
 # Python's data stack and the pptx skill's libraries, in the system Python the Muse's shell runs
 # (the supervisor's PATH leaves /opt/venv out): /usr/local/bin's on python-slim, /usr/bin's on
-# Ubuntu. Agg keeps matplotlib headless.
+# Ubuntu. PyYAML is there for the engine's host-config write (`python3 -c` with yaml). Agg keeps
+# matplotlib headless.
 RUN PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin python3 -m pip install --no-cache-dir --break-system-packages \
       --index-url "${PYPI_INDEX_URL}" \
       pandas==2.2.3 openpyxl==3.1.5 xlsxwriter==3.2.0 matplotlib==3.9.2 duckdb==1.1.3 \
-      python-pptx==1.0.2 "markitdown[pptx]==0.1.8"
+      python-pptx==1.0.2 "markitdown[pptx]==0.1.8" pyyaml==6.0.2
 ENV MPLBACKEND=Agg
 
 # Headless Chromium for deck and dashboard export and the browser_* tools; `chromium` on PATH is

@@ -14,6 +14,7 @@ import click
 import httpx
 import pytest
 
+from omnigent.onboarding.sandboxes import computer as computer_module
 from omnigent.onboarding.sandboxes.base import (
     ExecModelHostLauncher,
     RemoteCommandResult,
@@ -24,6 +25,7 @@ from omnigent.onboarding.sandboxes.computer import (
     SUPERVISOR_TOKEN_ENV_VAR,
     SUPERVISOR_URL_ENV_VAR,
     ComputerSandboxLauncher,
+    _ensure_home,
     _parse_sandbox_id,
 )
 
@@ -31,6 +33,21 @@ BOT_ID = "bot_abc123"
 SPACE_ID = "space_xyz789"
 CONTAINER_ID = "c0ffee1234567890"
 SANDBOX_ID = f"{BOT_ID}:{SPACE_ID}:{CONTAINER_ID}"
+
+
+@pytest.fixture(autouse=True)
+def _no_home_on_disk(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Launchers here use made-up home roots; only the home tests create real folders."""
+    if not request.node.name.startswith("test_ensure_home"):
+        monkeypatch.setattr(computer_module, "_ensure_home", lambda _path: None)
+
+
+def test_ensure_home_creates_the_missing_home(tmp_path: Path) -> None:
+    home = tmp_path / "homes" / BOT_ID
+    _ensure_home(str(home))
+    assert home.is_dir()
+    _ensure_home(str(home))  # an existing home is left as it is
+    assert home.is_dir()
 
 
 class FakeSupervisor:
@@ -108,7 +125,11 @@ def test_prepare_for_launch_targets_superchats_computer_key_when_given() -> None
     """Team mode shares one computer per space: the runner must land on that same machine."""
     launcher = make_launcher(FakeSupervisor())
     launcher.prepare_for_launch(
-        labels={"superchat.bot": BOT_ID, "superchat.space": SPACE_ID, "superchat.computer": "team-space_1"}
+        labels={
+            "superchat.bot": BOT_ID,
+            "superchat.space": SPACE_ID,
+            "superchat.computer": "team-space_1",
+        }
     )
     assert (launcher._bot_id, launcher._space_id) == ("team-space_1", SPACE_ID)
 

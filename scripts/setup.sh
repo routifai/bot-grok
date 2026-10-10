@@ -36,5 +36,7 @@ done
   echo "warning: set ANTHROPIC_API_KEY (or LITELLM_BASE_URL + LITELLM_API_KEY) in .env for the engine." >&2
 
 "${compose[@]}" build
-"${compose[@]}" up -d --wait --wait-timeout 300
+# Only the running services: the build-only ones (omnigent-server, omnigent-host, computer) exit at
+# once, which --wait would report as a failure.
+"${compose[@]}" up -d --wait --wait-timeout 300 postgres omnigent supervisor api worker web
 echo "Superchat is running: http://127.0.0.1:$(env_get SUPERCHAT_WEB_PORT | grep . || echo 5173)"
