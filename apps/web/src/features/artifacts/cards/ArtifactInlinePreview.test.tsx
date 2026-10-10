@@ -11,7 +11,7 @@ vi.mock("react-dom/client", async (orig) =>
   ),
 );
 
-const api = vi.hoisted(() => ({ getById: vi.fn() }));
+const api = vi.hoisted(() => ({ getById: vi.fn(), listVersions: vi.fn() }));
 vi.mock("../../../lib/rpc", () => ({ rpc: { artifacts: api } }));
 vi.mock("@nova/chat-ui/web", () => ({
   ChatMarkdown: ({ children }: { children?: ReactNode }) => <div data-testid="md">{children}</div>,
@@ -107,8 +107,6 @@ it("shows a cover for office documents", async () => {
 
 it("follows a deck that was still being saved when the card first rendered", async () => {
   vi.useFakeTimers();
-  const files = { listVersions: vi.fn(), getById: api.getById };
-  Object.assign(api, { listVersions: files.listVersions });
   api.getById.mockResolvedValueOnce({ mimeType: "text/html", contentBase64: b64("") });
   api.getById.mockResolvedValue({
     mimeType: "text/html",
