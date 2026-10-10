@@ -905,6 +905,13 @@ class ExecutorAdapter(HarnessApp):
             call_id = _call_id_from_metadata(getattr(event, "metadata", None)) or ""
             if not call_id:
                 return
+            # A call that completes before any dispatch claimed it never will be
+            # dispatched (the CLI rejected an unknown tool name, a permission was
+            # denied, or the harness ran it itself). Drop its id from the FIFO, or
+            # the next un-ided bridge callback pops it and records the following
+            # tool call under this stale id, duplicating both cards.
+            with contextlib.suppress(ValueError):
+                self._pending_mcp_call_ids.remove(call_id)
             if call_id in self._dispatched_call_ids:
                 self._observed_tool_calls.pop(call_id, None)
                 self._pr_tool_calls.pop(call_id, None)

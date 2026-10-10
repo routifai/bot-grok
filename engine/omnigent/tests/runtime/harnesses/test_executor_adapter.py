@@ -1752,6 +1752,78 @@ async def test_stable_tool_executor_pops_queue_for_bare_tool_name() -> None:
     )
 
 
+async def test_rejected_call_does_not_steal_next_dispatch_call_id() -> None:
+    """A call the harness completes itself (the claude CLI rejecting an
+    unknown bare tool name) must leave the dispatch FIFO, so the model's
+    retry dispatches under its own id: one card per call, no duplicates."""
+    from omnigent.inner.executor import ToolCallComplete, ToolCallRequest, ToolCallStatus
+    from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
+
+    dispatched: list[str] = []
+
+    class _Ctx(_RecordingTurnContext):
+        """Records emits and dispatch_tool call ids."""
+
+        async def dispatch_tool(
+            self, *, call_id: str, name: str, arguments: str, agent: str
+        ) -> str:
+            """Record the dispatch call id."""
+            del name, arguments, agent
+            dispatched.append(call_id)
+            return "{}"
+
+    adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
+    ctx = _Ctx(response_id="resp_turn")
+    adapter._current_ctx = ctx  # type: ignore[assignment]
+    adapter._current_agent = "superchat-claude"
+
+    # The model calls the bare name; the CLI rejects it without the bridge.
+    adapter._translate_event(  # type: ignore[arg-type]
+        ToolCallRequest(name="start_helper", args={"task": "t"}, metadata={"call_id": "toolu_A"}),
+        ctx,
+    )
+    adapter._translate_event(  # type: ignore[arg-type]
+        ToolCallComplete(
+            name="start_helper",
+            status=ToolCallStatus.ERROR,
+            result="<tool_use_error>Error: No such tool available: start_helper</tool_use_error>",
+            error="tool error",
+            metadata={"call_id": "toolu_A"},
+        ),
+        ctx,
+    )
+    # The retry goes through the MCP bridge, whose callback carries no id.
+    adapter._translate_event(  # type: ignore[arg-type]
+        ToolCallRequest(
+            name="mcp__omnigent__start_helper", args={"task": "t"}, metadata={"call_id": "toolu_B"}
+        ),
+        ctx,
+    )
+    await adapter._stable_tool_executor("start_helper", {"task": "t"})
+    adapter._translate_event(  # type: ignore[arg-type]
+        ToolCallComplete(
+            name="mcp__omnigent__start_helper",
+            status=ToolCallStatus.SUCCESS,
+            result="{}",
+            metadata={"call_id": "toolu_B"},
+        ),
+        ctx,
+    )
+
+    assert dispatched == ["toolu_B"]
+    assert list(adapter._pending_mcp_call_ids) == []
+    completed_calls = [
+        i["call_id"]
+        for i in _fc_items(ctx)
+        if i["type"] == "function_call" and i["status"] == "completed"
+    ]
+    outputs = [i["call_id"] for i in _fc_items(ctx) if i["type"] == "function_call_output"]
+    # toolu_A keeps its observed card + error; toolu_B's harness completion is
+    # suppressed because dispatch owns it.
+    assert completed_calls == ["toolu_A"]
+    assert outputs == ["toolu_A"]
+
+
 @pytest.mark.asyncio
 async def test_observed_and_dispatched_call_ids_match_for_openai_agents() -> None:
     """
