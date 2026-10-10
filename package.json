@@ -16,7 +16,7 @@
     "format": "biome check --write .",
     "db:generate": "pnpm --filter @superchat/db generate",
     "db:migrate": "pnpm --filter @superchat/db migrate",
-    "sandbox:build": "docker build -t superchat/computer:local -f infra/sandboxes/computer/Dockerfile .",
+    "sandbox:build": "docker compose --env-file .env -f infra/compose/docker-compose.yml build computer",
     "test": "vitest run",
     "test:compose-smoke": "bash infra/compose/run-smokes.sh",
     "test:integration": "tsx packages/testkit/src/cli/harness.ts --integration",

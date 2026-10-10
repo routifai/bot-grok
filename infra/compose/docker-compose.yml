@@ -1,55 +1,132 @@
 name: superchat
 
-# Image bases and package sources for every image built here. Unset, each Dockerfile's public
-# default holds (Ubuntu 24.04, the official Node image, public apt/npm/PyPI); a company sets its
-# own registry and mirrors in .env (see .env.docker.example).
-x-image-build-args: &image-build-args
-  - BASE_IMAGE
-  - NODE_IMAGE
-  - APT_MIRROR
-  - NPM_CONFIG_REGISTRY
+# The shape of Omnigent's own engine/omnigent/deploy/docker/docker-compose.yaml (Postgres + the
+# Omnigent server), plus Superchat's Computers (Omnigent's host image + a thin layer, started one
+# per person by the supervisor) and the app (api, worker, web: one image).
+#
+#   ./scripts/setup.sh        or   docker compose --env-file .env -f infra/compose/docker-compose.yml up -d --build
+
+# Optional build inputs, all unset by default (see .env.docker.example). Omnigent's Dockerfile
+# reads the same three.
+x-build-args: &build-args
+  - PYTHON_IMAGE
   - PYPI_INDEX_URL
-  - PLAYWRIGHT_DOWNLOAD_HOST
+  - NPM_CONFIG_REGISTRY
+
+# api, worker and web share this one image and differ only in their command.
+x-app-build: &app-build
+  context: ../..
+  dockerfile: infra/compose/Dockerfile
+  args: *build-args
+
+x-proxy-env: &proxy-env
+  HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
+  HTTPS_PROXY: ${HTTPS_PROXY:-${https_proxy:-}}
+  NO_PROXY: ${NO_PROXY:-${no_proxy:-}}
+  http_proxy: ${http_proxy:-${HTTP_PROXY:-}}
+  https_proxy: ${https_proxy:-${HTTPS_PROXY:-}}
+  no_proxy: ${no_proxy:-${NO_PROXY:-}}
 
 services:
+  # One database, two schemas: `app` (API, Prisma) and `engine` (Omnigent), created on first init.
   postgres:
     image: ${POSTGRES_IMAGE:-postgres:16}
     environment:
-      # USER/PASSWORD/DB apply only on first pgdata init. Keep existing values in
-      # .env, or ALTER ROLE / rename in place. Recreate pgdata only after backup
-      # (or when the volume is disposable); down -v deletes all DB state.
+      # USER/PASSWORD/DB apply only on first pgdata init; down -v deletes all DB state.
       POSTGRES_USER: ${POSTGRES_USER:-superchat}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-superchat_db}
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./postgres/schemas.sql:/docker-entrypoint-initdb.d/schemas.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-superchat} -d ${POSTGRES_DB:-superchat_db}"]
       interval: 3s
       timeout: 5s
       retries: 20
 
-  # One database, two schemas: `app` (API, Prisma) and `engine` (Omnigent). Runs on every `up`.
-  db-init:
-    image: ${POSTGRES_IMAGE:-postgres:16}
-    command: ["psql", "-v", "ON_ERROR_STOP=1", "-f", "/init/schemas.sql"]
-    environment:
-      PGHOST: postgres
-      PGUSER: ${POSTGRES_USER:-superchat}
-      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-      PGDATABASE: ${POSTGRES_DB:-superchat_db}
-    volumes:
-      - ./postgres/schemas.sql:/init/schemas.sql:ro
+  # Build-only: Omnigent's host image (its Dockerfile's `host` target), the Computer's base.
+  omnigent-host:
+    image: superchat/omnigent-host:local
+    build:
+      context: ../../engine/omnigent
+      dockerfile: deploy/docker/Dockerfile
+      target: host
+      args: *build-args
+    command: ["true"]
     restart: "no"
+
+  # Build-only: the Computer image the supervisor starts for each person.
+  computer:
+    image: superchat/computer:local
+    build:
+      context: ../..
+      dockerfile: infra/sandboxes/computer/Dockerfile
+      additional_contexts:
+        omnigent-host: service:omnigent-host
+      args: *build-args
+    command: ["true"]
+    restart: "no"
+
+  # The Omnigent engine: Omnigent's server image with infra/omnigent (agent bundles, config
+  # templates, start script) baked in at /opt/bundle. Each Computer's runner dials it back at
+  # ENGINE_PUBLIC_URL, so it is also published on the host.
+  engine:
+    image: superchat/engine:local
+    build:
+      context: ../../engine/omnigent
+      dockerfile: deploy/docker/Dockerfile
+      additional_contexts:
+        bundle: ../omnigent
+      args:
+        - OMNIGENT_EXTRAS=memory
+        - PYTHON_IMAGE
+        - PYPI_INDEX_URL
+        - NPM_CONFIG_REGISTRY
+    command: ["/opt/bundle/engine/start.sh"]
+    environment:
+      <<: *proxy-env
+      DATABASE_URL: postgres://${POSTGRES_USER:-superchat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-superchat_db}?options=-csearch_path%3Dengine
+      ENGINE_PUBLIC_URL: ${ENGINE_PUBLIC_URL:-http://host.docker.internal:${SUPERCHAT_ENGINE_PORT:-8012}}
+      # The API signs every call with this; the engine trusts the identity headers only with it.
+      OMNIGENT_AUTH_HEADER_SECRET: ${OMNIGENT_PROXY_SECRET:?Set OMNIGENT_PROXY_SECRET in .env}
+      OMNIGENT_VAULT_KEY: ${OMNIGENT_VAULT_KEY:?Set OMNIGENT_VAULT_KEY in .env}
+      OMNIGENT_COMPUTER_SUPERVISOR_URL: http://supervisor:7091
+      OMNIGENT_COMPUTER_SUPERVISOR_TOKEN: ${SANDBOX_SUPERVISOR_TOKEN:?Set SANDBOX_SUPERVISOR_TOKEN in .env}
+      # Must equal the supervisor's DATA_DIR: Computer homes are <root>/homes/<id> there.
+      OMNIGENT_COMPUTER_HOME_ROOT: /data
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      # Set both to send every model call through a LiteLLM proxy (start.sh picks its config).
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL:-}
+      LITELLM_API_KEY: ${LITELLM_API_KEY:-}
+    extra_hosts:
+      # Docker Desktop and colima resolve this already; native Linux needs it.
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${SUPERCHAT_ENGINE_BIND:-127.0.0.1}:${SUPERCHAT_ENGINE_PORT:-8012}:8000"
+    volumes:
+      - enginedata:/data
     depends_on:
       postgres:
         condition: service_healthy
+      supervisor:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
 
   supervisor:
     build:
       context: ../..
       dockerfile: infra/sandboxes/supervisor/Dockerfile
-      args: *image-build-args
+      args: *build-args
+    # /data is shared with the app, which runs as uid 1000.
+    command: ["sh", "-c", "chown -R 1000:1000 /data && exec pnpm exec tsx src/index.ts"]
     environment:
       DATA_DIR: /data
       SUPERVISOR_HOST: "0.0.0.0"
@@ -88,80 +165,14 @@ services:
       retries: 30
       start_period: 10s
 
-  computer:
-    image: superchat/computer:local
-    build:
-      # Root context (not sandboxes/computer) so the image can vendor engine/omnigent — see
-      # infra/sandboxes/computer/Dockerfile's omnigent-builder stage.
-      context: ../..
-      dockerfile: infra/sandboxes/computer/Dockerfile
-      args: *image-build-args
-    command: ["true"]
-    restart: "no"
-
-  data-init:
-    image: ${BUSYBOX_IMAGE:-busybox:1}
-    command: ["chown", "-R", "1000:1000", "/data"]
-    restart: "no"
-    volumes:
-      - ../../data:/data
-
-  # The Omnigent engine: runs every chat turn. Same image as the hosted engine. Each Computer's
-  # runner dials it back at ENGINE_PUBLIC_URL, so it is also published on the host.
-  engine:
-    image: superchat/engine:local
-    build:
-      context: ../..
-      dockerfile: infra/railway/Dockerfile.engine
-      args: *image-build-args
-    environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-superchat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-superchat_db}?options=-csearch_path%3Dengine
-      ENGINE_PUBLIC_URL: ${ENGINE_PUBLIC_URL:-http://host.docker.internal:${SUPERCHAT_ENGINE_PORT:-8012}}
-      # The API signs every call with this; the engine trusts the identity headers only with it.
-      OMNIGENT_AUTH_HEADER_SECRET: ${OMNIGENT_PROXY_SECRET:?Set OMNIGENT_PROXY_SECRET in .env}
-      OMNIGENT_VAULT_KEY: ${OMNIGENT_VAULT_KEY:?Set OMNIGENT_VAULT_KEY in .env}
-      OMNIGENT_COMPUTER_SUPERVISOR_URL: http://supervisor:7091
-      OMNIGENT_COMPUTER_SUPERVISOR_TOKEN: ${SANDBOX_SUPERVISOR_TOKEN:?Set SANDBOX_SUPERVISOR_TOKEN in .env}
-      # Must equal the supervisor's DATA_DIR: Computer homes are <root>/homes/<id> there.
-      OMNIGENT_COMPUTER_HOME_ROOT: /data
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
-      HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
-      HTTPS_PROXY: ${HTTPS_PROXY:-${https_proxy:-}}
-      NO_PROXY: ${NO_PROXY:-${no_proxy:-}}
-    extra_hosts:
-      # Docker Desktop and colima resolve this already; native Linux needs it.
-      - "host.docker.internal:host-gateway"
-    ports:
-      - "${SUPERCHAT_ENGINE_BIND:-127.0.0.1}:${SUPERCHAT_ENGINE_PORT:-8012}:8000"
-    volumes:
-      - enginedata:/data
-    depends_on:
-      db-init:
-        condition: service_completed_successfully
-      supervisor:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
-      interval: 5s
-      timeout: 5s
-      retries: 30
-      start_period: 60s
-
-  # api, worker, and web build the exact same image (one Dockerfile, one context) and only differ
-  # in their command. Sharing one image tag across all three means Compose builds it once instead
-  # of three near-identical multi-hundred-MB images.
   api:
     image: superchat/app:local
-    build:
-      context: ../..
-      dockerfile: infra/compose/Dockerfile
-      args: *image-build-args
+    build: *app-build
     command: ["bash", "-lc", "pnpm --filter @superchat/db exec prisma migrate deploy && pnpm --filter @superchat/api start"]
     env_file:
       - ../../.env
     environment:
+      <<: *proxy-env
       DATABASE_URL: postgres://${POSTGRES_USER:-superchat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-superchat_db}?schema=app
       API_HOST: "0.0.0.0"
       DATA_DIR: /data
@@ -171,22 +182,13 @@ services:
       # The Omnigent chat engine (the engine service unless OMNIGENT_URL points elsewhere).
       OMNIGENT_URL: ${OMNIGENT_URL:-http://engine:8000}
       OMNIGENT_PROXY_SECRET: ${OMNIGENT_PROXY_SECRET:?Set OMNIGENT_PROXY_SECRET in .env}
-      # Optional egress proxy (Mainland / corporate). Empty = unset; either case works.
-      HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
-      HTTPS_PROXY: ${HTTPS_PROXY:-${https_proxy:-}}
-      NO_PROXY: ${NO_PROXY:-${no_proxy:-}}
-      http_proxy: ${http_proxy:-${HTTP_PROXY:-}}
-      https_proxy: ${https_proxy:-${HTTPS_PROXY:-}}
-      no_proxy: ${no_proxy:-${NO_PROXY:-}}
     ports:
       - "127.0.0.1:${SUPERCHAT_API_PORT:-3100}:3100"
     volumes:
       - ../../data:/data
     depends_on:
-      db-init:
-        condition: service_completed_successfully
-      data-init:
-        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
       supervisor:
         condition: service_healthy
       engine:
@@ -204,49 +206,30 @@ services:
 
   worker:
     image: superchat/app:local
-    build:
-      context: ../..
-      dockerfile: infra/compose/Dockerfile
-      args: *image-build-args
+    build: *app-build
     command: ["pnpm", "--filter", "@superchat/worker", "start"]
     env_file:
       - ../../.env
     environment:
+      <<: *proxy-env
       BETTER_AUTH_SECRET: ""
       DATABASE_URL: postgres://${POSTGRES_USER:-superchat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-superchat_db}?schema=app
       DATA_DIR: /data
       SANDBOX_SUPERVISOR_URL: http://supervisor:7091
       WAKEUP_DRIVER: graphile
       SANDBOX_PROVIDER: docker
-      # The Omnigent chat engine (the engine service unless OMNIGENT_URL points elsewhere).
       OMNIGENT_URL: ${OMNIGENT_URL:-http://engine:8000}
       OMNIGENT_PROXY_SECRET: ${OMNIGENT_PROXY_SECRET:?Set OMNIGENT_PROXY_SECRET in .env}
       SCREEN_PROXY_SECRET: ""
-      # Optional egress proxy (Mainland / corporate). Empty = unset; either case works.
-      HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
-      HTTPS_PROXY: ${HTTPS_PROXY:-${https_proxy:-}}
-      NO_PROXY: ${NO_PROXY:-${no_proxy:-}}
-      http_proxy: ${http_proxy:-${HTTP_PROXY:-}}
-      https_proxy: ${https_proxy:-${HTTPS_PROXY:-}}
-      no_proxy: ${no_proxy:-${NO_PROXY:-}}
     volumes:
       - ../../data:/data
     depends_on:
-      db-init:
-        condition: service_completed_successfully
-      data-init:
-        condition: service_completed_successfully
-      supervisor:
-        condition: service_healthy
       api:
         condition: service_healthy
 
   web:
     image: superchat/app:local
-    build:
-      context: ../..
-      dockerfile: infra/compose/Dockerfile
-      args: *image-build-args
+    build: *app-build
     command: ["pnpm", "--filter", "@superchat/web", "preview", "--host", "0.0.0.0", "--port", "5173"]
     environment:
       API_PROXY_TARGET: http://api:3100
