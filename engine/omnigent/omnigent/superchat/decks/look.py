@@ -335,88 +335,61 @@ async def verify_look(ctx: HandlerCtx | None, look_from: object, theme_id: str) 
     )
 
 
-#: What a deck is about -> the category of look that suits it. A topic word adds weight to every
-#: theme of that category; the theme dictionary's own words (best for, mood, tagline) add more.
+#: What a deck is about -> the kind of look that suits it. Words match whole and lower-case, digits
+#: included, so "2026 sales" finds "sales" and "Q3" finds "q3".
 TOPICS: dict[str, tuple[str, ...]] = {
     "professional": (
-        "finance",
-        "financial",
-        "sales",
-        "revenue",
-        "quarter",
-        "quarterly",
-        "budget",
-        "board",
-        "review",
-        "report",
-        "results",
-        "earnings",
-        "forecast",
-        "metrics",
-        "kpi",
-        "kpis",
-        "operations",
-        "strategy",
-        "audit",
-        "compliance",
-        "bank",
-        "client",
+        *("sales", "revenue", "revenues", "quarter", "quarterly", "q1", "q2", "q3", "q4"),
+        *("finance", "financial", "budget", "budgets", "board", "kpi", "kpis", "report"),
+        *("review", "forecast", "metrics", "results", "earnings", "operations", "strategy"),
+        *("audit", "compliance", "bank", "client", "clients", "annual", "growth", "pipeline"),
+        *("profit", "margin", "plan", "hiring", "management", "update"),
+    ),
+    "academic": (
+        *("research", "study", "paper", "thesis", "lecture", "science", "scientific"),
+        *("university", "seminar", "literature", "methodology", "academic", "course"),
     ),
     "editorial": (
-        "travel",
-        "trip",
-        "culture",
-        "food",
-        "story",
-        "history",
-        "art",
-        "city",
-        "museum",
-        "book",
-        "writing",
-        "festival",
-        "wine",
-        "journey",
-        "heritage",
-        "magazine",
+        *("travel", "trip", "culture", "food", "story", "history", "art", "city", "museum"),
+        *("book", "writing", "festival", "wine", "journey", "heritage", "magazine"),
     ),
     "bold": (
-        "pitch",
-        "launch",
-        "startup",
-        "investor",
-        "investors",
-        "product",
-        "campaign",
-        "marketing",
-        "brand",
-        "fundraising",
-        "event",
-        "kickoff",
-        "announcement",
+        *("pitch", "launch", "startup", "investor", "investors", "product", "campaign"),
+        *("marketing", "brand", "fundraising", "event", "kickoff", "announcement"),
     ),
     "dark": (
-        "tech",
-        "technical",
-        "engineering",
-        "engineers",
-        "developer",
-        "developers",
-        "api",
-        "architecture",
-        "platform",
-        "security",
-        "infrastructure",
-        "software",
-        "code",
-        "ai",
+        *("tech", "technical", "engineering", "engineers", "developer", "developers", "api"),
+        *("architecture", "platform", "security", "infrastructure", "software", "code", "ai"),
     ),
 }
+#: Each kind's looks, best fit first. The card leads with one of a kind's first two (which one
+#: varies by request), so a sales deck opens on Corporate Clean or Blue Professional.
+LEADS: dict[str, tuple[str, ...]] = {
+    "professional": (
+        *("corporate-clean", "blue-professional", "swiss-grid", "arctic-cool", "minimal-white"),
+    ),
+    "academic": ("academic-paper", "minimal-white", "swiss-grid"),
+    "editorial": (
+        *("editorial-serif", "magazine-bold", "cartesian", "japanese-minimal", "magazine-mono"),
+    ),
+    "bold": ("pitch-deck-vc", "bauhaus", "midcentury", "editorial-tri-tone", "sharp-mono"),
+    "dark": ("tokyo-night", "nord", "sharp-mono", "magazine-mono"),
+}
+#: Beside the best fit, one look from each of these theme categories: distinct, plausible
+#: alternatives (a business deck gets an editorial and a bold one, never a night theme).
+ALTERNATIVES: dict[str, tuple[str, str]] = {
+    "professional": ("editorial", "bold"),
+    "editorial": ("professional", "bold"),
+    "bold": ("editorial", "professional"),
+    "dark": ("bold", "professional"),
+}
+#: The kind a request with no topic word gets: decks.md's default is a professional look.
+DEFAULT_KIND = "professional"
 _STOP = {"with", "from", "that", "this", "your", "deck", "slides", "make", "about", "into"}
 
 
 def _words(text: str) -> set[str]:
-    return set(re.findall(r"[a-z]{2,}", text.lower())) - _STOP
+    return set(re.findall(r"[a-z0-9]+", text.lower())) - _STOP
 
 
 def _turn(seed: str, theme_id: str) -> str:
@@ -424,39 +397,50 @@ def _turn(seed: str, theme_id: str) -> str:
     return hashlib.sha256(f"{seed}|{theme_id}".encode()).hexdigest()
 
 
-def pick_three(hint: str, *, seed: str = "", avoid: frozenset[str] = frozenset()) -> list[str]:
-    """Three themes from different categories that fit *hint* (the deck's title and request).
-
-    Topic words favour a category (:data:`TOPICS`), the dictionary's ``best_for`` / ``mood`` /
-    ``tagline`` words favour single themes, a named theme or mood counts most. Equal themes are
-    ordered by a hash of *seed* (the chat and request), so offers vary without being random.
-    Themes in *avoid* (offered before and not picked) come last.
-    """
+def topic_kinds(hint: str) -> list[str]:
+    """The kinds of look *hint*'s topic words call for, most words first (none: the default)."""
     words = _words(hint)
-    named, moods = named_themes(hint), mood_themes(hint)
-    favoured = {cat: 3 * len(words & set(keys)) for cat, keys in TOPICS.items()}
-    if favoured["dark"]:  # tech also suits the monochrome themes
-        favoured.update({t: 2 for t in kit.templates() if "mono" in t})
+    hits = {kind: len(words & set(keys)) for kind, keys in TOPICS.items()}
+    return sorted((k for k, n in hits.items() if n), key=lambda k: -hits[k]) or [DEFAULT_KIND]
 
-    def score(theme_id: str) -> int:
-        t = kit.templates()[theme_id]
-        about = _words(f"{t.best_for} {t.description} {t.tagline}")
-        return (
+
+def pick_three(hint: str, *, seed: str = "", avoid: frozenset[str] = frozenset()) -> list[str]:
+    """Three themes for *hint* (the deck's title and request): the best fit, then two alternatives.
+
+    A named theme counts most, then a mood word (:data:`MOODS`), then the topic's kind
+    (:data:`TOPICS`, whose :data:`LEADS` order the looks), then the dictionary's own words
+    (``best_for`` / ``mood`` / ``tagline``). The other two come from the categories
+    :data:`ALTERNATIVES` pairs with the first. Equal themes are ordered by a hash of *seed* (the
+    chat and request), so offers vary without being random. Themes in *avoid* (offered on an
+    earlier card in this chat and not picked) come last.
+    """
+    templates = kit.templates()
+    words = {w for w in _words(hint) if len(w) > 3}
+    named, moods, kinds = named_themes(hint), mood_themes(hint), topic_kinds(hint)
+    weight = {k: 3 * len(_words(hint) & set(TOPICS[k])) for k in kinds}
+
+    def lead(theme_id: str) -> int:
+        """Where *theme_id* stands in the topic's looks, else in its own category's."""
+        for k in kinds:
+            if theme_id in LEADS[k]:
+                return LEADS[k].index(theme_id)
+        own = LEADS.get(templates[theme_id].category, ())
+        return 10 + own.index(theme_id) if theme_id in own else 20
+
+    def rank(theme_id: str) -> tuple[bool, int, int, str]:
+        t = templates[theme_id]
+        score = (
             8 * (theme_id in named)
             + 4 * (theme_id in moods)
-            + favoured.get(t.category, 0)
-            + favoured.get(theme_id, 0)
-            + len({w for w in words if len(w) > 3} & about)
+            + sum(w for k, w in weight.items() if theme_id in LEADS[k])
+            + len(words & _words(f"{t.best_for} {t.description} {t.tagline}"))
         )
+        return theme_id in avoid, -score, lead(theme_id) // 2, _turn(seed or hint, theme_id)
 
-    ranked = sorted(kit.templates(), key=lambda t: (t in avoid, -score(t), _turn(seed or hint, t)))
-    chosen: list[str] = []
-    for theme_id in ranked:
-        if kit.templates()[theme_id].category not in {kit.templates()[c].category for c in chosen}:
-            chosen.append(theme_id)
-        if len(chosen) == 3:
-            break
-    return chosen
+    ranked = sorted(templates, key=rank)
+    first = ranked[0]
+    others = ALTERNATIVES[templates[first].category]
+    return [first, *(next(t for t in ranked if templates[t].category == c) for c in others)]
 
 
 def look_card(

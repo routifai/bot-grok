@@ -13,7 +13,7 @@ from omnigent.inner.executor import result_ends_turn
 from omnigent.superchat.decks import kit
 from omnigent.superchat.decks.authoring import handle_authoring_tool
 from omnigent.superchat.decks.handlers import HELPER_ENV, handle_deck_tool
-from omnigent.superchat.decks.look import HELPER_REFUSAL, pick_three
+from omnigent.superchat.decks.look import HELPER_REFUSAL, declined_from_items, pick_three
 from omnigent.superchat.transcript.blocks import project_items
 
 from .look_fakes import card_call, card_output, ctx, helper_ctx, user
@@ -179,6 +179,31 @@ def test_the_card_offers_three_distinct_looks_fitting_the_topic() -> None:
             assert len(trio) == 3 == len({_category(t) for t in trio}), (hint, seed)
     # equally good themes rotate by request instead of repeating one trio
     assert len({tuple(pick_three("Hiring plan", seed=f"c1|{n}")) for n in range(6)}) > 1
+
+
+@pytest.mark.parametrize(
+    "hint",
+    [
+        "2026 sales",
+        "Q3 revenue review",
+        "budget for the board",
+        "Sales 2026 Make a 5-slide deck about our 2026 sales from sales_2026.csv",
+    ],
+)
+def test_a_business_deck_leads_with_a_professional_look(hint: str) -> None:
+    for seed in ("a", "b", "c", "d"):
+        first, *others = pick_three(hint, seed=seed)
+        assert first in ("corporate-clean", "blue-professional"), (hint, seed)
+        # the alternatives are an editorial and a bold look, never a night theme or a paper
+        assert sorted(_category(t) for t in others) == ["bold", "editorial"], (hint, seed)
+
+
+def test_passed_over_is_only_what_a_card_in_this_chat_offered_and_was_not_picked() -> None:
+    offered = [("Corporate Clean", "corporate-clean"), ("Magazine Bold", "magazine-bold")]
+    newest_first = [user("Corporate Clean"), card_output(offered), card_call(), user("a deck")]
+    assert declined_from_items(newest_first) == {"magazine-bold"}
+    assert declined_from_items([user("make it like Nord"), user("a deck")]) == set()
+    assert declined_from_items([]) == set()
 
 
 async def test_a_second_card_avoids_looks_the_person_passed_over(workspace: Path) -> None:
