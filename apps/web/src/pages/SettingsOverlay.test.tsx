@@ -190,11 +190,11 @@ it("muse mode: adds Superchat first, drops Usage and Updates, and uses the Muse 
       ),
     );
     const ids = navIds(container);
-    expect(ids).toEqual(["superchat", "general", "voice"]);
+    expect(ids).toEqual(["superchat", "general", "voice", "computer"]);
     expect(ids).not.toContain("updates");
-    expect(container.querySelector('[data-testid="settings-nav-superchat"]')?.textContent).toContain(
-      "Superchat",
-    );
+    expect(
+      container.querySelector('[data-testid="settings-nav-superchat"]')?.textContent,
+    ).toContain("Superchat");
     expect(
       container.querySelector('[data-testid="general-panel"]')?.getAttribute("data-muse-mode"),
     ).toBe("true");
