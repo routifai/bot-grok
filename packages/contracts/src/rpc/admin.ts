@@ -16,6 +16,9 @@ import {
 export const EngineOverlayEntrySchema = z.object({
   allow: z.array(z.string()).nullable(),
   default: z.string().nullable(),
+  /** The Helper tiers; `null` = same as the chat. */
+  fast: z.string().nullable(),
+  strong: z.string().nullable(),
 });
 export const EngineOverlaySchema = z.record(z.string(), EngineOverlayEntrySchema);
 

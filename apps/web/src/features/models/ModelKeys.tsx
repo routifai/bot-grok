@@ -6,13 +6,7 @@ import { useCallback, useEffect, useId, useState } from "react";
 import { errorText } from "../../lib/error-text";
 import { rpc } from "../../lib/rpc";
 import { SettingsGroup, SettingsRow } from "../../pages/muse/settings/kit";
-import { formatEngineDate } from "./engine-models";
-
-/** The providers a model key can be for; the engine's list, in the order people see them. */
-export const MODEL_PROVIDERS = [
-  { id: "anthropic", label: "Anthropic" },
-  { id: "openrouter", label: "OpenRouter" },
-] as const;
+import { formatEngineDate, useModelProviders } from "./engine-models";
 
 const FIELD =
   "min-w-0 flex-1 rounded-lg bg-muted px-2.5 py-1.5 text-[14px] text-foreground outline-none placeholder:text-ink-3 focus-visible:ring-2 focus-visible:ring-ring";
@@ -120,6 +114,7 @@ export function ModelKeys({
   onChanged?: () => void;
 }) {
   const { t, i18n } = useLingui();
+  const providers = useModelProviders();
   const [rows, setRows] = useState<EngineModelConnection[] | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -136,7 +131,7 @@ export function ModelKeys({
     void load();
   }, [load]);
 
-  if (!rows) return null;
+  if (!rows || !providers) return null;
 
   async function save(provider: string, apiKey: string) {
     await api(scope).connect({ provider, apiKey });
@@ -164,8 +159,8 @@ export function ModelKeys({
     <SettingsGroup
       title={scope === "org" ? <Trans>Organization keys</Trans> : <Trans>API keys</Trans>}
     >
-      {MODEL_PROVIDERS.map((provider) => {
-        const row = rows.find((candidate) => candidate.provider === provider.id);
+      {providers.map((provider) => {
+        const row = rows.find((candidate) => candidate.provider === provider.provider);
         const checked = row ? formatEngineDate(row.validatedAt, i18n.locale) : "";
         const hint = row?.hint ?? "";
         const sub = !row
@@ -176,7 +171,7 @@ export function ModelKeys({
               ? t`••••${hint} · Checked ${checked}`
               : `••••${hint}`;
         return (
-          <div key={provider.id} data-testid={`model-key-${provider.id}`}>
+          <div key={provider.provider} data-testid={`model-key-${provider.provider}`}>
             <SettingsRow
               icon={{ tone: "indigo", glyph: <KeyRound strokeWidth={2.4} /> }}
               label={provider.label}
@@ -188,7 +183,9 @@ export function ModelKeys({
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => setEditing(editing === provider.id ? null : provider.id)}
+                      onClick={() =>
+                        setEditing(editing === provider.provider ? null : provider.provider)
+                      }
                     >
                       <Trans>Replace</Trans>
                     </Button>
@@ -196,8 +193,8 @@ export function ModelKeys({
                       size="sm"
                       variant="ghost"
                       className="text-destructive"
-                      disabled={removing === provider.id}
-                      onClick={() => void remove(provider.id)}
+                      disabled={removing === provider.provider}
+                      onClick={() => void remove(provider.provider)}
                     >
                       <Trans>Remove</Trans>
                     </Button>
@@ -206,17 +203,19 @@ export function ModelKeys({
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => setEditing(editing === provider.id ? null : provider.id)}
+                    onClick={() =>
+                      setEditing(editing === provider.provider ? null : provider.provider)
+                    }
                   >
                     <Trans>Add key</Trans>
                   </Button>
                 )}
               </span>
             </SettingsRow>
-            {editing === provider.id ? (
+            {editing === provider.provider ? (
               <KeyForm
                 providerLabel={provider.label}
-                onSave={(apiKey) => save(provider.id, apiKey)}
+                onSave={(apiKey) => save(provider.provider, apiKey)}
                 onCancel={() => setEditing(null)}
               />
             ) : null}

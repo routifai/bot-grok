@@ -23,7 +23,14 @@ const api = vi.hoisted(() => ({
   deleteUser: vi.fn(),
   usage: vi.fn(),
 }));
-vi.mock("../../lib/rpc", () => ({ rpc: { engineAdmin: api } }));
+vi.mock("../../lib/rpc", () => ({
+  rpc: {
+    engineAdmin: api,
+    engineModels: {
+      providers: async () => [{ provider: "anthropic", label: "Anthropic", operatorKey: false }],
+    },
+  },
+}));
 
 import { overlayFromDrafts } from "./OrgModels";
 import { OrgUsage } from "./OrgUsage";
@@ -158,17 +165,20 @@ it("shows usage for the month and switches to today", async () => {
   }
 });
 
-it("builds the overlay the engine keeps: unrestricted harnesses without a default are absent", () => {
+it("builds the overlay the engine keeps: unrestricted harnesses without a choice are absent", () => {
+  const none = { fast: null, strong: null };
   expect(
     overlayFromDrafts({
-      pi: { all: true, allow: ["a"], default: null },
-      "claude-sdk": { all: false, allow: ["x", "y"], default: "y" },
-      other: { all: true, allow: [], default: "z" },
-      stale: { all: false, allow: ["a"], default: "gone" },
+      pi: { all: true, allow: ["a"], default: null, ...none },
+      "claude-sdk": { all: false, allow: ["x", "y"], default: "y", fast: "x", strong: "gone" },
+      other: { all: true, allow: [], default: "z", ...none },
+      stale: { all: false, allow: ["a"], default: "gone", ...none },
+      tiers: { all: true, allow: [], default: null, fast: "f", strong: "s" },
     }),
   ).toEqual({
-    "claude-sdk": { allow: ["x", "y"], default: "y" },
-    other: { allow: null, default: "z" },
-    stale: { allow: ["a"], default: null },
+    "claude-sdk": { allow: ["x", "y"], default: "y", fast: "x", strong: null },
+    other: { allow: null, default: "z", fast: null, strong: null },
+    stale: { allow: ["a"], default: null, fast: null, strong: null },
+    tiers: { allow: null, default: null, fast: "f", strong: "s" },
   });
 });

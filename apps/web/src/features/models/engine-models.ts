@@ -58,3 +58,26 @@ export function useEngineModelsStatus(
   }, [active, version]);
   return [status, () => setVersion((v) => v + 1), settled];
 }
+
+export type ModelProvider = Awaited<ReturnType<typeof rpc.engineModels.providers>>[number];
+
+/** The providers a key can be for: the engine's configured list, in its order. `null` until it
+ * answers; empty when it cannot be asked. */
+export function useModelProviders(): ModelProvider[] | null {
+  const [providers, setProviders] = useState<ModelProvider[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve()
+      .then(() => rpc.engineModels.providers())
+      .then((next) => {
+        if (!cancelled) setProviders(next);
+      })
+      .catch(() => {
+        if (!cancelled) setProviders([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return providers;
+}

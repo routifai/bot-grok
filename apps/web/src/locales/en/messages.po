@@ -1848,6 +1848,9 @@ msgstr "Failed to stop"
 msgid "Failed."
 msgstr "Failed."
 
+msgid "Fast model"
+msgstr "Fast model"
+
 msgid "File"
 msgstr "File"
 
@@ -3405,6 +3408,9 @@ msgstr "Runs on"
 msgid "Runs when this bot receives a verified message from this provider."
 msgstr "Runs when this bot receives a verified message from this provider."
 
+msgid "Same as the chat"
+msgstr "Same as the chat"
+
 msgid "Save"
 msgstr "Save"
 
@@ -3795,6 +3801,9 @@ msgstr "Stored securely. Never shown here."
 
 msgid "Stream replies"
 msgstr "Stream replies"
+
+msgid "Strong model"
+msgstr "Strong model"
 
 msgid "Style"
 msgstr "Style"

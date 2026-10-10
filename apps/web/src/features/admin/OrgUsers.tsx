@@ -16,7 +16,7 @@ import { useCallback, useEffect, useState } from "react";
 import { errorText } from "../../lib/error-text";
 import { rpc } from "../../lib/rpc";
 import { MUSE_INSET_GROUP } from "../../pages/muse/ui";
-import { formatEngineDate, formatUsd, MODEL_PROVIDERS } from "../models";
+import { formatEngineDate, formatUsd, useModelProviders } from "../models";
 
 const CELL = "whitespace-nowrap px-3 py-2.5 text-[13px] tabular-nums";
 const HEAD = "whitespace-nowrap px-3 py-2 text-start text-[11.5px] font-medium text-ink-3";
@@ -47,6 +47,7 @@ function StatusPill({ status }: { status: EngineAdminUser["status"] }) {
 export function OrgUsers({ selfEmail }: { selfEmail?: string | null }) {
   const { t, i18n } = useLingui();
   const locale = i18n.locale;
+  const providers = useModelProviders();
   const [users, setUsers] = useState<EngineAdminUser[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -81,7 +82,7 @@ export function OrgUsers({ selfEmail }: { selfEmail?: string | null }) {
 
   if (!users) return null;
   const who = confirming ? personName(confirming) : "";
-  const labelOf = (id: string) => MODEL_PROVIDERS.find((p) => p.id === id)?.label ?? id;
+  const labelOf = (id: string) => providers?.find((p) => p.provider === id)?.label ?? id;
   const isSelf = (user: EngineAdminUser) =>
     Boolean(selfEmail) && user.email?.toLowerCase() === selfEmail?.toLowerCase();
 

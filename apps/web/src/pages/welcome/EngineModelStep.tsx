@@ -1,30 +1,28 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { Button, cn, Input } from "@superchat/ui-web";
 import { useId, useState } from "react";
+import { useModelProviders } from "../../features/models";
 import { errorText } from "../../lib/error-text";
 import { rpc } from "../../lib/rpc";
 import { welcomeFieldClass, welcomeSubmitClass } from "./WelcomeFrame";
 
-const PROVIDERS = [
-  { id: "anthropic", label: "Anthropic" },
-  { id: "openrouter", label: "OpenRouter" },
-] as const;
-
 /**
- * Onboarding's model step when Superchat runs on the engine: a provider and an API key. The engine
+ * Onboarding's model step when Superchat runs on the engine: a provider (the engine's list) and an API key. The engine
  * checks the key with the provider before keeping it, so a rejected key comes back here, under
  * the field. Nothing is stored in Superchat.
  */
 export function EngineModelStep({ onDone }: { onDone: () => void }) {
   const { t } = useLingui();
   const keyId = useId();
-  const [provider, setProvider] = useState<(typeof PROVIDERS)[number]["id"]>("anthropic");
+  const providers = useModelProviders();
+  const [picked, setPicked] = useState<string | null>(null);
+  const provider = picked ?? providers?.[0]?.provider ?? null;
   const [apiKey, setApiKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function save() {
-    if (!apiKey.trim() || busy) return;
+    if (!provider || !apiKey.trim() || busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -39,19 +37,19 @@ export function EngineModelStep({ onDone }: { onDone: () => void }) {
   return (
     <div data-testid="engine-model-step">
       <fieldset aria-label={t`Provider`} className="m-0 mt-8 grid grid-cols-2 gap-2 border-0 p-0">
-        {PROVIDERS.map((candidate) => (
+        {(providers ?? []).map((candidate) => (
           <button
-            key={candidate.id}
+            key={candidate.provider}
             type="button"
-            aria-pressed={provider === candidate.id}
-            data-testid={`engine-provider-${candidate.id}`}
+            aria-pressed={provider === candidate.provider}
+            data-testid={`engine-provider-${candidate.provider}`}
             onClick={() => {
-              setProvider(candidate.id);
+              setPicked(candidate.provider);
               setError(null);
             }}
             className={cn(
               "h-12 rounded-xl border border-welcome-night-line/16 text-sm font-medium text-welcome-night-ink transition-colors focus-visible:outline-2 focus-visible:outline-ring",
-              provider === candidate.id
+              provider === candidate.provider
                 ? "bg-welcome-night-bubble ring-2 ring-welcome-night-ink/60"
                 : "bg-transparent hover:bg-welcome-night-bubble/60",
             )}
@@ -85,7 +83,7 @@ export function EngineModelStep({ onDone }: { onDone: () => void }) {
       <div className="mt-6 flex w-full gap-3">
         <Button
           className={`${welcomeSubmitClass} mt-0`}
-          disabled={!apiKey.trim() || busy}
+          disabled={!provider || !apiKey.trim() || busy}
           onClick={() => void save()}
         >
           {busy ? <Trans>Checking…</Trans> : <Trans>Continue</Trans>}

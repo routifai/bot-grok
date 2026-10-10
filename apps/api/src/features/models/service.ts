@@ -3,6 +3,8 @@
 // the answer to the web's shapes and turns the engine's public error codes into typed errors
 // the web renders (`data.code`). Admin calls are gated twice: here (the engine's own idea of an
 // admin, `GET /v1/me`) and by the engine, which refuses anyone else.
+
+import { ORPCError } from "@orpc/server";
 import {
   deleteOmnigentModelConnection,
   getOmnigentBudget,
@@ -10,6 +12,7 @@ import {
   getOmnigentModelPreferences,
   getOmnigentSessionModel,
   listOmnigentModelConnections,
+  listOmnigentModelProviders,
   listOmnigentModels,
   OmnigentApiError,
   type OmnigentBudget,
@@ -27,10 +30,10 @@ import type {
   EngineBudget,
   EngineModelCatalog,
   EngineModelConnection,
+  EngineModelProvider,
   EngineModelsStatus,
 } from "@superchat/contracts";
 import type { PrismaClient } from "@superchat/db";
-import { ORPCError } from "@orpc/server";
 
 export interface EngineModelsDeps {
   prisma: PrismaClient;
@@ -189,6 +192,20 @@ export async function engineModelsStatus(
     isAdmin: identity.is_admin,
     ready: catalogs.some((catalog) => catalog?.status === "ready"),
   };
+}
+
+export async function listEngineProviders(
+  deps: EngineModelsDeps,
+  client: OmnigentClientConfig | undefined,
+  actor: Actor,
+): Promise<EngineModelProvider[]> {
+  const target = await person(deps, client, actor);
+  const rows = await onModels(listOmnigentModelProviders(target.client, target.email));
+  return rows.map((row) => ({
+    provider: row.provider,
+    label: row.label,
+    operatorKey: row.operator_key,
+  }));
 }
 
 export async function listEngineConnections(

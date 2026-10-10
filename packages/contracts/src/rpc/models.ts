@@ -7,7 +7,13 @@ import { botId } from "./shared.js";
 // snake_case). Every rule - what a key may be, what a budget means, who is an admin - is the
 // engine's; these are the shapes the screens render.
 
-export const EngineModelProviderSchema = z.enum(["anthropic", "openrouter"]);
+/** An upstream the engine has configured: what a key can be for. `operatorKey`: the operator runs
+ * their own key for it, so a person may need none. */
+export const EngineModelProviderSchema = z.object({
+  provider: z.string(),
+  label: z.string(),
+  operatorKey: z.boolean(),
+});
 export type EngineModelProvider = z.infer<typeof EngineModelProviderSchema>;
 
 export const EngineModelScopeSchema = z.enum(["user", "org"]);
@@ -80,6 +86,7 @@ const ok = z.object({ ok: z.literal(true) });
 export const engineModelsContract = {
   engineModels: {
     status: oc.output(EngineModelsStatusSchema),
+    providers: oc.output(z.array(EngineModelProviderSchema)),
     connections: oc.output(z.array(EngineModelConnectionSchema)),
     connect: oc.input(EngineConnectInputSchema).output(EngineModelConnectionSchema),
     disconnect: oc.input(EngineProviderInputSchema).output(ok),

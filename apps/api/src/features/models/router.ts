@@ -9,6 +9,7 @@ import {
   engineModelsStatus,
   engineSessionModel,
   listEngineConnections,
+  listEngineProviders,
   setEngineBudget,
   setEngineDefaultModel,
   setEngineSessionModel,
@@ -23,6 +24,9 @@ export function engineModelsRouter(c: RouterContext) {
     engineModels: {
       status: authed.engineModels.status.handler(({ context }) =>
         engineModelsStatus(deps, engine(context.actor), context.actor),
+      ),
+      providers: authed.engineModels.providers.handler(({ context }) =>
+        listEngineProviders(deps, engine(context.actor), context.actor),
       ),
       connections: authed.engineModels.connections.handler(({ context }) =>
         listEngineConnections(deps, engine(context.actor), context.actor),

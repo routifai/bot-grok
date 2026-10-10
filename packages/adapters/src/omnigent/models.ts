@@ -46,6 +46,16 @@ export interface OmnigentBudget {
 export interface OmnigentOverlayEntry {
   allow: string[] | null;
   default: string | null;
+  /** The Helper tiers; `null` = not chosen (the Helper follows the chat's model). */
+  fast: string | null;
+  strong: string | null;
+}
+
+/** An upstream the engine has configured: what a key can be for. */
+export interface OmnigentModelProvider {
+  provider: string;
+  label: string;
+  operator_key: boolean;
 }
 
 export interface OmnigentAdminUser {
@@ -138,6 +148,21 @@ export async function deleteOmnigentModelConnection(
   await call(config, email, "remove model connection", `${base}/${seg(provider)}`, {
     method: "DELETE",
   });
+}
+
+/** `GET /v1/me/model-providers`: the engine's configured upstreams, in the order it lists them. */
+export async function listOmnigentModelProviders(
+  config: OmnigentClientConfig,
+  email: string,
+): Promise<OmnigentModelProvider[]> {
+  return (
+    await call<{ data: OmnigentModelProvider[] }>(
+      config,
+      email,
+      "list model providers",
+      "/v1/me/model-providers",
+    )
+  ).data;
 }
 
 export async function listOmnigentModels(

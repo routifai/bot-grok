@@ -19,6 +19,7 @@ vi.mock("@lingui/react/macro", () => {
 });
 
 const api = vi.hoisted(() => ({
+  providers: vi.fn(),
   connections: vi.fn(),
   connect: vi.fn(),
   disconnect: vi.fn(),
@@ -87,6 +88,10 @@ async function mount(onChanged = vi.fn()) {
 }
 
 function seed(connections = [connection]) {
+  api.providers.mockResolvedValue([
+    { provider: "anthropic", label: "Anthropic", operatorKey: false },
+    { provider: "openrouter", label: "OpenRouter", operatorKey: false },
+  ]);
   api.connections.mockResolvedValue(connections);
   api.catalog.mockResolvedValue(catalog);
   api.budget.mockResolvedValue({

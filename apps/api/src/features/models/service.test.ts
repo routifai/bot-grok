@@ -1,10 +1,11 @@
-import type { PrismaClient } from "@superchat/db";
 import type { ORPCError } from "@orpc/server";
+import type { PrismaClient } from "@superchat/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   connectEngineModel,
   engineModelsStatus,
   engineSessionModel,
+  listEngineProviders,
   setEngineDefaultModel,
 } from "./service.js";
 
@@ -96,6 +97,23 @@ describe("engine models status", () => {
 });
 
 describe("personal model calls", () => {
+  it("lists the providers the engine has configured, in its order", async () => {
+    const fetchMock = stub(() =>
+      json({
+        data: [
+          { provider: "openrouter", label: "OpenRouter", operator_key: true },
+          { provider: "anthropic", label: "Anthropic", operator_key: false },
+        ],
+      }),
+    );
+    expect(await listEngineProviders(deps(), client, actor)).toEqual([
+      { provider: "openrouter", label: "OpenRouter", operatorKey: true },
+      { provider: "anthropic", label: "Anthropic", operatorKey: false },
+    ]);
+    const [url] = fetchMock.mock.calls[0] as [URL];
+    expect(url.pathname).toBe("/v1/me/model-providers");
+  });
+
   it("saves a key as the person and returns masked metadata only", async () => {
     const fetchMock = stub(() =>
       json({

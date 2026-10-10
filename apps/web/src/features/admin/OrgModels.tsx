@@ -7,19 +7,31 @@ import { SettingsGroup, SettingsRow } from "../../pages/muse/settings/kit";
 import { modelOptionLabel } from "../models";
 
 type Catalog = Awaited<ReturnType<typeof rpc.engineAdmin.modelsCatalog>>;
-type Draft = { all: boolean; allow: string[]; default: string | null };
+type Draft = {
+  all: boolean;
+  allow: string[];
+  default: string | null;
+  fast: string | null;
+  strong: string | null;
+};
 type Drafts = Record<string, Draft>;
 
 /** The overlay the engine keeps for a draft: a harness with no restriction and no default is
  * simply absent (the engine replaces the whole overlay). */
 export function overlayFromDrafts(drafts: Drafts) {
-  const overlay: Record<string, { allow: string[] | null; default: string | null }> = {};
+  const overlay: Record<
+    string,
+    { allow: string[] | null; default: string | null; fast: string | null; strong: string | null }
+  > = {};
   for (const [harness, draft] of Object.entries(drafts)) {
     const allow = draft.all ? null : draft.allow;
-    const chosen =
-      draft.default && (allow === null || allow.includes(draft.default)) ? draft.default : null;
-    if (allow === null && chosen === null) continue;
-    overlay[harness] = { allow, default: chosen };
+    const pick = (model: string | null) =>
+      model && (allow === null || allow.includes(model)) ? model : null;
+    const chosen = pick(draft.default);
+    const fast = pick(draft.fast);
+    const strong = pick(draft.strong);
+    if (allow === null && chosen === null && fast === null && strong === null) continue;
+    overlay[harness] = { allow, default: chosen, fast, strong };
   }
   return overlay;
 }
@@ -73,6 +85,8 @@ function HarnessModels({
                       allow,
                       default:
                         draft.default && allow.includes(draft.default) ? draft.default : null,
+                      fast: draft.fast && allow.includes(draft.fast) ? draft.fast : null,
+                      strong: draft.strong && allow.includes(draft.strong) ? draft.strong : null,
                     });
                   }}
                 />
@@ -94,6 +108,26 @@ function HarnessModels({
           ))}
         </NativeSelect>
       </SettingsRow>
+      {(["fast", "strong"] as const).map((tier) => {
+        const label = tier === "fast" ? t`Fast model` : t`Strong model`;
+        return (
+          <SettingsRow key={tier} label={label}>
+            <NativeSelect
+              size="sm"
+              aria-label={label}
+              value={draft[tier] ?? ""}
+              onChange={(event) => onChange({ ...draft, [tier]: event.target.value || null })}
+            >
+              <NativeSelectOption value="">{t`Same as the chat`}</NativeSelectOption>
+              {offered.map((model) => (
+                <NativeSelectOption key={model.id} value={model.id}>
+                  {modelOptionLabel(model)}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </SettingsRow>
+        );
+      })}
     </SettingsGroup>
   );
 }
@@ -134,6 +168,8 @@ export function OrgModels({ harnesses }: { harnesses: { id: string; label: strin
             all: entry?.allow == null,
             allow: entry?.allow ?? [],
             default: entry?.default ?? null,
+            fast: entry?.fast ?? null,
+            strong: entry?.strong ?? null,
           };
         });
         setCatalogs(nextCatalogs);

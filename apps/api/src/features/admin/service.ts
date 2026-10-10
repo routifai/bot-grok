@@ -1,6 +1,8 @@
 // The organization's side of the engine's model layer, admin only: people, usage, suspension, the
 // model overlay, the organization budget and its catalog. The admin check and the error mapping
 // are the models capability's (its public entry point); the engine refuses anyone else anyway.
+
+import { ORPCError } from "@orpc/server";
 import {
   deleteOmnigentUser,
   getOmnigentAdminUsage,
@@ -9,12 +11,12 @@ import {
   listOmnigentAdminModelCatalog,
   listOmnigentAdminUsers,
   type OmnigentClientConfig,
+  type OmnigentOverlayEntry,
   putOmnigentBudget,
   putOmnigentModelOverlay,
   setOmnigentUserSuspended,
 } from "@superchat/adapters";
 import type { Actor, EngineAdminUsage, EngineAdminUser } from "@superchat/contracts";
-import { ORPCError } from "@orpc/server";
 import { adminActor, type EngineModelsDeps, onModels } from "../models/index.js";
 
 export async function listAdminUsers(
@@ -111,7 +113,7 @@ export async function setAdminOverlay(
   deps: EngineModelsDeps,
   client: OmnigentClientConfig | undefined,
   actor: Actor,
-  harnesses: Record<string, { allow: string[] | null; default: string | null }>,
+  harnesses: Record<string, OmnigentOverlayEntry>,
 ) {
   const target = await adminActor(deps, client, actor);
   return onModels(putOmnigentModelOverlay(target.client, target.email, harnesses));

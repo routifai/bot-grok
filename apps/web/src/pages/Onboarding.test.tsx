@@ -16,6 +16,10 @@ const api = vi.hoisted(() => ({
   engineModels: {
     status: vi.fn(async () => ({ enabled: false, harnesses: [], isAdmin: false, ready: false })),
     connect: vi.fn(),
+    providers: vi.fn(async () => [
+      { provider: "anthropic", label: "Anthropic", operatorKey: false },
+      { provider: "openrouter", label: "OpenRouter", operatorKey: false },
+    ]),
   },
   integrationSetup: { get: vi.fn(async () => null) },
   bots: {
