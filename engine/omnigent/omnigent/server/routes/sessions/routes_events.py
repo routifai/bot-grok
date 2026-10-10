@@ -2306,6 +2306,22 @@ def register_events_routes(
         # the raw host text the 503 below deliberately owner-scopes.
         relaunch_refusal_reason: str | None = None
         relaunch_refusal_visible = False
+        if runner_client is None and conv.host_id is None:
+            # A managed session whose first launch failed has no host yet. Launch it again the
+            # way its create did; once a host is bound, the host path below waits for the runner.
+            if await _maybe_relaunch_managed_sandbox(
+                session_id=session_id,
+                conv=conv,
+                app_state=request.app.state,
+                conversation_store=conversation_store,
+            ):
+                conv_after_launch = await asyncio.to_thread(
+                    conversation_store.get_conversation, session_id
+                )
+                if conv_after_launch is None:
+                    raise _session_not_found()
+                conv = conv_after_launch
+                runner_client = await _get_runner_client(session_id, runner_router)
         if runner_client is None and conv.host_id is not None:
             _tunnel_registry = getattr(request.app.state, "tunnel_registry", None)
             _grace_host_reg = cast(

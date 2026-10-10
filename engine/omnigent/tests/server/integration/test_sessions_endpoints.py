@@ -12625,3 +12625,35 @@ async def test_external_info_error_item_publishes_and_persists_level(
     errors = [item for item in items.json()["data"] if item["type"] == "error"]
     assert len(errors) == 1
     assert errors[0]["level"] == "info"
+
+
+@pytest.mark.parametrize("relaunched", [True, False])
+async def test_message_to_session_without_host_asks_for_managed_launch_again(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    relaunched: bool,
+) -> None:
+    """A message to a hostless session (its first managed launch failed) launches it again.
+
+    The relaunch is asked for once. A launch that binds nothing, or a session that is not
+    managed, still ends in the existing 503 RUNNER_UNAVAILABLE.
+    """
+    from omnigent.server.routes.sessions import routes_events
+
+    agent = await create_test_agent(client)
+    session = await _create_session(client, agent["id"])
+    relaunch = AsyncMock(return_value=relaunched)
+    monkeypatch.setattr(routes_events, "_maybe_relaunch_managed_sandbox", relaunch)
+
+    response = await client.post(
+        f"/v1/sessions/{session['id']}/events",
+        json={
+            "type": "message",
+            "data": {"role": "user", "content": [{"type": "input_text", "text": "hello"}]},
+        },
+    )
+
+    relaunch.assert_awaited_once()
+    assert relaunch.await_args.kwargs["session_id"] == session["id"]
+    assert response.status_code == 503, response.text
+    assert response.json()["error"]["code"] == "runner_unavailable"
