@@ -30,8 +30,7 @@ the repo root with the files in this order.
 | Service | Role | Host port |
 |---|---|---|
 | `postgres` | one database, `omnigent`, with `app` and `engine` schemas | none |
-| `omnigent` | the Omnigent agent server (Superchat's engine) | `8012` (`SUPERCHAT_ENGINE_PORT`) |
-| `supervisor` | starts and stops each person's Computer | none |
+| `omnigent` | the Omnigent agent server (Superchat's engine); starts each person's Computer over the Docker socket | `8012` (`SUPERCHAT_ENGINE_PORT`) |
 | `api` | sign-in, accounts, authorization | `3100` (`SUPERCHAT_API_PORT`) |
 | `worker` | background jobs for the API | none |
 | `web` | the interface | `5173` (`SUPERCHAT_WEB_PORT`) |
@@ -74,8 +73,7 @@ the default, fast and strong models in **Settings > Models**.
 `UBUNTU_IMAGE`, `CHROMIUM_IMAGE`, `NODE_IMAGE` and `PYTHON_IMAGE` point the base images at a
 registry mirror, and `TORCH_INDEX_URL` the engine's CPU-only torch at a mirror of PyTorch's CPU
 index.
-Every Dockerfile that downloads packages (Omnigent's, the Computer's, the supervisor's and the
-app's) also takes an optional build secret, `ca_bundle`: a PEM file with your company's CA, added
+Every Dockerfile that downloads packages (Omnigent's, the Computer's and the app's) also takes an optional build secret, `ca_bundle`: a PEM file with your company's CA, added
 to each image's trust store for apt, pip, uv, npm and pnpm. Without it the builds are unchanged.
 
 To build behind a company proxy, keep the machine's settings in a third Compose file of your own,
@@ -115,7 +113,6 @@ services:
       args:
         CHROMIUM_IMAGE: registry.mirror.example/playwright/python:v1.63.0-noble
       secrets: *ca
-  supervisor: { build: { secrets: *ca } }
   api: { build: { secrets: *ca } }
   worker: { build: { secrets: *ca } }
   web: { build: { secrets: *ca } }
@@ -153,7 +150,7 @@ git pull && ./scripts/setup.sh   # update; keeps .env and secrets
 
 ## Troubleshooting
 
-- **A Computer never starts.** The supervisor mounts the Docker socket. Leave `DOCKER_SOCKET_PATH`
+- **A Computer never starts.** The engine mounts the Docker socket. Leave `DOCKER_SOCKET_PATH`
   blank for Docker Desktop and colima (the path resolves inside the Docker VM); set it only for
   setups such as rootless Docker.
 - **A Computer cannot reach the engine.** Check `ENGINE_PUBLIC_URL`. On native Linux use the Docker

@@ -8,9 +8,8 @@ flowchart LR
   api -- HTTP --> engine["engine (Omnigent)"]
   api --- db[("Postgres: omnigent")]
   engine --- db
-  engine -- provisions --> sup["sandbox supervisor"]
-  sup --> box
-  engine -- "host + runner" --> box
+  engine -- "starts (Docker API)" --> box
+  box -- "runner dials back" --> engine
   subgraph box["Computer (one container per person)"]
     runner["runner + harness (Claude SDK or Pi)"]
     files["workspace files + search index"]
@@ -26,8 +25,9 @@ flowchart LR
 - **engine** (`engine/omnigent`): the agent server. It owns sessions, the Conversation and side
   chats, Helpers, memory, approvals, artifacts, scheduled tasks (Automations), the model layer and
   the agent bundle (`infra/omnigent`). Any website can drive it.
-- **supervisor** (`infra/sandboxes/supervisor`): starts and stops each person's Computer.
-- **Computer** (`infra/sandboxes/computer`): a container per person where the agent actually runs.
+- **Computer** (`infra/sandboxes/computer`): a container per person where the agent actually runs:
+  Omnigent's runner (host) image plus Superchat's additions, started by the engine over the Docker
+  socket (the Docker counterpart of Omnigent's Kubernetes launcher), home on its own volume.
   It holds the person's files, indexes them for search, and renders decks and dashboards to
   PowerPoint and PDF with a headless browser. The agent has no desktop or browser control.
 - **Postgres**: one database, `omnigent`, with the API and the engine in their own schemas.
@@ -64,7 +64,7 @@ The images are Omnigent's own (`engine/omnigent/deploy/docker/Dockerfile`, built
 |---|---|
 | `postgres` | Omnigent's Postgres, one database with an `app` and an `engine` schema |
 | `omnigent` (`8012`) | the engine: `infra/omnigent/Dockerfile`, Omnigent's server image + `infra/omnigent` (agent bundles, config, `start.sh`) at `/opt/bundle` |
-| `supervisor` | starts one Computer per person (`computer`: `infra/sandboxes/computer/Dockerfile` on Omnigent's host image, itself on Playwright's Ubuntu image) |
+| `computer` (build only) | the runner each person gets: `infra/sandboxes/computer/Dockerfile` on Omnigent's host image, on plain Ubuntu 24.04 |
 | `api`, `worker`, `web` (`5173`) | one app image, `infra/compose/Dockerfile` |
 
 `.env` keys beyond the app's own: `OMNIGENT_PROXY_SECRET` and `OMNIGENT_VAULT_KEY` (engine
@@ -73,7 +73,7 @@ reaches the engine; default `http://host.docker.internal:8012`). Set `LITELLM_BA
 `LITELLM_API_KEY` to send every model call through an existing LiteLLM proxy instead of the
 Anthropic key: the engine adds the key (it never enters a Computer), claude-sdk reaches the proxy's
 `/v1/messages` and Pi its Chat Completions. No model is configured by name: an admin picks the
-default, fast and strong models in Settings > Models. Behind a firewall, see
+default and light models in Settings > Models. Behind a firewall, see
 [docs/SETUP.md](docs/SETUP.md#restricted-networks) for mirrors and a company CA.
 
 A shared runner host container (`omnigent host`) is not offered: the engine trusts identity only
@@ -90,7 +90,7 @@ cannot register a host for a person. Each person's Computer is their runner host
 | `packages/*` | shared contracts, adapters, UI, database client |
 | `engine/omnigent` | engine |
 | `infra/omnigent` | agent instructions and tool bundle |
-| `infra/sandboxes` | supervisor and Computer image |
+| `infra/sandboxes` | Computer image |
 
 ## License
 

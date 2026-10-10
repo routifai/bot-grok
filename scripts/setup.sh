@@ -25,7 +25,7 @@ fill() { [[ -n "$(env_get "$1")" ]] || env_set "$1" "$2"; }
 
 # Secrets, and any model key this shell already has.
 fill POSTGRES_PASSWORD "$(openssl rand -hex 16)"
-for key in BETTER_AUTH_SECRET ENCRYPTION_KEY SCREEN_PROXY_SECRET SANDBOX_SUPERVISOR_TOKEN OMNIGENT_PROXY_SECRET; do
+for key in BETTER_AUTH_SECRET ENCRYPTION_KEY SCREEN_PROXY_SECRET OMNIGENT_PROXY_SECRET; do
   fill "$key" "$(openssl rand -hex 32)"
 done
 fill OMNIGENT_VAULT_KEY "$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"
@@ -38,5 +38,5 @@ done
 "${compose[@]}" build
 # Only the running services: the build-only ones (omnigent-server, omnigent-host, computer) exit at
 # once, which --wait would report as a failure.
-"${compose[@]}" up -d --wait --wait-timeout 300 postgres omnigent supervisor api worker web
+"${compose[@]}" up -d --wait --wait-timeout 300 postgres omnigent api worker web
 echo "Superchat is running: http://127.0.0.1:$(env_get SUPERCHAT_WEB_PORT | grep . || echo 5173)"

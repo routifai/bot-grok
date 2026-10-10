@@ -15,7 +15,8 @@ name: superchat
 #
 # Omnigent's file brings `postgres` and `omnigent`. This file turns `omnigent` into Superchat's
 # engine (Omnigent's server image + infra/omnigent) and adds the Computers (Omnigent's host image +
-# a thin layer, started one per person by the supervisor) and the app (api, worker, web: one image).
+# Superchat's additions, started one per person by the engine's computer provider over the Docker
+# socket) and the app (api, worker, web: one image).
 
 # Optional build inputs, all unset by default (see .env.docker.example).
 x-build-args: &build-args
@@ -91,7 +92,7 @@ services:
     command: ["true"]
     restart: "no"
 
-  # Build-only: the Computer image the supervisor starts for each person.
+  # Build-only: the Computer image the engine starts for each person.
   computer:
     image: superchat/computer:local
     build:
@@ -124,11 +125,12 @@ services:
       OMNIGENT_AUTH_PROVIDER: header
       OMNIGENT_AUTH_HEADER_SECRET: ${OMNIGENT_PROXY_SECRET:?Set OMNIGENT_PROXY_SECRET in .env}
       OMNIGENT_VAULT_KEY: ${OMNIGENT_VAULT_KEY:?Set OMNIGENT_VAULT_KEY in .env}
+      # Each person's Computer: a container from the runner image, home on its own volume.
       OMNIGENT_SUPERCHAT_SANDBOX_PROVIDER: computer
-      OMNIGENT_COMPUTER_SUPERVISOR_URL: http://supervisor:7091
-      OMNIGENT_COMPUTER_SUPERVISOR_TOKEN: ${SANDBOX_SUPERVISOR_TOKEN:?Set SANDBOX_SUPERVISOR_TOKEN in .env}
-      # Must equal the supervisor's DATA_DIR: Computer homes are <root>/homes/<id> there.
-      OMNIGENT_COMPUTER_HOME_ROOT: /data
+      OMNIGENT_COMPUTER_IMAGE: superchat/computer:local
+      OMNIGENT_COMPUTER_MEMORY: ${COMPUTER_MEMORY:-2g}
+      OMNIGENT_COMPUTER_CPUS: ${COMPUTER_CPUS:-2}
+      OMNIGENT_COMPUTER_PIDS_LIMIT: ${COMPUTER_PIDS_LIMIT:-2048}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       # Set both to send every model call through a LiteLLM proxy (start.sh picks its config).
@@ -139,62 +141,20 @@ services:
       - "host.docker.internal:host-gateway"
     ports: !override
       - "${SUPERCHAT_ENGINE_BIND:-127.0.0.1}:${SUPERCHAT_ENGINE_PORT:-8012}:8000"
+    volumes:
+      # The engine starts each person's Computer. The socket is the Docker VM's for Docker Desktop
+      # and colima alike; DOCKER_SOCKET_PATH overrides it (e.g. rootless Docker). Never mounted
+      # into a Computer.
+      - ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:/var/run/docker.sock
     depends_on:
-      supervisor:
-        condition: service_healthy
+      computer:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
       interval: 5s
       timeout: 5s
       retries: 30
       start_period: 60s
-
-  supervisor:
-    build:
-      context: ../../../..
-      dockerfile: infra/sandboxes/supervisor/Dockerfile
-      args: *build-args
-    # /data is shared with the app, which runs as uid 1000.
-    command: ["sh", "-c", "chown -R 1000:1000 /data && exec pnpm exec tsx src/index.ts"]
-    environment:
-      DATA_DIR: /data
-      SUPERVISOR_HOST: "0.0.0.0"
-      SUPERVISOR_PORT: "7091"
-      DOCKER_SOCKET: /var/run/docker.sock
-      SUPERCHAT_COMPUTER_IMAGE: superchat/computer:local
-      SUPERCHAT_COMPUTER_MEMORY: ${SUPERCHAT_COMPUTER_MEMORY:-2g}
-      SUPERCHAT_COMPUTER_CPUS: ${SUPERCHAT_COMPUTER_CPUS:-2}
-      SUPERCHAT_COMPUTER_PIDS_LIMIT: ${SUPERCHAT_COMPUTER_PIDS_LIMIT:-2048}
-      SANDBOX_COMMAND_TIMEOUT_MS: ${SANDBOX_COMMAND_TIMEOUT_MS:-300000}
-      SANDBOX_TEAM_SCREEN_LIMIT: ${SANDBOX_TEAM_SCREEN_LIMIT:-0}
-      SANDBOX_SUPERVISOR_TOKEN: ${SANDBOX_SUPERVISOR_TOKEN:?Set SANDBOX_SUPERVISOR_TOKEN in .env}
-      SANDBOX_SCREEN_NETWORK: isolated
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      LOG_FORMAT: ${LOG_FORMAT:-}
-      AXIOM_TOKEN: ${AXIOM_TOKEN:-}
-      AXIOM_DATASET: ${AXIOM_DATASET:-}
-      AXIOM_EDGE: ${AXIOM_EDGE:-}
-      AXIOM_EDGE_URL: ${AXIOM_EDGE_URL:-}
-    volumes:
-      # The Docker socket, resolved inside the Docker VM: /var/run/docker.sock for Docker Desktop and colima alike.
-      # DOCKER_SOCKET_PATH in .env overrides it only for unusual setups (e.g. rootless Docker).
-      - ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:/var/run/docker.sock
-      # Omnigent's data volume, shared with the engine: it creates each Computer's home there and
-      # the supervisor mounts that home into the Computer (a Mac folder can't be chowned to uid 1000).
-      - artifact-data:/data
-    depends_on:
-      computer:
-        condition: service_completed_successfully
-    healthcheck:
-      test:
-        - CMD
-        - node
-        - -e
-        - fetch('http://127.0.0.1:7091/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
-      interval: 5s
-      timeout: 5s
-      retries: 30
-      start_period: 10s
 
   api:
     image: superchat/app:local
@@ -207,22 +167,18 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-omnigent}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-omnigent}?schema=app
       API_HOST: "0.0.0.0"
       DATA_DIR: /data
-      SANDBOX_SUPERVISOR_URL: http://supervisor:7091
       WAKEUP_DRIVER: graphile
-      SANDBOX_PROVIDER: docker
+      # The app's own run sandbox is unused: every chat goes through the engine.
+      SANDBOX_PROVIDER: none
       # The Omnigent chat engine (the omnigent service unless OMNIGENT_URL points elsewhere).
       OMNIGENT_URL: ${OMNIGENT_URL:-http://omnigent:8000}
       OMNIGENT_PROXY_SECRET: ${OMNIGENT_PROXY_SECRET:?Set OMNIGENT_PROXY_SECRET in .env}
     ports:
       - "127.0.0.1:${SUPERCHAT_API_PORT:-3100}:3100"
     volumes:
-      # Omnigent's data volume, shared with the engine: it creates each Computer's home there and
-      # the supervisor mounts that home into the Computer (a Mac folder can't be chowned to uid 1000).
       - artifact-data:/data
     depends_on:
       postgres:
-        condition: service_healthy
-      supervisor:
         condition: service_healthy
       omnigent:
         condition: service_healthy
@@ -248,15 +204,13 @@ services:
       BETTER_AUTH_SECRET: ""
       DATABASE_URL: postgres://${POSTGRES_USER:-omnigent}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-omnigent}?schema=app
       DATA_DIR: /data
-      SANDBOX_SUPERVISOR_URL: http://supervisor:7091
       WAKEUP_DRIVER: graphile
-      SANDBOX_PROVIDER: docker
+      # The app's own run sandbox is unused: every chat goes through the engine.
+      SANDBOX_PROVIDER: none
       OMNIGENT_URL: ${OMNIGENT_URL:-http://omnigent:8000}
       OMNIGENT_PROXY_SECRET: ${OMNIGENT_PROXY_SECRET:?Set OMNIGENT_PROXY_SECRET in .env}
       SCREEN_PROXY_SECRET: ""
     volumes:
-      # Omnigent's data volume, shared with the engine: it creates each Computer's home there and
-      # the supervisor mounts that home into the Computer (a Mac folder can't be chowned to uid 1000).
       - artifact-data:/data
     depends_on:
       api:
