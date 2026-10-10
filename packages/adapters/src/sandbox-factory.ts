@@ -5,15 +5,12 @@ import { CreateOSSandboxProvider } from "./createos-sandbox.js";
 import { DaytonaSandboxEmulator } from "./daytona-emulator.js";
 import { DaytonaSandboxProvider } from "./daytona-sandbox.js";
 import { DesktopSandboxProvider } from "./desktop-sandbox.js";
-import { DockerSandboxProvider } from "./docker-sandbox.js";
 import { ManagedSandboxEmulator } from "./e2b-emulator.js";
 import { E2BSandboxProvider } from "./e2b-sandbox.js";
 import { FakeSandboxProvider } from "./fake-sandbox.js";
 import { NoneSandboxProvider } from "./none-sandbox.js";
 
 export interface SandboxProviderOptions {
-  supervisorUrl?: string;
-  supervisorToken?: string;
   e2bApiKey?: string;
   daytonaApiKey?: string;
   daytonaApiUrl?: string;
@@ -63,11 +60,6 @@ export function createSandboxProvider(kind: string, opts: SandboxProviderOptions
     case "box":
       if (!opts.boxApiKey?.trim()) return missingRemoteKey("box", "BOX_API_KEY");
       return new BoxSandboxProvider({ apiKey: opts.boxApiKey, apiUrl: opts.boxApiUrl });
-    case "docker":
-      return new DockerSandboxProvider(
-        opts.supervisorUrl ?? "http://127.0.0.1:7091",
-        opts.supervisorToken,
-      );
     case "e2b-emulator":
       return new ManagedSandboxEmulator();
     case "daytona-emulator":

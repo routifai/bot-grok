@@ -82,7 +82,6 @@
       "includes": [
         "apps/api/**",
         "apps/worker/**",
-        "infra/sandboxes/supervisor/**",
         "packages/adapters/**",
         "packages/db/**",
         "packages/logging/**"

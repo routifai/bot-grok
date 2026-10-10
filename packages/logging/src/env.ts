@@ -41,5 +41,4 @@ export function createServiceLogger(options: {
 export const SERVICE_NAMES = {
   api: "superchat-api",
   worker: "superchat-worker",
-  supervisor: "superchat-sandbox-supervisor",
 } as const;

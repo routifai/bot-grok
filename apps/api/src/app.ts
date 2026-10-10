@@ -292,8 +292,6 @@ export async function createApp(
     sandboxOverride ??
     createRunSandbox(env.sandboxProvider, {
       ...sandboxProviderOptionsFromEnv(),
-      supervisorUrl: env.sandboxSupervisorUrl,
-      supervisorToken: env.sandboxSupervisorToken,
       e2bApiKey: env.e2bApiKey,
       daytonaApiKey: env.daytonaApiKey,
       daytonaApiUrl: env.daytonaApiUrl,

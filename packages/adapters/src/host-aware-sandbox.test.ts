@@ -5,7 +5,6 @@ import type { ComputerRef, SandboxProvider } from "@superchat/adapter-kit";
 import type { PrismaClient } from "@superchat/db";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { DesktopSandboxProvider } from "./desktop-sandbox.js";
-import { DockerSandboxProvider } from "./docker-sandbox.js";
 import { FakeSandboxProvider } from "./fake-sandbox.js";
 import { createRunSandbox, HostAwareSandbox, sandboxKindForBot } from "./host-aware-sandbox.js";
 

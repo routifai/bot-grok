@@ -5,7 +5,6 @@ import {
   resolveAuthSecret,
   resolveEncryptionKey,
   resolveScreenProxySecret,
-  resolveSupervisorToken,
 } from "@superchat/core";
 
 export { resolveSandboxProvider } from "@superchat/adapters";
@@ -36,8 +35,6 @@ export interface AppEnv {
   rateLimit: boolean | undefined;
   encryptionKey: string;
   dataDir: string;
-  sandboxSupervisorUrl: string;
-  sandboxSupervisorToken: string | undefined;
   screenProxySecret: string;
   sandboxProvider: string;
   agentRuntime: string;
@@ -128,9 +125,6 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
           : undefined,
     encryptionKey: resolveEncryptionKey(source),
     dataDir: source.DATA_DIR ?? "./data",
-    sandboxSupervisorUrl: source.SANDBOX_SUPERVISOR_URL ?? "http://127.0.0.1:7091",
-    sandboxSupervisorToken:
-      sandboxProvider === "docker" ? resolveSupervisorToken(source) : undefined,
     screenProxySecret: resolveScreenProxySecret(source),
     sandboxProvider,
     agentRuntime: source.AGENT_RUNTIME ?? "pi",

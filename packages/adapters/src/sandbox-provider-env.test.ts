@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { resolveSandboxProvider, sandboxProviderOptionsFromEnv } from "./sandbox-provider-env.js";
 
 describe("resolveSandboxProvider", () => {
-  it("defaults to docker", () => {
-    expect(resolveSandboxProvider({})).toBe("docker");
+  it("defaults to none", () => {
+    expect(resolveSandboxProvider({})).toBe("none");
   });
 
   it("keeps explicit none", () => {
@@ -25,25 +25,6 @@ describe("resolveSandboxProvider", () => {
         CREATEOS_SANDBOX_API_KEY: "test-createos-key",
       }),
     ).toBe("createos");
-  });
-
-  it("falls back to none in production when Docker has no supervisor token", () => {
-    expect(
-      resolveSandboxProvider({
-        NODE_ENV: "production",
-        SANDBOX_PROVIDER: "docker",
-      }),
-    ).toBe("none");
-  });
-
-  it("keeps docker in production when a supervisor token is set", () => {
-    expect(
-      resolveSandboxProvider({
-        NODE_ENV: "production",
-        SANDBOX_PROVIDER: "docker",
-        SANDBOX_SUPERVISOR_TOKEN: "prod-supervisor-token-with-enough-length",
-      }),
-    ).toBe("docker");
   });
 });
 

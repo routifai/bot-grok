@@ -37,12 +37,7 @@ import {
   resolveSandboxProvider,
   sandboxProviderOptionsFromEnv,
 } from "@superchat/adapters";
-import {
-  emailDeliveryConfigured,
-  isHostedDeployment,
-  resolveEncryptionKey,
-  resolveSupervisorToken,
-} from "@superchat/core";
+import { emailDeliveryConfigured, isHostedDeployment, resolveEncryptionKey } from "@superchat/core";
 import {
   createDb,
   createThreadEvents,
@@ -81,8 +76,6 @@ async function main() {
   const sandboxProvider = resolveSandboxProvider(process.env);
   const sandbox = createRunSandbox(sandboxProvider, {
     ...sandboxProviderOptionsFromEnv(process.env),
-    supervisorUrl: process.env.SANDBOX_SUPERVISOR_URL ?? "http://127.0.0.1:7091",
-    supervisorToken: sandboxProvider === "docker" ? resolveSupervisorToken(process.env) : undefined,
     dataDir,
     prisma,
   });

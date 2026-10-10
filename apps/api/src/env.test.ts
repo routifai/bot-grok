@@ -7,10 +7,10 @@ const base = {
 };
 
 describe("loadEnv", () => {
-  it("defaults the product path to Pi, Docker, and Graphile Worker", () => {
+  it("defaults the product path to Pi, no app sandbox, and Graphile Worker", () => {
     const env = loadEnv(base);
     expect(env.agentRuntime).toBe("pi");
-    expect(env.sandboxProvider).toBe("docker");
+    expect(env.sandboxProvider).toBe("none");
     expect(env.wakeupDriver).toBe("graphile");
     expect(env.apiHost).toBe("127.0.0.1");
     expect(env.nodeEnv).toBe("test");
@@ -182,7 +182,6 @@ describe("loadEnv", () => {
         NODE_ENV: "production",
         BETTER_AUTH_SECRET: "dev-secret-change-me-please-32chars",
         ENCRYPTION_KEY: "real-encryption-key-value",
-        SANDBOX_SUPERVISOR_TOKEN: "real-supervisor-token-with-enough-length",
         SCREEN_PROXY_SECRET: "real-screen-proxy-secret-with-enough-length",
       }),
     ).toThrow(/BETTER_AUTH_SECRET/);
@@ -200,36 +199,8 @@ describe("loadEnv", () => {
     });
     expect(env.authSecret).toBe("prod-auth-secret-with-enough-length");
     expect(env.encryptionKey).toBe("prod-encryption-key-with-enough-length");
-    expect(env.sandboxSupervisorToken).toBeUndefined();
     expect(env.screenProxySecret).toBe("prod-screen-proxy-secret-with-enough-length");
     expect(env.apiHost).toBe("0.0.0.0");
-  });
-
-  it("falls back to none in production when Docker has no supervisor token", () => {
-    const env = loadEnv({
-      DATABASE_URL: base.DATABASE_URL,
-      NODE_ENV: "production",
-      BETTER_AUTH_SECRET: "prod-auth-secret-with-enough-length",
-      ENCRYPTION_KEY: "prod-encryption-key-with-enough-length",
-      SCREEN_PROXY_SECRET: "prod-screen-proxy-secret-with-enough-length",
-      SANDBOX_PROVIDER: "docker",
-    });
-    expect(env.sandboxProvider).toBe("none");
-    expect(env.sandboxSupervisorToken).toBeUndefined();
-  });
-
-  it("requires a dedicated supervisor token when Docker stays selected", () => {
-    expect(() =>
-      loadEnv({
-        DATABASE_URL: base.DATABASE_URL,
-        NODE_ENV: "production",
-        BETTER_AUTH_SECRET: "prod-auth-secret-with-enough-length",
-        ENCRYPTION_KEY: "prod-encryption-key-with-enough-length",
-        SCREEN_PROXY_SECRET: "prod-screen-proxy-secret-with-enough-length",
-        SANDBOX_PROVIDER: "docker",
-        SANDBOX_SUPERVISOR_TOKEN: "too-short",
-      }),
-    ).toThrow(/SANDBOX_SUPERVISOR_TOKEN/);
   });
 
   it("exposes a deployed git revision when GIT_SHA is set", () => {
