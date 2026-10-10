@@ -3931,7 +3931,29 @@ async def _maybe_relaunch_managed_sandbox(
     if host_store is None or sandbox_config is None or tracker is None:
         return False
     if conv.host_id is None:
-        return False
+        # No sandbox ever came up for this session (its first launch failed). It is still a
+        # managed session when its create recorded so: launch it now, like the create did.
+        provider = conv.labels.get(MANAGED_PROVIDER_LABEL_KEY)
+        owner = conv.labels.get(MANAGED_OWNER_LABEL_KEY)
+        if not provider or not owner:
+            return False
+        launch = tracker.get(session_id)
+        if launch is None or launch.settled.is_set():
+            _kick_managed_first_launch(
+                session_id=session_id,
+                conv=conv,
+                provider=provider,
+                owner=owner,
+                sandbox_config=sandbox_config,
+                tracker=tracker,
+                conversation_store=conversation_store,
+                host_store=host_store,
+                app_state=app_state,
+            )
+            launch = tracker.get(session_id)
+        if launch is not None:
+            await _await_settled_managed_launch(launch)
+        return True
     host = await asyncio.to_thread(host_store.get_host, conv.host_id)
     if host is None or host.sandbox_provider is None:
         return False
@@ -4411,6 +4433,83 @@ async def _note_workspace_reset_on_recreate(
         return
     if persisted:
         _publish_external_conversation_item(session_id, persisted[0])
+
+
+#: Labels a managed session's create records, so a failed first launch can be retried.
+MANAGED_PROVIDER_LABEL_KEY = "omnigent.sandbox.provider"
+MANAGED_OWNER_LABEL_KEY = "omnigent.sandbox.owner"
+
+
+def managed_first_launch_labels(provider: str | None, owner: str) -> dict[str, str]:
+    """
+    The labels that mark a session as launched on a managed sandbox.
+
+    :param provider: The sandbox provider the create launched on (``None``: the default).
+    :param owner: The user the sandbox host registers under.
+    :returns: Labels for :meth:`ConversationStore.set_labels`.
+    """
+    return {MANAGED_PROVIDER_LABEL_KEY: provider or "default", MANAGED_OWNER_LABEL_KEY: owner}
+
+
+def _kick_managed_first_launch(
+    *,
+    session_id: str,
+    conv: Conversation,
+    provider: str,
+    owner: str,
+    sandbox_config: ManagedSandboxDeployment,
+    tracker: ManagedLaunchTracker,
+    conversation_store: ConversationStore,
+    host_store: HostStore,
+    app_state: Any,
+) -> None:
+    """
+    Launch a managed sandbox for a session whose first launch never succeeded.
+
+    Same single-flight rules as :func:`_kick_managed_relaunch` (synchronous, no ``await``
+    between the caller's check and the claim), but there is no host row yet: the launch
+    registers one, exactly as the session create would have.
+
+    :param session_id: Session/conversation identifier.
+    :param conv: The session row (supplies the repo labels and bound agent).
+    :param provider: Provider recorded at create (``"default"``: the deployment default).
+    :param owner: User recorded at create; the host registers under them.
+    :param sandbox_config: The deployment's sandbox config.
+    :param tracker: The app's launch tracker.
+    :param conversation_store: Store holding the session row.
+    :param host_store: Persistent host registrations.
+    :param app_state: ``request.app.state``.
+    """
+    repos = _recorded_repo_workspaces(
+        session_id,
+        conv.labels,
+        invalid_label_fallback="launching with an empty workspace",
+    )
+    _logger.info(
+        "Managed sandbox for session %s never came up; launching it again",
+        session_id,
+        extra={"session_id": session_id},
+    )
+    tracker.begin(session_id)
+    _publish_sandbox_status(session_id, "provisioning")
+    launch_task = asyncio.create_task(
+        _run_managed_launch(
+            session_id=session_id,
+            owner=owner,
+            sandbox_config=sandbox_config,
+            repos=repos,
+            tracker=tracker,
+            conversation_store=conversation_store,
+            host_store=host_store,
+            host_registry=getattr(app_state, "host_registry", None),
+            tunnel_registry=getattr(app_state, "tunnel_registry", None),
+            provider=None if provider == "default" else provider,
+            agent_store=getattr(app_state, "agent_store", None),
+            agent_id=conv.agent_id,
+        )
+    )
+    _managed_launch_tasks.add(launch_task)
+    launch_task.add_done_callback(_managed_launch_tasks.discard)
 
 
 def _kick_managed_relaunch(

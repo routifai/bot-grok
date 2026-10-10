@@ -28,6 +28,7 @@ from fastapi.responses import Response
 from pydantic import ValidationError
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
+from omnigent.server.routes._sessions.orchestration import managed_first_launch_labels
 from omnigent.codex_approval_modes import (
     CODEX_NATIVE_PERMISSION_VALUES,
 )
@@ -474,6 +475,16 @@ def register_core_routes(
                 session_id,
                 managed_repo_labels(workspaces),
             )
+        # Remember that this session runs in a managed sandbox (and whose), so a first launch
+        # that fails can be retried by the next message instead of stranding the session.
+        await asyncio.to_thread(
+            conversation_store.set_labels,
+            session_id,
+            managed_first_launch_labels(
+                sandbox_provider or sandbox_config.default.provider,
+                user_id if user_id is not None else RESERVED_USER_LOCAL,
+            ),
+        )
         managed_launches.begin(session_id)
         # Seed the launch-progress indicator before the background task
         # starts, so the first GET snapshot (the Web UI navigates to the
