@@ -41,6 +41,8 @@ export function HomeActivity({
   const [query, setQuery] = useState("");
   const needle = query.trim().toLocaleLowerCase();
   const shown = useMemo(() => narrow(state, needle), [state, needle]);
+  // Nothing has run yet (a fresh start): no empty card, the home stays clean.
+  if (state.status !== "ready" || state.activities.length === 0) return null;
   return (
     <section
       data-testid="home-activity"
