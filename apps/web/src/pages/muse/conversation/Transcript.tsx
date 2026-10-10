@@ -36,6 +36,7 @@ import { MessageView } from "./MessageView";
 import { hasOpenMuseAsk } from "./messageText";
 import { QuoteSelectionButton } from "./QuoteSelectionButton";
 import { foldGroupRuns, useTranscriptGroup } from "./transcriptGroups";
+import { UserMessageMeta } from "./UserMessageMeta";
 import { WorkingRow } from "./WorkingRow";
 
 /** The transcript, with its reply cards resolved across the whole thread (in-place updates,
@@ -518,7 +519,9 @@ const TranscriptView = memo(function Transcript({
                       message={message}
                       side={message.role === "user" ? "start" : "end"}
                       time={
-                        message.role === "user" && !message.id.startsWith("progress:") ? (
+                        !museMode &&
+                        message.role === "user" &&
+                        !message.id.startsWith("progress:") ? (
                           <time
                             dateTime={message.createdAt}
                             data-testid="message-hover-time"
@@ -580,6 +583,12 @@ const TranscriptView = memo(function Transcript({
                     speaking={speakingMessageId === message.id}
                     onSpeak={() => onSpeak(message)}
                   />
+                  {museMode &&
+                  !peerReceipt &&
+                  message.role === "user" &&
+                  !message.id.startsWith("progress:") ? (
+                    <UserMessageMeta message={message} />
+                  ) : null}
                 </div>
               </div>
               {peerReceipt ? null : renderUnder?.(message)}

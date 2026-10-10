@@ -34,6 +34,27 @@ export async function getOmnigentSession(
   return (await response.json()) as OmnigentSessionSnapshot;
 }
 
+/** `PUT /v1/sessions/{id}/workspace` — moves the session's working directory to `workspace`, an
+ * absolute path on its host; the engine refuses one outside the agent's workspace boundary. */
+export async function setOmnigentSessionWorkspace(
+  config: OmnigentClientConfig,
+  email: string,
+  sessionId: string,
+  workspace: string,
+): Promise<string> {
+  const response = await fetch(
+    new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/workspace`, config.baseUrl),
+    {
+      method: "PUT",
+      headers: omnigentHeaders(config, email),
+      body: JSON.stringify({ workspace }),
+    },
+  );
+  await throwOnError(response, "set session workspace", config.secrets);
+  const body = (await response.json()) as { workspace: string };
+  return body.workspace;
+}
+
 /** `POST /v1/sessions/{id}/events` `interrupt`: stops the running turn; messages waiting behind it
  * are cancelled (`session.input.delivery` `cancelled`). */
 export async function interruptOmnigentSession(

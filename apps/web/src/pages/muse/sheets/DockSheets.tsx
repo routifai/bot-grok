@@ -69,11 +69,14 @@ function FilesSheet({
   onClose: () => void;
   refreshKey: number;
   reveal: { path: string; nonce: number } | null;
-  onChatWithFolder: (folder: string | null) => void;
+  /** Opens a side chat working in `folder` (workspace-relative; `""` is the whole workspace). */
+  onChatWithFolder: (folder: string) => void;
   onSendIdea: (text: string) => void;
 }) {
   const { t } = useLingui();
   const [view, setView] = useState<FilesView>("workspace");
+  // The folder "Chat with" uses; none picked is the whole workspace.
+  const [folder, setFolder] = useState<string | null>(null);
   const [uploads, setUploads] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -138,17 +141,27 @@ function FilesSheet({
             <button
               type="button"
               className={QUIET_BUTTON}
-              onClick={() => onChatWithFolder(reveal?.path ?? null)}
+              onClick={() => onChatWithFolder(folder ?? "")}
             >
               <MessageSquare size={15} aria-hidden="true" className="me-1.5" />
-              <Trans>Chat with this folder</Trans>
+              {folder ? (
+                <Trans>Chat with {folder.split("/").pop()}</Trans>
+              ) : (
+                <Trans>Chat with the workspace</Trans>
+              )}
             </button>
             {uploadError ? (
               <span className="text-[13px] text-destructive">{uploadError}</span>
             ) : null}
           </div>
           <div className="rk-scroll min-h-0 flex-1 overflow-y-auto">
-            <FilesTab botId={botId} refreshKey={refreshKey + uploads} reveal={reveal} />
+            <FilesTab
+              botId={botId}
+              refreshKey={refreshKey + uploads}
+              reveal={reveal}
+              selectedFolder={folder}
+              onSelectFolder={(path) => setFolder((current) => (current === path ? null : path))}
+            />
           </div>
         </div>
       ) : null}
@@ -173,6 +186,7 @@ export function DockSheets({
   filesRefreshKey,
   filesReveal,
   onStartChat,
+  onOpenFolderChat,
 }: {
   botId: string;
   botName: string;
@@ -182,6 +196,8 @@ export function DockSheets({
   filesReveal: { path: string; nonce: number } | null;
   /** Opens the Conversation; with `send` the text goes at once, with `seed` it waits in the composer. */
   onStartChat: (input: { send?: string; seed?: string }) => void;
+  /** Opens a new side chat that works in this workspace folder. */
+  onOpenFolderChat: (folder: string) => void;
 }) {
   const sendAndClose = (text: string) => {
     onClose();
@@ -215,11 +231,7 @@ export function DockSheets({
         reveal={filesReveal}
         onChatWithFolder={(folder) => {
           onClose();
-          onStartChat({
-            seed: folder
-              ? `Let's work with the files in ${folder}. `
-              : "Let's work with my files. ",
-          });
+          onOpenFolderChat(folder);
         }}
         onSendIdea={sendAndClose}
       />

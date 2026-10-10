@@ -88,7 +88,15 @@ export const sideChatsContract = {
     list: oc.input(z.object({ botId: Id })).output(z.array(ChatSummarySchema)),
     /** Creates the Side Chat and sends its first message atomically. */
     createSide: oc
-      .input(z.object({ botId: Id, start: SideChatStartSchema, text: z.string().min(1) }))
+      .input(
+        z.object({
+          botId: Id,
+          start: SideChatStartSchema,
+          text: z.string().min(1),
+          /** A workspace folder (relative, as the Files browser lists it) the chat works in. */
+          folder: z.string().max(1024).optional(),
+        }),
+      )
       .output(ChatSummarySchema),
     /** Opens a Fork of one message (ADR 0010) and sends its first message. `chatId` is the chat
      * holding the anchor (absent: the Conversation; a fork, for a fork of a fork). Refusals are

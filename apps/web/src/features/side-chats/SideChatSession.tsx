@@ -17,7 +17,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@nova/ui-web";
-import { ChevronRight, X } from "lucide-react";
+import { ChevronRight, Folder, X } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingState } from "../../components/ai/primitives";
@@ -33,6 +33,7 @@ export type SideChatWire = {
     botId: string;
     start: SideChatStart;
     text: string;
+    folder?: string;
   }) => Promise<ChatSummary>;
   transcript: (input: { botId: string; chatId: string }) => Promise<ThreadMessagePage>;
   /** Listens to the Muse's family stream (ids only); returns the unsubscribe. Fixtures may leave
@@ -98,8 +99,11 @@ export function SideChatSession({
   onOpenProject,
   onRestored,
   focusMessageId,
+  folder,
 }: {
   bot: SideChatBot;
+  /** A new side chat that will work in this workspace folder (`""`: the whole workspace). */
+  folder?: string | null;
   /** "draft": not created yet. Otherwise the chat being viewed (possibly archived). */
   chat: ChatSummary | "draft";
   view: SideChatView;
@@ -127,6 +131,7 @@ export function SideChatSession({
         bot={bot}
         view={view}
         wire={wire}
+        folder={folder ?? null}
         onCreated={(created, text) => {
           setFirst({ chatId: created.id, text, failed: Boolean(created.firstMessageErrorCode) });
           onCreated(created);
@@ -234,10 +239,12 @@ function DraftSideChat({
   wire,
   onCreated,
   onClose,
+  folder,
 }: {
   bot: SideChatBot;
   view: SideChatView;
   wire: SideChatWire;
+  folder: string | null;
   onCreated: (chat: ChatSummary, text: string) => void;
   onClose: () => void;
 }) {
@@ -266,7 +273,12 @@ function DraftSideChat({
     setSent(text);
     setFailure(null);
     return wire
-      .createSide({ botId: bot.id, start: knows ? "withContext" : "blank", text })
+      .createSide({
+        botId: bot.id,
+        start: knows ? "withContext" : "blank",
+        text,
+        ...(folder !== null ? { folder } : {}),
+      })
       .then((created) => onCreated(created, text))
       .catch(() => {
         setSending(false);
@@ -282,6 +294,26 @@ function DraftSideChat({
           <h2 className="text-[19px] font-semibold tracking-[-0.01em] text-foreground">
             <Trans>What do you want to look at?</Trans>
           </h2>
+          {folder !== null ? (
+            <span
+              data-testid="side-chat-folder"
+              className="mt-3 inline-flex max-w-full items-center gap-2 rounded-full border border-glass-line bg-black/20 px-3 py-1.5 text-[13.5px] text-foreground"
+            >
+              <Folder
+                size={15}
+                strokeWidth={1.7}
+                aria-hidden="true"
+                className="shrink-0 text-tint-ink"
+              />
+              <span className="truncate" dir="auto">
+                {folder ? (
+                  <Trans>Working in {folder}</Trans>
+                ) : (
+                  <Trans>Working in the whole workspace</Trans>
+                )}
+              </span>
+            </span>
+          ) : null}
         </div>
       ) : (
         <view.Transcript

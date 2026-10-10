@@ -770,8 +770,12 @@ msgstr "Chat apps, group channels, and agent connections."
 msgid "Chat Settings"
 msgstr "Chat Settings"
 
-msgid "Chat with this folder"
-msgstr "Chat with this folder"
+#. placeholder {0}: folder.split("/").pop()
+msgid "Chat with {0}"
+msgstr "Chat with {0}"
+
+msgid "Chat with the workspace"
+msgstr "Chat with the workspace"
 
 msgid "Chats"
 msgstr "Chats"
@@ -1002,6 +1006,9 @@ msgstr "Copy"
 
 msgid "Copy link"
 msgstr "Copy link"
+
+msgid "Copy message"
+msgstr "Copy message"
 
 msgid "Corner radius"
 msgstr "Corner radius"
@@ -1536,6 +1543,10 @@ msgstr "Decline"
 
 msgid "Default"
 msgstr "Default"
+
+#. placeholder {0}: choices.defaultLabel
+msgid "Default · {0}"
+msgstr "Default · {0}"
 
 msgid "Default · {defaultLabel}"
 msgstr "Default · {defaultLabel}"
@@ -3648,9 +3659,6 @@ msgstr "Show replies as they're written"
 msgid "Showing the first {0} rows"
 msgstr "Showing the first {0} rows"
 
-msgid "Side chat"
-msgstr "Side chat"
-
 msgid "Side chats"
 msgstr "Side chats"
 
@@ -4405,8 +4413,14 @@ msgstr "Working"
 msgid "Working · {0}"
 msgstr "Working · {0}"
 
+msgid "Working in {folder}"
+msgstr "Working in {folder}"
+
 msgid "Working in {name}"
 msgstr "Working in {name}"
+
+msgid "Working in the whole workspace"
+msgstr "Working in the whole workspace"
 
 msgid "Working now"
 msgstr "Working now"

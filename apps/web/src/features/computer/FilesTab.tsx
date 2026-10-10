@@ -49,11 +49,17 @@ export function FilesTab({
   botId,
   refreshKey,
   reveal,
+  selectedFolder,
+  onSelectFolder,
 }: {
   botId: string;
   refreshKey: number;
   /** A folder to open (and its parents), e.g. a Project; a new `nonce` re-opens it. */
   reveal?: { path: string; nonce: number } | null;
+  /** The folder picked for "Chat with this folder", shown selected. */
+  selectedFolder?: string | null;
+  /** Clicking a folder also picks it. */
+  onSelectFolder?: (path: string) => void;
 }) {
   const { t } = useLingui();
   const [dirs, setDirs] = useState<Record<string, Dir>>({});
@@ -169,9 +175,17 @@ export function FilesTab({
           type="button"
           data-testid="file-row"
           aria-expanded={isDir ? open : undefined}
-          onClick={() => (isDir ? toggle(entry.path) : setPreview(entry.path))}
+          aria-current={isDir && selectedFolder === entry.path ? "true" : undefined}
+          onClick={() => {
+            if (!isDir) return setPreview(entry.path);
+            toggle(entry.path);
+            onSelectFolder?.(entry.path);
+          }}
           style={{ paddingInlineStart: `${depth * 14 + 8}px` }}
-          className="flex w-full items-center gap-2 rounded-lg py-1.5 pe-2 text-start text-[13.5px] hover:bg-muted/70 focus-visible:bg-muted/70 focus-visible:outline-none"
+          className={cn(
+            "flex w-full items-center gap-2 rounded-lg py-1.5 pe-2 text-start text-[13.5px] hover:bg-muted/70 focus-visible:bg-muted/70 focus-visible:outline-none",
+            isDir && selectedFolder === entry.path && "bg-tint/20 text-foreground hover:bg-tint/25",
+          )}
         >
           {isDir ? (
             <ChevronRight

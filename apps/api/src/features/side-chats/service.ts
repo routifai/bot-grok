@@ -6,8 +6,10 @@
 import {
   addOmnigentForkToConversation,
   archiveOmnigentSession,
+  confineWorkspacePath,
   createOmnigentSideChat,
   getOmnigentContextSummary,
+  getOmnigentSession,
   getOmnigentTranscript,
   getOmnigentWorkingProject,
   listOmnigentRelatedChats,
@@ -25,6 +27,7 @@ import {
   postOmnigentMessage,
   resetOmnigentSession,
   resolveChatOwnership,
+  setOmnigentSessionWorkspace,
   sideChatStartToWire,
   streamOmnigentFamily,
   unarchiveOmnigentSession,
@@ -122,13 +125,16 @@ export async function listChats(
 export async function createSideChat(
   deps: ChatsDeps,
   actor: Actor,
-  input: { botId: string; start: SideChatStart; text: string },
+  input: { botId: string; start: SideChatStart; text: string; folder?: string },
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<ChatSummary> {
   const client = requireClient(env, actor);
   const superSessionId = await requireSuperChatSessionId(deps, actor, input.botId);
   const email = await actorEmail(deps, actor);
   await syncEngineTimezone(deps.prisma, actor, env);
+  if (input.folder !== undefined) {
+    return createFolderSideChat(client, email, superSessionId, { ...input, folder: input.folder });
+  }
 
   let created: Awaited<ReturnType<typeof createOmnigentSideChat>>;
   try {
@@ -145,6 +151,53 @@ export async function createSideChat(
     throw new ORPCError("BAD_GATEWAY", { message: "Could not open a side chat." });
   }
 
+  return mapSideChatCreateToSummary(created, input.text);
+}
+
+/**
+ * A Side Chat that works in one workspace folder: opened empty, moved into the folder (a path
+ * relative to the Conversation's workspace, as the Files browser lists it), then sent its first
+ * message, so the first turn already runs there.
+ */
+async function createFolderSideChat(
+  client: OmnigentClientConfig,
+  email: string,
+  superSessionId: string,
+  input: { start: SideChatStart; text: string; folder: string },
+): Promise<ChatSummary> {
+  let relative: string;
+  try {
+    relative = confineWorkspacePath(input.folder);
+  } catch {
+    throw new ORPCError("BAD_REQUEST", { message: "That folder is outside the workspace." });
+  }
+  const root = (await getOmnigentSession(client, email, superSessionId)).workspace;
+  if (typeof root !== "string" || !root) {
+    throw new ORPCError("NOT_FOUND", { message: "No workspace yet" });
+  }
+  let created: Awaited<ReturnType<typeof createOmnigentSideChat>>;
+  try {
+    created = await createOmnigentSideChat(client, email, superSessionId, {
+      start: sideChatStartToWire(input.start),
+    });
+  } catch {
+    throw new ORPCError("BAD_GATEWAY", { message: "Could not open a side chat." });
+  }
+  try {
+    if (relative) {
+      await setOmnigentSessionWorkspace(
+        client,
+        email,
+        created.conversation_id,
+        `${root.replace(/\/+$/, "")}/${relative}`,
+      );
+    }
+    await postOmnigentMessage(client, email, created.conversation_id, input.text);
+  } catch {
+    throw new ORPCError("BAD_GATEWAY", {
+      message: "Side chat opened, but the first message didn't send.",
+    });
+  }
   return mapSideChatCreateToSummary(created, input.text);
 }
 

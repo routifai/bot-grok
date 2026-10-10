@@ -248,9 +248,14 @@ export function ShellPage() {
   const active = inGroup ? undefined : (bots.find((b) => b.id === botId) ?? bots[0]);
   // The dock place open as a sheet, if any.
   const [dockSheet, setDockSheet] = useState<DockKey | null>(null);
+  // A new side chat opened from Files works in this folder; any other draft has none.
+  const [draftFolder, setDraftFolder] = useState<string | null>(null);
   // The open Side Chat, shown as a full-size session replacing the Conversation
   // (agreed behavior #2); "draft" is an unsent one. Cleared by navigating anywhere else.
   const [activeChat, setActiveChat] = useState<ChatSummary | "draft" | null>(null);
+  useEffect(() => {
+    if (activeChat !== "draft") setDraftFolder(null);
+  }, [activeChat]);
   const chatList = useChatList(active?.id ?? "");
   // A search hit inside a side chat (`?chat=…&m=…`): the message to scroll to once it is open.
   const [chatFocus, setChatFocus] = useState<{ chatId: string; messageId: string } | null>(null);
@@ -957,6 +962,7 @@ export function ShellPage() {
             <div className={MUSE_CONTENT_PANE}>
               <SideChatSession
                 chat={activeChat}
+                folder={activeChat === "draft" ? draftFolder : null}
                 bot={{ id: active.id, name: active.name, color: active.color }}
                 view={sideChatViewWithApprovals}
                 wire={sideChatWire}
@@ -1193,6 +1199,11 @@ export function ShellPage() {
           filesRefreshKey={filesRefreshKey}
           filesReveal={filesReveal}
           onStartChat={startChat}
+          onOpenFolderChat={(folder) => {
+            forks.reset();
+            setDraftFolder(folder);
+            setActiveChat("draft");
+          }}
         />
       ) : null}
 
