@@ -1,5 +1,16 @@
 name: superchat
 
+# Image bases and package sources for every image built here. Unset, each Dockerfile's public
+# default holds (Ubuntu 24.04, the official Node image, public apt/npm/PyPI); a company sets its
+# own registry and mirrors in .env (see .env.docker.example).
+x-image-build-args: &image-build-args
+  - BASE_IMAGE
+  - NODE_IMAGE
+  - APT_MIRROR
+  - NPM_CONFIG_REGISTRY
+  - PYPI_INDEX_URL
+  - PLAYWRIGHT_DOWNLOAD_HOST
+
 services:
   postgres:
     image: ${POSTGRES_IMAGE:-postgres:16}
@@ -38,6 +49,7 @@ services:
     build:
       context: ../..
       dockerfile: infra/sandboxes/supervisor/Dockerfile
+      args: *image-build-args
     environment:
       DATA_DIR: /data
       SUPERVISOR_HOST: "0.0.0.0"
@@ -83,6 +95,7 @@ services:
       # infra/sandboxes/computer/Dockerfile's omnigent-builder stage.
       context: ../..
       dockerfile: infra/sandboxes/computer/Dockerfile
+      args: *image-build-args
     command: ["true"]
     restart: "no"
 
@@ -100,6 +113,7 @@ services:
     build:
       context: ../..
       dockerfile: infra/railway/Dockerfile.engine
+      args: *image-build-args
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-superchat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-superchat_db}?options=-csearch_path%3Dengine
       ENGINE_PUBLIC_URL: ${ENGINE_PUBLIC_URL:-http://host.docker.internal:${SUPERCHAT_ENGINE_PORT:-8012}}
@@ -147,6 +161,7 @@ services:
     build:
       context: ../..
       dockerfile: infra/compose/Dockerfile
+      args: *image-build-args
     command: ["bash", "-lc", "pnpm --filter @superchat/db exec prisma migrate deploy && pnpm --filter @superchat/api start"]
     env_file:
       - ../../.env
@@ -196,6 +211,7 @@ services:
     build:
       context: ../..
       dockerfile: infra/compose/Dockerfile
+      args: *image-build-args
     command: ["pnpm", "--filter", "@superchat/worker", "start"]
     env_file:
       - ../../.env
@@ -234,6 +250,7 @@ services:
     build:
       context: ../..
       dockerfile: infra/compose/Dockerfile
+      args: *image-build-args
     command: ["pnpm", "--filter", "@superchat/web", "preview", "--host", "0.0.0.0", "--port", "5173"]
     environment:
       API_PROXY_TARGET: http://api:3100
