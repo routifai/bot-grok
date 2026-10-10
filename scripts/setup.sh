@@ -118,34 +118,27 @@ fi
 
 # --- 5. Model provider key (optional) --------------------------------------------------------
 
-if [[ -z "$(env_get OPENROUTER_API_KEY)" && -z "$(env_get ANTHROPIC_API_KEY)" && -z "$(env_get SUPERCHAT_LOCAL_MODELS)" ]]; then
-  if [[ -n "${OPENROUTER_API_KEY:-}" ]]; then
-    env_set OPENROUTER_API_KEY "$OPENROUTER_API_KEY"
-    log "Using OPENROUTER_API_KEY from the environment."
-  elif [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
-    env_set ANTHROPIC_API_KEY "$ANTHROPIC_API_KEY"
-    log "Using ANTHROPIC_API_KEY from the environment."
-  elif [[ -t 0 && -t 1 && "${CI:-}" != "true" ]]; then
+# Every key the environment has and .env lacks is copied; none is preferred over another.
+for key in ANTHROPIC_API_KEY OPENROUTER_API_KEY TAVILY_API_KEY LITELLM_BASE_URL LITELLM_API_KEY; do
+  if [[ -z "$(env_get "$key")" && -n "${!key:-}" ]]; then
+    env_set "$key" "${!key}"
+    log "Using $key from the environment."
+  fi
+done
+# The default engine config lists and calls models with the Anthropic key; LiteLLM replaces it.
+if [[ -z "$(env_get ANTHROPIC_API_KEY)" && -z "$(env_get LITELLM_BASE_URL)" ]]; then
+  if [[ -t 0 && -t 1 && "${CI:-}" != "true" ]]; then
     echo
-    echo "Connect a model for every account on this deployment (optional)."
-    echo "Skip this and connect a model per-account instead from the Superchat UI after sign-up"
-    echo "(onboarding, or Settings -> Models) — nothing here is required for that path."
-    read -r -s -p "OpenRouter API key (leave blank to skip): " key_input
+    read -r -s -p "Anthropic API key (leave blank to skip): " key_input
     echo
     if [[ -n "$key_input" ]]; then
-      env_set OPENROUTER_API_KEY "$key_input"
-      log "Saved OPENROUTER_API_KEY to .env."
-    else
-      log "No deployment-wide model key set. Connect one per-account in the UI after sign-up."
+      env_set ANTHROPIC_API_KEY "$key_input"
+      log "Saved ANTHROPIC_API_KEY to .env."
     fi
-  else
-    log "No deployment-wide model key set (non-interactive run). Connect one per-account in the UI after sign-up, or set OPENROUTER_API_KEY / ANTHROPIC_API_KEY / SUPERCHAT_LOCAL_MODELS (see docs/SETUP.md) and re-run."
   fi
-else
-  log "Model key already configured in .env."
-fi
-if [[ -z "$(env_get ANTHROPIC_API_KEY)" ]]; then
-  warn "The engine needs ANTHROPIC_API_KEY in .env, or LITELLM_BASE_URL + LITELLM_API_KEY with infra/compose/docker-compose.litellm.yml (see README, Run with Docker)."
+  if [[ -z "$(env_get ANTHROPIC_API_KEY)" ]]; then
+    warn "The engine needs ANTHROPIC_API_KEY in .env, or LITELLM_BASE_URL + LITELLM_API_KEY with infra/compose/docker-compose.litellm.yml (see README, Run with Docker)."
+  fi
 fi
 
 # --- 6. Build the computer image -------------------------------------------------------------
