@@ -17,7 +17,7 @@ import {
   userVisibleMessages,
 } from "@nova/core";
 import { AvatarStyleProvider, Button, GroupAvatar, type GroupAvatarMember } from "@nova/ui-web";
-import { Menu, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import type { ReactNode } from "react";
 import {
   lazy,
@@ -293,7 +293,7 @@ export function ShellPage() {
     `${active?.id ?? ""}:${activeChat === "draft" ? "draft" : (activeChat?.id ?? "")}`,
   );
   /** Below `md` the Muse sidebar is an off-canvas drawer opened from the main header. */
-  const [_navOpen, setNavOpen] = useState(false);
+  const [_navOpen, _setNavOpen] = useState(false);
   const activeGroup = groups.find((group) => group.id === groupId);
   const activeTaughtSkills = taughtSkillsBotId === active?.id ? taughtSkills : [];
   const recordingSkill = activeTaughtSkills.find((skill) => skill.status === "recording") ?? null;
@@ -862,6 +862,51 @@ export function ShellPage() {
     />
   );
 
+  // The superchat top bar: the Project, the fork switch, the model and Chats.
+  const superchatTopBar =
+    museMode && active ? (
+      <div className="app-drag relative z-10 flex h-[84px] min-w-0 shrink-0 items-center gap-3 ps-4 pe-4 md:ps-0 md:pe-6">
+        <SuperchatLogo className="md:hidden" />
+        {conversationProject ? (
+          <span className="app-no-drag hidden md:inline-flex">
+            <ProjectChip project={conversationProject} onOpen={openProjectFiles} />
+          </span>
+        ) : null}
+        <span className="min-w-0 flex-1" />
+        <div className="app-no-drag flex shrink-0 items-center gap-2">
+          {!activeChat && (forks.rows.length || forksView) ? (
+            <ForkViewSwitch view={forks.view} onChange={forks.setView} />
+          ) : null}
+          <ConversationModelPicker botId={active.id} />
+          <ChatsPopover
+            botId={active.id}
+            state={chatList.state}
+            forks={forks.rows}
+            current={!activeChat && !forks.thread}
+            activeChatId={activeChat && activeChat !== "draft" ? activeChat.id : null}
+            onOpenConversation={() => {
+              forks.reset();
+              setActiveChat(null);
+            }}
+            onOpenChat={setActiveChat}
+            onNewDraft={() => setActiveChat("draft")}
+            onOpenFork={(row) => {
+              setActiveChat(null);
+              forks.openRow(row);
+            }}
+            onShowForks={(filter) => {
+              setActiveChat(null);
+              forks.showForks(filter);
+            }}
+            onChanged={() => {
+              chatList.refresh();
+              readTranscript();
+            }}
+          />
+        </div>
+      </div>
+    ) : null;
+
   const shell = (
     <div
       data-testid="shell-root"
@@ -909,23 +954,7 @@ export function ShellPage() {
             : "flex min-w-0 flex-1 flex-col bg-background"
         }
       >
-        {museMode && active && activeChat ? (
-          <div className="flex h-12 shrink-0 items-center gap-2 px-3 md:hidden">
-            <button
-              type="button"
-              data-testid="mobile-nav-trigger"
-              title={t`Menu`}
-              aria-label={t`Menu`}
-              onClick={() => setNavOpen(true)}
-              className="grid size-9 place-items-center rounded-full text-foreground/80 transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
-            >
-              <Menu size={20} strokeWidth={1.75} />
-            </button>
-            <span className="min-w-0 truncate text-[15px] font-medium" dir="auto">
-              {t`Side chat`}
-            </span>
-          </div>
-        ) : null}
+        {museMode && activeChat ? superchatTopBar : null}
         {museMode && active && activeChat ? (
           <div className="flex min-h-0 flex-1">
             <div className={MUSE_CONTENT_PANE}>
@@ -958,46 +987,7 @@ export function ShellPage() {
               {/* Behind a fork's thread view or "lift and ask", the Conversation is out of reach. */}
               <div className="contents" inert={forkOverlayOpen || undefined}>
                 {museMode && active ? (
-                  <div className="app-drag relative z-10 flex h-[84px] min-w-0 shrink-0 items-center gap-3 ps-4 pe-4 md:ps-0 md:pe-6">
-                    <SuperchatLogo className="md:hidden" />
-                    {conversationProject ? (
-                      <span className="app-no-drag hidden md:inline-flex">
-                        <ProjectChip project={conversationProject} onOpen={openProjectFiles} />
-                      </span>
-                    ) : null}
-                    <span className="min-w-0 flex-1" />
-                    <div className="app-no-drag flex shrink-0 items-center gap-2">
-                      {forks.rows.length || forksView ? (
-                        <ForkViewSwitch view={forks.view} onChange={forks.setView} />
-                      ) : null}
-                      <ConversationModelPicker botId={active.id} />
-                      <ChatsPopover
-                        botId={active.id}
-                        state={chatList.state}
-                        forks={forks.rows}
-                        current={!activeChat && !forks.thread}
-                        activeChatId={activeChat && activeChat !== "draft" ? activeChat.id : null}
-                        onOpenConversation={() => {
-                          forks.reset();
-                          setActiveChat(null);
-                        }}
-                        onOpenChat={setActiveChat}
-                        onNewDraft={() => setActiveChat("draft")}
-                        onOpenFork={(row) => {
-                          setActiveChat(null);
-                          forks.openRow(row);
-                        }}
-                        onShowForks={(filter) => {
-                          setActiveChat(null);
-                          forks.showForks(filter);
-                        }}
-                        onChanged={() => {
-                          chatList.refresh();
-                          readTranscript();
-                        }}
-                      />
-                    </div>
-                  </div>
+                  superchatTopBar
                 ) : museMode ? null : (
                   <div className="app-drag flex items-center justify-between border-b border-sidebar-border px-3 py-[17px] md:px-[22px]">
                     <div className="flex min-w-0 items-center gap-2">
