@@ -118,7 +118,7 @@ download["default_directory"] = folder
 download["prompt_for_download"] = False
 prefs.setdefault("savefile", {})["default_directory"] = folder
 with open(path, "w") as f:
-    json.dump(prefs, f)
+    json.dump(prefs, f, separators=(",", ":"))
 PY
 fi
 
@@ -126,6 +126,11 @@ fi
 # WebGL still needs SwiftShader: --disable-software-rasterizer blocks it, and
 # current Chromium allows that fallback only with --enable-unsafe-swiftshader.
 FLAGS="--test-type --no-sandbox --disable-dev-shm-usage --disable-gpu --enable-unsafe-swiftshader --no-first-run --no-default-browser-check --disable-session-crashed-bubble --hide-crash-restore-bubble --password-store=basic --restore-last-session --start-maximized --remote-debugging-address=127.0.0.1 --remote-debugging-port=$DEBUG_PORT"
+# The Computer has no screen: with no X server behind this display, Chromium runs headless and
+# is driven over the debug port only (superchat-page-browser).
+if [ ! -S "/tmp/.X11-unix/X$DISPLAY_NUM" ]; then
+  FLAGS="$FLAGS --headless=new --window-size=1280,800"
+fi
 if [ "$USER_DATA_DIR_SET" -eq 0 ]; then
   exec "$BIN" $FLAGS --user-data-dir="$PROFILE" "$@"
 fi

@@ -104,7 +104,7 @@ describe("graphical computer spec", () => {
     expect(options.HostConfig.CapDrop).toEqual(["ALL"]);
     expect(options.HostConfig.SecurityOpt).toEqual(["no-new-privileges:true"]);
     expect(options.HostConfig.PidsLimit).toBe(2048);
-    expect(options.HostConfig.ReadonlyPaths).toContain("/usr/share/novnc");
+    expect(options.HostConfig).not.toHaveProperty("ReadonlyPaths");
     expect(options.HostConfig.NetworkMode).toBe("superchat_default");
   });
 
@@ -146,39 +146,38 @@ describe("graphical computer spec", () => {
     expect(legacyNetworkOwnedSolelyBy("ab", [undefined, undefined])).toBe(false);
   });
 
-  it("ships a browser desktop, not a fullscreen terminal", () => {
+  it("ships a headless computer: Playwright Chromium, no desktop stack", () => {
     const root = path.resolve(import.meta.dirname, "../../computer");
     const dockerfile = readFileSync(path.join(root, "Dockerfile"), "utf8");
     const start = readFileSync(path.join(root, "start.sh"), "utf8");
     const browser = readFileSync(path.join(root, "superchat-browser"), "utf8");
-    const desktop = readFileSync(path.join(root, "superchat-browser.desktop"), "utf8");
-    expect(dockerfile).toMatch(/chromium/);
-    expect(dockerfile).toMatch(/superchat-browser\.desktop/);
-    expect(dockerfile).toMatch(/control.py/);
+    expect(dockerfile).toMatch(/^ARG BASE_IMAGE=ubuntu:24\.04@sha256:[0-9a-f]{64}$/m);
+    expect(dockerfile).toMatch(/playwright@\$\{PLAYWRIGHT_VERSION\}" install --no-shell chromium/);
+    expect(dockerfile).toMatch(/ln -s \/opt\/ms-playwright\/chromium \/usr\/local\/bin\/chromium/);
+    expect(dockerfile).toMatch(/superchat-page-browser/);
     expect(dockerfile).toMatch(/USER 1000:1000/);
-    expect(start).toMatch(/superchat-computer-control/);
-    expect(start).toMatch(/superchat-browser/);
-    expect(start).not.toMatch(/browser\.log/);
-    expect(start).toMatch(/xdg-mime default superchat-browser\.desktop/);
-    expect(start).toMatch(/register_browser_handler x-scheme-handler\/http/);
-    expect(start).toMatch(/register_browser_handler x-scheme-handler\/https/);
-    expect(start).toMatch(/register_browser_handler text\/html/);
-    expect(start).toMatch(/xdg-mime query default/);
-    expect(start).toMatch(/failed to register superchat-browser/);
-    expect(start).toMatch(/failed to set default web browser/);
-    expect(start).toMatch(/xdg-settings set default-web-browser superchat-browser\.desktop/);
-    expect(start).not.toMatch(/xdg-mime default superchat-browser\.desktop .*\|\| true/);
-    expect(start).toMatch(/x11vnc .* -viewonly /);
+    for (const gone of [
+      /xvfb/i,
+      /x11vnc/,
+      /fluxbox/,
+      /xdotool/,
+      /novnc/,
+      /websockify/,
+      /dbus-x11/,
+      /xcapture/,
+      /control\.py/,
+      /superchat-recorder/,
+      /ENV DISPLAY/,
+      /^EXPOSE/m,
+    ])
+      expect(dockerfile).not.toMatch(gone);
+    expect(start).not.toMatch(/Xvfb|xdpyinfo|x11vnc|websockify|fluxbox|DISPLAY/);
+    expect(browser).toMatch(/--headless=new/);
     expect(browser).toMatch(/\.browser-profiles\/chromium/);
     expect(browser).toMatch(/chromium-screen-\$DISPLAY_NUM/);
     expect(browser).toMatch(/USER_DATA_DIR_SET/);
     expect(browser).toMatch(/SUPERCHAT_BROWSER_PROFILE/);
-    expect(desktop).toMatch(/Exec=\/usr\/local\/bin\/superchat-browser %U/);
-    expect(dockerfile).toMatch(/superchat-page-browser/);
     expect(browser).toMatch(/remote-debugging-port/);
-    expect(desktop).toMatch(/x-scheme-handler\/http/);
-    expect(desktop).toMatch(/x-scheme-handler\/https/);
-    expect(start).not.toMatch(/windowsize 1280 800/);
   });
 
   it.skipIf(process.platform === "win32")(
@@ -458,13 +457,6 @@ describe("graphical computer spec", () => {
     expect(screenUrlFor("16080")).toBe("http://127.0.0.1:16080/embed.html");
   });
 
-  it("wires host clipboard paste into the chrome-less embed", () => {
-    const root = path.resolve(import.meta.dirname, "../../computer");
-    const embed = readFileSync(path.join(root, "embed.html"), "utf8");
-    expect(embed).toMatch(/clipboard-bridge\.js/);
-    expect(embed).toMatch(/attachHostClipboardPaste/);
-  });
-
   it("uses the published host mapping in the default topology even when a container IP exists", () => {
     // Regression: per-bot NetworkMode always yields a 172.x address. Returning
     // that to clients makes local/dev screens look dead — browsers cannot load
@@ -679,86 +671,6 @@ describe("graphical computer spec", () => {
     ).toEqual({ url: "http://127.0.0.1:55101/v1/desktop", token: "secret" });
   });
 
-  it("restricts computer control argv to supervisor shapes", () => {
-    const controlPath = path.resolve(import.meta.dirname, "../../computer/control.py");
-    const result = spawnSync(
-      "python3",
-      [
-        "-c",
-        [
-          "import importlib.util",
-          "import os",
-          "import signal",
-          "import time",
-          `spec = importlib.util.spec_from_file_location('control', ${JSON.stringify(controlPath)})`,
-          "module = importlib.util.module_from_spec(spec)",
-          "spec.loader.exec_module(module)",
-          "allow = module.allowed_control_argv",
-          "long_lived = module.is_long_lived_control",
-          "assert allow(['env', 'DISPLAY=:1', 'xdotool', 'key', '--clearmodifiers', 'a'], ':1')",
-          "assert allow(['env', 'DISPLAY=:1', 'xdotool', 'mousemove', '--', '10', '20', 'click', '1'], ':1')",
-          "assert allow(['env', 'DISPLAY=:1', 'xdotool', 'click', '--repeat', '3', '4'], ':1')",
-          "assert allow(['env', 'DISPLAY=:1', 'xdotool', 'type', '--clearmodifiers', '--', 'hi'], ':1')",
-          "assert allow(['env', 'DISPLAY=:2', 'xdg-open', 'https://example.com'], ':2')",
-          "assert allow(['env', 'DISPLAY=:1', 'superchat-browser'], ':1')",
-          "assert allow(['env', 'DISPLAY=:2', 'superchat-browser', 'https://example.com'], ':2')",
-          "assert allow(['env', 'DISPLAY=:1', 'xterm'], ':1')",
-          "assert long_lived(['env', 'DISPLAY=:1', 'superchat-browser'])",
-          "assert long_lived(['env', 'DISPLAY=:1', 'superchat-browser', 'https://example.com'])",
-          "assert long_lived(['env', 'DISPLAY=:1', 'xterm'])",
-          "assert long_lived(['env', 'DISPLAY=:1', 'xdg-open', 'https://example.com'])",
-          "assert not long_lived(['env', 'DISPLAY=:1', 'xdotool', 'key', '--clearmodifiers', 'a'])",
-          "assert not allow(['env', 'DISPLAY=:1', 'chromium', 'https://example.com'], ':1')",
-          "assert not allow(['bash', '-c', 'id'], ':1')",
-          "assert not allow(['env', 'DISPLAY=:1', 'bash', '-c', 'id'], ':1')",
-          "assert not allow(['env', 'DISPLAY=:1', '/bin/sh', '-c', 'id'], ':1')",
-          "assert not allow(['env', 'DISPLAY=:1', 'xdotool', 'exec', '/bin/sh', '-c', 'id'], ':1')",
-          "assert not allow(['env', 'DISPLAY=:1', 'xdotool', 'key', 'a'], ':1')",
-          "assert not allow(['env', 'DISPLAY=:2', 'xdotool', 'key', '--clearmodifiers', 'a'], ':1')",
-          "assert not allow(['env', 'DISPLAY=wayland-0', 'xdotool', 'key', '--clearmodifiers', 'a'], ':1')",
-          "assert not allow(['env', 'DISPLAY=:1', 'xdg-open', 'a', 'b'], ':1')",
-          "known = set(module.KNOWN_LAUNCH)",
-          "module.KNOWN_LAUNCH = frozenset({'sleep'})",
-          "spawned = []",
-          "real_popen = module.subprocess.Popen",
-          "def tracking_popen(*args, **kwargs):",
-          "  child = real_popen(*args, **kwargs)",
-          "  spawned.append(child.pid)",
-          "  return child",
-          "module.subprocess.Popen = tracking_popen",
-          "try:",
-          "  started = time.monotonic()",
-          "  module.run_control_argv(['env', 'DISPLAY=:1', 'sleep', '30'], ':1')",
-          "  assert time.monotonic() - started < 2",
-          "  assert len(spawned) == 1, 'expected one detached child'",
-          "  os.kill(spawned[0], 0)",
-          "  os.kill(spawned[0], signal.SIGTERM)",
-          "finally:",
-          "  module.subprocess.Popen = real_popen",
-          "  module.KNOWN_LAUNCH = frozenset(known)",
-          "try:",
-          "  module.run_control_argv(['env', 'DISPLAY=:1', 'false'], ':1')",
-          "  raise SystemExit('expected nonzero failure')",
-          "except RuntimeError as error:",
-          "  assert str(error) == 'computer action failed'",
-          "timeout = module.CONTROL_TIMEOUT_SEC",
-          "module.CONTROL_TIMEOUT_SEC = 0.2",
-          "try:",
-          "  module.run_control_argv(['env', 'DISPLAY=:1', 'sleep', '5'], ':1')",
-          "  raise SystemExit('expected timeout')",
-          "except RuntimeError as error:",
-          "  assert str(error) == 'computer action timed out'",
-          "finally:",
-          "  module.CONTROL_TIMEOUT_SEC = timeout",
-          "print('ok')",
-        ].join("\n"),
-      ],
-      { encoding: "utf8" },
-    );
-    expect(result.status, result.stderr || result.stdout).toBe(0);
-    expect(result.stdout.trim()).toBe("ok");
-  });
-
   it("turns takeover input into xdotool", () => {
     expect(xdotoolCommand({ kind: "key", key: "Enter" })).toEqual([
       "xdotool",
@@ -964,8 +876,6 @@ describe("computer home storage", () => {
     const root = path.resolve(import.meta.dirname, "../../computer");
     const start = readFileSync(path.join(root, "start.sh"), "utf8");
     expect(start).toMatch(/trap shutdown TERM INT/);
-    expect(start).toMatch(/kill -TERM "\$XVFB_PID"/);
-    expect(start).not.toMatch(/while kill -0 "\$XVFB_PID"/);
     // The handler must be in place before the first child process starts, so a stop that
     // arrives during startup is honoured instead of waiting for Docker's grace period.
     const trapAt = start.indexOf("trap shutdown TERM INT");
@@ -973,12 +883,7 @@ describe("computer home storage", () => {
     expect(trapAt).toBeGreaterThan(-1);
     expect(firstChildAt).toBeGreaterThan(-1);
     expect(trapAt).toBeLessThan(firstChildAt);
-    // A stop before Xvfb exists must not try to signal or wait on an empty PID.
-    expect(start).toMatch(/^XVFB_PID=""$/m);
-    expect(start.match(/if \[\[ -n "\$XVFB_PID" \]\]; then/g)?.length ?? 0).toBeGreaterThanOrEqual(
-      2,
-    );
-    // Steady state waits on Xvfb instead of polling, so the trap runs immediately.
-    expect(start).toMatch(/^wait "\$XVFB_PID"$/m);
+    // Steady state waits on a child instead of polling, so the trap runs immediately.
+    expect(start).toMatch(/^wait "\$IDLE_PID"$/m);
   });
 });

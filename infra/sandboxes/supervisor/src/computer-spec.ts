@@ -40,7 +40,7 @@ export function resolveSpaceComputerLimit(
 /**
  * Resource ceilings for a bot computer.
  *
- * A computer runs Xvfb, a window manager and a full Chromium on behalf of an
+ * A computer runs a headless Chromium and the agent's tools on behalf of an
  * agent that decides for itself what to open. #343 gave these containers a
  * pids ceiling, but Memory and NanoCpus are still unset, so one runaway page is
  * a host-wide memory and CPU event that takes every other bot and the Superchat
@@ -284,7 +284,6 @@ export function containerCreateOptions(input: ComputerCreateInput) {
       CapDrop: ["ALL"],
       SecurityOpt: ["no-new-privileges:true"],
       ...computerResourceLimits(),
-      ReadonlyPaths: ["/usr/share/novnc"],
       AutoRemove: false,
       NetworkMode: input.networkMode ?? "bridge",
     },

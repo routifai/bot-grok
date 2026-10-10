@@ -107,9 +107,10 @@ describe("agent shell PATH after Debian login startup", () => {
     expect(entries).toContain(`${home}/.local/bin`);
   });
 
-  it("installs the snippet where Debian login shells source it", () => {
+  it("installs the snippet where login shells source it", () => {
     const dockerfile = readFileSync(path.join(computerRoot, "Dockerfile"), "utf8");
-    const copy = "COPY --chmod=644 superchat-local-bin.sh /etc/profile.d/superchat-local-bin.sh";
+    const copy =
+      "COPY --chmod=644 infra/sandboxes/computer/superchat-local-bin.sh /etc/profile.d/superchat-local-bin.sh";
     const copyAt = dockerfile.indexOf(copy);
     const userAt = dockerfile.indexOf("USER 1000:1000");
     expect(copyAt).toBeGreaterThan(-1);
