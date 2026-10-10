@@ -26,10 +26,21 @@ Spec (JSON):
     }
 
 Chart types: bar (``horizontal``, ``stacked``), line, area (``stacked``), pie, doughnut, scatter,
-radar, combo (bars for ``y``, a line on a right axis for ``y2``). ``split`` turns a column's values
-into series. ``sort`` is value, label or none; ``limit`` keeps the top N categories (the rest are
-summed into "Other" when the aggregation allows it). ``format``: prefix, suffix, decimals, compact,
-percent (the value is a ratio: 0.25 shows as 25%).
+radar, combo (bars for ``y``, a line on a right axis for ``y2``; ``agg2`` is the line's own
+aggregation). ``split`` turns a column's values into series. ``sort`` is value, label or none;
+``limit`` keeps the top N categories (the rest are summed into "Other" when the aggregation allows
+it). ``format``: prefix, suffix, decimals, compact, percent (the value is a ratio: 0.25 shows as
+25%).
+
+``"agg": "mean"`` with ``"weight": "<column>"`` is a weighted average (a monthly margin % weighted
+by revenue), on a chart or a KPI: chart the person's file directly, no pre-aggregated copy.
+Series are labelled with the column name made readable ("margin_pct" shows as "Margin %"); set
+your own with ``"names": {"margin_pct": "Gross margin"}``. Date buckets read as "Jan", "Q1"
+("Jan 2026" when the range spans years); an x column already holding months or quarters
+("2026-01", "2026-Q1") is bucketed by itself.
+
+Source files must be in the person's workspace (``~/workspace``); the page cites them by their
+path inside it (``your_files/sales.csv``), never an absolute or scratch path.
 """
 
 from __future__ import annotations
@@ -126,13 +137,46 @@ def refuse_typed_numbers(node: Any, where: str = "spec") -> None:
             refuse_typed_numbers(value, f"{where}[{index}]")
 
 
+def workspace_roots() -> list[Path]:
+    """The person's workspace: ``OMNIGENT_RUNNER_WORKSPACE``, else ``~/workspace`` (if it exists).
+
+    Sources must lie inside it, so every source line cites the person's own file. With no
+    workspace at all (a developer machine) nothing is restricted.
+    """
+    raw = os.environ.get("OMNIGENT_RUNNER_WORKSPACE")
+    candidates = [Path(raw)] if raw else [Path.home() / "workspace"]
+    return [c.resolve() for c in candidates if c.is_dir()]
+
+
+def display_name(path: Path, roots: list[Path], base: Path) -> str:
+    """How a file is cited on the page: relative to the workspace (or the spec), never absolute."""
+    for root in [*roots, base.resolve()]:
+        if path.is_relative_to(root):
+            return path.relative_to(root).as_posix()
+    return path.name
+
+
 class Sources:
     """Source files, read once each, relative to the spec's folder."""
 
     def __init__(self, base: Path) -> None:
         self.base = base
+        self.roots = workspace_roots()
         self.frames: dict[tuple[str, str | None], Any] = {}
         self.files: dict[str, dict[str, Any]] = {}
+
+    def locate(self, name: str) -> tuple[Path, str]:
+        """The real file and its cited name; refuses files outside the person's workspace."""
+        path = (self.base / name).expanduser().resolve()
+        if self.roots and not any(path.is_relative_to(root) for root in self.roots):
+            raise SpecError(
+                f"{name} is outside the workspace. Chart the person's own file (under "
+                "your_files/): the page cites it as the source. A weighted average is "
+                '"agg": "mean" with "weight"; a second measure on a combo has its own "agg2".'
+            )
+        if not path.is_file():
+            raise SpecError(f"source file not found: {name}")
+        return path, display_name(path, self.roots, self.base)
 
     def frame(self, block: dict[str, Any], spec: dict[str, Any]) -> tuple[Any, str]:
         import pandas as pd
@@ -143,11 +187,9 @@ class Sources:
                 f'"{block_name(block)}" has no "source" file (and the spec has none)'
             )
         sheet = block.get("sheet", spec.get("sheet"))
-        key = (name, sheet)
+        path, shown = self.locate(name)
+        key = (shown, sheet)
         if key not in self.frames:
-            path = (self.base / name).expanduser()
-            if not path.is_file():
-                raise SpecError(f"source file not found: {name}")
             suffix = path.suffix.lower()
             try:
                 if suffix in (".csv", ".txt"):
@@ -179,13 +221,13 @@ class Sources:
             df.columns = [str(c).strip() for c in df.columns]
             self.frames[key] = df
             stat = path.stat()
-            self.files[name] = {
-                "name": name,
+            self.files[shown] = {
+                "name": shown,
                 "rows": len(df),
                 "modified": dt.datetime.fromtimestamp(stat.st_mtime).astimezone(),
             }
         df = self.frames[key]
-        return filtered(df, spec.get("where"), block.get("where"), name), name
+        return filtered(df, spec.get("where"), block.get("where"), shown), shown
 
 
 def block_name(block: dict[str, Any]) -> str:
@@ -261,18 +303,68 @@ def dates(df: Any, col: str, file: str) -> Any:
 
 
 def bucket_labels(periods: Any, bucket: str) -> list[str]:
+    """Readable period names: "Jan", "Q1", "Mar 4"; with the year when the range spans years."""
+    periods = list(periods)
+    years = len({p.start_time.year for p in periods}) > 1
     out = []
     for p in periods:
         start = p.start_time
         if bucket == "year":
             out.append(f"{start:%Y}")
         elif bucket == "quarter":
-            out.append(f"Q{p.quarter} {start:%Y}")
+            out.append(f"Q{p.quarter} {start:%Y}" if years else f"Q{p.quarter}")
         elif bucket == "month":
-            out.append(f"{start:%b %Y}")
+            out.append(f"{start:%b %Y}" if years else f"{start:%b}")
         else:
-            out.append(f"{start:%Y-%m-%d}")
+            out.append(f"{start:%b} {start.day}, {start:%Y}" if years else f"{start:%b} {start.day}")
     return out
+
+
+# A text column already holding months or quarters ("2026-01", "2026-Q1") is read as periods.
+# (Full dates stay categories unless the spec names a bucket.)
+PERIOD_PATTERNS = (("month", r"\d{4}-\d{1,2}"), ("quarter", r"\d{4}-?Q[1-4]"))
+
+
+def inferred_bucket(series: Any) -> str | None:
+    """The bucket a date-like x column implies when the spec names none."""
+    values = series.dropna().astype(str).str.strip()
+    if values.empty:
+        return None
+    for bucket, pattern in PERIOD_PATTERNS:
+        if values.str.fullmatch(pattern, case=False).all():
+            return bucket
+    return None
+
+
+def period_index(series: Any, bucket: str, file: str, col: str) -> Any:
+    """Periods of a date column, also for "2026-Q1"-style quarter text."""
+    import pandas as pd
+
+    if bucket == "quarter" and not pd.api.types.is_datetime64_any_dtype(series):
+        text = series.astype(str).str.strip().str.upper()
+        if text.str.fullmatch(r"\d{4}-?Q[1-4]").all():
+            return pd.PeriodIndex(text.str.replace("-", "", regex=False), freq="Q").to_series(
+                index=series.index
+            )
+    return dates(series.to_frame(col), col, file).dt.to_period(BUCKETS[bucket])
+
+
+# Column-name words shown differently on the page.
+WORDS = {"pct": "%", "percent": "%", "perc": "%", "id": "ID", "avg": "average", "qty": "quantity"}
+
+
+def humanise(name: Any) -> str:
+    """A column name as a reader would write it: "margin_pct" is "Margin %", "orderCount"
+    "Order count". Names already written for people ("Revenue (USD)") are kept."""
+    text = str(name).strip()
+    if not re.fullmatch(r"[a-z0-9_\-\s]+|[a-z]+(?:[A-Z][a-z0-9]*)+", text):
+        return text
+    text = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", text).lower()
+    words = [WORDS.get(w, w) for w in re.split(r"[_\-\s]+", text) if w]
+    if not words:
+        return str(name)
+    out = " ".join(words)
+    return out[0].upper() + out[1:]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -298,19 +390,32 @@ def agg_name(block: dict[str, Any]) -> str:
     return agg
 
 
-def group_key(df: Any, block: dict[str, Any], file: str) -> tuple[Any, str, bool]:
-    """The x of every row (a date bucket or a category) and a description of it."""
+def group_key(df: Any, block: dict[str, Any], file: str) -> tuple[Any, str, str | None]:
+    """The x of every row (a date bucket or a category), a description of it, and its bucket."""
     x = column(df, block.get("x"), file, "x")
-    bucket = block.get("bucket")
+    given = block.get("bucket")
+    bucket = given or inferred_bucket(df[x])
     if bucket:
         if bucket not in BUCKETS:
             raise SpecError(f"bucket must be one of {', '.join(BUCKETS)}")
-        return (
-            dates(df, x, file).dt.to_period(BUCKETS[bucket]),
-            f"{bucket} of {x}",
-            True,
-        )
-    return df[x], x, False
+        described = f"{bucket} of {x}" if given and x.lower() != bucket else x
+        return period_index(df[x], bucket, file, x), described, bucket
+    return df[x], x, None
+
+
+def agg_phrase(col: str, agg: str, weight: str | None) -> str:
+    """How one measure was computed, for the source line: "margin_pct averaged (weighted by revenue)"."""
+    weighted = f" (weighted by {weight})" if weight and agg == "mean" else ""
+    return f"{col} {AGGS[agg]}{weighted}"
+
+
+def weight_column(df: Any, block: dict[str, Any], file: str, aggs: list[str]) -> str | None:
+    """The ``weight`` column of a weighted mean, checked."""
+    if block.get("weight") is None:
+        return None
+    if "mean" not in aggs:
+        raise SpecError('"weight" weights a mean: use it with "agg": "mean" (or "agg2": "mean")')
+    return column(df, block.get("weight"), file, "weight")
 
 
 def chart_data(df: Any, block: dict[str, Any], file: str) -> dict[str, Any]:
@@ -334,38 +439,51 @@ def chart_data(df: Any, block: dict[str, Any], file: str) -> dict[str, Any]:
         raise SpecError(
             'a combo chart needs "y" (the bars) and "y2" (the line on the right axis)'
         )
+    agg2 = agg_name({**block, "agg": block.get("agg2", agg)})
     split = block.get("split")
     if split and len(ys) > 1:
         raise SpecError('"split" works with one "y" column')
 
-    key, x_desc, is_date = group_key(df, block, file)
+    key, x_desc, bucket = group_key(df, block, file)
     work = pd.DataFrame({"__x": key.values}, index=df.index)
-    value_cols = []
-    for y in [*ys, *([y2] if kind == "combo" else [])]:
-        col = column(df, y, file, "y")
+    value_cols: list[str] = []
+    aggs: dict[str, str] = {}
+    measures = [(y, agg, "y") for y in ys] + ([(y2, agg2, "y2")] if kind == "combo" else [])
+    for y, how, role in measures:
+        col = column(df, y, file, role)
         work[col] = numeric(df, col, file)
         value_cols.append(col)
-    if not value_cols:
-        work["__n"] = 1
+        aggs[col] = how
+    weight = weight_column(df, block, file, list(aggs.values()))
+    if weight:
+        weights = numeric(df, weight, file)
+        for col, how in aggs.items():
+            if how == "mean":
+                work[f"__w {col}"] = weights.where(work[col].notna())
+                work[f"__wv {col}"] = work[col] * work[f"__w {col}"]
     if split:
         split_col = column(df, split, file, "split")
         work["__s"] = df[split_col].astype(str)
     work = work[work["__x"].notna()]
 
-    def reduce(frame: Any, cols: list[str]) -> Any:
-        if not cols:
-            return (
-                frame.groupby(["__x", *(["__s"] if split else [])], sort=False)
-                .size()
-                .rename("count")
-            )
-        grouped = frame.groupby(["__x", *(["__s"] if split else [])], sort=False)[cols]
-        return grouped.count() if agg == "count" else grouped.agg(agg)
+    def reduce(frame: Any) -> Any:
+        grouped = frame.groupby(["__x", *(["__s"] if split else [])], sort=False)
+        if not value_cols:
+            return grouped.size().rename("count").to_frame()
+        out = {}
+        for col, how in aggs.items():
+            if how == "count":
+                out[col] = grouped[col].count()
+            elif how == "mean" and weight:
+                out[col] = grouped[f"__wv {col}"].sum() / grouped[f"__w {col}"].sum()
+            else:
+                out[col] = grouped[col].agg(how)
+        return pd.DataFrame(out)
 
-    table = reduce(work, value_cols)
+    table = reduce(work)
     if split:
         col = value_cols[0] if value_cols else "count"
-        wide = table[col].unstack("__s") if value_cols else table.unstack("__s")
+        wide = table[col].unstack("__s")
         order = wide.sum().sort_values(ascending=False).index
         if len(order) > MAX_SERIES:
             raise SpecError(
@@ -376,13 +494,13 @@ def chart_data(df: Any, block: dict[str, Any], file: str) -> dict[str, Any]:
         series_names = [str(c) for c in wide.columns]
         frame = wide
     else:
-        frame = table.to_frame() if not value_cols else table
+        frame = table
         series_names = list(frame.columns)
 
     notes = []
-    if is_date:
+    if bucket:
         frame = frame.sort_index()
-        labels = bucket_labels(frame.index, block["bucket"])
+        labels = bucket_labels(frame.index, bucket)
     else:
         sort = block.get("sort") or (
             "value" if kind in ("bar", "pie", "doughnut") else "none"
@@ -401,30 +519,40 @@ def chart_data(df: Any, block: dict[str, Any], file: str) -> dict[str, Any]:
         if isinstance(limit, int) and 0 < limit < len(frame):
             rest = frame.iloc[limit:]
             frame = frame.iloc[:limit]
-            if agg in ADDITIVE and block.get("other", True):
+            additive = all(how in ADDITIVE for how in aggs.values()) if aggs else True
+            if additive and block.get("other", True):
                 frame.loc["Other"] = rest.sum()
                 notes.append(f"top {limit}, the rest as Other")
             else:
                 notes.append(f"top {limit} shown")
         labels = [str(v) for v in frame.index]
 
+    names = block.get("names") or {}
+    if not isinstance(names, dict):
+        raise SpecError('"names" maps a column to its label: {"margin_pct": "Margin %"}')
+    line_col = column(df, y2, file, "y2") if kind == "combo" else None
     datasets = []
     for name in series_names:
         values = [clean(v) for v in frame[name].tolist()]
-        is_line = kind == "combo" and name == column(df, y2, file, "y2")
-        names = block.get("names") or {}
+        # Split values are the data's own words; column names are humanised unless named.
+        label = names.get(str(name)) or (str(name) if split else humanise(name))
         datasets.append(
             {
-                "label": str(names.get(str(name), name)),
+                "label": str(label),
                 "data": values,
-                **({"kind": "line", "axis": "y2"} if is_line else {}),
+                **({"kind": "line", "axis": "y2"} if name == line_col else {}),
             }
         )
     if kind in ("pie", "doughnut") and len(datasets) > 1:
         raise SpecError("a pie or doughnut shows one series: one y column, no split")
-    measured = ", ".join(value_cols) if value_cols else "rows"
-    verb = AGGS[agg] if value_cols else "counted"
-    describe = f"{measured} {verb} by {x_desc}" + (f" and {split}" if split else "")
+    if value_cols:
+        phrases = [agg_phrase(col, how, weight) for col, how in aggs.items()]
+        if len(set(aggs.values())) == 1 and not (weight and agg == "mean"):
+            phrases = [f"{', '.join(value_cols)} {AGGS[agg]}"]
+        measured = " and ".join(phrases)
+    else:
+        measured = "rows counted"
+    describe = f"{measured} by {x_desc}" + (f" and {split}" if split else "")
     if notes:
         describe += f" ({'; '.join(notes)})"
     return {"labels": labels, "datasets": datasets, "describe": describe}
@@ -457,14 +585,14 @@ def scatter_data(df: Any, block: dict[str, Any], file: str) -> dict[str, Any]:
             raise SpecError(
                 f"a scatter chart draws {MAX_SCATTER_POINTS} points at most"
             )
-        datasets.append({"label": name or y, "data": points})
+        datasets.append({"label": name or humanise(y), "data": points})
     return {
         "labels": [],
         "datasets": datasets,
         "describe": f"{y} against {x}, one point per row"
         + (f", by {split}" if split else ""),
-        "xTitle": x,
-        "yTitle": y,
+        "xTitle": humanise(x),
+        "yTitle": humanise(y),
     }
 
 
@@ -496,6 +624,8 @@ def kpi_data(df: Any, block: dict[str, Any], file: str) -> dict[str, Any]:
         raise SpecError(f'KPI "{block_name(block)}" needs "value": a column name')
     col = column(df, value_col, file, "value") if value_col is not None else None
     values = numeric(df, col, file) if col else None
+    weight = weight_column(df, block, file, [agg])
+    weights = numeric(df, weight, file).where(values.notna()) if weight else None
 
     def reduce(frame_index: Any) -> float | None:
         if col is None:
@@ -503,6 +633,10 @@ def kpi_data(df: Any, block: dict[str, Any], file: str) -> dict[str, Any]:
         part = values.loc[frame_index]
         if agg == "count":
             return float(part.count())
+        if weights is not None:
+            w = weights.loc[frame_index]
+            total = w.sum()
+            return (part * w).sum() / total if total else None
         result = getattr(part, agg)()
         return (
             None
@@ -510,18 +644,18 @@ def kpi_data(df: Any, block: dict[str, Any], file: str) -> dict[str, Any]:
             else result
         )
 
-    out: dict[str, Any] = {"label": str(block.get("label") or col or "Rows")}
-    measured = col or "rows"
+    out: dict[str, Any] = {"label": str(block.get("label") or humanise(col or "rows"))}
+    measured = agg_phrase(col, agg, weight) if col else "rows counted"
     date_col = block.get("date")
     if not date_col:
         out["value"] = clean(reduce(df.index))
-        out["describe"] = f"{measured} {AGGS[agg]}, all rows"
+        out["describe"] = f"{measured}, all rows"
         return out
     bucket = block.get("bucket", "month")
     if bucket not in BUCKETS:
         raise SpecError(f"bucket must be one of {', '.join(BUCKETS)}")
     date = column(df, date_col, file, "date")
-    periods = dates(df, date, file).dt.to_period(BUCKETS[bucket])
+    periods = period_index(df[date], bucket, file, date)
     groups = sorted(df.groupby(periods).groups.items())
     if not groups:
         raise SpecError(f'KPI "{block_name(block)}": no dates in {date}')
@@ -533,7 +667,8 @@ def kpi_data(df: Any, block: dict[str, Any], file: str) -> dict[str, Any]:
     if len(series) > 1 and series[-2] not in (None, 0) and series[-1] is not None:
         out["change"] = (series[-1] - series[-2]) / abs(series[-2])
         out["previous"] = names[-2]
-    out["describe"] = f"{measured} {AGGS[agg]}, latest {bucket} of {date}"
+    of = f" of {date}" if date.lower() != bucket else ""
+    out["describe"] = f"{measured}, latest {bucket}{of}"
     return out
 
 

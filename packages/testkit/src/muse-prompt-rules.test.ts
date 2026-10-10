@@ -62,22 +62,51 @@ describe("Muse prompt rules", () => {
 
 describe("Muse deck theme choice", () => {
   const deckRules = [
-    "Offering the look",
-    "an existing deck they ask to restyle without naming a theme or mood",
-    "leave its current theme out",
+    "A NEW deck always starts by asking for its look, unless the look is already settled",
+    "Nothing else settles it: not an earlier deck in this Conversation, not a deck with a similar name",
+    '"Make a deck from it", "now a 5-slide deck", "turn this into slides" are NEW decks',
+    "Only redoing, fixing or extending the SAME deck file keeps its theme",
+    "`deck_new` takes `look_from`",
+    "It refuses `ask`",
+    "leaving its current theme out",
     '"kind": "deck-theme"',
     "do not ask again",
-    "Never ask when redoing, fixing or extending an existing deck",
+    "never ask then",
     "three different categories and moods",
     "Never offer two themes of the same category and mode",
     "Asking ends your turn",
     "exactly that theme, never another one",
   ];
   it.each(["templates/decks.md", "agents/nova-claude/AGENTS.md", "agents/nova-pi/AGENTS.md"])(
-    "%s offers three themes before a new deck or a restyle",
+    "%s asks for the look of every new deck before building it",
     (path) => {
       const text = read(path).replace(/\s+/g, " ");
       for (const rule of deckRules) expect(text, rule).toContain(rule);
+      // A default theme never stands in for the person's choice.
+      expect(text).not.toContain("Default to a restrained professional theme");
+      expect(text).not.toContain("although a default exists");
+      // The ask comes before the theme dictionary, so it is read first.
+      expect(text.indexOf("A NEW deck always starts by asking")).toBeLessThan(
+        text.indexOf("Choosing a theme yourself"),
+      );
+    },
+  );
+});
+
+describe("Muse dashboard rules", () => {
+  const dashboardRules = [
+    "Chart the person's file directly: never pre-aggregate into a scratch copy",
+    '`"agg": "mean", "weight": "revenue"` is a weighted average',
+    "a combo's line has its own `agg2`",
+    '`"names": {"margin_pct": "Gross margin"}`',
+    "The page cites each source by its path in the workspace",
+    "do not say whether you opened, viewed or checked the page",
+  ];
+  it.each(["templates/AGENTS.md", "agents/nova-claude/AGENTS.md", "agents/nova-pi/AGENTS.md"])(
+    "%s keeps dashboards citing the person's files",
+    (path) => {
+      const text = read(path).replace(/\s+/g, " ");
+      for (const rule of dashboardRules) expect(text, rule).toContain(rule);
     },
   );
 });

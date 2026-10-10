@@ -18,6 +18,14 @@ from omnigent.superchat.artifacts import workspace_roots
 from omnigent.superchat.decks import kit
 from omnigent.superchat.decks.handlers import run_helper
 from omnigent.superchat.decks.names import DECK_SUFFIX, is_deck_name
+from omnigent.superchat.decks.tools import DECK_LOOK_SOURCES
+
+ASK_FIRST = (
+    "The person has not chosen this deck's look. Ask first: call deck_themes, then "
+    'ask_clarification once with the question "Which look?" and 3 themes from different '
+    'categories, each option {"label": <theme name>, "preview": {"kind": "deck-theme", '
+    '"id": <theme id>}}, and end your turn. Build with their pick (look_from: picked).'
+)
 
 _MAX_LISTED = 25
 _SEVERITY_BUCKET = {"error": "errors", "warning": "warnings", "note": "notes"}
@@ -95,6 +103,16 @@ async def handle_deck_new(args: dict[str, Any]) -> str:
         return error("deck_new requires a title")
     if not isinstance(template, str) or template not in kit.templates():
         return error(f"deck_new template must be one of: {', '.join(kit.templates())}")
+    look_from = args.get("look_from")
+    if look_from == "ask":
+        return error(ASK_FIRST)
+    if isinstance(slides, str) and slides.strip() and look_from not in DECK_LOOK_SOURCES:
+        return error(
+            "deck_new requires look_from: "
+            + ", ".join(s for s in DECK_LOOK_SOURCES if s != "ask")
+            + ". If none fits, the person has not chosen the look yet. "
+            + ASK_FIRST
+        )
     if not isinstance(slides, str) or not slides.strip():
         return json.dumps(
             {

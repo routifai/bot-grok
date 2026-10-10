@@ -13,6 +13,9 @@ from omnigent.tools.base import Tool
 DECK_TOOL_NAMES = ("deck_export", "deck_new", "deck_check", "deck_themes", "deck_theme_set")
 DECK_AUTHORING_TOOL_NAMES = ("deck_new", "deck_check", "deck_themes", "deck_theme_set")
 DECK_EXPORT_FORMATS = ("pptx", "pdf")
+# Where a new deck's look came from (``deck_new``'s ``look_from``). ``ask`` is refused: the
+# person has not chosen yet, so the Muse asks "Which look?" first.
+DECK_LOOK_SOURCES = ("named", "picked", "preference", "you_choose", "background", "ask")
 
 
 class DeckExportTool(Tool):
@@ -102,6 +105,18 @@ class DeckNewTool(Tool):
                             ),
                         },
                         "template": {"type": "string", "enum": list(kit.templates())},
+                        "look_from": {
+                            "type": "string",
+                            "enum": list(DECK_LOOK_SOURCES),
+                            "description": (
+                                "Where this look came from: named (the person named the theme "
+                                "or a mood in this request), picked (from your 'Which look?' "
+                                "card), preference (their standing preference), you_choose "
+                                "(they said you choose / just do it), background (no person "
+                                "to ask). ask = none of these: refused, ask 'Which look?' "
+                                "first. An earlier deck's theme does not count."
+                            ),
+                        },
                         "title": {"type": "string", "description": "The deck's title."},
                         "slides": {
                             "type": "string",
@@ -113,7 +128,7 @@ class DeckNewTool(Tool):
                             ),
                         },
                     },
-                    "required": ["path", "template", "title"],
+                    "required": ["path", "template", "look_from", "title"],
                     "additionalProperties": False,
                 },
             },
