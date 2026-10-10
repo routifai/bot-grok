@@ -82,7 +82,7 @@ export function ArtifactFileCard(props: ArtifactFileCardProps) {
         <MediaTile
           openRef={previewButton}
           kind={kind}
-          brand={kind === "document" ? t`superchat Report` : kindLabel(kind)}
+          brand={kind === "document" ? t`Report` : kindLabel(kind)}
           title={heading ?? readableFileName(props.name)}
           art={
             hasLivePreview(artifact) ? (

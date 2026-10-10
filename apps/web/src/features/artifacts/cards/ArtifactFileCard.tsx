@@ -133,7 +133,7 @@ function SavedFileCard({ title, data }: { title?: string; data: ReplyCardDataOf<
     <div>
       <MediaTile
         kind={tileKind}
-        brand={tileKind === "document" ? t`superchat Report` : (kindText ?? t`File`)}
+        brand={tileKind === "document" ? t`Report` : (kindText ?? t`File`)}
         title={heading}
         badge={
           superseded ? (
