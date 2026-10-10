@@ -1522,6 +1522,27 @@ class SqlAlchemyConversationStore(ConversationStore):
 
         run_write_transaction(self._conv_session_immediate, "set_labels", write)
 
+    def set_inference_snapshot(
+        self,
+        conversation_id: str,
+        snapshot: dict[str, Any] | None,
+    ) -> None:
+        """Replace a conversation's saved harness and provider configuration."""
+        encoded = json.dumps(snapshot) if snapshot is not None else None
+        _validate_inference_snapshot(encoded)
+
+        def write(session: Session) -> None:
+            meta = session.scalars(
+                select(SqlConversationMetadata).where(
+                    SqlConversationMetadata.workspace_id == current_workspace_id(),
+                    SqlConversationMetadata.id == conversation_id,
+                )
+            ).first()
+            if meta is not None:
+                meta.inference_snapshot = encoded
+
+        run_write_transaction(self._session_immediate, "set_inference_snapshot", write)
+
     def set_session_state(
         self,
         conversation_id: str,

@@ -1227,6 +1227,22 @@ class ConversationStore(ABC):
         """
         ...
 
+    def set_inference_snapshot(
+        self,
+        conversation_id: str,
+        snapshot: dict[str, Any] | None,
+    ) -> None:
+        """
+        Replace a conversation's saved harness and provider configuration.
+
+        Used when a session switches to an agent on another harness: the snapshot captured at
+        create belongs to the old harness.
+
+        :param conversation_id: The conversation to update, e.g. ``"conv_abc123"``.
+        :param snapshot: The new snapshot, or ``None`` to clear it.
+        """
+        raise NotImplementedError
+
     @abstractmethod
     def set_session_state(
         self,

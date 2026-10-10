@@ -674,30 +674,22 @@ async def test_saved_profile_fork_accepts_an_alias_for_the_same_harness(env: _En
     assert response.status_code == 201, response.text
 
 
-@pytest.mark.parametrize("unbound_harness", [False, True])
-async def test_configured_session_rejects_agent_switch_before_mutation(
-    env: _Env, unbound_harness: bool
-):
-    if unbound_harness:
-        del env.catalog.runtime_config["inference"]["harnesses"]["codex"]
+async def test_configured_session_switch_captures_the_target_harness_configuration(env: _Env):
     created = await _json_create(env, model_override="gateway/fast")
     assert created.status_code == 201, created.text
     session_id = created.json()["id"]
     target_id = await _builtin(env, "claude-sdk")
-    before = env.persisted()
-    original = env.store.get_conversation(session_id)
     response = await env.client.post(
         f"/v1/sessions/{session_id}/switch-agent", json={"agent_id": target_id}
     )
-    assert response.status_code == 400, response.text
-    assert "Start a new session" in response.text
-    assert env.persisted() == before
+    assert response.status_code == 200, response.text
     saved = env.store.get_conversation(session_id)
-    assert saved is not None and original is not None
-    assert saved.agent_id == original.agent_id
-    assert saved.model_override == original.model_override
-    assert saved.inference_snapshot == original.inference_snapshot
-    assert env.app.state.agent_store.get(original.agent_id) is not None
+    assert saved is not None and saved.inference_snapshot is not None
+    # Captured again for the target's harness, on the same provider target.
+    assert saved.inference_snapshot["harness"] == "claude-sdk"
+    assert saved.model_override in {
+        row["id"] for row in saved.inference_snapshot["catalog"]["models"]
+    }
 
 
 @pytest.mark.parametrize("unbound_harness", [False, True])

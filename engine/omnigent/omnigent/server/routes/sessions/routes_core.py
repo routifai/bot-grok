@@ -3853,13 +3853,6 @@ def register_core_routes(
                 code=ErrorCode.INVALID_INPUT,
             )
 
-        if session.inference_snapshot is not None:
-            raise OmnigentError(
-                "This session has a saved harness and provider configuration. "
-                "Start a new session to choose another agent.",
-                code=ErrorCode.INVALID_INPUT,
-            )
-
         # Switching mid-turn would tear the running harness subprocess out
         # from under an active stream. Reject; the caller retries when idle.
         if _session_status_from_cache(session_id) == "running":
@@ -3903,7 +3896,7 @@ def register_core_routes(
         try:
             from omnigent.server.routes import sessions as _sessions_facade
 
-            await asyncio.to_thread(
+            loaded_target = await asyncio.to_thread(
                 _sessions_facade.get_agent_cache().load,
                 target_agent.id,
                 target_agent.bundle_location,
@@ -3914,6 +3907,12 @@ def register_core_routes(
                 f"Target agent bundle could not be loaded: {agent_id!r}",
                 code=ErrorCode.INVALID_INPUT,
             ) from exc
+
+        # A saved harness/provider configuration belongs to the harness it was captured for:
+        # capture it again for the target's harness (same provider), with the person's model.
+        new_snapshot, new_model = await _snapshot_for_switch(
+            request, session.inference_snapshot, loaded_target.spec, user_id
+        )
 
         retained_attachment = await asyncio.to_thread(
             _require_attachment_compatible_history,
@@ -3994,6 +3993,17 @@ def register_core_routes(
                 f"Session not found: {session_id!r}",
                 code=ErrorCode.NOT_FOUND,
             ) from exc
+        if new_snapshot is not None:
+            await asyncio.to_thread(
+                conversation_store.set_inference_snapshot, session_id, new_snapshot
+            )
+            refreshed = await asyncio.to_thread(
+                conversation_store.update_conversation,
+                session_id,
+                model_override=new_model,
+                _unset_model_override=new_model is None,
+            )
+            updated = refreshed or updated
 
         # The catalog cache is keyed by session, not harness family, and
         # outlives runner death — after a switch its rows may belong to the
@@ -4049,3 +4059,48 @@ def register_core_routes(
         )
 
     return CoreSessionOps(create_json_session=create_json_session, switch_agent=switch_agent)
+
+
+async def _snapshot_for_switch(
+    request: Request,
+    snapshot: dict[str, Any] | None,
+    target_spec: Any,
+    user_id: str | None,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """
+    The saved inference configuration and model a session switching to *target_spec* runs with.
+
+    :param request: The switch request (for the inference service and the person's defaults).
+    :param snapshot: The session's current snapshot, or ``None`` when it has none.
+    :param target_spec: The agent spec being switched to.
+    :param user_id: The person switching.
+    :returns: ``(snapshot, model)``; ``(None, None)`` when the session had no snapshot.
+    :raises OmnigentError: ``INVALID_INPUT`` when the provider has no configuration for the
+        target's harness.
+    """
+    if snapshot is None:
+        return None, None
+    from omnigent.server.routes.sandbox_inference import (
+        actual_harness,
+        inference_service,
+        selected_catalog_model,
+        user_default_model,
+    )
+
+    provider = str(snapshot.get("target_id") or "").removeprefix("sandbox:")
+    harness = actual_harness(target_spec, None)
+    fresh = await inference_service(request).prepare(
+        None if provider in ("", "default") else provider,
+        harness,
+        user_id,
+        agent_auth=target_spec.executor.auth,
+    )
+    if fresh is None:
+        raise OmnigentError(
+            "This session's provider has no configuration for the chosen agent's harness.",
+            code=ErrorCode.INVALID_INPUT,
+        )
+    model = selected_catalog_model(
+        fresh["catalog"], None, await user_default_model(request, user_id, harness)
+    )
+    return fresh, model
