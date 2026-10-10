@@ -10,8 +10,14 @@ each value is checked against something it cannot write itself:
 * ``preference``: an active memory claim the person stated (or wrote) about decks or themes
   names this theme; an inferred one does not count;
 * ``you_choose``: the message hands the choice over (:data:`YOU_CHOOSE_PHRASES`);
-* ``background``: the session is a Helper (session kind on the server; no person to ask). A
-  Helper passes whatever it says: there is never anyone to show a card to.
+* ``background``: the work is a scheduled or ad-hoc Helper run, or a scheduled fire (server
+  labels on the session or its parents), so there is no person to ask.
+
+A Helper is checked against the person-facing chat that owns it (its family root, found by
+walking ``parent_session_id`` up): the Muse settles the look before delegating, so the pick or
+the name is in that chat. When the check fails in a Helper, nothing is built and ``deck_new``
+refuses with :data:`HELPER_REFUSAL` (a card there would reach no one); the Helper reports back
+and the Muse asks.
 
 The person's latest message is the newest user message in the session's stored items that a
 person typed (runtime notices and hidden context are skipped). When the check fails, or
@@ -34,8 +40,12 @@ from typing import Any
 
 import httpx
 
+from omnigent.context.labels import (
+    ADHOC_HELPER_LABEL_KEY,
+    SCHEDULED_FIRE_LABEL_KEY,
+    SCHEDULED_HELPER_LABEL_KEY,
+)
 from omnigent.entities.conversation import is_system_notice_text
-from omnigent.superchat._handler_http import session_kind_and_parent
 from omnigent.superchat.cards.tools import build_clarification
 from omnigent.superchat.decks import kit
 from omnigent.superchat.feature import HandlerCtx
@@ -81,6 +91,14 @@ _LOOK_WORDS = ("deck", "slide", "presentation", "theme", "look")
 ITEMS_SCANNED = 60
 QUESTION = "Which look?"
 _SUB_AGENT = "sub_agent"
+#: Labels the server stamps on a run no person started (a schedule, a Goal's cadence, a pass).
+_BACKGROUND_LABELS = (SCHEDULED_HELPER_LABEL_KEY, ADHOC_HELPER_LABEL_KEY, SCHEDULED_FIRE_LABEL_KEY)
+#: Helpers nest one level (a worker's subworker); a deeper chain is not followed.
+_MAX_HOPS = 4
+HELPER_REFUSAL = (
+    "The person hasn't chosen a look. Stop and report back that the look must be settled "
+    "first; do not pick one."
+)
 #: The tools whose stored output may be the "Which look?" card the person answered.
 _CARD_TOOLS = frozenset({"deck_new", "ask_clarification"})
 _MCP_PREFIX = "mcp__omnigent__"
@@ -114,7 +132,8 @@ def mood_themes(text: str) -> set[str]:
 class LookEvidence:
     """What the server holds about this choice; nothing here comes from the model.
 
-    :param is_helper: The session is a Helper (background work, no person).
+    :param is_helper: The caller is a Helper; the rest was read from its family's root chat.
+    :param background: A schedule or an ad-hoc pass started this work, not a person.
     :param message: The person's latest message, or ``""``.
     :param offered: ``(label, theme id)`` of the deck-theme card shown just before that message,
         or ``None`` when there was none.
@@ -122,6 +141,7 @@ class LookEvidence:
     """
 
     is_helper: bool = False
+    background: bool = False
     message: str = ""
     offered: tuple[tuple[str, str], ...] | None = None
     claims: tuple[str, ...] = field(default=())
@@ -129,8 +149,6 @@ class LookEvidence:
 
 def check_look(look_from: object, theme_id: str, evidence: LookEvidence) -> str | None:
     """Why *look_from* does not hold for *theme_id*, or ``None`` when the records confirm it."""
-    if evidence.is_helper:
-        return None
     message = evidence.message.lower()
     if look_from == "named":
         if theme_id in named_themes(message) | mood_themes(message):
@@ -158,6 +176,8 @@ def check_look(look_from: object, theme_id: str, evidence: LookEvidence) -> str 
             return None
         return "the person did not hand you the choice."
     if look_from == "background":
+        if evidence.background:
+            return None
         return "this is not background work: the person is here to choose."
     return "the person has not chosen this deck's look."
 
@@ -252,11 +272,21 @@ async def gather_evidence(ctx: HandlerCtx | None, look_from: object) -> LookEvid
     if ctx is None or ctx.server_client is None or not ctx.conversation_id:
         return "the look cannot be checked here."
     client, session = ctx.server_client, ctx.conversation_id
-    lookup = await session_kind_and_parent(session, client)
-    if lookup is None:
-        return "the session could not be checked."
-    if lookup[0] == _SUB_AGENT:
-        return LookEvidence(is_helper=True)
+    is_helper = background = False
+    for _ in range(_MAX_HOPS):
+        info = await _get(client, f"/v1/sessions/{session}")
+        if not isinstance(info, dict) or not isinstance(info.get("kind"), str):
+            return "the session could not be checked."
+        labels = info.get("labels") if isinstance(info.get("labels"), dict) else {}
+        background = background or any(key in labels for key in _BACKGROUND_LABELS)
+        parent = info.get("parent_session_id")
+        if info["kind"] != _SUB_AGENT:
+            break
+        if not isinstance(parent, str) or not parent:
+            return "the Helper's chat could not be found."
+        is_helper, session = True, parent
+    else:
+        return "the Helper's chat could not be found."
     page = await _get(client, f"/v1/sessions/{session}/items", order="desc", limit=ITEMS_SCANNED)
     items = page.get("data") if isinstance(page, dict) else None
     if not isinstance(items, list):
@@ -271,17 +301,27 @@ async def gather_evidence(ctx: HandlerCtx | None, look_from: object) -> LookEvid
             for c in rows or ()
             if isinstance(c, dict) and c.get("status") == "active" and _person_said(c)
         )
-    return LookEvidence(message=message, offered=offered, claims=claims)
+    return LookEvidence(
+        is_helper=is_helper, background=background, message=message, offered=offered, claims=claims
+    )
 
 
-async def verify_look(
-    ctx: HandlerCtx | None, look_from: object, theme_id: str
-) -> tuple[str | None, str]:
-    """``(why it fails or None, the person's latest message)`` for a new deck in *theme_id*."""
+@dataclass(frozen=True)
+class LookCheck:
+    """The gate's verdict: ``problem`` is ``None`` when the look is the person's choice."""
+
+    problem: str | None
+    message: str = ""
+    in_helper: bool = False
+
+
+async def verify_look(ctx: HandlerCtx | None, look_from: object, theme_id: str) -> LookCheck:
+    """Whether a new deck in *theme_id* may be built, read from the chat the person sees."""
     evidence = await gather_evidence(ctx, look_from)
     if isinstance(evidence, str):
-        return evidence, ""
-    return check_look(look_from, theme_id, evidence), evidence.message
+        return LookCheck(evidence)
+    problem = check_look(look_from, theme_id, evidence)
+    return LookCheck(problem, evidence.message, evidence.is_helper)
 
 
 def pick_three(hint: str) -> list[str]:

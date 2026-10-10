@@ -17,7 +17,7 @@ from omnigent.superchat._handler_http import error
 from omnigent.superchat.artifacts import workspace_roots
 from omnigent.superchat.decks import kit
 from omnigent.superchat.decks.handlers import run_helper
-from omnigent.superchat.decks.look import look_card, verify_look
+from omnigent.superchat.decks.look import HELPER_REFUSAL, look_card, verify_look
 from omnigent.superchat.decks.names import DECK_SUFFIX, is_deck_name
 
 if TYPE_CHECKING:
@@ -103,9 +103,11 @@ async def handle_deck_new(args: dict[str, Any], ctx: HandlerCtx | None = None) -
         return error("deck_new requires a title")
     if not isinstance(template, str) or template not in kit.templates():
         return error(f"deck_new template must be one of: {', '.join(kit.templates())}")
-    problem, message = await verify_look(ctx, args.get("look_from"), template)
-    if problem is not None:
-        return json.dumps(look_card(problem, f"{title} {message}"), ensure_ascii=False)
+    check = await verify_look(ctx, args.get("look_from"), template)
+    if check.problem is not None:
+        if check.in_helper:  # no one would see a card: the Helper reports back, the Muse asks
+            return error(f"{HELPER_REFUSAL} ({check.problem})")
+        return json.dumps(look_card(check.problem, f"{title} {check.message}"), ensure_ascii=False)
     if not isinstance(slides, str) or not slides.strip():
         return json.dumps(
             {

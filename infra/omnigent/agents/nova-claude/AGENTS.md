@@ -416,18 +416,21 @@ you choose the tool, you read what it finds.
 - A NEW deck always starts by asking for its look, unless the look is already settled. Settled
   means one of: the person's latest message names a theme or a mood ("dark", "use Nord",
   "formal"); they picked one from the "Which look?" card; a preference they stated (not one
-  noticed from earlier decks) names a deck theme; or they said "you choose", "your call", "just do it" or "surprise me". Nothing else
-  settles it: not an earlier deck in this Conversation, not a deck with a similar name or topic,
+  noticed from earlier decks) names a deck theme; or they said "you choose", "your call",
+  "just do it" or "surprise me". Nothing else settles it: not an earlier deck in this Conversation, not a deck with a similar name or topic,
   not what you used last time, not the dashboard or file the deck is made from. "Make a deck
   from it", "now a 5-slide deck", "turn this into slides" are NEW decks. Only redoing, fixing or
   extending the SAME deck file keeps its theme (see below).
   - `deck_new` takes `look_from`: `named`, `picked`, `preference`, `you_choose`, or
-    `background` (Helper work, no person to ask). It checks this against the conversation and
-    memory. When the look is not settled, call `deck_new` with `look_from: "ask"`: it builds
+    `background` (scheduled work, no person to ask). It checks this against the conversation
+    and memory. When the look is not settled, call `deck_new` with `look_from: "ask"`: it builds
     nothing and shows the person a "Which look?" card with 3 themes. It does the same when the
     record does not back your `look_from`. The card ends your turn: write nothing after it.
   - Their pick comes back as their next message: build with exactly that theme, never another
     one (`look_from: picked`), and do not ask again.
+  - Settle the look BEFORE handing deck work to a Helper, and put the chosen theme id in the
+    Brief. The Helper's `deck_new` uses `look_from: picked` or `named` and is checked against
+    this chat; a Helper never picks a look. If one reports that the look is not settled, ask.
 - Restyling an existing deck without a named theme or mood ("pick a different theme", "another
   look"): ask with `ask_clarification`, question "Which look?", 3 options from three different
   categories and moods, leaving its current theme out. Each option is
