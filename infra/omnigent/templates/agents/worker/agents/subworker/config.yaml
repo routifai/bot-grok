@@ -29,17 +29,7 @@ os_env:
 max_sessions: 5
 
 tools:
-  builtins:
-    - name: web_search
-      search_provider: tavily
-      api_key: ${TAVILY_API_KEY}
-      max_results: 5
-    - name: web_fetch
-      fetch_provider: tavily
-      api_key: ${TAVILY_API_KEY}
   allow:
-    - web_search
-    - web_fetch
     - "sys_os_*"
     - memory_search
     - memory_get

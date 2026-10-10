@@ -68,7 +68,7 @@ The images are Omnigent's own (`engine/omnigent/deploy/docker/Dockerfile`, built
 | `api`, `worker`, `web` (`5173`) | one app image, `infra/compose/Dockerfile` |
 
 `.env` keys beyond the app's own: `OMNIGENT_PROXY_SECRET` and `OMNIGENT_VAULT_KEY` (engine
-secrets), `ANTHROPIC_API_KEY`, `TAVILY_API_KEY`, and `ENGINE_PUBLIC_URL` (where each Computer
+secrets), `ANTHROPIC_API_KEY`, and `ENGINE_PUBLIC_URL` (where each Computer
 reaches the engine; default `http://host.docker.internal:8012`). Set `LITELLM_BASE_URL` and
 `LITELLM_API_KEY` to send every model call through an existing LiteLLM proxy instead of the
 Anthropic key: the engine adds the key (it never enters a Computer), claude-sdk reaches the proxy's

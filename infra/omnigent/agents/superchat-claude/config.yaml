@@ -40,22 +40,10 @@ os_env:
     write_paths: [/home/superchat/workspace]
 
 tools:
-  builtins:
-    # Web search goes straight to Tavily's API (no sandboxed web-research sub-agent).
-    - name: web_search
-      search_provider: tavily
-      api_key: ${TAVILY_API_KEY}
-      max_results: 5
-    # Read one page's text headlessly (Tavily extract); pairs with web_search.
-    - name: web_fetch
-      fetch_provider: tavily
-      api_key: ${TAVILY_API_KEY}
   # Only what the Muse's job needs. Helpers are started with start_helper, told more with
   # message_helper and followed up with the inbox; everything else the framework registers
   # (policy, comments, agent management, model listing, skills, renaming) is withheld.
   allow:
-    - web_search
-    - web_fetch
     - "sys_os_*"
     - "memory_*"
     - session_history

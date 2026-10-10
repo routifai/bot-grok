@@ -29,7 +29,7 @@ for key in BETTER_AUTH_SECRET ENCRYPTION_KEY SCREEN_PROXY_SECRET SANDBOX_SUPERVI
   fill "$key" "$(openssl rand -hex 32)"
 done
 fill OMNIGENT_VAULT_KEY "$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"
-for key in ANTHROPIC_API_KEY OPENROUTER_API_KEY TAVILY_API_KEY LITELLM_BASE_URL LITELLM_API_KEY; do
+for key in ANTHROPIC_API_KEY OPENROUTER_API_KEY LITELLM_BASE_URL LITELLM_API_KEY; do
   [[ -z "${!key:-}" ]] || fill "$key" "${!key}"
 done
 [[ -n "$(env_get ANTHROPIC_API_KEY)$(env_get LITELLM_BASE_URL)" ]] ||

@@ -104,27 +104,6 @@ def test_spec_loader_loads_both_bundles(
             assert sub.executor.config["context_files"] is False, sub.name
             assert sub.executor.config["system_prompt_mode"] == "replace", sub.name
             assert sub.skills_filter == "none", sub.name
-
-
-@pytest.mark.parametrize("name", ["superchat-claude", "superchat-pi"])
-@pytest.mark.parametrize("helper", ["worker", "subworker"])
-def test_helpers_are_offered_web_search_and_web_fetch(
-    name: str, helper: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The tool surface a Helper session gets (spec + Helper label) includes the web tools."""
-    from omnigent.context.labels import SUBAGENT_LABEL_KEY
-    from omnigent.spec import parse
-    from omnigent.tools.manager import ToolManager
-
-    monkeypatch.setenv("TAVILY_API_KEY", "x")
-    root = parse(AGENTS / name)
-    worker = next(a for a in root.sub_agents if a.name == "worker")
-    spec = worker if helper == "worker" else next(a for a in worker.sub_agents)
-    assert spec.name == helper
-    tools = ToolManager(spec, os_env_schema_only=True, labels={SUBAGENT_LABEL_KEY: "1"})
-    assert {"web_search", "web_fetch"} <= set(tools.get_tool_names())
-
-
 @pytest.mark.parametrize("bundle", [CLAUDE, PI], ids=["claude", "pi"])
 def test_the_muse_may_call_its_reply_tools(bundle: Path) -> None:
     # A feature tool missing from the Muse's allow list is invisible to it.

@@ -52,7 +52,7 @@ port is published.
 ```
 
 It creates `.env` from `.env.docker.example` (or keeps yours and adds missing keys), fills blank
-secrets with `openssl rand`, copies `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `TAVILY_API_KEY`,
+secrets with `openssl rand`, copies `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`,
 `LITELLM_BASE_URL` and `LITELLM_API_KEY` from your environment when `.env` lacks them, then builds
 and starts the stack and waits for it to be healthy.
 
