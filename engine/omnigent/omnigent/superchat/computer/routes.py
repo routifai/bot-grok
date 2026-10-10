@@ -53,7 +53,8 @@ def register_computer_routes(
     )
     async def get_computer(request: Request, session_id: str) -> dict[str, Any]:
         """
-        Report whether the session has a computer screen and whether a person controls it.
+        Report whether the session has a computer screen, whether a person controls it, and
+        whether its runner is connected.
 
         :param session_id: Session identifier, e.g. ``"conv_abc123"``.
         :returns: ``{"available": bool, "in_control": bool, "ready": bool, "launch": ...}``;
@@ -69,11 +70,8 @@ def register_computer_routes(
 
         cached = _session_sandbox_status_cache.get(session_id)
         launch = {"stage": cached.stage, "error": cached.error} if cached is not None else None
-        target = await asyncio.to_thread(_target, request, session_id)
-        if target is None:
-            return {"available": False, "in_control": False, "ready": False, "launch": launch}
-        _launcher, _sandbox_id, host_id, host_store = target
-        held = await asyncio.to_thread(host_store.get_computer_control_token, host_id)
+        # The runner is bound and connected whether or not it has a screen: a Computer without
+        # a desktop (or a connected host) is still running, never "asleep".
         conv = await asyncio.to_thread(conversation_store.get_conversation, session_id)
         tunnels = getattr(request.app.state, "tunnel_registry", None)
         ready = bool(
@@ -82,6 +80,11 @@ def register_computer_routes(
             and tunnels is not None
             and tunnels.get(conv.runner_id) is not None
         )
+        target = await asyncio.to_thread(_target, request, session_id)
+        if target is None:
+            return {"available": False, "in_control": False, "ready": ready, "launch": launch}
+        _launcher, _sandbox_id, host_id, host_store = target
+        held = await asyncio.to_thread(host_store.get_computer_control_token, host_id)
         return {
             "available": True,
             "in_control": held is not None,

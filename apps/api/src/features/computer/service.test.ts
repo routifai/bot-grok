@@ -67,6 +67,18 @@ describe("engine-owned computer", () => {
     expect((await engineComputerStatus(d, client, actor, "bot-1")).launch).toBeUndefined();
   });
 
+  it("is running while the runner is connected, even with no screen to show", async () => {
+    stubEngine({ available: false, in_control: false, ready: true, launch: null });
+    const status = await engineComputerStatus(deps().deps, client, actor, "bot-1");
+    expect(status).toMatchObject({ state: "running", runnerReady: true, screenAvailable: false });
+  });
+
+  it("is stopped when neither a screen nor a connected runner is there", async () => {
+    stubEngine({ available: false, in_control: false, ready: false, launch: null });
+    const status = await engineComputerStatus(deps().deps, client, actor, "bot-1");
+    expect(status).toMatchObject({ state: "stopped", screenAvailable: false });
+  });
+
   it("is stopped without a Conversation yet and does not call the engine", async () => {
     const calls = stubEngine();
     const status = await engineComputerStatus(deps(null).deps, client, actor, "bot-1");
