@@ -24,23 +24,17 @@ export interface OmnigentConnection {
  * engine scopes per-person resources (`/v1/me/muse`, the Muse's Computer) to that space. */
 export interface OmnigentClientConfig extends OmnigentConnection {
   tenant: string;
-  /** The caller is an organization owner/admin: sent as `X-Omnigent-Admin: 1` so the engine
-   * makes them an admin (the engine honors it only alongside the proxy secret). */
-  admin?: boolean;
 }
 
 /** The header the engine reads the tenant from; the engine's `OMNIGENT_AUTH_TENANT_HEADER`
  * must name it. */
 export const OMNIGENT_TENANT_HEADER = "X-Omnigent-Tenant";
 
-export const OMNIGENT_ADMIN_HEADER = "X-Omnigent-Admin";
-
 export function omnigentClientFor(
   connection: OmnigentConnection,
   tenant: string,
-  admin = false,
 ): OmnigentClientConfig {
-  return admin ? { ...connection, tenant, admin } : { ...connection, tenant };
+  return { ...connection, tenant };
 }
 
 export interface OmnigentSessionResponse {
@@ -64,7 +58,6 @@ export function omnigentHeaders(
     "X-Forwarded-Email": email,
     "X-Omnigent-Proxy-Secret": config.proxySecret,
     [OMNIGENT_TENANT_HEADER]: config.tenant,
-    ...(config.admin ? { [OMNIGENT_ADMIN_HEADER]: "1" } : {}),
   };
 }
 

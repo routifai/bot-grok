@@ -30,10 +30,7 @@ async function engineOf(deps: ArchivingDeps, actor: Actor, botId: string, env: N
     select: { email: true },
   });
   if (!user) throw new IsolationError();
-  return {
-    client: omnigentClientFor(connection, actor.spaceId, actor.isOrgAdmin === true),
-    email: user.email,
-  };
+  return { client: omnigentClientFor(connection, actor.spaceId), email: user.email };
 }
 
 function toArchiving(saved: OmnigentArchiving): Archiving {

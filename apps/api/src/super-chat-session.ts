@@ -20,7 +20,7 @@ export function requireClient(env: NodeJS.ProcessEnv, actor: Actor): OmnigentCli
   if (!connection) {
     throw new ORPCError("BAD_REQUEST", { message: "Chat is not available right now." });
   }
-  return omnigentClientFor(connection, actor.spaceId, actor.isOrgAdmin === true);
+  return omnigentClientFor(connection, actor.spaceId);
 }
 
 export async function requireSuperChat(

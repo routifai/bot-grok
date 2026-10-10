@@ -12,7 +12,7 @@ import { getLogger } from "@superchat/logging";
 
 export async function syncEngineTimezone(
   prisma: Pick<PrismaClient, "user">,
-  actor: Pick<Actor, "userId" | "spaceId" | "isOrgAdmin">,
+  actor: Pick<Actor, "userId" | "spaceId">,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
   const connection = omnigentClientConfigFromEnv(env);
@@ -24,7 +24,7 @@ export async function syncEngineTimezone(
     });
     if (user?.timezone) {
       await putOmnigentTimezone(
-        omnigentClientFor(connection, actor.spaceId, actor.isOrgAdmin === true),
+        omnigentClientFor(connection, actor.spaceId),
         user.email,
         user.timezone,
       );
