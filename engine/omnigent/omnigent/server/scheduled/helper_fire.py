@@ -580,6 +580,26 @@ async def _create_helper_session(
     return conv
 
 
+def scheduled_brief(task: ScheduledTask, conv: Conversation) -> str:
+    """
+    The prompt a run starts with; an automation run says it is one, by name.
+
+    The Result goes back to the person's chat unprompted, so it has to say where it comes from:
+    otherwise the chat reads it as work nobody asked for.
+
+    :param task: The scheduled task being fired.
+    :param conv: The Helper session the run executes in.
+    :returns: The task prompt, prefixed for a run that reports back to its parent.
+    """
+    if SCHEDULED_HELPER_LABEL_KEY not in (getattr(conv, "labels", None) or {}):
+        return task.prompt
+    return (
+        f'This is the person\'s automation "{task.name}", running on its schedule (not a '
+        f'message in chat). Begin your final answer with: Automation "{task.name}": '
+        f"\n\n{task.prompt}"
+    )
+
+
 def _make_parent_runner_dispatch(
     deps: FireDeps, *, event: SessionEventInput | None = None
 ) -> LaunchDispatch:
@@ -620,7 +640,7 @@ def _make_parent_runner_dispatch(
         await _dispatch_session_event_to_runner(
             conv.id,
             conv_for_dispatch,
-            event or fire._prompt_event(task.prompt),
+            event or fire._prompt_event(scheduled_brief(task, conv)),
             deps.conversation_store,
             runner_client,
             agent_name=None,

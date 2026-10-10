@@ -93,6 +93,11 @@ export function useAutomations(botId: string, enabled: boolean, wire: Automation
     async (id: string) => {
       await wire.run({ botId, id });
       await refresh();
+      // The engine records the run once the fire starts, a moment after the request returns.
+      for (const delayMs of [1500, 4000]) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        await refresh();
+      }
     },
     [botId, refresh, wire],
   );

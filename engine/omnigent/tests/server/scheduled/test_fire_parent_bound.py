@@ -560,3 +560,18 @@ async def test_dispatch_failure_marks_its_helper_failed() -> None:
     assert conv_store.live_status == {"conv_1": "failed"}
     assert store.runs[0]["conversation_id"] == "conv_1"
     assert "conv_parent" not in conv_store.appended  # a retry is pending
+
+
+def test_an_automation_run_says_it_is_one_by_name() -> None:
+    from omnigent.context.labels import SCHEDULED_HELPER_LABEL_KEY
+    from omnigent.server.scheduled.helper_fire import scheduled_brief
+
+    task = SimpleNamespace(name="Weekly files", prompt="Count my files.")
+    reporting = SimpleNamespace(labels={SCHEDULED_HELPER_LABEL_KEY: "task-1"})
+    silent = SimpleNamespace(labels={})
+
+    brief = scheduled_brief(task, reporting)  # type: ignore[arg-type]
+    assert 'automation "Weekly files"' in brief
+    assert 'Begin your final answer with: Automation "Weekly files":' in brief
+    assert brief.endswith("Count my files.")
+    assert scheduled_brief(task, silent) == "Count my files."  # type: ignore[arg-type]
