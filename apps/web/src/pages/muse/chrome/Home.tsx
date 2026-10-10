@@ -32,9 +32,12 @@ export function Home({
       <header className="relative flex items-center justify-between gap-3">
         <SuperchatLogo />
       </header>
-      <div className="relative flex flex-1 flex-wrap items-stretch gap-8">
-        <div className="flex flex-none items-center self-start md:self-center">{dock}</div>
-        <main className="flex min-h-[300px] min-w-0 flex-[999_1_560px] flex-col items-center justify-center gap-8 md:pb-80 md:pe-8 xl:pb-24 xl:pe-[400px]">
+      <div className="relative flex flex-1 flex-col gap-8 md:block">
+        {/* The dock floats on the left so the greeting centres on the whole window. */}
+        <div className="flex flex-none md:absolute md:inset-y-0 md:start-0 md:z-10 md:items-center">
+          {dock}
+        </div>
+        <main className="flex min-h-[300px] min-w-0 flex-col items-center justify-center gap-8 md:h-full md:px-28">
           <h1
             className="max-w-[680px] text-center text-[34px] leading-[1.12] font-medium tracking-[-0.03em] text-balance text-foreground/90 md:text-[52px]"
             dir="auto"
