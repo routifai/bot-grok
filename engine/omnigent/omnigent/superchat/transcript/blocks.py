@@ -17,7 +17,9 @@ out. The rules a client would otherwise copy:
   ``passages`` card (citation chips) under the next assistant message;
 * a turn shows one assistant text: its last. Text the Muse wrote between tool calls earlier in
   the same turn (a user message starts a turn) is interim narration and is not a message; the
-  Helper rows and citation chips it would have carried move to the turn's last text;
+  Helper rows and citation chips it would have carried move to the turn's last text. A short
+  text (under :data:`NOTE_WORDS` words) that more work follows is a working note even while it
+  is the turn's last text so far (a turn still running): it is not a message either;
 * one ``call_id`` is one block, however often the call repeats;
 * an ``error`` item is an ``error`` block carrying its code, never its text; the code is read
   through ``public_error_code`` so legacy rows (exception names, old codes) show the closed set.
@@ -289,6 +291,27 @@ def _message(item: Item, role: str, blocks: list[dict[str, Any]]) -> dict[str, A
 
 #: Tools whose card result ends the turn (``deck_new`` shows its "Which look?" card this way).
 _TURN_ENDING_CARD_TOOLS = tuple(sorted(ENDS_TURN_TOOLS))
+#: Calls that show the person something (a card, a file, a secure entry, a Helper row): the text
+#: before one is the answer it belongs to, not a working note.
+_SHOWING_TOOLS = (
+    CARD_TOOL_NAME,
+    VAULT_REQUEST_TOOL_NAME,
+    START_HELPER_TOOL_NAME,
+    *FILE_RESULT_TOOL_NAMES,
+)
+#: A text this short that more work follows is the model's note to itself ("Shorten the label.").
+NOTE_WORDS = 12
+
+
+def _is_work(item: Item, outputs: Mapping[str, str]) -> bool:
+    """Whether the call *item* is work rather than something shown (a turn-ending tool counts as
+    shown only when it answered with its card)."""
+    if any(_is_call(item, name) for name in _SHOWING_TOOLS):
+        return False
+    if any(_is_call(item, name) for name in _TURN_ENDING_CARD_TOOLS):
+        result = _object(outputs.get(str(item.get("call_id") or "")))
+        return not (result and result.get("type") == "card")
+    return True
 
 
 def _final_text_ids(items: list[Item], outputs: Mapping[str, str]) -> set[str]:
@@ -298,8 +321,11 @@ def _final_text_ids(items: list[Item], outputs: Mapping[str, str]) -> set[str]:
     :data:`ENDS_TURN_TOOLS` card) ends there: the
     card belongs to the answer written before it, so text the model adds after the card is
     dropped instead of replacing the answer (and pushing the chips off the last message).
+    A short text that work follows is a working note, so it never ends its turn, even while
+    the turn is still running and it is the newest text.
     """
     final: dict[int, str] = {}
+    notes: set[str] = set()
     closed: set[int] = set()
     turn = 0
     for item in items:
@@ -308,6 +334,8 @@ def _final_text_ids(items: list[Item], outputs: Mapping[str, str]) -> set[str]:
                 result = _object(outputs.get(str(item.get("call_id") or "")))
                 if result and result.get("type") == "card":
                     closed.add(turn)
+            if final.get(turn) in notes and _is_work(item, outputs):
+                del final[turn]  # a working note, not the answer
             continue
         if item.get("type") != "message" or item.get("is_meta") is True:
             continue
@@ -320,6 +348,8 @@ def _final_text_ids(items: list[Item], outputs: Mapping[str, str]) -> set[str]:
             and "id" in item
         ):
             final[turn] = item["id"]
+            if len(item_text(item).split()) < NOTE_WORDS:
+                notes.add(item["id"])
     return set(final.values())
 
 

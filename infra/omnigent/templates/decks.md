@@ -77,7 +77,7 @@
   switch (yours or the person's) rewrites only what is between the markers and keeps everything
   after them.
 - Fix every error `deck_check` or `deck_new` lists by editing the slides in place with exact
-  replacements, then run `deck_check` again. Never rewrite the whole file, and never read or
+  replacements, then run `deck_check` again, writing nothing between those calls. Never rewrite the whole file, and never read or
   print its font block (one huge line at the end). When it is clean, `artifact_save` it and
   reply in one line. The person exports from the panel; call `deck_export` only when they ask
   you for the PowerPoint or PDF in chat.
