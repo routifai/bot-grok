@@ -64,53 +64,23 @@ def test_ordinary_shell_commands_pass(command: str) -> None:
     assert approvals.classify_tool_call("sys_os_shell", {"command": command}) is None
 
 
-SPEC_RUN = (
-    "cat > {spec} <<'EOF'\n"
-    '{{"title": "Sales", "names": {{"rm": "Delete from orders"}}}}\n'
-    "EOF\n"
-    "nova-dashboard build {spec} -o your_files/sales.dashboard.html && rm {rm}"
-)
-
-
 @pytest.mark.parametrize(
     "command",
     [
-        # the agent's own scratch: under /tmp or $TMPDIR, or written earlier in this command
-        SPEC_RUN.format(spec="/tmp/sales_spec_tmp.json", rm="/tmp/sales_spec_tmp.json"),
-        SPEC_RUN.format(spec="sales_spec_tmp.json", rm="-f sales_spec_tmp.json"),
-        SPEC_RUN.format(spec="./a/spec.json", rm="a/spec.json"),
-        "echo x | tee notes.tmp && rm notes.tmp",
-        "cd /tmp && rm spec.json",
-        "rm -rf $TMPDIR/nova-run",
-        "find /tmp/work -name '*.json' -delete",
+        "rm your_files/sales_spec_tmp.json",
+        "echo -n >> your_files/a.csv; rm your_files/a.csv",
+        "echo x | tee -a your_files/a.csv && rm your_files/a.csv",
+        "cd /tmp; cd; rm notes.txt",
+        "pushd /tmp && rm report.pdf",
+        "TMPDIR=~/Documents; rm -rf $TMPDIR/old",
+        "find /tmp ~/Documents -delete",
+        "find /tmp -exec rm -rf ~/Documents ;",
+        "cat <<EOF | sh\nrm -rf ~/Documents\nEOF",
+        "rm /tmp/../home/me/report.pdf",
     ],
 )
-def test_deleting_the_agents_own_scratch_never_asks(command: str) -> None:
-    assert approvals.classify_tool_call("sys_os_shell", {"command": command}) is None
-
-
-@pytest.mark.parametrize(
-    "command",
-    [
-        "rm your_files/sales.csv",  # the person's file, not written here
-        SPEC_RUN.format(spec="/tmp/s.json", rm="your_files/orders.csv"),
-        "echo x > ~/Documents/a && rm -rf ~/Documents",  # a written file never covers a tree
-        "rm /tmp/../home/me/report.pdf",  # leaves /tmp
-        "rm -rf $TMPDIR/../work",
-        "cd ~/workspace && rm spec.json",  # only an absolute cd is followed
-        "find your_files -delete",
-    ],
-)
-def test_deleting_the_persons_files_still_asks(command: str) -> None:
+def test_deletes_outside_scratch_always_ask(command: str) -> None:
     risk = approvals.classify_tool_call("sys_os_shell", {"command": command})
-    assert risk is not None and risk.category == "delete"
-
-
-def test_a_heredoc_written_to_a_file_is_data_but_one_fed_to_a_program_is_commands() -> None:
-    to_file = "cat > /tmp/q.sql <<-SQL\n\tDROP TABLE orders;\n\tSQL\nwc -l /tmp/q.sql"
-    assert approvals.classify_tool_call("sys_os_shell", {"command": to_file}) is None
-    fed = "psql shop <<SQL\nDROP TABLE orders;\nSQL"
-    risk = approvals.classify_tool_call("sys_os_shell", {"command": fed})
     assert risk is not None and risk.category == "delete"
 
 

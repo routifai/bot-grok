@@ -112,9 +112,7 @@ _MONEY_RE = re.compile(
     r"|\b(?:usd|eur|gbp|cad)\s?(\d+(?:\.\d{1,2})?))",
     re.I,
 )
-# Scratch space: deleting under it never asks. ``$TMPDIR`` is the agent's own temp folder.
 _SAFE_DELETE_ROOTS = ("/tmp/", "/var/tmp/", "/private/tmp/", "/private/var/folders/")
-_SAFE_DELETE_VARS = ("$TMPDIR/", "${TMPDIR}/")
 _LOCAL_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1", "host.docker.internal"}
 
 _SHELL_TOOLS = {
@@ -184,36 +182,9 @@ def _money(text: str) -> float | None:
         return None
 
 
-_HEREDOC_RE = re.compile(r"<<(-?)\s*(['\"]?)([A-Za-z_][\w-]*)\2")
-
-
-#: A heredoc only written to a file (``cat > f <<EOF``, ``tee f <<EOF``): its body is data.
-_TO_FILE_RE = re.compile(r"^\s*(?:cat\b[^|;&]*>|tee\b)")
-
-
-def _strip_heredocs(command: str) -> str:
-    """*command* without the bodies of heredocs written to a file: those lines are data (a JSON
-    spec), not commands. A body fed to a program (``psql <<SQL``) stays: it is commands."""
-    kept: list[str] = []
-    ends: list[tuple[str, bool]] = []
-    data = False
-    for line in command.split("\n"):
-        if ends:
-            word, indented = ends[0]
-            if (line.lstrip("\t") if indented else line) == word:
-                ends.pop(0)
-            elif data:
-                continue
-        kept.append(line)
-        if not ends:
-            ends = [(m.group(3), m.group(1) == "-") for m in _HEREDOC_RE.finditer(line)]
-            data = bool(ends) and _TO_FILE_RE.match(line) is not None
-    return "\n".join(kept)
-
-
 def _segments(command: str) -> list[list[str]]:
     out: list[list[str]] = []
-    for part in _SPLIT_RE.split(_strip_heredocs(command)):
+    for part in _SPLIT_RE.split(command):
         try:
             tokens = shlex.split(part, posix=True)
         except ValueError:
@@ -225,71 +196,24 @@ def _segments(command: str) -> list[list[str]]:
     return out
 
 
-class _Scratch:
-    """What one shell command made its own: the files it wrote, and the folder it is in.
-
-    A delete never asks when every path is under a scratch root (``/tmp``, ``$TMPDIR``), or is a
-    file written earlier in the same command (``> f``, ``tee f``, ``-o f``) and the delete is not
-    recursive. Limits: only this command is seen, so a file written by an earlier call still
-    asks; ``cd`` is followed only to an absolute folder; a file written here counts as scratch
-    even if the write replaced one of the person's files (which the write had already lost).
-    """
-
-    def __init__(self) -> None:
-        self.cwd: str | None = None
-        self.written: set[str] = set()
-
-    def key(self, path: str) -> str:
-        if self.cwd and not path.startswith(("/", "~", "$")):
-            path = os.path.join(self.cwd, path)
-        return os.path.normpath(path)
-
-    def is_scratch(self, path: str, *, tree: bool = False) -> bool:
-        """Whether deleting *path* (a whole folder when *tree*) touches only scratch."""
-        if path.startswith(_SAFE_DELETE_VARS) and ".." not in path.split("/"):
-            return True
-        key = self.key(path)
-        return key.startswith(_SAFE_DELETE_ROOTS) or (not tree and key in self.written)
-
-    def note(self, prog: str, args: list[str]) -> None:
-        """Remember what this segment wrote, and where a ``cd`` moved to."""
-        if prog == "cd" and args:
-            self.cwd = os.path.normpath(args[0]) if args[0].startswith("/") else None
-        targets: list[str] = []
-        for i, arg in enumerate(args):
-            nxt = args[i + 1] if i + 1 < len(args) else ""
-            if arg in {">", ">>", "1>", "-o", "--out", "--output"}:
-                targets.append(nxt)
-            elif arg.startswith(">") and arg.lstrip(">"):
-                targets.append(arg.lstrip(">"))
-        if prog == "tee":
-            targets.extend(a for a in args if not a.startswith("-"))
-        self.written.update(self.key(t) for t in targets if t and not t.startswith("<"))
-
-
-def _shell_segment_risk(
-    tokens: list[str], text: str, scratch: _Scratch | None = None
-) -> Risk | None:
+def _shell_segment_risk(tokens: list[str], text: str) -> Risk | None:
     prog = os.path.basename(tokens[0]).lower()
     args = tokens[1:]
     lowered = [a.lower() for a in args]
     urls = [u for t in tokens for u in _URL_RE.findall(t)]
     hosts = [h for h in (_host(u) for u in urls) if h and h not in _LOCAL_HOSTS]
     low_text = text.lower()
-    scratch = scratch or _Scratch()
 
     # delete
     if prog in {"rm", "rmdir", "unlink", "shred", "trash", "srm"}:
         paths = [a for a in args if not a.startswith("-")]
-        tree = any(re.fullmatch(r"-\w*[rR]\w*|--recursive", a) for a in args)
-        if paths and all(scratch.is_scratch(p, tree=tree) for p in paths):
+        # Normalised first: ``/tmp/../home/x`` is not under /tmp.
+        if paths and all(os.path.normpath(p).startswith(_SAFE_DELETE_ROOTS) for p in paths):
             return None
         return Risk(
             "delete", tuple(paths[:3]) or (prog,), f"Delete {', '.join(paths[:3]) or 'files'}"
         )
     if prog == "find" and ("-delete" in args or ("-exec" in args and "rm" in args)):
-        if args and scratch.is_scratch(args[0], tree=True):
-            return None
         return Risk(
             "delete", (args[0] if args else ".",), f"Delete files under {args[0] if args else '.'}"
         )
@@ -400,12 +324,10 @@ def _command_of(args: Mapping[str, Any]) -> str:
 
 def classify_shell(command: str) -> Risk | None:
     """Recognise a shell command that sends, deletes, uploads, posts, spends or shares."""
-    scratch = _Scratch()
     for tokens in _segments(command):
-        risk = _shell_segment_risk(tokens, " ".join(tokens), scratch)
+        risk = _shell_segment_risk(tokens, " ".join(tokens))
         if risk is not None:
             return risk
-        scratch.note(os.path.basename(tokens[0]).lower(), tokens[1:])
     return None
 
 
