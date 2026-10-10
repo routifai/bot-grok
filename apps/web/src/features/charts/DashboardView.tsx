@@ -97,7 +97,10 @@ export function DashboardView({
 }) {
   const columns = document.layout !== "column";
   return (
-    <div className="@container flex min-w-0 flex-col gap-4" data-testid="dashboard">
+    <div
+      className="@container flex w-[48rem] min-w-0 max-w-full flex-col gap-4"
+      data-testid="dashboard"
+    >
       <header className="flex items-start gap-3">
         <h3
           className={cn(
