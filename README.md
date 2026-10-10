@@ -6,6 +6,8 @@
 
 <p align="center"><strong>Your AI, already on it.</strong></p>
 
+<p align="center"><img src="./docs/media/demo.gif" alt="Nova builds a sales dashboard from a CSV file, then a slide deck from the same data" width="900" /></p>
+
 Nova is one persistent personal agent per person (the Muse) with its own Computer: a Linux desktop
 and Chromium you can watch and take over. Hand it a goal and it plans, works in the background,
 and comes back when it needs you. It runs on web, desktop (Electron) and mobile (Expo).
