@@ -191,6 +191,9 @@ msgstr "1 cell"
 msgid "A bit of everything"
 msgstr "A bit of everything"
 
+msgid "A Conversation on the Superchat Computer stays there."
+msgstr "A Conversation on the Superchat Computer stays there."
+
 msgid "About groups"
 msgstr "About groups"
 
@@ -303,6 +306,9 @@ msgstr "Add server URL"
 msgid "Add step"
 msgstr "Add step"
 
+msgid "Add this computer"
+msgstr "Add this computer"
+
 msgid "Add to Conversation"
 msgstr "Add to Conversation"
 
@@ -353,9 +359,6 @@ msgstr "After a month"
 
 msgid "After a week"
 msgstr "After a week"
-
-msgid "Agent"
-msgstr "Agent"
 
 msgid "Agent connections"
 msgstr "Agent connections"
@@ -465,6 +468,9 @@ msgstr "API keys"
 
 msgid "Appearance"
 msgstr "Appearance"
+
+msgid "Applies from your next message."
+msgstr "Applies from your next message."
 
 msgid "Approval"
 msgstr "Approval"
@@ -1380,6 +1386,9 @@ msgstr "Couldn't load the themes. Try again in a moment."
 msgid "Couldn't load this look. Try again in a moment."
 msgstr "Couldn't load this look. Try again in a moment."
 
+msgid "Couldn't move there."
+msgstr "Couldn't move there."
+
 msgid "Couldn't open this sheet."
 msgstr "Couldn't open this sheet."
 
@@ -1404,6 +1413,9 @@ msgstr "Couldn't run"
 
 msgid "Couldn't save that change."
 msgstr "Couldn't save that change."
+
+msgid "Couldn't switch the harness."
+msgstr "Couldn't switch the harness."
 
 msgid "Couldn't switch the theme."
 msgstr "Couldn't switch the theme."
@@ -1895,6 +1907,10 @@ msgstr "First, what should I call you?"
 msgid "Flag unexpected actions"
 msgstr "Flag unexpected actions"
 
+#. placeholder {0}: runner.name
+msgid "Folder on {0}"
+msgstr "Folder on {0}"
+
 msgid "Font"
 msgstr "Font"
 
@@ -2026,6 +2042,9 @@ msgstr "Hide password"
 
 msgid "High"
 msgstr "High"
+
+msgid "Home folder"
+msgstr "Home folder"
 
 msgid "Host"
 msgstr "Host"
@@ -2483,6 +2502,9 @@ msgstr "More actions for {0}"
 
 msgid "More computer actions"
 msgstr "More computer actions"
+
+msgid "Move here"
+msgstr "Move here"
 
 msgid "Move them to your shared memory."
 msgstr "Move them to your shared memory."
@@ -3374,6 +3396,9 @@ msgstr "Running · Stop"
 msgid "Running…"
 msgstr "Running…"
 
+msgid "Runs on"
+msgstr "Runs on"
+
 msgid "Runs when this bot receives a verified message from this provider."
 msgstr "Runs when this bot receives a verified message from this provider."
 
@@ -3784,6 +3809,9 @@ msgstr "Summarize what changed in my files this week and tell me what needs atte
 msgid "superchat"
 msgstr "superchat"
 
+msgid "Superchat Computer"
+msgstr "Superchat Computer"
+
 msgid "superchat couldn't start. Try again in a moment."
 msgstr "superchat couldn't start. Try again in a moment."
 
@@ -3810,6 +3838,9 @@ msgstr "Supports thinking"
 
 msgid "Suspend"
 msgstr "Suspend"
+
+msgid "Switch after the current reply."
+msgstr "Switch after the current reply."
 
 msgid "Switch bot"
 msgstr "Switch bot"

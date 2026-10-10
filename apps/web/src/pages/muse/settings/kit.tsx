@@ -128,12 +128,14 @@ export function SettingsSegmented<T extends string>({
   value,
   onChange,
   testId,
+  disabled,
 }: {
   label: string;
   options: readonly { value: T; label: string }[];
   value: T;
   onChange: (next: T) => void;
   testId?: string;
+  disabled?: boolean;
 }) {
   return (
     <div className="p-2">
@@ -150,12 +152,13 @@ export function SettingsSegmented<T extends string>({
               key={option.value}
               type="button"
               aria-pressed={selected}
+              disabled={disabled}
               data-testid={testId ? `${testId}-${option.value}` : undefined}
               onClick={() => {
                 if (!selected) onChange(option.value);
               }}
               className={cn(
-                "h-7 rounded-md text-[13px] transition-[background-color,box-shadow,color] duration-200 focus-visible:outline-2 focus-visible:outline-ring",
+                "h-7 rounded-md text-[13px] transition-[background-color,box-shadow,color] duration-200 focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-default disabled:opacity-60",
                 selected
                   ? "bg-group text-foreground shadow-[0_1px_2px_rgb(0_0_0/0.14)]"
                   : "text-ink-2 hover:text-foreground",
