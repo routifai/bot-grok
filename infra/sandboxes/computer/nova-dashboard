@@ -631,9 +631,14 @@ def esc(text: Any) -> str:
 
 
 def kpi_html(kpi: dict[str, Any]) -> str:
+    period = (
+        f' <span class="period">· {esc(kpi["period"])}</span>'
+        if kpi.get("period")
+        else ""
+    )
     parts = [
         f'    <article class="card kpi" id="{kpi["id"]}" title="{esc(source_text(kpi))}">',
-        f'      <p class="label">{esc(kpi["label"])}</p>',
+        f'      <p class="label">{esc(kpi["label"])}{period}</p>',
         f'      <p class="value">{esc(format_value(kpi["value"], kpi["format"]))}</p>',
     ]
     change = kpi.get("change")
@@ -643,10 +648,8 @@ def kpi_html(kpi: dict[str, Any]) -> str:
         arrow = "▲" if up else "▼"
         parts.append(
             f'      <p class="change"><b class="{"up" if good else "down"}">{arrow} '
-            f"{abs(change) * 100:.1f}%</b> {esc(kpi['period'])} vs {esc(kpi['previous'])}</p>"
+            f"{abs(change) * 100:.1f}%</b> vs {esc(kpi['previous'])}</p>"
         )
-    elif kpi.get("period"):
-        parts.append(f'      <p class="change">{esc(kpi["period"])}</p>')
     if kpi.get("values") and len(kpi["values"]) > 1:
         parts.append(
             f'      <div class="spark"><canvas id="{kpi["id"]}-spark" aria-hidden="true"></canvas></div>'
@@ -710,7 +713,7 @@ def chart_html(chart: dict[str, Any]) -> str:
     return (
         f'    <article class="card chart{" wide" if chart["wide"] else ""}" id="{chart["id"]}">\n'
         f"      <h2>{esc(chart['title'])}</h2>{note}\n"
-        f'      <div class="plot" style="height:{height}px"><canvas id="{chart["id"]}-canvas" role="img" aria-label="{label}"></canvas></div>\n'
+        f'      <div class="plot" style="--h:{height}px"><canvas id="{chart["id"]}-canvas" role="img" aria-label="{label}"></canvas></div>\n'
         f'      <p class="source">{esc(source_text(chart))}</p>\n'
         f'      <details class="data"><summary>Data</summary><div class="table">{table_html(chart)}</div></details>\n'
         "    </article>"

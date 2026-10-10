@@ -118,7 +118,8 @@ class DashboardTest(unittest.TestCase):
             }
         )
         self.assertIn("$1,000", page)
-        self.assertIn("Mar 2026 vs Feb 2026", page)
+        self.assertIn("Mar 2026", page)
+        self.assertIn("vs Feb 2026", page)
         self.assertEqual(embedded(page)["kpis"][0]["values"], [150, 50, 1000])
 
     def test_limit_folds_the_rest_into_other(self) -> None:
