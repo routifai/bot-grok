@@ -13,6 +13,7 @@ Related pages: [WIRING.md](WIRING.md) (screen to engine call), [RUNNERS.md](RUNN
 run, how runners get keys), [ENGINE-TRIM.md](ENGINE-TRIM.md) (engine code we may drop). The glossary
 is [CONTEXT.md](../../CONTEXT.md). Engine-side design notes live in `engine/omnigent/rollover/`.
 Delegation, Activity masking, session labels and failure modes: [delegation-and-activity.md](delegation-and-activity.md).
+What the model sees on each turn (instructions, history, Rollover, per-turn blocks, memory): [context-assembly.md](context-assembly.md).
 
 ## Contents
 
