@@ -3,6 +3,7 @@ import type { RouterContext } from "../../routers/context.js";
 import {
   engineCreateAutomation,
   engineListAutomations,
+  engineListSystemJobs,
   engineRemoveAutomation,
   engineRunAutomation,
   engineUpdateAutomation,
@@ -18,6 +19,9 @@ export function automationsRouter(c: RouterContext) {
     automations: {
       list: authed.automations.list.handler(({ context, input }) =>
         engineListAutomations(deps, engine(context.actor), context.actor, input.botId),
+      ),
+      system: authed.automations.system.handler(({ context, input }) =>
+        engineListSystemJobs(deps, engine(context.actor), context.actor, input.botId),
       ),
       create: authed.automations.create.handler(({ context, input }) =>
         engineCreateAutomation(deps, engine(context.actor), context.actor, input),

@@ -1,4 +1,4 @@
-import type { Automation } from "@superchat/contracts";
+import type { Automation, SystemJob } from "@superchat/contracts";
 
 const HOUR = 3_600_000;
 const now = Date.now();
@@ -46,5 +46,28 @@ export const DEV_AUTOMATIONS: Automation[] = [
     lastRunStatus: null,
     model: null,
     createdAt: new Date(now - 10 * 24 * HOUR).toISOString(),
+  },
+];
+
+/** Dev-only built-in jobs for `/dev/automations`. */
+export const DEV_SYSTEM_JOBS: SystemJob[] = [
+  {
+    id: "memory_upkeep",
+    name: "Memory upkeep",
+    description:
+      "Reads your recent conversations and keeps what is worth remembering about you up to date.",
+    schedule: "Every hour, and after a conversation is condensed",
+    lastRunAt: new Date(now - 40 * 60_000).toISOString(),
+    nextRunAt: new Date(now + 20 * 60_000).toISOString(),
+    enabled: true,
+  },
+  {
+    id: "side_chat_archiving",
+    name: "Side chat archiving",
+    description: "Archives side chats you have not touched for a while, so your list stays tidy.",
+    schedule: "Every hour",
+    lastRunAt: null,
+    nextRunAt: null,
+    enabled: false,
   },
 ];

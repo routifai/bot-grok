@@ -2,7 +2,7 @@ import type { Automation } from "@superchat/contracts";
 import { useMemo } from "react";
 import { AutomationsSheet } from "../../features/automations";
 import type { AutomationsWire } from "../../features/automations/useAutomations";
-import { DEV_AUTOMATIONS } from "./automations-fixture";
+import { DEV_AUTOMATIONS, DEV_SYSTEM_JOBS } from "./automations-fixture";
 
 /**
  * Dev-only route (`/dev/automations`, gated by `import.meta.env.DEV`): the real Automations
@@ -17,6 +17,7 @@ export function AutomationsPreviewPage() {
     const find = (id: string) => rows.find((row) => row.id === id) as Automation;
     return {
       list: async () => rows,
+      system: async () => DEV_SYSTEM_JOBS,
       create: async (input) => {
         const row: Automation = {
           id: `auto-${rows.length + 1}`,

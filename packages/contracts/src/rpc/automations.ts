@@ -35,6 +35,21 @@ export const AutomationSchema = z.object({
 });
 export type Automation = z.infer<typeof AutomationSchema>;
 
+/** One of the engine's own recurring background jobs, shown read-only beside the person's. */
+export const SystemJobSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  /** One line on what it does for the person. */
+  description: z.string(),
+  /** Plain words, e.g. "Every hour". */
+  schedule: z.string(),
+  /** ISO timestamps; `null` when the engine does not know. */
+  lastRunAt: z.string().nullable(),
+  nextRunAt: z.string().nullable(),
+  enabled: z.boolean(),
+});
+export type SystemJob = z.infer<typeof SystemJobSchema>;
+
 const botInput = z.object({ botId: Id });
 const automationInput = z.object({ botId: Id, id: Id });
 const text = {
@@ -45,6 +60,8 @@ const text = {
 export const automationsContract = {
   automations: {
     list: oc.input(botInput).output(z.array(AutomationSchema)),
+    /** The engine's built-in background jobs (memory upkeep, side chat archiving, ...). */
+    system: oc.input(botInput).output(z.array(SystemJobSchema)),
     create: oc
       .input(
         z.object({

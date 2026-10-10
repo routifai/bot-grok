@@ -1,4 +1,4 @@
-import type { Automation, AutomationSchedule } from "@superchat/contracts";
+import type { Automation, AutomationSchedule, SystemJob } from "@superchat/contracts";
 import { useCallback, useEffect, useState } from "react";
 import { rpc } from "../../lib/rpc";
 
@@ -10,7 +10,7 @@ export type AutomationsState =
 /** The calls the sheet makes; the live RPC unless a dev preview supplies its own. */
 export type AutomationsWire = Pick<
   typeof rpc.automations,
-  "list" | "create" | "update" | "run" | "remove"
+  "list" | "system" | "create" | "update" | "run" | "remove"
 >;
 
 /**
@@ -19,6 +19,7 @@ export type AutomationsWire = Pick<
  */
 const LIVE_WIRE: AutomationsWire = {
   list: (input) => rpc.automations.list(input),
+  system: (input) => rpc.automations.system(input),
   create: (input) => rpc.automations.create(input),
   update: (input) => rpc.automations.update(input),
   run: (input) => rpc.automations.run(input),
@@ -49,6 +50,24 @@ export function useAutomations(botId: string, enabled: boolean, wire: Automation
     setState({ status: "loading" });
     void refresh();
   }, [enabled, refresh]);
+
+  const [systemJobs, setSystemJobs] = useState<SystemJob[] | null>(null);
+  // Read-only and best effort: a failure leaves the section empty rather than breaking the sheet.
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    wire
+      .system({ botId })
+      .then((jobs) => {
+        if (!cancelled) setSystemJobs(jobs);
+      })
+      .catch(() => {
+        if (!cancelled) setSystemJobs([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [botId, enabled, wire]);
 
   const create = useCallback(
     async (input: {
@@ -85,5 +104,5 @@ export function useAutomations(botId: string, enabled: boolean, wire: Automation
     [botId, refresh, wire],
   );
 
-  return { state, refresh, create, setEnabled, runNow, remove };
+  return { state, systemJobs, refresh, create, setEnabled, runNow, remove };
 }

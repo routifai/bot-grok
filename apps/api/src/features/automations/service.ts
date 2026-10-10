@@ -7,12 +7,13 @@ import {
   createOmnigentScheduledTask,
   deleteOmnigentScheduledTask,
   listOmnigentScheduledTasks,
+  listOmnigentSystemJobs,
   type OmnigentClientConfig,
   type OmnigentScheduledTask,
   patchOmnigentScheduledTask,
   runOmnigentScheduledTask,
 } from "@superchat/adapters";
-import type { Actor, Automation, AutomationSchedule } from "@superchat/contracts";
+import type { Actor, Automation, AutomationSchedule, SystemJob } from "@superchat/contracts";
 import type { PrismaClient } from "@superchat/db";
 import { ORPCError } from "@orpc/server";
 import { rruleToSchedule, scheduleToRrule } from "./schedule.js";
@@ -105,6 +106,32 @@ export async function engineListAutomations(
 ): Promise<Automation[]> {
   const target = await resolve(deps, client, actor, botId);
   return target ? (await tasksOf(target)).map(toAutomation) : [];
+}
+
+/** The engine's own background jobs; owner-scoped like `list` (the Muse must be the actor's). */
+export async function engineListSystemJobs(
+  deps: EngineAutomationsDeps,
+  client: OmnigentClientConfig,
+  actor: Actor,
+  botId: string,
+): Promise<SystemJob[]> {
+  const [bot, user] = await Promise.all([
+    deps.prisma.bot.findFirst({
+      where: { id: botId, spaceId: actor.spaceId, userId: actor.userId },
+      select: { id: true },
+    }),
+    deps.prisma.user.findUnique({ where: { id: actor.userId }, select: { email: true } }),
+  ]);
+  if (!bot || !user) throw new ORPCError("NOT_FOUND", { message: "Muse not found" });
+  return (await listOmnigentSystemJobs(client, user.email)).map((job) => ({
+    id: job.id,
+    name: job.name,
+    description: job.description,
+    schedule: job.schedule,
+    lastRunAt: iso(job.last_run_at),
+    nextRunAt: iso(job.next_run_at),
+    enabled: job.enabled,
+  }));
 }
 
 export async function engineCreateAutomation(

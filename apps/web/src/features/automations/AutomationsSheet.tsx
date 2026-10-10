@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { Automation, AutomationSchedule } from "@superchat/contracts";
+import type { Automation, AutomationSchedule, SystemJob } from "@superchat/contracts";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,6 +46,61 @@ function lastRun(automation: Automation): string {
   if (!automation.lastRunAt) return "Never run";
   const when = formatRelativeTime(automation.lastRunAt);
   return automation.lastRunStatus === "failed" ? `Failed ${when}` : `Ran ${when}`;
+}
+
+function systemNext(job: SystemJob, locale: string | undefined): string {
+  if (!job.enabled) return "Off";
+  if (!job.nextRunAt) return "Not known yet";
+  const date = new Date(job.nextRunAt);
+  if (Number.isNaN(date.getTime())) return "Not known yet";
+  return date.toLocaleString(locale || "en", {
+    weekday: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+/** A built-in background job: read-only, no run or delete. */
+function SystemJobRow({ job }: { job: SystemJob }) {
+  const { t, i18n } = useLingui();
+  return (
+    <li
+      data-testid="system-job-row"
+      className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-glass-line bg-foreground/[0.02] p-4"
+    >
+      <div className="flex min-w-[200px] flex-1 flex-col gap-0.5">
+        <span className="truncate text-[15px] font-medium text-foreground">{job.name}</span>
+        <span className="text-[13px] text-ink-2">{job.description}</span>
+        <span className="text-[13px] text-ink-2">{job.schedule}</span>
+      </div>
+      <div className="flex min-w-[160px] flex-col gap-0.5 text-[13px] text-ink-2">
+        <span>
+          {t`Next`}: {systemNext(job, i18n.locale)}
+        </span>
+        <span>
+          {job.lastRunAt ? `${t`Ran`} ${formatRelativeTime(job.lastRunAt)}` : t`Not run yet`}
+        </span>
+      </div>
+    </li>
+  );
+}
+
+function SystemSection({ jobs }: { jobs: SystemJob[] | null }) {
+  const { t } = useLingui();
+  if (!jobs?.length) return null;
+  return (
+    <section className="mt-3 flex flex-col gap-3" data-testid="system-jobs">
+      <div className="flex flex-col gap-0.5">
+        <h3 className="text-[15px] font-medium text-foreground">{t`System`}</h3>
+        <p className="text-[13px] text-ink-2">{t`What I do on my own, in the background.`}</p>
+      </div>
+      <ul className="flex flex-col gap-3">
+        {jobs.map((job) => (
+          <SystemJobRow key={job.id} job={job} />
+        ))}
+      </ul>
+    </section>
+  );
 }
 
 type ModelChoice = { id: string; label: string };
@@ -338,7 +393,11 @@ export function AutomationsSheet({
   wire?: AutomationsWire;
 }) {
   const { t } = useLingui();
-  const { state, create, setEnabled, runNow, remove } = useAutomations(botId, open, wire);
+  const { state, systemJobs, create, setEnabled, runNow, remove } = useAutomations(
+    botId,
+    open,
+    wire,
+  );
   const [creating, setCreating] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -410,6 +469,7 @@ export function AutomationsSheet({
             ))}
           </ul>
         )}
+        {creating ? null : <SystemSection jobs={systemJobs} />}
         {actionError ? <p className="text-[13.5px] text-destructive">{actionError}</p> : null}
       </div>
     </DockSheet>

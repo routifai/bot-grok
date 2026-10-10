@@ -2,17 +2,21 @@ import type { Actor } from "@superchat/contracts";
 import type { PrismaClient } from "@superchat/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { listTasks, createTask, patchTask, runTask, deleteTask } = vi.hoisted(() => ({
-  listTasks: vi.fn(),
-  createTask: vi.fn(),
-  patchTask: vi.fn(),
-  runTask: vi.fn(),
-  deleteTask: vi.fn(),
-}));
+const { listTasks, listSystemJobs, createTask, patchTask, runTask, deleteTask } = vi.hoisted(
+  () => ({
+    listSystemJobs: vi.fn(),
+    listTasks: vi.fn(),
+    createTask: vi.fn(),
+    patchTask: vi.fn(),
+    runTask: vi.fn(),
+    deleteTask: vi.fn(),
+  }),
+);
 
 vi.mock("@superchat/adapters", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@superchat/adapters")>()),
   listOmnigentScheduledTasks: listTasks,
+  listOmnigentSystemJobs: listSystemJobs,
   createOmnigentScheduledTask: createTask,
   patchOmnigentScheduledTask: patchTask,
   runOmnigentScheduledTask: runTask,
@@ -22,6 +26,7 @@ vi.mock("@superchat/adapters", async (importOriginal) => ({
 const {
   engineCreateAutomation,
   engineListAutomations,
+  engineListSystemJobs,
   engineRemoveAutomation,
   engineRunAutomation,
   engineUpdateAutomation,
@@ -55,6 +60,42 @@ function prismaFor(session: string | null, ownsBot = true) {
 }
 
 beforeEach(() => vi.resetAllMocks());
+
+describe("engine system jobs", () => {
+  it("maps the engine's jobs for the owner's Muse, even without a Conversation", async () => {
+    listSystemJobs.mockResolvedValue([
+      {
+        id: "memory_upkeep",
+        name: "Memory upkeep",
+        description: "Keeps your memory fresh",
+        schedule: "Every hour",
+        last_run_at: 1_700_000_000,
+        next_run_at: null,
+        enabled: true,
+      },
+    ]);
+    const jobs = await engineListSystemJobs({ prisma: prismaFor(null) }, client, actor, "b1");
+    expect(listSystemJobs).toHaveBeenCalledWith(client, "a@example.test");
+    expect(jobs).toEqual([
+      {
+        id: "memory_upkeep",
+        name: "Memory upkeep",
+        description: "Keeps your memory fresh",
+        schedule: "Every hour",
+        lastRunAt: "2023-11-14T22:13:20.000Z",
+        nextRunAt: null,
+        enabled: true,
+      },
+    ]);
+  });
+
+  it("refuses a Muse that is not the actor's", async () => {
+    await expect(
+      engineListSystemJobs({ prisma: prismaFor("s1", false) }, client, actor, "b1"),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(listSystemJobs).not.toHaveBeenCalled();
+  });
+});
 
 describe("engine automations", () => {
   it("lists only automation tasks bound to the Muse's Super Chat", async () => {

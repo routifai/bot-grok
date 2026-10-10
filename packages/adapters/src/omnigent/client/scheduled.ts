@@ -129,3 +129,28 @@ export async function deleteOmnigentScheduledTask(
   });
   await throwOnError(response, "delete scheduled task", config.secrets);
 }
+
+/** One of the engine's own recurring background jobs (`GET /v1/me/system-jobs`,
+ * engine/omnigent/omnigent/superchat/system_jobs/routes.py). Times are epoch seconds. */
+export interface OmnigentSystemJob {
+  id: string;
+  name: string;
+  description: string;
+  schedule: string;
+  last_run_at: number | null;
+  next_run_at: number | null;
+  enabled: boolean;
+}
+
+/** `GET /v1/me/system-jobs` — the engine's built-in background jobs, for this person. */
+export async function listOmnigentSystemJobs(
+  config: OmnigentClientConfig,
+  email: string,
+): Promise<OmnigentSystemJob[]> {
+  const response = await fetch(new URL("/v1/me/system-jobs", config.baseUrl), {
+    headers: omnigentHeaders(config, email),
+  });
+  await throwOnError(response, "list system jobs", config.secrets);
+  const body = (await response.json()) as { jobs?: OmnigentSystemJob[] };
+  return body.jobs ?? [];
+}
