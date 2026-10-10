@@ -266,6 +266,30 @@ describe("presentStep", () => {
     expect(presented.snippet).toBe("Opened. 84 rows.");
   });
 
+  it("says an unregistered tool's raw name in words, never as an identifier", () => {
+    const presented = presentStep({
+      tool: "deck_theme_set",
+      title: "Used deck_theme_set",
+      detail: null,
+    });
+    expect(presented.title).toBe("Used deck theme set");
+    expect(presentStep({ tool: "sys_thing_do", title: "sys_thing_do", detail: null }).title).toBe(
+      "Used thing do",
+    );
+  });
+
+  it("reads a saved file in plain words", () => {
+    const save = (args: Record<string, unknown>) =>
+      presentStep({
+        tool: "artifact_save",
+        title: "Used artifact_save",
+        detail: detailFor("artifact_save", args, "{}"),
+      }).title;
+    expect(save({ path: "out/report.html" })).toBe("Saved “report.html”");
+    expect(save({ path: "report.html", title: "Q3 report" })).toBe("Saved “Q3 report”");
+    expect(save({})).toBe("Saved a file");
+  });
+
   it("falls back to the engine's title when a tool name is null", () => {
     const presented = presentStep({ tool: null, title: "Did something", detail: null });
     expect(presented.icon).toBe("generic");

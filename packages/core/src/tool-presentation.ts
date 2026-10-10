@@ -551,6 +551,61 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
     snippet: () => null,
   },
 
+  artifact_save: {
+    icon: "generic",
+    title: (args) =>
+      isNonEmptyString(args.title) ? `Saved “${args.title.trim()}”` : fileTitle("Saved", args),
+    snippet: () => null,
+  },
+
+  artifact_list: {
+    icon: "generic",
+    title: () => "Looked through your files",
+    snippet: () => null,
+  },
+
+  artifact_delete: {
+    icon: "generic",
+    title: () => "Deleted a file",
+    snippet: () => null,
+  },
+
+  display_chart: {
+    icon: "generic",
+    title: () => "Made a chart",
+    snippet: () => null,
+  },
+
+  display_dashboard: {
+    icon: "generic",
+    title: () => "Made a dashboard",
+    snippet: () => null,
+  },
+
+  render_card: {
+    icon: "generic",
+    title: () => "Showed a card",
+    snippet: () => null,
+  },
+
+  deck_export: {
+    icon: "generic",
+    title: () => "Exported the deck",
+    snippet: () => null,
+  },
+
+  ask_clarification: {
+    icon: "generic",
+    title: () => "Asked you a question",
+    snippet: () => null,
+  },
+
+  suggest_follow_ups: {
+    icon: "generic",
+    title: () => "Suggested next steps",
+    snippet: () => null,
+  },
+
   browser_navigate: {
     icon: "web",
     title: navigateTitle,
@@ -589,6 +644,16 @@ function callArgsOf(detail: ActivityStep["detail"]): Record<string, unknown> {
   return parsed !== null && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
 }
 
+/** The engine's last-resort title is "Used <tool_name>" (or the bare name): say it in words
+ * instead ("Used deck theme set"), never the raw identifier. Any other title is kept. */
+function plainFallbackTitle(title: string, tool: string | null | undefined): string {
+  const raw = /^(?:Used )?([a-z][a-z0-9]*(?:_[a-z0-9]+)+)$/.exec(title.trim())?.[1];
+  const name = raw ?? (tool && title.trim() === tool ? tool : undefined);
+  if (!name) return title;
+  const words = name.replace(/^sys_/, "").replace(/_/g, " ").trim();
+  return words ? `Used ${words}` : "Used a tool";
+}
+
 function resultContentOf(detail: ActivityStep["detail"]): string {
   const content =
     field(field(detail, "result"), "content") ?? field(field(detail, "result"), "output");
@@ -606,7 +671,7 @@ export function presentStep(step: Pick<ActivityStep, "tool" | "title" | "detail"
     const snippet = genericSnippet(output);
     return {
       icon: "generic",
-      title: step.title,
+      title: plainFallbackTitle(step.title, step.tool),
       snippet: snippet && PLUMBING.test(snippet) ? null : snippet,
     };
   }

@@ -304,7 +304,13 @@ def test_step_title_sys_session_create_with_title() -> None:
 
 
 def test_step_title_fallback_for_unknown_tool() -> None:
-    assert step_title_for_call("web_search", "{}") == "Used web_search"
+    assert step_title_for_call("web_search", "{}") == "Used web search"
+    assert step_title_for_call("sys_os_shell", "{}") == "Used os shell"
+    assert (
+        step_title_for_call("artifact_save", '{"path": "out/report.html"}')
+        == "Saved 'report.html'"
+    )
+    assert step_title_for_call("artifact_save", "{}") == "Saved a file"
 
 
 def test_step_title_handles_malformed_arguments() -> None:

@@ -188,7 +188,8 @@ def step_title_for_call(tool_name: str, raw_arguments: str) -> str:
     """Deterministic, plain-language title for one tool call.
 
     A small set of named templates covers the tools called out in the
-    plan; everything else falls back to ``"Used <tool>"``. No LLM call.
+    plan; everything else falls back to ``"Used <tool in words>"`` (``"Used web search"``),
+    never the raw tool identifier. No LLM call.
 
     :param tool_name: The invoked tool's name, e.g. ``"memory_search"``.
     :param raw_arguments: The call's JSON-encoded arguments string.
@@ -204,7 +205,7 @@ def step_title_for_call(tool_name: str, raw_arguments: str) -> str:
             return "Read earlier messages"
         if action == "list_chats":
             return "Listed side chats"
-        return "Used session_history"
+        return "Looked at earlier messages"
     if tool_name == "sys_session_create":
         title = args.get("title")
         return f"Launched a sub-agent '{title}'" if title else "Launched a sub-agent"
@@ -213,7 +214,13 @@ def step_title_for_call(tool_name: str, raw_arguments: str) -> str:
         return (
             f"Sent a message to sub-agent '{title}'" if title else "Sent a message to a sub-agent"
         )
-    return f"Used {tool_name}"
+    if tool_name == "artifact_save":
+        title = args.get("title")
+        name = str(args.get("path") or "").rstrip("/").rsplit("/", 1)[-1]
+        shown = title if isinstance(title, str) and title.strip() else name
+        return f"Saved '{shown.strip()}'" if shown.strip() else "Saved a file"
+    words = tool_name.removeprefix("sys_").replace("_", " ").strip()
+    return f"Used {words}" if words else "Used a tool"
 
 
 def _args_dict(raw_arguments: str) -> dict[str, Any]:
