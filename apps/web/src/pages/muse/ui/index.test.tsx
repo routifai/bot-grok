@@ -5,7 +5,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 
-vi.mock("@nova/ui-web", () => ({
+vi.mock("@superchat/ui-web", () => ({
   BotAvatar: () => <div data-testid="bot-avatar" />,
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
 }));
@@ -28,7 +28,7 @@ async function render(props: ComponentProps<typeof EmptyState>) {
   };
 }
 
-it("renders the section's illustration, and never Nova's orb", async () => {
+it("renders the section's illustration, and never Superchat's orb", async () => {
   const page = await render({ illustration: "trophy", headline: "Nothing yet" });
   try {
     const img = page.container.querySelector("img");

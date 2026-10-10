@@ -1,5 +1,5 @@
-import type { AdapterContext } from "@nova/adapter-kit";
-import { canReleaseScreenLease, canTakeScreenLease } from "@nova/core";
+import type { AdapterContext } from "@superchat/adapter-kit";
+import { canReleaseScreenLease, canTakeScreenLease } from "@superchat/core";
 
 export const COMPUTER_SCREEN_UNAVAILABLE =
   "The computer screen is temporarily busy. Retry in a moment. File and shell tools still work.";

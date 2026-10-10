@@ -1,4 +1,4 @@
-import type { ThreadMessage } from "@nova/contracts";
+import type { ThreadMessage } from "@superchat/contracts";
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { watchFamily } from "../../../lib/family-stream";
 import { rpc } from "../../../lib/rpc";

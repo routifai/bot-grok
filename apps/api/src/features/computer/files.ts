@@ -17,8 +17,8 @@ import {
   WorkspacePathError,
   workspaceMimeType,
   writeOmnigentFile,
-} from "@nova/adapters";
-import type { Actor, Artifact } from "@nova/contracts";
+} from "@superchat/adapters";
+import type { Actor, Artifact } from "@superchat/contracts";
 import {
   AttachmentValidationError,
   attachmentExtensionForMimeType,
@@ -26,8 +26,8 @@ import {
   isIngestableAttachmentMimeType,
   validateAttachmentMimeType,
   WORKSPACE_UPLOADS_PREFIX,
-} from "@nova/core";
-import type { PrismaClient } from "@nova/db";
+} from "@superchat/core";
+import type { PrismaClient } from "@superchat/db";
 import { ORPCError } from "@orpc/server";
 import { resolveMuseSession } from "./muse-session.js";
 
@@ -318,7 +318,7 @@ export async function engineIngestAttachment(
       });
     }
     if (hasEngineCode(error, "invalid_input", "not_found")) {
-      throw new ORPCError("BAD_REQUEST", { message: "Nova couldn't read this file." });
+      throw new ORPCError("BAD_REQUEST", { message: "Superchat couldn't read this file." });
     }
     return mapError(error);
   }

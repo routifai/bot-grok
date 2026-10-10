@@ -1,13 +1,13 @@
 // Routine wakeup: turns a due Routine into a queued run in its thread (run.continue then
 // runs it on the engine). Extracted from the retired Pi executor.
-import type { JobPublisher } from "@nova/adapter-kit";
-import { routineJobKey, routineWakeupJob, runContinueJob } from "@nova/adapter-kit";
+import type { JobPublisher } from "@superchat/adapter-kit";
+import { routineJobKey, routineWakeupJob, runContinueJob } from "@superchat/adapter-kit";
 import {
   expandSkillReferencesInPrompt,
   isOneShotRoutineCrons,
   nextCronDateAcross,
-} from "@nova/core";
-import type { PrismaClient, ThreadEvents } from "@nova/db";
+} from "@superchat/core";
+import type { PrismaClient, ThreadEvents } from "@superchat/db";
 import { deferFutureRoutine } from "./routine-scheduling.js";
 import { listAgentSkillRecords } from "./skill-tools.js";
 

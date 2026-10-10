@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import { cn } from "@nova/ui-web";
+import { cn } from "@superchat/ui-web";
 import { ChevronDown, Clock, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import {

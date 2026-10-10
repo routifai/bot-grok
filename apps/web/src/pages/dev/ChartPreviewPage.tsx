@@ -1,4 +1,4 @@
-import { CHART_FIXTURES } from "@nova/charts";
+import { CHART_FIXTURES } from "@superchat/charts";
 import { useEffect } from "react";
 import { ChartView } from "../../features/charts/ChartView";
 

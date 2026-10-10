@@ -163,7 +163,7 @@ const BASELINE: readonly string[] = [
   "web:pages/muse/conversation/HelperTracker.test.tsx -> activity",
   "web:pages/muse/conversation/HelperTracker.tsx -> activity",
   "web:pages/muse/conversation/WorkingRow.tsx -> activity",
-  // The sidebar's status line counts Nova's running work (useNovaWork: runs + Activity feed);
+  // The sidebar's status line counts Superchat's running work (useSuperchatWork: runs + Activity feed);
   // goes away when the sidebar moves into its folder or takes the count from the shell.
   "web:pages/muse/chrome/MuseSidebar.tsx -> activity",
   // The transcript draws an ask block (and a skill offer) with the approvals AskCard; goes away
@@ -280,7 +280,7 @@ const LAYERS: readonly Layer[] = [
     /^pages\/Shell(\.test)?\.tsx$/,
     /^pages\/SettingsOverlay(\.test)?\.tsx$/,
     /^pages\/AccountSettingsOverlay(\.test)?\.tsx$/,
-    /^pages\/muse\/NovaSettingsPanel(\.test)?\.tsx$/,
+    /^pages\/muse\/SuperchatSettingsPanel(\.test)?\.tsx$/,
     /^pages\/muse\/chrome\/ContextPanel\.tsx$/,
     /^pages\/muse\/chrome\/Dock\.tsx$/,
     /^pages\/muse\/chrome\/HomeActivity\.tsx$/,

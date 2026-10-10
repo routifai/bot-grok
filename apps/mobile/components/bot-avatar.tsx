@@ -1,11 +1,11 @@
-import type { AvatarStyle } from "@nova/contracts";
+import type { AvatarStyle } from "@superchat/contracts";
 import {
   ACTIVE_RUN_STATUSES,
   avatarIdentitySeed,
   organicAvatarPath,
   SHIPPED_BOT_AVATAR_CENTER,
   SHIPPED_BOT_AVATAR_VIEWBOX,
-} from "@nova/core";
+} from "@superchat/core";
 import { memo, useEffect } from "react";
 import { Image, View } from "react-native";
 import Animated, {

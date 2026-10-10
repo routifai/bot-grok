@@ -80,7 +80,7 @@ def test_secret_env_names_and_extra_names() -> None:
         "AWS_CREDENTIALS",
     ):
         assert is_secret_env_name(name), name
-    for name in ("ANTHROPIC_BASE_URL", "HOME", "NOVA_CLAUDE_MODEL", "MAX_TOKENS"):
+    for name in ("ANTHROPIC_BASE_URL", "HOME", "SUPERCHAT_CLAUDE_MODEL", "MAX_TOKENS"):
         assert not is_secret_env_name(name), name
     env = {
         "A_API_KEY": "aaaaaaaaaa",

@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import { cn } from "@nova/ui-web";
+import { cn } from "@superchat/ui-web";
 import { ArrowUp } from "lucide-react";
 import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { FORK_TONE_CLASS, type ForkTone } from "./forkModel";

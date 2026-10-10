@@ -1,4 +1,4 @@
-import type { TransactionalEmail, TransactionalEmailProvider } from "@nova/adapter-kit";
+import type { TransactionalEmail, TransactionalEmailProvider } from "@superchat/adapter-kit";
 import nodemailer, { type Transporter } from "nodemailer";
 
 export interface SmtpEmailConfig {

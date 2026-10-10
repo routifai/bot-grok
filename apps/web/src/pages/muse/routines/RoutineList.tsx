@@ -1,6 +1,6 @@
 import { Trans } from "@lingui/react/macro";
-import type { Routine, ThreadSnapshot } from "@nova/contracts";
-import { isActive } from "@nova/core";
+import type { Routine, ThreadSnapshot } from "@superchat/contracts";
+import { isActive } from "@superchat/core";
 import { RoutineListHeader, RoutineListRow } from "../../RoutineEditor";
 
 /** The routines scheduled for the Muse, under the computer preview. */

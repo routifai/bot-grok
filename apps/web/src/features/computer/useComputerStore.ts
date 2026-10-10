@@ -1,4 +1,4 @@
-import type { ComputerStatus } from "@nova/contracts";
+import type { ComputerStatus } from "@superchat/contracts";
 import { useRef, useState } from "react";
 
 /** Last-known computer status and screen link per bot, plus the refs the thread loader and the

@@ -1,6 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
-import type { Archiving } from "@nova/contracts";
-import { SIDE_CHAT_ARCHIVE_DAYS } from "@nova/contracts";
+import type { Archiving } from "@superchat/contracts";
+import { SIDE_CHAT_ARCHIVE_DAYS } from "@superchat/contracts";
 import { useEffect, useId, useState } from "react";
 import { rpc } from "../../lib/rpc";
 import { MUSE_INSET_GROUP } from "../../pages/muse/ui/index";

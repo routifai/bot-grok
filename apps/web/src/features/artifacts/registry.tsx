@@ -1,4 +1,4 @@
-import type { Artifact } from "@nova/contracts";
+import type { Artifact } from "@superchat/contracts";
 import { createContext, Fragment, type ReactNode, useContext } from "react";
 
 /**

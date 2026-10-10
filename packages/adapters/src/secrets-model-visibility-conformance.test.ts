@@ -1,6 +1,6 @@
-import type { AdapterContext } from "@nova/adapter-kit";
-import type { BotSecretDestination } from "@nova/contracts";
-import type { PrismaClient } from "@nova/db";
+import type { AdapterContext } from "@superchat/adapter-kit";
+import type { BotSecretDestination } from "@superchat/contracts";
+import type { PrismaClient } from "@superchat/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { redactToolArgsForReview } from "./auto-review.js";
 import { requestWithBotSecret } from "./bot-secrets.js";

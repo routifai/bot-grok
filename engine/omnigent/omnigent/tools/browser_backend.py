@@ -5,8 +5,8 @@ embedded browser through the server (see ``_execute_browser_tool`` in
 ``omnigent/runner/tool_dispatch.py``). Setting
 ``OMNIGENT_BROWSER_BACKEND=local`` instead drives a Chromium running on the
 runner's own machine, on the runner's ``DISPLAY``, over CDP through the
-``nova-page-browser`` helper (override with ``OMNIGENT_BROWSER_HELPER``).
-Chromium is started with ``nova-browser`` (override with
+``superchat-page-browser`` helper (override with ``OMNIGENT_BROWSER_HELPER``).
+Chromium is started with ``superchat-browser`` (override with
 ``OMNIGENT_BROWSER_LAUNCHER``) when its debug port is not up.
 """
 
@@ -75,8 +75,8 @@ class LocalBrowserBackend:
     """Executes ``browser_*`` actions against the runner's own Chromium."""
 
     def __init__(self) -> None:
-        self._helper = os.environ.get("OMNIGENT_BROWSER_HELPER", "nova-page-browser")
-        self._launcher = os.environ.get("OMNIGENT_BROWSER_LAUNCHER", "nova-browser")
+        self._helper = os.environ.get("OMNIGENT_BROWSER_HELPER", "superchat-page-browser")
+        self._launcher = os.environ.get("OMNIGENT_BROWSER_LAUNCHER", "superchat-browser")
         self._snapshot_id: str | None = None
         self._refs: dict[int, str] = {}
 
@@ -178,7 +178,7 @@ class LocalBrowserBackend:
                 out, err = await self._run(
                     [self._helper, command],
                     stdin=json.dumps(payload).encode() + b"\n",
-                    env={**os.environ, "NOVA_BROWSER_ARGS_STDIN": "1"},
+                    env={**os.environ, "SUPERCHAT_BROWSER_ARGS_STDIN": "1"},
                 )
             else:
                 out, err = await self._run([self._helper, command, json.dumps(payload)])

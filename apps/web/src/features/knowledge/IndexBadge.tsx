@@ -1,6 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
-import type { KnowledgeFileState } from "@nova/contracts";
-import { cn } from "@nova/ui-web";
+import type { KnowledgeFileState } from "@superchat/contracts";
+import { cn } from "@superchat/ui-web";
 import { useKnowledgeAsleep, useKnowledgeFile } from "./status";
 
 /** Where a file is in the index, as a Library card badge: reading it, searchable, or couldn't
@@ -19,7 +19,7 @@ export function IndexBadge({ artifactId }: { artifactId: string }) {
     <span
       data-testid="library-card-index"
       data-state={file.state}
-      className="nova-glass-pill inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-medium text-ink-2"
+      className="superchat-glass-pill inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-medium text-ink-2"
     >
       <span
         aria-hidden="true"

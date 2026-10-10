@@ -8,12 +8,12 @@ import type {
   ModelCredential,
   ThinkingLevel,
   VoiceInfo,
-} from "@nova/contracts";
+} from "@superchat/contracts";
 import {
   BOT_DESCRIPTION_MAX_LENGTH,
   BOT_NAME_MAX_LENGTH,
   BOT_TITLE_MAX_LENGTH,
-} from "@nova/contracts";
+} from "@superchat/contracts";
 import {
   Button,
   Input,
@@ -22,11 +22,11 @@ import {
   Switch,
   Textarea,
   Toggle,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
 import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
-import { NovaOrb } from "../../components/ai/orb";
+import { SuperchatOrb } from "../../components/ai/orb";
 import { rpc } from "../../lib/rpc";
 
 const ScratchpadSection = lazy(() =>
@@ -383,7 +383,7 @@ export function BotSettings({
   return (
     <div data-testid="bot-settings">
       <div className="flex justify-center py-4">
-        <NovaOrb size={76} flies={false} />
+        <SuperchatOrb size={76} flies={false} />
       </div>
       <label htmlFor={`${ids}-name`} className="mt-4 block text-[13.5px] text-muted-foreground/80">
         <Trans>Name</Trans>
@@ -443,7 +443,7 @@ export function BotSettings({
           }}
         />
       </div>
-      {/* Proactivity now lives in Settings > Nova (SettingsOverlay), the one place the
+      {/* Proactivity now lives in Settings > Superchat (SettingsOverlay), the one place the
           person tunes their Muse; this per-bot panel would otherwise duplicate it. */}
       <details
         data-testid="bot-settings-advanced"

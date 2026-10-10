@@ -20,8 +20,8 @@ vi.mock("@lingui/core/macro", () => ({
   plural: (n: number, forms: { one: string; other: string }) =>
     (n === 1 ? forms.one : forms.other).replace("#", String(n)),
 }));
-vi.mock("@nova/ui-web", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@nova/ui-web")>();
+vi.mock("@superchat/ui-web", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@superchat/ui-web")>();
   const Passthrough = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
   return {
     ...actual,

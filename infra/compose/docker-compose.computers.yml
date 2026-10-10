@@ -1,14 +1,14 @@
 # Computers-only VPS: the sandbox supervisor, the Computer image and a TLS front.
 #
 # The Omnigent engine (Railway) calls the supervisor over HTTPS to create each Muse's Computer
-# and to run commands in it. Nothing else of Nova runs here. Guide: docs/deploy-split.md.
+# and to run commands in it. Nothing else of Superchat runs here. Guide: docs/deploy-split.md.
 #
 #   docker compose --env-file .env.computers -f infra/compose/docker-compose.computers.yml up -d --build
 #
 # Public ports: 80/443 (Caddy) only. The supervisor has no host port; it is reachable solely
 # through Caddy, and every request still needs the bearer SANDBOX_SUPERVISOR_TOKEN. The supervisor
 # holds the Docker socket (root-equivalent on this VM), so keep this VM single-purpose.
-name: nova-computers
+name: superchat-computers
 
 x-logging: &logging
   driver: local
@@ -20,7 +20,7 @@ services:
   # Builds the Computer desktop image (Chromium, Omnigent runner, Claude Code CLI) once. The
   # supervisor refuses to start a Computer if this tag is missing. Never runs a command.
   computer-image:
-    image: ${NOVA_COMPUTER_IMAGE:-nova/computer:local}
+    image: ${SUPERCHAT_COMPUTER_IMAGE:-superchat/computer:local}
     build:
       context: ../..
       dockerfile: infra/sandboxes/computer/Dockerfile
@@ -38,7 +38,7 @@ services:
       - computers-data:/data
 
   supervisor:
-    image: nova/computer-supervisor:local
+    image: superchat/computer-supervisor:local
     build:
       context: ../..
       dockerfile: infra/sandboxes/supervisor/Dockerfile
@@ -63,11 +63,11 @@ services:
       SUPERVISOR_HOST: "0.0.0.0"
       SUPERVISOR_PORT: "7091"
       DOCKER_SOCKET: /var/run/docker.sock
-      NOVA_COMPUTER_IMAGE: ${NOVA_COMPUTER_IMAGE:-nova/computer:local}
+      SUPERCHAT_COMPUTER_IMAGE: ${SUPERCHAT_COMPUTER_IMAGE:-superchat/computer:local}
       # Per-Computer ceilings. "0", "none" or "unlimited" removes one.
-      NOVA_COMPUTER_MEMORY: ${NOVA_COMPUTER_MEMORY:-2g}
-      NOVA_COMPUTER_CPUS: ${NOVA_COMPUTER_CPUS:-2}
-      NOVA_COMPUTER_PIDS_LIMIT: ${NOVA_COMPUTER_PIDS_LIMIT:-2048}
+      SUPERCHAT_COMPUTER_MEMORY: ${SUPERCHAT_COMPUTER_MEMORY:-2g}
+      SUPERCHAT_COMPUTER_CPUS: ${SUPERCHAT_COMPUTER_CPUS:-2}
+      SUPERCHAT_COMPUTER_PIDS_LIMIT: ${SUPERCHAT_COMPUTER_PIDS_LIMIT:-2048}
       SANDBOX_COMMAND_TIMEOUT_MS: ${SANDBOX_COMMAND_TIMEOUT_MS:-300000}
       SANDBOX_MAX_COMPUTERS_PER_SPACE: ${SANDBOX_MAX_COMPUTERS_PER_SPACE:-0}
       SANDBOX_SUPERVISOR_TOKEN: ${SANDBOX_SUPERVISOR_TOKEN:?Set SANDBOX_SUPERVISOR_TOKEN}

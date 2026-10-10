@@ -14,7 +14,7 @@ options) and ``suggest_follow_ups`` builds a ``follow_ups`` card (quiet next-mes
 
 Portions modified from getnao/nao apps/shared/src/tools/clarification.ts and
 apps/shared/src/tools/suggest-follow-ups.ts@5bde830, Apache-2.0; changes: options are 2-5 required
-short distinct strings (nao allows none), results are Nova reply cards (``ask`` and ``follow_ups``)
+short distinct strings (nao allows none), results are Superchat reply cards (``ask`` and ``follow_ups``)
 that the person's click answers as an ordinary chat message, and the Muse rules (ask only when
 genuinely ambiguous, suggest only natural next steps) are in the tool descriptions; see NOTICE.
 """
@@ -63,7 +63,7 @@ def _kind_hints() -> str:
     return "; ".join(f"{kind} {_shape(s)}" for kind, s in CARD_DATA_SCHEMAS.items())
 
 
-# No `chart` card is offered: charts and dashboards are HTML pages `nova-dashboard` builds from the
+# No `chart` card is offered: charts and dashboards are HTML pages `superchat-dashboard` builds from the
 # person's files, so the model never types data values. Old transcripts keep their chart cards;
 # clients still draw them.
 
@@ -256,7 +256,7 @@ class RenderCardTool(Tool):
             "numbers to compare (compare), a market quote (quote), a plan you will update "
             "(plan), sources you read (sources), a contact "
             "(person), a file (file), long-running work (progress). For a chart or a "
-            "dashboard build a page with `nova-dashboard` from the data files, never a card "
+            "dashboard build a page with `superchat-dashboard` from the data files, never a card "
             "with typed numbers. "
             "Otherwise write normally. `data` is an object whose shape depends on `card` "
             f"(`?` = optional): {_kind_hints()}. "

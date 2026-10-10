@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import { cn, Input } from "@nova/ui-web";
+import { cn, Input } from "@superchat/ui-web";
 import { ORPCError } from "@orpc/client";
 import { ChevronRight, Eye, EyeOff, File, Folder, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -17,7 +17,7 @@ type Dir =
 // The Computer's runner can take a while to rebind after a restart: retry quietly meanwhile.
 const START_RETRY_MS = 2500;
 const START_RETRY_MAX = 40;
-const HIDDEN_KEY = "nova.files.showHidden";
+const HIDDEN_KEY = "superchat.files.showHidden";
 
 const isStarting = (error: unknown) =>
   error instanceof ORPCError && error.code === "SERVICE_UNAVAILABLE";

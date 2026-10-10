@@ -8,7 +8,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "paths": {
-      "@nova/ui-web/*": ["./src/*"]
+      "@superchat/ui-web/*": ["./src/*"]
     }
   },
   "include": ["src"]

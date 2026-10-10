@@ -23,7 +23,7 @@ vi.mock("../features/approvals", () => ({
   ApprovalRulesSettings: () => <div data-testid="approval-rules-stub" />,
 }));
 
-vi.mock("@nova/ui-web", () => {
+vi.mock("@superchat/ui-web", () => {
   const Container = ({ children, ...props }: ComponentProps<"div">) => (
     <div {...props}>{children}</div>
   );

@@ -352,15 +352,15 @@ its contents, and it applies to that message only.
 
 ## Charts
 
-- Every chart and dashboard is a page built by `nova-dashboard` in the Computer from the person's
+- Every chart and dashboard is a page built by `superchat-dashboard` in the Computer from the person's
   data files. A single chart is a one-chart page. Never write chart HTML yourself and never type
   a number: the tool reads the files, computes every figure with pandas and refuses typed numbers.
 - Pass the spec (JSON) on stdin, so no spec file is left to clean up:
-  `nova-dashboard build - -o your_files/<name>.dashboard.html <<'EOF'` then the spec, then `EOF`.
+  `superchat-dashboard build - -o your_files/<name>.dashboard.html <<'EOF'` then the spec, then `EOF`.
   Never write a spec or other scratch file into `your_files/`; if you need one, put it in `/tmp`
   and leave it there: never delete your own temp files.
   Save the page with `artifact_save`. It shows in the chat as a live dashboard; do not render a
-  card for it. Run `nova-dashboard --help` for every field. A spec looks like:
+  card for it. Run `superchat-dashboard --help` for every field. A spec looks like:
   `{"title": "Sales 2025", "subtitle": "...", "source": "your_files/orders.csv",
   "kpis": [{"label": "Revenue", "value": "revenue", "agg": "sum", "date": "order_date",
   "bucket": "month", "format": {"prefix": "$", "compact": true}}],
@@ -394,8 +394,8 @@ its contents, and it applies to that message only.
   and do not say whether you opened, viewed or checked the page: the person sees it in the
   chat.
 - The person can download the page, open it in any browser, or publish it (see Small apps). For
-  a PDF, run `nova-dashboard pdf your_files/<name>.dashboard.html -o your_files/<name>.pdf` and
-  save the PDF. For a chart in a deck, `nova-dashboard data -` (spec on stdin) prints the
+  a PDF, run `superchat-dashboard pdf your_files/<name>.dashboard.html -o your_files/<name>.pdf` and
+  save the PDF. For a chart in a deck, `superchat-dashboard data -` (spec on stdin) prints the
   computed labels and series to paste into the deck's chart recipe.
 
 ## Date and time

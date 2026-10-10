@@ -1,4 +1,4 @@
-import type { Automation, AutomationSchedule } from "@nova/contracts";
+import type { Automation, AutomationSchedule } from "@superchat/contracts";
 import { useCallback, useEffect, useState } from "react";
 import { rpc } from "../../lib/rpc";
 

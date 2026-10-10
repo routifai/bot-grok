@@ -15,6 +15,6 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env.DATABASE_URL ?? "postgres://nova:nova@127.0.0.1:5433/nova",
+    url: process.env.DATABASE_URL ?? "postgres://superchat:superchat@127.0.0.1:5433/superchat",
   },
 });

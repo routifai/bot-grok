@@ -1,6 +1,6 @@
 // Portions modified from nexu-io/open-design apps/web/src/edit-mode/bridge.ts@802708f, Apache-2.0; changes: host side of the bridge: nonce plus event.source checks, zod-validated messages, double-buffered frame swap.
-import { type DeckEditFromFrame, DeckEditFromFrameSchema } from "@nova/contracts";
-import { cn } from "@nova/ui-web";
+import { type DeckEditFromFrame, DeckEditFromFrameSchema } from "@superchat/contracts";
+import { cn } from "@superchat/ui-web";
 import { type MutableRefObject, useCallback, useEffect, useRef, useState } from "react";
 import { SandboxedHtmlViewer } from "../../../components/SandboxedHtmlViewer";
 import { postDeckNavigation, readDeckEvent } from "../deck-model";
@@ -14,7 +14,7 @@ const makeFrame = (source: string): Frame => {
 };
 
 /**
- * The deck with the edit bridge. A new source (a saved edit, Nova's change, an undo) loads into a
+ * The deck with the edit bridge. A new source (a saved edit, Superchat's change, an undo) loads into a
  * second, hidden frame first and replaces the visible one only when its bridge reports ready, on
  * the same slide and with the same selection, so nothing flickers or jumps. Messages count only
  * when they come from one of our frames' window AND carry that frame's nonce; the host posts the
@@ -106,20 +106,20 @@ export function EditStage({
         return;
       }
       const message = parsed.data;
-      if (message.type === "nova:edit-ready") {
+      if (message.type === "superchat:edit-ready") {
         postDeckNavigation(elements.current.get(key)?.contentWindow, {
           action: "go",
           index: activeRef.current,
         });
-        post(key, { type: "nova:edit-select", ids: selectedIds.current });
-        post(key, { type: "nova:edit-chip-inset", left: chipInsetRef.current });
+        post(key, { type: "superchat:edit-select", ids: selectedIds.current });
+        post(key, { type: "superchat:edit-chip-inset", left: chipInsetRef.current });
         if (key !== shownKeyRef.current) {
           setShownKey(key);
           setFrames((current) => current.filter((f) => f.key === key));
         }
         onReadyRef.current?.();
       }
-      if (key === shownKeyRef.current || message.type === "nova:edit-ready") {
+      if (key === shownKeyRef.current || message.type === "superchat:edit-ready") {
         onMessageRef.current(message);
       }
     };

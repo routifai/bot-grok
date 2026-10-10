@@ -1,5 +1,5 @@
-import type { AdapterContext, ConnectorEvent, ConnectorTool } from "@nova/adapter-kit";
-import { createLogger, createTestSink, installLogger } from "@nova/logging";
+import type { AdapterContext, ConnectorEvent, ConnectorTool } from "@superchat/adapter-kit";
+import { createLogger, createTestSink, installLogger } from "@superchat/logging";
 import { describe, expect, it, vi } from "vitest";
 import { composioToolkitDirectory } from "./composio-catalog-cache.js";
 import {
@@ -194,7 +194,7 @@ describe("composio tool mapping", () => {
     } as never;
     const connector = new CompositeConnector(destination, [failing]);
     const sink = createTestSink();
-    installLogger(createLogger({ service: "nova-api", sinks: [sink] }));
+    installLogger(createLogger({ service: "superchat-api", sinks: [sink] }));
 
     try {
       await expect(connector.discoverTools({ userId: "u" } as AdapterContext)).resolves.toEqual([
@@ -208,7 +208,7 @@ describe("composio tool mapping", () => {
       expect(logged).toContain("[redacted]");
       expect(logged).not.toContain("ak_secretvaluehere");
     } finally {
-      installLogger(createLogger({ service: "nova-api", level: "off", sinks: [] }));
+      installLogger(createLogger({ service: "superchat-api", level: "off", sinks: [] }));
     }
   });
 
@@ -534,7 +534,7 @@ describe("composio tool mapping", () => {
         sessionPreset: config.sessionPreset,
       })),
     ).toEqual([
-      { userId: "__nova_catalog__", toolkits: undefined, sessionPreset: undefined },
+      { userId: "__superchat_catalog__", toolkits: undefined, sessionPreset: undefined },
       { userId: "user-1", toolkits: ["GITHUB"], sessionPreset: undefined },
     ]);
 
@@ -731,7 +731,7 @@ describe("composio tool mapping", () => {
     ).toEqual({ connectIds: ["row-gh"], revokeIds: [] });
   });
 
-  it("only fetches live Composio slugs when a Nova row is still pending or errored", () => {
+  it("only fetches live Composio slugs when a Superchat row is still pending or errored", () => {
     expect(needsLivePluginSync([{ status: "connected" }, { status: "revoked" }])).toBe(false);
     expect(needsLivePluginSync([{ status: "pending" }])).toBe(true);
     expect(needsLivePluginSync([{ status: "error" }])).toBe(true);
@@ -746,7 +746,7 @@ describe("composio tool mapping", () => {
     ).toEqual([{ provider: "github", displayName: "GitHub" }]);
   });
 
-  it("plans DB sync when Composio is connected but Nova is still pending", () => {
+  it("plans DB sync when Composio is connected but Superchat is still pending", () => {
     expect(
       planLiveConnectionSync(
         [

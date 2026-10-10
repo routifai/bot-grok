@@ -1,4 +1,4 @@
-import type { ChartDocument } from "@nova/charts";
+import type { ChartDocument } from "@superchat/charts";
 
 /** A thumbnail is a few hundred pixels wide: more points than this cannot be told apart. */
 export const THUMBNAIL_MAX_POINTS = 500;

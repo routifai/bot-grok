@@ -1,4 +1,4 @@
-import type { Automation } from "@nova/contracts";
+import type { Automation } from "@superchat/contracts";
 import { useMemo } from "react";
 import { AutomationsSheet } from "../../features/automations";
 import type { AutomationsWire } from "../../features/automations/useAutomations";

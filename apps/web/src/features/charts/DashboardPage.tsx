@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import { Button, cn, Dialog, DialogContent, DialogTitle } from "@nova/ui-web";
+import { Button, cn, Dialog, DialogContent, DialogTitle } from "@superchat/ui-web";
 import { Maximize2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useArtifactPanel } from "../../components/cards/context";
@@ -22,7 +22,7 @@ const parseHtml = (bytes: Uint8Array) => {
 };
 
 /**
- * A dashboard page (`*.dashboard.html`, built by nova-dashboard) in the chat: the live page at the
+ * A dashboard page (`*.dashboard.html`, built by superchat-dashboard) in the chat: the live page at the
  * message's full width, sandboxed, as tall as it reports itself, with Open for the full view.
  */
 export function DashboardPageResult({
@@ -54,7 +54,7 @@ export function DashboardPageResult({
     const onMessage = (event: MessageEvent) => {
       if (!frame.current || event.source !== frame.current.contentWindow) return;
       const data = event.data as { type?: unknown; height?: unknown } | null;
-      if (data?.type !== "nova:dashboard-height" || typeof data.height !== "number") return;
+      if (data?.type !== "superchat:dashboard-height" || typeof data.height !== "number") return;
       if (!Number.isFinite(data.height) || data.height <= 0) return;
       setHeight(Math.min(Math.ceil(data.height), MAX_HEIGHT));
     };

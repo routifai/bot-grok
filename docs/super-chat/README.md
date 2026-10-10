@@ -1,11 +1,11 @@
-# How Nova's conversation works: Super Chat, Side Chats, Forks, Helpers
+# How Superchat's conversation works: Super Chat, Side Chats, Forks, Helpers
 
 This guide is for two readers:
 
 - a **developer** wiring a website to the engine,
 - a **product person** who wants to know what the Muse can and cannot do.
 
-Names: the product is **Nova**. The engine is **Omnigent**, vendored at `engine/omnigent`
+Names: the product is **Superchat**. The engine is **Omnigent**, vendored at `engine/omnigent`
 (Python package `engine/omnigent/omnigent`). All paths below are relative to the repo root. Route
 paths start with `/v1`.
 
@@ -41,13 +41,13 @@ Computer**. Everything else hangs off the Conversation.
 - An **Activity** is how any multi-step work shows up in a list.
 
 The engine is the whole backend ([ADR 0009](../adr/0009-the-engine-is-the-whole-backend.md)). Any
-website can talk to it and get the full product. Nova's API only checks who is asking and passes
-calls through. Nova keeps presentation: layout, wording, translation. The engine returns **codes and
+website can talk to it and get the full product. Superchat's API only checks who is asking and passes
+calls through. Superchat keeps presentation: layout, wording, translation. The engine returns **codes and
 data**, never English copy (model-written titles are the exception).
 
 ```mermaid
 flowchart TB
-  person([Person]) --> web["Any website (Nova is one)"]
+  person([Person]) --> web["Any website (Superchat is one)"]
   web -- "HTTP /v1 + SSE" --> engine["Omnigent engine"]
 
   subgraph family["One Muse = one Super Chat family"]
@@ -92,7 +92,7 @@ Where each concept lives in the engine:
 Each of these is a "feature" registered once in `engine/omnigent/omnigent/superchat/features.py`.
 
 The model loop runs on the **Claude SDK** harness by default, or on **Pi** (engine setting
-`OMNIGENT_SUPERCHAT_DEFAULT_AGENT=nova-pi`, which also runs non-Claude models through OpenRouter; see
+`OMNIGENT_SUPERCHAT_DEFAULT_AGENT=superchat-pi`, which also runs non-Claude models through OpenRouter; see
 [../pi_futur_work.md](../pi_futur_work.md)). The harness only runs the loop. Every capability
 (Helpers, memory, side chats, activity) is an Omnigent feature, never a harness feature.
 
@@ -120,7 +120,7 @@ Code: `engine/omnigent/omnigent/superchat/muse.py`.
    `omnigent.superchat.muse.key=<key>`, `omnigent.computer.owner=<key>` and, if there is a tenant,
    `omnigent.tenant`. The Computer is keyed by that opaque key, not by the person's email.
 4. The agent it runs on is server config: `OMNIGENT_SUPERCHAT_DEFAULT_AGENT` (for example
-   `nova-claude` or `nova-pi`). Without it, and with no Muse yet, the route answers 503
+   `superchat-claude` or `superchat-pi`). Without it, and with no Muse yet, the route answers 503
    `superchat_not_configured`.
    `OMNIGENT_SUPERCHAT_SANDBOX_PROVIDER` (for example `computer`) launches the Muse on a managed
    Computer.
@@ -206,7 +206,7 @@ messages, so nothing is lost and nothing is answered twice.
 |---|---|---|---|
 | `claude-sdk` | Written to the live CLI's stdin at priority `next` (`inner/claude_sdk_executor.py`); the CLI attaches it at the next tool boundary, or runs it as its own next turn if it missed this one | The CLI echoes our uuid (`--replay-user-messages`); the stream reads on until it does or ends | Runs as the next turn |
 | `pi` | RPC `steer` while the agent loop runs | Pi emits it as a user `message_start`; at `agent_end`, `clear_queue` takes back what Pi never delivered | Runs as the next turn |
-| native terminals (`claude-native`, `pi-native`) | The terminal's own input queue; Nova does not use them | n/a | n/a |
+| native terminals (`claude-native`, `pi-native`) | The terminal's own input queue; Superchat does not use them | n/a | n/a |
 
 The runner keeps its copy of a message until the harness says the running turn took it
 (`injection.consumed`); anything refused, or never reported when the turn ends, runs as the next turn.
@@ -221,7 +221,7 @@ says a message started or stopped waiting; the transcript marks a waiting messag
 with nothing stored. Which features need a message to start its own turn is a Feature hook
 (`needs_own_turn`; the knowledge feature answers for attached files).
 
-Nova's worker (`packages/adapters/src/omnigent/gateway.ts`) waits for the stream's ready heartbeat, posts
+Superchat's worker (`packages/adapters/src/omnigent/gateway.ts`) waits for the stream's ready heartbeat, posts
 the turn, and posts each message the person sends as the thread's own event signal (Postgres
 `LISTEN/NOTIFY`) announces it; once the engine has it, its steering row is deleted (a failed post
 releases it for the continuation). The run ends at an `idle` edge for the latest turn its messages
@@ -229,7 +229,7 @@ started or joined. There is no fixed deadline: after a quiet spell the worker as
 snapshot, follows a turn that is running or waiting (on helpers or the person) and renews the run's
 lease, ends on `idle`, and fails with an honest line on `failed` or when the engine cannot be asked. A
 dropped stream is reopened and asked the same way; an engine that does not come back fails the run in
-about half a minute. A stop in Nova interrupts the engine's turn.
+about half a minute. A stop in Superchat interrupts the engine's turn.
 
 Known gap: if the stream drops and the reopened engine reads `idle` before its recovery turn has
 started (the turn the runner starts for a message left unanswered by a restart), the run ends there
@@ -427,7 +427,7 @@ In `GET /v1/sessions/{id}/transcript`, each message has `forks: []`. Each entry 
 ### Open as side chat, Archive
 
 - **Open as side chat** has no engine call. A Fork already is a Side Chat, so the client just opens
-  it in the Side Chat list (Nova: `onOpenSideChat` in
+  it in the Side Chat list (Superchat: `onOpenSideChat` in
   `apps/web/src/features/side-chats/ForkThread.tsx`).
 - **Archive** is the normal Side Chat archive (see [Archiving](#8-archiving)). An archived Fork has
   `state: archived`.
@@ -463,7 +463,7 @@ engine it is a **sub-agent** session (CONTEXT.md: "In the engine it is a Sub-age
   run Helpers in parallel. A repeat of the same task from the same chat within 10 seconds is
   treated as the same hand-off (`DEDUP_WINDOW_S` in
   `engine/omnigent/omnigent/superchat/helpers/handlers.py`).
-- The tool is offered only where a Helper type is declared in the agent bundle. In Nova the
+- The tool is offered only where a Helper type is declared in the agent bundle. In Superchat the
   type is `worker`, which can start `subworker` parts (`infra/omnigent/templates/agents/worker/config.yaml`).
   A `subworker` cannot start more. The nesting cap is: chat, Helper, one level of parts
   (`refuse_subagent_nesting` in `engine/omnigent/omnigent/superchat/subagents.py`).
@@ -526,10 +526,10 @@ Routes: `GET /v1/sessions/{id}/activities` (`limit` 1 to 100, `before`, `tz` for
 Super Chat or one of its Side Chats. Registered in
 `engine/omnigent/omnigent/server/routes/sessions/routes_items.py`.
 
-**Registering a tool in the Activity panel (Nova).** A step never shows the tool's raw name, only an
+**Registering a tool in the Activity panel (Superchat).** A step never shows the tool's raw name, only an
 icon, a plain title and (when useful) a short snippet. All three come from one registry,
 `TOOL_PRESENTATION` in `packages/core/src/tool-presentation.ts`. When a tool is added to the agent
-bundle (`infra/omnigent/agents/nova-claude/`) or to the engine's always-on tools
+bundle (`infra/omnigent/agents/superchat-claude/`) or to the engine's always-on tools
 (`ALWAYS_ON_SUPERSIDE_CHAT_TOOLS`), add an entry there with an icon (`ToolIconKey`), a
 `title(args)` derived only from the call's arguments, and a `snippet(output)`, or
 `tool-presentation.completeness.test.ts` fails. Map any new icon key in
@@ -667,14 +667,14 @@ All routes are under `/v1/sessions/{id}/memory/...` and need the caller to be th
 session (`engine/omnigent/omnigent/server/routes/session_memory.py`):
 
 - `GET .../memory/claims?kinds=a,b` lists active claims, newest first, including expired ones
-  (`status: "expired"`; Nova shows them dimmed, marked Expired, with only Forget).
+  (`status: "expired"`; Superchat shows them dimmed, marked Expired, with only Forget).
 - `PATCH .../memory/claims/{claim_id}` `{text}` is the person's edit. The claim becomes
   `person_authored`, so background writers never overwrite it.
 - `POST .../memory/forget` `{claim_id | query, confirm}` forgets one claim.
 - `GET .../memory/claims/{claim_id}` and `.../explain`, `GET .../memory/search?query=&kind=&limit=`,
   `POST .../memory/remember`, `GET .../memory/profile`.
 
-Nova relays these through its API (`apps/api/src/features/memory/router.ts`,
+Superchat relays these through its API (`apps/api/src/features/memory/router.ts`,
 `packages/adapters/src/omnigent/memory.ts`) and redacts the profile, claims and notes before
 showing them.
 
@@ -694,11 +694,11 @@ background writers only append to it.
   `memory_remember`. At most 4 passes a day per person. Nothing runs when proactivity is off or in
   quiet hours.
 
-### Not part of Nova's memory
+### Not part of Superchat's memory
 
 The engine also has generic `hindsight_*` tools (`engine/omnigent/omnigent/tools/builtins/hindsight.py`)
 for an external memory service. They are not part of the Muse's memory described here, and I found
-no use of them in the Nova agent bundles.
+no use of them in the Superchat agent bundles.
 
 ## 7. The Computer
 
@@ -720,7 +720,7 @@ and every turn runs inside it (CONTEXT.md, [ADR 0004](../adr/0004-engine-owns-th
   `GET /v1/sessions/{id}/computer` (`{available, in_control, ready}`),
   `POST .../computer/screen` `{interactive}` (a view URL, or a control token to **take over**),
   `POST .../computer/release` (hand back), `POST .../computer/recording` (`start` or `stop`, used
-  to teach a Skill). Nova relays the screen stream through its same-origin proxy.
+  to teach a Skill). Superchat relays the screen stream through its same-origin proxy.
 - **Files and artifacts.** The Muse saves deliverables with the `artifact_save` tool. The engine
   stores them (`/v1/artifacts`, `engine/omnigent/omnigent/superchat/artifacts/`): a name that exists
   gets a new version. Allowed kinds are `html`, `md`, `pdf`, `docx`, `xlsx`, `csv`, `pptx`, `png`,
@@ -739,7 +739,7 @@ the person and by the Muse (`related_chats` still returns it with `archived: tru
 
 ### Manual archive (today)
 
-- **How.** `PATCH /v1/sessions/{id}` with `{"archived": true}` (owner only). Nova calls it from
+- **How.** `PATCH /v1/sessions/{id}` with `{"archived": true}` (owner only). Superchat calls it from
   `chats.archive` (`apps/api/src/features/side-chats/service.ts`, `archiveOmnigentSession` in
   `packages/adapters/src/omnigent/side-chats.ts`).
 - **What happens.** The archived flag and an `omnigent.archived_at` label are set; the family gets
@@ -748,9 +748,9 @@ the person and by the Muse (`related_chats` still returns it with `archived: tru
   (`engine/omnigent/omnigent/server/routes/sessions/routes_core.py`, `_spawn_archive_stop` in
   `.../_sessions/orchestration.py`).
 - **Where it goes.** The Side Chat or Fork leaves the default list. `GET /v1/sessions` hides every
-  Side Chat anyway; clients list them through `related_chats` and filter on `archived`. Nova shows
+  Side Chat anyway; clients list them through `related_chats` and filter on `archived`. Superchat shows
   them under an Archived fold.
-- **How to restore.** `PATCH /v1/sessions/{id}` with `{"archived": false}` unarchives. Nova calls
+- **How to restore.** `PATCH /v1/sessions/{id}` with `{"archived": false}` unarchives. Superchat calls
   it from `chats.unarchive` (`unarchiveOmnigentSession` in the same adapter file) behind a
   **Restore** button: in the header of an archived Side Chat, in an archived Fork's thread, and on
   archived rows of the All forks list. A user **message** posted to an archived Side Chat also
@@ -783,7 +783,7 @@ Code: `engine/omnigent/omnigent/superchat/side_chats/archiving.py`.
 
 - **Same path as manual archive:** the flag and label, `chats.changed`, the read-state prune and the
   deferred runner stop. The Super Chat, Helpers and live chats are never touched.
-- **In Nova:** Settings → "Archive side chats": Never, After a day, After a week, After a month.
+- **In Superchat:** Settings → "Archive side chats": Never, After a day, After a week, After a month.
   The current effective value is selected (the default when the person never chose).
 
 ## 9. Errors and notices
@@ -823,7 +823,7 @@ in this guide: `superchat_not_configured` (503), `not_a_super_chat` (422), `muse
 ## 10. API quick reference
 
 All paths are registered in the engine and start with `/v1`. `{id}` is a session id. Auth is the
-engine's (Nova sends the person's email, a proxy secret, and a tenant header on every call).
+engine's (Superchat sends the person's email, a proxy secret, and a tenant header on every call).
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -878,7 +878,7 @@ Engine-side:
 | Refresh after quiet period | `OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS` | 43200 (12 h); use 60 for testing |
 | Archive idle side chats after (server-wide) | `OMNIGENT_SIDE_CHAT_ARCHIVE_AFTER_SECONDS` | 2592000 (30 days); use 60 to 3600 for testing |
 | Archive sweep interval | `OMNIGENT_SIDE_CHAT_ARCHIVE_SWEEP_INTERVAL_SECONDS` | 300 |
-| Daily Study per Conversation, plus quiet-moment notes | `OMNIGENT_PROACTIVE_PROVISION=1` | on in Nova |
+| Daily Study per Conversation, plus quiet-moment notes | `OMNIGENT_PROACTIVE_PROVISION=1` | on in Superchat |
 | Quiet moment idle time | `OMNIGENT_QUIET_MOMENT_IDLE_SECONDS` | 1200 |
 | Helpers at once | `OMNIGENT_SUBAGENT_MAX_CONCURRENT` plus each type's `max_sessions` | 10 |
 | Upkeep model | server `--config` `llm:` block | required for Upkeep |
@@ -886,7 +886,7 @@ Engine-side:
 | Memory search | `OMNIGENT_MEMORY_EMBEDDINGS_MODEL` plus its provider key | `openai/text-embedding-3-small` |
 | Web search | `TAVILY_API_KEY` on the host, plus `OMNIGENT_RUNNER_ENV_PASSTHROUGH=TAVILY_API_KEY` | required for `web_search` |
 
-Nova's own side of the gateway (`packages/adapters/src/omnigent/env.ts`,
+Superchat's own side of the gateway (`packages/adapters/src/omnigent/env.ts`,
 `omnigentSuperChatConfigFromEnv`):
 
 | What | Setting | Default |
@@ -900,7 +900,7 @@ Nova's own side of the gateway (`packages/adapters/src/omnigent/env.ts`,
 - Glossary: [CONTEXT.md](../../CONTEXT.md). Use its words exactly: Muse, Conversation, Side chat,
   Fork, Helper, Activity, Ask, Archived, Computer. The engine words differ: Conversation is the
   **Super Chat**, a Helper is a **sub-agent**, and the Activity panel is the **Activity Feed**
-  (engine glossary: `engine/omnigent/rollover/CONTEXT.md`). Nova's "Task" is a plan item of a Goal and is not a Helper.
+  (engine glossary: `engine/omnigent/rollover/CONTEXT.md`). Superchat's "Task" is a plan item of a Goal and is not a Helper.
 - [ADR 0001](../adr/0001-one-muse-per-person.md): one Muse per person.
 - [ADR 0004](../adr/0004-engine-owns-the-computer.md): the engine owns the Computer.
 - [ADR 0007](../adr/0007-the-muse-delegates-multi-step-work.md): the Muse delegates multi-step work.

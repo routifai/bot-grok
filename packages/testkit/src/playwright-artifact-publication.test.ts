@@ -271,7 +271,7 @@ else:
             },
           },
         );
-        expect(comment).toContain("<!-- nova-playwright-screenshots -->");
+        expect(comment).toContain("<!-- superchat-playwright-screenshots -->");
         expect(existsSync(path.join(published, "prs/42/index.html"))).toBe(true);
       }
       expect(existsSync(env.ATTACK_MARKER)).toBe(false);

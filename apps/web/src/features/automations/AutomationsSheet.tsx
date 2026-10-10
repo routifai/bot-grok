@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { Automation, AutomationSchedule } from "@nova/contracts";
+import type { Automation, AutomationSchedule } from "@superchat/contracts";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,7 +10,7 @@ import {
   NativeSelectOption,
   Switch,
   Textarea,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import { Ellipsis, Play, Plus } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 import { formatRelativeTime } from "../../lib/relative-time";

@@ -3469,7 +3469,7 @@ async def test_leave_rejects_a_sub_agent_session(
 
 # ── Header mode + managed runner bearer ──────────────────────
 
-_PROXY_SECRET = "nova-proxy-secret"
+_PROXY_SECRET = "superchat-proxy-secret"
 _RUNNER_BINDING = "managed-runner-binding-token"
 
 

@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
-import { aiRecipient, parseModelSecret, selectConfiguredModel } from "@nova/adapters";
-import type { Actor, AiConsentQuery, AiConsentStatus, AiRecipient } from "@nova/contracts";
-import { AI_DISCLOSURE_VERSION, AI_PRIVACY_URL } from "@nova/contracts";
+import { aiRecipient, parseModelSecret, selectConfiguredModel } from "@superchat/adapters";
+import type { Actor, AiConsentQuery, AiConsentStatus, AiRecipient } from "@superchat/contracts";
+import { AI_DISCLOSURE_VERSION, AI_PRIVACY_URL } from "@superchat/contracts";
 import {
   findDefaultModelCredential,
   findDefaultVoiceCredential,
   findModelCredential,
-} from "@nova/db";
+} from "@superchat/db";
 import { ORPCError } from "@orpc/server";
 import type { RouterDeps } from "./router.js";
 import { resolveThreadTarget } from "./thread-target.js";

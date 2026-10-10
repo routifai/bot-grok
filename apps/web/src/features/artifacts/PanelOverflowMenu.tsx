@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@nova/ui-web";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@superchat/ui-web";
 import { Ellipsis } from "lucide-react";
 import type { ReactNode } from "react";
 

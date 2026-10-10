@@ -1,5 +1,5 @@
-import type { AiRecipient } from "@nova/contracts";
-import { AI_DATA_DISCLOSURES, AI_PRIVACY_URL } from "@nova/contracts";
+import type { AiRecipient } from "@superchat/contracts";
+import { AI_DATA_DISCLOSURES, AI_PRIVACY_URL } from "@superchat/contracts";
 import { Alert, Linking } from "react-native";
 
 export function promptAiConsent(

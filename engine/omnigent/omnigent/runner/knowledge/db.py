@@ -1,6 +1,6 @@
 """The Computer's file index: one SQLite file with the files, their passages and both indexes.
 
-Layout (all in ``<home>/.nova/knowledge/index.sqlite3``, on the Computer's persistent home volume):
+Layout (all in ``<home>/.superchat/knowledge/index.sqlite3``, on the Computer's persistent home volume):
 
 * ``files``: one row per indexed file, keyed by its workspace-relative path, with the pass state
   (``queued -> text_ready -> ready`` or ``failed``) and what was seen on disk (size, mtime).

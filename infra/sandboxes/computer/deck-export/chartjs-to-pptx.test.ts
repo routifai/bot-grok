@@ -1,4 +1,4 @@
-// Unit tests for the Chart.js -> PptxGenJS mapping in deck-capture-page.js (Nova addition). The
+// Unit tests for the Chart.js -> PptxGenJS mapping in deck-capture-page.js (Superchat addition). The
 // real-Chromium round trip (every type exported, read back as a .pptx) is
 // engine/omnigent/tests/superchat/decks/test_export_charts.py.
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";

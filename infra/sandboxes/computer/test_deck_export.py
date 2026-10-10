@@ -17,7 +17,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 HERE = Path(__file__).resolve().parent
-loader = importlib.machinery.SourceFileLoader("nova_deck_export", str(HERE / "nova-deck-export"))
+loader = importlib.machinery.SourceFileLoader("superchat_deck_export", str(HERE / "superchat-deck-export"))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 helper = importlib.util.module_from_spec(spec)
 loader.exec_module(helper)
@@ -151,8 +151,8 @@ class DeckExportTest(unittest.TestCase):
 
     def test_rich_text_inside_a_paragraph_stays_one_box_of_runs(self):
         html = FIXTURE.read_text().replace(
-            '<p class="lead" data-nova-id="s3-lead">Approve the move to weekly releases.</p>',
-            '<p class="lead" data-nova-id="s3-lead">Approve the <strong>move</strong> to '
+            '<p class="lead" data-superchat-id="s3-lead">Approve the move to weekly releases.</p>',
+            '<p class="lead" data-superchat-id="s3-lead">Approve the <strong>move</strong> to '
             "<em>weekly</em> releases today.</p>",
         )
         src = self.dir / "rich.deck.html"

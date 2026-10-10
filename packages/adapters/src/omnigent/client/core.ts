@@ -1,9 +1,9 @@
 // Minimal typed client for the Omnigent REST API (engine/omnigent/omnigent/server/API.md,
-// engine/omnigent/openapi.json), used by ./gateway.ts to run a Nova turn on Omnigent
+// engine/omnigent/openapi.json), used by ./gateway.ts to run a Superchat turn on Omnigent
 // (docs/omnigent-spike.md). Every call carries the identity/proxy
 // headers Omnigent's header auth mode expects — no SDK dependency, just fetch and a tiny
 // SSE line parser mirroring apps/mobile/lib/api.ts's `subscribeThread`.
-import { MODEL_ERROR_COPY, redactSecrets } from "@nova/core";
+import { MODEL_ERROR_COPY, redactSecrets } from "@superchat/core";
 
 /** How to reach the engine (env `OMNIGENT_URL` / `OMNIGENT_PROXY_SECRET`), before a caller's
  * tenant is known. Bind one with `omnigentClientFor` to make calls. */
@@ -20,7 +20,7 @@ export interface OmnigentConnection {
   secrets?: string[];
 }
 
-/** A connection bound to the caller's tenant: the Nova space id, sent on every call so the
+/** A connection bound to the caller's tenant: the Superchat space id, sent on every call so the
  * engine scopes per-person resources (`/v1/me/muse`, the Muse's Computer) to that space. */
 export interface OmnigentClientConfig extends OmnigentConnection {
   tenant: string;
@@ -125,7 +125,7 @@ export async function throwOnError(
   return response;
 }
 
-/** What a person sees for an engine error code that can reach the UI (wording is Nova's; the
+/** What a person sees for an engine error code that can reach the UI (wording is Superchat's; the
  * engine sends only the code). */
 const ERROR_COPY: Record<string, string> = {
   helper_read_only: "Helpers are read-only.",

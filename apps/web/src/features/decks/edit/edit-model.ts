@@ -1,5 +1,5 @@
 // Portions modified from nexu-io/open-design apps/web/src/edit-mode/source-patches.ts@802708f, Apache-2.0; changes: style/translate helpers only; patch application is in the engine.
-import type { DeckEditTarget, DeckPatch } from "@nova/contracts";
+import type { DeckEditTarget, DeckPatch } from "@superchat/contracts";
 
 // Pure helpers for the deck editor: colour and length reading, translate handling for the
 // position nudge, how style changes become patches, and how neighbouring patches coalesce.
@@ -118,6 +118,6 @@ export function previewOf(patch: DeckPatch): { id: string; style: StyleChanges }
   return patch.kind === "set-style" ? { id: patch.id, style: patch.style } : null;
 }
 
-/** A patch the engine's reply says it will not apply exactly (the "ask Nova instead" 409). */
-export const isInexact = (message: string): boolean => /ask Nova instead/i.test(message);
+/** A patch the engine's reply says it will not apply exactly (the "ask Superchat instead" 409). */
+export const isInexact = (message: string): boolean => /ask Superchat instead/i.test(message);
 export const isStale = (message: string): boolean => /^the deck changed since/i.test(message);

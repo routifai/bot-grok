@@ -1,4 +1,4 @@
-import { textDirectionForLocale } from "@nova/core";
+import { textDirectionForLocale } from "@superchat/core";
 import { resolveUiLocale } from "./ui-locale";
 
 export function applyUiDirection(locale: string = resolveUiLocale()) {

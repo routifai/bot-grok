@@ -1,7 +1,7 @@
 """Tests for :mod:`omnigent.onboarding.sandboxes.computer`.
 
 Fully offline: every HTTP call goes through ``httpx.MockTransport`` against a fake supervisor
-handler — no real Nova supervisor, network, or Docker daemon involved.
+handler — no real Superchat supervisor, network, or Docker daemon involved.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ SANDBOX_ID = f"{BOT_ID}:{SPACE_ID}:{CONTAINER_ID}"
 
 
 class FakeSupervisor:
-    """Records every request and answers like Nova's real sandbox supervisor would.
+    """Records every request and answers like Superchat's real sandbox supervisor would.
 
     :param computers_status: HTTP status ``POST /computers`` returns.
     :param computers_body: JSON body ``POST /computers`` returns on success.
@@ -55,7 +55,7 @@ class FakeSupervisor:
         self.computers_status = computers_status
         self.computers_body = computers_body or {
             "id": CONTAINER_ID,
-            "image": "nova-computer:latest",
+            "image": "superchat-computer:latest",
             "resumed": True,
         }
         self.exec_status = exec_status
@@ -100,15 +100,15 @@ def test_parse_sandbox_id_rejects_malformed_ids(malformed: str) -> None:
 def test_prepare_for_launch_resolves_identity_from_labels() -> None:
     supervisor = FakeSupervisor()
     launcher = make_launcher(supervisor)
-    launcher.prepare_for_launch(labels={"nova.bot": BOT_ID, "nova.space": SPACE_ID})
+    launcher.prepare_for_launch(labels={"superchat.bot": BOT_ID, "superchat.space": SPACE_ID})
     launcher.prepare()  # Does not raise: identity resolved.
 
 
-def test_prepare_for_launch_targets_novas_computer_key_when_given() -> None:
+def test_prepare_for_launch_targets_superchats_computer_key_when_given() -> None:
     """Team mode shares one computer per space: the runner must land on that same machine."""
     launcher = make_launcher(FakeSupervisor())
     launcher.prepare_for_launch(
-        labels={"nova.bot": BOT_ID, "nova.space": SPACE_ID, "nova.computer": "team-space_1"}
+        labels={"superchat.bot": BOT_ID, "superchat.space": SPACE_ID, "superchat.computer": "team-space_1"}
     )
     assert (launcher._bot_id, launcher._space_id) == ("team-space_1", SPACE_ID)
 
@@ -120,8 +120,8 @@ def test_prepare_for_launch_reads_generic_labels() -> None:
             "omnigent.computer.key": "team-1",
             "omnigent.computer.owner": "owner-1",
             "omnigent.tenant": "tenant-1",
-            "nova.bot": "ignored",
-            "nova.space": "ignored",
+            "superchat.bot": "ignored",
+            "superchat.space": "ignored",
         }
     )
     assert (launcher._bot_id, launcher._space_id) == ("team-1", "tenant-1")
@@ -140,8 +140,8 @@ def test_deprecated_env_names_still_configure_the_launcher(
 ) -> None:
     monkeypatch.delenv(SUPERVISOR_URL_ENV_VAR, raising=False)
     monkeypatch.delenv("OMNIGENT_COMPUTER_SUPERVISOR_TOKEN", raising=False)
-    monkeypatch.setenv("OMNIGENT_NOVA_SUPERVISOR_URL", "http://old.test/")
-    monkeypatch.setenv("OMNIGENT_NOVA_SUPERVISOR_TOKEN", "old-token")
+    monkeypatch.setenv("OMNIGENT_SUPERCHAT_SUPERVISOR_URL", "http://old.test/")
+    monkeypatch.setenv("OMNIGENT_SUPERCHAT_SUPERVISOR_TOKEN", "old-token")
     launcher = ComputerSandboxLauncher()
     assert launcher._supervisor_url == "http://old.test"
     assert launcher._supervisor_token == "old-token"
@@ -162,7 +162,7 @@ def test_prepare_for_launch_prefers_labels_over_previous_sandbox_id() -> None:
     supervisor = FakeSupervisor()
     launcher = make_launcher(supervisor)
     launcher.prepare_for_launch(
-        labels={"nova.bot": "bot_fresh", "nova.space": "space_fresh"},
+        labels={"superchat.bot": "bot_fresh", "superchat.space": "space_fresh"},
         previous_sandbox_id=SANDBOX_ID,
     )
     sandbox_id = launcher.provision("ignored")
@@ -173,7 +173,7 @@ def test_prepare_fails_loud_without_supervisor_url(monkeypatch: pytest.MonkeyPat
     monkeypatch.delenv(SUPERVISOR_URL_ENV_VAR, raising=False)
     monkeypatch.delenv(SUPERVISOR_TOKEN_ENV_VAR, raising=False)
     launcher = ComputerSandboxLauncher(supervisor_token="secret")
-    launcher.prepare_for_launch(labels={"nova.bot": BOT_ID, "nova.space": SPACE_ID})
+    launcher.prepare_for_launch(labels={"superchat.bot": BOT_ID, "superchat.space": SPACE_ID})
     with pytest.raises(click.ClickException, match=SUPERVISOR_URL_ENV_VAR):
         launcher.prepare()
 
@@ -181,7 +181,7 @@ def test_prepare_fails_loud_without_supervisor_url(monkeypatch: pytest.MonkeyPat
 def test_prepare_fails_loud_without_supervisor_token(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(SUPERVISOR_TOKEN_ENV_VAR, raising=False)
     launcher = ComputerSandboxLauncher(supervisor_url="http://supervisor.test")
-    launcher.prepare_for_launch(labels={"nova.bot": BOT_ID, "nova.space": SPACE_ID})
+    launcher.prepare_for_launch(labels={"superchat.bot": BOT_ID, "superchat.space": SPACE_ID})
     with pytest.raises(click.ClickException, match=SUPERVISOR_TOKEN_ENV_VAR):
         launcher.prepare()
 
@@ -197,17 +197,17 @@ def test_prepare_fails_loud_without_resolved_identity() -> None:
 def test_launcher_reads_config_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(SUPERVISOR_URL_ENV_VAR, "http://from-env.test")
     monkeypatch.setenv(SUPERVISOR_TOKEN_ENV_VAR, "env-token")
-    monkeypatch.setenv(HOME_ROOT_ENV_VAR, "/data/nova")
+    monkeypatch.setenv(HOME_ROOT_ENV_VAR, "/data/superchat")
     launcher = ComputerSandboxLauncher()
     assert launcher._supervisor_url == "http://from-env.test"
     assert launcher._supervisor_token == "env-token"
-    assert launcher._home_root == "/data/nova"
+    assert launcher._home_root == "/data/superchat"
 
 
 def test_provision_ensures_the_computer_and_returns_an_encoded_sandbox_id() -> None:
     supervisor = FakeSupervisor()
-    launcher = make_launcher(supervisor, home_root="/data/nova")
-    launcher.prepare_for_launch(labels={"nova.bot": BOT_ID, "nova.space": SPACE_ID})
+    launcher = make_launcher(supervisor, home_root="/data/superchat")
+    launcher.prepare_for_launch(labels={"superchat.bot": BOT_ID, "superchat.space": SPACE_ID})
     launcher.prepare()
 
     sandbox_id = launcher.provision("managed-abc12345")
@@ -218,24 +218,24 @@ def test_provision_ensures_the_computer_and_returns_an_encoded_sandbox_id() -> N
     assert request.method == "POST"
     assert request.url.path == "/computers"
     assert request.headers["authorization"] == "Bearer shared-secret"
-    assert request.headers["x-nova-bot-id"] == BOT_ID
-    assert request.headers["x-nova-space-id"] == SPACE_ID
+    assert request.headers["x-superchat-bot-id"] == BOT_ID
+    assert request.headers["x-superchat-space-id"] == SPACE_ID
     import json
 
     body = json.loads(request.content)
     assert body == {
         "botId": BOT_ID,
-        "homePath": "/data/nova/homes/bot_abc123",
+        "homePath": "/data/superchat/homes/bot_abc123",
         "spaceId": SPACE_ID,
     }
 
 
 def test_provision_is_idempotent_across_repeated_calls_like_ensure_semantics() -> None:
-    """Nova's supervisor POST /computers is itself an ensure-or-create; repeated launches for
+    """Superchat's supervisor POST /computers is itself an ensure-or-create; repeated launches for
     the same Muse reuse the running container without this launcher tracking anything."""
     supervisor = FakeSupervisor(computers_body={"id": CONTAINER_ID, "resumed": True})
     launcher = make_launcher(supervisor)
-    launcher.prepare_for_launch(labels={"nova.bot": BOT_ID, "nova.space": SPACE_ID})
+    launcher.prepare_for_launch(labels={"superchat.bot": BOT_ID, "superchat.space": SPACE_ID})
     launcher.prepare()
 
     first = launcher.provision("name-1")
@@ -248,7 +248,7 @@ def test_provision_is_idempotent_across_repeated_calls_like_ensure_semantics() -
 def test_provision_raises_clearly_on_supervisor_error() -> None:
     supervisor = FakeSupervisor(computers_status=500, computers_body={"error": "docker is down"})
     launcher = make_launcher(supervisor)
-    launcher.prepare_for_launch(labels={"nova.bot": BOT_ID, "nova.space": SPACE_ID})
+    launcher.prepare_for_launch(labels={"superchat.bot": BOT_ID, "superchat.space": SPACE_ID})
     launcher.prepare()
 
     with pytest.raises(click.ClickException, match="docker is down"):
@@ -265,8 +265,8 @@ def test_run_execs_the_command_through_the_supervisor() -> None:
     assert result.stdout == "hello\n"
     request = supervisor.requests[-1]
     assert request.url.path == f"/computers/{CONTAINER_ID}/exec"
-    assert request.headers["x-nova-bot-id"] == BOT_ID
-    assert request.headers["x-nova-space-id"] == SPACE_ID
+    assert request.headers["x-superchat-bot-id"] == BOT_ID
+    assert request.headers["x-superchat-space-id"] == SPACE_ID
     import json
 
     body = json.loads(request.content)
@@ -363,7 +363,7 @@ def test_is_running_returns_none_on_a_malformed_sandbox_id() -> None:
 
 
 def test_terminate_is_not_supported_since_the_computer_outlives_the_session() -> None:
-    """The computer is Nova's, not this launch's, to destroy — Omnigent's best-effort cleanup
+    """The computer is Superchat's, not this launch's, to destroy — Omnigent's best-effort cleanup
     (session deleted mid-provision, the managed-sandbox reaper) must never tear it down."""
     supervisor = FakeSupervisor()
     launcher = make_launcher(supervisor)
@@ -427,8 +427,8 @@ def test_run_re_resolves_a_stale_container_id_and_retries() -> None:
         f"/computers/{NEW_CONTAINER_ID}/exec",
     ]
     ensure = requests[1]
-    assert ensure.headers["x-nova-bot-id"] == BOT_ID
-    assert ensure.headers["x-nova-space-id"] == SPACE_ID
+    assert ensure.headers["x-superchat-bot-id"] == BOT_ID
+    assert ensure.headers["x-superchat-space-id"] == SPACE_ID
 
 
 def test_is_running_re_resolves_a_stale_container_id() -> None:
@@ -442,7 +442,7 @@ def test_screen_url_sends_the_stable_screen_id_and_view_mode() -> None:
     assert launcher.screen_url(SANDBOX_ID, interactive=False) == "http://v/?t=1"
     screen = requests[-1]
     assert screen.url.path == f"/computers/{NEW_CONTAINER_ID}/screen-mode"
-    assert screen.headers["x-nova-screen-id"] == BOT_ID
+    assert screen.headers["x-superchat-screen-id"] == BOT_ID
     assert json.loads(screen.content) == {"interactive": False, "revokeControl": False}
 
 

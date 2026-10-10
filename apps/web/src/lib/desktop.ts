@@ -1,19 +1,19 @@
-import type { NovaDesktop, NovaDesktopOAuthCallback } from "@nova/contracts";
+import type { SuperchatDesktop, SuperchatDesktopOAuthCallback } from "@superchat/contracts";
 
-export type { NovaDesktop, NovaDesktopOAuthCallback } from "@nova/contracts";
+export type { SuperchatDesktop, SuperchatDesktopOAuthCallback } from "@superchat/contracts";
 
 declare global {
   interface Window {
-    novaDesktop?: NovaDesktop;
+    superchatDesktop?: SuperchatDesktop;
   }
 }
 
-export function desktopBridge(): NovaDesktop | undefined {
-  return typeof window === "undefined" ? undefined : window.novaDesktop;
+export function desktopBridge(): SuperchatDesktop | undefined {
+  return typeof window === "undefined" ? undefined : window.superchatDesktop;
 }
 
 /** The compact `code#state` form the manual paste flow already accepts. */
-export function desktopOAuthCode(callback: NovaDesktopOAuthCallback) {
+export function desktopOAuthCode(callback: SuperchatDesktopOAuthCallback) {
   return callback.state === undefined ? callback.code : `${callback.code}#${callback.state}`;
 }
 
@@ -51,7 +51,7 @@ export function onDesktopOAuthCallback(
   });
 }
 
-export function windowChromeKind(desktop?: NovaDesktop): "spacer" | "darwin" | "controls" {
+export function windowChromeKind(desktop?: SuperchatDesktop): "spacer" | "darwin" | "controls" {
   if (!desktop) return "spacer";
   if (desktop.platform === "darwin") return "darwin";
   return "controls";

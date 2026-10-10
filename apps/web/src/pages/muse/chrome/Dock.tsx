@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import { cn } from "@nova/ui-web";
+import { cn } from "@superchat/ui-web";
 import type { ReactNode } from "react";
 import { useAsks } from "../../../features/approvals";
 

@@ -1,6 +1,6 @@
 import { t } from "@lingui/core/macro";
 import { useLingui } from "@lingui/react/macro";
-import { cn } from "@nova/ui-web";
+import { cn } from "@superchat/ui-web";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type ActivitiesState,
@@ -217,7 +217,7 @@ export function ContextPanel({
     <div
       data-testid="context-panel"
       className={cn(
-        "nova-glass m-2 hidden w-[300px] shrink-0 flex-col gap-2.5",
+        "superchat-glass m-2 hidden w-[300px] shrink-0 flex-col gap-2.5",
         !collapsed && "xl:flex",
       )}
     >

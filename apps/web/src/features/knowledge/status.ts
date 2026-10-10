@@ -1,4 +1,4 @@
-import type { KnowledgeFile, KnowledgeStatus } from "@nova/contracts";
+import type { KnowledgeFile, KnowledgeStatus } from "@superchat/contracts";
 import { useEffect, useSyncExternalStore } from "react";
 import { rpc } from "../../lib/rpc";
 

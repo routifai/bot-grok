@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { AdapterContext } from "@nova/adapter-kit";
-import type { ComputerExecutionLease } from "@nova/adapters";
+import type { AdapterContext } from "@superchat/adapter-kit";
+import type { ComputerExecutionLease } from "@superchat/adapters";
 import {
   acquireComputerExecutionLease,
   ComputerBusyError,
@@ -12,10 +12,10 @@ import {
   replaceComputer,
   scheduleComputerSleep,
   screenLeaseIdForRun,
-} from "@nova/adapters";
-import type { Actor, ComputerStatus } from "@nova/contracts";
-import type { PrismaClient } from "@nova/db";
-import { createRepos, IsolationError } from "@nova/db";
+} from "@superchat/adapters";
+import type { Actor, ComputerStatus } from "@superchat/contracts";
+import type { PrismaClient } from "@superchat/db";
+import { createRepos, IsolationError } from "@superchat/db";
 import { ORPCError } from "@orpc/server";
 import type { RouterDeps } from "../../routers/context.js";
 import { computerContext } from "../../routers/shared.js";

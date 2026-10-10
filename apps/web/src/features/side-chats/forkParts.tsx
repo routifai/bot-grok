@@ -1,6 +1,6 @@
 import { i18n } from "@lingui/core";
 import { Trans } from "@lingui/react/macro";
-import { cn } from "@nova/ui-web";
+import { cn } from "@superchat/ui-web";
 import type { ForkTone } from "./forkModel";
 import { FORK_TONE_CLASS } from "./forkModel";
 
@@ -40,7 +40,7 @@ export function ReplyCurve({ tone, className }: { tone: ForkTone; className?: st
   );
 }
 
-/** Nova is working in this fork: a pulsing dot, named for screen readers. */
+/** Superchat is working in this fork: a pulsing dot, named for screen readers. */
 export function LiveDot({ tone, className }: { tone?: ForkTone; className?: string }) {
   return (
     <>

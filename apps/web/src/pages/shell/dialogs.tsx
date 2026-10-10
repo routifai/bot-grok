@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { Bot, BotSection } from "@nova/contracts";
+import type { Bot, BotSection } from "@superchat/contracts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,7 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
   Input,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import { Lock, Users } from "lucide-react";
 import { useId, useState } from "react";
 

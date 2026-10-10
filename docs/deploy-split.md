@@ -1,10 +1,10 @@
-# Deploy Nova on Railway with a Computers VPS
+# Deploy Superchat on Railway with a Computers VPS
 
 A private test for a few friends. Model usage is billed to **your** Anthropic key, so
 keep the sign-up list short.
 
 ```
-Browser ──►  Railway: nova-app (web + API + worker, one domain)
+Browser ──►  Railway: superchat-app (web + API + worker, one domain)
                                                                        │  OMNIGENT_URL + proxy secret
                                                                        ▼
                                                           Railway: omnigent-engine  ◄── runner in each Computer
@@ -15,21 +15,21 @@ Browser ──►  Railway: nova-app (web + API + worker, one domain)
 
 | Piece | Where | Repo files |
 | --- | --- | --- |
-| Web (Vite preview server) | Railway, inside nova-app | `infra/railway/start-nova.sh` |
-| API + worker, one service | Railway | `infra/railway/railway.nova.json`, `Dockerfile.nova`, `start-nova.sh` |
-| Nova Postgres | Railway plugin | |
+| Web (Vite preview server) | Railway, inside superchat-app | `infra/railway/start-superchat.sh` |
+| API + worker, one service | Railway | `infra/railway/railway.superchat.json`, `Dockerfile.superchat`, `start-superchat.sh` |
+| Superchat Postgres | Railway plugin | |
 | Omnigent engine + its Postgres + a volume | Railway | `infra/railway/railway.engine.json`, `Dockerfile.engine`, `engine.config.yaml.tmpl`, `engine-start.sh` |
 | Supervisor, Computer image, Caddy | OVH VPS | `infra/compose/docker-compose.computers.yml`, `Caddyfile.computers`, `.env.computers.example` |
 
 Design choices, and why:
 
 - **API and worker are one Railway service.** Both use `DATA_DIR`, and a Railway volume attaches to
-  one service only. `start-nova.sh` runs both processes and exits if either dies, so Railway
+  one service only. `start-superchat.sh` runs both processes and exits if either dies, so Railway
   restarts the pair.
 - **The engine has a public URL.** The runner inside each Computer, on the VPS, must dial back to
-  it, so it cannot be private. Every engine call from Nova carries a shared secret
+  it, so it cannot be private. Every engine call from Superchat carries a shared secret
   (`OMNIGENT_AUTH_HEADER_SECRET`, header auth); runners use short-lived per-launch tokens.
-  Nova's API therefore uses the same public URL. Railway private networking
+  Superchat's API therefore uses the same public URL. Railway private networking
   (`<service>.railway.internal`) is an optional hardening; it only works if the engine listens on
   an address your Railway environment routes privately, which the engine does not set up for you.
 - **Engine to supervisor goes over HTTPS with a bearer token (Caddy on the VPS).** Simpler than
@@ -69,7 +69,7 @@ and checks `/health` and the 401 on `/computers`. Without a domain, `COMPUTERS_H
 
 1. In the OVHcloud control panel order a VPS, location **Beauharnois (Canada)**,
    image **Ubuntu** (24.04 or newer), and add your SSH public key. Note the public IPv4 address.
-   Pick a size that fits `friends x NOVA_COMPUTER_MEMORY` plus about 3 GB.
+   Pick a size that fits `friends x SUPERCHAT_COMPUTER_MEMORY` plus about 3 GB.
 2. DNS: at your domain registrar add an **A record** `computers.<your-domain>` pointing at that IP.
 3. First login. OVH creates a default user (shown in the order mail, often `ubuntu`); then create
    the deploy user the hardening script expects:
@@ -98,7 +98,7 @@ and checks `/health` and the 401 on `/computers`. Without a domain, `COMPUTERS_H
 5. Clone and harden (blocks SSH passwords and root login, opens only SSH, 80 and 443):
 
    ```bash
-   git clone <your-repo-url> nova && cd nova
+   git clone <your-repo-url> superchat && cd superchat
    sudo DEPLOY_USER=deploy bash infra/compose/harden-host.sh
    ```
 6. Configure and start:
@@ -107,7 +107,7 @@ and checks `/health` and the 401 on `/computers`. Without a domain, `COMPUTERS_H
    cp .env.computers.example .env.computers
    sed -i "s/^SANDBOX_SUPERVISOR_TOKEN=.*/SANDBOX_SUPERVISOR_TOKEN=$(openssl rand -hex 32)/" .env.computers
    sed -i "s/^DOCKER_GID=.*/DOCKER_GID=$(stat -c %g /var/run/docker.sock)/" .env.computers
-   nano .env.computers      # set COMPUTERS_HOST; adjust NOVA_COMPUTER_* if needed
+   nano .env.computers      # set COMPUTERS_HOST; adjust SUPERCHAT_COMPUTER_* if needed
    grep SANDBOX_SUPERVISOR_TOKEN .env.computers   # copy this value for Railway
    sudo docker compose --env-file .env.computers -f infra/compose/docker-compose.computers.yml up -d --build
    ```
@@ -120,26 +120,26 @@ and checks `/health` and the 401 on `/computers`. Without a domain, `COMPUTERS_H
 
 Create a Railway project, then:
 
-1. **Add two Postgres databases** (New, Database, PostgreSQL). Rename them `nova-db` and `engine-db`.
+1. **Add two Postgres databases** (New, Database, PostgreSQL). Rename them `superchat-db` and `engine-db`.
 2. **Engine service.** New, GitHub repo, choose this repo. Name it `omnigent-engine`.
    Settings: Root directory `/`; Config-as-code file path `/infra/railway/railway.engine.json`.
    Add a **Volume** mounted at `/data`. Settings, Networking: Generate Domain (note the URL,
    `https://<engine>.up.railway.app`). Set the variables in section 4, then deploy.
    First boot runs the database migrations; `/health` turning green means it is up.
-3. **Nova service.** New, GitHub repo, same repo. Name it `nova-app`.
-   Config-as-code file path `/infra/railway/railway.nova.json`. Add a **Volume** at `/data`.
+3. **Superchat service.** New, GitHub repo, same repo. Name it `superchat-app`.
+   Config-as-code file path `/infra/railway/railway.superchat.json`. Add a **Volume** at `/data`.
    Networking: Generate Domain; the target port is the web server on `$PORT` (Railway sets it).
    Set the variables in section 4, then deploy. The start command applies Prisma migrations before
    starting the API and the worker.
 
-The agent bundle (`nova-claude`) is baked into the engine image from `infra/omnigent/agents`, so
+The agent bundle (`superchat-claude`) is baked into the engine image from `infra/omnigent/agents`, so
 there is no upload step. If you edit `infra/omnigent/templates`, run
 `node infra/omnigent/render-agents.mjs`, commit, and redeploy the engine.
 
 ## 3. Web on Railway (same service as the API)
 
-The Nova web app runs in the same Railway service as the API and the worker
-(`infra/railway/start-nova.sh`): the web server listens on Railway's `$PORT` and proxies `/api`,
+The Superchat web app runs in the same Railway service as the API and the worker
+(`infra/railway/start-superchat.sh`): the web server listens on Railway's `$PORT` and proxies `/api`,
 `/rpc` and `/novnc` to the API on `127.0.0.1:3100` inside the container. One public domain, no
 cross-site cookies, and live streams stay open. Vercel is not used: it cannot keep the chat
 streams open or proxy the live screen.
@@ -154,39 +154,39 @@ Names only below; never commit values.
 
 | Variable | Set on | Value / source |
 | --- | --- | --- |
-| `DATABASE_URL` | nova-app | Reference: `${{nova-db.DATABASE_URL}}` |
+| `DATABASE_URL` | superchat-app | Reference: `${{superchat-db.DATABASE_URL}}` |
 | `DATABASE_URL` | omnigent-engine | Reference: `${{engine-db.DATABASE_URL}}` (the entrypoint accepts Railway's `postgresql://` form) |
-| `NODE_ENV` | nova-app | `production` |
-| `API_HOST` / `API_PORT` / `PORT` | nova-app | `0.0.0.0` / `3100` / `3100` |
-| `DATA_DIR` | nova-app | `/data` (the volume) |
-| `BETTER_AUTH_SECRET` | nova-app | `openssl rand -hex 32` |
-| `ENCRYPTION_KEY` | nova-app | `openssl rand -hex 32` (64 hex chars); keep it forever or stored credentials become unreadable |
-| `SCREEN_PROXY_SECRET` | nova-app | `openssl rand -hex 32` |
-| `BETTER_AUTH_URL`, `WEB_ORIGIN`, `API_URL` | nova-app | The nova-app public origin, e.g. `https://app.<your-domain>` (all three identical) |
-| `SANDBOX_PROVIDER` | nova-app | `none` (the engine owns Computers; the API never talks to the supervisor) |
-| `WAKEUP_DRIVER` | nova-app | `graphile` |
-| `OMNIGENT_URL` | nova-app | Engine public URL, `https://<engine>.up.railway.app` |
-| `OMNIGENT_PROXY_SECRET` | nova-app | Same value as the engine's `OMNIGENT_AUTH_HEADER_SECRET` |
-| `ANTHROPIC_API_KEY` | nova-app | Your key (makes the Claude harness show as available) |
-| `SIGNUP_MODE`, `SIGNUP_ALLOWLIST`, `SIGNUP_DOMAINS` | nova-app | `invite`; comma-separated emails (see section 5) |
-| `SMTP_URL`, `EMAIL_FROM` | nova-app | From your mail provider (see section 5) |
+| `NODE_ENV` | superchat-app | `production` |
+| `API_HOST` / `API_PORT` / `PORT` | superchat-app | `0.0.0.0` / `3100` / `3100` |
+| `DATA_DIR` | superchat-app | `/data` (the volume) |
+| `BETTER_AUTH_SECRET` | superchat-app | `openssl rand -hex 32` |
+| `ENCRYPTION_KEY` | superchat-app | `openssl rand -hex 32` (64 hex chars); keep it forever or stored credentials become unreadable |
+| `SCREEN_PROXY_SECRET` | superchat-app | `openssl rand -hex 32` |
+| `BETTER_AUTH_URL`, `WEB_ORIGIN`, `API_URL` | superchat-app | The superchat-app public origin, e.g. `https://app.<your-domain>` (all three identical) |
+| `SANDBOX_PROVIDER` | superchat-app | `none` (the engine owns Computers; the API never talks to the supervisor) |
+| `WAKEUP_DRIVER` | superchat-app | `graphile` |
+| `OMNIGENT_URL` | superchat-app | Engine public URL, `https://<engine>.up.railway.app` |
+| `OMNIGENT_PROXY_SECRET` | superchat-app | Same value as the engine's `OMNIGENT_AUTH_HEADER_SECRET` |
+| `ANTHROPIC_API_KEY` | superchat-app | Your key (makes the Claude harness show as available) |
+| `SIGNUP_MODE`, `SIGNUP_ALLOWLIST`, `SIGNUP_DOMAINS` | superchat-app | `invite`; comma-separated emails (see section 5) |
+| `SMTP_URL`, `EMAIL_FROM` | superchat-app | From your mail provider (see section 5) |
 | `ENGINE_PUBLIC_URL` | omnigent-engine | Engine's own public URL (the runners dial it) |
-| `OMNIGENT_AUTH_HEADER_SECRET` | omnigent-engine | `openssl rand -hex 32`; equals nova-app `OMNIGENT_PROXY_SECRET` |
+| `OMNIGENT_AUTH_HEADER_SECRET` | omnigent-engine | `openssl rand -hex 32`; equals superchat-app `OMNIGENT_PROXY_SECRET` |
 | `OMNIGENT_COMPUTER_SUPERVISOR_URL` | omnigent-engine | `https://computers.<your-domain>` |
 | `OMNIGENT_COMPUTER_SUPERVISOR_TOKEN` | omnigent-engine | Equals `SANDBOX_SUPERVISOR_TOKEN` in the VPS `.env.computers` |
 | `OMNIGENT_VAULT_KEY` | omnigent-engine | `openssl rand -base64 32` |
 | `ANTHROPIC_API_KEY` | omnigent-engine | Your key. This is the engine's model connection and is also passed to every Computer's runner |
 | `TAVILY_API_KEY`, `OPENROUTER_API_KEY` | omnigent-engine | Optional; passed to runners when set |
-| `NOVA_CLAUDE_MODEL`, `OMNIGENT_HELPER_MODEL_FAST`, `OMNIGENT_HELPER_MODEL_STRONG` | omnigent-engine | Optional; defaults are baked in `Dockerfile.engine` |
+| `SUPERCHAT_CLAUDE_MODEL`, `OMNIGENT_HELPER_MODEL_FAST`, `OMNIGENT_HELPER_MODEL_STRONG` | omnigent-engine | Optional; defaults are baked in `Dockerfile.engine` |
 | `OMNIGENT_SUBAGENT_MAX_CONCURRENT` | omnigent-engine | Optional cap on parallel Helpers |
 
 Baked-in engine defaults (no need to set): header auth with the `X-Omnigent-Tenant` header,
-default agent `nova-claude`, sandbox provider `computer`, home root `/data` (must equal the
+default agent `superchat-claude`, sandbox provider `computer`, home root `/data` (must equal the
 supervisor's data dir, which it does), proactive Study on.
 
 ## 5. First login and inviting friends
 
-Signup is controlled by the Nova API, not by the engine:
+Signup is controlled by the Superchat API, not by the engine:
 
 - On a hosted deployment the owner is whoever signs up presenting `OWNER_SETUP_TOKEN` while no
   owner exists; being first does not count, in any mode.
@@ -199,7 +199,7 @@ Signup is controlled by the Nova API, not by the engine:
   mailbox with a six-digit code, and a hosted API will not start in production without it.
   `approval` needs none (use it until you own a mail domain). Easiest email: a free Resend
   account, `EMAIL_API_URL=https://api.resend.com/emails`, `EMAIL_API_KEY=<api-key>` and
-  `EMAIL_FROM="Nova <no-reply@<your-domain>>"` after verifying the domain with Resend (or SMTP:
+  `EMAIL_FROM="Superchat <no-reply@<your-domain>>"` after verifying the domain with Resend (or SMTP:
   `SMTP_URL=smtps://resend:<api-key>@smtp.resend.com:465`).
 - **Owner token (required while no owner exists).** Set `OWNER_SETUP_TOKEN` to a long random
   one-time secret before the first start; the API refuses to start hosted without it. Open the
@@ -222,16 +222,16 @@ Signup is controlled by the Nova API, not by the engine:
 
 ## 6. How the web reaches the API
 
-The browser only talks to the Nova service's own domain, with relative `/api` and `/rpc` paths and
-first-party cookies. Set `BETTER_AUTH_URL`, `WEB_ORIGIN` and `API_URL` on the Nova service to that
+The browser only talks to the Superchat service's own domain, with relative `/api` and `/rpc` paths and
+first-party cookies. Set `BETTER_AUTH_URL`, `WEB_ORIGIN` and `API_URL` on the Superchat service to that
 domain. Long-lived streams (`threads.subscribe`, `chats.watch`, `memory.watch` under `/rpc/`) are
 proxied by the web server inside the container, so nothing in front buffers or cuts them.
 
 ## 7. Check it works
 
-1. Open the nova-app URL, register (owner), and send a message to your Muse.
+1. Open the superchat-app URL, register (owner), and send a message to your Muse.
 2. First message creates the Computer on the VPS; allow a minute. On the VPS:
-   `sudo docker ps` shows an `nova-bot-...` container.
+   `sudo docker ps` shows an `superchat-bot-...` container.
 3. Logs: Railway, service, Deployments, View logs. VPS:
    `sudo docker compose --env-file .env.computers -f infra/compose/docker-compose.computers.yml logs -f supervisor`.
    Logs rotate (10 MB x 3 per service).
@@ -251,9 +251,9 @@ proxied by the web server inside the container, so nothing in front buffers or c
   `git pull && sudo docker compose --env-file .env.computers -f infra/compose/docker-compose.computers.yml up -d --build`.
   A rebuilt Computer image replaces each Computer on its next use; homes are kept.
 - Backup: Railway Postgres (use Railway backups or `pg_dump` with the public connection string)
-  for **both** databases, the engine `/data` volume, and the Nova `/data` volume. On the VPS the
-  Computer homes are in the `nova-computers_computers-data` Docker volume:
-  `sudo docker run --rm -v nova-computers_computers-data:/d -v "$PWD":/b busybox tar czf /b/computers-data.tgz -C /d .`
+  for **both** databases, the engine `/data` volume, and the Superchat `/data` volume. On the VPS the
+  Computer homes are in the `superchat-computers_computers-data` Docker volume:
+  `sudo docker run --rm -v superchat-computers_computers-data:/d -v "$PWD":/b busybox tar czf /b/computers-data.tgz -C /d .`
 - Tear down: delete the Railway project, then on the VPS
   `sudo docker compose --env-file .env.computers -f infra/compose/docker-compose.computers.yml down -v`
   and delete the VPS in OVH and the DNS record. Revoke or rotate the Anthropic key.

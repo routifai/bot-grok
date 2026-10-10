@@ -5,11 +5,11 @@ import {
   omnigentClientConfigFromEnv,
   omnigentClientFor,
   putOmnigentProactivity,
-} from "@nova/adapters";
-import type { Actor, MuseSettings } from "@nova/contracts";
-import { resolveMuseSettings } from "@nova/core";
-import { IsolationError, type PrismaClient } from "@nova/db";
-import { getLogger } from "@nova/logging";
+} from "@superchat/adapters";
+import type { Actor, MuseSettings } from "@superchat/contracts";
+import { resolveMuseSettings } from "@superchat/core";
+import { IsolationError, type PrismaClient } from "@superchat/db";
+import { getLogger } from "@superchat/logging";
 import { ORPCError } from "@orpc/server";
 
 // muse.settings / muse.updateSettings (packages/contracts/src/rpc/muse.ts, docs/muse/PLAN.md B7).
@@ -87,7 +87,7 @@ const isEngineDefault = (prefs: OmnigentProactivity) =>
 
 /**
  * One-time carry-over of settings saved on Bot before the engine owned them: when the person
- * changed them in Nova and the engine still has its defaults, they are pushed once. Either way
+ * changed them in Superchat and the engine still has its defaults, they are pushed once. Either way
  * the Bot columns are then cleared, so this never runs again for that Muse and a later engine
  * value is never overwritten. Best-effort: a failure leaves the columns for the next read.
  */
@@ -113,7 +113,7 @@ async function carryOverBotSettings(
     });
     return pushed;
   } catch (error) {
-    getLogger().error("muse settings: carrying Nova settings to the engine failed", error);
+    getLogger().error("muse settings: carrying Superchat settings to the engine failed", error);
     return prefs;
   }
 }

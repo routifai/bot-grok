@@ -4,16 +4,16 @@ import type {
   ControlLeaseRef,
   JobPublisher,
   SandboxProvider,
-} from "@nova/adapter-kit";
-import { computerControlExpireJobKey, skillTeachingExpireJobKey } from "@nova/adapter-kit";
-import type { Actor, MessageBlock, TaughtSkill } from "@nova/contracts";
+} from "@superchat/adapter-kit";
+import { computerControlExpireJobKey, skillTeachingExpireJobKey } from "@superchat/adapter-kit";
+import type { Actor, MessageBlock, TaughtSkill } from "@superchat/contracts";
 import {
   buildPlaybookFromRecording,
   computerInputForDomKey,
   type SkillPlaybook,
   type TeachRecordingEvent,
   type TeachSnapshot,
-} from "@nova/core";
+} from "@superchat/core";
 import {
   appendEventInTransaction,
   createThreadMessageInTransaction,
@@ -21,7 +21,7 @@ import {
   type Prisma,
   type PrismaClient,
   type ThreadEvents,
-} from "@nova/db";
+} from "@superchat/db";
 import { scheduleComputerSleep } from "./computer-idle.js";
 import { toComputerRef } from "./computer-support.js";
 
@@ -326,7 +326,7 @@ async function releaseTeachingComputerControl(
   await scheduleComputerSleep(deps.jobs, computer.id);
 }
 
-/** What the draft card in the thread needs; the engine's skills have no Nova row. */
+/** What the draft card in the thread needs; the engine's skills have no Superchat row. */
 export type SkillDraftCardSkill = Pick<
   TaughtSkillRow,
   "id" | "name" | "goal" | "status" | "playbook"

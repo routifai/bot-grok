@@ -2,7 +2,7 @@ import { useEffect } from "react";
 
 export type SettingsSection = "models" | "organization";
 
-const OPEN_SETTINGS_EVENT = "nova:open-settings";
+const OPEN_SETTINGS_EVENT = "superchat:open-settings";
 
 /** Asks the Shell to open Settings at a section, from anywhere (a note in the Conversation). */
 export function requestOpenSettings(section: SettingsSection): void {

@@ -66,7 +66,7 @@ it("renders the deck in the sandboxed frame with the relay and a slide rail", as
   const container = await mount();
   const frame = stageFrame(container);
   expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
-  expect(frame.getAttribute("srcdoc")).toContain("nova:");
+  expect(frame.getAttribute("srcdoc")).toContain("superchat:");
   expect(frame.getAttribute("srcdoc")).toContain("Launch");
   const options = container.querySelectorAll('[role="option"]');
   expect(options).toHaveLength(3);
@@ -85,7 +85,7 @@ it("mirrors the deck's state and only trusts its own frame", async () => {
   const container = await mount();
   const frame = stageFrame(container);
   const post = spyPosts(frame);
-  const state = { type: "nova:slide-state", protocolVersion: 1, active: 1, count: 3 };
+  const state = { type: "superchat:slide-state", protocolVersion: 1, active: 1, count: 3 };
   await hear({}, state);
   expect(container.querySelector('[data-testid="deck-counter"]')?.textContent).toBe("1 / 3");
   await hear(frame.contentWindow, state);
@@ -104,7 +104,7 @@ it("drives the deck from the buttons, the keys and the rail", async () => {
 
   await act(async () => button("Next slide").click());
   expect(post).toHaveBeenLastCalledWith(
-    { type: "nova:slide", protocolVersion: 1, action: "next" },
+    { type: "superchat:slide", protocolVersion: 1, action: "next" },
     "*",
   );
   for (const [key, action] of [
@@ -116,13 +116,13 @@ it("drives the deck from the buttons, the keys and the rail", async () => {
     await act(async () => {
       window.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
     });
-    expect(post).toHaveBeenLastCalledWith({ type: "nova:slide", protocolVersion: 1, action }, "*");
+    expect(post).toHaveBeenLastCalledWith({ type: "superchat:slide", protocolVersion: 1, action }, "*");
   }
   await act(async () =>
     (container.querySelectorAll('[role="option"]')[2] as HTMLButtonElement).click(),
   );
   expect(post).toHaveBeenLastCalledWith(
-    { type: "nova:slide", protocolVersion: 1, action: "go", index: 2 },
+    { type: "superchat:slide", protocolVersion: 1, action: "go", index: 2 },
     "*",
   );
 });
@@ -143,9 +143,9 @@ it("parks each thumbnail on its slide once its frame says it is ready", async ()
   const frames = Array.from(container.querySelectorAll("iframe"));
   const thumb = frames[1] as HTMLIFrameElement;
   const post = spyPosts(thumb);
-  await hear(thumb.contentWindow, { type: "nova:deck-ready", protocolVersion: 1 });
+  await hear(thumb.contentWindow, { type: "superchat:deck-ready", protocolVersion: 1 });
   expect(post).toHaveBeenCalledWith(
-    { type: "nova:slide", protocolVersion: 1, action: "go", index: 1 },
+    { type: "superchat:slide", protocolVersion: 1, action: "go", index: 1 },
     "*",
   );
 });

@@ -2,9 +2,9 @@
 // protocol the deck skeleton speaks (the host drives navigation, the deck reports its state).
 
 export const DECK_PROTOCOL_VERSION = 1;
-export const DECK_NAVIGATE_TYPE = "nova:slide";
-export const DECK_STATE_TYPE = "nova:slide-state";
-export const DECK_READY_TYPE = "nova:deck-ready";
+export const DECK_NAVIGATE_TYPE = "superchat:slide";
+export const DECK_STATE_TYPE = "superchat:slide-state";
+export const DECK_READY_TYPE = "superchat:deck-ready";
 
 export type DeckNavigation =
   | { action: "go"; index: number }

@@ -217,7 +217,7 @@ describe("mapTranscriptPage", () => {
         {
           type: "file" as const,
           artifact_id: "a1",
-          name: "nova.html",
+          name: "superchat.html",
           mime: "text/html",
           kind: "html",
           size: 5200,
@@ -235,7 +235,7 @@ describe("mapTranscriptPage", () => {
           card_id: null,
           card: {
             card: "file",
-            data: { name: "nova.html", kind: "html", artifactId, ...(version ? { version } : {}) },
+            data: { name: "superchat.html", kind: "html", artifactId, ...(version ? { version } : {}) },
             fallback: "f",
           },
         },

@@ -1,6 +1,6 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { Bot, ComputerStatus } from "@nova/contracts";
-import { Button, cn } from "@nova/ui-web";
+import type { Bot, ComputerStatus } from "@superchat/contracts";
+import { Button, cn } from "@superchat/ui-web";
 import { Maximize2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { museMode } from "../../pages/muse/chrome/museMode";

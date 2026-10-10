@@ -1,6 +1,6 @@
-import { getOmnigentMuse, type OmnigentClientConfig } from "@nova/adapters";
-import type { Actor } from "@nova/contracts";
-import type { PrismaClient } from "@nova/db";
+import { getOmnigentMuse, type OmnigentClientConfig } from "@superchat/adapters";
+import type { Actor } from "@superchat/contracts";
+import type { PrismaClient } from "@superchat/db";
 import { ORPCError } from "@orpc/server";
 
 /** The caller's Muse session on the engine (created there when the person has none yet), plus

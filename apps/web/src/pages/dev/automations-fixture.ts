@@ -1,4 +1,4 @@
-import type { Automation } from "@nova/contracts";
+import type { Automation } from "@superchat/contracts";
 
 const HOUR = 3_600_000;
 const now = Date.now();

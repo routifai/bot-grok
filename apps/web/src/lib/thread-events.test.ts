@@ -1,5 +1,5 @@
-import type { ComputerStatus, ProductEvent, ThreadMessage, ThreadSnapshot } from "@nova/contracts";
-import { withLiveStreamingProgress } from "@nova/core";
+import type { ComputerStatus, ProductEvent, ThreadMessage, ThreadSnapshot } from "@superchat/contracts";
+import { withLiveStreamingProgress } from "@superchat/core";
 import { describe, expect, it } from "vitest";
 import {
   activeThreadRuns,

@@ -6,8 +6,8 @@ import {
   parseSkillMd,
   type SkillRecord,
   type SkillSource,
-} from "@nova/core";
-import type { PrismaClient } from "@nova/db";
+} from "@superchat/core";
+import type { PrismaClient } from "@superchat/db";
 import { BUILTIN_AGENT_SKILLS } from "./builtin-skills.js";
 
 export const SKILL_TOOL_NAMES = new Set([

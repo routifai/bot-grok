@@ -30,7 +30,7 @@ vi.mock("../../lib/rpc", () => ({
     engineModels: { sessionModel: state.sessionModel, setSessionModel: state.setSessionModel },
   },
 }));
-vi.mock("../../components/ai/orb", () => ({ NovaOrb: () => null, useOrbHome: () => false }));
+vi.mock("../../components/ai/orb", () => ({ SuperchatOrb: () => null, useOrbHome: () => false }));
 
 import { ConversationModelPicker } from "./ConversationModelPicker";
 

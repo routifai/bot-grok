@@ -1,4 +1,4 @@
-"""The Muse's harness flag (NOVA_MUSE_HARNESS): two bundles rendered from one template set."""
+"""The Muse's harness flag (SUPERCHAT_MUSE_HARNESS): two bundles rendered from one template set."""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[4]
 AGENTS = REPO / "infra/omnigent/agents"
-CLAUDE = AGENTS / "nova-claude"
-PI = AGENTS / "nova-pi"
+CLAUDE = AGENTS / "superchat-claude"
+PI = AGENTS / "superchat-pi"
 
 
 def _lines(path: Path) -> list[str]:
@@ -30,8 +30,8 @@ def test_pi_bundle_differs_from_default_only_in_harness_keys() -> None:
         if line[0] in "+-" and not line.startswith(("+++", "---"))
     ]
     assert diff == [
-        "-name: nova-claude",
-        "+name: nova-pi",
+        "-name: superchat-claude",
+        "+name: superchat-pi",
         "+skills: none",
         "-    harness: claude-sdk",
         "+    harness: pi",
@@ -65,21 +65,21 @@ def test_the_switch_is_total_every_helper_runs_on_the_bundles_harness(helper: st
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
 def test_committed_bundles_match_a_fresh_render(tmp_path: Path) -> None:
-    env = {**os.environ, "NOVA_RENDER_AGENTS_DIR": str(tmp_path)}
+    env = {**os.environ, "SUPERCHAT_RENDER_AGENTS_DIR": str(tmp_path)}
     subprocess.run(
         ["node", str(REPO / "infra/omnigent/render-agents.mjs")],
         check=True,
         env=env,
         capture_output=True,
     )
-    for name in ("nova-claude", "nova-pi"):
+    for name in ("superchat-claude", "superchat-pi"):
         cmp = filecmp.dircmp(AGENTS / name, tmp_path / name)
         assert cmp.diff_files == cmp.left_only == cmp.right_only == [], name
         for sub in cmp.subdirs.values():
             assert sub.diff_files == sub.left_only == sub.right_only == [], name
 
 
-@pytest.mark.parametrize(("name", "harness"), [("nova-claude", "claude-sdk"), ("nova-pi", "pi")])
+@pytest.mark.parametrize(("name", "harness"), [("superchat-claude", "claude-sdk"), ("superchat-pi", "pi")])
 def test_real_loader_loads_both_bundles(
     name: str, harness: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -87,7 +87,7 @@ def test_real_loader_loads_both_bundles(
     from omnigent.spec import parse
 
     monkeypatch.setenv("TAVILY_API_KEY", "x")
-    monkeypatch.setenv("NOVA_CLAUDE_MODEL", "m")
+    monkeypatch.setenv("SUPERCHAT_CLAUDE_MODEL", "m")
     agent = load_agent_def_from_path(str(AGENTS / name))
     assert agent is not None
     spec = parse(AGENTS / name)
@@ -106,7 +106,7 @@ def test_real_loader_loads_both_bundles(
             assert sub.skills_filter == "none", sub.name
 
 
-@pytest.mark.parametrize("name", ["nova-claude", "nova-pi"])
+@pytest.mark.parametrize("name", ["superchat-claude", "superchat-pi"])
 @pytest.mark.parametrize("helper", ["worker", "subworker"])
 def test_helpers_are_offered_web_search_and_web_fetch(
     name: str, helper: str, monkeypatch: pytest.MonkeyPatch
@@ -117,7 +117,7 @@ def test_helpers_are_offered_web_search_and_web_fetch(
     from omnigent.tools.manager import ToolManager
 
     monkeypatch.setenv("TAVILY_API_KEY", "x")
-    monkeypatch.setenv("NOVA_CLAUDE_MODEL", "m")
+    monkeypatch.setenv("SUPERCHAT_CLAUDE_MODEL", "m")
     root = parse(AGENTS / name)
     worker = next(a for a in root.sub_agents if a.name == "worker")
     spec = worker if helper == "worker" else next(a for a in worker.sub_agents)

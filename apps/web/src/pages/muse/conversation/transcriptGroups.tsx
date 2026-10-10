@@ -1,4 +1,4 @@
-import type { ThreadMessage } from "@nova/contracts";
+import type { ThreadMessage } from "@superchat/contracts";
 import { createContext, type ReactNode, useContext } from "react";
 import type { TranscriptRow } from "./failureNotes";
 

@@ -1,6 +1,6 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { ThreadMessage } from "@nova/contracts";
-import { canReactToThreadMessage, MESSAGE_REACTIONS, type MessageReaction } from "@nova/contracts";
+import type { ThreadMessage } from "@superchat/contracts";
+import { canReactToThreadMessage, MESSAGE_REACTIONS, type MessageReaction } from "@superchat/contracts";
 import {
   cn,
   DropdownMenu,
@@ -10,7 +10,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import { Check, Copy, MoreHorizontal, Reply, Smile } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { MessageHoverMetadata } from "../../../components/MessageHoverMetadata";

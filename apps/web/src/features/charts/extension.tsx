@@ -1,5 +1,5 @@
 import { t } from "@lingui/core/macro";
-import { isChartArtifactName, isDashboardArtifactName, isDashboardPageName } from "@nova/contracts";
+import { isChartArtifactName, isDashboardArtifactName, isDashboardPageName } from "@superchat/contracts";
 import type { ArtifactExtension } from "../artifacts";
 import { ChartInlinePreview, ChartPanelView } from "./ChartArtifact";
 import { ChartResult } from "./ChartResult";

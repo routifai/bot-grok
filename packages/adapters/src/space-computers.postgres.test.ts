@@ -5,7 +5,7 @@ import {
   quarantineUserSpaces,
   releasePurgeClaim,
   restoreQuarantinedSpaces,
-} from "@nova/db";
+} from "@superchat/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FakeSandboxProvider } from "./fake-sandbox.js";
 import {
@@ -144,7 +144,7 @@ describePostgres("quarantine of a used space (PostgreSQL, fake sandbox)", () => 
     const botId = `screen-bot-${tag}`;
     await prisma.bot
       .create({
-        data: { id: botId, spaceId, userId: id, name: "Nova", screenGeneration: 3 } as never,
+        data: { id: botId, spaceId, userId: id, name: "Superchat", screenGeneration: 3 } as never,
       })
       .catch(() => undefined);
     const before = await prisma.computer.findFirstOrThrow({ where: { spaceId } });

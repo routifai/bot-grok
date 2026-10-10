@@ -1,7 +1,7 @@
 import { useLingui } from "@lingui/react/macro";
-import type { Activity } from "@nova/contracts";
-import { presentActivityTitle } from "@nova/core";
-import { Button } from "@nova/ui-web";
+import type { Activity } from "@superchat/contracts";
+import { presentActivityTitle } from "@superchat/core";
+import { Button } from "@superchat/ui-web";
 import { useEffect, useMemo, useState } from "react";
 import { PanelRowSkeletonList } from "../../pages/muse/chrome/PanelSkeleton";
 import { useNow } from "../../pages/muse/chrome/useNow";
@@ -213,7 +213,7 @@ export function ActivityPanel({
             {t`Working now`}
             <span className={GROUP_COUNT}>{working.length}</span>
           </h3>
-          <div className="nova-group">
+          <div className="superchat-group">
             {working.map((node) => (
               <ActivityRow
                 key={node.activity.id}
@@ -234,7 +234,7 @@ export function ActivityPanel({
                 ? t`Yesterday`
                 : group.label.text}
           </h3>
-          <div className="nova-group">
+          <div className="superchat-group">
             {group.activities.map((activity) => (
               <ActivityRow
                 key={activity.id}

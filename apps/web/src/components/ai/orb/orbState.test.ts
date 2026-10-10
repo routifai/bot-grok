@@ -8,7 +8,7 @@ import {
 } from "./orbState";
 
 describe("orb state", () => {
-  it("brightens while Nova thinks or works, and rests when idle or waiting on the person", () => {
+  it("brightens while Superchat thinks or works, and rests when idle or waiting on the person", () => {
     expect(orbStateFor("thinking")).toBe("working");
     expect(orbStateFor("working")).toBe("working");
     expect(orbStateFor("idle")).toBe("idle");

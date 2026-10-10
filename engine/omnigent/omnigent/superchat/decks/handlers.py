@@ -1,7 +1,7 @@
 """Runner-side handler for ``deck_export``.
 
 Runs where the Computer's Chromium is: fetches the deck from the server, hands it to the
-``nova-deck-export`` helper (override with ``NOVA_DECK_EXPORT_HELPER``) and saves the produced
+``superchat-deck-export`` helper (override with ``SUPERCHAT_DECK_EXPORT_HELPER``) and saves the produced
 ``.pptx`` / ``.pdf`` as a new artifact in the same chat.
 """
 
@@ -22,14 +22,14 @@ from omnigent.superchat.decks.names import deck_stem, is_deck_name
 from omnigent.superchat.decks.tools import DECK_AUTHORING_TOOL_NAMES, DECK_EXPORT_FORMATS
 from omnigent.superchat.feature import HandlerCtx
 
-HELPER_ENV = "NOVA_DECK_EXPORT_HELPER"
+HELPER_ENV = "SUPERCHAT_DECK_EXPORT_HELPER"
 HELPER_TIMEOUT_S = 180.0
 _FORMAT_LABEL = {"pptx": "PowerPoint", "pdf": "PDF"}
 
 
 async def run_helper(fmt: str, html: Path, out: Path | None = None) -> dict[str, Any] | str:
     """Run the helper (``pptx``/``pdf`` write ``out``, ``lint`` measures): JSON, or a sentence."""
-    helper = os.environ.get(HELPER_ENV) or "nova-deck-export"
+    helper = os.environ.get(HELPER_ENV) or "superchat-deck-export"
     try:
         proc = await asyncio.create_subprocess_exec(
             helper,
@@ -108,7 +108,7 @@ async def _export(ctx: HandlerCtx, args: dict[str, Any]) -> str:
         if content.status_code >= 400:
             return finish(content)
         html = content.content
-        with tempfile.TemporaryDirectory(prefix="nova-deck-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="superchat-deck-") as tmp:
             src = Path(tmp) / "deck.html"
             out = Path(tmp) / f"deck.{fmt}"
             src.write_bytes(html)

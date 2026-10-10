@@ -1,4 +1,4 @@
-import type { BackgroundJobHandlers } from "@nova/adapter-kit";
+import type { BackgroundJobHandlers } from "@superchat/adapter-kit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryJobQueue } from "./wakeup.js";
 
@@ -224,10 +224,10 @@ describe("InMemoryJobQueue", () => {
 
   it("unwraps correlation envelopes and restores request traces", async () => {
     const { createLogger, createTestSink, installLogger, runWithLogContext } = await import(
-      "@nova/logging"
+      "@superchat/logging"
     );
     const sink = createTestSink();
-    installLogger(createLogger({ service: "nova-worker", sinks: [sink] }));
+    installLogger(createLogger({ service: "superchat-worker", sinks: [sink] }));
     const queue = new InMemoryJobQueue();
     const target = handlers();
     await queue.start(target);
@@ -248,8 +248,8 @@ describe("InMemoryJobQueue", () => {
   });
 
   it("keeps wrapped payloads readable by workers that do not unwrap envelopes", async () => {
-    const { wrapJobPayload } = await import("@nova/logging");
-    const { parseBackgroundJob } = await import("@nova/adapter-kit");
+    const { wrapJobPayload } = await import("@superchat/logging");
+    const { parseBackgroundJob } = await import("@superchat/adapter-kit");
     const wrapped = wrapJobPayload(
       { runId: "run-rollback" },
       { jobId: "job-1", traceId: "a".repeat(32) },

@@ -1,5 +1,5 @@
-import type { ComputerUpdate } from "@nova/contracts";
-import { createComputerUpdates } from "@nova/core";
+import type { ComputerUpdate } from "@superchat/contracts";
+import { createComputerUpdates } from "@superchat/core";
 import { rpc } from "./api";
 export const computerUpdates = createComputerUpdates({
   list: () => rpc<ComputerUpdate[]>("computer/updates"),

@@ -1,6 +1,6 @@
-import type { BackgroundJobHandlers } from "@nova/adapter-kit";
-import { messagingDeliverJob } from "@nova/adapter-kit";
-import { createLogger, createTestSink, installLogger, wrapJobPayload } from "@nova/logging";
+import type { BackgroundJobHandlers } from "@superchat/adapter-kit";
+import { messagingDeliverJob } from "@superchat/adapter-kit";
+import { createLogger, createTestSink, installLogger, wrapJobPayload } from "@superchat/logging";
 import type { Runner } from "graphile-worker";
 import { makeWorkerUtils } from "graphile-worker";
 import type { Pool } from "pg";

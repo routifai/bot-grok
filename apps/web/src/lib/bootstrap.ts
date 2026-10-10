@@ -1,11 +1,11 @@
-import type { AppBootstrap } from "@nova/contracts";
+import type { AppBootstrap } from "@superchat/contracts";
 import { initialBootstrapTarget } from "./bootstrap-target";
 import { markOnce } from "./performance";
 import { rpc } from "./rpc";
 
 let primedBootstrap: { botId?: string; promise: Promise<AppBootstrap> } | null = null;
 
-const initialTarget = initialBootstrapTarget(window.location.pathname, Boolean(window.novaDesktop));
+const initialTarget = initialBootstrapTarget(window.location.pathname, Boolean(window.superchatDesktop));
 if (initialTarget) {
   const { botId } = initialTarget;
   const promise = requestBootstrap(botId);

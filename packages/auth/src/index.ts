@@ -1,5 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import type { TransactionalEmailProvider } from "@nova/adapter-kit";
+import type { TransactionalEmailProvider } from "@superchat/adapter-kit";
 import {
   admitSignup,
   ipPrefix,
@@ -14,13 +14,13 @@ import {
   signupNeedsEmailDelivery,
   signupPolicyFromEnv,
   unverifiedAccessAllowed,
-} from "@nova/core";
+} from "@superchat/core";
 import {
   bootstrapUserSpace,
   type PrismaClient,
   personalOrganizations,
   quarantineUserSpaces,
-} from "@nova/db";
+} from "@superchat/db";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { APIError, createAuthMiddleware, getIP, getSessionFromCtx } from "better-auth/api";
@@ -29,7 +29,7 @@ import { type EmailQuota, prismaEmailQuota } from "./email-quota.js";
 import { codeEmail, OTP_EXPIRES_MINUTES, OTP_LENGTH, passwordResetEmail } from "./emails.js";
 import { OIDC_PROVIDER_ID, type OidcConfig, oidcPlugin } from "./oidc.js";
 
-export { isHostedDeployment } from "@nova/core";
+export { isHostedDeployment } from "@superchat/core";
 export type { EmailQuota } from "./email-quota.js";
 export { memoryEmailQuota, prismaEmailQuota } from "./email-quota.js";
 export { codeEmail, passwordResetEmail } from "./emails.js";
@@ -305,7 +305,7 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
   const clientNetwork = (ctx: { request?: Request; context: { options: never } }) =>
     ipPrefix(ctx.request ? getIP(ctx.request, ctx.context.options) : null);
   return betterAuth({
-    appName: "Nova",
+    appName: "Superchat",
     secret: env.secret,
     baseURL: env.baseURL,
     trustedOrigins: buildTrustedOrigins(env),

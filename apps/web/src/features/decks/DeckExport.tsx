@@ -1,4 +1,4 @@
-import type { Artifact } from "@nova/contracts";
+import type { Artifact } from "@superchat/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { decodeArtifactBase64, downloadArtifactBytes } from "../../lib/artifact-open";
 import { rpc } from "../../lib/rpc";

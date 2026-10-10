@@ -1,6 +1,6 @@
 import { plural } from "@lingui/core/macro";
 import { useLingui } from "@lingui/react/macro";
-import type { ThreadMessage } from "@nova/contracts";
+import type { ThreadMessage } from "@superchat/contracts";
 import { CircleAlert, Info } from "lucide-react";
 import type { ReactNode } from "react";
 import { useId, useState } from "react";
@@ -91,7 +91,7 @@ export function InfoNote({ children }: { children: ReactNode }) {
   );
 }
 
-/** One failed reply as a quiet inline row on Nova's side: a small mark and the note. */
+/** One failed reply as a quiet inline row on Superchat's side: a small mark and the note. */
 export function FailureNote({
   children,
   action,

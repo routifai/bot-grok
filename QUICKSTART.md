@@ -1,8 +1,8 @@
-# Nova quickstart
+# Superchat quickstart
 
 > Chat runs on the Omnigent engine, which `./scripts/setup.sh` does not start. For a full local setup follow the [README quickstart](./README.md#quickstart-local-development); this page covers the Docker app stack only.
 
-From zero to your own Nova in about 15 minutes. Everything runs in Docker on your machine; you
+From zero to your own Superchat in about 15 minutes. Everything runs in Docker on your machine; you
 don't need Node.js or pnpm.
 
 ## 1. Before you start
@@ -16,11 +16,11 @@ don't need Node.js or pnpm.
 ## 2. Get the code
 
 ```bash
-git clone <repo-url> nova
-cd nova
+git clone <repo-url> superchat
+cd superchat
 ```
 
-## 3. Tell Nova which model to use
+## 3. Tell Superchat which model to use
 
 Create `.env` from the template and fill in the model section:
 
@@ -39,14 +39,14 @@ OPENROUTER_API_KEY=sk-or-...          # or ANTHROPIC_API_KEY=sk-ant-...
 
 ```bash
 PI_DEFAULT_PROVIDER=local
-NOVA_LOCAL_MODELS_URL=http://host.docker.internal:4000/v1   # server on this laptop
-NOVA_LOCAL_MODELS=gpt-4o,claude-sonnet                       # as the server names them; first = default
-NOVA_LOCAL_MODELS_API_KEY=sk-...                             # only if the server needs a key
-NOVA_LOCAL_VISION_MODELS=gpt-4o,claude-sonnet                # the ones that accept images
+SUPERCHAT_LOCAL_MODELS_URL=http://host.docker.internal:4000/v1   # server on this laptop
+SUPERCHAT_LOCAL_MODELS=gpt-4o,claude-sonnet                       # as the server names them; first = default
+SUPERCHAT_LOCAL_MODELS_API_KEY=sk-...                             # only if the server needs a key
+SUPERCHAT_LOCAL_VISION_MODELS=gpt-4o,claude-sonnet                # the ones that accept images
 ```
 
 - Use `host.docker.internal`, not `localhost`: inside Docker, `localhost` is the container itself.
-- List image-capable models in `NOVA_LOCAL_VISION_MODELS` so Nova can see its computer's screen.
+- List image-capable models in `SUPERCHAT_LOCAL_VISION_MODELS` so Superchat can see its computer's screen.
 
 Everything else in `.env` (passwords, secrets) is generated for you in the next step.
 
@@ -59,14 +59,14 @@ Everything else in `.env` (passwords, secrets) is generated for you in the next 
 The first run builds everything (a few minutes). It ends with the address to open, usually
 **http://127.0.0.1:5173**. If that port is taken, it picks the next free one and tells you.
 
-When it's running, `docker ps` shows five containers: `nova-postgres-1`, `nova-api-1`,
-`nova-worker-1`, `nova-web-1`, `nova-supervisor-1`. An `nova-bot-…` container appears the first
-time Nova uses its computer.
+When it's running, `docker ps` shows five containers: `superchat-postgres-1`, `superchat-api-1`,
+`superchat-worker-1`, `superchat-web-1`, `superchat-supervisor-1`. An `superchat-bot-…` container appears the first
+time Superchat uses its computer.
 
 ## 5. First time in the app
 
 1. **Sign up.** The first account on this install is the owner.
-2. **Name your Nova** and pick its color.
+2. **Name your Superchat** and pick its color.
 3. **Say hi.** Try one of the suggestions, or give it a goal: "Help me prepare the Q3 client
    portfolio review." Its computer boots on first use (about 20–30 seconds).
 
@@ -75,7 +75,7 @@ time Nova uses its computer.
 | What | Command |
 | --- | --- |
 | Update to the latest version | `git pull && ./scripts/setup.sh` |
-| Stop Nova | `./scripts/stop.sh` |
+| Stop Superchat | `./scripts/stop.sh` |
 | Start it again | `./scripts/setup.sh` |
 | Wipe everything and start fresh | `./scripts/reset.sh` (asks you to confirm) |
 | See logs | `docker compose -f infra/compose/docker-compose.yml logs -f api` |

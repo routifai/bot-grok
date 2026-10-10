@@ -1,4 +1,4 @@
-import { cn } from "@nova/ui-web/lib/utils";
+import { cn } from "@superchat/ui-web/lib/utils";
 
 function Skeleton({ className, ...props }: React.ComponentProps<"div">) {
   return (

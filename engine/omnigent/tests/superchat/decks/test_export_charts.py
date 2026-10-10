@@ -3,7 +3,7 @@
 
 Builds a deck with every chart type Chart.js and PptxGenJS share (bar clustered, stacked and
 horizontal; line; area; pie; doughnut; radar; scatter; bubble; a bar with a line on a second axis),
-a table, and text above and below each chart, runs the real ``nova-deck-export`` helper in a
+a table, and text above and below each chart, runs the real ``superchat-deck-export`` helper in a
 headless Chromium, and reads the .pptx back as a zip:
 
 * each chart is a ``c:chart`` part with an embedded workbook, series values equal to the Chart.js
@@ -42,7 +42,7 @@ from .pptx_native import (
     resolve_target,
 )
 
-HELPER = Path(__file__).resolve().parents[5] / "infra/sandboxes/computer/nova-deck-export"
+HELPER = Path(__file__).resolve().parents[5] / "infra/sandboxes/computer/superchat-deck-export"
 
 
 def _chromium_available() -> bool:
@@ -217,23 +217,23 @@ def _slide(index: int, case: dict[str, Any]) -> str:
     ident = case["id"]
     box = BOX
     active = " active" if index == 0 else ""
-    return f"""<section class="slide{active} t-a" data-screen-label="{index + 1:02d} {ident}" data-nova-id="{ident}">
-  <h2 class="title" data-nova-id="{ident}-title" style="position:absolute;left:128px;top:100px;z-index:1">{UNDER}</h2>
-  <div class="chart" data-nova-id="{ident}-chart" style="position:absolute;left:{box["x"]}px;top:{box["y"]}px;width:{box["w"]}px;height:{box["h"]}px;z-index:5"><canvas id="{ident}-canvas" data-nova-id="{ident}-canvas"></canvas></div>
-  <p class="lead" data-nova-id="{ident}-over" style="position:absolute;left:200px;top:310px;z-index:9">{OVER}</p>
-  <script data-nova-chart>addEventListener('DOMContentLoaded',()=>{{new Chart(document.getElementById('{ident}-canvas'),{case["config"]});}});</script>
-  <div class="foot" data-nova-id="{ident}-foot"><span data-nova-id="{ident}-foot-left">Deck</span><span data-nova-id="{ident}-foot-page">{index + 1:02d}</span></div>
+    return f"""<section class="slide{active} t-a" data-screen-label="{index + 1:02d} {ident}" data-superchat-id="{ident}">
+  <h2 class="title" data-superchat-id="{ident}-title" style="position:absolute;left:128px;top:100px;z-index:1">{UNDER}</h2>
+  <div class="chart" data-superchat-id="{ident}-chart" style="position:absolute;left:{box["x"]}px;top:{box["y"]}px;width:{box["w"]}px;height:{box["h"]}px;z-index:5"><canvas id="{ident}-canvas" data-superchat-id="{ident}-canvas"></canvas></div>
+  <p class="lead" data-superchat-id="{ident}-over" style="position:absolute;left:200px;top:310px;z-index:9">{OVER}</p>
+  <script data-superchat-chart>addEventListener('DOMContentLoaded',()=>{{new Chart(document.getElementById('{ident}-canvas'),{case["config"]});}});</script>
+  <div class="foot" data-superchat-id="{ident}-foot"><span data-superchat-id="{ident}-foot-left">Deck</span><span data-superchat-id="{ident}-foot-page">{index + 1:02d}</span></div>
 </section>"""
 
 
 TABLE_ROWS_PX = [96, 64, 64]
-TABLE_SLIDE = f"""<section class="slide t-a" data-screen-label="{len(CASES) + 1:02d} table" data-nova-id="table">
-  <table data-nova-id="table-grid" style="position:absolute;left:128px;top:200px;width:1000px;border-collapse:collapse">
-    <tr style="height:{TABLE_ROWS_PX[0]}px"><th data-nova-id="t-h1" style="text-align:left">Region</th><th data-nova-id="t-h2" style="text-align:left">Sales</th></tr>
-    <tr style="height:{TABLE_ROWS_PX[1]}px"><td data-nova-id="t-r1a">North</td><td data-nova-id="t-r1b">120</td></tr>
-    <tr style="height:{TABLE_ROWS_PX[2]}px"><td data-nova-id="t-r2a">South</td><td data-nova-id="t-r2b">95</td></tr>
+TABLE_SLIDE = f"""<section class="slide t-a" data-screen-label="{len(CASES) + 1:02d} table" data-superchat-id="table">
+  <table data-superchat-id="table-grid" style="position:absolute;left:128px;top:200px;width:1000px;border-collapse:collapse">
+    <tr style="height:{TABLE_ROWS_PX[0]}px"><th data-superchat-id="t-h1" style="text-align:left">Region</th><th data-superchat-id="t-h2" style="text-align:left">Sales</th></tr>
+    <tr style="height:{TABLE_ROWS_PX[1]}px"><td data-superchat-id="t-r1a">North</td><td data-superchat-id="t-r1b">120</td></tr>
+    <tr style="height:{TABLE_ROWS_PX[2]}px"><td data-superchat-id="t-r2a">South</td><td data-superchat-id="t-r2b">95</td></tr>
   </table>
-  <div class="foot" data-nova-id="table-foot"><span data-nova-id="table-foot-left">Deck</span><span data-nova-id="table-foot-page">{len(CASES) + 1:02d}</span></div>
+  <div class="foot" data-superchat-id="table-foot"><span data-superchat-id="table-foot-left">Deck</span><span data-superchat-id="table-foot-page">{len(CASES) + 1:02d}</span></div>
 </section>"""
 
 
@@ -413,10 +413,10 @@ def test_table_keeps_its_rendered_row_heights(exported: Path) -> None:
 
 
 def _one(ident: str, config: str) -> str:
-    return f"""<section class="slide active t-a" data-screen-label="01 {ident}" data-nova-id="{ident}">
-  <div class="chart" data-nova-id="{ident}-chart" style="position:absolute;left:128px;top:300px;width:900px;height:400px"><canvas id="{ident}-canvas" data-nova-id="{ident}-canvas"></canvas></div>
-  <script data-nova-chart>addEventListener('DOMContentLoaded',()=>{{new Chart(document.getElementById('{ident}-canvas'),{config});}});</script>
-  <div class="foot" data-nova-id="{ident}-foot"><span data-nova-id="{ident}-foot-left">Deck</span><span data-nova-id="{ident}-foot-page">01</span></div>
+    return f"""<section class="slide active t-a" data-screen-label="01 {ident}" data-superchat-id="{ident}">
+  <div class="chart" data-superchat-id="{ident}-chart" style="position:absolute;left:128px;top:300px;width:900px;height:400px"><canvas id="{ident}-canvas" data-superchat-id="{ident}-canvas"></canvas></div>
+  <script data-superchat-chart>addEventListener('DOMContentLoaded',()=>{{new Chart(document.getElementById('{ident}-canvas'),{config});}});</script>
+  <div class="foot" data-superchat-id="{ident}-foot"><span data-superchat-id="{ident}-foot-left">Deck</span><span data-superchat-id="{ident}-foot-page">01</span></div>
 </section>"""
 
 
@@ -460,7 +460,7 @@ def test_check_accepts_a_native_chart_and_the_export_refuses_the_rest(tmp_path: 
 def test_slides_may_carry_only_chart_scripts() -> None:
     plain = _one("x", "{type:'bar',data:{labels:['a'],datasets:[{data:[1]}]}}")
     assert kit.check_slides(plain)[0] == []
-    other = plain.replace("<script data-nova-chart>", "<script>")
+    other = plain.replace("<script data-superchat-chart>", "<script>")
     assert any("<script>" in e for e in kit.check_slides(other)[0])
     fetching = _one("x", "{type:'bar',data:{labels:['a'],datasets:[{data:fetch('/x')}]}}")
     assert any("nothing is fetched" in e for e in kit.check_slides(fetching)[0])

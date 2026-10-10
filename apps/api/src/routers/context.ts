@@ -3,7 +3,7 @@ import type {
   ArtifactStore,
   JobPublisher,
   SandboxProvider,
-} from "@nova/adapter-kit";
+} from "@superchat/adapter-kit";
 import type {
   ComposioProvider,
   ConnectorRegistry,
@@ -11,13 +11,13 @@ import type {
   IntegrationProviderSettings,
   PiOAuthLogins,
   RemoteConnectorDependencies,
-} from "@nova/adapters";
-import { McpOAuthBroker } from "@nova/adapters";
-import type { Auth } from "@nova/auth";
-import type { Actor } from "@nova/contracts";
-import { appContract } from "@nova/contracts";
-import type { PrismaClient, SignupPolicyEnv, ThreadEvents } from "@nova/db";
-import { createGroupRepos, createRepos } from "@nova/db";
+} from "@superchat/adapters";
+import { McpOAuthBroker } from "@superchat/adapters";
+import type { Auth } from "@superchat/auth";
+import type { Actor } from "@superchat/contracts";
+import { appContract } from "@superchat/contracts";
+import type { PrismaClient, SignupPolicyEnv, ThreadEvents } from "@superchat/db";
+import { createGroupRepos, createRepos } from "@superchat/db";
 import { type ImplementerInternalWithMiddlewares, implement, ORPCError } from "@orpc/server";
 import type { EngineArtifactsDeps } from "../features/artifacts/index.js";
 import { withEngineComputer } from "../features/computer/service.js";

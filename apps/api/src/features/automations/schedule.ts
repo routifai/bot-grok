@@ -1,4 +1,4 @@
-import type { AutomationSchedule } from "@nova/contracts";
+import type { AutomationSchedule } from "@superchat/contracts";
 
 const DAYS = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"] as const;
 

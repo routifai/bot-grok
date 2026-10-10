@@ -1,4 +1,4 @@
-# Nova (Muse edition)
+# Superchat (Muse edition)
 
 A personal agent: one persistent AI companion per person that works toward their goals on its own and comes back when it needs them.
 

@@ -8,7 +8,7 @@ import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-// jsdom does not implement these; Shell (and the real @nova/ui-web components
+// jsdom does not implement these; Shell (and the real @superchat/ui-web components
 // it renders) use them unconditionally on mount.
 beforeEach(() => {
   vi.stubGlobal("matchMedia", (query: string) => ({
@@ -85,11 +85,11 @@ vi.mock("@lingui/react/macro", () => ({
   Trans: ({ children }: { children?: ReactNode }) => children,
 }));
 
-vi.mock("@nova/chat-ui/web", () => ({
+vi.mock("@superchat/chat-ui/web", () => ({
   ChatMarkdown: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
 }));
 
-vi.mock("@nova/ui-web", () => {
+vi.mock("@superchat/ui-web", () => {
   // Passes every prop straight onto a <div> (event handlers included) so
   // data-testid/aria-label/onClick still work for assertions and clicks even
   // though this isn't the real Base UI component.
@@ -319,7 +319,7 @@ it("shows the conversation chrome: the dock, Chats instead of a sidebar, no Goal
     expect(page.container.querySelector('[data-testid="chats-trigger"]')).toBeTruthy();
     expect(page.container.querySelector('[data-testid="app-rail"]')).toBeNull();
     const text = page.container.textContent ?? "";
-    for (const gone of ["Goals", "Feed", "Ideas", "Nova"]) expect(text).not.toContain(gone);
+    for (const gone of ["Goals", "Feed", "Ideas", "Superchat"]) expect(text).not.toContain(gone);
     expect(page.container.querySelector('[data-testid="bots-sidebar"]')).toBeNull();
     expect(page.container.querySelector('[data-testid="create-menu-trigger"]')).toBeNull();
   } finally {

@@ -6,11 +6,11 @@ import net from "node:net";
 import path from "node:path";
 import tls from "node:tls";
 import { lingui } from "@lingui/vite-plugin";
-import type { DesktopStackProbeResponse } from "@nova/contracts";
+import type { DesktopStackProbeResponse } from "@superchat/contracts";
 import {
   safeScreenProxyResponseHeaders,
   stripSensitiveHandshakeHeaders,
-} from "@nova/core/node/screen-proxy-response";
+} from "@superchat/core/node/screen-proxy-response";
 import babel from "@rolldown/plugin-babel";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
@@ -27,8 +27,8 @@ import {
 } from "./src/screen-proxy.js";
 
 const webPort = Number(process.env.WEB_PORT ?? 5173);
-const DESKTOP_STACK_PROBE_PATH = "/.well-known/nova-desktop-stack";
-const DESKTOP_STACK_TOKEN_HEADER = "x-nova-desktop-stack-token";
+const DESKTOP_STACK_PROBE_PATH = "/.well-known/superchat-desktop-stack";
+const DESKTOP_STACK_TOKEN_HEADER = "x-superchat-desktop-stack-token";
 
 function equalStackToken(expected: string, supplied: string | string[] | undefined) {
   if (expected === "" || typeof supplied !== "string") return false;
@@ -300,7 +300,7 @@ Object.defineProperty(window, "localStorage", {
 export default defineConfig(({ mode }) => {
   const rootEnv = loadEnv(mode, path.resolve(import.meta.dirname, "../.."), "");
   const api = process.env.API_PROXY_TARGET ?? rootEnv.API_PROXY_TARGET ?? "http://127.0.0.1:3100";
-  const previewHost = process.env.NOVA_HOST ?? rootEnv.NOVA_HOST ?? "localhost";
+  const previewHost = process.env.SUPERCHAT_HOST ?? rootEnv.SUPERCHAT_HOST ?? "localhost";
   const screenProxySecret = () =>
     resolveScreenProxySecret({
       ...process.env,
@@ -309,10 +309,10 @@ export default defineConfig(({ mode }) => {
         process.env.SANDBOX_SUPERVISOR_TOKEN ?? rootEnv.SANDBOX_SUPERVISOR_TOKEN,
       BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET ?? rootEnv.BETTER_AUTH_SECRET,
     });
-  const performanceAssetDelayMs = Number(process.env.NOVA_PERFORMANCE_ASSET_DELAY_MS ?? 0);
+  const performanceAssetDelayMs = Number(process.env.SUPERCHAT_PERFORMANCE_ASSET_DELAY_MS ?? 0);
   const desktopStackToken =
-    process.env.NOVA_DESKTOP_STACK_TOKEN ?? rootEnv.NOVA_DESKTOP_STACK_TOKEN ?? "";
-  const imageTag = process.env.NOVA_IMAGE_TAG ?? rootEnv.NOVA_IMAGE_TAG ?? "edge";
+    process.env.SUPERCHAT_DESKTOP_STACK_TOKEN ?? rootEnv.SUPERCHAT_DESKTOP_STACK_TOKEN ?? "";
+  const imageTag = process.env.SUPERCHAT_IMAGE_TAG ?? rootEnv.SUPERCHAT_IMAGE_TAG ?? "edge";
   return {
     plugins: [
       react(),
@@ -320,13 +320,13 @@ export default defineConfig(({ mode }) => {
       lingui(),
       tailwindcss(),
       {
-        name: "nova-desktop-stack-probe",
+        name: "superchat-desktop-stack-probe",
         configureServer: (server) => attachDesktopStackProbe(server, desktopStackToken, imageTag),
         configurePreviewServer: (server) =>
           attachDesktopStackProbe(server, desktopStackToken, imageTag),
       },
       {
-        name: "nova-performance-asset-delay",
+        name: "superchat-performance-asset-delay",
         configurePreviewServer(server) {
           if (!Number.isFinite(performanceAssetDelayMs) || performanceAssetDelayMs <= 0) return;
           server.middlewares.use((req, _res, next) => {
@@ -342,7 +342,7 @@ export default defineConfig(({ mode }) => {
         },
       },
       {
-        name: "nova-novnc-proxy",
+        name: "superchat-novnc-proxy",
         configureServer: (server) => attachNovncProxy(server, screenProxySecret(), api),
         configurePreviewServer: (server) => attachNovncProxy(server, screenProxySecret(), api),
       },

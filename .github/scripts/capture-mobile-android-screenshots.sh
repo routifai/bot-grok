@@ -2,8 +2,8 @@
 set -euo pipefail
 
 report_dir="test-report/mobile-screenshots"
-run_log="${RUNNER_TEMP:?}/nova-mobile-screenshots.log"
-android_log="${RUNNER_TEMP:?}/nova-mobile-android.log"
+run_log="${RUNNER_TEMP:?}/superchat-mobile-screenshots.log"
+android_log="${RUNNER_TEMP:?}/superchat-mobile-android.log"
 android_log_pid=""
 
 mkdir -p "$report_dir"

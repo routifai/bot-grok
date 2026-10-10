@@ -20,7 +20,7 @@ export function sideChatsRouter(c: RouterContext) {
   const { museOnly, deps } = c;
   return {
     // Super Chat Side Chats and Helpers (docs/super-chat/WIRING.md slice A1) — real handlers in
-    // ./service.js; the ownership rule and Omnigent mapping live in @nova/adapters.
+    // ./service.js; the ownership rule and Omnigent mapping live in @superchat/adapters.
     chats: {
       list: museOnly.chats.list.handler(({ context, input }) =>
         listChats(deps, context.actor, input),

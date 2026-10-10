@@ -1,6 +1,6 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import { readBoundedJsonResponse, signupRequiresEmailVerification } from "@nova/core";
-import { Button, Input, Label } from "@nova/ui-web";
+import { readBoundedJsonResponse, signupRequiresEmailVerification } from "@superchat/core";
+import { Button, Input, Label } from "@superchat/ui-web";
 import { Eye, EyeOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -36,8 +36,8 @@ const AUTH_CAPABILITIES_TIMEOUT_MS = 8_000;
 const MAX_AUTH_CAPABILITIES_RESPONSE_BYTES = 64 * 1024;
 const CODE_LENGTH = 6;
 const RESEND_COOLDOWN_SECONDS = 30;
-const PENDING_CODE_KEY = "nova:auth-pending-code";
-const OWNER_TOKEN_KEY = "nova:auth-owner-token";
+const PENDING_CODE_KEY = "superchat:auth-pending-code";
+const OWNER_TOKEN_KEY = "superchat:auth-owner-token";
 const OWNER_SETUP_HEADER = "x-owner-setup-token";
 const FRESH_ACCOUNT_MS = 2 * 60_000;
 

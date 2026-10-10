@@ -1,6 +1,6 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { Bot, ComputerStatus } from "@nova/contracts";
-import { Button } from "@nova/ui-web";
+import type { Bot, ComputerStatus } from "@superchat/contracts";
+import { Button } from "@superchat/ui-web";
 import { X } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Panel } from "./panel";

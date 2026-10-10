@@ -8,15 +8,15 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import { Search } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import type { ArtifactKind } from "../../lib/artifact-kind";
 import { artifactKind, KIND_ORDER, kindFacetLabel } from "../../lib/artifact-kind";
 import { decodeArtifactBase64, downloadArtifactBytes } from "../../lib/artifact-open";
 import { rpc } from "../../lib/rpc";
-import { LibraryGlyph } from "../../pages/muse/chrome/NovaGlyphs";
-import { NovaTile } from "../../pages/muse/chrome/NovaTile";
+import { LibraryGlyph } from "../../pages/muse/chrome/SuperchatGlyphs";
+import { SuperchatTile } from "../../pages/muse/chrome/SuperchatTile";
 import {
   EmptyState,
   MuseScreen,
@@ -359,7 +359,7 @@ export function LibraryScreen({
                     onChange={(event) => setQuery(event.target.value)}
                     placeholder={t`Search your Library…`}
                     aria-label={t`Search your Library`}
-                    className="nova-glass-pill h-8 w-[200px] rounded-full ps-8 pe-3 text-[13px] text-foreground outline-none placeholder:text-ink-3 focus-visible:outline-2 focus-visible:outline-ring"
+                    className="superchat-glass-pill h-8 w-[200px] rounded-full ps-8 pe-3 text-[13px] text-foreground outline-none placeholder:text-ink-3 focus-visible:outline-2 focus-visible:outline-ring"
                   />
                 </label>
               ) : null}
@@ -383,9 +383,9 @@ export function LibraryScreen({
       <MuseWideCenter className="min-h-full">
         <ScreenHero
           tile={
-            <NovaTile tone="indigo" size={44}>
+            <SuperchatTile tone="indigo" size={44}>
               <LibraryGlyph />
-            </NovaTile>
+            </SuperchatTile>
           }
           title={<Trans>Library</Trans>}
           subtitle={view === "made" ? <Trans>Everything I made for you.</Trans> : undefined}

@@ -1,5 +1,5 @@
-import type { Actor } from "@nova/contracts";
-import type { PrismaClient } from "@nova/db";
+import type { Actor } from "@superchat/contracts";
+import type { PrismaClient } from "@superchat/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { querySpaceSearch } from "./search.js";
 
@@ -77,14 +77,14 @@ describe("artifact search batching", () => {
 describe("engine-backed Conversation search", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("finds a Muse's messages and side chats' in the engine, by the transcript's message id, and skips Nova's copies", async () => {
+  it("finds a Muse's messages and side chats' in the engine, by the transcript's message id, and skips Superchat's copies", async () => {
     const { prisma } = fixture(0);
     const withSession = {
       ...prisma,
       omnigentSession: {
         findMany: vi
           .fn()
-          .mockResolvedValue([{ omnigentSessionId: "sess-1", bot: { id: "bot-1", name: "Nova" } }]),
+          .mockResolvedValue([{ omnigentSessionId: "sess-1", bot: { id: "bot-1", name: "Superchat" } }]),
       },
     };
     const fetchMock = vi.fn(async () =>
@@ -130,7 +130,7 @@ describe("engine-backed Conversation search", () => {
     expect(String(url)).toBe(
       "http://engine.test/v1/sessions/sess-1/items/search?query=report&scope=family&limit=10",
     );
-    // Nova's own message rows are left out for a Muse the engine holds.
+    // Superchat's own message rows are left out for a Muse the engine holds.
     const messageQuery = withSession.$queryRaw.mock.calls.find(
       ([q]) => Array.isArray(q) && q.join("").includes("INNER JOIN bots b"),
     );

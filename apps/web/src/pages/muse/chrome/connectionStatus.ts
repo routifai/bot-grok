@@ -1,5 +1,5 @@
 // The context panel's identity header shows a small Connection Status line ("Connected" /
-// "Connecting…") describing whether Nova's calls are reaching the server at all — not
+// "Connecting…") describing whether Superchat's calls are reaching the server at all — not
 // whether the Muse is busy (that's `useMuseLiveState`). Derived from the last poll's
 // outcome on whichever wires the panel already has, so no extra request is made just to
 // answer this. "Connected" latches the moment any poll first lands, and only lets go

@@ -1,4 +1,4 @@
-import type { Ask } from "@nova/contracts";
+import type { Ask } from "@superchat/contracts";
 import { describe, expect, it } from "vitest";
 import { askDecision } from "./askDecision";
 
@@ -56,7 +56,7 @@ describe("askDecision", () => {
     ).toBeNull();
   });
 
-  it("titles a plain approval in Nova's voice, with what it would send underneath", () => {
+  it("titles a plain approval in Superchat's voice, with what it would send underneath", () => {
     const decision = askDecision(
       ask({ kind: "approval", text: "Send the comparison to Dana?", detail: "To: Dana" }),
       APPROVAL,

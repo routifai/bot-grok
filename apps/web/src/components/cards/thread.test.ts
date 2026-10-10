@@ -1,4 +1,4 @@
-import type { ReplyCardBlock, ThreadMessage } from "@nova/contracts";
+import type { ReplyCardBlock, ThreadMessage } from "@superchat/contracts";
 import { expect, it } from "vitest";
 import { hiddenFollowUpMessageIds, replyCardKey, resolveReplyCards } from "./thread";
 

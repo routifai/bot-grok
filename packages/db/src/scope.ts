@@ -1,4 +1,4 @@
-import type { Actor } from "@nova/contracts";
+import type { Actor } from "@superchat/contracts";
 import type { PrismaClient } from "./client.js";
 
 export class IsolationError extends Error {

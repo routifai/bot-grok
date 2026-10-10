@@ -1,7 +1,7 @@
-import { computerSupportsUpdate } from "@nova/adapters";
-import type { ComputerStatus } from "@nova/contracts";
-import { ACTIVE_RUN_STATUSES, computerScreenSize } from "@nova/core";
-import type { PrismaClient } from "@nova/db";
+import { computerSupportsUpdate } from "@superchat/adapters";
+import type { ComputerStatus } from "@superchat/contracts";
+import { ACTIVE_RUN_STATUSES, computerScreenSize } from "@superchat/core";
+import type { PrismaClient } from "@superchat/db";
 
 /** Mirrors computer.takeover: an execution lease blocks user control unless a takeover is pending. */
 export function executionBlocksUserTakeover(input: {

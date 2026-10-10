@@ -3,7 +3,7 @@
 The web sends deterministic patches (``patches.py``); the engine applies them to the version it
 names and stores the result as a new version tagged ``manual``. A stale ``base_version`` is a 409
 the editor reloads from; a patch that cannot be applied exactly is a 409 whose message says to
-ask Nova instead. The write-back to the Computer and the "you changed X" note are the artifacts
+ask Superchat instead. The write-back to the Computer and the "you changed X" note are the artifacts
 capability's turn prefix.
 """
 

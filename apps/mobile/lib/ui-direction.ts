@@ -1,4 +1,4 @@
-import { textDirectionForLocale } from "@nova/core";
+import { textDirectionForLocale } from "@superchat/core";
 import { reloadAppAsync } from "expo";
 import { I18nManager, Platform } from "react-native";
 

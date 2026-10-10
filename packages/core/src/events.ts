@@ -1,4 +1,4 @@
-import type { MessageBlock, ThreadMessage } from "@nova/contracts";
+import type { MessageBlock, ThreadMessage } from "@superchat/contracts";
 import { cloudAgentBlockFromPayload } from "./cloud-agent.js";
 
 export function projectMessages(
@@ -169,7 +169,7 @@ export function isRunTerminalEvent(event: { type: string }): boolean {
   );
 }
 
-export const RESPONSE_STREAMING_STORAGE_KEY = "nova.responseStreaming";
+export const RESPONSE_STREAMING_STORAGE_KEY = "superchat.responseStreaming";
 export type ResponseStreamingPreference = "on" | "off";
 
 /** Missing and unknown values stay off; only an explicit "on" enables streaming. */

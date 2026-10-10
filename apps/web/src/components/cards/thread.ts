@@ -1,4 +1,4 @@
-import type { ReplyCardBlock, ThreadMessage } from "@nova/contracts";
+import type { ReplyCardBlock, ThreadMessage } from "@superchat/contracts";
 
 /** What one card block in the transcript should draw. */
 export type ResolvedReplyCard = {

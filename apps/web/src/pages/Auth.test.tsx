@@ -231,7 +231,7 @@ it("asks for the emailed code after a password signup, and verifies the mailbox 
 it("resumes the code step after the signup remount", async () => {
   serve({ emailCode: true });
   sessionStorage.setItem(
-    "nova:auth-pending-code",
+    "superchat:auth-pending-code",
     JSON.stringify({ email: "ada@corp.test", purpose: "verify" }),
   );
   await render("up", "?verify=email");
@@ -305,7 +305,7 @@ it("forgets the setup token from the tab once the sign-up succeeds", async () =>
   type("#new-password", "correct-horse");
   type("#owner-token", "operator-token");
   await submit();
-  expect(sessionStorage.getItem("nova:auth-owner-token")).toBeNull();
+  expect(sessionStorage.getItem("superchat:auth-owner-token")).toBeNull();
 });
 
 it("does not show the setup token field once an owner exists", async () => {

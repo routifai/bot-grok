@@ -40,7 +40,7 @@ export const useComposerAttachments = (): readonly ComposerAttachment[] =>
 export const useComposerAttachment = (kind: string): ComposerAttachment | null =>
   useSyncExternalStore(subscribe, () => attachments.find((a) => a.kind === kind) ?? null);
 
-/** Registers a mounted composer, so a surface only offers "Ask Nova" when there is one to ask in. */
+/** Registers a mounted composer, so a surface only offers "Ask Superchat" when there is one to ask in. */
 export function useComposerAttachTarget(): void {
   useEffect(() => {
     composers += 1;

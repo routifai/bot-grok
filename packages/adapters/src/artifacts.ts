@@ -8,7 +8,7 @@ import type {
   ArtifactStore,
   NotificationMessage,
   NotificationProvider,
-} from "@nova/adapter-kit";
+} from "@superchat/adapter-kit";
 
 const O_NOFOLLOW = constants.O_NOFOLLOW ?? 0;
 

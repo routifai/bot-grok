@@ -1,5 +1,5 @@
-import { ChatMarkdown } from "@nova/chat-ui/web";
-import { parseReplyCard, type ReplyCardBlock } from "@nova/contracts";
+import { ChatMarkdown } from "@superchat/chat-ui/web";
+import { parseReplyCard, type ReplyCardBlock } from "@superchat/contracts";
 import { ReplyArtifactFileCard } from "../../features/artifacts";
 import { PassageChips } from "../../features/knowledge";
 import { CardSkeleton, catalog } from "./catalog";

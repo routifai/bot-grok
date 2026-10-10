@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import type { Bot, Group } from "@nova/contracts";
+import type { Bot, Group } from "@superchat/contracts";
 import { ORPCError } from "@orpc/client";
 import { rpc } from "../../../lib/rpc";
 import { ClearConversationDialog } from "../../shell/dialogs";
@@ -9,7 +9,7 @@ import type { useThreadSync } from "./useThreadSync";
 export type ClearTarget = { kind: "bot"; chat: Bot } | { kind: "group"; chat: Group };
 
 /** Confirms and performs clearing a conversation's history. The Muse's Conversation is cleared
- * on the engine (every client then refetches on `chat.reset`); it refuses while Nova is
+ * on the engine (every client then refetches on `chat.reset`); it refuses while Superchat is
  * working. */
 export function ClearConversationHost({
   clearTarget,
@@ -44,7 +44,7 @@ export function ClearConversationHost({
             throw error;
           }
         }
-        // Also drops the cards and notices Nova itself wrote into the thread; the Conversation is
+        // Also drops the cards and notices Superchat itself wrote into the thread; the Conversation is
         // already cleared, so this must not fail the action.
         const clearThread = rpc.threads.clear(
           clearTarget.kind === "bot"

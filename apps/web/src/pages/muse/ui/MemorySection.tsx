@@ -2,7 +2,7 @@ import { Trans } from "@lingui/react/macro";
 import { ChevronRight } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
-const STORAGE_KEY = "nova.memory.closedSections";
+const STORAGE_KEY = "superchat.memory.closedSections";
 
 function readClosed(): string[] {
   try {

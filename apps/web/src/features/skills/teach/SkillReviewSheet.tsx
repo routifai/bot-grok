@@ -1,6 +1,6 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { SkillDraft, TaughtSkill } from "@nova/contracts";
-import { formatSkillRunPrompt } from "@nova/core";
+import type { SkillDraft, TaughtSkill } from "@superchat/contracts";
+import { formatSkillRunPrompt } from "@superchat/core";
 import {
   Button,
   Input,
@@ -12,7 +12,7 @@ import {
   SheetTitle,
   Switch,
   Textarea,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import { ORPCError } from "@orpc/client";
 import { X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";

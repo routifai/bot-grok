@@ -1,4 +1,4 @@
-Nova's fixes to PptxGenJS 4.0.1 (MIT), applied by ../install.sh to dist/pptxgen.cjs.js (the
+Superchat's fixes to PptxGenJS 4.0.1 (MIT), applied by ../install.sh to dist/pptxgen.cjs.js (the
 package "main") and dist/pptxgen.es.js ("module"). The browser bundles (bundle, min) are not used
 in the Computer and are left as published. Each change is the upstream fix, ported from src/ to
 the built files:

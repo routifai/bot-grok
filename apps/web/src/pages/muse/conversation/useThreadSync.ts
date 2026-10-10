@@ -5,13 +5,13 @@ import type {
   TaughtSkill,
   ThreadMessage,
   ThreadSnapshot,
-} from "@nova/contracts";
+} from "@superchat/contracts";
 import {
   isRunTerminalEvent,
   runThreadSubscription,
   searchHitThreadTarget,
   userVisibleMessages,
-} from "@nova/core";
+} from "@superchat/core";
 import {
   type Dispatch,
   type MutableRefObject,

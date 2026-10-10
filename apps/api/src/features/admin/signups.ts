@@ -1,22 +1,22 @@
 // Who may join, and who is waiting. Deployment owner only; the owner check is the same one
 // `deployment.update` uses. Approval is the moment a pending account first gets a space.
 
-import type { OmnigentClientConfig } from "@nova/adapters";
-import { purgeQuarantinedOrganizations } from "@nova/adapters";
+import type { OmnigentClientConfig } from "@superchat/adapters";
+import { purgeQuarantinedOrganizations } from "@superchat/adapters";
 import {
   prismaEmailQuota,
   REJECTION_COOLDOWN_MS,
   rejectionKey,
   resolveSignupPolicy,
-} from "@nova/auth";
-import type { Actor, PendingSignup, SignupSettings } from "@nova/contracts";
-import { parseAllowlist, parseDomains, signupNeedsEmailDelivery } from "@nova/core";
+} from "@superchat/auth";
+import type { Actor, PendingSignup, SignupSettings } from "@superchat/contracts";
+import { parseAllowlist, parseDomains, signupNeedsEmailDelivery } from "@superchat/core";
 import {
   bootstrapUserSpace,
   quarantinedOrganizationsToPurge,
   restoreQuarantinedSpaces,
-} from "@nova/db";
-import { getLogger } from "@nova/logging";
+} from "@superchat/db";
+import { getLogger } from "@superchat/logging";
 import { ORPCError } from "@orpc/server";
 import type { RouterDeps } from "../../routers/context.js";
 import { resetEngineAccount, setEngineAccountSuspended } from "./service.js";

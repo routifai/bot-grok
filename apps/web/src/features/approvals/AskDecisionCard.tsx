@@ -1,9 +1,9 @@
 import { useLingui } from "@lingui/react/macro";
-import type { Ask } from "@nova/contracts";
-import { cn } from "@nova/ui-web";
+import type { Ask } from "@superchat/contracts";
+import { cn } from "@superchat/ui-web";
 import { BookmarkPlus, HelpCircle, ShieldCheck, Sparkles } from "lucide-react";
 import { useState } from "react";
-import { NovaTile } from "../../pages/muse/chrome/NovaTile";
+import { SuperchatTile } from "../../pages/muse/chrome/SuperchatTile";
 import { askDecision } from "./askDecision";
 
 const KIND_ICON = {
@@ -53,11 +53,11 @@ export function AskDecisionCard({
 
   const { actions } = decision;
   return (
-    <div data-testid="ask-decision" className="nova-group flex flex-col gap-1.5 p-3.5">
+    <div data-testid="ask-decision" className="superchat-group flex flex-col gap-1.5 p-3.5">
       <div className="flex items-start gap-2.5">
-        <NovaTile tone={decision.tone} size={28}>
+        <SuperchatTile tone={decision.tone} size={28}>
           <Icon strokeWidth={2.4} />
-        </NovaTile>
+        </SuperchatTile>
         <div className="min-w-0 flex-1">
           <p
             className="line-clamp-3 text-[14px] leading-[1.3] font-semibold text-foreground"

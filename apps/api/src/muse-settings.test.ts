@@ -1,5 +1,5 @@
-import type { Actor } from "@nova/contracts";
-import type { PrismaClient } from "@nova/db";
+import type { Actor } from "@superchat/contracts";
+import type { PrismaClient } from "@superchat/db";
 import { RPCHandler } from "@orpc/server/fetch";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getMuseSettings, updateMuseSettings } from "./muse-settings.js";
@@ -8,7 +8,7 @@ import { createRouter, type RouterDeps } from "./router.js";
 const actor: Actor = {
   spaceId: "space-1",
   userId: "user-1",
-  email: "user@nova.test",
+  email: "user@superchat.test",
   isDeploymentOwner: true,
 };
 
@@ -32,7 +32,7 @@ function museSettingsDeps(botRow: BotRow | null) {
       screenProxySecret: "fake-test-secret",
       sandboxProvider: "fake",
     },
-    dataDir: "/tmp/nova-muse-settings-test",
+    dataDir: "/tmp/superchat-muse-settings-test",
   } as unknown as RouterDeps;
   return { findFirst, update, deps, handler: new RPCHandler(createRouter(deps)) };
 }
@@ -149,7 +149,7 @@ describe("Muse settings on the engine", () => {
     const update = vi.fn(async () => bot);
     const prisma = {
       bot: { findFirst: vi.fn(async () => bot), update },
-      user: { findUnique: vi.fn(async () => ({ email: "user@nova.test" })) },
+      user: { findUnique: vi.fn(async () => ({ email: "user@superchat.test" })) },
     } as unknown as PrismaClient;
     return { deps: { prisma }, update };
   }
@@ -183,7 +183,7 @@ describe("Muse settings on the engine", () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  it("carries values set in Nova over once, when the engine still has its defaults", async () => {
+  it("carries values set in Superchat over once, when the engine still has its defaults", async () => {
     const fetchMock = engine(prefs());
     const { deps, update } = engineDeps({ museProactivity: "high", museQuietHours: "" });
 

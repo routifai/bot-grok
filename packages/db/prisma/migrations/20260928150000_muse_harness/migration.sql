@@ -6,4 +6,4 @@
 -- so the gateway only calls switch-agent when the resolved harness actually differs.
 
 ALTER TABLE "bots" ADD COLUMN "museHarness" TEXT;
-ALTER TABLE "omnigent_sessions" ADD COLUMN "agentName" TEXT NOT NULL DEFAULT 'nova-pi';
+ALTER TABLE "omnigent_sessions" ADD COLUMN "agentName" TEXT NOT NULL DEFAULT 'superchat-pi';

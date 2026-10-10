@@ -1,4 +1,4 @@
-import type { AdapterContext, SandboxProvider } from "@nova/adapter-kit";
+import type { AdapterContext, SandboxProvider } from "@superchat/adapter-kit";
 
 export async function provisionPrepared(
   provider: SandboxProvider,

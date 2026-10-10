@@ -1,4 +1,4 @@
-import type { DeckPatch } from "@nova/contracts";
+import type { DeckPatch } from "@superchat/contracts";
 import { coalescePatches } from "./edit-model";
 
 /** How long staged patches wait for more changes before they become one save. */

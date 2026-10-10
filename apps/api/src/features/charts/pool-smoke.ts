@@ -1,5 +1,5 @@
 // Run under tsx by pool.real.test.ts: draws one fixture through the real worker script.
-import { CHART_FIXTURES } from "@nova/charts";
+import { CHART_FIXTURES } from "@superchat/charts";
 import { RenderPool } from "./pool.js";
 
 const pool = new RenderPool({

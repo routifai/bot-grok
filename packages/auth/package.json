@@ -1,5 +1,5 @@
 {
-  "name": "@nova/auth",
+  "name": "@superchat/auth",
   "version": "0.1.0",
   "license": "Apache-2.0",
   "type": "module",
@@ -15,9 +15,9 @@
     "test": "vitest run --root ../.. packages/auth/src"
   },
   "dependencies": {
-    "@nova/adapter-kit": "workspace:*",
-    "@nova/core": "workspace:*",
-    "@nova/db": "workspace:*",
+    "@superchat/adapter-kit": "workspace:*",
+    "@superchat/core": "workspace:*",
+    "@superchat/db": "workspace:*",
     "better-auth": "1.7.4"
   },
   "devDependencies": {

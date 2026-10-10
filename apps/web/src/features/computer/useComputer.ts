@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import type { Bot, ComputerReleaseReason, ThreadSnapshot } from "@nova/contracts";
+import type { Bot, ComputerReleaseReason, ThreadSnapshot } from "@superchat/contracts";
 import { type MutableRefObject, useCallback, useEffect, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
 import {

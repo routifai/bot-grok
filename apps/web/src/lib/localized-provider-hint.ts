@@ -1,5 +1,5 @@
 import { t } from "@lingui/core/macro";
-import type { ModelCatalogEntry } from "@nova/contracts";
+import type { ModelCatalogEntry } from "@superchat/contracts";
 
 /** Localize known provider auth hint fallbacks; pass through catalog `authHint` as-is. */
 export function localizedProviderHint(entry: ModelCatalogEntry): string {

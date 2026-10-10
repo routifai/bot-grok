@@ -2,7 +2,7 @@ import {
   applyTeachingDesktopInput,
   hasActiveComputerControl,
   scheduleComputerSleep,
-} from "@nova/adapters";
+} from "@superchat/adapters";
 import { ORPCError } from "@orpc/server";
 import type { RouterContext } from "../../routers/context.js";
 import { computerContext } from "../../routers/shared.js";

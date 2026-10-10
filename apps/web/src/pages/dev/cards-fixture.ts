@@ -1,4 +1,4 @@
-import type { ReplyCardBlock, ThreadMessage } from "@nova/contracts";
+import type { ReplyCardBlock, ThreadMessage } from "@superchat/contracts";
 
 // Fixture data for /dev/clarify and /dev/followups (CardsPreviewPage.tsx): the cards
 // `ask_clarification` and `suggest_follow_ups` produce, on a bank-workplace thread.

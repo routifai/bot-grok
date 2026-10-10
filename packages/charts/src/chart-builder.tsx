@@ -1,4 +1,4 @@
-/* Portions modified from getnao/nao apps/shared/src/chart-builder.tsx@5bde830, Apache-2.0; changes: series palette and fallbacks read Nova chart tokens, nao- class prefixes renamed, strict-index fixes. */
+/* Portions modified from getnao/nao apps/shared/src/chart-builder.tsx@5bde830, Apache-2.0; changes: series palette and fallbacks read Superchat chart tokens, nao- class prefixes renamed, strict-index fixes. */
 /** @jsxRuntime automatic */
 /** @jsxImportSource react */
 import type React from "react";
@@ -77,7 +77,7 @@ import {
 } from "./date.js";
 import type * as displayChart from "./spec.js";
 
-/** The series palette: Nova's `--chart-N` tokens (light and dark), resolved by the page or, for PNG, by the server render. */
+/** The series palette: Superchat's `--chart-N` tokens (light and dark), resolved by the page or, for PNG, by the server render. */
 export const DEFAULT_COLORS = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => `var(--chart-${n})`);
 
 const CHART_LABEL_FONT_SIZE = 12;
@@ -134,7 +134,7 @@ const HORIZONTAL_BAR_CATEGORY_GAP = "20%";
 const HORIZONTAL_BAR_RADIUS = 999;
 const HORIZONTAL_BAR_TRACK_COLOR = "var(--muted)";
 const HORIZONTAL_BAR_BASELINE_COLOR = "var(--muted-foreground)";
-const HORIZONTAL_BAR_ORIGINAL_VALUE_KEY = "__novaHorizontalBarValue";
+const HORIZONTAL_BAR_ORIGINAL_VALUE_KEY = "__superchatHorizontalBarValue";
 const HORIZONTAL_BAR_VALUE_LABEL_RIGHT_PADDING = 4;
 const HORIZONTAL_BAR_LABEL_VERTICAL_ROOM = Math.ceil(CHART_LABEL_FONT_SIZE / 2) + 2;
 /** Reserves horizontal room for a rotated axis title so it does not overlap tick values. */
@@ -555,7 +555,7 @@ export interface KpiCardProps {
   leadingSlot?: React.ReactNode;
 }
 
-/** `nova-kpi-card__*` classes let surfaces without Tailwind (sandboxed custom stories) style the same markup. */
+/** `superchat-kpi-card__*` classes let surfaces without Tailwind (sandboxed custom stories) style the same markup. */
 export function KpiCard({
   value,
   displayName,
@@ -580,22 +580,22 @@ export function KpiCard({
     : "text-muted-foreground";
 
   return (
-    <div className="nova-kpi-card min-w-[160px]">
+    <div className="superchat-kpi-card min-w-[160px]">
       {(displayName || leadingSlot) && (
-        <div className="nova-kpi-card__header flex items-center gap-1">
+        <div className="superchat-kpi-card__header flex items-center gap-1">
           {leadingSlot}
           {displayName && (
-            <div className="nova-kpi-card__name text-lg tracking-wide">{displayName}</div>
+            <div className="superchat-kpi-card__name text-lg tracking-wide">{displayName}</div>
           )}
         </div>
       )}
-      <div className="nova-kpi-card__value text-3xl font-medium tabular-nums">{formattedValue}</div>
+      <div className="superchat-kpi-card__value text-3xl font-medium tabular-nums">{formattedValue}</div>
       {comparison && (
         <div
-          className={`nova-kpi-card__comparison nova-kpi-card__comparison--${trend} mt-1.5 flex items-center gap-1.5 whitespace-nowrap text-sm ${pillColorClass}`}
+          className={`superchat-kpi-card__comparison superchat-kpi-card__comparison--${trend} mt-1.5 flex items-center gap-1.5 whitespace-nowrap text-sm ${pillColorClass}`}
         >
           {showArrowAndColor && <KpiTrendArrow direction={comparison.direction} />}
-          <span className="nova-kpi-card__comparison-value font-medium tabular-nums">
+          <span className="superchat-kpi-card__comparison-value font-medium tabular-nums">
             {comparison.valueText}
           </span>
           <span className="font-normal">vs. {comparison.periodLabel}</span>

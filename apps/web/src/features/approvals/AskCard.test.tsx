@@ -1,4 +1,4 @@
-import { selectedAskActionLabel } from "@nova/core";
+import { selectedAskActionLabel } from "@superchat/core";
 import { describe, expect, it } from "vitest";
 
 describe("selectedAskActionLabel", () => {

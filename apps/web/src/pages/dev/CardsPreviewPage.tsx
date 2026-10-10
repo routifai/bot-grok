@@ -1,5 +1,5 @@
-import type { ThreadMessage } from "@nova/contracts";
-import { cn } from "@nova/ui-web";
+import type { ThreadMessage } from "@superchat/contracts";
+import { cn } from "@superchat/ui-web";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AskPreviewsProvider } from "../../components/cards/context";
 import { DeckThemeChoice } from "../../features/decks";

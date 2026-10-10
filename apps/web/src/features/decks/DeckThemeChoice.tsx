@@ -1,6 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
-import type { DeckTheme } from "@nova/contracts";
-import { cn } from "@nova/ui-web";
+import type { DeckTheme } from "@superchat/contracts";
+import { cn } from "@superchat/ui-web";
 import { Check, Expand } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import type { AskPreviewProps } from "../../components/cards/context";

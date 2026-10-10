@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import { Button, cn } from "@nova/ui-web";
+import { Button, cn } from "@superchat/ui-web";
 import { Redo2, Undo2 } from "lucide-react";
 import {
   type MutableRefObject,
@@ -206,7 +206,7 @@ export function DeckEditor({
               editor.finishText();
               void editor.flush();
             }}
-            onClose={() => post({ type: "nova:edit-select", ids: [] })}
+            onClose={() => post({ type: "superchat:edit-select", ids: [] })}
             onRemove={editor.remove}
             onDuplicate={editor.duplicate}
             onAsk={ask}

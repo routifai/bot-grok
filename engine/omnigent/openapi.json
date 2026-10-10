@@ -8266,7 +8266,7 @@
             "title": "Project Name"
           },
           "workspace": {
-            "description": "Absolute path on the session's host, e.g. `\"/home/nova/workspace/projects/q3-deck\"`.",
+            "description": "Absolute path on the session's host, e.g. `\"/home/superchat/workspace/projects/q3-deck\"`.",
             "title": "Workspace",
             "type": "string"
           }

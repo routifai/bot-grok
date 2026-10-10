@@ -1,8 +1,8 @@
 """
-Nova "computer" sandbox launcher.
+Superchat "computer" sandbox launcher.
 
-Runs an Omnigent managed host inside a Muse's own per-Muse sandbox computer — Nova's
-persistent, shared compute for one Muse (bot), managed by Nova's own
+Runs an Omnigent managed host inside a Muse's own per-Muse sandbox computer — Superchat's
+persistent, shared compute for one Muse (bot), managed by Superchat's own
 ``infra/sandboxes/supervisor`` service (a small HTTP API in front of Docker; see
 ``infra/sandboxes/computer`` for the image). This is the "computer" runner location
 (docs/omnigent-spike.md): Omnigent runners execute inside the Muse's own sandbox, not on the
@@ -16,10 +16,10 @@ Implements :class:`~omnigent.onboarding.sandboxes.base.SandboxHostLauncher` (via
 ``stream_exec`` / ``exec_foreground`` stay the raising defaults).
 
 Identity: unlike every other provider, this launcher's sandbox is not a fresh box it creates —
-it is a PRE-EXISTING, Nova-owned resource keyed by the session's Muse, not by the launch-chosen
-``name`` :meth:`SandboxHostLauncher.provision` normally receives. Nova's gateway stamps every
+it is a PRE-EXISTING, Superchat-owned resource keyed by the session's Muse, not by the launch-chosen
+``name`` :meth:`SandboxHostLauncher.provision` normally receives. Superchat's gateway stamps every
 Omnigent session with ``omnigent.computer.key`` / ``omnigent.computer.owner`` /
-``omnigent.tenant`` labels (the older ``nova.computer`` / ``nova.bot`` / ``nova.space`` labels
+``omnigent.tenant`` labels (the older ``superchat.computer`` / ``superchat.bot`` / ``superchat.space`` labels
 are still read, deprecated, removal in 0.19); :meth:`prepare_for_launch` is the extension point
 :mod:`omnigent.server.managed_hosts` already threads a first launch's session labels through, and
 this launcher reads the key and tenant labels off them. A RELAUNCH (existing host, fresh
@@ -28,15 +28,15 @@ session labels handy, so it instead passes ``previous_sandbox_id`` — this laun
 :meth:`provision` return value from the earlier launch — and recovers the same identity from it.
 
 Sandbox id shape: ``"<bot_id>:<space_id>:<container_id>"``. The first two segments are the
-Muse's identity (recoverable on relaunch, see above); the third is Nova supervisor's own
+Muse's identity (recoverable on relaunch, see above); the third is Superchat supervisor's own
 container id, needed by every ``/computers/{id}/...`` call after ``provision``.
 
 Authentication, both directions:
 
-- Omnigent → Nova's supervisor: a static bearer (``OMNIGENT_COMPUTER_SUPERVISOR_TOKEN``) plus the
-  ``x-nova-bot-id`` / ``x-nova-space-id`` identity headers the supervisor cross-checks against
+- Omnigent → Superchat's supervisor: a static bearer (``OMNIGENT_COMPUTER_SUPERVISOR_TOKEN``) plus the
+  ``x-superchat-bot-id`` / ``x-superchat-space-id`` identity headers the supervisor cross-checks against
   the container it resolves — the same shared-secret posture
-  ``packages/adapters/src/docker-sandbox.ts`` already uses from Nova's own API process
+  ``packages/adapters/src/docker-sandbox.ts`` already uses from Superchat's own API process
   (``resolveSupervisorToken`` / ``SANDBOX_SUPERVISOR_TOKEN``). Never a per-user secret: the
   supervisor has no concept of an Omnigent session owner, only a Muse.
 - The runner → Omnigent server: the STANDARD managed-host launch token
@@ -58,7 +58,7 @@ display and hand it to the runner as ``DISPLAY`` (see :meth:`start_host`), so th
 Muse's own GUI tools see the same desktop. :meth:`screen_url` / :meth:`release_control` expose
 view and take-over access.
 
-Idempotent: :meth:`provision` calls Nova supervisor's ``POST /computers``, which itself is an
+Idempotent: :meth:`provision` calls Superchat supervisor's ``POST /computers``, which itself is an
 ensure-or-create (returns the already-running container, starting it back up if merely stopped,
 rather than replacing it) — repeated launches for the same Muse reuse the same computer without
 this launcher needing its own liveness bookkeeping. ``start_host``'s ``run_background`` wraps the
@@ -69,7 +69,7 @@ self-heals inside the SAME container without a fresh launch at all.
 Deliberately does NOT implement
 :meth:`~omnigent.onboarding.sandboxes.base.SandboxLifecycle.terminate` (nor
 :meth:`~omnigent.onboarding.sandboxes.base.SandboxLifecycle.keep_alive`): the computer belongs
-to Nova and outlives any one Omnigent session (skills, canvas, and browser use share it too) —
+to Superchat and outlives any one Omnigent session (skills, canvas, and browser use share it too) —
 Omnigent's best-effort sandbox cleanup (a session deleted mid-provision, the managed sandbox
 reaper) must never destroy it. The base class's capability-error default is exactly "this
 provider can't do that" from Omnigent's side, which every caller already treats as
@@ -121,12 +121,12 @@ LABEL_TENANT: str = "omnigent.tenant"
 # Deprecated names, read as a fallback so existing deployments keep working.
 # Deprecated in 0.17: remove in 0.19 once clients send the ``omnigent.*`` labels and the
 # ``OMNIGENT_COMPUTER_*`` settings.
-_DEPRECATED_SUPERVISOR_URL_ENV_VAR: str = "OMNIGENT_NOVA_SUPERVISOR_URL"
-_DEPRECATED_SUPERVISOR_TOKEN_ENV_VAR: str = "OMNIGENT_NOVA_SUPERVISOR_TOKEN"
-_DEPRECATED_HOME_ROOT_ENV_VAR: str = "OMNIGENT_NOVA_HOME_ROOT"
-_DEPRECATED_LABEL_COMPUTER_KEY: str = "nova.computer"
-_DEPRECATED_LABEL_COMPUTER_OWNER: str = "nova.bot"
-_DEPRECATED_LABEL_TENANT: str = "nova.space"
+_DEPRECATED_SUPERVISOR_URL_ENV_VAR: str = "OMNIGENT_SUPERCHAT_SUPERVISOR_URL"
+_DEPRECATED_SUPERVISOR_TOKEN_ENV_VAR: str = "OMNIGENT_SUPERCHAT_SUPERVISOR_TOKEN"
+_DEPRECATED_HOME_ROOT_ENV_VAR: str = "OMNIGENT_SUPERCHAT_HOME_ROOT"
+_DEPRECATED_LABEL_COMPUTER_KEY: str = "superchat.computer"
+_DEPRECATED_LABEL_COMPUTER_OWNER: str = "superchat.bot"
+_DEPRECATED_LABEL_TENANT: str = "superchat.space"
 
 
 def tenant_from_labels(labels: Mapping[str, str]) -> str | None:
@@ -164,7 +164,7 @@ _MAX_ERROR_BODY_CHARS: int = 500
 
 
 class ComputerSandboxError(SandboxError):
-    """A call to Nova's sandbox supervisor failed."""
+    """A call to Superchat's sandbox supervisor failed."""
 
 
 def _parse_sandbox_id(sandbox_id: str) -> tuple[str, str, str]:
@@ -189,7 +189,7 @@ def _parse_sandbox_id(sandbox_id: str) -> tuple[str, str, str]:
 
 class ComputerSandboxLauncher(RecordingMixin, ExecModelHostLauncher):
     """
-    Sandbox launcher that runs Omnigent hosts inside a Muse's Nova computer.
+    Sandbox launcher that runs Omnigent hosts inside a Muse's Superchat computer.
 
     See the module docstring for the full design. Registered as the ``"computer"`` sandbox
     provider (:mod:`omnigent.onboarding.sandboxes.registry`); select it with
@@ -322,18 +322,18 @@ class ComputerSandboxLauncher(RecordingMixin, ExecModelHostLauncher):
     ) -> httpx.Response:
         headers = {
             "authorization": f"Bearer {self._supervisor_token}",
-            "x-nova-bot-id": bot_id,
-            "x-nova-space-id": space_id,
+            "x-superchat-bot-id": bot_id,
+            "x-superchat-space-id": space_id,
         }
         if screen:
             # One stable screen per Muse, so the viewer and the runner share one display.
-            headers["x-nova-screen-id"] = bot_id
+            headers["x-superchat-screen-id"] = bot_id
         kwargs.setdefault("timeout", _REQUEST_TIMEOUT_S)
         try:
             return self._client().request(method, path, headers=headers, **kwargs)
         except httpx.HTTPError as exc:
             raise click.ClickException(
-                f"Nova sandbox supervisor request failed ({method} {path}): {exc}"
+                f"Superchat sandbox supervisor request failed ({method} {path}): {exc}"
             ) from exc
 
     @staticmethod
@@ -357,13 +357,13 @@ class ComputerSandboxLauncher(RecordingMixin, ExecModelHostLauncher):
         )
         if response.status_code >= 400:
             raise click.ClickException(
-                "Nova sandbox supervisor could not ensure this Muse's computer "
+                "Superchat sandbox supervisor could not ensure this Muse's computer "
                 f"({response.status_code}): {self._error_detail(response)}"
             )
         container_id = response.json().get("id")
         if not isinstance(container_id, str) or not container_id:
             raise click.ClickException(
-                "Nova sandbox supervisor's computer response carried no container id"
+                "Superchat sandbox supervisor's computer response carried no container id"
             )
         return container_id
 
@@ -390,7 +390,7 @@ class ComputerSandboxLauncher(RecordingMixin, ExecModelHostLauncher):
         """
         Ensure this Muse's computer is running and return its encoded sandbox id.
 
-        :param name: Unused — Nova's supervisor keys containers by ``(botId, spaceId)``, not by
+        :param name: Unused — Superchat's supervisor keys containers by ``(botId, spaceId)``, not by
             the launch-chosen human label every other provider uses.
         """
         del name
@@ -436,7 +436,7 @@ class ComputerSandboxLauncher(RecordingMixin, ExecModelHostLauncher):
             )
         if check and result.returncode != 0:
             raise click.ClickException(
-                f"command failed in Nova computer (exit {result.returncode}): "
+                f"command failed in Superchat computer (exit {result.returncode}): "
                 f"{(result.stderr or result.stdout).strip()}"
             )
         return result
@@ -462,7 +462,7 @@ class ComputerSandboxLauncher(RecordingMixin, ExecModelHostLauncher):
         )
         if response.status_code >= 400:
             raise click.ClickException(
-                f"Nova computer screen request failed ({response.status_code}): "
+                f"Superchat computer screen request failed ({response.status_code}): "
                 f"{self._error_detail(response)}"
             )
         body = response.json()
@@ -523,7 +523,7 @@ class ComputerSandboxLauncher(RecordingMixin, ExecModelHostLauncher):
             payload["revokeControl"] = False
         url = self._screen_mode(sandbox_id, payload).get("screenUrl")
         if not isinstance(url, str) or not url:
-            raise click.ClickException("Nova sandbox supervisor returned no screen URL")
+            raise click.ClickException("Superchat sandbox supervisor returned no screen URL")
         return url
 
     def release_control(self, sandbox_id: str) -> None:

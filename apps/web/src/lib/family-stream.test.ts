@@ -1,4 +1,4 @@
-import type { FamilyEvent } from "@nova/contracts";
+import type { FamilyEvent } from "@superchat/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { watchFamily } from "./family-stream";
 

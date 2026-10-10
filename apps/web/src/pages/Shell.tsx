@@ -9,14 +9,14 @@ import type {
   TaughtSkill,
   ThreadMessage,
   ThreadSnapshot,
-} from "@nova/contracts";
+} from "@superchat/contracts";
 import {
   buildComposerMentionOptions,
   isActive,
   latestAnswerableAskMessageId,
   userVisibleMessages,
-} from "@nova/core";
-import { AvatarStyleProvider, Button, GroupAvatar, type GroupAvatarMember } from "@nova/ui-web";
+} from "@superchat/core";
+import { AvatarStyleProvider, Button, GroupAvatar, type GroupAvatarMember } from "@superchat/ui-web";
 import { Plus } from "lucide-react";
 import type { ReactNode } from "react";
 import {
@@ -34,7 +34,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AppRail } from "../components/AppRail";
 import {
   flyOrb,
-  NovaPresenceProvider,
+  SuperchatPresenceProvider,
   type OrbFlight,
   OrbHomeProvider,
   orbPlacement,
@@ -42,7 +42,7 @@ import {
 } from "../components/ai/orb";
 import { ArtifactPanelProvider, AskPreviewsProvider } from "../components/cards/context";
 import { SuperchatLogo } from "../components/SuperchatLogo";
-import { useNovaWork } from "../features/activity";
+import { useSuperchatWork } from "../features/activity";
 import { ApprovalCards } from "../features/approvals";
 import { appsExtension } from "../features/apps";
 import { ArtifactRegistryProvider } from "../features/artifacts/registry";
@@ -133,13 +133,13 @@ const SkillsSection = lazy(() =>
 );
 const CallView = lazy(() => import("./CallView").then((module) => ({ default: module.CallView })));
 
-/** Nova's Mac window (docs/muse/DESIGN.md "Window"): the Conversation and the other screens
+/** Superchat's Mac window (docs/muse/DESIGN.md "Window"): the Conversation and the other screens
  * sit flat on the rounded content window; only the sidebar, the inspector and side panels
  * float as glass inside it. */
-/** Every orb brightens while Nova works (useNovaWork). */
+/** Every orb brightens while Superchat works (useSuperchatWork). */
 const sideChatViewWithApprovals: SideChatView = { ...sideChatView, Approvals: ApprovalCards };
 
-function NovaPresence({
+function SuperchatPresence({
   botId,
   runs,
   messages,
@@ -150,8 +150,8 @@ function NovaPresence({
   messages: readonly ThreadMessage[] | undefined;
   children: ReactNode;
 }) {
-  const { orb } = useNovaWork({ botId, runs, messages });
-  return <NovaPresenceProvider state={orb}>{children}</NovaPresenceProvider>;
+  const { orb } = useSuperchatWork({ botId, runs, messages });
+  return <SuperchatPresenceProvider state={orb}>{children}</SuperchatPresenceProvider>;
 }
 
 const MUSE_CONTENT_PANE = "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden";
@@ -457,9 +457,9 @@ export function ShellPage() {
     if (wasRunningRef.current && !composerRunning) setFilesRefreshKey((key) => key + 1);
     wasRunningRef.current = composerRunning;
   }, [composerRunning]);
-  // The Muse's Conversation is the engine's transcript (ADR 0009); Nova's thread only supplies
+  // The Muse's Conversation is the engine's transcript (ADR 0009); Superchat's thread only supplies
   // the person's message from the moment it is accepted until the transcript shows it. A group
-  // thread is still Nova's own.
+  // thread is still Superchat's own.
   const museTranscript = useMuseTranscript(
     museMode && !inGroup ? active?.id : undefined,
     messageScroll,
@@ -549,7 +549,7 @@ export function ShellPage() {
     museMode && active && shownStart && !activeChat && !forks.thread && !forks.ask,
   );
   const composerDock = useRef<HTMLDivElement>(null);
-  // A View Transition already glides the composer (`nova-composer`); the FLIP is the fallback.
+  // A View Transition already glides the composer (`superchat-composer`); the FLIP is the fallback.
   useDockTransition(composerDock, shownStart, () => orbFlight.current === "view-transition");
   const _isDesktop = useIsDesktop();
   const orbHome = orbPlacement({
@@ -923,7 +923,7 @@ export function ShellPage() {
       data-ready={shellReady}
       className={
         museMode
-          ? "nova-window relative flex h-full min-w-0 flex-1 overflow-hidden text-foreground"
+          ? "superchat-window relative flex h-full min-w-0 flex-1 overflow-hidden text-foreground"
           : "relative flex h-full min-w-0 overflow-hidden bg-background text-foreground/90"
       }
     >
@@ -1138,7 +1138,7 @@ export function ShellPage() {
                   <div
                     ref={composerDock}
                     hidden={forksView || undefined}
-                    style={{ viewTransitionName: museMode ? "nova-composer" : undefined }}
+                    style={{ viewTransitionName: museMode ? "superchat-composer" : undefined }}
                   >
                     {showHome ? null : composerEl}
                   </div>
@@ -1227,7 +1227,7 @@ export function ShellPage() {
         data-testid="side-panel"
         data-panel={panel ?? "closed"}
         className={`absolute inset-y-0 end-0 z-20 flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-150 ease-out md:relative ${
-          museMode ? "nova-glass" : "bg-background"
+          museMode ? "superchat-glass" : "bg-background"
         } ${
           panel && (active || activeGroup || panel === "create")
             ? museMode
@@ -1364,17 +1364,17 @@ export function ShellPage() {
           <TranscriptGroupProvider value={CHART_RUNS}>
             <AskPreviewsProvider value={ASK_PREVIEWS}>
               {museMode ? (
-                // The window ground around Nova's rounded content window.
+                // The window ground around Superchat's rounded content window.
                 <div className="muse-wash pt-safe pb-safe ps-safe pe-safe flex h-full md:p-2">
                   {active ? (
                     <OrbHomeProvider home={orbHome}>
-                      <NovaPresence
+                      <SuperchatPresence
                         botId={active.id}
                         runs={currentRuns}
                         messages={activeSnapshot?.messages}
                       >
                         {shell}
-                      </NovaPresence>
+                      </SuperchatPresence>
                     </OrbHomeProvider>
                   ) : (
                     shell

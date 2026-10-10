@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { type SignupPolicyEnv, signupPolicyFromEnv } from "@nova/core";
+import { type SignupPolicyEnv, signupPolicyFromEnv } from "@superchat/core";
 import type { PrismaClient } from "./client.js";
 
 export type { SignupPolicyEnv };

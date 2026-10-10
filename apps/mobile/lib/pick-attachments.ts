@@ -1,5 +1,5 @@
-import { ATTACHMENT_MAX_BYTES } from "@nova/contracts";
-import { inferAttachmentMimeType } from "@nova/core";
+import { ATTACHMENT_MAX_BYTES } from "@superchat/contracts";
+import { inferAttachmentMimeType } from "@superchat/core";
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";

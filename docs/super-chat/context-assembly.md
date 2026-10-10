@@ -15,7 +15,7 @@ the code and a document disagree, the [Known gaps](#15-known-gaps) section says 
 - Engine paths start with `omnigent/` and are relative to `engine/omnigent/`. For example,
   `omnigent/runner/app.py` is `engine/omnigent/omnigent/runner/app.py`.
 - Engine design notes start with `rollover/` and are relative to `engine/omnigent/`.
-- Nova paths (`apps/`, `packages/`, `infra/`, `docs/`) are relative to the repo root.
+- Superchat paths (`apps/`, `packages/`, `infra/`, `docs/`) are relative to the repo root.
 - Line numbers are from the branch this page was written on. They drift, so search for the symbol
   name if a line has moved.
 
@@ -67,7 +67,7 @@ user message (`omnigent/runner/app.py:1368-1390`, `omnigent/runner/app.py:1396-1
 ```mermaid
 flowchart TB
     subgraph SYS["System prompt (fixed per warm session)"]
-        A1["AGENTS.md from the bundle<br/>infra/omnigent/agents/nova-*/AGENTS.md"]
+        A1["AGENTS.md from the bundle<br/>infra/omnigent/agents/superchat-*/AGENTS.md"]
         A2["Framework instructions<br/>wake notices, browser priority<br/>omnigent/runtime/prompt.py"]
         A3["Tool-naming note (claude-sdk only)<br/>mcp__omnigent__name"]
     end
@@ -110,7 +110,7 @@ The gateway posts the person's words as written. It adds no context of its own:
 - Before each run it syncs the person's timezone with `PUT /v1/me/proactivity`, which the
   local-time line reads (`packages/adapters/src/omnigent/gateway.ts:200-207`,
   `packages/adapters/src/omnigent/client/settings.ts:46-52`).
-- The bundle config records the same decision: "Nova no longer injects anything through a
+- The bundle config records the same decision: "Superchat no longer injects anything through a
   context-provider hook" (`infra/omnigent/templates/config.yaml.tmpl:9-11`).
 
 ### 1.3 Worked example
@@ -186,7 +186,7 @@ Where each shape comes from:
 
 ### 2.1 How the bundle is rendered
 
-The Muse runs on one of two bundles, `nova-claude` (harness `claude-sdk`) and `nova-pi` (harness
+The Muse runs on one of two bundles, `superchat-claude` (harness `claude-sdk`) and `superchat-pi` (harness
 `pi`). Both are rendered from the same templates by `infra/omnigent/render-agents.mjs`:
 
 - Bundle list and per-harness keys: `infra/omnigent/render-agents.mjs:32-54`.
@@ -882,7 +882,7 @@ A Helper's Result comes back to the parent as a notice with up to 4,000 characte
 
 The engine adds **no** summary of the Conversation to a Helper. It gets the Brief and the Memory
 Profile only. This matches the engine glossary: "A sub-agent starts from its Brief and the Memory
-Profile only" (`rollover/CONTEXT.md:90-93`). Nova's documents say otherwise; see
+Profile only" (`rollover/CONTEXT.md:90-93`). Superchat's documents say otherwise; see
 [Known gaps](#15-known-gaps), item 2.
 
 An ordinary Helper also cannot read the Conversation with `session_history`. `list_chats` returns
@@ -1011,7 +1011,7 @@ early. See [Known gaps](#15-known-gaps), item 9.
 
 ## 13. Harness differences
 
-| Aspect | `claude-sdk` (`nova-claude`) | `pi` (`nova-pi`) |
+| Aspect | `claude-sdk` (`superchat-claude`) | `pi` (`superchat-pi`) |
 |---|---|---|
 | Warm state | One SDK client per session; `--no-session-persistence` (`omnigent/inner/claude_sdk_executor.py:2764`, `:2932`) | One RPC subprocess per session (`omnigent/inner/pi_executor.py:2587-2597`) |
 | Warm turn sends | Trailing user message(s) (`omnigent/inner/claude_sdk_executor.py:3783-3784`) | Latest user message (`omnigent/inner/pi_executor.py:1578`) |
@@ -1131,7 +1131,7 @@ writing this page.
     reinforcement adds +0.05 (`omnigent/memory/service.py:50`), so it would take seven. Because of
     item 1, live claims are stored as stated anyway.
 11. **Profile sections differ from the Memory tab sections.** `AGENTS.md` describes the person's
-    editable sections (About you, Commitments, Projects & focus, People, How Nova works with you:
+    editable sections (About you, Commitments, Projects & focus, People, How Superchat works with you:
     `infra/omnigent/templates/AGENTS.md:122-127`). The per-turn profile uses other titles and leaves
     out `person` claims (`omnigent/memory/service.py:62-79`). Not wrong, but the two views differ.
 12. **Steered messages get no turn context.** Not a document conflict, but worth knowing: a steer

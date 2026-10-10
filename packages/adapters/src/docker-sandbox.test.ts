@@ -1,4 +1,4 @@
-import type { ProcessEvent } from "@nova/adapter-kit";
+import type { ProcessEvent } from "@superchat/adapter-kit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DockerSandboxProvider,
@@ -46,7 +46,7 @@ describe("Docker sandbox", () => {
 
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
       argv: ["sleep", "10"],
-      cwd: "/home/nova",
+      cwd: "/home/superchat",
       timeoutMs: 75,
     });
     expect(events).toEqual([
@@ -55,8 +55,8 @@ describe("Docker sandbox", () => {
       { type: "exit", code: 124 },
     ]);
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({
-      "x-nova-bot-id": "bot",
-      "x-nova-screen-id": "bot",
+      "x-superchat-bot-id": "bot",
+      "x-superchat-screen-id": "bot",
     });
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({
       "x-request-id": expect.any(String),
@@ -166,10 +166,10 @@ describe("Docker sandbox", () => {
         method: "DELETE",
         headers: expect.objectContaining({
           authorization: "Bearer test-token",
-          "x-nova-bot-id": "home-bot",
-          "x-nova-screen-id": "bot",
-          "x-nova-screen-lease-id": "run-1:1",
-          "x-nova-space-id": "workspace",
+          "x-superchat-bot-id": "home-bot",
+          "x-superchat-screen-id": "bot",
+          "x-superchat-screen-lease-id": "run-1:1",
+          "x-superchat-space-id": "workspace",
         }),
       }),
     );
@@ -316,7 +316,7 @@ describe("Docker sandbox", () => {
       "http://supervisor.test/computers/computer-1/screen",
       expect.objectContaining({
         method: "DELETE",
-        headers: expect.objectContaining({ "x-nova-cancel-run-work": "1" }),
+        headers: expect.objectContaining({ "x-superchat-cancel-run-work": "1" }),
       }),
     );
   });
@@ -343,8 +343,8 @@ describe("Docker page browser", () => {
         signal: context.signal,
         body: JSON.stringify({ command: "snapshot" }),
         headers: expect.objectContaining({
-          "x-nova-bot-id": "team-home",
-          "x-nova-screen-lease-id": "run-1:1",
+          "x-superchat-bot-id": "team-home",
+          "x-superchat-screen-lease-id": "run-1:1",
         }),
       }),
     );

@@ -4,14 +4,14 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   desktopOAuthCode,
-  type NovaDesktop,
-  type NovaDesktopOAuthCallback,
+  type SuperchatDesktop,
+  type SuperchatDesktopOAuthCallback,
   oauthStateOf,
   onDesktopOAuthCallback,
   windowChromeKind,
 } from "./desktop.js";
 
-function desktop(platform: string): NovaDesktop {
+function desktop(platform: string): SuperchatDesktop {
   const updateState = {
     phase: "unsupported" as const,
     currentVersion: "0.1.0",
@@ -85,20 +85,20 @@ describe("attempt correlation", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   function bridgeEmitting() {
-    let emit: (callback: NovaDesktopOAuthCallback) => void = () => undefined;
+    let emit: (callback: SuperchatDesktopOAuthCallback) => void = () => undefined;
     const unsubscribe = vi.fn();
     vi.stubGlobal("window", {
-      novaDesktop: {
+      superchatDesktop: {
         ...desktop("linux"),
         oauth: {
-          onCallback: (listener: (callback: NovaDesktopOAuthCallback) => void) => {
+          onCallback: (listener: (callback: SuperchatDesktopOAuthCallback) => void) => {
             emit = listener;
             return unsubscribe;
           },
         },
       },
     });
-    return { emit: (c: NovaDesktopOAuthCallback) => emit(c), unsubscribe };
+    return { emit: (c: SuperchatDesktopOAuthCallback) => emit(c), unsubscribe };
   }
 
   it("reads the attempt state out of the authorize URL", () => {

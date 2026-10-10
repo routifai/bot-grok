@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import { Button, cn } from "@nova/ui-web";
+import { Button, cn } from "@superchat/ui-web";
 import { ChevronLeft, ChevronRight, Maximize2, Minimize2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SandboxedHtmlViewer } from "../../components/SandboxedHtmlViewer";
@@ -30,8 +30,8 @@ function isTypingTarget(target: EventTarget | null): boolean {
 /**
  * A deck in the artifact panel: the sandboxed HTML on a stage (the deck scales itself to the
  * frame), previous / next, a rail of live thumbnails and a full screen present mode. The deck
- * keeps its own navigation state; the host only sends `nova:slide` commands and mirrors the
- * `nova:slide-state` it hears back.
+ * keeps its own navigation state; the host only sends `superchat:slide` commands and mirrors the
+ * `superchat:slide-state` it hears back.
  */
 export function DeckViewer({
   html,

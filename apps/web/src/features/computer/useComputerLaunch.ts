@@ -1,4 +1,4 @@
-import type { ComputerStatus } from "@nova/contracts";
+import type { ComputerStatus } from "@superchat/contracts";
 import { useEffect, useState } from "react";
 import { rpc } from "../../lib/rpc";
 

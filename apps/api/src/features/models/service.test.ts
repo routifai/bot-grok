@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@nova/db";
+import type { PrismaClient } from "@superchat/db";
 import type { ORPCError } from "@orpc/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -10,7 +10,7 @@ import {
 
 const client = { baseUrl: "http://engine.test", proxySecret: "proxy", secrets: [], tenant: "s1" };
 const actor = { userId: "user-1", spaceId: "s1" } as never;
-const deps = (agentName: string | null = "nova-pi") => ({
+const deps = (agentName: string | null = "superchat-pi") => ({
   prisma: {
     user: { findUnique: vi.fn(async () => ({ email: "p@example.test" })) },
     bot: {
@@ -74,7 +74,7 @@ describe("engine models status", () => {
     stub((url) =>
       url.pathname === "/v1/me" ? json({ user_id: "p", is_admin: true }) : json(catalog()),
     );
-    const status = await engineModelsStatus(deps("nova-pi"), client, actor);
+    const status = await engineModelsStatus(deps("superchat-pi"), client, actor);
     expect(status).toEqual({
       enabled: true,
       harnesses: [{ id: "pi", label: "Pi" }],
@@ -191,7 +191,7 @@ describe("personal model calls", () => {
         ? json({ model_override: "claude-sonnet" })
         : json(catalog()),
     );
-    const result = await engineSessionModel(deps("nova-pi"), client, actor, "bot-1");
+    const result = await engineSessionModel(deps("superchat-pi"), client, actor, "bot-1");
     expect(result.harness).toBe("pi");
     expect(result.model).toBe("claude-sonnet");
     expect(result.catalog.models[0]?.family).toBe("sonnet");

@@ -1,5 +1,5 @@
-import type { MessageBlock } from "@nova/contracts";
-import { abortableDelay } from "@nova/core";
+import type { MessageBlock } from "@superchat/contracts";
+import { abortableDelay } from "@superchat/core";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Linking, Pressable, Text, View, type ViewProps } from "react-native";
 import { rpc } from "../lib/api";

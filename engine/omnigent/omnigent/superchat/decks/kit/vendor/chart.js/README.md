@@ -7,6 +7,6 @@
 - npm integrity: `sha512-qK1gkGSRYcJzqrrzdR6a+I0vQ4/R+SoODXyAjscQ/4mzuNzySaMCd+hyVxitSY1+L2fjPD1Gbn+ibNqRmwQeLw==`
 - git head: `3d0801299283cb6cb8e777e0cd45e6172cc43966`
 
-`kit.build_deck` inlines it into every deck (`<script data-nova-chartjs>`), because the viewer's
+`kit.build_deck` inlines it into every deck (`<script data-superchat-chartjs>`), because the viewer's
 CSP and the offline Computer cannot load it from a CDN. To update, re-copy the file from the new
 pinned version and bump the version and integrity above.

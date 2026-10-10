@@ -1,4 +1,4 @@
-import { isDashboardPageName } from "@nova/contracts";
+import { isDashboardPageName } from "@superchat/contracts";
 import type { ReactNode, RefObject } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { SandboxedHtmlViewer } from "../../components/SandboxedHtmlViewer";

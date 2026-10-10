@@ -66,7 +66,7 @@ type TooltipContentProps = React.ComponentProps<typeof Tooltip> &
     cn?: ClassNameMerger;
   };
 
-/** `nova-chart-tooltip__*` classes let surfaces without Tailwind (sandboxed custom stories) style the same markup. */
+/** `superchat-chart-tooltip__*` classes let surfaces without Tailwind (sandboxed custom stories) style the same markup. */
 export function ChartTooltipContent({
   active,
   payload,
@@ -99,7 +99,7 @@ export function ChartTooltipContent({
     const itemConfig = getPayloadConfigFromPayload(config, item, key);
     const isAxisValue = !labelKey && (typeof label === "string" || typeof label === "number");
     const value = isAxisValue ? config[String(label)]?.label || label : itemConfig?.label;
-    const labelClasses = cn("nova-chart-tooltip__label font-medium", labelClassName);
+    const labelClasses = cn("superchat-chart-tooltip__label font-medium", labelClassName);
 
     if (labelFormatter) {
       return <div className={labelClasses}>{labelFormatter(value, payload)}</div>;
@@ -144,12 +144,12 @@ export function ChartTooltipContent({
   return (
     <div
       className={cn(
-        "nova-chart-tooltip border-border/50 bg-background grid min-w-32 items-start gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs shadow-xl",
+        "superchat-chart-tooltip border-border/50 bg-background grid min-w-32 items-start gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs shadow-xl",
         className,
       )}
     >
       {!nestLabel ? tooltipLabel : null}
-      <div className="nova-chart-tooltip__items grid gap-1.5">
+      <div className="superchat-chart-tooltip__items grid gap-1.5">
         {visiblePayload.map((item, index) => {
           const key = `${nameKey || item.name || item.dataKey || "value"}`;
           const itemConfig = getPayloadConfigFromPayload(config, item, key);
@@ -159,7 +159,7 @@ export function ChartTooltipContent({
             <div
               key={item.dataKey}
               className={cn(
-                "nova-chart-tooltip__item [&>svg]:text-muted-foreground flex w-full flex-wrap items-stretch gap-2 [&>svg]:h-2.5 [&>svg]:w-2.5",
+                "superchat-chart-tooltip__item [&>svg]:text-muted-foreground flex w-full flex-wrap items-stretch gap-2 [&>svg]:h-2.5 [&>svg]:w-2.5",
                 indicator === "dot" && "items-center",
               )}
             >
@@ -173,7 +173,7 @@ export function ChartTooltipContent({
                     !hideIndicator && (
                       <div
                         className={cn(
-                          `nova-chart-tooltip__indicator nova-chart-tooltip__indicator--${indicator} shrink-0 rounded-[2px] border-(--color-border) bg-(--color-bg)`,
+                          `superchat-chart-tooltip__indicator superchat-chart-tooltip__indicator--${indicator} shrink-0 rounded-[2px] border-(--color-border) bg-(--color-bg)`,
                           {
                             "h-2.5 w-2.5": indicator === "dot",
                             "w-1": indicator === "line",
@@ -193,18 +193,18 @@ export function ChartTooltipContent({
                   )}
                   <div
                     className={cn(
-                      "nova-chart-tooltip__row flex flex-1 justify-between leading-none gap-2",
+                      "superchat-chart-tooltip__row flex flex-1 justify-between leading-none gap-2",
                       nestLabel ? "items-end" : "items-center",
                     )}
                   >
                     <div className="grid gap-1.5">
                       {nestLabel ? tooltipLabel : null}
-                      <span className="nova-chart-tooltip__name text-muted-foreground">
+                      <span className="superchat-chart-tooltip__name text-muted-foreground">
                         {itemConfig?.label || item.name}
                       </span>
                     </div>
                     {item.value !== undefined && item.value !== null && (
-                      <span className="nova-chart-tooltip__value text-foreground font-mono font-medium tabular-nums">
+                      <span className="superchat-chart-tooltip__value text-foreground font-mono font-medium tabular-nums">
                         {formatTooltipValue(item.value, {
                           percent,
                           shareBase,
@@ -220,12 +220,12 @@ export function ChartTooltipContent({
           );
         })}
         {showTotal && (
-          <div className="nova-chart-tooltip__total flex w-full items-center gap-2 border-t border-border/50 pt-1.5 mt-0.5">
-            <div className="nova-chart-tooltip__row flex flex-1 justify-between leading-none gap-2 items-center">
-              <span className="nova-chart-tooltip__name text-muted-foreground font-medium">
+          <div className="superchat-chart-tooltip__total flex w-full items-center gap-2 border-t border-border/50 pt-1.5 mt-0.5">
+            <div className="superchat-chart-tooltip__row flex flex-1 justify-between leading-none gap-2 items-center">
+              <span className="superchat-chart-tooltip__name text-muted-foreground font-medium">
                 Total
               </span>
-              <span className="nova-chart-tooltip__value text-foreground font-mono font-medium tabular-nums">
+              <span className="superchat-chart-tooltip__value text-foreground font-mono font-medium tabular-nums">
                 {percent
                   ? "100%"
                   : valueFormatter
@@ -249,7 +249,7 @@ type LegendContentProps = React.ComponentProps<"div"> &
     cn?: ClassNameMerger;
   };
 
-/** `nova-chart-legend__*` classes let surfaces without Tailwind (sandboxed custom stories) style the same markup. */
+/** `superchat-chart-legend__*` classes let surfaces without Tailwind (sandboxed custom stories) style the same markup. */
 export function ChartLegendContent({
   className,
   hideIcon = false,
@@ -272,7 +272,7 @@ export function ChartLegendContent({
   return (
     <div
       className={cn(
-        "nova-chart-legend flex gap-4",
+        "superchat-chart-legend flex gap-4",
         isVertical
           ? "flex-col items-start justify-center gap-2 pl-4"
           : cn(
@@ -299,10 +299,10 @@ export function ChartLegendContent({
             <div
               key={item.value}
               className={cn(
-                "nova-chart-legend__item [&>svg]:text-muted-foreground flex shrink-0 items-center gap-1.5 whitespace-nowrap [&>svg]:h-3 [&>svg]:w-3 text-muted-foreground select-none",
+                "superchat-chart-legend__item [&>svg]:text-muted-foreground flex shrink-0 items-center gap-1.5 whitespace-nowrap [&>svg]:h-3 [&>svg]:w-3 text-muted-foreground select-none",
                 onItemClick &&
-                  "nova-chart-legend__item--clickable cursor-pointer hover:text-foreground",
-                item.isHidden && "nova-chart-legend__item--hidden opacity-40",
+                  "superchat-chart-legend__item--clickable cursor-pointer hover:text-foreground",
+                item.isHidden && "superchat-chart-legend__item--hidden opacity-40",
               )}
               role={onItemClick ? "button" : undefined}
               tabIndex={onItemClick ? 0 : undefined}
@@ -315,7 +315,7 @@ export function ChartLegendContent({
                 <itemConfig.icon />
               ) : (
                 <div
-                  className="nova-chart-legend__swatch h-2 w-2 shrink-0 rounded-[2px]"
+                  className="superchat-chart-legend__swatch h-2 w-2 shrink-0 rounded-[2px]"
                   style={{ backgroundColor: item.color }}
                 />
               )}

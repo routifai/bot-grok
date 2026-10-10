@@ -127,8 +127,8 @@ async def test_pi_without_a_key_needs_one() -> None:
 
 def test_hosted_engine_ships_both_bundles() -> None:
     dockerfile = TEMPLATE.with_name("Dockerfile.engine").read_text()
-    assert "/opt/nova/agents/nova-pi" in dockerfile
-    assert "/opt/nova/agents/nova-claude" in dockerfile
+    assert "/opt/superchat/agents/superchat-pi" in dockerfile
+    assert "/opt/superchat/agents/superchat-claude" in dockerfile
 
 
 @pytest.fixture

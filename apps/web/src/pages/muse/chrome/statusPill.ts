@@ -1,4 +1,4 @@
-import type { MuseState } from "@nova/contracts";
+import type { MuseState } from "@superchat/contracts";
 
 /**
  * The Conversation header's only remaining bordered pill (docs/muse/DESIGN.md

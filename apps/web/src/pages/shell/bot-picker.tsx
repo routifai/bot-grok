@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { Bot } from "@nova/contracts";
+import type { Bot } from "@superchat/contracts";
 import {
   BotAvatar,
   Command,
@@ -8,7 +8,7 @@ import {
   CommandItem,
   CommandList,
   CommandSeparator,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import { Info, Lock, Plus, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 

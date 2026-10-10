@@ -385,7 +385,7 @@ async def _existing_super_chat(
         "/v1/sessions",
         json={
             "agent_id": "a" * 32,
-            "labels": {**_MODE, "nova.computer": "computer-key-1", "nova.space": space},
+            "labels": {**_MODE, "superchat.computer": "computer-key-1", "superchat.space": space},
         },
         headers=headers,
     )
@@ -413,7 +413,7 @@ async def test_adopt_makes_an_existing_super_chat_the_one_get_returns(
     assert conv is not None
     assert conv.labels[MUSE_LABEL_KEY] == "true"
     assert conv.labels["omnigent.tenant"] == "space-1"
-    assert conv.labels["nova.computer"] == "computer-key-1"
+    assert conv.labels["superchat.computer"] == "computer-key-1"
     # The computer launcher still resolves the same machine from the kept labels.
     launcher = ComputerSandboxLauncher(supervisor_url="http://sup.test", supervisor_token="t")
     launcher.prepare_for_launch(labels=conv.labels)

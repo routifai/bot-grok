@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { ChatSummary, MessageFork, ThreadMessage, ThreadMessagePage } from "@nova/contracts";
+import type { ChatSummary, MessageFork, ThreadMessage, ThreadMessagePage } from "@superchat/contracts";
 import type { ComponentProps, ReactNode } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -23,10 +23,10 @@ vi.mock("@lingui/react/macro", () => ({
   useLingui: () => ({ t: template, i18n: { locale: "en" } }),
   Trans: ({ children }: { children: ReactNode }) => children,
 }));
-vi.mock("@nova/chat-ui/web", () => ({
+vi.mock("@superchat/chat-ui/web", () => ({
   ChatMarkdown: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
 }));
-vi.mock("@nova/ui-web", () => ({
+vi.mock("@superchat/ui-web", () => ({
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
   Button: (props: ComponentProps<"button">) => <button {...props} />,
   Spinner: () => <span data-testid="spinner" />,
@@ -126,7 +126,7 @@ function wire(overrides: Partial<ForkWire> = {}): ForkWire {
   };
 }
 
-it("draws one fork as a reply line, with its replies and a live dot while Nova works", () => {
+it("draws one fork as a reply line, with its replies and a live dot while Superchat works", () => {
   const onOpenFork = vi.fn();
   render(
     <ForkUnderMessage
@@ -336,7 +336,7 @@ it("the thread view adds the fork back to the Conversation and returns to its an
   const onAdded = vi.fn();
   render(
     <ForkThread
-      bot={{ id: "bot-1", name: "Nova", color: "sky" }}
+      bot={{ id: "bot-1", name: "Superchat", color: "sky" }}
       wire={forkWire}
       target={{
         chat: {
@@ -372,7 +372,7 @@ it("the thread view of an added fork offers no second add, only a side chat and 
   const anchor = message({ forks: [fork({ state: "added", summary: "Same four" })] });
   render(
     <ForkThread
-      bot={{ id: "bot-1", name: "Nova", color: "sky" }}
+      bot={{ id: "bot-1", name: "Superchat", color: "sky" }}
       wire={wire()}
       target={{
         chat: {
@@ -408,7 +408,7 @@ function renderThread(
 ) {
   render(
     <ForkThread
-      bot={{ id: "bot-1", name: "Nova", color: "sky" }}
+      bot={{ id: "bot-1", name: "Superchat", color: "sky" }}
       wire={forkWire}
       target={target}
       conversationId="conv"
@@ -426,7 +426,7 @@ function renderThread(
 
 const openChat = { id: "fork-a", title: "Which four banks?", live: false, unread: false };
 
-it("a fork just opened shows its question and Nova working before the engine records it", async () => {
+it("a fork just opened shows its question and Superchat working before the engine records it", async () => {
   // The engine sends the first message once the fork's context is ready: until then the
   // transcript is empty and not running.
   renderThread({

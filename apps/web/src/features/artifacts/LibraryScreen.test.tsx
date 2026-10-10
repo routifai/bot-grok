@@ -30,7 +30,7 @@ vi.mock("@lingui/core/macro", () => ({
   plural: (n: number, forms: { one: string; other: string }) =>
     (n === 1 ? forms.one : forms.other).replace("#", String(n)),
 }));
-vi.mock("@nova/ui-web", () => {
+vi.mock("@superchat/ui-web", () => {
   const cn = (...args: unknown[]) => args.filter(Boolean).join(" ");
   const Passthrough = ({ children, ...props }: ComponentProps<"div">) => (
     <div {...props}>{children}</div>

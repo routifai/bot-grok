@@ -7,13 +7,13 @@ import type {
   RealtimeFanout,
   SandboxProvider,
   TransactionalEmailProvider,
-} from "@nova/adapter-kit";
+} from "@superchat/adapter-kit";
 import type {
   ComposioProvider,
   ConnectorRegistry,
   DestinationEmulator,
   RemoteConnectorDependencies,
-} from "@nova/adapters";
+} from "@superchat/adapters";
 import {
   applyMessagingOutboundStatus,
   ChatSdkMessagingSurface,
@@ -53,7 +53,7 @@ import {
   SmtpEmailProvider,
   sandboxProviderOptionsFromEnv,
   stopSpaceComputers,
-} from "@nova/adapters";
+} from "@superchat/adapters";
 import {
   assertIdentityConfig,
   blockedAuthPaths,
@@ -61,9 +61,9 @@ import {
   isHostedDeployment,
   oidcLabel,
   resolveSignupPolicy,
-} from "@nova/auth";
-import { parseSignupMode, signupAllowlistBootUpdate, signupPolicyFromEnv } from "@nova/core";
-import type { Pool, PrismaClient } from "@nova/db";
+} from "@superchat/auth";
+import { parseSignupMode, signupAllowlistBootUpdate, signupPolicyFromEnv } from "@superchat/core";
+import type { Pool, PrismaClient } from "@superchat/db";
 import {
   createDb,
   createPool,
@@ -72,16 +72,16 @@ import {
   provisionMessagingIdentity,
   requireMembership,
   userMayAct,
-} from "@nova/db";
-import type { Logger } from "@nova/logging";
+} from "@superchat/db";
+import type { Logger } from "@superchat/logging";
 import {
   createServiceLogger,
   enrichLogContext,
   getLogger,
   installLogger,
   SERVICE_NAMES,
-} from "@nova/logging";
-import { requestLogging } from "@nova/logging/hono";
+} from "@superchat/logging";
+import { requestLogging } from "@superchat/logging/hono";
 import { ORPCError, onError } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/fetch";
 import { Hono } from "hono";
@@ -145,7 +145,7 @@ export async function createApp(
     ? { prisma: prismaOverride, pool: undefined }
     : createDb(env.databaseUrl, {
         poolMax: parsePositiveInteger(process.env.DB_POOL_MAX, 4),
-        applicationName: "nova-api",
+        applicationName: "superchat-api",
       });
   const { prisma } = created;
   const realtime =
@@ -276,7 +276,7 @@ export async function createApp(
   if (!inMemoryJobs && !created.pool) {
     ownedJobPool = createPool(env.databaseUrl, {
       poolMax: parsePositiveInteger(process.env.DB_POOL_MAX, 4),
-      applicationName: "nova-api-jobs",
+      applicationName: "superchat-api-jobs",
     });
   }
   const jobPool = created.pool ?? ownedJobPool;
@@ -378,7 +378,7 @@ export async function createApp(
     email,
     onEmailError: (error) => getLogger().error("transactional email delivery failed", error),
     extraOrigins: [
-      "nova://",
+      "superchat://",
       "exp://",
       "exp://*",
       "http://localhost:8081",
@@ -585,7 +585,7 @@ export async function createApp(
   mountLocalSettings(app, { token: env.desktopStackToken, prisma, rpc });
   app.use("/rpc/*", async (c, next) => {
     const session = await auth.api.getSession({ headers: sessionHeaders(c.req.raw) });
-    const requestedSpaceId = c.req.header("x-nova-space-id");
+    const requestedSpaceId = c.req.header("x-superchat-space-id");
     const actor = session?.user
       ? await requireMembership(prisma, session.user.id, requestedSpaceId).catch(() => null)
       : null;
@@ -610,7 +610,7 @@ export async function createApp(
     const actor = await requireMembership(
       prisma,
       session.user.id,
-      c.req.header("x-nova-space-id"),
+      c.req.header("x-superchat-space-id"),
     ).catch(() => null);
     if (actor) enrichLogContext({ "user.id": actor.userId, "space.id": actor.spaceId });
     return actor;
@@ -748,7 +748,7 @@ export async function createApp(
 function isTrustedOrigin(origin: string, env: AppEnv) {
   if (!origin) return true;
   if (origin === env.webOrigin || origin === env.apiUrl || origin === env.authUrl) return true;
-  if (origin.startsWith("nova://") || origin.startsWith("exp://")) return true;
+  if (origin.startsWith("superchat://") || origin.startsWith("exp://")) return true;
   try {
     const host = new URL(origin).hostname;
     return isLoopbackHost(host);

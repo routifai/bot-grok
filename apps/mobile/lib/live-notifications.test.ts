@@ -21,7 +21,7 @@ describe("notification thread targeting", () => {
     expect(notificationTargetsThread({ botId: "bot-1" }, { botId: "bot-1" })).toBe(true);
     expect(
       notificationTargetsThread(
-        { "nova.threadId": "thread-1" },
+        { "superchat.threadId": "thread-1" },
         { botId: "bot-1", threadId: "thread-1" },
       ),
     ).toBe(true);

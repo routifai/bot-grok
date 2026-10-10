@@ -7,7 +7,7 @@ describe("deckSlideCount", () => {
       /* edit slide content inside <section class="slide"> bodies */
     </style><script>const t = '<section class="slide">';</script></head><body>
       <!-- <section class="slide"> -->
-      ${Array.from({ length: 5 }, (_, i) => `<section class="slide l-points" data-nova-id="s${i}"></section>`).join("\n")}
+      ${Array.from({ length: 5 }, (_, i) => `<section class="slide l-points" data-superchat-id="s${i}"></section>`).join("\n")}
     </body></html>`;
     expect(deckSlideCount(html)).toBe(5);
   });

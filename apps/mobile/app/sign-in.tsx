@@ -1,4 +1,4 @@
-import type { IntegrationSetupState } from "@nova/contracts";
+import type { IntegrationSetupState } from "@superchat/contracts";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -171,9 +171,9 @@ export default function SignIn() {
                 {resetSent
                   ? t("Check your email")
                   : mode === "in"
-                    ? t("Sign in to Nova")
+                    ? t("Sign in to Superchat")
                     : mode === "up"
-                      ? t("Sign up for Nova")
+                      ? t("Sign up for Superchat")
                       : t("Reset your password")}
               </Text>
               {resetSent ? (
@@ -462,7 +462,7 @@ function ServerSheet({
           <Text
             style={{ color: tokens.mutedForeground, marginTop: 28, fontSize: 15, lineHeight: 22 }}
           >
-            {t("Enter your Nova server address.")}
+            {t("Enter your Superchat server address.")}
           </Text>
           <TextInput
             autoCapitalize="none"

@@ -1,5 +1,5 @@
-import { type JobPublisher, runContinueJob, type SandboxProvider } from "@nova/adapter-kit";
-import { cancelComputerRunWork, screenLeaseIdForRun, toComputerRef } from "@nova/adapters";
+import { type JobPublisher, runContinueJob, type SandboxProvider } from "@superchat/adapter-kit";
+import { cancelComputerRunWork, screenLeaseIdForRun, toComputerRef } from "@superchat/adapters";
 import {
   type Actor,
   GROUP_MEMBER_MIN,
@@ -10,7 +10,7 @@ import {
   type RunStatus,
   type ThreadSnapshot,
   type WorkspaceAttachment,
-} from "@nova/contracts";
+} from "@superchat/contracts";
 import {
   ACTIVE_RUN_STATUSES,
   isActive,
@@ -19,8 +19,8 @@ import {
   promptTextForWorkspaceAttachments,
   resolveGroupTargetBotIds,
   runFailureError,
-} from "@nova/core";
-import { deriveMessageQuote } from "@nova/core/message-quote";
+} from "@superchat/core";
+import { deriveMessageQuote } from "@superchat/core/message-quote";
 import {
   answerWaitingRunWithTextInTransaction,
   appendEventInTransaction,
@@ -34,8 +34,8 @@ import {
   type PrismaClient,
   type ThreadEvents,
   touchGroupUpdatedAt,
-} from "@nova/db";
-import { getLogger } from "@nova/logging";
+} from "@superchat/db";
+import { getLogger } from "@superchat/logging";
 import { ORPCError } from "@orpc/server";
 import {
   buildSendPrompt,
@@ -619,7 +619,7 @@ export async function sendThreadMessage(
     throw new ORPCError("BAD_REQUEST", { message: "Workspace attachments need a Muse chat." });
   }
   // The text a Muse turn carries when files are attached: one reference line per file, then the
-  // caption. It is both the stored message text and the task prompt (no Nova-side file rows).
+  // caption. It is both the stored message text and the task prompt (no Superchat-side file rows).
   const workspaceText =
     input.attachments?.length || input.folders?.length
       ? promptTextForWorkspaceAttachments(

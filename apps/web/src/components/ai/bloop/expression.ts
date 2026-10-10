@@ -1,5 +1,5 @@
-import type { MuseState } from "@nova/contracts";
-import { DEFAULT_MUSE_COLOR } from "@nova/contracts";
+import type { MuseState } from "@superchat/contracts";
+import { DEFAULT_MUSE_COLOR } from "@superchat/contracts";
 
 // Bloop is the Muse's 3D face for the large moments (welcome, sign-in, onboarding). Every
 // expression is a pose: a flat set of numbers the scene eases toward, so the four Muse states

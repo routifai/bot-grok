@@ -1,5 +1,5 @@
-import type { ThreadMessage } from "@nova/contracts";
-import { truncateReplyQuote } from "@nova/contracts";
+import type { ThreadMessage } from "@superchat/contracts";
+import { truncateReplyQuote } from "@superchat/contracts";
 
 /**
  * Resolves a text selection to the message it quotes. A quote stays scoped to

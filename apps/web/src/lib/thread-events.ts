@@ -6,7 +6,7 @@ import type {
   ThreadMessage,
   ThreadMessagePage,
   ThreadSnapshot,
-} from "@nova/contracts";
+} from "@superchat/contracts";
 import {
   isActive,
   isRunTerminalEvent,
@@ -19,7 +19,7 @@ import {
   takeLiveMessage,
   updateCloudAgentMessages,
   upsertMessageById,
-} from "@nova/core";
+} from "@superchat/core";
 
 const runTriggers = new Set<Run["trigger"]>([
   "user",

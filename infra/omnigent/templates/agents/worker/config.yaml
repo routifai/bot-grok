@@ -24,11 +24,11 @@ executor:
 # sandbox, so no inner sandbox and no approval prompts.
 os_env:
   type: caller_process
-  cwd: /home/nova/workspace
+  cwd: /home/superchat/workspace
   sandbox:
     type: none
     # A session opened on a Project starts in its folder; file tools still reach the workspace.
-    write_paths: [/home/nova/workspace]
+    write_paths: [/home/superchat/workspace]
 
 # Concurrent `worker` Helpers on top of the default cap across all Types
 # (OMNIGENT_SUBAGENT_MAX_CONCURRENT).

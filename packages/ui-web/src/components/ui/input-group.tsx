@@ -1,9 +1,9 @@
 "use client";
 
-import { Button } from "@nova/ui-web/components/ui/button";
-import { Input } from "@nova/ui-web/components/ui/input";
-import { Textarea } from "@nova/ui-web/components/ui/textarea";
-import { cn } from "@nova/ui-web/lib/utils";
+import { Button } from "@superchat/ui-web/components/ui/button";
+import { Input } from "@superchat/ui-web/components/ui/input";
+import { Textarea } from "@superchat/ui-web/components/ui/textarea";
+import { cn } from "@superchat/ui-web/lib/utils";
 import { cva, type VariantProps } from "class-variance-authority";
 import type * as React from "react";
 

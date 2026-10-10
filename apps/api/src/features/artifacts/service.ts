@@ -1,5 +1,5 @@
 // `artifacts.*` for Muses whose files the engine owns: a deliverable the Muse saved with
-// `artifact_save` (engine/omnigent/omnigent/superchat/artifacts). Nova keeps no rows for these;
+// `artifact_save` (engine/omnigent/omnigent/superchat/artifacts). Superchat keeps no rows for these;
 // the engine rows are mapped onto the same shapes the Library and preview already speak, with
 // the engine's artifact id standing in for both the family id and the version id.
 import {
@@ -11,15 +11,15 @@ import {
   type OmnigentArtifact,
   type OmnigentClientConfig,
   type OmnigentPublication,
-} from "@nova/adapters";
+} from "@superchat/adapters";
 import type {
   Actor,
   Artifact,
   ArtifactPublish,
   ArtifactVersion,
   ArtifactWithContent,
-} from "@nova/contracts";
-import type { PrismaClient } from "@nova/db";
+} from "@superchat/contracts";
+import type { PrismaClient } from "@superchat/db";
 import { ORPCError } from "@orpc/server";
 
 export interface EngineArtifactsDeps {

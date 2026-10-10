@@ -1,5 +1,5 @@
-import type { MessageBlock } from "@nova/contracts";
-import { REPLY_QUOTE_MAX_LENGTH } from "@nova/contracts";
+import type { MessageBlock } from "@superchat/contracts";
+import { REPLY_QUOTE_MAX_LENGTH } from "@superchat/contracts";
 import { describe, expect, it } from "vitest";
 import { deriveMessageQuote, visibleTextFromMarkdown } from "./message-quote.js";
 

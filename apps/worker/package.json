@@ -1,5 +1,5 @@
 {
-  "name": "@nova/worker",
+  "name": "@superchat/worker",
   "version": "0.1.0",
   "license": "Apache-2.0",
   "type": "module",
@@ -10,11 +10,11 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@nova/adapter-kit": "workspace:*",
-    "@nova/adapters": "workspace:*",
-    "@nova/core": "workspace:*",
-    "@nova/db": "workspace:*",
-    "@nova/logging": "workspace:*",
+    "@superchat/adapter-kit": "workspace:*",
+    "@superchat/adapters": "workspace:*",
+    "@superchat/core": "workspace:*",
+    "@superchat/db": "workspace:*",
+    "@superchat/logging": "workspace:*",
     "tsx": "4.23.13"
   },
   "devDependencies": {

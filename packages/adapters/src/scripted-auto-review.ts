@@ -5,7 +5,7 @@ import type {
   AutoReviewProvider,
   AutoReviewRequest,
   AutoReviewResult,
-} from "@nova/adapter-kit";
+} from "@superchat/adapter-kit";
 
 const DEFAULT_RESULT: AutoReviewResult = {
   decision: "pass",

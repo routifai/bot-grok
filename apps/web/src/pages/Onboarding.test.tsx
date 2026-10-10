@@ -45,7 +45,7 @@ vi.mock("@lingui/react/macro", () => {
     parts.reduce((acc, part, i) => acc + part + (i < values.length ? String(values[i]) : ""), "");
   return { useLingui: () => ({ t }), Trans: ({ children }: { children: ReactNode }) => children };
 });
-vi.mock("@nova/ui-web", () => {
+vi.mock("@superchat/ui-web", () => {
   const Container = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
   return {
     Button: (props: ComponentProps<"button">) => <button type="button" {...props} />,
@@ -60,7 +60,7 @@ vi.mock("@nova/ui-web", () => {
   };
 });
 
-import { DEFAULT_MUSE_COLOR } from "@nova/contracts";
+import { DEFAULT_MUSE_COLOR } from "@superchat/contracts";
 import { OnboardingPage } from "./Onboarding";
 
 function baseMe(overrides: Partial<Record<string, unknown>> = {}) {
@@ -129,7 +129,7 @@ it("walks intro -> name -> Muse name -> model, in order", async () => {
     // Step 0: the warm introduction.
     await act(async () => {
       await vi.waitFor(() => {
-        expect(page.container.textContent).toContain("Hi, I'm Nova — already on it.");
+        expect(page.container.textContent).toContain("Hi, I'm Superchat — already on it.");
       });
     });
     await act(async () => {
@@ -162,7 +162,7 @@ it("walks intro -> name -> Muse name -> model, in order", async () => {
       });
     });
     await act(async () => {
-      setInputValue(nameInput(page.container), "Nova");
+      setInputValue(nameInput(page.container), "Superchat");
     });
     await act(async () => {
       findButton(page.container, "Continue").click();
@@ -190,7 +190,7 @@ it("creates exactly one bot with the chosen name and color", async () => {
   try {
     await act(async () => {
       await vi.waitFor(() => {
-        expect(page.container.textContent).toContain("Hi, I'm Nova — already on it.");
+        expect(page.container.textContent).toContain("Hi, I'm Superchat — already on it.");
       });
     });
     await act(async () => {
@@ -213,7 +213,7 @@ it("creates exactly one bot with the chosen name and color", async () => {
       });
     });
     await act(async () => {
-      setInputValue(nameInput(page.container), "Nova");
+      setInputValue(nameInput(page.container), "Superchat");
     });
     await act(async () => {
       findButton(page.container, "Continue").click();
@@ -224,7 +224,7 @@ it("creates exactly one bot with the chosen name and color", async () => {
       });
     });
     expect(api.bots.create).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "Nova", color: DEFAULT_MUSE_COLOR }),
+      expect.objectContaining({ name: "Superchat", color: DEFAULT_MUSE_COLOR }),
     );
   } finally {
     await page.cleanup();
@@ -235,7 +235,7 @@ it("creates exactly one bot with the chosen name and color", async () => {
 async function walkToModelStep(page: { container: HTMLElement }) {
   await act(async () => {
     await vi.waitFor(() => {
-      expect(page.container.textContent).toContain("Hi, I'm Nova — already on it.");
+      expect(page.container.textContent).toContain("Hi, I'm Superchat — already on it.");
     });
   });
   await act(async () => findButton(page.container, "Let's get started").click());
@@ -259,7 +259,7 @@ async function walkToModelStep(page: { container: HTMLElement }) {
   });
 }
 
-it("on the engine, the model step saves the key there and never in Nova", async () => {
+it("on the engine, the model step saves the key there and never in Superchat", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.engineModels.status.mockResolvedValueOnce({
     enabled: true,

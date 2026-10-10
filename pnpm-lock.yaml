@@ -10,7 +10,7 @@ overrides:
 
 patchedDependencies:
   '@aiden0z/pptx-renderer@1.3.0':
-    hash: 3wiekbu65dsydzmklnq4qlpkrq
+    hash: aga7ug4je6ikqngclwwzaq7ebm
     path: patches/@aiden0z__pptx-renderer@1.3.0.patch
   app-builder-lib@26.15.3:
     hash: etbhenc3wnsl43rdtwvgrimboq
@@ -47,39 +47,39 @@ importers:
       '@hono/node-server':
         specifier: 2.1.1
         version: 2.1.1(hono@4.13.7)
-      '@nova/adapter-kit':
-        specifier: workspace:*
-        version: link:../../packages/adapter-kit
-      '@nova/adapters':
-        specifier: workspace:*
-        version: link:../../packages/adapters
-      '@nova/auth':
-        specifier: workspace:*
-        version: link:../../packages/auth
-      '@nova/charts':
-        specifier: workspace:*
-        version: link:../../packages/charts
-      '@nova/contracts':
-        specifier: workspace:*
-        version: link:../../packages/contracts
-      '@nova/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@nova/db':
-        specifier: workspace:*
-        version: link:../../packages/db
-      '@nova/logging':
-        specifier: workspace:*
-        version: link:../../packages/logging
-      '@nova/ui-tokens':
-        specifier: workspace:*
-        version: link:../../packages/ui-tokens
       '@orpc/server':
         specifier: 1.15.0
         version: 1.15.0(@opentelemetry/api@1.9.1)(crossws@0.3.5)(ws@8.21.3)
       '@resvg/resvg-js':
         specifier: 2.6.2
         version: 2.6.2
+      '@superchat/adapter-kit':
+        specifier: workspace:*
+        version: link:../../packages/adapter-kit
+      '@superchat/adapters':
+        specifier: workspace:*
+        version: link:../../packages/adapters
+      '@superchat/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
+      '@superchat/charts':
+        specifier: workspace:*
+        version: link:../../packages/charts
+      '@superchat/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@superchat/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@superchat/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@superchat/logging':
+        specifier: workspace:*
+        version: link:../../packages/logging
+      '@superchat/ui-tokens':
+        specifier: workspace:*
+        version: link:../../packages/ui-tokens
       hono:
         specifier: 4.13.7
         version: 4.13.7
@@ -108,19 +108,19 @@ importers:
 
   apps/desktop:
     dependencies:
-      '@nova/contracts':
+      '@superchat/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
       electron-updater:
         specifier: 6.8.9
         version: 6.8.9
     devDependencies:
-      '@nova/ui-tokens':
-        specifier: workspace:*
-        version: link:../../packages/ui-tokens
       '@playwright/test':
         specifier: 1.63.0
         version: 1.63.0
+      '@superchat/ui-tokens':
+        specifier: workspace:*
+        version: link:../../packages/ui-tokens
       electron:
         specifier: 44.3.0
         version: 44.3.0
@@ -139,24 +139,24 @@ importers:
       '@expo/metro-runtime':
         specifier: 57.0.16
         version: 57.0.16(@expo/log-box@57.0.4)(expo@57.0.25)(react-dom@19.2.3(react@19.2.3))(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
-      '@nova/chat-ui':
-        specifier: workspace:*
-        version: link:../../packages/chat-ui
-      '@nova/contracts':
-        specifier: workspace:*
-        version: link:../../packages/contracts
-      '@nova/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@nova/ui-tokens':
-        specifier: workspace:*
-        version: link:../../packages/ui-tokens
       '@react-native-vector-icons/ionicons':
         specifier: 13.1.4
         version: 13.1.4(@expo/config-plugins@57.0.9(typescript@6.0.3))(@react-native/assets-registry@0.86.3)(expo-font@57.0.4)(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
       '@react-native-vector-icons/material-design-icons':
         specifier: 13.1.4
         version: 13.1.4(@expo/config-plugins@57.0.9(typescript@6.0.3))(@react-native/assets-registry@0.86.3)(expo-font@57.0.4)(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
+      '@superchat/chat-ui':
+        specifier: workspace:*
+        version: link:../../packages/chat-ui
+      '@superchat/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@superchat/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@superchat/ui-tokens':
+        specifier: workspace:*
+        version: link:../../packages/ui-tokens
       expo:
         specifier: 57.0.25
         version: 57.0.25(@babel/core@7.29.7)(@expo/dom-webview@57.0.1)(@expo/metro-runtime@57.0.16)(expo-router@57.0.23)(react-dom@19.2.3(react@19.2.3))(react-native-web@0.21.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-native-webview@13.16.1(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3))(react-native-worklets@0.10.1(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3))(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
@@ -280,7 +280,7 @@ importers:
     dependencies:
       '@aiden0z/pptx-renderer':
         specifier: 1.3.0
-        version: 1.3.0(patch_hash=3wiekbu65dsydzmklnq4qlpkrq)
+        version: 1.3.0(patch_hash=aga7ug4je6ikqngclwwzaq7ebm)
       '@fontsource-variable/geist-mono':
         specifier: 5.3.0
         version: 5.3.0
@@ -299,30 +299,30 @@ importers:
       '@lingui/react':
         specifier: 6.6.0
         version: 6.6.0(@babel/core@7.29.7)(@babel/types@7.29.8)(react@19.2.3)
-      '@nova/charts':
-        specifier: workspace:*
-        version: link:../../packages/charts
-      '@nova/chat-ui':
-        specifier: workspace:*
-        version: link:../../packages/chat-ui
-      '@nova/contracts':
-        specifier: workspace:*
-        version: link:../../packages/contracts
-      '@nova/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@nova/ui-tokens':
-        specifier: workspace:*
-        version: link:../../packages/ui-tokens
-      '@nova/ui-web':
-        specifier: workspace:*
-        version: link:../../packages/ui-web
       '@orpc/client':
         specifier: 1.15.0
         version: 1.15.0(@opentelemetry/api@1.9.1)
       '@orpc/contract':
         specifier: 1.15.0
         version: 1.15.0(@opentelemetry/api@1.9.1)
+      '@superchat/charts':
+        specifier: workspace:*
+        version: link:../../packages/charts
+      '@superchat/chat-ui':
+        specifier: workspace:*
+        version: link:../../packages/chat-ui
+      '@superchat/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@superchat/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@superchat/ui-tokens':
+        specifier: workspace:*
+        version: link:../../packages/ui-tokens
+      '@superchat/ui-web':
+        specifier: workspace:*
+        version: link:../../packages/ui-web
       better-auth:
         specifier: 1.7.4
         version: 1.7.4(@opentelemetry/api@1.9.1)(@prisma/client@7.10.0(prisma@7.10.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(magicast@0.5.4)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(typescript@7.0.2))(typescript@7.0.2))(mysql2@3.15.3)(pg@8.23.0)(prisma@7.10.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(magicast@0.5.4)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(typescript@7.0.2))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(vitest@4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.3.0(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.13)(yaml@2.9.0)))
@@ -408,19 +408,19 @@ importers:
 
   apps/worker:
     dependencies:
-      '@nova/adapter-kit':
+      '@superchat/adapter-kit':
         specifier: workspace:*
         version: link:../../packages/adapter-kit
-      '@nova/adapters':
+      '@superchat/adapters':
         specifier: workspace:*
         version: link:../../packages/adapters
-      '@nova/core':
+      '@superchat/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@nova/db':
+      '@superchat/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@nova/logging':
+      '@superchat/logging':
         specifier: workspace:*
         version: link:../../packages/logging
       tsx:
@@ -442,10 +442,10 @@ importers:
       '@astrojs/sitemap':
         specifier: 3.7.4
         version: 3.7.4
-      '@nova/core':
+      '@superchat/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@nova/ui-web':
+      '@superchat/ui-web':
         specifier: workspace:*
         version: link:../../packages/ui-web
       '@vercel/functions':
@@ -494,10 +494,10 @@ importers:
       '@hono/node-server':
         specifier: 2.1.1
         version: 2.1.1(hono@4.13.7)
-      '@nova/core':
+      '@superchat/core':
         specifier: workspace:*
         version: link:../../../packages/core
-      '@nova/logging':
+      '@superchat/logging':
         specifier: workspace:*
         version: link:../../../packages/logging
       dockerode:
@@ -525,7 +525,7 @@ importers:
 
   packages/adapter-kit:
     dependencies:
-      '@nova/contracts':
+      '@superchat/contracts':
         specifier: workspace:*
         version: link:../contracts
       zod:
@@ -571,19 +571,19 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: 1.30.0
         version: 1.30.0(@cfworker/json-schema@4.1.1)(zod@4.6.2)
-      '@nova/adapter-kit':
+      '@superchat/adapter-kit':
         specifier: workspace:*
         version: link:../adapter-kit
-      '@nova/contracts':
+      '@superchat/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@nova/core':
+      '@superchat/core':
         specifier: workspace:*
         version: link:../core
-      '@nova/db':
+      '@superchat/db':
         specifier: workspace:*
         version: link:../db
-      '@nova/logging':
+      '@superchat/logging':
         specifier: workspace:*
         version: link:../logging
       chat:
@@ -635,13 +635,13 @@ importers:
 
   packages/auth:
     dependencies:
-      '@nova/adapter-kit':
+      '@superchat/adapter-kit':
         specifier: workspace:*
         version: link:../adapter-kit
-      '@nova/core':
+      '@superchat/core':
         specifier: workspace:*
         version: link:../core
-      '@nova/db':
+      '@superchat/db':
         specifier: workspace:*
         version: link:../db
       better-auth:
@@ -691,18 +691,18 @@ importers:
 
   packages/chat-ui:
     dependencies:
-      '@nova/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@nova/ui-tokens':
-        specifier: workspace:*
-        version: link:../ui-tokens
-      '@nova/ui-web':
-        specifier: workspace:*
-        version: link:../ui-web
       '@ronradtke/react-native-markdown-display':
         specifier: 9.0.3
         version: 9.0.3(@expo/config-plugins@57.0.9(typescript@7.0.2))(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
+      '@superchat/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@superchat/ui-tokens':
+        specifier: workspace:*
+        version: link:../ui-tokens
+      '@superchat/ui-web':
+        specifier: workspace:*
+        version: link:../ui-web
       react-markdown:
         specifier: 10.1.0
         version: 10.1.0(@types/react@19.2.18)(react@19.2.3)
@@ -753,12 +753,12 @@ importers:
 
   packages/core:
     dependencies:
-      '@nova/contracts':
-        specifier: workspace:*
-        version: link:../contracts
       '@observablehq/plot':
         specifier: 0.6.17
         version: 0.6.17
+      '@superchat/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       croner:
         specifier: 10.0.1
         version: 10.0.1
@@ -799,24 +799,24 @@ importers:
 
   packages/db:
     dependencies:
-      '@nova/adapter-kit':
-        specifier: workspace:*
-        version: link:../adapter-kit
-      '@nova/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@nova/core':
-        specifier: workspace:*
-        version: link:../core
-      '@nova/logging':
-        specifier: workspace:*
-        version: link:../logging
       '@prisma/adapter-pg':
         specifier: 7.10.0
         version: 7.10.0
       '@prisma/client':
         specifier: 7.10.0
         version: 7.10.0(prisma@7.10.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(magicast@0.5.4)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@7.0.2))(typescript@7.0.2)
+      '@superchat/adapter-kit':
+        specifier: workspace:*
+        version: link:../adapter-kit
+      '@superchat/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@superchat/core':
+        specifier: workspace:*
+        version: link:../core
+      '@superchat/logging':
+        specifier: workspace:*
+        version: link:../logging
       dotenv:
         specifier: 17.4.2
         version: 17.4.2
@@ -858,19 +858,19 @@ importers:
       '@hono/node-server':
         specifier: 2.1.1
         version: 2.1.1(hono@4.13.7)
-      '@nova/adapter-kit':
+      '@superchat/adapter-kit':
         specifier: workspace:*
         version: link:../adapter-kit
-      '@nova/adapters':
+      '@superchat/adapters':
         specifier: workspace:*
         version: link:../adapters
-      '@nova/contracts':
+      '@superchat/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@nova/core':
+      '@superchat/core':
         specifier: workspace:*
         version: link:../core
-      '@nova/db':
+      '@superchat/db':
         specifier: workspace:*
         version: link:../db
       '@testcontainers/postgresql':
@@ -913,13 +913,13 @@ importers:
       '@lingui/react':
         specifier: 6.6.0
         version: 6.6.0(@babel/core@7.29.7)(@babel/types@7.29.8)(react@19.2.3)
-      '@nova/contracts':
+      '@superchat/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@nova/core':
+      '@superchat/core':
         specifier: workspace:*
         version: link:../core
-      '@nova/ui-tokens':
+      '@superchat/ui-tokens':
         specifier: workspace:*
         version: link:../ui-tokens
       class-variance-authority:
@@ -10015,7 +10015,7 @@ packages:
 
 snapshots:
 
-  '@aiden0z/pptx-renderer@1.3.0(patch_hash=3wiekbu65dsydzmklnq4qlpkrq)':
+  '@aiden0z/pptx-renderer@1.3.0(patch_hash=aga7ug4je6ikqngclwwzaq7ebm)':
     dependencies:
       echarts: 6.1.0
       jszip: 3.10.2

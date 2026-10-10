@@ -1,4 +1,4 @@
-import { LOCAL_SETTINGS_RPC } from "@nova/contracts";
+import { LOCAL_SETTINGS_RPC } from "@superchat/contracts";
 import type { Hono, MiddlewareHandler } from "hono";
 import { cancelBody } from "./http-body.js";
 

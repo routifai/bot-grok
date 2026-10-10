@@ -1,20 +1,20 @@
-Nova
-Copyright 2026 the Nova authors
+Superchat
+Copyright 2026 the Superchat authors
 
-Nova began as a fork of Rakazo, Copyright 2026 Rakazo contributors, licensed under the Apache
+Superchat began as a fork of Rakazo, Copyright 2026 Rakazo contributors, licensed under the Apache
 License 2.0 (see LICENSE).
 
-Nova's 3D illustrations (apps/web/public/illustrations) are from Microsoft's
+Superchat's 3D illustrations (apps/web/public/illustrations) are from Microsoft's
 Fluent Emoji (https://github.com/microsoft/fluentui-emoji), Copyright (c)
 Microsoft Corporation, licensed under the MIT License.
 
-Nova's decks (slide decks the Muse authors, the deck viewer, and the PowerPoint and PDF export)
+Superchat's decks (slide decks the Muse authors, the deck viewer, and the PowerPoint and PDF export)
 contain portions modified from Open Design (https://github.com/nexu-io/open-design, commit
 802708f), Copyright the Open Design authors, licensed under the Apache License 2.0 (see LICENSE).
 Each ported file carries a "Portions modified from nexu-io/open-design <path>@802708f,
 Apache-2.0; changes: ..." header naming its source file and what changed:
 apps/desktop/src/main/deck-capture.ts and pdf-export.ts (the page-side export logic and print
-rules, infra/sandboxes/computer/deck-export/deck-capture-page.js and nova-deck-export),
+rules, infra/sandboxes/computer/deck-export/deck-capture-page.js and superchat-deck-export),
 apps/desktop/tests/main/pptx-editable-fidelity, pptx-layered-background and pptx-cjk-typeface
 tests (infra/sandboxes/computer/deck-export/*.test.ts), and packages/contracts/src/prompts/
 deck-framework.ts with runtime/deck-protocol.ts (the deck skeleton and navigation protocol,
@@ -47,7 +47,7 @@ plugin (plugins/community/humanize-ppt/scripts/pptx_qa.py, commit 802708f), MIT,
 LearnPrompt.
 
 Dashboards. The dashboard page template (infra/sandboxes/computer/dashboard/template.html), which
-nova-dashboard fills from the person's files, is modified from Open Design's data-report skill
+superchat-dashboard fills from the person's files, is modified from Open Design's data-report skill
 (skills/data-report/example.html, commit 802708f), Apache-2.0, and carries its "Portions modified
 from" header: the report header, the KPI cards with a sparkline and change, the chart grid with its
 fixed-height chart boxes and the data table. It inlines the same vendored Chart.js 4.4.3 (MIT) as
@@ -84,17 +84,17 @@ Two small chat behaviors port ideas and wording from nao (https://github.com/get
 Enterprise" header were used. Each ported file carries a "Portions modified from getnao/nao
 <path>@5bde830, Apache-2.0; changes: ..." header:
 engine/omnigent/omnigent/superchat/cards/tools.py (the `ask_clarification` and `suggest_follow_ups`
-tools, from apps/shared/src/tools/clarification.ts and suggest-follow-ups.ts; they emit Nova's reply
+tools, from apps/shared/src/tools/clarification.ts and suggest-follow-ups.ts; they emit Superchat's reply
 cards instead of nao's tool-call UI), and the memory extraction rules in
 engine/omnigent/omnigent/memory/upkeep.py, engine/omnigent/omnigent/superchat/daily_notes/
 quiet_moment.py and infra/omnigent/templates/AGENTS.md (from apps/backend/src/components/ai/
 memory-system-prompt.tsx and agents/memory/memory-extractor-llm.ts: standing instructions apart
-from profile facts, instructions gated on permanence signals, supersede on change). Nova's
+from profile facts, instructions gated on permanence signals, supersede on change). Superchat's
 recurring-task support (the Muse writes the RRULE, the server validates it and previews the next
 fire times) is its own design: nao's cron-nlp.ts was read for the idea only and no code or prompt
 from it is used.
 
-Nova's file-search guidance (the "The person's files" section of infra/omnigent/templates/AGENTS.md)
+Superchat's file-search guidance (the "The person's files" section of infra/omnigent/templates/AGENTS.md)
 and the shape of its files_* tools (search by keywords, by meaning, hybrid with a model rerank; get
 and multi-get; status) are adapted from the pi-qmd extension and its qmd-knowledge skill
 (https://github.com/hjanuschka/pi-qmd, commit 8266056, skills/qmd-knowledge/SKILL.md), Copyright (c)

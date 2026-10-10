@@ -1,8 +1,8 @@
 const OAUTH_POPUP_NAMES = new Set([
-  "nova-app-connect",
-  "nova-mcp-oauth",
-  "nova-model-oauth",
-  "nova-plugin-connect",
+  "superchat-app-connect",
+  "superchat-mcp-oauth",
+  "superchat-model-oauth",
+  "superchat-plugin-connect",
 ]);
 
 export function shouldOpenInAppPopup(

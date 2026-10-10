@@ -2,7 +2,7 @@
 
 import { i18n } from "@lingui/core";
 import { I18nProvider } from "@lingui/react";
-import type { DeckEditTarget } from "@nova/contracts";
+import type { DeckEditTarget } from "@superchat/contracts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -135,9 +135,9 @@ async function fromFrame(frame: ReturnType<typeof editFrame>, msg: Record<string
 }
 
 const select = (frame: ReturnType<typeof editFrame>, targets: DeckEditTarget[] = [title]) =>
-  fromFrame(frame, { type: "nova:edit-selection", targets });
+  fromFrame(frame, { type: "superchat:edit-selection", targets });
 const ready = (frame: ReturnType<typeof editFrame>) =>
-  fromFrame(frame, { type: "nova:edit-ready", theme: THEME });
+  fromFrame(frame, { type: "superchat:edit-ready", theme: THEME });
 
 function typeInto(input: HTMLInputElement | HTMLTextAreaElement, value: string) {
   const proto = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement : HTMLInputElement;
@@ -151,18 +151,18 @@ it("shows the bridge and panel only in edit mode; view mode is unchanged", async
   await mount();
   expect(host.querySelector('[data-testid="deck-style-panel"]')).toBeNull();
   const frames = host.querySelectorAll("iframe");
-  expect(frames[frames.length - 1]?.getAttribute("srcdoc")).not.toContain("nova-edit-bridge");
+  expect(frames[frames.length - 1]?.getAttribute("srcdoc")).not.toContain("superchat-edit-bridge");
 
   await act(async () => setDeckEditing(NAME, true));
   // The inspector is there only while something is selected.
   expect(host.querySelector('[data-testid="deck-style-panel"]')).toBeNull();
   expect(host.querySelector('[data-testid="deck-edit-toolbar"]')).not.toBeNull();
-  expect(editFrame().el.getAttribute("srcdoc")).toContain("nova-edit-bridge");
+  expect(editFrame().el.getAttribute("srcdoc")).toContain("superchat-edit-bridge");
   const frame = editFrame();
   await ready(frame);
   await select(frame);
   expect(host.querySelector('[data-testid="deck-style-panel"]')).not.toBeNull();
-  await fromFrame(frame, { type: "nova:edit-selection", targets: [] });
+  await fromFrame(frame, { type: "superchat:edit-selection", targets: [] });
   expect(host.querySelector('[data-testid="deck-style-panel"]')).toBeNull();
 
   await act(async () => setDeckEditing(NAME, false));
@@ -179,15 +179,15 @@ it("only trusts messages from its frame that carry its nonce and fit the protoco
   await act(async () => {
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { v: 1, nonce: frame.nonce, type: "nova:edit-selection", targets: [title] },
+        data: { v: 1, nonce: frame.nonce, type: "superchat:edit-selection", targets: [title] },
         source: {} as Window,
       }),
     );
   });
   expect(panel()).not.toContain("Heading");
-  await fromFrame(frame, { type: "nova:edit-selection", nonce: "f".repeat(32), targets: [title] });
-  await fromFrame(frame, { type: "nova:edit-selection", v: 2, targets: [title] });
-  await fromFrame(frame, { type: "nova:edit-selection", targets: [{ id: 3 }] });
+  await fromFrame(frame, { type: "superchat:edit-selection", nonce: "f".repeat(32), targets: [title] });
+  await fromFrame(frame, { type: "superchat:edit-selection", v: 2, targets: [title] });
+  await fromFrame(frame, { type: "superchat:edit-selection", targets: [{ id: 3 }] });
   expect(panel()).not.toContain("Heading");
 
   await select(frame);
@@ -205,7 +205,7 @@ it("select, then a style control previews at once and saves one version after a 
   await act(async () => typeInto(control("Font size"), "72"));
   expect(frame.post).toHaveBeenCalledWith(
     expect.objectContaining({
-      type: "nova:edit-preview",
+      type: "superchat:edit-preview",
       id: "title",
       style: { "font-size": "72px" },
       nonce: frame.nonce,
@@ -259,7 +259,7 @@ it("commits an inline text edit as a set-text patch", async () => {
   await ready(frame);
   await select(frame);
   await fromFrame(frame, {
-    type: "nova:edit-text-commit",
+    type: "superchat:edit-text-commit",
     id: "title",
     text: "Launch day",
     before: "Launch",
@@ -276,7 +276,7 @@ it("undo and redo save the earlier source back as new versions", async () => {
   const frame = editFrame();
   await ready(frame);
   await select(frame);
-  await fromFrame(frame, { type: "nova:edit-text-commit", id: "title", text: "B", before: "A" });
+  await fromFrame(frame, { type: "superchat:edit-text-commit", id: "title", text: "B", before: "A" });
   await act(async () => {
     await vi.advanceTimersByTimeAsync(10);
   });
@@ -309,19 +309,19 @@ it("a change by someone else ends the history instead of undoing over it", async
   const frame = editFrame();
   await ready(frame);
   await select(frame);
-  await fromFrame(frame, { type: "nova:edit-text-commit", id: "title", text: "B", before: "A" });
+  await fromFrame(frame, { type: "superchat:edit-text-commit", id: "title", text: "B", before: "A" });
   await act(async () => {
     await vi.advanceTimersByTimeAsync(10);
   });
   await view.rerender(2, FIXTURE_DECK.replace("Launch", "B"));
   expect(control("Undo").disabled).toBe(false);
-  await view.rerender(3, FIXTURE_DECK.replace("Launch", "C")); // Nova saved a version
+  await view.rerender(3, FIXTURE_DECK.replace("Launch", "C")); // Superchat saved a version
   expect(control("Undo").disabled).toBe(true);
 });
 
 it("a patch the engine won't apply exactly says so and offers superchat", async () => {
   const refuse = async () => {
-    throw Object.assign(new Error("Can't apply that edit exactly; ask Nova instead"), {
+    throw Object.assign(new Error("Can't apply that edit exactly; ask Superchat instead"), {
       code: "CONFLICT",
     });
   };
@@ -343,7 +343,7 @@ it("a patch the engine won't apply exactly says so and offers superchat", async 
   const frame = editFrame();
   await ready(frame);
   await select(frame);
-  await fromFrame(frame, { type: "nova:edit-text-commit", id: "title", text: "B", before: "A" });
+  await fromFrame(frame, { type: "superchat:edit-text-commit", id: "title", text: "B", before: "A" });
   await act(async () => {
     await vi.advanceTimersByTimeAsync(10);
   });
@@ -370,7 +370,7 @@ it("Ask superchat attaches a hard-scope element request with the person's note",
   expect(attachment?.kind).toBe("deck");
   expect(attachment?.label).toBe("Slide 1 · title");
   expect(attachment?.block).toContain(
-    '<nova-element-request deck="launch.deck.html" artifact="v1"',
+    '<superchat-element-request deck="launch.deck.html" artifact="v1"',
   );
   expect(attachment?.block).toContain("Hard scope: change ONLY these elements");
   expect(attachment?.block).toContain('text: "Launch"');
@@ -384,7 +384,7 @@ it("the Ask superchat button on the selection (a bridge message) attaches too", 
   const frame = editFrame();
   await ready(frame);
   await select(frame);
-  await fromFrame(frame, { type: "nova:edit-ask" });
+  await fromFrame(frame, { type: "superchat:edit-ask" });
   expect(probe.current[0]?.block).toContain('<element id="title"');
 });
 
@@ -410,7 +410,7 @@ it("a new version keeps the selection by selecting the same ids in the new frame
   });
   await ready(nextFrame);
   expect(nextFrame.post).toHaveBeenCalledWith(
-    expect.objectContaining({ type: "nova:edit-select", ids: ["title"] }),
+    expect.objectContaining({ type: "superchat:edit-select", ids: ["title"] }),
     "*",
   );
   expect(host.querySelector('[data-testid="deck-edit-frame-next"]')).toBeNull();

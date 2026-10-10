@@ -2,7 +2,7 @@
 
 import { i18n } from "@lingui/core";
 import { I18nProvider } from "@lingui/react";
-import type { Artifact } from "@nova/contracts";
+import type { Artifact } from "@superchat/contracts";
 import { act, type ComponentProps, cloneElement, type ReactElement, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -25,8 +25,8 @@ vi.mock("@lingui/core/macro", () => ({
     parts.reduce((out, part, i) => out + part + (v[i] ?? ""), ""),
 }));
 
-vi.mock("@nova/ui-web", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@nova/ui-web")>();
+vi.mock("@superchat/ui-web", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@superchat/ui-web")>();
   const Passthrough = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
   return {
     ...actual,

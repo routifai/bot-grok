@@ -1,4 +1,4 @@
-// Runs a Nova run on Omnigent instead of the built-in run executor, whenever the Omnigent
+// Runs a Superchat run on Omnigent instead of the built-in run executor, whenever the Omnigent
 // connection (OMNIGENT_URL + OMNIGENT_PROXY_SECRET, ./env.ts) is configured. Deliberately narrow for week 1: only a plain user message on a
 // Muse's own private Conversation thread (never a routine, Goal-log, group thread, or messaging
 // channel run) is eligible — everything else falls back to the existing engine untouched.
@@ -9,10 +9,10 @@
 // `ThreadEvents.finalizeRun` so the thread, task, and run rows land in the same state a normal
 // turn would.
 
-import { parseAttachmentReferences, WORKSPACE_UPLOADS_PREFIX } from "@nova/core";
-import type { PrismaClient, ThreadEvents } from "@nova/db";
-import { STEERING_CONTINUATION_PROMPT } from "@nova/db";
-import { getLogger } from "@nova/logging";
+import { parseAttachmentReferences, WORKSPACE_UPLOADS_PREFIX } from "@superchat/core";
+import type { PrismaClient, ThreadEvents } from "@superchat/db";
+import { STEERING_CONTINUATION_PROMPT } from "@superchat/db";
+import { getLogger } from "@superchat/logging";
 import type { OmnigentPostedMessage } from "./client.js";
 import {
   adoptOmnigentMuse,
@@ -37,16 +37,16 @@ export const CHAT_UNAVAILABLE_MESSAGE = "Chat is not available right now.";
 
 /** What a person sees when the engine failed in a way with no public copy. The detail (an
  * engine status and body) goes to the log only. */
-export const ENGINE_FAILED_MESSAGE = "Nova couldn't start. Try again in a moment.";
+export const ENGINE_FAILED_MESSAGE = "Superchat couldn't start. Try again in a moment.";
 /** A turn the engine itself reported as failed: its message is written for the person. */
 export class OmnigentTurnFailure extends Error {}
 
-export const ENGINE_INTERRUPTED_MESSAGE = "Nova was interrupted. Send your message again.";
+export const ENGINE_INTERRUPTED_MESSAGE = "Superchat was interrupted. Send your message again.";
 
 /** The engine stopped answering: no progress and no word on the turn. Honest about it, never a
  * "couldn't start". */
 export const ENGINE_NO_ANSWER_MESSAGE =
-  "Nova stopped responding before it finished. Send your message again.";
+  "Superchat stopped responding before it finished. Send your message again.";
 
 /** The Computer would not start (the engine's launch failed, or its runner never connected). The
  * engine's own wording names logs and hosts, so the person gets this calm line instead. */
@@ -113,7 +113,7 @@ const ENGINE_RUN_TRIGGERS: ReadonlySet<string> = new Set(["user", "skill", "foll
 
 /**
  * Fails a queued run the engine cannot handle (goal threads, routines, webhooks, ...) once and
- * clearly, so the Pi executor path (a Computer Nova no longer keeps for engine Muses, ADR 0004)
+ * clearly, so the Pi executor path (a Computer Superchat no longer keeps for engine Muses, ADR 0004)
  * is never entered and the job is not retried 25 times.
  */
 export async function failRunUnsupportedOnOmnigent(
@@ -140,7 +140,7 @@ export async function failRunUnsupportedOnOmnigent(
     leaseOwner: workerId,
     leaseFence: fence,
     outcome: "failed",
-    error: `Runs started by "${run.trigger}" are not supported by the Nova engine yet.`,
+    error: `Runs started by "${run.trigger}" are not supported by the Superchat engine yet.`,
   });
 }
 
@@ -195,7 +195,7 @@ export async function runTurnOnOmnigent(
     ]);
 
     // The engine reads the person's zone from its own per-owner preference for the per-turn
-    // local-time line and for scheduled tasks created without a timezone; Nova owns the value.
+    // local-time line and for scheduled tasks created without a timezone; Superchat owns the value.
     // Best-effort and idempotent (a partial PUT), so it runs every turn and a change in
     // Settings reaches the engine before the next message.
     if (user.timezone) {
@@ -261,7 +261,7 @@ export async function runTurnOnOmnigent(
         });
       },
     });
-    // Stopped in Nova: the stop already settled the run.
+    // Stopped in Superchat: the stop already settled the run.
     if (outcome === "cancelled") return true;
 
     const completed = await deps.events.finalizeRun({
@@ -321,7 +321,7 @@ export function buildTurnInput(prompt: string, steeringTexts: string[]): string 
  * The Muse's Conversation, as the engine decides it (ADR 0009): `GET /v1/me/muse` finds the
  * person's Muse for this space, or creates it on the engine's default agent.
  *
- * A Conversation Nova started before that is claimed first, once: its session is adopted with
+ * A Conversation Superchat started before that is claimed first, once: its session is adopted with
  * `POST /v1/me/muse/adopt`, so the person keeps it. The row remembers the adoption
  * (`engineAdoptedAt`) and then simply mirrors what the engine answers.
  */
@@ -355,7 +355,7 @@ async function resolveMuseSession(
 }
 
 /**
- * Claims a Conversation Nova started before the engine owned the Muse. Done when the engine
+ * Claims a Conversation Superchat started before the engine owned the Muse. Done when the engine
  * adopts it, or already has it as the Muse. A session the engine no longer has, or one that was
  * never a Super Chat, has nothing to keep, so the engine's own Muse takes over. Anything else
  * (another Muse already set, another space) fails the turn rather than replacing the
@@ -699,7 +699,7 @@ async function runTurn(ctx: TurnContext): Promise<"completed" | "cancelled"> {
 
   const handleSignal = async (event: ThreadSignal): Promise<"cancelled" | undefined> => {
     if (isStop(event)) {
-      // Stopped in Nova: stop the engine's turn too.
+      // Stopped in Superchat: stop the engine's turn too.
       await interruptOmnigentSession(client, email, sessionId).catch((error) => {
         getLogger().error("omnigent gateway: could not stop the engine turn", error);
       });

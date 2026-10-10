@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import { Button, cn } from "@nova/ui-web";
+import { Button, cn } from "@superchat/ui-web";
 import type { ReactNode } from "react";
 import { useFirstRun } from "./useFirstRun";
 

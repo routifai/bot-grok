@@ -14,6 +14,6 @@ it("checks the teaching recorder helper offline", () => {
 
 it("ships the recorder and its injected script in the computer image", () => {
   const dockerfile = readFileSync(computer("Dockerfile"), "utf8");
-  expect(dockerfile).toMatch(/nova-recorder \/usr\/local\/bin\/nova-recorder/);
-  expect(dockerfile).toMatch(/nova-recorder\.js \/usr\/local\/share\/nova\/nova-recorder\.js/);
+  expect(dockerfile).toMatch(/superchat-recorder \/usr\/local\/bin\/superchat-recorder/);
+  expect(dockerfile).toMatch(/superchat-recorder\.js \/usr\/local\/share\/superchat\/superchat-recorder\.js/);
 });

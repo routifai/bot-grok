@@ -3,10 +3,10 @@ import {
   omnigentClientConfigFromEnv,
   omnigentClientFor,
   searchOmnigentFamily,
-} from "@nova/adapters";
-import type { Actor, MessageBlock, SearchHit } from "@nova/contracts";
-import { extractLinksFromText, matchesSearchQuery, snippetAroundMatch } from "@nova/core";
-import { Prisma, type PrismaClient } from "@nova/db";
+} from "@superchat/adapters";
+import type { Actor, MessageBlock, SearchHit } from "@superchat/contracts";
+import { extractLinksFromText, matchesSearchQuery, snippetAroundMatch } from "@superchat/core";
+import { Prisma, type PrismaClient } from "@superchat/db";
 
 const SEARCH_LIMIT = 25;
 /** Cap name matches so content hits (messages/files/links/routines) keep most of the budget. */
@@ -48,7 +48,7 @@ export async function querySpaceSearch(
   actor: Actor,
   q: string,
   /** When the engine is connected, a Muse's Conversation and side chats are searched there (its
-   * messages live in the engine's transcript), not in Nova's thread rows. */
+   * messages live in the engine's transcript), not in Superchat's thread rows. */
   engine?: { client: OmnigentClientConfig; email: string },
 ): Promise<SearchHit[]> {
   const query = q.trim();
@@ -396,7 +396,7 @@ function pushMessageHits(
 }
 
 /** The engine connection search reads a Muse's Conversation through, or `undefined` when the
- * engine is not configured (search then stays on Nova's own rows). */
+ * engine is not configured (search then stays on Superchat's own rows). */
 export async function engineSearch(
   prisma: PrismaClient,
   actor: Actor,

@@ -4,8 +4,8 @@ import {
   type ArtifactPublish,
   type ArtifactPublishAudience,
   isDeckArtifactName,
-} from "@nova/contracts";
-import { Button, DropdownMenuItem } from "@nova/ui-web";
+} from "@superchat/contracts";
+import { Button, DropdownMenuItem } from "@superchat/ui-web";
 import { useEffect, useState } from "react";
 import { rpc } from "../../lib/rpc";
 import type { ArtifactExtension, ArtifactPanelParts } from "../artifacts";
@@ -82,7 +82,7 @@ function PublishedBadge() {
   return (
     <span
       data-testid="library-card-published"
-      className="nova-glass-pill inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-medium text-ink-2"
+      className="superchat-glass-pill inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-medium text-ink-2"
     >
       <span aria-hidden="true" className="size-1.5 rounded-full bg-success" />
       {t`Published`}

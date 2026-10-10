@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { Link } from "react-router-dom";
-import { NovaMark } from "./Brand";
+import { SuperchatMark } from "./Brand";
 import { GUTTER } from "./Cta";
 import { Grain } from "./Grain";
 import { Stars } from "./Stars";
@@ -42,7 +42,7 @@ export function WelcomeFrame({
     <div
       ref={rootRef}
       className="relative isolate flex min-h-full flex-col pt-safe pb-safe bg-welcome-night text-welcome-night-ink antialiased [color-scheme:dark]"
-      data-nova-surface="welcome"
+      data-superchat-surface="welcome"
     >
       <Stars scrollRef={rootRef} />
       <Grain />
@@ -51,7 +51,7 @@ export function WelcomeFrame({
           to="/"
           className="rounded-md focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:outline-welcome-night-glow"
         >
-          <NovaMark />
+          <SuperchatMark />
         </Link>
       </header>
       <main className="relative z-1 flex flex-1 items-center justify-center px-4 pb-[12vh]">

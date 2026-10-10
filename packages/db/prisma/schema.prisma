@@ -448,7 +448,7 @@ model Bot {
   /// Kept, not dropped.
   museHarness            String?
   /// Where this Muse's Omnigent runner executes (packages/contracts/src/engine.ts,
-  /// NovaRunnerLocationId): "computer" (Omnigent launches it inside this Muse's own sandbox
+  /// SuperchatRunnerLocationId): "computer" (Omnigent launches it inside this Muse's own sandbox
   /// computer) or "local" (routes to the person's connected `omnigent host`). Null means the
   /// deployment default ("computer") — see
   /// packages/adapters/src/omnigent/runner-location.ts and docs/omnigent-spike.md.
@@ -928,7 +928,7 @@ model Idea {
   /// 1-3 sentence explanation of concretely what the Muse would do. Nullable so rows
   /// from before this field existed keep parsing.
   detail       String?
-  /// Bundled 3D illustration key for this Idea's row (see @nova/contracts
+  /// Bundled 3D illustration key for this Idea's row (see @superchat/contracts
   /// IllustrationKeySchema). Nullable: older rows and unrecognized model output fall
   /// back to an area-keyed default on the client.
   illustration String?
@@ -1031,7 +1031,7 @@ model Episode {
 }
 
 /// The engine session behind one Muse's Conversation (ADR 0009). The engine owns which session
-/// that is (`GET /v1/me/muse`); this row is Nova's copy of the answer, read by the routes that
+/// that is (`GET /v1/me/muse`); this row is Superchat's copy of the answer, read by the routes that
 /// need the id. One row per bot.
 model OmnigentSession {
   id                 String    @id @default(cuid())
@@ -1039,7 +1039,7 @@ model OmnigentSession {
   bot                Bot       @relation(fields: [botId], references: [id], onDelete: Cascade)
   omnigentSessionId  String
   /// Built-in agent the session last reported running on (`GET /v1/me/muse`'s `agent`).
-  agentName          String    @default("nova-claude")
+  agentName          String    @default("superchat-claude")
   /// Unused since the engine owns the Muse (ADR 0009). Kept, not dropped.
   runnerLocation     String    @default("computer")
   /// Unused since the mirror job was removed (ADR 0009). Kept, not dropped.

@@ -1,5 +1,5 @@
-import { AttachmentValidationError } from "@nova/core";
-import { IsolationError } from "@nova/db";
+import { AttachmentValidationError } from "@superchat/core";
+import { IsolationError } from "@superchat/db";
 import { ORPCError } from "@orpc/server";
 import {
   ArtifactListCursorError,

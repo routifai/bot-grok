@@ -6,8 +6,8 @@ import {
   type CronPreset,
   type CronUnit,
   cronFromPreset,
-} from "@nova/core";
-import { Input, NativeSelect, NativeSelectOption } from "@nova/ui-web";
+} from "@superchat/core";
+import { Input, NativeSelect, NativeSelectOption } from "@superchat/ui-web";
 import { Clock, Edit2 } from "lucide-react";
 import { useState } from "react";
 

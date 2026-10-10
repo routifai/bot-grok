@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { computerControlExpireJobKey } from "@nova/adapter-kit";
-import type { ComputerExecutionLease } from "@nova/adapters";
+import { computerControlExpireJobKey } from "@superchat/adapter-kit";
+import type { ComputerExecutionLease } from "@superchat/adapters";
 import {
   acquireComputerExecutionLease,
   ComputerBusyError,
@@ -13,9 +13,9 @@ import {
   scheduleComputerSleep,
   screenLeaseIdForRun,
   toComputerRef,
-} from "@nova/adapters";
-import { ACTIVE_RUN_STATUSES } from "@nova/core";
-import { IsolationError } from "@nova/db";
+} from "@superchat/adapters";
+import { ACTIVE_RUN_STATUSES } from "@superchat/core";
+import { IsolationError } from "@superchat/db";
 import { ORPCError } from "@orpc/server";
 import { engineComputerClient } from "../../engine-client.js";
 import type { RouterContext } from "../../routers/context.js";

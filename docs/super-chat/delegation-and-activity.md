@@ -17,7 +17,7 @@ Every claim here was checked against the code, and each one carries a `file:line
 
 - Engine paths start with `omnigent/` and are relative to `engine/omnigent/`. For example,
   `omnigent/runner/app.py` is `engine/omnigent/omnigent/runner/app.py`.
-- Nova paths (`apps/`, `packages/`, `infra/`) are relative to the repo root.
+- Superchat paths (`apps/`, `packages/`, `infra/`) are relative to the repo root.
 - Line numbers are from the branch this page was written on. They drift, so search for the symbol
   name if a line has moved.
 
@@ -151,13 +151,13 @@ responsive.
 **Who gets the tool.**
 
 - The Muse bundle allows `start_helper` and declares `worker`, `goal` and `teacher`
-  (`infra/omnigent/agents/nova-claude/config.yaml:65`, `:87-90`).
+  (`infra/omnigent/agents/superchat-claude/config.yaml:65`, `:87-90`).
 - Side chats run on the same agent, so they get it too.
 - A `worker` declares `agents: [subworker]` and allows `start_helper`. It can start parts
   (`infra/omnigent/templates/agents/worker/config.yaml`).
 - A `subworker` cannot start anything.
-- `sys_session_send` and `sys_session_create` are not in any Nova allow list. So `start_helper` is
-  the only way a Nova model launches a Helper.
+- `sys_session_send` and `sys_session_create` are not in any Superchat allow list. So `start_helper` is
+  the only way a Superchat model launches a Helper.
 
 ### Sub-agent Types
 
@@ -218,7 +218,7 @@ On the same Computer as its parent. When the server creates a child, it copies t
 runner and current workspace ("sub-agent co-location",
 `omnigent/server/routes/_sessions/orchestration.py:10117-10150`). Scheduled and ad-hoc Helpers use
 `runner_id=parent.runner_id` (`omnigent/server/scheduled/helper_fire.py:518-578`). Every Type runs
-its shell and file tools in `/home/nova/workspace` with no inner sandbox
+its shell and file tools in `/home/superchat/workspace` with no inner sandbox
 (`infra/omnigent/templates/agents/worker/config.yaml`, `os_env`).
 
 ### Limits on launching
@@ -352,7 +352,7 @@ There is no `message_helper` tool and no `if_running` option. A search for `mess
 `if_running`, `helper_message`, `send_to_helper`, `stop_helper` and `cancel_helper` finds nothing.
 
 The engine has generic steering: `sys_session_send` to an in-flight child, through
-`_send_to_in_flight_child` (`tool_dispatch.py:1684`, `:2936-2953`). But no Nova allow list grants
+`_send_to_in_flight_child` (`tool_dispatch.py:1684`, `:2936-2953`). But no Superchat allow list grants
 `sys_session_send`.
 
 What the Muse and a worker can do with a running Helper:
@@ -380,8 +380,8 @@ flowchart LR
   items --> act["Engine: Activity derivation<br/>superchat/activity/derive.py"]
   tx --> red["Engine: secret redactor<br/>server/redaction.py"]
   act --> red
-  red --> ad["Nova adapter<br/>packages/adapters/src/omnigent"]
-  ad --> api["Nova API relay<br/>apps/api/src/features/activity"]
+  red --> ad["Superchat adapter<br/>packages/adapters/src/omnigent"]
+  ad --> api["Superchat API relay<br/>apps/api/src/features/activity"]
   api --> ui["Web render rules<br/>packages/core/src/tool-presentation.ts<br/>apps/web/src/features/activity"]
 ```
 
@@ -511,7 +511,7 @@ This is the **only** filter on tool arguments and output that reach the Activity
 known secrets. It does not remove personal data, and it does not remove instructions planted in a
 web page.
 
-### Layer 4: Nova adapter, API and web
+### Layer 4: Superchat adapter, API and web
 
 - **Adapter.** `packages/adapters/src/omnigent/redact.ts:1-6` says the engine already redacts the
   transcript, items, search, related chats, activities, feed and asks, so those pass through

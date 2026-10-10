@@ -1,18 +1,18 @@
 # GENERATED FILE — do not edit by hand. Edit infra/omnigent/templates/ (config.yaml.tmpl,
 # AGENTS.md, agents/<type>/config.yaml), then run `node infra/omnigent/render-agents.mjs`.
 #
-# Nova's Super Chat bundle (docs/super-chat/README.md, WIRING.md slice A1): the one agent
+# Superchat's Super Chat bundle (docs/super-chat/README.md, WIRING.md slice A1): the one agent
 # bundle backing `omnigent.context.mode=superside-chat` Conversations, adapted from
-# engine/omnigent/examples/super-chat/ for Nova. Runs on the Claude Agent SDK harness, with
+# engine/omnigent/examples/super-chat/ for Superchat. Runs on the Claude Agent SDK harness, with
 # Sub-agent Types worker under agents/<type>/ — a Muse launches one by its
-# declared name, never by naming a model. The prompt (AGENTS.md) carries the Nova/Muse voice;
+# declared name, never by naming a model. The prompt (AGENTS.md) carries the Superchat/Muse voice;
 # per-turn Memory, Rollover, Side Chats and the Activity Feed all come from Omnigent itself
-# (ADR 0001, engine/omnigent/rollover/adr/0001-omnigent-owns-everything.md) — Nova no longer
+# (ADR 0001, engine/omnigent/rollover/adr/0001-omnigent-owns-everything.md) — Superchat no longer
 # injects anything through a context-provider hook.
 spec_version: 1
 name: {{BUNDLE_NAME}}
 description: >-
-  Nova's Super Chat: the person's one long-running assistant, which does quick work itself,
+  Superchat's Super Chat: the person's one long-running assistant, which does quick work itself,
   hands long multi-step work to worker Helpers, and keeps the conversation itself bounded with
   Omnigent's own Rollover and Memory.
 
@@ -35,11 +35,11 @@ interaction:
 # sandbox, so no inner sandbox and no approval prompts.
 os_env:
   type: caller_process
-  cwd: /home/nova/workspace
+  cwd: /home/superchat/workspace
   sandbox:
     type: none
     # A session opened on a Project starts in its folder; file tools still reach the workspace.
-    write_paths: [/home/nova/workspace]
+    write_paths: [/home/superchat/workspace]
 
 tools:
   builtins:

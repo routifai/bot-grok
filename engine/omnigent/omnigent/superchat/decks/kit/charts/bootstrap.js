@@ -1,4 +1,4 @@
-// Nova: Chart.js defaults for a deck. Runs right after the vendored Chart.js (before the slides' own
+// Superchat: Chart.js defaults for a deck. Runs right after the vendored Chart.js (before the slides' own
 // DOMContentLoaded handlers, which create the charts).
 // The canvas is painted at once: the PDF export prints it and the PowerPoint export reads the chart
 // in its final state, so nothing may still be animating.

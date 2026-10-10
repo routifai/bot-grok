@@ -1,6 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
-import type { ArtifactTable, TableCell, TableCellEdit } from "@nova/contracts";
-import { Button, Tabs, TabsList, TabsTrigger } from "@nova/ui-web";
+import type { ArtifactTable, TableCell, TableCellEdit } from "@superchat/contracts";
+import { Button, Tabs, TabsList, TabsTrigger } from "@superchat/ui-web";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -116,7 +116,7 @@ type History = {
   newest: boolean;
   /** The person's hand edit is the version on screen. */
   manual: boolean;
-  /** Cells changed by hand since the last version Nova saved. */
+  /** Cells changed by hand since the last version Superchat saved. */
   changed: Set<string>;
   /** The edits that put the previous version's values back. */
   revert: TableCellEdit[];
@@ -135,7 +135,7 @@ const defaultSource = {
   listVersions: (input: { familyId: string }) => rpc.artifacts.listVersions(input),
 };
 
-/** A CSV / XLSX as a grid: read, select, ask Nova about a range, and (behind Edit) change cells.
+/** A CSV / XLSX as a grid: read, select, ask Superchat about a range, and (behind Edit) change cells.
  * Every edit saves at once as a new version; `onEdited` hands the caller its id. */
 export function SheetView({
   artifact,
@@ -443,10 +443,10 @@ export function SheetView({
     // biome-ignore lint/correctness/useExhaustiveDependencies: colWidth reads colLeft
   }, [head, frozen, colLeft]);
 
-  // --- ask Nova -----------------------------------------------------------------------------
+  // --- ask Superchat -----------------------------------------------------------------------------
 
   const [asking, setAsking] = useState(false);
-  async function askNova() {
+  async function askSuperchat() {
     if (!sheet) return;
     const label = rangeLabel(selection);
     setAsking(true);
@@ -688,7 +688,7 @@ export function SheetView({
             size="sm"
             className="rounded-full"
             disabled={asking}
-            onClick={() => void askNova()}
+            onClick={() => void askSuperchat()}
           >
             {t`Ask superchat about ${label}`}
           </Button>
@@ -789,7 +789,7 @@ function CellEditor({
   );
 }
 
-/** Which version this is, and what the person changed by hand since Nova's last save. */
+/** Which version this is, and what the person changed by hand since Superchat's last save. */
 async function readHistory(
   source: SheetSource,
   id: string,
@@ -804,7 +804,7 @@ async function readHistory(
   const here = byId.get(id);
   const info: History = { ...NO_HISTORY, newest: versions.length === 0 || versions[0]?.id === id };
   if (here?.origin !== "manual" || !here.parentVersionId) return info;
-  // Walk back to the last version Nova (or a restore) saved: that is what "changed" is against.
+  // Walk back to the last version Superchat (or a restore) saved: that is what "changed" is against.
   let baseId = here.parentVersionId;
   for (let step = 0; step < 50; step += 1) {
     const entry = byId.get(baseId);

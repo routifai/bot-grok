@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { ComputerStatus } from "@nova/contracts";
+import type { ComputerStatus } from "@superchat/contracts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,7 +14,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import { MoreHorizontal } from "lucide-react";
 import { useState } from "react";
 import { rpc } from "../../lib/rpc";

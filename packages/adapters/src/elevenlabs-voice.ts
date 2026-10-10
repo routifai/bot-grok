@@ -8,7 +8,7 @@ import type {
   VoiceSynthesizeRequest,
   VoiceTranscribeRequest,
   VoiceVerifyResult,
-} from "@nova/adapter-kit";
+} from "@superchat/adapter-kit";
 import {
   readVoiceAudio,
   readVoiceJson,

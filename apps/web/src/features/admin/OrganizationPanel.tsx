@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import type { EngineModelsStatus } from "@nova/contracts";
+import type { EngineModelsStatus } from "@superchat/contracts";
 import { useState } from "react";
 import { SettingsGroup, SettingsSegmented } from "../../pages/muse/settings/kit";
 import { BudgetGroup, ModelKeys } from "../models";

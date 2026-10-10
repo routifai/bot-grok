@@ -5,7 +5,7 @@ import type {
   DeckEditTarget,
   DeckEditTheme,
   DeckPatch,
-} from "@nova/contracts";
+} from "@superchat/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { rpc } from "../../../lib/rpc";
 import { registerDeckFlush, takeDeckVersionEdit } from "../deck-ui-state";
@@ -40,7 +40,7 @@ export type PostToFrame = (message: Record<string, unknown>) => void;
  * The deck editor's brain: what is selected, how changes become saved versions, and undo / redo.
  * Every change shows at once in the frame (a preview) and is saved as a `manual` version through
  * one `Committer`; undo and redo save the earlier source back as a new version, so history is
- * always version-aware and a change from Nova ends it (the older sources would clobber hers).
+ * always version-aware and a change from Superchat ends it (the older sources would clobber hers).
  */
 export function useDeckEditor({
   deckKey,
@@ -161,7 +161,7 @@ export function useDeckEditor({
   const preview = useCallback((patches: readonly DeckPatch[]) => {
     for (const patch of patches) {
       if (patch.kind === "set-style")
-        postRef.current({ type: "nova:edit-preview", id: patch.id, style: patch.style });
+        postRef.current({ type: "superchat:edit-preview", id: patch.id, style: patch.style });
     }
   }, []);
 
@@ -240,23 +240,23 @@ export function useDeckEditor({
   const onFrameMessage = useCallback(
     (message: DeckEditFromFrame) => {
       switch (message.type) {
-        case "nova:edit-ready":
+        case "superchat:edit-ready":
           setTheme(message.theme);
           break;
-        case "nova:edit-selection":
+        case "superchat:edit-selection":
           setTargets(message.targets);
           selectedIds.current = message.targets.map((t) => t.id);
           break;
-        case "nova:edit-text-session":
+        case "superchat:edit-text-session":
           setTextEditing(message.active);
           break;
-        case "nova:edit-text-commit":
+        case "superchat:edit-text-commit":
           void committer.commit([{ kind: "set-text", id: message.id, text: message.text }]);
           break;
-        case "nova:edit-ask":
+        case "superchat:edit-ask":
           setAskRequest((n) => n + 1);
           break;
-        case "nova:edit-key":
+        case "superchat:edit-key":
           if (message.action === "undo") void undo();
           else if (message.action === "redo") void redo();
           else if (message.action === "delete") removeSelected();
@@ -289,6 +289,6 @@ export function useDeckEditor({
     remove: removeSelected,
     duplicate: duplicateSelected,
     onFrameMessage,
-    finishText: () => postRef.current({ type: "nova:edit-text-finish", commit: true }),
+    finishText: () => postRef.current({ type: "superchat:edit-text-finish", commit: true }),
   };
 }

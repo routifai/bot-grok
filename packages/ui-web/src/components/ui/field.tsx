@@ -1,7 +1,7 @@
-import { Label } from "@nova/ui-web/components/ui/label";
-import { Separator } from "@nova/ui-web/components/ui/separator";
+import { Label } from "@superchat/ui-web/components/ui/label";
+import { Separator } from "@superchat/ui-web/components/ui/separator";
 
-import { cn } from "@nova/ui-web/lib/utils";
+import { cn } from "@superchat/ui-web/lib/utils";
 import { cva, type VariantProps } from "class-variance-authority";
 import { useMemo } from "react";
 

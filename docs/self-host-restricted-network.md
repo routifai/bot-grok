@@ -6,8 +6,8 @@ These settings change downloads; model and remote-computer providers still need 
 | Failure | Setting or action |
 | --- | --- |
 | Cannot fetch the installer | Download it from your mirror or copy it locally |
-| Cannot fetch Compose files | `NOVA_DOWNLOAD_BASE`, `--local`, or `NOVA_DOWNLOAD_SKIP_EXISTING=1` |
-| Cannot pull app or computer images | `NOVA_IMAGE`, `NOVA_IMAGE_TAG`, `NOVA_COMPUTER_IMAGE`, `NOVA_COMPUTER_IMAGE_TAG` |
+| Cannot fetch Compose files | `SUPERCHAT_DOWNLOAD_BASE`, `--local`, or `SUPERCHAT_DOWNLOAD_SKIP_EXISTING=1` |
+| Cannot pull app or computer images | `SUPERCHAT_IMAGE`, `SUPERCHAT_IMAGE_TAG`, `SUPERCHAT_COMPUTER_IMAGE`, `SUPERCHAT_COMPUTER_IMAGE_TAG` |
 | Cannot pull Postgres or busybox | `POSTGRES_IMAGE`, `BUSYBOX_IMAGE`, or Docker daemon `registry-mirrors` |
 
 ## Installer script
@@ -15,14 +15,14 @@ These settings change downloads; model and remote-computer providers still need 
 When raw GitHub is unreachable, download the installer from your mirror:
 
 ```bash
-export NOVA_INSTALLER_URL=https://example.com/mirror/nova/infra/compose/install-images.sh
-export NOVA_DOWNLOAD_BASE=https://example.com/mirror/nova/infra/compose
-mkdir -p nova && cd nova &&
-curl -fsSL -o install-images.sh "${NOVA_INSTALLER_URL}" &&
+export SUPERCHAT_INSTALLER_URL=https://example.com/mirror/superchat/infra/compose/install-images.sh
+export SUPERCHAT_DOWNLOAD_BASE=https://example.com/mirror/superchat/infra/compose
+mkdir -p superchat && cd superchat &&
+curl -fsSL -o install-images.sh "${SUPERCHAT_INSTALLER_URL}" &&
 bash install-images.sh --prepare-only
 ```
 
-`NOVA_INSTALLER_URL` selects the script for this curl command; `NOVA_DOWNLOAD_BASE` selects
+`SUPERCHAT_INSTALLER_URL` selects the script for this curl command; `SUPERCHAT_DOWNLOAD_BASE` selects
 the Compose files downloaded by that script. Set both when raw GitHub is blocked.
 
 ## Compose files
@@ -31,7 +31,7 @@ To mirror `docker-compose.images.yml` and `.env.images.example`, point the insta
 mirror of `infra/compose`:
 
 ```bash
-export NOVA_DOWNLOAD_BASE=https://example.com/mirror/nova/infra/compose
+export SUPERCHAT_DOWNLOAD_BASE=https://example.com/mirror/superchat/infra/compose
 bash install-images.sh --prepare-only
 ```
 
@@ -43,7 +43,7 @@ To reuse files already present in the working directory:
 # Place docker-compose.images.yml and .env.images.example in this directory first.
 bash install-images.sh --local --prepare-only
 # Equivalent environment setting:
-NOVA_DOWNLOAD_SKIP_EXISTING=1 bash install-images.sh --prepare-only
+SUPERCHAT_DOWNLOAD_SKIP_EXISTING=1 bash install-images.sh --prepare-only
 ```
 
 Missing files are still downloaded. `--prepare-only` creates `.env` without starting the stack;
@@ -56,10 +56,10 @@ After `--prepare-only`, set image overrides in `.env`. For mirrored Postgres or 
 (keep `--local` if using pre-copied Compose files):
 
 ```env
-NOVA_IMAGE=registry.example.com/mirror/nova/app
-NOVA_IMAGE_TAG=edge
-NOVA_COMPUTER_IMAGE=registry.example.com/mirror/nova/computer
-NOVA_COMPUTER_IMAGE_TAG=edge
+SUPERCHAT_IMAGE=registry.example.com/mirror/superchat/app
+SUPERCHAT_IMAGE_TAG=edge
+SUPERCHAT_COMPUTER_IMAGE=registry.example.com/mirror/superchat/computer
+SUPERCHAT_COMPUTER_IMAGE_TAG=edge
 POSTGRES_IMAGE=registry.example.com/library/postgres@sha256:<trusted-postgres-digest>
 BUSYBOX_IMAGE=registry.example.com/library/busybox@sha256:<trusted-busybox-digest>
 ```

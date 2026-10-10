@@ -42,13 +42,13 @@ describe("passwordResetEmail", () => {
   it("keeps the reset URL in text and HTML and never echoes the user-chosen name", () => {
     const message = passwordResetEmail(
       { id: "user-1", email: "ada@example.test", name: '<Ada & "team">' },
-      "https://nova.test/reset-password?token=secret&next=1",
+      "https://superchat.test/reset-password?token=secret&next=1",
     );
 
-    expect(message).toMatchObject({ to: "ada@example.test", subject: "Reset your Nova password" });
-    expect(message.text).toContain("https://nova.test/reset-password?token=secret&next=1");
+    expect(message).toMatchObject({ to: "ada@example.test", subject: "Reset your Superchat password" });
+    expect(message.text).toContain("https://superchat.test/reset-password?token=secret&next=1");
     expect(message.html).toContain("token=secret&amp;next=1");
-    expect(message.html).toContain("Nova");
+    expect(message.html).toContain("Superchat");
     expect(`${message.text}${message.html}`).not.toContain("Ada");
   });
 });

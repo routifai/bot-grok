@@ -1,11 +1,11 @@
 // Forks (ADR 0010, CONTEXT.md "Fork"): the pure rules the fork UI draws from. Colors, the stub or
 // pill under a message, the gutter's dots, and the All forks list's rows, filters and groups.
-import type { ChatSummary, MessageFork, ThreadMessage } from "@nova/contracts";
+import type { ChatSummary, MessageFork, ThreadMessage } from "@superchat/contracts";
 
 /** `fork-1`…`fork-6`, or `done` (grey) for a fork that was added back or archived. */
 export type ForkTone = 1 | 2 | 3 | 4 | 5 | 6 | "done";
 
-/** A fork's state as the person reads it: `live` is an open fork Nova is working in. */
+/** A fork's state as the person reads it: `live` is an open fork Superchat is working in. */
 export type ForkStatus = "live" | "open" | "added" | "archived";
 
 /** Static class names per tone (the fork tokens, `ink-3` for done), so Tailwind sees them. */
@@ -121,7 +121,7 @@ export type GutterGroup = {
   tone: ForkTone;
   /** Some fork is still open. */
   open: boolean;
-  /** Nova is working in one of them. */
+  /** Superchat is working in one of them. */
   live: boolean;
 };
 

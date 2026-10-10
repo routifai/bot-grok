@@ -2,7 +2,7 @@
 
 import { i18n } from "@lingui/core";
 import { I18nProvider } from "@lingui/react";
-import type { DeckTheme } from "@nova/contracts";
+import type { DeckTheme } from "@superchat/contracts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -245,7 +245,7 @@ it("words a refusal for people, never the engine's text", async () => {
     "The deck changed since you opened it. Try again.",
   );
   const inexact = vi.fn(async () => {
-    throw new Error("Can't apply that edit exactly: ask Nova instead.");
+    throw new Error("Can't apply that edit exactly: ask Superchat instead.");
   });
   const b = await mount({ editSource: inexact });
   await act(async () => card(b.container, "nord").click());

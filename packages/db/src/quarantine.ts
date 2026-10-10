@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { ACTIVE_RUN_STATUSES } from "@nova/core";
+import { ACTIVE_RUN_STATUSES } from "@superchat/core";
 import type { PrismaClient } from "./client.js";
 
 /** How long a quarantined space is kept for an admin before it is purged. */

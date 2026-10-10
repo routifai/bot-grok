@@ -39,7 +39,7 @@ export function createServiceLogger(options: {
 }
 
 export const SERVICE_NAMES = {
-  api: "nova-api",
-  worker: "nova-worker",
-  supervisor: "nova-sandbox-supervisor",
+  api: "superchat-api",
+  worker: "superchat-worker",
+  supervisor: "superchat-sandbox-supervisor",
 } as const;

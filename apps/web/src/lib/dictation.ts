@@ -1,4 +1,4 @@
-import { readBoundedResponseBytes } from "@nova/core";
+import { readBoundedResponseBytes } from "@superchat/core";
 import { selectedSpaceId, withSpaceHeaders } from "./rpc.js";
 
 export type DictationMode = "hold" | "endpoint";

@@ -1,5 +1,5 @@
 import * as formulajs from "@formulajs/formulajs";
-import type { TableCell, TableSheet } from "@nova/contracts";
+import type { TableCell, TableSheet } from "@superchat/contracts";
 
 /** A computed cell value; `undefined` from the evaluator means "not computable here". */
 export type FormulaValue = number | string | boolean | null;

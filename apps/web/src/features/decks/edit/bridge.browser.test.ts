@@ -39,7 +39,7 @@ async function open(): Promise<Page> {
   );
   await page.goto("http://deck.test/");
   await page.waitForFunction(() =>
-    (window as unknown as { __msgs: Msg[] }).__msgs.some((m) => m.type === "nova:edit-ready"),
+    (window as unknown as { __msgs: Msg[] }).__msgs.some((m) => m.type === "superchat:edit-ready"),
   );
   return page;
 }
@@ -59,13 +59,13 @@ const activeIndex = (page: Page) =>
     [...document.querySelectorAll(".slide")].findIndex((s) => s.classList.contains("active")),
   );
 const targets = async (page: Page) =>
-  ((await last(page, "nova:edit-selection"))?.targets ?? []) as Array<Record<string, any>>;
+  ((await last(page, "superchat:edit-selection"))?.targets ?? []) as Array<Record<string, any>>;
 
 describe("edit bridge (Chromium)", () => {
   it("announces the theme: colour tokens and font tokens", async () => {
     if (!browser) return;
     const page = await open();
-    const ready = (await last(page, "nova:edit-ready")) as Msg & { theme: any };
+    const ready = (await last(page, "superchat:edit-ready")) as Msg & { theme: any };
     expect(ready.theme.fonts.map((f: any) => f.label)).toContain("Space Grotesk");
     expect(ready.theme.colors.map((c: any) => c.name)).toContain("--accent");
     expect(ready.theme.slideCount).toBeGreaterThan(2);
@@ -75,11 +75,11 @@ describe("edit bridge (Chromium)", () => {
   it("selects on click without navigating, multi-selects with shift, Esc deselects", async () => {
     if (!browser) return;
     const page = await open();
-    await page.click('[data-nova-id="cover-title"]');
+    await page.click('[data-superchat-id="cover-title"]');
     expect((await targets(page)).map((t) => t.id)).toEqual(["cover-title"]);
     expect((await targets(page))[0]).toMatchObject({ kind: "text", editable: true, slide: 1 });
     expect(await activeIndex(page)).toBe(0); // the right half would have gone to slide 2
-    await page.click('[data-nova-id="cover-lead"]', { modifiers: ["Shift"] });
+    await page.click('[data-superchat-id="cover-lead"]', { modifiers: ["Shift"] });
     expect((await targets(page)).map((t) => t.id)).toEqual(["cover-title", "cover-lead"]);
     await page.keyboard.press("Escape");
     expect(await targets(page)).toEqual([]);
@@ -91,7 +91,7 @@ describe("edit bridge (Chromium)", () => {
   it("edits text inline: Enter commits, Esc cancels, runs and styling stay", async () => {
     if (!browser) return;
     const page = await open();
-    const sel = '[data-nova-id="cover-title"]';
+    const sel = '[data-superchat-id="cover-title"]';
     const classBefore = await page.getAttribute(sel, "class");
     await page.dblclick(sel);
     expect(await page.getAttribute(sel, "contenteditable")).toBe("plaintext-only");
@@ -99,7 +99,7 @@ describe("edit bridge (Chromium)", () => {
     await page.keyboard.type("Shipping is fast");
     await page.keyboard.press("Enter");
     expect(await page.getAttribute(sel, "contenteditable")).toBeNull();
-    const commit = (await last(page, "nova:edit-text-commit")) as Msg;
+    const commit = (await last(page, "superchat:edit-text-commit")) as Msg;
     expect(commit).toMatchObject({ id: "cover-title", text: "Shipping is fast" });
     expect(await page.getAttribute(sel, "class")).toBe(classBefore);
 
@@ -108,37 +108,37 @@ describe("edit bridge (Chromium)", () => {
     await page.keyboard.type("zzz");
     await page.keyboard.press("Escape");
     expect(await page.textContent(sel)).toBe("Shipping is fast");
-    expect(await msgs(page, "nova:edit-text-commit")).toHaveLength(1);
+    expect(await msgs(page, "superchat:edit-text-commit")).toHaveLength(1);
     await page.close();
   });
 
   it("nudges with arrows instead of navigating, and forwards undo/delete keys", async () => {
     if (!browser) return;
     const page = await open();
-    await page.click('[data-nova-id="cover-meta"]');
+    await page.click('[data-superchat-id="cover-meta"]');
     await page.keyboard.press("Shift+ArrowRight");
-    expect(await last(page, "nova:edit-key")).toMatchObject({ action: "nudge", dx: 10, dy: 0 });
+    expect(await last(page, "superchat:edit-key")).toMatchObject({ action: "nudge", dx: 10, dy: 0 });
     expect(await activeIndex(page)).toBe(0);
     await page.keyboard.press("Delete");
-    expect(await last(page, "nova:edit-key")).toMatchObject({ action: "delete" });
+    expect(await last(page, "superchat:edit-key")).toMatchObject({ action: "delete" });
     await page.keyboard.press("Meta+z");
-    expect(await last(page, "nova:edit-key")).toMatchObject({ action: "undo" });
+    expect(await last(page, "superchat:edit-key")).toMatchObject({ action: "undo" });
     await page.close();
   });
 
   it("previews styles from the host and reports the new geometry", async () => {
     if (!browser) return;
     const page = await open();
-    await page.click('[data-nova-id="cover-lead"]');
+    await page.click('[data-superchat-id="cover-lead"]');
     const before = (await targets(page))[0]!;
     await host(page, {
-      type: "nova:edit-preview",
+      type: "superchat:edit-preview",
       id: "cover-lead",
       style: { "font-size": "70px", "letter-spacing": "2px" },
     });
     await page.waitForFunction(() =>
       document
-        .querySelector('[data-nova-id="cover-lead"]')
+        .querySelector('[data-superchat-id="cover-lead"]')
         ?.getAttribute("style")
         ?.includes("70px"),
     );
@@ -154,29 +154,29 @@ describe("edit bridge (Chromium)", () => {
     const page = await open();
     await page.evaluate(() =>
       window.postMessage(
-        { type: "nova:edit-select", v: 1, nonce: "nope", ids: ["cover-title"] },
+        { type: "superchat:edit-select", v: 1, nonce: "nope", ids: ["cover-title"] },
         "*",
       ),
     );
     await page.evaluate(() =>
-      window.postMessage({ type: "nova:edit-select", v: 2, nonce: "x", ids: ["cover-title"] }, "*"),
+      window.postMessage({ type: "superchat:edit-select", v: 2, nonce: "x", ids: ["cover-title"] }, "*"),
     );
     await page.waitForTimeout(100);
-    expect(await msgs(page, "nova:edit-selection")).toHaveLength(0);
-    await host(page, { type: "nova:edit-select", ids: ["cover-title"] });
+    expect(await msgs(page, "superchat:edit-selection")).toHaveLength(0);
+    await host(page, { type: "superchat:edit-select", ids: ["cover-title"] });
     await page.waitForFunction(() =>
-      (window as any).__msgs.some((m: any) => m.type === "nova:edit-selection"),
+      (window as any).__msgs.some((m: any) => m.type === "superchat:edit-selection"),
     );
     expect((await targets(page)).map((t) => t.id)).toEqual(["cover-title"]);
     await page.close();
   });
 
-  it("the Ask Nova button on the selection chrome reports itself and keeps the selection", async () => {
+  it("the Ask Superchat button on the selection chrome reports itself and keeps the selection", async () => {
     if (!browser) return;
     const page = await open();
-    await page.click('[data-nova-id="cover-lead"]');
-    await page.click("[data-nova-edit-ask]");
-    expect((await msgs(page, "nova:edit-ask")).length).toBe(1);
+    await page.click('[data-superchat-id="cover-lead"]');
+    await page.click("[data-superchat-edit-ask]");
+    expect((await msgs(page, "superchat:edit-ask")).length).toBe(1);
     expect((await targets(page)).map((t) => t.id)).toEqual(["cover-lead"]);
     expect(await activeIndex(page)).toBe(0);
     await page.close();
@@ -202,19 +202,19 @@ describe("edit bridge (Chromium)", () => {
     });
     await page.goto("http://host.test/");
     await page.waitForFunction(() =>
-      (window as unknown as { __msgs: Msg[] }).__msgs.some((m) => m.type === "nova:edit-ready"),
+      (window as unknown as { __msgs: Msg[] }).__msgs.some((m) => m.type === "superchat:edit-ready"),
     );
     const inner = page.frameLocator("iframe").frameLocator("iframe");
-    await inner.locator('[data-nova-id="cover-title"]').click();
+    await inner.locator('[data-superchat-id="cover-title"]').click();
     expect((await targets(page)).map((t) => t.id)).toEqual(["cover-title"]);
     // The host answers through the relay; the bridge accepts it only with the nonce.
     await page.evaluate((n) => {
       const outer = document.querySelector("iframe")?.contentWindow;
       outer?.postMessage(
-        { type: "nova:edit-select", v: 1, nonce: "wrong-wrong-wrong", ids: [] },
+        { type: "superchat:edit-select", v: 1, nonce: "wrong-wrong-wrong", ids: [] },
         "*",
       );
-      outer?.postMessage({ type: "nova:edit-select", v: 1, nonce: n, ids: ["cover-lead"] }, "*");
+      outer?.postMessage({ type: "superchat:edit-select", v: 1, nonce: n, ids: ["cover-lead"] }, "*");
     }, NONCE);
     await page.waitForTimeout(150);
     expect((await targets(page)).map((t) => t.id)).toEqual(["cover-lead"]);

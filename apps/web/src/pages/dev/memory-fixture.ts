@@ -116,7 +116,7 @@ export const DEV_CLAIMS: MemoryClaim[] = [
   {
     id: "w1",
     kind: "working_style",
-    text: "You like Nova to ask one clarifying question before starting big tasks.",
+    text: "You like Superchat to ask one clarifying question before starting big tasks.",
     origin: "said",
     personAuthored: false,
     date: at(10, 2),

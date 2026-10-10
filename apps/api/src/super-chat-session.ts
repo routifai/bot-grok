@@ -5,9 +5,9 @@ import {
   type OmnigentClientConfig,
   omnigentClientConfigFromEnv,
   omnigentClientFor,
-} from "@nova/adapters";
-import type { Actor } from "@nova/contracts";
-import type { PrismaClient } from "@nova/db";
+} from "@superchat/adapters";
+import type { Actor } from "@superchat/contracts";
+import type { PrismaClient } from "@superchat/db";
 import { ORPCError } from "@orpc/server";
 
 export interface SuperChatDeps {

@@ -1,9 +1,9 @@
 // "Teach a task" (docs/adr/0004-engine-owns-the-computer.md): the engine records what the person
 // does on the Computer, drafts the skill from the recording and stores it versioned on its server.
-// Nova only relays: it starts and stops the recording (with Take over), maps the engine's skill
-// onto the Review sheet's contract, and keeps the draft card in the thread. No Nova skill rows.
-import type { JobPublisher } from "@nova/adapter-kit";
-import { runContinueJob } from "@nova/adapter-kit";
+// Superchat only relays: it starts and stops the recording (with Take over), maps the engine's skill
+// onto the Review sheet's contract, and keeps the draft card in the thread. No Superchat skill rows.
+import type { JobPublisher } from "@superchat/adapter-kit";
+import { runContinueJob } from "@superchat/adapter-kit";
 import {
   deleteOmnigentTaughtSkill,
   emitSkillDraftMessages,
@@ -18,11 +18,11 @@ import {
   saveOmnigentTaughtSkill,
   startOmnigentRecording,
   stopOmnigentRecording,
-} from "@nova/adapters";
-import type { Actor, MessageBlock, SkillDraft, TaughtSkill } from "@nova/contracts";
-import { ACTIVE_RUN_STATUSES, buildPlaybookFromRecording, type SkillPlaybook } from "@nova/core";
-import { ENGINE_COMPUTER_ID } from "@nova/core/node/screen-capability";
-import { IsolationError, type PrismaClient, type ThreadEvents } from "@nova/db";
+} from "@superchat/adapters";
+import type { Actor, MessageBlock, SkillDraft, TaughtSkill } from "@superchat/contracts";
+import { ACTIVE_RUN_STATUSES, buildPlaybookFromRecording, type SkillPlaybook } from "@superchat/core";
+import { ENGINE_COMPUTER_ID } from "@superchat/core/node/screen-capability";
+import { IsolationError, type PrismaClient, type ThreadEvents } from "@superchat/db";
 import { ORPCError } from "@orpc/server";
 import { engineComputerClient, engineSessionOf } from "../../engine-client.js";
 import { engineComputerRelease, engineComputerTakeover } from "../computer/index.js";

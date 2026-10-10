@@ -1,4 +1,4 @@
-import { cn } from "@nova/ui-web";
+import { cn } from "@superchat/ui-web";
 import type { MouseEvent, ReactNode, RefObject } from "react";
 import { useState } from "react";
 import { ArtifactPreviewThumbnail, type PreviewableArtifact } from "./ArtifactPreviewThumbnail";
@@ -100,7 +100,7 @@ export function ArtifactPreviewCard({
 /** Shared look for a small round frosted-glass action button; export it for triggers
  *  (e.g. a dropdown menu trigger) that need the same chrome but not `GlassAction`'s onClick. */
 export const glassActionClassName =
-  "nova-glass-pill pointer-events-auto grid size-7 shrink-0 place-items-center rounded-full text-ink-2 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1";
+  "superchat-glass-pill pointer-events-auto grid size-7 shrink-0 place-items-center rounded-full text-ink-2 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1";
 
 /** A small round frosted-glass action button, meant to sit in `ArtifactPreviewCard`'s actions slot. */
 export function GlassAction({

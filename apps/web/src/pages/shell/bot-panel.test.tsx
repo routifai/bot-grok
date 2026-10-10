@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { Bot, Me } from "@nova/contracts";
+import type { Bot, Me } from "@superchat/contracts";
 import type { ComponentProps, ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -21,9 +21,9 @@ vi.mock("@lingui/react/macro", () => {
   return { useLingui: () => ({ t }), Trans: ({ children }: { children: ReactNode }) => children };
 });
 vi.mock("@lingui/core/macro", () => ({ t: (parts: TemplateStringsArray) => parts.join("") }));
-vi.mock("../../components/ai/orb", () => ({ NovaOrb: () => <div /> }));
+vi.mock("../../components/ai/orb", () => ({ SuperchatOrb: () => <div /> }));
 vi.mock("../ScratchpadSection", () => ({ ScratchpadSection: () => <div /> }));
-vi.mock("@nova/ui-web", () => {
+vi.mock("@superchat/ui-web", () => {
   const Container = ({ children, ...props }: ComponentProps<"div">) => (
     <div {...props}>{children}</div>
   );
@@ -99,7 +99,7 @@ function render() {
   return { container, root };
 }
 
-it("never renders a proactivity control (it now lives in Settings > Nova)", async () => {
+it("never renders a proactivity control (it now lives in Settings > Superchat)", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.me.mockResolvedValue(me());
   const { container, root } = render();

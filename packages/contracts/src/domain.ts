@@ -697,7 +697,7 @@ export const RunSchema = z.object({
     "created",
     /** Super Chat slice A1 (docs/super-chat/WIRING.md): "the Muse speaks first" — an assistant
      * message the Super Chat produced on its own (a Helper's Result waking it), copied into
-     * Nova's thread by the mirror job (packages/adapters/src/omnigent/mirror.ts) rather than a
+     * Superchat's thread by the mirror job (packages/adapters/src/omnigent/mirror.ts) rather than a
      * person's message or the normal run path. */
     "omnigent_mirror",
   ]),
@@ -716,7 +716,7 @@ export const ThreadMessagePageSchema = z.object({
   messages: z.array(ThreadMessageSchema),
   olderCursor: z.number().int().nonnegative().nullable(),
   /** Omnigent-backed pages only (`chats.transcript`, docs/super-chat/WIRING.md): the engine's
-   * `older_cursor`, to page further back with `chats.transcript({chatId, before})`. A Nova-native
+   * `older_cursor`, to page further back with `chats.transcript({chatId, before})`. A Superchat-native
    * thread page (goals.log) never sets this; `olderCursor`'s integer seq keeps meaning what it
    * always has there. `null`/omitted means there is no older page. */
   olderItemCursor: z.string().nullable().optional(),

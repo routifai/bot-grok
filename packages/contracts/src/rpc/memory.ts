@@ -3,7 +3,7 @@ import * as z from "zod";
 import { Id } from "../ids.js";
 
 /** One memory claim for the Memory tab's editable sections (engine `memory/claims`). `origin`
- * is where it came from: the person's words, their own edit, or something Nova noticed. */
+ * is where it came from: the person's words, their own edit, or something Superchat noticed. */
 const MemoryClaimSchema = z.object({
   id: z.string(),
   kind: z.string(),
@@ -12,7 +12,7 @@ const MemoryClaimSchema = z.object({
   personAuthored: z.boolean(),
   /** Epoch seconds the claim was last confirmed (first written when never reinforced). */
   date: z.number(),
-  /** Past its end date: kept out of Nova's context and search, shown so the person can forget it. */
+  /** Past its end date: kept out of Superchat's context and search, shown so the person can forget it. */
   expired: z.boolean(),
 });
 

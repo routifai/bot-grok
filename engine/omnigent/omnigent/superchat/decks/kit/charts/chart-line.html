@@ -1,16 +1,16 @@
 <!-- Portions modified from nexu-io/open-design design-templates/html-ppt/templates/single-page/chart-line.html@802708f,
      MIT (Copyright (c) 2026 lewis, see design-templates/html-ppt/LICENSE; the repository is Apache-2.0).
-     Changes: the <section> alone (Nova supplies the deck around it); Nova layout classes and data-nova-id
+     Changes: the <section> alone (Superchat supplies the deck around it); Superchat layout classes and data-superchat-id
      on every element; a caption that cites the data source; a unique canvas id per slide; the colors are
      read from the canvas' own CSS tokens (--accent, --accent-2, --accent-3, --muted, --line) so a slide
      surface can recolor them; the chart is in a fixed-height container (data-report skill rule); the
-     script carries data-nova-chart. The Chart.js options are otherwise as in the template. -->
-<section class="slide t-a l-chart" data-screen-label="05 DAU and retention" data-nova-id="dau-line">
-  <div class="kicker" data-nova-id="dau-line-kicker">Chart · line</div>
-  <h2 class="title" data-nova-id="dau-line-title">Daily actives and retention side by side</h2>
-  <div class="chart" data-nova-id="dau-line-chart"><canvas id="dau-line-canvas" data-nova-id="dau-line-canvas"></canvas></div>
-  <p class="source" data-nova-id="dau-line-source">Source: analytics/weekly.csv, columns dau_k and retention_pct</p>
-  <script data-nova-chart>
+     script carries data-superchat-chart. The Chart.js options are otherwise as in the template. -->
+<section class="slide t-a l-chart" data-screen-label="05 DAU and retention" data-superchat-id="dau-line">
+  <div class="kicker" data-superchat-id="dau-line-kicker">Chart · line</div>
+  <h2 class="title" data-superchat-id="dau-line-title">Daily actives and retention side by side</h2>
+  <div class="chart" data-superchat-id="dau-line-chart"><canvas id="dau-line-canvas" data-superchat-id="dau-line-canvas"></canvas></div>
+  <p class="source" data-superchat-id="dau-line-source">Source: analytics/weekly.csv, columns dau_k and retention_pct</p>
+  <script data-superchat-chart>
     addEventListener('DOMContentLoaded',()=>{
       const canvas=document.getElementById('dau-line-canvas');
       const css=getComputedStyle(canvas);
@@ -32,5 +32,5 @@
                   y:{ticks:{color:text2},grid:{color:border}}}}});
     });
   </script>
-  <div class="foot" data-nova-id="dau-line-foot"><span data-nova-id="dau-line-foot-left">Deck name</span><span data-nova-id="dau-line-foot-page">04</span></div>
+  <div class="foot" data-superchat-id="dau-line-foot"><span data-superchat-id="dau-line-foot-left">Deck name</span><span data-superchat-id="dau-line-foot-page">04</span></div>
 </section>

@@ -1,5 +1,5 @@
-appId: com.nova.app
-name: Nova mobile screenshots
+appId: com.superchat.app
+name: Superchat mobile screenshots
 tags:
   - screenshots
 ---
@@ -10,7 +10,7 @@ tags:
 
 # A cold API 34 emulator can show a launcher ANR over the healthy app.
 - extendedWaitUntil:
-    visible: "Sign up for Nova|Pixel Launcher isn't responding"
+    visible: "Sign up for Superchat|Pixel Launcher isn't responding"
     timeout: 30000
 - runFlow:
     when:
@@ -18,11 +18,11 @@ tags:
     commands:
       - tapOn: "Close app"
 - extendedWaitUntil:
-    visible: "Sign up for Nova"
+    visible: "Sign up for Superchat"
     timeout: 30000
 - takeScreenshot: "02-sign-up"
 - tapOn: "Sign in"
-- assertVisible: "Sign in to Nova"
+- assertVisible: "Sign in to Superchat"
 - takeScreenshot: "01-sign-in"
 
 - tapOn: "Use a custom server"
@@ -31,9 +31,9 @@ tags:
 - tapOn: "Cancel"
 
 - tapOn: "Email"
-- inputText: ${NOVA_SCREENSHOT_EMAIL}
+- inputText: ${SUPERCHAT_SCREENSHOT_EMAIL}
 - tapOn: "Password"
-- inputText: ${NOVA_SCREENSHOT_PASSWORD}
+- inputText: ${SUPERCHAT_SCREENSHOT_PASSWORD}
 - hideKeyboard
 - tapOn: "Sign in"
 - tapOn:
@@ -59,19 +59,19 @@ tags:
     timeout: 10000
 - takeScreenshot: "06-search-results"
 
-- openLink: "nova:///new"
+- openLink: "superchat:///new"
 - assertVisible: "Name this bot"
 - takeScreenshot: "07-new-bot"
 
-- openLink: "nova:///new-group"
+- openLink: "superchat:///new-group"
 - assertVisible: "Name this group"
 - takeScreenshot: "08-new-group"
 
-- openLink: "nova:///new-space"
+- openLink: "superchat:///new-space"
 - assertVisible: "Customer support"
 - takeScreenshot: "09-new-space"
 
-- openLink: "nova:///account"
+- openLink: "superchat:///account"
 - extendedWaitUntil:
     visible: "Change password"
     timeout: 10000
@@ -81,7 +81,7 @@ tags:
 - takeScreenshot: "10b-change-password"
 - back
 
-- openLink: "nova:///models"
+- openLink: "superchat:///models"
 - extendedWaitUntil:
     visible: "Active model"
     timeout: 10000
@@ -95,13 +95,13 @@ tags:
     direction: DOWN
 - takeScreenshot: "11b-all-providers"
 
-- openLink: "nova:///voice"
+- openLink: "superchat:///voice"
 - extendedWaitUntil:
     visible: "Scripted"
     timeout: 10000
 - takeScreenshot: "12-voice"
 
-- openLink: "nova:///integrations"
+- openLink: "superchat:///integrations"
 - extendedWaitUntil:
     visible: "Search apps"
     timeout: 10000
@@ -111,7 +111,7 @@ tags:
 - assertVisible: "Add MCP server"
 - takeScreenshot: "14-integrations-advanced"
 
-- openLink: "nova:///thread?botId=${NOVA_SCREENSHOT_BOT_ID}&name=Researcher"
+- openLink: "superchat:///thread?botId=${SUPERCHAT_SCREENSHOT_BOT_ID}&name=Researcher"
 - extendedWaitUntil:
     visible: "The fixture workspace is ready."
     timeout: 10000
@@ -142,7 +142,7 @@ tags:
 - takeScreenshot: "16-bot-actions"
 - back
 
-- openLink: "nova:///bot-settings?botId=${NOVA_SCREENSHOT_BOT_ID}"
+- openLink: "superchat:///bot-settings?botId=${SUPERCHAT_SCREENSHOT_BOT_ID}"
 - extendedWaitUntil:
     visible: "Researcher"
     timeout: 10000
@@ -153,13 +153,13 @@ tags:
 - assertVisible: "Space default.*"
 - takeScreenshot: "17-bot-settings"
 
-- openLink: "nova:///computer?botId=${NOVA_SCREENSHOT_BOT_ID}&name=Researcher"
+- openLink: "superchat:///computer?botId=${SUPERCHAT_SCREENSHOT_BOT_ID}&name=Researcher"
 - extendedWaitUntil:
     visible: "Take control"
     timeout: 10000
 - takeScreenshot: "18-computer"
 
-- openLink: "nova:///group-thread?groupId=${NOVA_SCREENSHOT_GROUP_ID}&name=Launch%20team"
+- openLink: "superchat:///group-thread?groupId=${SUPERCHAT_SCREENSHOT_GROUP_ID}&name=Launch%20team"
 - extendedWaitUntil:
     visible: "The fixture launch plan is ready."
     timeout: 10000
@@ -173,57 +173,57 @@ tags:
 - assertVisible: "More"
 - back
 
-- openLink: "nova:///group-settings?groupId=${NOVA_SCREENSHOT_GROUP_ID}"
+- openLink: "superchat:///group-settings?groupId=${SUPERCHAT_SCREENSHOT_GROUP_ID}"
 - extendedWaitUntil:
     visible: "Delete group"
     timeout: 10000
 - takeScreenshot: "20-group-settings"
 
-- openLink: "nova:///routine?botId=${NOVA_SCREENSHOT_BOT_ID}&botName=Researcher&routineId=${NOVA_SCREENSHOT_ROUTINE_ID}"
+- openLink: "superchat:///routine?botId=${SUPERCHAT_SCREENSHOT_BOT_ID}&botName=Researcher&routineId=${SUPERCHAT_SCREENSHOT_ROUTINE_ID}"
 - extendedWaitUntil:
     visible: "Weekly fixture review"
     timeout: 10000
 - takeScreenshot: "21-routine"
 
 # Verify saved appearance changes on already-mounted screens and modal routes.
-- openLink: "nova:///account"
+- openLink: "superchat:///account"
 - extendedWaitUntil:
     visible: "Dark"
     timeout: 10000
 - tapOn: "Dark"
 - takeScreenshot: "22-account-dark"
 
-- openLink: "nova:///new"
+- openLink: "superchat:///new"
 - assertVisible: "Name this bot"
 - takeScreenshot: "23-new-bot-dark"
 
-- openLink: "nova:///new-group"
+- openLink: "superchat:///new-group"
 - assertVisible: "Name this group"
 - takeScreenshot: "24-new-group-dark"
 
-- openLink: "nova:///new-space"
+- openLink: "superchat:///new-space"
 - assertVisible: "Customer support"
 - takeScreenshot: "25-new-space-dark"
 
-- openLink: "nova:///thread?botId=${NOVA_SCREENSHOT_BOT_ID}&name=Researcher"
+- openLink: "superchat:///thread?botId=${SUPERCHAT_SCREENSHOT_BOT_ID}&name=Researcher"
 - extendedWaitUntil:
     visible: "The fixture workspace is ready."
     timeout: 10000
 - takeScreenshot: "26-thread-dark"
 
-- openLink: "nova:///group-thread?groupId=${NOVA_SCREENSHOT_GROUP_ID}&name=Launch%20team"
+- openLink: "superchat:///group-thread?groupId=${SUPERCHAT_SCREENSHOT_GROUP_ID}&name=Launch%20team"
 - extendedWaitUntil:
     visible: "The fixture launch plan is ready."
     timeout: 10000
 - takeScreenshot: "27-group-thread-dark"
 
-- openLink: "nova:///group-settings?groupId=${NOVA_SCREENSHOT_GROUP_ID}"
+- openLink: "superchat:///group-settings?groupId=${SUPERCHAT_SCREENSHOT_GROUP_ID}"
 - assertVisible: "Delete group"
 - takeScreenshot: "28-group-settings-dark"
 
-- openLink: "nova:///account"
+- openLink: "superchat:///account"
 - tapOn: "Light"
-- openLink: "nova:///thread?botId=${NOVA_SCREENSHOT_BOT_ID}&name=Researcher"
+- openLink: "superchat:///thread?botId=${SUPERCHAT_SCREENSHOT_BOT_ID}&name=Researcher"
 - assertVisible: "The fixture workspace is ready."
 - takeScreenshot: "29-thread-light-restored"
 

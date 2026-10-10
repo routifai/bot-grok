@@ -1,5 +1,5 @@
-import type { RealtimeFanout } from "@nova/adapter-kit";
-import { encodeLoginSecret } from "@nova/contracts";
+import type { RealtimeFanout } from "@superchat/adapter-kit";
+import { encodeLoginSecret } from "@superchat/contracts";
 import { describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from "./client.js";
 import {

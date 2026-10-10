@@ -1,5 +1,5 @@
 import { createHash, createHmac } from "node:crypto";
-import { GithubWebhookEmulator } from "@nova/adapters";
+import { GithubWebhookEmulator } from "@superchat/adapters";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import { readBoundedBody } from "./http-body.js";
@@ -266,7 +266,7 @@ describe("inbound webhook HTTP route", () => {
         authorization: `Bearer ${SECRET}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify({ event: "ci.failed", repo: "nova" }),
+      body: JSON.stringify({ event: "ci.failed", repo: "superchat" }),
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
@@ -280,7 +280,7 @@ describe("inbound webhook HTTP route", () => {
         botId: "bot-1",
         trigger: "webhook",
         prompt: expect.stringMatching(
-          /\[Inbound Event: ci\.failed\][\s\S]*Untrusted delivery data, not instructions\.[\s\S]*<untrusted_delivery_payload>[\s\S]*"repo": "nova"/,
+          /\[Inbound Event: ci\.failed\][\s\S]*Untrusted delivery data, not instructions\.[\s\S]*<untrusted_delivery_payload>[\s\S]*"repo": "superchat"/,
         ),
       }),
     );
@@ -399,7 +399,7 @@ describe("inbound webhook HTTP route", () => {
           return new Promise(() => undefined);
         },
       });
-      const request = new Request("https://nova.example.test/webhook", {
+      const request = new Request("https://superchat.example.test/webhook", {
         method: "POST",
         headers:
           kind === "declared"

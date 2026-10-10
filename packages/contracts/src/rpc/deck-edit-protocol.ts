@@ -2,7 +2,7 @@ import * as z from "zod";
 
 // The postMessage protocol between the deck viewer (host) and the edit bridge injected into the
 // sandboxed deck frame. Every message carries `v` and the per-frame `nonce`; the host also checks
-// `event.source`. The bridge talks to `window.parent` only, and only the `nova:` types cross the
+// `event.source`. The bridge talks to `window.parent` only, and only the `superchat:` types cross the
 // sandbox shell's relay.
 
 export const DECK_EDIT_PROTOCOL_VERSION = 1;
@@ -45,29 +45,29 @@ export type DeckEditTheme = z.infer<typeof DeckEditThemeSchema>;
 
 /** Messages the bridge sends to the host. */
 export const DeckEditFromFrameSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("nova:edit-ready"), ...Base, theme: DeckEditThemeSchema }),
+  z.object({ type: z.literal("superchat:edit-ready"), ...Base, theme: DeckEditThemeSchema }),
   z.object({
-    type: z.literal("nova:edit-selection"),
+    type: z.literal("superchat:edit-selection"),
     ...Base,
     targets: z.array(DeckEditTargetSchema).max(200),
   }),
   z.object({
-    type: z.literal("nova:edit-text-session"),
+    type: z.literal("superchat:edit-text-session"),
     ...Base,
     id: Str(128),
     active: z.boolean(),
   }),
   z.object({
-    type: z.literal("nova:edit-text-commit"),
+    type: z.literal("superchat:edit-text-commit"),
     ...Base,
     id: Str(128),
     text: Str(20_000),
     before: Str(20_000),
   }),
-  /** The "Ask Nova" button on the selection chrome was pressed. */
-  z.object({ type: z.literal("nova:edit-ask"), ...Base }),
+  /** The "Ask Superchat" button on the selection chrome was pressed. */
+  z.object({ type: z.literal("superchat:edit-ask"), ...Base }),
   z.object({
-    type: z.literal("nova:edit-key"),
+    type: z.literal("superchat:edit-key"),
     ...Base,
     action: z.enum(["undo", "redo", "delete", "duplicate", "nudge"]),
     dx: z.number().int().min(-100).max(100).optional(),
@@ -78,13 +78,13 @@ export type DeckEditFromFrame = z.infer<typeof DeckEditFromFrameSchema>;
 
 /** Messages the host sends to the bridge. */
 export const DeckEditToFrameSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("nova:edit-select"), ...Base, ids: z.array(Str(128)).max(200) }),
+  z.object({ type: z.literal("superchat:edit-select"), ...Base, ids: z.array(Str(128)).max(200) }),
   z.object({
-    type: z.literal("nova:edit-preview"),
+    type: z.literal("superchat:edit-preview"),
     ...Base,
     id: Str(128),
     style: z.record(Str(64), Str(512).nullable()),
   }),
-  z.object({ type: z.literal("nova:edit-text-finish"), ...Base, commit: z.boolean() }),
+  z.object({ type: z.literal("superchat:edit-text-finish"), ...Base, commit: z.boolean() }),
 ]);
 export type DeckEditToFrame = z.infer<typeof DeckEditToFrameSchema>;

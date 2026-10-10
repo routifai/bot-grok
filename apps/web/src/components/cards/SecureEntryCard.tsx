@@ -1,6 +1,6 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { ReplyCardDataOf } from "@nova/contracts";
-import { Button, Input } from "@nova/ui-web";
+import type { ReplyCardDataOf } from "@superchat/contracts";
+import { Button, Input } from "@superchat/ui-web";
 import { Check } from "lucide-react";
 import { useEffect, useState } from "react";
 import { rpc } from "../../lib/rpc";
@@ -10,7 +10,7 @@ import { hostOf } from "./links";
 
 /**
  * The Muse asked for a login. The value goes from these fields straight to the vault through
- * Nova's API: it is never a chat message, and the field is emptied the moment it is submitted.
+ * Superchat's API: it is never a chat message, and the field is emptied the moment it is submitted.
  */
 export function SecureEntryCard({ data }: { data: ReplyCardDataOf<"secure_entry"> }) {
   const { t } = useLingui();

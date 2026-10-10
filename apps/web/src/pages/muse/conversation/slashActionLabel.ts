@@ -1,5 +1,5 @@
 import { t } from "@lingui/core/macro";
-import type { SlashActionId } from "@nova/core";
+import type { SlashActionId } from "@superchat/core";
 
 export function slashActionLabel(id: SlashActionId) {
   switch (id) {

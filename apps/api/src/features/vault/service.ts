@@ -1,4 +1,4 @@
-// The secrets vault (engine `/v1/me/vault`, docs/muse): Nova relays the secure-entry form's submit
+// The secrets vault (engine `/v1/me/vault`, docs/muse): Superchat relays the secure-entry form's submit
 // and the Settings list. A value passes through `save` once, goes straight to the engine and is
 // never stored, returned or logged here.
 import {
@@ -10,9 +10,9 @@ import {
   omnigentClientConfigFromEnv,
   omnigentClientFor,
   saveOmnigentVaultEntry,
-} from "@nova/adapters";
-import type { Actor } from "@nova/contracts";
-import type { PrismaClient } from "@nova/db";
+} from "@superchat/adapters";
+import type { Actor } from "@superchat/contracts";
+import type { PrismaClient } from "@superchat/db";
 import { ORPCError } from "@orpc/server";
 
 export interface VaultDeps {

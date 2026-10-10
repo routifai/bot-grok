@@ -1,6 +1,6 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import { type Bot, GROUP_MEMBER_MAX, GROUP_MEMBER_MIN, type Group } from "@nova/contracts";
-import { BotAvatar, Button, Input } from "@nova/ui-web";
+import { type Bot, GROUP_MEMBER_MAX, GROUP_MEMBER_MIN, type Group } from "@superchat/contracts";
+import { BotAvatar, Button, Input } from "@superchat/ui-web";
 import { Check } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 

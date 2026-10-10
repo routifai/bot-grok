@@ -1,5 +1,5 @@
 import { t } from "@lingui/core/macro";
-import type { Artifact, ArtifactVersion } from "@nova/contracts";
+import type { Artifact, ArtifactVersion } from "@superchat/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { decodeArtifactBase64 } from "../../../lib/artifact-open";
 import { rpc } from "../../../lib/rpc";

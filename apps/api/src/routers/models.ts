@@ -13,9 +13,9 @@ import {
   serializeModelSecret,
   UNAVAILABLE_MODEL_FOR_AUTH_MESSAGE,
   validateModelAuthAvailability,
-} from "@nova/adapters";
-import type { Actor } from "@nova/contracts";
-import { OPENAI_COMPATIBLE_PROVIDER_ID, usableModelId } from "@nova/contracts";
+} from "@superchat/adapters";
+import type { Actor } from "@superchat/contracts";
+import { OPENAI_COMPATIBLE_PROVIDER_ID, usableModelId } from "@superchat/contracts";
 import {
   defaultModelCredentialCandidates,
   deleteUnreferencedCredentialSecret,
@@ -26,7 +26,7 @@ import {
   Prisma,
   selectSpaceModelPreference,
   selectSpaceVoicePreference,
-} from "@nova/db";
+} from "@superchat/db";
 import { ORPCError } from "@orpc/server";
 import { withSerializableRetry } from "../serializable-retry.js";
 import {

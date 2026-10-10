@@ -1,4 +1,4 @@
-import { resolvePersonaColorDef, shippedBotAvatarShapePath } from "@nova/core";
+import { resolvePersonaColorDef, shippedBotAvatarShapePath } from "@superchat/core";
 import { describe, expect, it } from "vitest";
 import { mobileBotAvatarPresentation } from "./bot-avatar.js";
 

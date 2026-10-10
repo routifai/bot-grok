@@ -1,5 +1,5 @@
-import type { MessageBlock } from "@nova/contracts";
-import { speechFromBlocks } from "@nova/core";
+import type { MessageBlock } from "@superchat/contracts";
+import { speechFromBlocks } from "@superchat/core";
 
 const IN_PROGRESS_RUN_STATUSES = new Set(["running", "queued", "leased"]);
 

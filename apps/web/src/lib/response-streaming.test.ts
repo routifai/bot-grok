@@ -1,4 +1,4 @@
-import { RESPONSE_STREAMING_STORAGE_KEY } from "@nova/core";
+import { RESPONSE_STREAMING_STORAGE_KEY } from "@superchat/core";
 import { describe, expect, it } from "vitest";
 import {
   persistResponseStreamingPreference,

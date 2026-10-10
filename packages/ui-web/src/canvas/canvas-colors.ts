@@ -1,7 +1,7 @@
-import { GROK_COLOR_LIST, resolvePersonaColorDef } from "@nova/core";
+import { GROK_COLOR_LIST, resolvePersonaColorDef } from "@superchat/core";
 
 /**
- * Nova Canvas reuses the app's existing identity-color set (the same hues bots use for
+ * Superchat Canvas reuses the app's existing identity-color set (the same hues bots use for
  * their avatars) for anything that needs to tell categories apart — item-card monograms and
  * multi-series charts — rather than inventing new product colors. A single-series chart
  * stays monochrome ink, matching the rest of the UI.

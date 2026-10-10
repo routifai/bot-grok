@@ -1,5 +1,5 @@
-import type { Actor } from "@nova/contracts";
-import type { PrismaClient } from "@nova/db";
+import type { Actor } from "@superchat/contracts";
+import type { PrismaClient } from "@superchat/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { answerAsk, countAsks, listAsks } from "./asks-service.js";
 
@@ -8,7 +8,7 @@ afterEach(() => vi.unstubAllGlobals());
 const actor: Actor = {
   spaceId: "space-1",
   userId: "user-1",
-  email: "user@nova.test",
+  email: "user@superchat.test",
   isDeploymentOwner: true,
 };
 

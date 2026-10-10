@@ -1,7 +1,7 @@
-import { type ComputerUpdate, ComputerUpdateSchema } from "@nova/contracts";
-import { ACTIVE_RUN_STATUSES } from "@nova/core";
-import type { PrismaClient } from "@nova/db";
-import { getLogger } from "@nova/logging";
+import { type ComputerUpdate, ComputerUpdateSchema } from "@superchat/contracts";
+import { ACTIVE_RUN_STATUSES } from "@superchat/core";
+import type { PrismaClient } from "@superchat/db";
+import { getLogger } from "@superchat/logging";
 import { scheduleComputerSleep } from "./computer-idle.js";
 import {
   ComputerBusyError,

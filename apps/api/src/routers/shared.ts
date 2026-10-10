@@ -1,6 +1,6 @@
-import type { AdapterContext } from "@nova/adapter-kit";
-import type { Actor, Me } from "@nova/contracts";
-import { findDefaultModelCredential } from "@nova/db";
+import type { AdapterContext } from "@superchat/adapter-kit";
+import type { Actor, Me } from "@superchat/contracts";
+import { findDefaultModelCredential } from "@superchat/db";
 
 import { engineComputerClient } from "../engine-client.js";
 import { engineModelsStatus } from "../features/models/service.js";

@@ -1,8 +1,8 @@
 import { useLingui } from "@lingui/react/macro";
-import type { ThreadMessage } from "@nova/contracts";
+import type { ThreadMessage } from "@superchat/contracts";
 import { Menu } from "lucide-react";
 import type { ReactNode } from "react";
-import { NovaOrb, useOrbHome } from "../../../components/ai/orb";
+import { SuperchatOrb, useOrbHome } from "../../../components/ai/orb";
 import { MuseLiveStatus } from "./MuseLiveStatus";
 import { type ChatProject, ProjectChip } from "./ProjectChip";
 import type { MuseLiveRun } from "./useMuseLiveState";
@@ -14,7 +14,7 @@ export const TOOLBAR_BUTTON =
 /** The toolbar's glass pill that groups its buttons, Mac style. */
 export function ToolbarGroup({ children }: { children: ReactNode }) {
   return (
-    <div className="nova-glass-pill inline-flex h-8 items-center gap-px rounded-full p-0.5">
+    <div className="superchat-glass-pill inline-flex h-8 items-center gap-px rounded-full p-0.5">
       {children}
     </div>
   );
@@ -22,9 +22,9 @@ export function ToolbarGroup({ children }: { children: ReactNode }) {
 
 /**
  * The Conversation's toolbar (docs/muse/DESIGN.md "Window"): 56px, no hairline. The title
- * with a quiet subtitle beside it (Nova's live status while it works, "New" on the start
+ * with a quiet subtitle beside it (Superchat's live status while it works, "New" on the start
  * page), and the header actions on the right in one glass pill group. While the sidebar is
- * collapsed or hidden, Nova's orb leads the title (its one fallback home, placement.tsx).
+ * collapsed or hidden, Superchat's orb leads the title (its one fallback home, placement.tsx).
  */
 export function ConversationHeader({
   botId,
@@ -78,7 +78,7 @@ export function ConversationHeader({
       ) : null}
       {orbHere ? (
         <span data-testid="conversation-header-compact-identity" className="flex">
-          <NovaOrb size={22} />
+          <SuperchatOrb size={22} />
         </span>
       ) : null}
       <h1

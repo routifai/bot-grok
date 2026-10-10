@@ -39,7 +39,7 @@ vi.mock("../../../components/cards/catalog", () => ({
 vi.mock("@lingui/react/macro", () => ({
   useLingui: () => ({ t: (p: TemplateStringsArray) => p.join("") }),
 }));
-vi.mock("@nova/ui-web", () => {
+vi.mock("@superchat/ui-web", () => {
   const P = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
   return {
     Button: P,

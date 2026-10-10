@@ -1,6 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
-import type { Bot, Routine, ThreadSnapshot } from "@nova/contracts";
-import { cronFromPreset } from "@nova/core";
+import type { Bot, Routine, ThreadSnapshot } from "@superchat/contracts";
+import { cronFromPreset } from "@superchat/core";
 import {
   type Dispatch,
   type MutableRefObject,

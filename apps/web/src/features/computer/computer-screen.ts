@@ -1,4 +1,4 @@
-import type { ComputerStatus } from "@nova/contracts";
+import type { ComputerStatus } from "@superchat/contracts";
 
 export interface ComputerScreenResult {
   url: string | null;

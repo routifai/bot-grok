@@ -1,5 +1,5 @@
-import { isScratchpadStatus, listScratchpadItems, mapScratchpadItem } from "@nova/adapters";
-import { IsolationError } from "@nova/db";
+import { isScratchpadStatus, listScratchpadItems, mapScratchpadItem } from "@superchat/adapters";
+import { IsolationError } from "@superchat/db";
 import { ORPCError } from "@orpc/server";
 
 import type { RouterContext } from "./context.js";

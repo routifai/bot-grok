@@ -1,5 +1,5 @@
 // `knowledge.*`: the person's file search. The index lives in their Computer; the engine relays
-// it through the Muse session's `/knowledge/*` routes. Nova keeps no rows: these are thin relays
+// it through the Muse session's `/knowledge/*` routes. Superchat keeps no rows: these are thin relays
 // with the camelCase shapes, scoped to the caller's Muse session.
 import {
   fetchOmnigentPageThumbnail,
@@ -7,9 +7,9 @@ import {
   type OmnigentClientConfig,
   reindexOmnigentKnowledge,
   searchOmnigentKnowledge,
-} from "@nova/adapters";
-import type { Actor, KnowledgeStatus } from "@nova/contracts";
-import type { PrismaClient } from "@nova/db";
+} from "@superchat/adapters";
+import type { Actor, KnowledgeStatus } from "@superchat/contracts";
+import type { PrismaClient } from "@superchat/db";
 import { ORPCError } from "@orpc/server";
 import { resolveMuseSession } from "../computer/index.js";
 

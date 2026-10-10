@@ -8,7 +8,7 @@ const vtDocument = document as unknown as { startViewTransition?: unknown };
 
 function orbAt(rect: { left: number; top: number; size: number }) {
   const element = document.createElement("span");
-  element.setAttribute("data-nova-orb", "");
+  element.setAttribute("data-superchat-orb", "");
   element.getBoundingClientRect = () =>
     ({
       left: rect.left,

@@ -30,7 +30,7 @@ test("onboarding skips model connect when a default model is already available",
   const stamp = Date.now();
   await signup(
     page,
-    `model-auto-skip-${stamp}@nova.test`,
+    `model-auto-skip-${stamp}@superchat.test`,
     "password12",
     `Model auto skip ${stamp}`,
   );
@@ -50,11 +50,11 @@ test("onboarding skips model connect when a default model is already available",
 
   expect((await createRequest).postDataJSON()).toMatchObject({
     json: {
-      name: "Nova",
+      name: "Superchat",
       spawnKey: "onboarding:first",
     },
   });
-  await expect(page.getByRole("combobox", { name: "Message Nova" })).toBeVisible({
+  await expect(page.getByRole("combobox", { name: "Message Superchat" })).toBeVisible({
     timeout: 20_000,
   });
   await captureScreenshot(page, testInfo, "onboarding-model-auto-skip");

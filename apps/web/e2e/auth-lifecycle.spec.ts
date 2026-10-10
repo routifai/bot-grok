@@ -32,7 +32,7 @@ test("logout protects bot deep links and sign-in restores the session", async ({
   page,
 }, testInfo) => {
   const stamp = Date.now();
-  const email = `auth-lifecycle-${stamp}@nova.test`;
+  const email = `auth-lifecycle-${stamp}@superchat.test`;
   const password = "password12";
   const userName = "Auth Lifecycle";
 
@@ -49,7 +49,7 @@ test("logout protects bot deep links and sign-in restores the session", async ({
 
   await page.waitForURL(/\/app\/[^/]+$/);
   const protectedBotPath = new URL(page.url()).pathname;
-  await expect(page.getByPlaceholder("Message Nova")).toBeVisible();
+  await expect(page.getByPlaceholder("Message Superchat")).toBeVisible();
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const settingsPanel = page.getByTestId("user-settings");
@@ -61,18 +61,18 @@ test("logout protects bot deep links and sign-in restores the session", async ({
   await logOutButton.click();
   await expect(page.getByRole("heading", { name: "Welcome back." })).toBeVisible();
   await page.goto("/");
-  await expect(page.locator('[data-nova-surface="welcome"]')).toBeVisible();
+  await expect(page.locator('[data-superchat-surface="welcome"]')).toBeVisible();
   await expect(page.getByText(/Your AI, already on it\./)).toBeVisible();
-  await page.getByRole("button", { name: /Meet Nova/ }).click();
+  await page.getByRole("button", { name: /Meet Superchat/ }).click();
   await expect(page).toHaveURL(/\/sign-up$/);
-  await expect(page.getByRole("heading", { name: "Meet Nova." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Meet Superchat." })).toBeVisible();
   await page.goto("/");
   await captureScreenshot(page, testInfo, "37-logged-out-welcome");
 
   await page.goto(protectedBotPath);
   await page.waitForURL((url) => url.pathname === "/sign-in");
   await expect(page.getByRole("heading", { name: "Welcome back." })).toBeVisible();
-  await expect(page.getByText("Nova", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Superchat", { exact: true })).toHaveCount(0);
   await expect(page.getByText(userName, { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Email")).toHaveAttribute("autocomplete", "username");
   await expect(page.getByLabel("Password", { exact: true })).toHaveAttribute(
@@ -97,10 +97,10 @@ test("logout protects bot deep links and sign-in restores the session", async ({
   await page.waitForURL((url) => url.pathname === protectedBotPath, {
     timeout: 20_000,
   });
-  const composer = page.getByRole("combobox", { name: "Message Nova" });
+  const composer = page.getByRole("combobox", { name: "Message Superchat" });
   await expect(composer).toHaveAttribute("name", "chat-message");
   await expect(composer).toHaveAttribute("autocomplete", "off");
-  await expect(composer).toHaveAttribute("aria-label", "Message Nova");
+  await expect(composer).toHaveAttribute("aria-label", "Message Superchat");
   await expect(page.getByText(userName, { exact: true })).toBeVisible();
 
   await composer.fill("line one");
@@ -129,7 +129,7 @@ test("logout protects bot deep links and sign-in restores the session", async ({
 
 test("changes and recovers an email password", async ({ page }, testInfo) => {
   const stamp = Date.now();
-  const email = `password-recovery-${stamp}@nova.test`;
+  const email = `password-recovery-${stamp}@superchat.test`;
   const originalPassword = "password12";
   const changedPassword = "changed-password12";
   const resetPassword = "reset-password12";

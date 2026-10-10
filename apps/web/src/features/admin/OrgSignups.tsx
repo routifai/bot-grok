@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { PendingSignup, SignupSettings } from "@nova/contracts";
+import type { PendingSignup, SignupSettings } from "@superchat/contracts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,7 +12,7 @@ import {
   Button,
   cn,
   Textarea,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import { useCallback, useEffect, useState } from "react";
 import { errorText } from "../../lib/error-text";
 import { rpc } from "../../lib/rpc";

@@ -1,4 +1,4 @@
-import type { CapabilityInstall, Connection, ConnectionCatalogItem } from "@nova/contracts";
+import type { CapabilityInstall, Connection, ConnectionCatalogItem } from "@superchat/contracts";
 import {
   abortableDelay,
   buildFeaturedConnectorTiles,
@@ -6,7 +6,7 @@ import {
   EMPTY_PLUGIN_CATALOG_MESSAGE,
   filterConnectionCatalogItems,
   humanizeToolName,
-} from "@nova/core";
+} from "@superchat/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,

@@ -1,4 +1,4 @@
-import type { TransactionalEmail } from "@nova/adapter-kit";
+import type { TransactionalEmail } from "@superchat/adapter-kit";
 
 /** Minutes a one-time code stays valid; the same figure drives the auth plugin and the copy. */
 export const OTP_EXPIRES_MINUTES = 5;
@@ -23,10 +23,10 @@ interface Layout {
   footer: string;
 }
 
-/** One quiet, monochrome layout for every Nova email: plain text and HTML carry the same words. */
+/** One quiet, monochrome layout for every Superchat email: plain text and HTML carry the same words. */
 function render(layout: Layout): TransactionalEmail {
   const text = [
-    "Nova",
+    "Superchat",
     "",
     layout.lead,
     "",
@@ -40,7 +40,7 @@ function render(layout: Layout): TransactionalEmail {
     : layout.action
       ? `<p style="margin:24px 0"><a href="${escapeHtml(layout.action.url)}" style="display:inline-block;padding:12px 20px;border-radius:10px;background:#111;color:#fff;font:500 15px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;text-decoration:none">${escapeHtml(layout.action.label)}</a></p>`
       : "";
-  const html = `<!doctype html><html><body style="margin:0;padding:32px 16px;background:#f5f5f5"><table role="presentation" width="100%" style="max-width:440px;margin:0 auto;background:#fff;border-radius:16px"><tr><td style="padding:32px;font:15px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111"><p style="margin:0 0 24px;font-weight:600;font-size:17px;letter-spacing:-0.2px">Nova</p><p style="margin:0">${escapeHtml(layout.lead)}</p>${main}<p style="margin:0;color:#6b6b6b;font-size:13px">${escapeHtml(layout.footer)}</p></td></tr></table></body></html>`;
+  const html = `<!doctype html><html><body style="margin:0;padding:32px 16px;background:#f5f5f5"><table role="presentation" width="100%" style="max-width:440px;margin:0 auto;background:#fff;border-radius:16px"><tr><td style="padding:32px;font:15px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111"><p style="margin:0 0 24px;font-weight:600;font-size:17px;letter-spacing:-0.2px">Superchat</p><p style="margin:0">${escapeHtml(layout.lead)}</p>${main}<p style="margin:0;color:#6b6b6b;font-size:13px">${escapeHtml(layout.footer)}</p></td></tr></table></body></html>`;
   return { to: layout.to, subject: layout.subject, text, html };
 }
 
@@ -55,7 +55,7 @@ export function codeEmail(to: string, code: string, purpose: CodePurpose): Trans
         : "Use this code to continue.";
   return render({
     to,
-    subject: `${code} is your Nova code`,
+    subject: `${code} is your Superchat code`,
     lead,
     code,
     footer: `It expires in ${OTP_EXPIRES_MINUTES} minutes. If you did not ask for it, ignore this email.`,
@@ -69,8 +69,8 @@ export function passwordResetEmail(
   // No user-chosen text: the name is free-form input that would land in an email we send.
   return render({
     to: user.email,
-    subject: "Reset your Nova password",
-    lead: "Reset your Nova password here.",
+    subject: "Reset your Superchat password",
+    lead: "Reset your Superchat password here.",
     action: { label: "Reset password", url: resetUrl },
     footer: "This link expires in one hour. If you did not ask for it, ignore this email.",
   });

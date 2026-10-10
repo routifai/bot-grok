@@ -287,10 +287,10 @@ def test_open_project_is_offered_to_the_muse_not_to_helpers() -> None:
 # ── a Project as the working directory ─────────────────────────────────────
 
 REPO = Path(__file__).resolve().parents[4]
-WORKSPACE = "/home/nova/workspace"
+WORKSPACE = "/home/superchat/workspace"
 
 
-@pytest.mark.parametrize("name", ["nova-claude", "nova-pi"])
+@pytest.mark.parametrize("name", ["superchat-claude", "superchat-pi"])
 def test_bundles_offer_open_project_and_keep_the_whole_workspace_reachable(
     name: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -298,7 +298,7 @@ def test_bundles_offer_open_project_and_keep_the_whole_workspace_reachable(
     from omnigent.spec import parse
 
     monkeypatch.setenv("TAVILY_API_KEY", "x")
-    monkeypatch.setenv("NOVA_CLAUDE_MODEL", "m")
+    monkeypatch.setenv("SUPERCHAT_CLAUDE_MODEL", "m")
     spec = parse(REPO / "infra/omnigent/agents" / name)
     worker = next(a for a in spec.sub_agents if a.name == "worker")
     assert "open_project" in spec.tools.allow
@@ -401,11 +401,11 @@ async def test_project_list_reaches_the_prompt_of_claude_sdk_and_pi(home: Path) 
 @pytest.mark.parametrize(
     ("workspace", "slug"),
     [
-        ("/home/nova/workspace/projects/q3-deck", "q3-deck"),
-        ("/home/nova/workspace/projects/q3-deck/drafts", "q3-deck"),
-        ("/home/nova/workspace", None),
-        ("/home/nova/workspace/projects", None),
-        ("/home/nova/workspace/projects/UP", None),
+        ("/home/superchat/workspace/projects/q3-deck", "q3-deck"),
+        ("/home/superchat/workspace/projects/q3-deck/drafts", "q3-deck"),
+        ("/home/superchat/workspace", None),
+        ("/home/superchat/workspace/projects", None),
+        ("/home/superchat/workspace/projects/UP", None),
         (None, None),
     ],
 )

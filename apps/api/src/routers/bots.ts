@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { runJobKey } from "@nova/adapter-kit";
+import { runJobKey } from "@superchat/adapter-kit";
 import {
   archiveBot,
   cancelComputerRunWork,
@@ -12,10 +12,10 @@ import {
   scriptedCatalogEntry,
   toComputerRef,
   validateStoredModelAuth,
-} from "@nova/adapters";
-import type { Actor } from "@nova/contracts";
-import { OPENAI_COMPATIBLE_PROVIDER_ID } from "@nova/contracts";
-import { ACTIVE_RUN_STATUSES } from "@nova/core";
+} from "@superchat/adapters";
+import type { Actor } from "@superchat/contracts";
+import { OPENAI_COMPATIBLE_PROVIDER_ID } from "@superchat/contracts";
+import { ACTIVE_RUN_STATUSES } from "@superchat/core";
 import {
   BotSectionNameConflictError,
   ComputerLimitError,
@@ -23,8 +23,8 @@ import {
   IsolationError,
   restoreBotUnderComputerQuota,
   SpaceDeletionInProgressError,
-} from "@nova/db";
-import { getLogger } from "@nova/logging";
+} from "@superchat/db";
+import { getLogger } from "@superchat/logging";
 import { ORPCError } from "@orpc/server";
 import { botProfileLabelsChanged, commitBotUpdate } from "../bot-update.js";
 import { loadMessagePage } from "../thread-message-pages.js";

@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { AgentSkill, AgentSkillCatalogEntry, TaughtSkill } from "@nova/contracts";
+import type { AgentSkill, AgentSkillCatalogEntry, TaughtSkill } from "@superchat/contracts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,7 +14,7 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import { ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { illustrationUrl } from "../../lib/illustrations";

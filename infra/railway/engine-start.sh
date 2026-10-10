@@ -11,12 +11,12 @@ set -euo pipefail
 : "${ANTHROPIC_API_KEY:?Set ANTHROPIC_API_KEY}"
 
 # Default the strong helper model to the Muse model unless set explicitly.
-export OMNIGENT_HELPER_MODEL_STRONG="${OMNIGENT_HELPER_MODEL_STRONG:-$NOVA_CLAUDE_MODEL}"
+export OMNIGENT_HELPER_MODEL_STRONG="${OMNIGENT_HELPER_MODEL_STRONG:-$SUPERCHAT_CLAUDE_MODEL}"
 
 mkdir -p "$OMNIGENT_DATA_DIR" "$OMNIGENT_CONFIG_HOME" "$ARTIFACT_DIR"
 url="${ENGINE_PUBLIC_URL%/}"
 # '|' as the sed delimiter: URLs contain '/'. The URL is operator-supplied, not user input.
-sed "s|__ENGINE_PUBLIC_URL__|${url}|g" /opt/nova/config.yaml.tmpl > "$OMNIGENT_DATA_DIR/config.yaml"
+sed "s|__ENGINE_PUBLIC_URL__|${url}|g" /opt/superchat/config.yaml.tmpl > "$OMNIGENT_DATA_DIR/config.yaml"
 export OMNIGENT_CONFIG="$OMNIGENT_DATA_DIR/config.yaml"
 
 exec python /app/entrypoint.py

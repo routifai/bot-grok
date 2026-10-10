@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import { Button, cn, Input } from "@nova/ui-web";
+import { Button, cn, Input } from "@superchat/ui-web";
 import { useId, useState } from "react";
 import { errorText } from "../../lib/error-text";
 import { rpc } from "../../lib/rpc";
@@ -11,9 +11,9 @@ const PROVIDERS = [
 ] as const;
 
 /**
- * Onboarding's model step when Nova runs on the engine: a provider and an API key. The engine
+ * Onboarding's model step when Superchat runs on the engine: a provider and an API key. The engine
  * checks the key with the provider before keeping it, so a rejected key comes back here, under
- * the field. Nothing is stored in Nova.
+ * the field. Nothing is stored in Superchat.
  */
 export function EngineModelStep({ onDone }: { onDone: () => void }) {
   const { t } = useLingui();

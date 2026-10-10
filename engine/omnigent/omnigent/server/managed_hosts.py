@@ -142,9 +142,9 @@ stores into ``create_app``):
    or ``sandbox.openshell.cluster``), so the server process needs
    OpenShell gateway access. The microsandbox launcher needs no
    credentials at all: VMs run embedded on the server host itself
-   (Apple Silicon macOS / KVM Linux). The computer launcher (Nova's
+   (Apple Silicon macOS / KVM Linux). The computer launcher (Superchat's
    per-Muse sandbox computer, docs/omnigent-spike.md) reads
-   ``OMNIGENT_NOVA_SUPERVISOR_URL`` and ``OMNIGENT_NOVA_SUPERVISOR_TOKEN``
+   ``OMNIGENT_SUPERCHAT_SUPERVISOR_URL`` and ``OMNIGENT_SUPERCHAT_SUPERVISOR_TOKEN``
    — see :mod:`omnigent.onboarding.sandboxes.computer`. Every provider
    except ``lakebox`` has managed-launch support; ``lakebox`` parses but
    rejects at launch.
@@ -287,9 +287,9 @@ BOXLITE_MANAGED_TOKEN_TTL_S = 7 * 24 * 3600
 # A relaunch mints a fresh token.
 MICROSANDBOX_MANAGED_TOKEN_TTL_S = 7 * 24 * 3600
 
-# Launch-token lifetime for the "computer" provider (Nova's per-Muse sandbox computer,
+# Launch-token lifetime for the "computer" provider (Superchat's per-Muse sandbox computer,
 # docs/omnigent-spike.md). The computer itself has no lifetime cap — it is a persistent,
-# Nova-managed resource that outlives any one launch — so, like Boxlite/Daytona/Islo/OpenShell,
+# Superchat-managed resource that outlives any one launch — so, like Boxlite/Daytona/Islo/OpenShell,
 # the bound here is policy: seven days keeps a long-lived host re-authenticating across tunnel
 # reconnects while still expiring tokens nobody renewed. A relaunch mints a fresh token.
 COMPUTER_MANAGED_TOKEN_TTL_S = 7 * 24 * 3600
@@ -1483,7 +1483,7 @@ def _parse_git_clone_options(raw: object) -> GitCloneOptions:
 
 
 # Env var names only ever look like this — matches the shell convention every
-# example in this codebase already follows (ANTHROPIC_API_KEY, NOVA_CLAUDE_MODEL, …).
+# example in this codebase already follows (ANTHROPIC_API_KEY, SUPERCHAT_CLAUDE_MODEL, …).
 _RUNNER_ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 
 
@@ -3587,7 +3587,7 @@ async def launch_managed_host(
         or ``None`` to leave it unstamped.
     :param labels: The launching session's labels, forwarded to
         :meth:`~omnigent.onboarding.sandboxes.base.SandboxHostLauncher.prepare_for_launch` —
-        e.g. Nova's ``nova.bot`` / ``nova.space`` (see
+        e.g. Superchat's ``superchat.bot`` / ``superchat.space`` (see
         :mod:`omnigent.onboarding.sandboxes.computer`), which a provider whose sandbox is a
         pre-existing per-identity resource (rather than one it creates fresh) needs to select
         it. ``None``/empty for providers that don't need it.

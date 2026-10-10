@@ -1,7 +1,7 @@
-// Portions modified from nexu-io/open-design apps/web/src/components/ManualEditPanel.tsx@802708f, Apache-2.0; changes: rewritten small with shadcn components; fonts and colours limited to the deck's theme tokens, controls report preview-now / save-later changes, per-element ask-Nova notes.
+// Portions modified from nexu-io/open-design apps/web/src/components/ManualEditPanel.tsx@802708f, Apache-2.0; changes: rewritten small with shadcn components; fonts and colours limited to the deck's theme tokens, controls report preview-now / save-later changes, per-element ask-Superchat notes.
 import { useLingui } from "@lingui/react/macro";
-import type { DeckEditTarget, DeckEditTheme } from "@nova/contracts";
-import { Button, Input, NativeSelect, NativeSelectOption, Textarea } from "@nova/ui-web";
+import type { DeckEditTarget, DeckEditTheme } from "@superchat/contracts";
+import { Button, Input, NativeSelect, NativeSelectOption, Textarea } from "@superchat/ui-web";
 import {
   AlignCenter,
   AlignLeft,
@@ -40,7 +40,7 @@ export type StylePanelProps = {
   targets: readonly DeckEditTarget[];
   theme: DeckEditTheme | null;
   slideCount: number;
-  /** Whether a message composer is mounted to receive "Ask Nova". */
+  /** Whether a message composer is mounted to receive "Ask Superchat". */
   canAsk: boolean;
   asked: boolean;
   focusAsk: number;
@@ -478,7 +478,7 @@ function AskSection({ targets, canAsk, asked, focusAsk, onAsk }: StylePanelProps
   const { t } = useLingui();
   const [notes, setNotes] = useState<Record<string, string>>({});
   const first = targets[targets.length - 1]?.id;
-  // The selection chrome's own "Ask Nova" button asks with what is typed so far.
+  // The selection chrome's own "Ask Superchat" button asks with what is typed so far.
   const [handled, setHandled] = useState(focusAsk);
   useEffect(() => {
     if (focusAsk !== handled) {

@@ -39,7 +39,7 @@ class SetSessionWorkspaceRequest(BaseModel):
     """Body of ``PUT /v1/sessions/{id}/workspace``.
 
     :param workspace: Absolute path on the session's host, e.g.
-        ``"/home/nova/workspace/projects/q3-deck"``.
+        ``"/home/superchat/workspace/projects/q3-deck"``.
     :param project_name: The opened Project's card name, recorded so the session snapshot can
         name the Project without reading the card off the host. Ignored outside a Project.
     """

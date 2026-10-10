@@ -1,13 +1,13 @@
 // The engine connection every capability route shares: the engine client for an actor's space,
 // the "needs the engine" refusal, and the engine session behind a Muse (its Computer's session).
-// Nova runs on the engine (docs/adr/0004-engine-owns-the-computer.md); it keeps no Computer state.
+// Superchat runs on the engine (docs/adr/0004-engine-owns-the-computer.md); it keeps no Computer state.
 import {
   type OmnigentClientConfig,
   omnigentClientConfigFromEnv,
   omnigentClientFor,
-} from "@nova/adapters";
-import type { Actor } from "@nova/contracts";
-import type { PrismaClient } from "@nova/db";
+} from "@superchat/adapters";
+import type { Actor } from "@superchat/contracts";
+import type { PrismaClient } from "@superchat/db";
 import { ORPCError } from "@orpc/server";
 
 export interface EngineComputer {
@@ -27,7 +27,7 @@ export function engineComputerClient(
   return connection ? omnigentClientFor(connection, actor.spaceId) : undefined;
 }
 
-/** The engine client, or a clear "not configured" error: Nova runs on the engine, so a route has
+/** The engine client, or a clear "not configured" error: Superchat runs on the engine, so a route has
  * no fallback to serve without it. `what` names the capability ("Goals", "The Feed"). */
 export function requireEngine(
   client: OmnigentClientConfig | undefined,

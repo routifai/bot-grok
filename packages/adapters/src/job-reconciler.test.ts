@@ -1,5 +1,5 @@
-import type { BackgroundJob, JobPublisher } from "@nova/adapter-kit";
-import type { Pool, PrismaClient, ThreadEvents } from "@nova/db";
+import type { BackgroundJob, JobPublisher } from "@superchat/adapter-kit";
+import type { Pool, PrismaClient, ThreadEvents } from "@superchat/db";
 import { describe, expect, it, vi } from "vitest";
 import { returnBotMessageOutcome } from "./bot-messages.js";
 import {

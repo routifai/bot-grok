@@ -1,5 +1,5 @@
-import type { ChatSummary, ThreadMessage } from "@nova/contracts";
-import { cn } from "@nova/ui-web";
+import type { ChatSummary, ThreadMessage } from "@superchat/contracts";
+import { cn } from "@superchat/ui-web";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { AllForks, ForkViewSwitch } from "../../features/side-chats/AllForks";
 import { ForkAsk } from "../../features/side-chats/ForkAsk";

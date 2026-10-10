@@ -117,7 +117,7 @@ def resolve_upkeep_max_concurrency() -> int:
 # apps/backend/src/components/ai/memory-system-prompt.tsx@5bde830, Apache-2.0; changes: only the
 # rules are merged (default to extracting nothing, instructions without a permanence signal are
 # kept only as inferred evidence while profile facts need none, a changed fact or replaced
-# instruction supersedes the old claim, a withdrawal is never stored); Nova's kinds,
+# instruction supersedes the old claim, a withdrawal is never stored); Superchat's kinds,
 # verbatim-quote check and evidence scoring are unchanged.
 
 MEMORY_UPKEEP_EXTRACTION_PROMPT = """\

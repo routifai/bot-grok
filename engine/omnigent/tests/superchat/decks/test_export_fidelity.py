@@ -1,6 +1,6 @@
 """Every template exports exactly: native PowerPoint objects only, fonts embedded, layout clean.
 
-Runs the real ``nova-deck-export`` helper in a headless Chromium on decks built by the kit from
+Runs the real ``superchat-deck-export`` helper in a headless Chromium on decks built by the kit from
 the sample slides, so a template or layout change that would make the PowerPoint differ from the
 page (a picture where a shape should be, an unembedded font, content in the footer band) fails
 here. Skipped when no Chromium is installed.
@@ -19,7 +19,7 @@ import pytest
 
 from omnigent.superchat.decks import kit
 
-HELPER = Path(__file__).resolve().parents[5] / "infra/sandboxes/computer/nova-deck-export"
+HELPER = Path(__file__).resolve().parents[5] / "infra/sandboxes/computer/superchat-deck-export"
 SAMPLE = (kit.KIT_DIR / "sample-slides.html").read_text("utf-8")
 
 

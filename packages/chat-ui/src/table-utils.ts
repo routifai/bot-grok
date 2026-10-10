@@ -1,4 +1,4 @@
-import { droppedTableHtmlText } from "@nova/contracts";
+import { droppedTableHtmlText } from "@superchat/contracts";
 
 /**
  * Pure helpers behind the markdown table card: hast extraction, type

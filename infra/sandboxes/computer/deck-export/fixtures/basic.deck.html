@@ -1,11 +1,11 @@
 <!doctype html>
 <!-- Portions modified from nexu-io/open-design packages/contracts/src/prompts/deck-framework.ts@802708f
      and packages/contracts/src/runtime/deck-protocol.ts@802708f, Apache-2.0; changes: protocol
-     renamed to Nova Deck Protocol v1 (nova:slide, nova:slide-state, nova:deck-ready,
-     data-nova-deck-protocol), localStorage key prefixed nova-deck:, fit() leaves the stage at its
-     authored size while the exporter sets data-nova-export on <html> (so PPTX geometry is 1:1 by
-     construction), data-nova-id on the framework elements, the slot list. -->
-<html lang="en" data-nova-deck-protocol="1">
+     renamed to Superchat Deck Protocol v1 (superchat:slide, superchat:slide-state, superchat:deck-ready,
+     data-superchat-deck-protocol), localStorage key prefixed superchat-deck:, fit() leaves the stage at its
+     authored size while the exporter sets data-superchat-export on <html> (so PPTX geometry is 1:1 by
+     construction), data-superchat-id on the framework elements, the slot list. -->
+<html lang="en" data-superchat-deck-protocol="1">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -21,7 +21,7 @@
          - Only .slide.active is visible at a time
          - Programmatic prev/next + counter elements kept outside the scaled
            stage but hidden by default so the host can render the UI chrome
-         - Nova Deck Protocol v1 absolute navigation + slide-state events
+         - Superchat Deck Protocol v1 absolute navigation + slide-state events
          - Keyboard (← → space PgUp PgDn Home End R), half-slide click, and stored
            position survive iframe focus quirks
          - "Save as PDF" produces a multi-page vertical PDF, one slide
@@ -184,41 +184,41 @@
   </style>
 </head>
 <body>
-  <div class="deck-shell" data-nova-id="deck-shell">
-    <div class="deck-stage" id="deck-stage" data-nova-id="deck-stage">
+  <div class="deck-shell" data-superchat-id="deck-shell">
+    <div class="deck-stage" id="deck-stage" data-superchat-id="deck-stage">
 
       <!-- SLOT: slides — one <section class="slide"> per slide. The first
            slide must have class="slide active". The framework auto-counts
            them and toggles .active as the user navigates. -->
 
-      <section class="slide active" data-screen-label="01 Title" data-nova-id="s1">
-        <div class="glow" data-nova-id="s1-glow"></div>
-        <div class="content" data-nova-id="s1-content">
-          <div class="kicker" data-nova-id="s1-kicker">Q3 2026 review</div>
-          <h1 class="h-hero" data-nova-id="s1-title">Shipping <em>velocity</em> doubled</h1>
-          <p class="lead" data-nova-id="s1-lead">What moved, what stalled, and what we do next.</p>
+      <section class="slide active" data-screen-label="01 Title" data-superchat-id="s1">
+        <div class="glow" data-superchat-id="s1-glow"></div>
+        <div class="content" data-superchat-id="s1-content">
+          <div class="kicker" data-superchat-id="s1-kicker">Q3 2026 review</div>
+          <h1 class="h-hero" data-superchat-id="s1-title">Shipping <em>velocity</em> doubled</h1>
+          <p class="lead" data-superchat-id="s1-lead">What moved, what stalled, and what we do next.</p>
         </div>
-        <div class="foot" data-nova-id="s1-foot"><span>Nova</span><span>01</span></div>
+        <div class="foot" data-superchat-id="s1-foot"><span>Superchat</span><span>01</span></div>
       </section>
-      <section class="slide dark" data-screen-label="02 Numbers" data-nova-id="s2">
-        <div class="content" data-nova-id="s2-content">
-          <div class="kicker" data-nova-id="s2-kicker">Results</div>
-          <h2 class="h-xl" data-nova-id="s2-title">Three numbers that matter</h2>
-          <div class="row" data-nova-id="s2-row">
-            <div class="card" data-nova-id="s2-card-a"><div class="big">12</div><div class="cap">Releases shipped</div></div>
-            <div class="card" data-nova-id="s2-card-b"><div class="big">3</div><div class="cap">Teams onboarded</div></div>
-            <div class="card" data-nova-id="s2-card-c"><div class="big">1</div><div class="cap">Incident</div></div>
+      <section class="slide dark" data-screen-label="02 Numbers" data-superchat-id="s2">
+        <div class="content" data-superchat-id="s2-content">
+          <div class="kicker" data-superchat-id="s2-kicker">Results</div>
+          <h2 class="h-xl" data-superchat-id="s2-title">Three numbers that matter</h2>
+          <div class="row" data-superchat-id="s2-row">
+            <div class="card" data-superchat-id="s2-card-a"><div class="big">12</div><div class="cap">Releases shipped</div></div>
+            <div class="card" data-superchat-id="s2-card-b"><div class="big">3</div><div class="cap">Teams onboarded</div></div>
+            <div class="card" data-superchat-id="s2-card-c"><div class="big">1</div><div class="cap">Incident</div></div>
           </div>
         </div>
-        <div class="foot" data-nova-id="s2-foot"><span>Nova</span><span>02</span></div>
+        <div class="foot" data-superchat-id="s2-foot"><span>Superchat</span><span>02</span></div>
       </section>
-      <section class="slide" data-screen-label="03 Next" data-nova-id="s3">
-        <div class="content" data-nova-id="s3-content">
-          <div class="kicker" data-nova-id="s3-kicker">Next</div>
-          <h2 class="h-xl" data-nova-id="s3-title">One decision to make</h2>
-          <p class="lead" data-nova-id="s3-lead">Approve the move to weekly releases.</p>
+      <section class="slide" data-screen-label="03 Next" data-superchat-id="s3">
+        <div class="content" data-superchat-id="s3-content">
+          <div class="kicker" data-superchat-id="s3-kicker">Next</div>
+          <h2 class="h-xl" data-superchat-id="s3-title">One decision to make</h2>
+          <p class="lead" data-superchat-id="s3-lead">Approve the move to weekly releases.</p>
         </div>
-        <div class="foot" data-nova-id="s3-foot"><span>Nova</span><span>03</span></div>
+        <div class="foot" data-superchat-id="s3-foot"><span>Superchat</span><span>03</span></div>
       </section>
 
     </div>
@@ -240,7 +240,7 @@
       var next = document.getElementById('deck-next');
       var cur = document.getElementById('deck-cur');
       var total = document.getElementById('deck-total');
-      var STORE = 'nova-deck:idx:' + (location.pathname || '/');
+      var STORE = 'superchat-deck:idx:' + (location.pathname || '/');
       var idx = 0;
 
       // ---- scale-to-fit ---------------------------------------------------
@@ -253,7 +253,7 @@
       // scale wrapper at zoom != 100%).
       function fit() {
         // The exporter (PPTX/PDF) renders the stage at its authored 1920×1080, unscaled.
-        if (document.documentElement.hasAttribute('data-nova-export')) {
+        if (document.documentElement.hasAttribute('data-superchat-export')) {
           stage.style.transform = 'none';
           return;
         }
@@ -282,12 +282,12 @@
         paint();
         try { localStorage.setItem(STORE, String(idx)); } catch (_) {}
       }
-      var NOVA_DECK_PROTOCOL_VERSION = 1;
+      var SUPERCHAT_DECK_PROTOCOL_VERSION = 1;
       function postDeckState() {
         try {
           window.parent.postMessage({
-            type: 'nova:slide-state',
-            protocolVersion: NOVA_DECK_PROTOCOL_VERSION,
+            type: 'superchat:slide-state',
+            protocolVersion: SUPERCHAT_DECK_PROTOCOL_VERSION,
             active: idx,
             count: slides.length
           }, '*');
@@ -296,16 +296,16 @@
       function announceDeckProtocol() {
         try {
           window.parent.postMessage({
-            type: 'nova:deck-ready',
-            protocolVersion: NOVA_DECK_PROTOCOL_VERSION,
+            type: 'superchat:deck-ready',
+            protocolVersion: SUPERCHAT_DECK_PROTOCOL_VERSION,
             capabilities: ["absolute-navigation","state-events"]
           }, '*');
         } catch (_) {}
       }
       window.addEventListener('message', (event) => {
         var data = event && event.data;
-        if (!data || data.type !== 'nova:slide') return;
-        if (data.protocolVersion != null && data.protocolVersion !== NOVA_DECK_PROTOCOL_VERSION) return;
+        if (!data || data.type !== 'superchat:slide') return;
+        if (data.protocolVersion != null && data.protocolVersion !== SUPERCHAT_DECK_PROTOCOL_VERSION) return;
         var target = idx;
         if (data.action === 'go') {
           if (typeof data.index !== 'number' || !isFinite(data.index)) return;
@@ -318,14 +318,14 @@
         go(target);
       });
       function onKey(e) {
-        if (e.__novaDeckKeyHandled) return;
+        if (e.__superchatDeckKeyHandled) return;
         var t = e.target;
         if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
         if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
-        if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.__novaDeckKeyHandled = true; e.preventDefault(); go(idx + 1); }
-        else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.__novaDeckKeyHandled = true; e.preventDefault(); go(idx - 1); }
-        else if (e.key === 'Home' || String(e.key).toLowerCase() === 'r') { e.__novaDeckKeyHandled = true; e.preventDefault(); go(0); }
-        else if (e.key === 'End') { e.__novaDeckKeyHandled = true; e.preventDefault(); go(slides.length - 1); }
+        if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.__superchatDeckKeyHandled = true; e.preventDefault(); go(idx + 1); }
+        else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.__superchatDeckKeyHandled = true; e.preventDefault(); go(idx - 1); }
+        else if (e.key === 'Home' || String(e.key).toLowerCase() === 'r') { e.__superchatDeckKeyHandled = true; e.preventDefault(); go(0); }
+        else if (e.key === 'End') { e.__superchatDeckKeyHandled = true; e.preventDefault(); go(slides.length - 1); }
       }
       // Capture phase + listen on both targets — inside the host iframe,
       // focus may be on window OR document; a single non-capture listener

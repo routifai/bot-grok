@@ -27,8 +27,8 @@ import type {
   SandboxProvider,
   ScreenRequest,
   ScreenSession,
-} from "@nova/adapter-kit";
-import { boundedSandboxCommandTimeoutMs } from "@nova/core";
+} from "@superchat/adapter-kit";
+import { boundedSandboxCommandTimeoutMs } from "@superchat/core";
 import {
   applyPlaceholderAction,
   boundedComputerActions,
@@ -684,7 +684,7 @@ async function* walkDesktopWorkspace(home: string, directory: string): AsyncIter
 }
 
 function resolveExecuteCwd(requestCwd: string | undefined, home: string) {
-  if (!requestCwd || requestCwd === "/home/nova" || requestCwd === "/home/user") return home;
+  if (!requestCwd || requestCwd === "/home/superchat" || requestCwd === "/home/user") return home;
   return path.resolve(home, requestCwd);
 }
 

@@ -4,7 +4,7 @@ export type AppearancePreference = (typeof APPEARANCE_PREFERENCES)[number];
 
 export type ResolvedAppearance = "light" | "dark";
 
-export const UI_APPEARANCE_STORAGE_KEY = "nova.uiAppearance";
+export const UI_APPEARANCE_STORAGE_KEY = "superchat.uiAppearance";
 
 /**
  * Semantic palette shared by web, Electron, and Expo. Names follow the shadcn
@@ -44,7 +44,7 @@ export type ColorTokens = {
   overlay: string;
   scrollbar: string;
   scrollbarHover: string;
-  /** Chart series 1-8 (@nova/charts): ink first, then the accent and graphite tints. */
+  /** Chart series 1-8 (@superchat/charts): ink first, then the accent and graphite tints. */
   "chart-1"?: string;
   "chart-2"?: string;
   "chart-3"?: string;
@@ -192,7 +192,7 @@ export type ColorTokens = {
   "welcome-line"?: string;
   /** Signed-out welcome page (light in both themes): the user bubble and accent. */
   "welcome-me"?: string;
-  /** Signed-out welcome page (light in both themes): Nova's bubble. */
+  /** Signed-out welcome page (light in both themes): Superchat's bubble. */
   "welcome-bubble"?: string;
   /** Signed-out welcome page (light in both themes): the side-question fork. */
   "welcome-rose"?: string;
@@ -202,7 +202,7 @@ export type ColorTokens = {
   "welcome-amber"?: string;
   /** Signed-out welcome page (light in both themes): the ask icon glyph. */
   "welcome-amber-ink"?: string;
-  /** Signed-out welcome page (light in both themes): Nova's computer window. */
+  /** Signed-out welcome page (light in both themes): Superchat's computer window. */
   "welcome-pc"?: string;
   /** Signed-out welcome page (light in both themes): its text. */
   "welcome-pc-ink"?: string;
@@ -269,7 +269,7 @@ export type ColorTokens = {
   "welcome-night-rose"?: string;
   /** Signed-out welcome page (same in both themes): the ask icon on night. */
   "welcome-night-amber"?: string;
-  /** Signed-out welcome page (same in both themes): Nova's bubble on a demo card. */
+  /** Signed-out welcome page (same in both themes): Superchat's bubble on a demo card. */
   "welcome-night-bubble"?: string;
   /** Signed-out welcome page (same in both themes): a panel on a demo card. */
   "welcome-night-panel"?: string;
@@ -416,7 +416,7 @@ export const lightTokens = {
 } as const satisfies ColorTokens;
 
 /**
- * Nova's surfaces (docs/muse/DESIGN.md): a Mac app. The content sits in one rounded
+ * Superchat's surfaces (docs/muse/DESIGN.md): a Mac app. The content sits in one rounded
  * `content` window on the `window` ground; the sidebar and inspector float inside it as
  * blurred `glass` panels with a half-pixel `glass-line`; iOS inset grouped lists sit on
  * `group`. Ink comes in three strengths, hairlines are `separator`. The Muse palettes below
@@ -538,7 +538,7 @@ const tiles = {
   "welcome-app-hint": "#9A9AA8",
 } as const;
 
-const novaLight = {
+const superchatLight = {
   window: "#F5F5F7",
   content: "#FFFFFF",
   glass: "rgba(246, 246, 248, 0.78)",
@@ -576,7 +576,7 @@ const novaLight = {
   ...tiles,
 } as const;
 
-const novaDark = {
+const superchatDark = {
   window: "#1d242c",
   content: "#222a33",
   glass: "rgba(255, 255, 255, 0.07)",
@@ -616,81 +616,81 @@ const novaDark = {
 
 /**
  * Muse edition palettes. Light-first and quiet: ink primary, glass panels, hairline
- * borders. Applied only under `[data-product="muse"]`, so upstream Nova keeps its own
+ * borders. Applied only under `[data-product="muse"]`, so upstream Superchat keeps its own
  * palettes.
  */
 export const museLightTokens = {
-  background: novaLight.solid,
-  foreground: novaLight.ink,
-  card: novaLight.solid,
-  cardForeground: novaLight.ink,
-  popover: novaLight.solid,
-  popoverForeground: novaLight.ink,
-  primary: novaLight.ink,
-  primaryForeground: novaLight.solid,
-  secondary: novaLight.selection,
-  secondaryForeground: novaLight.ink,
-  chatUser: novaLight.bubble,
-  chatUserForeground: novaLight.ink,
-  muted: novaLight.bubble,
-  mutedForeground: novaLight["ink-2"],
-  accent: novaLight.selection,
-  accentForeground: novaLight.ink,
+  background: superchatLight.solid,
+  foreground: superchatLight.ink,
+  card: superchatLight.solid,
+  cardForeground: superchatLight.ink,
+  popover: superchatLight.solid,
+  popoverForeground: superchatLight.ink,
+  primary: superchatLight.ink,
+  primaryForeground: superchatLight.solid,
+  secondary: superchatLight.selection,
+  secondaryForeground: superchatLight.ink,
+  chatUser: superchatLight.bubble,
+  chatUserForeground: superchatLight.ink,
+  muted: superchatLight.bubble,
+  mutedForeground: superchatLight["ink-2"],
+  accent: superchatLight.selection,
+  accentForeground: superchatLight.ink,
   destructive: "#FF3B30",
   destructiveForeground: "#FFFFFF",
-  border: novaLight.line,
-  input: novaLight.line,
+  border: superchatLight.line,
+  input: superchatLight.line,
   // Keyboard focus: the accent at 50%.
   ring: "rgba(0, 113, 227, 0.5)",
-  sidebar: novaLight.glass,
-  sidebarForeground: novaLight.ink,
-  sidebarBorder: novaLight.line,
-  sidebarAccent: novaLight.selection,
-  sidebarAccentForeground: novaLight.ink,
+  sidebar: superchatLight.glass,
+  sidebarForeground: superchatLight.ink,
+  sidebarBorder: superchatLight.line,
+  sidebarAccent: superchatLight.selection,
+  sidebarAccentForeground: superchatLight.ink,
   link: "#0066CC",
   success: "#248A3D",
   warning: "#C93400",
   overlay: "rgba(17, 18, 22, 0.32)",
   scrollbar: "#D6D8DC",
   scrollbarHover: "#B6B9BF",
-  ...novaLight,
+  ...superchatLight,
   ...chartLightPalette,
 } as const satisfies ColorTokens;
 
 export const museDarkTokens = {
-  background: novaDark.solid,
-  foreground: novaDark.ink,
-  card: novaDark.solid,
-  cardForeground: novaDark.ink,
-  popover: novaDark.solid,
-  popoverForeground: novaDark.ink,
-  primary: novaDark.ink,
-  primaryForeground: novaDark.solid,
-  secondary: novaDark.selection,
-  secondaryForeground: novaDark.ink,
-  chatUser: novaDark.bubble,
-  chatUserForeground: novaDark.ink,
-  muted: novaDark.bubble,
-  mutedForeground: novaDark["ink-2"],
-  accent: novaDark.selection,
-  accentForeground: novaDark.ink,
+  background: superchatDark.solid,
+  foreground: superchatDark.ink,
+  card: superchatDark.solid,
+  cardForeground: superchatDark.ink,
+  popover: superchatDark.solid,
+  popoverForeground: superchatDark.ink,
+  primary: superchatDark.ink,
+  primaryForeground: superchatDark.solid,
+  secondary: superchatDark.selection,
+  secondaryForeground: superchatDark.ink,
+  chatUser: superchatDark.bubble,
+  chatUserForeground: superchatDark.ink,
+  muted: superchatDark.bubble,
+  mutedForeground: superchatDark["ink-2"],
+  accent: superchatDark.selection,
+  accentForeground: superchatDark.ink,
   destructive: "#FF453A",
   destructiveForeground: "#FFFFFF",
-  border: novaDark.line,
-  input: novaDark.line,
+  border: superchatDark.line,
+  input: superchatDark.line,
   ring: "rgba(10, 132, 255, 0.55)",
-  sidebar: novaDark.glass,
-  sidebarForeground: novaDark.ink,
-  sidebarBorder: novaDark.line,
-  sidebarAccent: novaDark.selection,
-  sidebarAccentForeground: novaDark.ink,
+  sidebar: superchatDark.glass,
+  sidebarForeground: superchatDark.ink,
+  sidebarBorder: superchatDark.line,
+  sidebarAccent: superchatDark.selection,
+  sidebarAccentForeground: superchatDark.ink,
   link: "#2997FF",
   success: "#30D158",
   warning: "#FF9F0A",
   overlay: "rgba(0, 0, 0, 0.6)",
   scrollbar: "#2F3036",
   scrollbarHover: "#43454C",
-  ...novaDark,
+  ...superchatDark,
   ...chartDarkPalette,
 } as const satisfies ColorTokens;
 
@@ -792,7 +792,7 @@ function renderBlock(selector: string, colorScheme: ResolvedAppearance, palette:
 /** The CSS in `tokens.css`. Generated from the TS palette so both stay in sync. */
 export function renderTokensCss(): string {
   return `${[
-    "/* Generated by `pnpm --filter @nova/ui-tokens generate`. Edit src/index.ts instead. */",
+    "/* Generated by `pnpm --filter @superchat/ui-tokens generate`. Edit src/index.ts instead. */",
     "/* Muse: tint, tile-*, sig-*, alert, media-* and fork-* are owner-approved exceptions to the monochrome rule (Apple Mac-app design). */",
     renderBlock(':root,\n[data-theme="dark"]', "dark", darkTokens),
     renderBlock('[data-theme="light"]', "light", lightTokens),

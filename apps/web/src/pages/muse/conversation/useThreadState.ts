@@ -1,5 +1,5 @@
-import type { ThreadSnapshot } from "@nova/contracts";
-import { withLiveStreamingProgress } from "@nova/core";
+import type { ThreadSnapshot } from "@superchat/contracts";
+import { withLiveStreamingProgress } from "@superchat/core";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   getResponseStreamingEnabled,

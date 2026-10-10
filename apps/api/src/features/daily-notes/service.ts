@@ -4,8 +4,8 @@ import {
   type OmnigentDailyNote,
   putOmnigentDailyNote,
   redactMemoryProfile,
-} from "@nova/adapters";
-import type { Actor } from "@nova/contracts";
+} from "@superchat/adapters";
+import type { Actor } from "@superchat/contracts";
 import { onSuperChat } from "../../omnigent-errors.js";
 import { requireClient, requireSuperChat, type SuperChatDeps } from "../../super-chat-session.js";
 

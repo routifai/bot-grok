@@ -1,4 +1,4 @@
-import type { ComputerStatus } from "@nova/contracts";
+import type { ComputerStatus } from "@superchat/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createComputerRefresh, SCREEN_URL_RENEW_MS } from "./computer-refresh";
 

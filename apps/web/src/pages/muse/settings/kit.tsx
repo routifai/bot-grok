@@ -1,13 +1,13 @@
-import { cn } from "@nova/ui-web";
+import { cn } from "@superchat/ui-web";
 import type { ReactNode } from "react";
-import { ChevronGlyph } from "../chrome/NovaGlyphs";
-import { NovaTile, type TileTone } from "../chrome/NovaTile";
+import { ChevronGlyph } from "../chrome/SuperchatGlyphs";
+import { SuperchatTile, type TileTone } from "../chrome/SuperchatTile";
 import { MUSE_INSET_GROUP } from "../ui";
 
 /**
  * iOS-style settings pieces: an inset group of rows with hairline dividers, a quiet caption
  * above and an explanation below. Every Settings section is built from these, so they all
- * read like the Nova section.
+ * read like the Superchat section.
  */
 export function SettingsGroup({
   title,
@@ -32,7 +32,7 @@ export function SettingsGroup({
 }
 
 export const SETTINGS_ROW =
-  "nova-row flex min-h-[52px] w-full items-center justify-between gap-3 px-3 py-2 text-[14px] tracking-[-0.15px]";
+  "superchat-row flex min-h-[52px] w-full items-center justify-between gap-3 px-3 py-2 text-[14px] tracking-[-0.15px]";
 
 /** A row's colored tile (docs/muse/DESIGN.md "Settings"). */
 export type SettingsIcon = { tone: TileTone; glyph: ReactNode };
@@ -42,9 +42,9 @@ function RowLead({ icon, label, sub }: { icon?: SettingsIcon; label: ReactNode; 
   return (
     <span className="flex min-w-0 items-center gap-3">
       {icon ? (
-        <NovaTile tone={icon.tone} size={28}>
+        <SuperchatTile tone={icon.tone} size={28}>
           {icon.glyph}
-        </NovaTile>
+        </SuperchatTile>
       ) : null}
       <span className="min-w-0">
         <span className="block truncate text-foreground">{label}</span>
@@ -69,7 +69,7 @@ export function SettingsRow({
   children?: ReactNode;
 }) {
   return (
-    <div className={cn(SETTINGS_ROW, !icon && "nova-row-plain")}>
+    <div className={cn(SETTINGS_ROW, !icon && "superchat-row-plain")}>
       <RowLead icon={icon} label={label} sub={sub} />
       {value !== undefined ? (
         <span className="min-w-0 truncate text-[13.5px] text-ink-3">{value}</span>
@@ -103,7 +103,7 @@ export function SettingsLinkRow({
       aria-expanded={expanded}
       className={cn(
         SETTINGS_ROW,
-        !icon && "nova-row-plain",
+        !icon && "superchat-row-plain",
         "group text-start transition-colors hover:bg-selection focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
       )}
     >
@@ -121,7 +121,7 @@ export function SettingsLinkRow({
   );
 }
 
-/** A pill segmented control, same as the Nova section's "Working on its own". */
+/** A pill segmented control, same as the Superchat section's "Working on its own". */
 export function SettingsSegmented<T extends string>({
   label,
   options,

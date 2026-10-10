@@ -4,7 +4,7 @@ The Computer's workspace is the one copy of a person's files, and the index live
 (``omnigent.runner.knowledge``: parse, passages, thumbnails, FTS5 + sqlite-vec). This folder is the
 engine's side and holds no file data: ``tools`` / ``handlers`` register the Muse's qmd-style
 ``files_*`` tools (the handler runs in the Computer), and ``routes`` relays ingest (an attachment
-read before its message is sent), status, search and page thumbnails to it for Nova. Embeddings
+read before its message is sent), status, search and page thumbnails to it for Superchat. Embeddings
 and the search rerank are made through the engine's model proxy (``models``), so no key enters the
 Computer.
 

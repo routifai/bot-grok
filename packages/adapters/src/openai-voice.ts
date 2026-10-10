@@ -8,7 +8,7 @@ import type {
   VoiceSynthesizeRequest,
   VoiceTranscribeRequest,
   VoiceVerifyResult,
-} from "@nova/adapter-kit";
+} from "@superchat/adapter-kit";
 import {
   readVoiceAudio,
   readVoiceJson,
@@ -31,7 +31,7 @@ const OPENAI_VOICES: VoiceInfo[] = [
   { id: "echo", label: "Echo", description: "Even" },
   { id: "fable", label: "Fable", description: "Narrative" },
   { id: "onyx", label: "Onyx", description: "Deep" },
-  { id: "nova", label: "Nova", description: "Energetic" },
+  { id: "superchat", label: "Superchat", description: "Energetic" },
   { id: "sage", label: "Sage", description: "Calm" },
   { id: "shimmer", label: "Shimmer", description: "Soft" },
   { id: "verse", label: "Verse", description: "Expressive" },

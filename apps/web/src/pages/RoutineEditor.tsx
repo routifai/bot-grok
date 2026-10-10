@@ -1,6 +1,6 @@
 import { t } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { Routine } from "@nova/contracts";
+import type { Routine } from "@superchat/contracts";
 import {
   type CronFreq,
   type CronPreset,
@@ -9,7 +9,7 @@ import {
   formatCron,
   isOneShotRoutineCrons,
   presetFromCron,
-} from "@nova/core";
+} from "@superchat/core";
 import {
   Button,
   DropdownMenu,
@@ -21,7 +21,7 @@ import {
   DropdownMenuTrigger,
   Input,
   Textarea,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import { ChevronLeft, Clock, GitBranch, Globe, MessageSquare, Pause, Plus, X } from "lucide-react";
 import { useId } from "react";
 import { RoutineSchedule } from "./RoutineSchedule";

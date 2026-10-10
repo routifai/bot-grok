@@ -5,7 +5,7 @@ import { formatDuration } from "../../../features/activity/activityGrouping";
 import { useNow } from "../chrome/useNow";
 
 /**
- * Nova working on a reply (docs/muse/DESIGN.md "Working line"): a soft rounded row with a
+ * Superchat working on a reply (docs/muse/DESIGN.md "Working line"): a soft rounded row with a
  * small pulsing dot, the current step ("Thinking…", "Browsing…") and how long it has gone —
  * counted from the run's real start, so a remount (switching chats) keeps the time.
  */

@@ -129,7 +129,7 @@ it("renders the grid: frozen header, right-aligned numbers, computed and fallbac
   expect(unsupported.className).toContain("text-muted-foreground");
 });
 
-it("marks cells the person changed by hand against the last version Nova saved", async () => {
+it("marks cells the person changed by hand against the last version Superchat saved", async () => {
   api.table.mockImplementation(async ({ artifactId }: { artifactId: string }) =>
     artifactId === "a1" ? tableOf("a1", 1, 64000) : tableOf("a2", 2, 70000),
   );

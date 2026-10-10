@@ -1,5 +1,5 @@
-import type { ChatSummary, SideChatStart } from "@nova/contracts";
-import { redactSecrets } from "@nova/core";
+import type { ChatSummary, SideChatStart } from "@superchat/contracts";
+import { redactSecrets } from "@superchat/core";
 import type { OmnigentClientConfig } from "./client/core.js";
 import {
   errorCodeFromBody,
@@ -229,7 +229,7 @@ async function setOmnigentSessionArchived(
   await throwOnError(response, archived ? "archive session" : "unarchive session", config.secrets);
 }
 
-// Mapping between Omnigent's related_chats/side_chats shapes and Nova's ChatSummary contract (the
+// Mapping between Omnigent's related_chats/side_chats shapes and Superchat's ChatSummary contract (the
 // transcript is ./transcript.ts), plus the ownership rule that lets apps/api resolve a bare chatId
 // to the Super Chat (bot) it belongs to before ever trusting it (docs/super-chat/WIRING.md "chats.*").
 

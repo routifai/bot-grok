@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@nova/db";
+import type { PrismaClient } from "@superchat/db";
 
 /** Instance flag or the current user being the deployment owner. Hostname is not authorization. */
 export async function actorMayUsePrivateRemoteMcp(

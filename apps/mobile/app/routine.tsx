@@ -1,4 +1,4 @@
-import type { Routine } from "@nova/contracts";
+import type { Routine } from "@superchat/contracts";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";

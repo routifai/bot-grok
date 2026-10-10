@@ -82,7 +82,7 @@ class Publication:
 
     @property
     def url_path(self) -> str:
-        """:returns: The public path the Nova app serves it at."""
+        """:returns: The public path the Superchat app serves it at."""
         return f"/apps/{self.slug}"
 
 

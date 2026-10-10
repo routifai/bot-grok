@@ -1,6 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
-import type { AvatarStyle, Bot } from "@nova/contracts";
-import { Button, Dialog, DialogClose, DialogContent, DialogTitle } from "@nova/ui-web";
+import type { AvatarStyle, Bot } from "@superchat/contracts";
+import { Button, Dialog, DialogClose, DialogContent, DialogTitle } from "@superchat/ui-web";
 import {
   Building2,
   CloudDownload,
@@ -24,14 +24,14 @@ import {
   UsageSettingsPanel,
 } from "./AccountSettingsOverlay";
 import { ModelSettingsOverlay } from "./ModelSettingsOverlay";
-import { NovaTile, type TileTone } from "./muse/chrome/NovaTile";
-import { NovaSettingsPanel } from "./muse/NovaSettingsPanel";
+import { SuperchatTile, type TileTone } from "./muse/chrome/SuperchatTile";
+import { SuperchatSettingsPanel } from "./muse/SuperchatSettingsPanel";
 import { GeneralPanel } from "./muse/settings/GeneralPanel";
 import { VoicePanel } from "./muse/settings/VoicePanel";
 import { VoiceSettingsOverlay } from "./VoiceSettingsOverlay";
 
 export type SettingsSection =
-  | "nova"
+  | "superchat"
   | "general"
   | "models"
   | "voice"
@@ -41,9 +41,9 @@ export type SettingsSection =
   | "computer"
   | "updates";
 
-/** Nova's Settings sidebar: one colored tile per section, Mac style. */
+/** Superchat's Settings sidebar: one colored tile per section, Mac style. */
 const SETTINGS_TONE: Partial<Record<SettingsSection, TileTone>> = {
-  nova: "blue",
+  superchat: "blue",
   general: "gray",
   voice: "red",
   computer: "blue",
@@ -89,9 +89,9 @@ export function SettingsOverlay({
   onOpenMessaging?: () => void;
   onClose: () => void;
   onVoiceStatusMaybeChanged?: () => void | Promise<void>;
-  /** In Muse mode: gates Avatars/Updates off and adds the Nova section (docs/muse/DESIGN.md). */
+  /** In Muse mode: gates Avatars/Updates off and adds the Superchat section (docs/muse/DESIGN.md). */
   museMode?: boolean;
-  /** The person's one Muse bot; required to render the Nova section. */
+  /** The person's one Muse bot; required to render the Superchat section. */
   museBot?: Bot | null;
   onMuseBotSave?: (patch: { name?: string; color?: string }) => Promise<void>;
 }) {
@@ -138,7 +138,7 @@ export function SettingsOverlay({
 
   const navItems: NavItem[] = [
     ...(museMode
-      ? [{ id: "nova" as const, label: museBot?.name || t`superchat`, icon: UserRound }]
+      ? [{ id: "superchat" as const, label: museBot?.name || t`superchat`, icon: UserRound }]
       : []),
     { id: "general", label: t`General`, icon: Settings },
     // The classic app picks its own model; on the engine, the Muse person manages keys here.
@@ -202,7 +202,7 @@ export function SettingsOverlay({
           section === "usage" ? (usageRef.current ?? panelRef.current) : panelRef.current
         }
         className={`flex max-h-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-h-[calc(100%-5rem)] ${
-          museMode ? "nova-window rounded-[22px] ring-0" : "rounded-2xl"
+          museMode ? "superchat-window rounded-[22px] ring-0" : "rounded-2xl"
         } ${
           widePane && !museMode
             ? "h-[min(760px,calc(100%-2rem))] w-[min(1080px,calc(100%-2rem))] sm:max-w-[1080px]"
@@ -214,7 +214,7 @@ export function SettingsOverlay({
             data-testid="settings-nav"
             aria-label={t`Settings`}
             className={`flex shrink-0 flex-row gap-1 overflow-x-auto overscroll-x-contain border-b border-border px-3 py-3 max-sm:justify-between md:w-[200px] md:flex-col md:overflow-y-auto md:border-b-0 md:border-e md:px-3 md:py-4 ${
-              museMode ? "md:m-2 md:gap-px md:rounded-[18px] md:border-e-0 md:px-2 nova-glass" : ""
+              museMode ? "md:m-2 md:gap-px md:rounded-[18px] md:border-e-0 md:px-2 superchat-glass" : ""
             }`}
           >
             {navItems.map((item) => {
@@ -243,13 +243,13 @@ export function SettingsOverlay({
                   }
                 >
                   {museMode ? (
-                    <NovaTile
+                    <SuperchatTile
                       tone={SETTINGS_TONE[item.id] ?? "gray"}
                       size={22}
                       className="max-sm:hidden"
                     >
                       <Icon strokeWidth={2.4} />
-                    </NovaTile>
+                    </SuperchatTile>
                   ) : (
                     <Icon className="size-4 shrink-0 max-sm:hidden" strokeWidth={1.75} />
                   )}
@@ -286,8 +286,8 @@ export function SettingsOverlay({
                   : "rk-scroll overflow-y-auto overscroll-contain px-6 pb-6 pt-5 sm:px-8 sm:pb-8"
               }`}
             >
-              {section === "nova" && museMode && museBot && onMuseBotSave ? (
-                <NovaSettingsPanel bot={museBot} onSave={onMuseBotSave} />
+              {section === "superchat" && museMode && museBot && onMuseBotSave ? (
+                <SuperchatSettingsPanel bot={museBot} onSave={onMuseBotSave} />
               ) : null}
               {section === "general" && museMode ? (
                 <GeneralPanel name={name} email={email} isDeploymentOwner={isDeploymentOwner} />

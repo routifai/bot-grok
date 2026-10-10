@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import { cn, Dialog, DialogContent, DialogDescription, DialogTitle } from "@nova/ui-web";
+import { cn, Dialog, DialogContent, DialogDescription, DialogTitle } from "@superchat/ui-web";
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
 

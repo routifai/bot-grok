@@ -1,4 +1,4 @@
-import { ACTIVE_RUN_STATUSES, plainTextFromMarkdown } from "@nova/core";
+import { ACTIVE_RUN_STATUSES, plainTextFromMarkdown } from "@superchat/core";
 
 export const activeRunStatuses = [...ACTIVE_RUN_STATUSES];
 

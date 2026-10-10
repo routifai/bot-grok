@@ -19,11 +19,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 COPY infra/sandboxes/computer/xcapture.c .
-RUN cc -O3 -fPIC -shared -Wall -Wextra -Werror -o libnova-xcapture.so xcapture.c \
+RUN cc -O3 -fPIC -shared -Wall -Wextra -Werror -o libsuperchat-xcapture.so xcapture.c \
     -lX11 -lXext -lXdamage -lXfixes -lXtst -lpng
 
 # ── Omnigent runner builder ──────────────────────────────────────
-# Installs the vendored engine/omnigent package (the Nova "computer" runner launcher —
+# Installs the vendored engine/omnigent package (the Superchat "computer" runner launcher —
 # docs/omnigent-spike.md — execs `omnigent host` in this image) into a standalone venv the final
 # stage copies out, mirroring engine/omnigent/deploy/docker/Dockerfile's own builder stage. Kept
 # separate from that Dockerfile (rather than building `--target host` and copying from it) so this
@@ -79,7 +79,7 @@ FROM node-runtime AS pptx-runtime-builder
 RUN apt-get update && apt-get install -y --no-install-recommends patch \
   && rm -rf /var/lib/apt/lists/*
 COPY infra/sandboxes/computer/pptx/runtime/ /build/pptx-runtime/
-RUN sh /build/pptx-runtime/install.sh /opt/nova-pptx
+RUN sh /build/pptx-runtime/install.sh /opt/superchat-pptx
 
 FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
 # Dev tools let bots clone repos and fetch artifacts; containers run uid 1000
@@ -111,61 +111,61 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     openssh-client \
     unzip \
   && rm -rf /var/lib/apt/lists/* \
-  # Debian's novnc package creates an unused `nova` system account (from OpenStack Nova)
+  # Debian's novnc package creates an unused `superchat` system account (from OpenStack Superchat)
   # that owns no files; drop it so the Computer user can take the name.
-  && if id -u nova >/dev/null 2>&1; then userdel nova; fi \
-  && if getent group nova >/dev/null; then groupdel nova; fi \
-  && groupadd --gid 1000 nova \
-  && useradd --uid 1000 --gid nova --create-home --shell /bin/bash nova \
-  && mkdir -p /etc/nova/fluxbox \
+  && if id -u superchat >/dev/null 2>&1; then userdel superchat; fi \
+  && if getent group superchat >/dev/null; then groupdel superchat; fi \
+  && groupadd --gid 1000 superchat \
+  && useradd --uid 1000 --gid superchat --create-home --shell /bin/bash superchat \
+  && mkdir -p /etc/superchat/fluxbox \
   && printf '%s\n' '#!/bin/sh' 'exec xsetroot -solid "#111113" "$@"' > /usr/bin/fbsetbg \
   && chmod +x /usr/bin/fbsetbg \
   && ln -sfn /bin/true /usr/bin/xmessage
 ENV DISPLAY=:1
 ENV MPLBACKEND=Agg
-ENV HOME=/home/nova
-WORKDIR /home/nova
+ENV HOME=/home/superchat
+WORKDIR /home/superchat
 # --chmod normalizes modes: a restrictive host umask (e.g. 077 on hardened hosts) would
 # otherwise leave these files unreadable to USER 1000 at runtime.
-COPY --chmod=755 infra/sandboxes/computer/start.sh /usr/local/bin/nova-computer
-COPY --chmod=755 infra/sandboxes/computer/control.py /usr/local/bin/nova-computer-control
-COPY --from=capture-builder /build/libnova-xcapture.so /usr/local/lib/libnova-xcapture.so
-COPY --chmod=755 infra/sandboxes/computer/nova-browser /usr/local/bin/nova-browser
-COPY --chmod=755 infra/sandboxes/computer/nova-page-browser /usr/local/bin/nova-page-browser
-COPY --chmod=755 infra/sandboxes/computer/nova-deck-export /usr/local/bin/nova-deck-export
+COPY --chmod=755 infra/sandboxes/computer/start.sh /usr/local/bin/superchat-computer
+COPY --chmod=755 infra/sandboxes/computer/control.py /usr/local/bin/superchat-computer-control
+COPY --from=capture-builder /build/libsuperchat-xcapture.so /usr/local/lib/libsuperchat-xcapture.so
+COPY --chmod=755 infra/sandboxes/computer/superchat-browser /usr/local/bin/superchat-browser
+COPY --chmod=755 infra/sandboxes/computer/superchat-page-browser /usr/local/bin/superchat-page-browser
+COPY --chmod=755 infra/sandboxes/computer/superchat-deck-export /usr/local/bin/superchat-deck-export
 # Deck export (`deck_export`: editable PPTX + vector PDF). The page-side capture module and the
 # vendored dom-to-pptx browser bundle (MIT, v2.0.1; LICENSE kept next to its .gz) are read by
-# nova-deck-export from this directory. The bundle is committed gzipped and expanded here, so the
+# superchat-deck-export from this directory. The bundle is committed gzipped and expanded here, so the
 # repository carries no 3.8 MB script.
-COPY --chmod=644 infra/sandboxes/computer/deck-export/deck-capture-page.js /usr/local/share/nova/deck-export/deck-capture-page.js
-COPY --chmod=644 infra/sandboxes/computer/deck-export/vendor/dom-to-pptx/dom-to-pptx.bundle.js.gz /usr/local/share/nova/deck-export/dom-to-pptx.bundle.js.gz
-COPY --chmod=644 infra/sandboxes/computer/deck-export/vendor/dom-to-pptx/LICENSE /usr/local/share/nova/deck-export/dom-to-pptx.LICENSE
-# Dashboards (`nova-dashboard`): computes a spec's numbers from the person's files with pandas and
+COPY --chmod=644 infra/sandboxes/computer/deck-export/deck-capture-page.js /usr/local/share/superchat/deck-export/deck-capture-page.js
+COPY --chmod=644 infra/sandboxes/computer/deck-export/vendor/dom-to-pptx/dom-to-pptx.bundle.js.gz /usr/local/share/superchat/deck-export/dom-to-pptx.bundle.js.gz
+COPY --chmod=644 infra/sandboxes/computer/deck-export/vendor/dom-to-pptx/LICENSE /usr/local/share/superchat/deck-export/dom-to-pptx.LICENSE
+# Dashboards (`superchat-dashboard`): computes a spec's numbers from the person's files with pandas and
 # writes one self-contained HTML page. Chart.js is the decks' vendored copy (MIT, LICENSE beside it).
-COPY --chmod=755 infra/sandboxes/computer/nova-dashboard /usr/local/bin/nova-dashboard
-COPY --chmod=644 infra/sandboxes/computer/dashboard/template.html /usr/local/share/nova/dashboard/template.html
-COPY --chmod=644 engine/omnigent/omnigent/superchat/decks/kit/vendor/chart.js/chart.umd.js /usr/local/share/nova/dashboard/chart.umd.js
-COPY --chmod=644 engine/omnigent/omnigent/superchat/decks/kit/vendor/chart.js/LICENSE.md /usr/local/share/nova/dashboard/chart.js.LICENSE.md
-COPY --chmod=755 infra/sandboxes/computer/nova-recorder /usr/local/bin/nova-recorder
-COPY --chmod=644 infra/sandboxes/computer/nova-recorder.js /usr/local/share/nova/nova-recorder.js
-COPY --chmod=644 infra/sandboxes/computer/nova-browser.desktop /usr/share/applications/nova-browser.desktop
-COPY --chmod=644 infra/sandboxes/computer/fluxbox.init /etc/nova/fluxbox/init
-COPY --chmod=644 infra/sandboxes/computer/fluxbox.apps /etc/nova/fluxbox/apps
-COPY --chmod=644 infra/sandboxes/computer/fluxbox.menu /etc/nova/fluxbox/menu
+COPY --chmod=755 infra/sandboxes/computer/superchat-dashboard /usr/local/bin/superchat-dashboard
+COPY --chmod=644 infra/sandboxes/computer/dashboard/template.html /usr/local/share/superchat/dashboard/template.html
+COPY --chmod=644 engine/omnigent/omnigent/superchat/decks/kit/vendor/chart.js/chart.umd.js /usr/local/share/superchat/dashboard/chart.umd.js
+COPY --chmod=644 engine/omnigent/omnigent/superchat/decks/kit/vendor/chart.js/LICENSE.md /usr/local/share/superchat/dashboard/chart.js.LICENSE.md
+COPY --chmod=755 infra/sandboxes/computer/superchat-recorder /usr/local/bin/superchat-recorder
+COPY --chmod=644 infra/sandboxes/computer/superchat-recorder.js /usr/local/share/superchat/superchat-recorder.js
+COPY --chmod=644 infra/sandboxes/computer/superchat-browser.desktop /usr/share/applications/superchat-browser.desktop
+COPY --chmod=644 infra/sandboxes/computer/fluxbox.init /etc/superchat/fluxbox/init
+COPY --chmod=644 infra/sandboxes/computer/fluxbox.apps /etc/superchat/fluxbox/apps
+COPY --chmod=644 infra/sandboxes/computer/fluxbox.menu /etc/superchat/fluxbox/menu
 COPY --chmod=644 infra/sandboxes/computer/embed.html /usr/share/novnc/embed.html
 COPY --chmod=644 infra/sandboxes/computer/clipboard-bridge.js /usr/share/novnc/clipboard-bridge.js
 COPY --chmod=644 infra/sandboxes/computer/mobile-keyboard.js /usr/share/novnc/mobile-keyboard.js
 # Login shells source this after Debian's /etc/profile resets PATH. The home
 # volume hides /etc/skel, so ~/.local/bin has to be restored from the image.
-COPY --chmod=644 infra/sandboxes/computer/nova-local-bin.sh /etc/profile.d/nova-local-bin.sh
+COPY --chmod=644 infra/sandboxes/computer/superchat-local-bin.sh /etc/profile.d/superchat-local-bin.sh
 # The Muse's native-PowerPoint skill (MiniMax-AI/skills pptx-generator, MIT, ported): SKILL.md and
 # references the prompt tells the Muse to read.
-COPY infra/sandboxes/computer/pptx/skill/pptx-generator/ /usr/local/share/nova/skills/pptx-generator/
+COPY infra/sandboxes/computer/pptx/skill/pptx-generator/ /usr/local/share/superchat/skills/pptx-generator/
 
 # ── Omnigent runner + the Claude Code CLI ──────────────────────────
-# Lets the Nova "computer" sandbox launcher (docs/omnigent-spike.md,
+# Lets the Superchat "computer" sandbox launcher (docs/omnigent-spike.md,
 # engine/omnigent/omnigent/onboarding/sandboxes/computer.py) exec `omnigent host` in this image.
-# Installed OUTSIDE /home/nova on purpose: that path is a per-Muse volume mount (empty on first
+# Installed OUTSIDE /home/superchat on purpose: that path is a per-Muse volume mount (empty on first
 # run), so anything baked into the image's own copy of it would never actually be there at
 # runtime — see engine/omnigent/deploy/docker/Dockerfile's host target for the same pattern.
 #
@@ -183,15 +183,15 @@ COPY --from=omnigent-builder /opt/venv /opt/venv
 COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 COPY --from=node-runtime /usr/local/lib/node_modules /usr/local/lib/node_modules
 # Fixed prefix on NODE_PATH: `require('pptxgenjs')` works from any script the Muse writes.
-COPY --from=pptx-runtime-builder /opt/nova-pptx/node_modules /opt/nova-pptx/node_modules
-ENV NODE_PATH=/opt/nova-pptx/node_modules
+COPY --from=pptx-runtime-builder /opt/superchat-pptx/node_modules /opt/superchat-pptx/node_modules
+ENV NODE_PATH=/opt/superchat-pptx/node_modules
 RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
  && ln -s /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
- # Claude Code CLI: the nova-claude harness's claude-agent-sdk shells out to this binary to run
+ # Claude Code CLI: the superchat-claude harness's claude-agent-sdk shells out to this binary to run
  # the Muse's turns. Major-pinned (not "latest") since this image is rebuilt manually, not by
  # CI on every main commit — an unpinned install could jump a breaking major between builds.
  && npm install -g --no-audit --no-fund @anthropic-ai/claude-code@2 \
- # Pi coding agent CLI: the `pi` harness (NOVA_MUSE_HARNESS=pi, bundle nova-pi) spawns `pi --mode rpc`.
+ # Pi coding agent CLI: the `pi` harness (SUPERCHAT_MUSE_HARNESS=pi, bundle superchat-pi) spawns `pi --mode rpc`.
  # Exact-pinned to the version verified on the host (needs Node >= 22.19).
  && npm install -g --no-audit --no-fund @earendil-works/pi-coding-agent@0.87.1 \
  # /usr/local/bin is the only directory on the sandbox supervisor's fixed exec PATH
@@ -204,13 +204,13 @@ RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 # COPY --chmod=644 also gives the directory it creates mode 644 (no search bit), which left
 # the recorder's page script unreadable to USER 1000.
 RUN ldconfig \
-  && chmod 755 /usr/local/share/nova /usr/local/share/nova/deck-export /usr/local/share/nova/dashboard \
-  && chmod -R a+rX /usr/local/share/nova/skills /opt/nova-pptx \
-  && gzip -dc /usr/local/share/nova/deck-export/dom-to-pptx.bundle.js.gz > /usr/local/share/nova/deck-export/dom-to-pptx.bundle.js \
-  && chmod 644 /usr/local/share/nova/deck-export/dom-to-pptx.bundle.js \
-  && sed -i 's/\r$//' /usr/local/bin/nova-computer /usr/local/bin/nova-computer-control /usr/local/bin/nova-browser /usr/local/bin/nova-page-browser /usr/local/bin/nova-deck-export /usr/local/bin/nova-dashboard /usr/local/bin/nova-recorder \
-    /etc/nova/fluxbox/init /etc/nova/fluxbox/apps /etc/nova/fluxbox/menu \
-    /etc/profile.d/nova-local-bin.sh
+  && chmod 755 /usr/local/share/superchat /usr/local/share/superchat/deck-export /usr/local/share/superchat/dashboard \
+  && chmod -R a+rX /usr/local/share/superchat/skills /opt/superchat-pptx \
+  && gzip -dc /usr/local/share/superchat/deck-export/dom-to-pptx.bundle.js.gz > /usr/local/share/superchat/deck-export/dom-to-pptx.bundle.js \
+  && chmod 644 /usr/local/share/superchat/deck-export/dom-to-pptx.bundle.js \
+  && sed -i 's/\r$//' /usr/local/bin/superchat-computer /usr/local/bin/superchat-computer-control /usr/local/bin/superchat-browser /usr/local/bin/superchat-page-browser /usr/local/bin/superchat-deck-export /usr/local/bin/superchat-dashboard /usr/local/bin/superchat-recorder \
+    /etc/superchat/fluxbox/init /etc/superchat/fluxbox/apps /etc/superchat/fluxbox/menu \
+    /etc/profile.d/superchat-local-bin.sh
 EXPOSE 7070 6080 6081 6082 6083 6084 6085 6086 6087 6088 6089 6090 6091 6092 6093 6094 6095
 USER 1000:1000
-CMD ["/usr/local/bin/nova-computer"]
+CMD ["/usr/local/bin/superchat-computer"]

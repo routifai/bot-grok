@@ -1,4 +1,4 @@
-import type { ComputerStatus } from "@nova/contracts";
+import type { ComputerStatus } from "@superchat/contracts";
 import { SCREEN_URL_RENEW_MS } from "./computer";
 
 export { SCREEN_URL_RENEW_MS };

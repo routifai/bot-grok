@@ -94,34 +94,34 @@ as_deploy sudo docker compose version
 
 step "2/6 Ship the source (git archive HEAD)"
 git -C "${REPO_ROOT}" archive --format=tar HEAD | gzip -1 | as_deploy \
-  'set -e; rm -rf ~/nova.new; mkdir ~/nova.new; tar -xzf - -C ~/nova.new; rm -rf ~/nova.old; if [ -d ~/nova ]; then mv ~/nova ~/nova.old; fi; mv ~/nova.new ~/nova; rm -rf ~/nova.old'
+  'set -e; rm -rf ~/superchat.new; mkdir ~/superchat.new; tar -xzf - -C ~/superchat.new; rm -rf ~/superchat.old; if [ -d ~/superchat ]; then mv ~/superchat ~/superchat.old; fi; mv ~/superchat.new ~/superchat; rm -rf ~/superchat.old'
 echo "shipped $(git -C "${REPO_ROOT}" rev-parse --short HEAD)"
 
 step "3/6 Docker daemon defaults and host hardening (SSH key only, firewall: 22, 80, 443)"
-as_deploy 'sudo install -m 644 ~/nova/infra/compose/docker-daemon.json /etc/docker/daemon.json && sudo systemctl restart docker'
+as_deploy 'sudo install -m 644 ~/superchat/infra/compose/docker-daemon.json /etc/docker/daemon.json && sudo systemctl restart docker'
 # Never ban the machine running this setup (its address as the VPS sees it).
 # shellcheck disable=SC2016 # SSH_CONNECTION is read on the VPS.
 admin_ip="$(as_deploy 'echo "${SSH_CONNECTION%% *}"')"
-as_deploy "sudo DEPLOY_USER=${DEPLOY_USER} FAIL2BAN_IGNORE_IP=${admin_ip} bash ~/nova/infra/compose/harden-host.sh"
+as_deploy "sudo DEPLOY_USER=${DEPLOY_USER} FAIL2BAN_IGNORE_IP=${admin_ip} bash ~/superchat/infra/compose/harden-host.sh"
 as_deploy true
 echo "fresh SSH session as deploy works after hardening"
 
-step "4/6 Write ~/nova/.env.computers (token sent over SSH, not on the command line)"
+step "4/6 Write ~/superchat/.env.computers (token sent over SSH, not on the command line)"
 cpus="$(as_deploy nproc)"
 # DOCKER_GID is read on the VPS, hence the single quotes below.
 # shellcheck disable=SC2016
 {
   echo "COMPUTERS_HOST=${COMPUTERS_HOST}"
   echo "SANDBOX_SUPERVISOR_TOKEN=${SANDBOX_SUPERVISOR_TOKEN}"
-  echo "NOVA_COMPUTER_MEMORY=${NOVA_COMPUTER_MEMORY:-2g}"
-  echo "NOVA_COMPUTER_CPUS=${NOVA_COMPUTER_CPUS:-${cpus}}"
-  echo "NOVA_COMPUTER_PIDS_LIMIT=${NOVA_COMPUTER_PIDS_LIMIT:-2048}"
-} | as_deploy 'umask 077; cat >~/nova/.env.computers; echo "DOCKER_GID=$(stat -c %g /var/run/docker.sock)" >>~/nova/.env.computers'
+  echo "SUPERCHAT_COMPUTER_MEMORY=${SUPERCHAT_COMPUTER_MEMORY:-2g}"
+  echo "SUPERCHAT_COMPUTER_CPUS=${SUPERCHAT_COMPUTER_CPUS:-${cpus}}"
+  echo "SUPERCHAT_COMPUTER_PIDS_LIMIT=${SUPERCHAT_COMPUTER_PIDS_LIMIT:-2048}"
+} | as_deploy 'umask 077; cat >~/superchat/.env.computers; echo "DOCKER_GID=$(stat -c %g /var/run/docker.sock)" >>~/superchat/.env.computers'
 
 step "5/6 Build and start (the Computer image takes a while the first time)"
-# Caddy bind-mounts its config from ~/nova, which step 2 replaces with a fresh copy; recreate it
+# Caddy bind-mounts its config from ~/superchat, which step 2 replaces with a fresh copy; recreate it
 # so it reads the new file instead of the old, deleted one.
-as_deploy 'cd ~/nova && sudo docker compose --env-file .env.computers -f infra/compose/docker-compose.computers.yml up -d --build && sudo docker compose --env-file .env.computers -f infra/compose/docker-compose.computers.yml up -d --force-recreate caddy && sudo docker builder prune -f >/dev/null'
+as_deploy 'cd ~/superchat && sudo docker compose --env-file .env.computers -f infra/compose/docker-compose.computers.yml up -d --build && sudo docker compose --env-file .env.computers -f infra/compose/docker-compose.computers.yml up -d --force-recreate caddy && sudo docker builder prune -f >/dev/null'
 
 # Computers already running keep the image they started from. Remove any whose image is not the
 # freshly built one so the next use starts them on it (workspace volumes survive), then drop the
@@ -130,9 +130,9 @@ as_deploy 'cd ~/nova && sudo docker compose --env-file .env.computers -f infra/c
 # shellcheck disable=SC2016
 recycled="$(as_deploy 'sudo bash -s' <<'RECYCLE'
 set -eu
-new="$(docker image inspect --format '{{.Id}}' nova/computer:local)"
+new="$(docker image inspect --format '{{.Id}}' superchat/computer:local)"
 count=0
-for id in $(docker ps -q --filter 'name=^nova-bot-'); do
+for id in $(docker ps -q --filter 'name=^superchat-bot-'); do
   if [ "$(docker inspect --format '{{.Image}}' "${id}")" != "${new}" ]; then
     docker rm -f "${id}" >/dev/null
     count=$((count + 1))

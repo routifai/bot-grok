@@ -3,7 +3,7 @@
 The Muse's tools are the qmd-style set in :mod:`omnigent.superchat.knowledge.tools`.
 ``files_ingest`` / ``files_thumbnail`` / ``files_reindex`` / ``files_find`` are never offered to a
 model: the engine's relays call them (through the runner's ``/mcp/execute``) to read an
-attachment before its message is sent, and to answer Nova's Library badges and citation chips.
+attachment before its message is sent, and to answer Superchat's Library badges and citation chips.
 """
 
 from __future__ import annotations

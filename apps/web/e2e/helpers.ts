@@ -77,7 +77,7 @@ export async function signup(
   testInfo?: TestInfo,
 ) {
   await page.goto("/sign-up");
-  await expect(page.getByRole("heading", { name: "Meet Nova." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Meet Superchat." })).toBeVisible();
   if (testInfo) await captureScreenshot(page, testInfo, "01-sign-up");
   await page.getByPlaceholder("Your name").fill(name);
   await page.getByPlaceholder("Your email address").fill(email);
@@ -99,7 +99,7 @@ export async function captureScreenshot(page: Page, testInfo: TestInfo, name: st
 /** Open the user Settings overlay, optionally switching to a sidebar section. */
 export async function openUserSettings(
   page: Page,
-  section?: "general" | "signups" | "models" | "voice" | "usage" | "computer" | "updates" | "nova",
+  section?: "general" | "signups" | "models" | "voice" | "usage" | "computer" | "updates" | "superchat",
 ) {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const settings = page.getByTestId("user-settings");

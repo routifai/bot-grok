@@ -1,5 +1,5 @@
-import type { MessageBlock } from "@nova/contracts";
-import { isToolActivityBlock } from "@nova/core";
+import type { MessageBlock } from "@superchat/contracts";
+import { isToolActivityBlock } from "@superchat/core";
 import { describe, expect, it } from "vitest";
 import {
   botMessageOutcomeFromMidTurn,

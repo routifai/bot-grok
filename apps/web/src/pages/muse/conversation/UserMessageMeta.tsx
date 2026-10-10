@@ -1,6 +1,6 @@
 import { i18n } from "@lingui/core";
 import { useLingui } from "@lingui/react/macro";
-import type { ThreadMessage } from "@nova/contracts";
+import type { ThreadMessage } from "@superchat/contracts";
 import { Check, Copy } from "lucide-react";
 import { useState } from "react";
 import { copyableMessageText } from "../../../lib/message-text";

@@ -1,4 +1,4 @@
-import { type MessageBlock, type MessageReaction, MessageReactionSchema } from "@nova/contracts";
+import { type MessageBlock, type MessageReaction, MessageReactionSchema } from "@superchat/contracts";
 
 type ReactionMessage = {
   id: string;

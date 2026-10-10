@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { Bot, ComputerStatus } from "@nova/contracts";
+import type { Bot, ComputerStatus } from "@superchat/contracts";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";

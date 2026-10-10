@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { EngineAdminUsage } from "@nova/contracts";
+import type { EngineAdminUsage } from "@superchat/contracts";
 import { useEffect, useState } from "react";
 import { errorText } from "../../lib/error-text";
 import { rpc } from "../../lib/rpc";

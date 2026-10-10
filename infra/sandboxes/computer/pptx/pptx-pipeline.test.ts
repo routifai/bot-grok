@@ -80,12 +80,12 @@ beforeAll(async () => {
     execFileSync("sh", [join(runtimeDir, "install.sh")], { stdio: "inherit", timeout: 180_000 });
   }
   JSZip = createRequire(join(nodeModules, "pptxgenjs/package.json"))("jszip");
-  work = mkdtempSync(join(tmpdir(), "nova-pptx-"));
+  work = mkdtempSync(join(tmpdir(), "superchat-pptx-"));
   cpSync(join(here, "fixtures/slides"), join(work, "slides"), { recursive: true });
   const out = join(work, "deck.pptx");
   execFileSync("node", ["compile.js"], {
     cwd: join(work, "slides"),
-    env: { ...process.env, NODE_PATH: nodeModules, NOVA_PPTX_OUT: out },
+    env: { ...process.env, NODE_PATH: nodeModules, SUPERCHAT_PPTX_OUT: out },
     timeout: 60_000,
   });
   zip = await JSZip.loadAsync(readFileSync(out));

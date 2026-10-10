@@ -1,4 +1,4 @@
-import { cn } from "@nova/ui-web";
+import { cn } from "@superchat/ui-web";
 import type { LucideIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { type IllustrationKey, illustrationUrl } from "../../../lib/illustrations";
@@ -14,12 +14,12 @@ import { type IllustrationKey, illustrationUrl } from "../../../lib/illustration
  * auth screens). Geist Mono (`label`) is for small tags only, never a whole heading.
  */
 /** iOS-style inset grouped list: one rounded card whose rows are split by inset hairlines
- * (`.nova-group` in styles.css; rows that take the inset separator carry `nova-row`). */
-export const MUSE_INSET_GROUP = "nova-group";
+ * (`.superchat-group` in styles.css; rows that take the inset separator carry `superchat-row`). */
+export const MUSE_INSET_GROUP = "superchat-group";
 
 /** One row of an inset grouped list: 52px, a 28px tile, title over a quiet subtitle. */
 export const MUSE_LIST_ROW =
-  "nova-row grid min-h-[52px] w-full grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 px-3 py-2 text-start text-[14px] tracking-[-0.15px]";
+  "superchat-row grid min-h-[52px] w-full grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 px-3 py-2 text-start text-[14px] tracking-[-0.15px]";
 
 export const MUSE_TYPE = {
   /** The screen's name in the shared top chrome bar (`ScreenHeader`). */
@@ -270,7 +270,7 @@ export function Section({
 type SurfaceTone = "default" | "attention" | "quiet";
 
 /**
- * The one card surface (`.nova-card`: 18px, the `group` fill, a half-pixel hairline).
+ * The one card surface (`.superchat-card`: 18px, the `group` fill, a half-pixel hairline).
  * `attention` reads the same (what waits on the person carries an orange tile instead);
  * `quiet` sits on the window fill.
  */
@@ -283,8 +283,8 @@ export function Surface({
   return (
     <div
       className={cn(
-        tone === "default" && "nova-card",
-        tone === "attention" && "nova-card",
+        tone === "default" && "superchat-card",
+        tone === "attention" && "superchat-card",
         tone === "quiet" && "rounded-[18px] bg-window",
         interactive &&
           "cursor-pointer transition-[background-color] duration-150 hover:bg-selection focus-visible:outline-2 focus-visible:outline-ring",
@@ -460,7 +460,7 @@ export function Progress({ value, label }: { value: number; label: string }) {
  * section's illustration, a plain sans headline, one muted line, and — when
  * `suggestions` and `onSuggestion` are both given — a few chips that start a
  * Conversation with that prompt. Omit them for a quieter inline message (e.g. "nothing
- * matches your search"), which keeps the same centered, breathing layout. Nova's orb
+ * matches your search"), which keeps the same centered, breathing layout. Superchat's orb
  * has one home (the sidebar), so an empty state never shows it.
  */
 export function EmptyState({

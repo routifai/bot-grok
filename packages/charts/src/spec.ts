@@ -72,7 +72,7 @@ export const SeriesConfigSchema = z.object({
 });
 
 /**
- * Where the chart's rows come from. Nova replaces nao's `query_id` (a previous `execute_sql` result) with a
+ * Where the chart's rows come from. Superchat replaces nao's `query_id` (a previous `execute_sql` result) with a
  * result file in the person's Computer; the engine reads it runner-side, so the model never retypes values.
  */
 export const ChartSourceSchema = z.object({

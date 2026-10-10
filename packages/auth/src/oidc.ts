@@ -1,4 +1,4 @@
-import { emailDomainOf, parseDomains } from "@nova/core";
+import { emailDomainOf, parseDomains } from "@superchat/core";
 import { APIError } from "better-auth/api";
 import { genericOAuth } from "better-auth/plugins";
 

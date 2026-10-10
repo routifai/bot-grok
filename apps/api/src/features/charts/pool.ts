@@ -1,5 +1,5 @@
 import { Worker } from "node:worker_threads";
-import type { ChartDocument } from "@nova/charts";
+import type { ChartDocument } from "@superchat/charts";
 import type { ChartImageFormat, ChartTheme, RenderedChart } from "./render.js";
 
 export interface RenderJob {

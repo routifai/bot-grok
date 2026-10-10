@@ -387,7 +387,7 @@ describe("no engine plumbing reaches the UI", () => {
     expect(presentActivityTitle("__web_researcher: web_fetch_91af")).toBe("Web research");
     expect(presentActivityTitle("researcher: APR vs APY")).toBe("APR vs APY");
     expect(presentActivityTitle("researcher: 91af03c2b7")).toBe("Researcher");
-    expect(presentActivityTitle("Nova Conversation")).toBe("Conversation");
+    expect(presentActivityTitle("Superchat Conversation")).toBe("Conversation");
     expect(presentActivityTitle("Use a researcher helper")).toBe("Use a researcher helper");
   });
 });

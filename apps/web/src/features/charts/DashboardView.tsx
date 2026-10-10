@@ -4,8 +4,8 @@ import {
   type DashboardChart,
   type DashboardDocument,
   parseDashboardDocument,
-} from "@nova/charts";
-import { Button, cn, Dialog, DialogClose, DialogContent, DialogTitle } from "@nova/ui-web";
+} from "@superchat/charts";
+import { Button, cn, Dialog, DialogClose, DialogContent, DialogTitle } from "@superchat/ui-web";
 import { Maximize2, X } from "lucide-react";
 import { useState } from "react";
 import { useArtifactPanel } from "../../components/cards/context";

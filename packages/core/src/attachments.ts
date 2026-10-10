@@ -6,7 +6,7 @@ import {
   isAttachmentImageMimeType,
   type MessageBlock,
   XLSX_MIME_TYPE,
-} from "@nova/contracts";
+} from "@superchat/contracts";
 
 export class AttachmentValidationError extends Error {
   constructor(message: string) {
@@ -202,7 +202,7 @@ export function userTurnMessageForRun<
   );
 }
 
-// Muse chats keep a person's files in their Computer workspace, not in Nova's database. A message
+// Muse chats keep a person's files in their Computer workspace, not in Superchat's database. A message
 // refers to such a file with one reference line; this is the only definition of that format (the
 // api writes it, the web and the worker parse it).
 

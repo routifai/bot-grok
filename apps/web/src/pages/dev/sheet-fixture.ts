@@ -1,4 +1,4 @@
-import type { ArtifactTable, TableCell, TableCellEdit } from "@nova/contracts";
+import type { ArtifactTable, TableCell, TableCellEdit } from "@superchat/contracts";
 import { cellFromValue } from "../../features/sheets/sheet-model";
 
 const num = (v: number, z?: string): TableCell => ({ v, f: null, t: "n", ...(z ? { z } : {}) });

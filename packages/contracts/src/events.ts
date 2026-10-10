@@ -58,7 +58,7 @@ export const MAX_CHART_DATA_ROWS = 5_000;
 
 const ChartSpec = z.record(z.string(), z.any());
 
-/** Nova Canvas tree (packages/contracts/src/canvas.ts has the strict `CanvasNodeSchema`
+/** Superchat Canvas tree (packages/contracts/src/canvas.ts has the strict `CanvasNodeSchema`
     catalog); z.any here keeps the inferred type JSON-assignable for persistence, the same
     reason ChartSpec does above — the tree is validated and repaired before publish. */
 const CanvasTree = z.record(z.string(), z.any());
@@ -250,7 +250,7 @@ export const MessageBlock = z.discriminatedUnion("kind", [
   /** The Muse's `render_card` result (packages/contracts/src/reply-cards.ts). */
   ReplyCardBlock,
   z.object({
-    /** Nova Canvas (show_canvas). `tree` is a CanvasNode (packages/contracts/src/canvas.ts)
+    /** Superchat Canvas (show_canvas). `tree` is a CanvasNode (packages/contracts/src/canvas.ts)
         already validated and repaired before publish, so renderers can trust its shape. */
     kind: z.literal("canvas"),
     title: z.string().optional(),

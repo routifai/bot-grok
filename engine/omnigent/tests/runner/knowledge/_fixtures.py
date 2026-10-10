@@ -85,7 +85,7 @@ def build_indexer(tmp_path: Path, embedder: Embedder | None = None) -> tuple[Ind
     workspace = tmp_path / "workspace"
     (workspace / "your_files").mkdir(parents=True)
     indexer = Indexer(
-        tmp_path / "home" / ".nova" / "knowledge", workspace, embedder or FakeEmbedder()
+        tmp_path / "home" / ".superchat" / "knowledge", workspace, embedder or FakeEmbedder()
     )
     return indexer, workspace
 

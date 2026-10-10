@@ -1,5 +1,5 @@
-import type { ThreadMessage } from "@nova/contracts";
-import { parseAttachmentReferences } from "@nova/core";
+import type { ThreadMessage } from "@superchat/contracts";
+import { parseAttachmentReferences } from "@superchat/core";
 import { messageProviderLabel } from "./messaging";
 
 /** What a person's own text shows as outside the Conversation view (a side chat, the Activity

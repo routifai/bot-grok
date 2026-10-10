@@ -1,11 +1,11 @@
 <!doctype html>
 <!-- Portions modified from nexu-io/open-design packages/contracts/src/prompts/deck-framework.ts@802708f
      and packages/contracts/src/runtime/deck-protocol.ts@802708f, Apache-2.0; changes: protocol
-     renamed to Nova Deck Protocol v1 (nova:slide, nova:slide-state, nova:deck-ready,
-     data-nova-deck-protocol), localStorage key prefixed nova-deck:, fit() leaves the stage at its
-     authored size while the exporter sets data-nova-export on <html> (so PPTX geometry is 1:1 by
-     construction), data-nova-id on the framework elements, the slot list. -->
-<html lang="en" data-nova-deck-protocol="1">
+     renamed to Superchat Deck Protocol v1 (superchat:slide, superchat:slide-state, superchat:deck-ready,
+     data-superchat-deck-protocol), localStorage key prefixed superchat-deck:, fit() leaves the stage at its
+     authored size while the exporter sets data-superchat-export on <html> (so PPTX geometry is 1:1 by
+     construction), data-superchat-id on the framework elements, the slot list. -->
+<html lang="en" data-superchat-deck-protocol="1">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -21,7 +21,7 @@
          - Only .slide.active is visible at a time
          - Programmatic prev/next + counter elements kept outside the scaled
            stage but hidden by default so the host can render the UI chrome
-         - Nova Deck Protocol v1 absolute navigation + slide-state events
+         - Superchat Deck Protocol v1 absolute navigation + slide-state events
          - Keyboard (← → space PgUp PgDn Home End R), half-slide click, and stored
            position survive iframe focus quirks
          - "Save as PDF" produces a multi-page vertical PDF, one slide
@@ -178,7 +178,7 @@
   </style>
   <style>
     /* Blue Professional · layout vocabulary and theme */
-/* Nova deck layout vocabulary (original). One fixed 1920x1080 canvas; every size is in px.
+/* Superchat deck layout vocabulary (original). One fixed 1920x1080 canvas; every size is in px.
    Safe area: 128px left/right, 104px top, 168px bottom (the footer rail, pinned, lives in the
    bottom band: nothing else may enter it). Layouts are flex/grid flow so content can never be
    positioned off its box: that is what keeps the PowerPoint export exact. */
@@ -260,7 +260,7 @@
 
 /* Design derived from nexu-io/open-design design-templates/html-ppt-zhangzara-blue-professional@802708f (https://github.com/zarazhangrui/beautiful-html-templates),
    MIT, Copyright (c) 2026 Zara Zhang; the license is kept in ../LICENSE. Changes: palette, type and
-   motifs kept; rewritten for Nova's fixed 1920x1080 canvas (px units, no vw/vh or clamp()),
+   motifs kept; rewritten for Superchat's fixed 1920x1080 canvas (px units, no vw/vh or clamp()),
    expressed as tokens (tokens.css) plus the three surface classes of the shared layouts
    (../../layouts.css); web fonts replaced by static Latin-subset TTFs embedded at assembly
    (fonts/, SIL OFL 1.1, license texts alongside). */
@@ -273,70 +273,70 @@
   </style>
 </head>
 <body>
-  <div class="deck-shell" data-nova-id="deck-shell">
-    <div class="deck-stage" id="deck-stage" data-nova-id="deck-stage">
+  <div class="deck-shell" data-superchat-id="deck-shell">
+    <div class="deck-stage" id="deck-stage" data-superchat-id="deck-stage">
 
-      <!-- nova:slides -->
-      <section class="slide active t-b l-cover" data-screen-label="01 Cover" data-nova-id="cover">
-        <div class="kicker" data-nova-id="cover-kicker">Q3 2026 review</div>
-        <h1 class="title" data-nova-id="cover-title">Shipping got faster</h1>
-        <p class="lead" data-nova-id="cover-lead">What moved, what stalled, and the one decision we need.</p>
-        <p class="meta" data-nova-id="cover-meta">Platform team · October 2026</p>
-        <div class="foot" data-nova-id="cover-foot"><span data-nova-id="cover-foot-left">Quarterly review</span><span data-nova-id="cover-foot-page">01</span></div>
+      <!-- superchat:slides -->
+      <section class="slide active t-b l-cover" data-screen-label="01 Cover" data-superchat-id="cover">
+        <div class="kicker" data-superchat-id="cover-kicker">Q3 2026 review</div>
+        <h1 class="title" data-superchat-id="cover-title">Shipping got faster</h1>
+        <p class="lead" data-superchat-id="cover-lead">What moved, what stalled, and the one decision we need.</p>
+        <p class="meta" data-superchat-id="cover-meta">Platform team · October 2026</p>
+        <div class="foot" data-superchat-id="cover-foot"><span data-superchat-id="cover-foot-left">Quarterly review</span><span data-superchat-id="cover-foot-page">01</span></div>
       </section>
-      <section class="slide t-a l-statement" data-screen-label="02 Why" data-nova-id="why">
-        <div class="kicker" data-nova-id="why-kicker">Why now</div>
-        <h2 class="statement" data-nova-id="why-statement">Releases shipped every two weeks, and customers noticed.</h2>
-        <div class="foot" data-nova-id="why-foot"><span data-nova-id="why-foot-left">Quarterly review</span><span data-nova-id="why-foot-page">02</span></div>
+      <section class="slide t-a l-statement" data-screen-label="02 Why" data-superchat-id="why">
+        <div class="kicker" data-superchat-id="why-kicker">Why now</div>
+        <h2 class="statement" data-superchat-id="why-statement">Releases shipped every two weeks, and customers noticed.</h2>
+        <div class="foot" data-superchat-id="why-foot"><span data-superchat-id="why-foot-left">Quarterly review</span><span data-superchat-id="why-foot-page">02</span></div>
       </section>
-      <section class="slide t-a l-points" data-screen-label="03 Three ideas" data-nova-id="ideas">
-        <div class="kicker" data-nova-id="ideas-kicker">What we found</div>
-        <h2 class="title" data-nova-id="ideas-title">Three things moved</h2>
-        <div class="grid" data-nova-id="ideas-grid">
-          <div class="point" data-nova-id="ideas-a"><div class="num" data-nova-id="ideas-a-num">01</div><h3 data-nova-id="ideas-a-h">Smaller changes</h3><p data-nova-id="ideas-a-p">Pull requests got shorter, so reviews got faster.</p></div>
-          <div class="point" data-nova-id="ideas-b"><div class="num" data-nova-id="ideas-b-num">02</div><h3 data-nova-id="ideas-b-h">Automated checks</h3><p data-nova-id="ideas-b-p">Tests run before a person looks at the change.</p></div>
-          <div class="point" data-nova-id="ideas-c"><div class="num" data-nova-id="ideas-c-num">03</div><h3 data-nova-id="ideas-c-h">One release path</h3><p data-nova-id="ideas-c-p">Every team ships the same way, on the same day.</p></div>
+      <section class="slide t-a l-points" data-screen-label="03 Three ideas" data-superchat-id="ideas">
+        <div class="kicker" data-superchat-id="ideas-kicker">What we found</div>
+        <h2 class="title" data-superchat-id="ideas-title">Three things moved</h2>
+        <div class="grid" data-superchat-id="ideas-grid">
+          <div class="point" data-superchat-id="ideas-a"><div class="num" data-superchat-id="ideas-a-num">01</div><h3 data-superchat-id="ideas-a-h">Smaller changes</h3><p data-superchat-id="ideas-a-p">Pull requests got shorter, so reviews got faster.</p></div>
+          <div class="point" data-superchat-id="ideas-b"><div class="num" data-superchat-id="ideas-b-num">02</div><h3 data-superchat-id="ideas-b-h">Automated checks</h3><p data-superchat-id="ideas-b-p">Tests run before a person looks at the change.</p></div>
+          <div class="point" data-superchat-id="ideas-c"><div class="num" data-superchat-id="ideas-c-num">03</div><h3 data-superchat-id="ideas-c-h">One release path</h3><p data-superchat-id="ideas-c-p">Every team ships the same way, on the same day.</p></div>
         </div>
-        <div class="foot" data-nova-id="ideas-foot"><span data-nova-id="ideas-foot-left">Quarterly review</span><span data-nova-id="ideas-foot-page">03</span></div>
+        <div class="foot" data-superchat-id="ideas-foot"><span data-superchat-id="ideas-foot-left">Quarterly review</span><span data-superchat-id="ideas-foot-page">03</span></div>
       </section>
-      <section class="slide t-c l-section" data-screen-label="04 Results" data-nova-id="results-break">
-        <div class="num" data-nova-id="results-break-num">02</div>
-        <h2 class="title" data-nova-id="results-break-title">Results</h2>
-        <div class="foot" data-nova-id="results-break-foot"><span data-nova-id="results-break-foot-left">Quarterly review</span><span data-nova-id="results-break-foot-page">04</span></div>
+      <section class="slide t-c l-section" data-screen-label="04 Results" data-superchat-id="results-break">
+        <div class="num" data-superchat-id="results-break-num">02</div>
+        <h2 class="title" data-superchat-id="results-break-title">Results</h2>
+        <div class="foot" data-superchat-id="results-break-foot"><span data-superchat-id="results-break-foot-left">Quarterly review</span><span data-superchat-id="results-break-foot-page">04</span></div>
       </section>
-      <section class="slide t-a l-stats" data-screen-label="05 Numbers" data-nova-id="numbers">
-        <div class="kicker" data-nova-id="numbers-kicker">Results</div>
-        <h2 class="title" data-nova-id="numbers-title">The numbers that matter</h2>
-        <div class="grid" data-nova-id="numbers-grid">
-          <div class="stat" data-nova-id="numbers-a"><div class="value" data-nova-id="numbers-a-value">12</div><div class="label" data-nova-id="numbers-a-label">Releases shipped</div></div>
-          <div class="stat" data-nova-id="numbers-b"><div class="value" data-nova-id="numbers-b-value">3</div><div class="label" data-nova-id="numbers-b-label">Teams onboarded</div></div>
-          <div class="stat" data-nova-id="numbers-c"><div class="value" data-nova-id="numbers-c-value">1</div><div class="label" data-nova-id="numbers-c-label">Incident, resolved in a day</div></div>
+      <section class="slide t-a l-stats" data-screen-label="05 Numbers" data-superchat-id="numbers">
+        <div class="kicker" data-superchat-id="numbers-kicker">Results</div>
+        <h2 class="title" data-superchat-id="numbers-title">The numbers that matter</h2>
+        <div class="grid" data-superchat-id="numbers-grid">
+          <div class="stat" data-superchat-id="numbers-a"><div class="value" data-superchat-id="numbers-a-value">12</div><div class="label" data-superchat-id="numbers-a-label">Releases shipped</div></div>
+          <div class="stat" data-superchat-id="numbers-b"><div class="value" data-superchat-id="numbers-b-value">3</div><div class="label" data-superchat-id="numbers-b-label">Teams onboarded</div></div>
+          <div class="stat" data-superchat-id="numbers-c"><div class="value" data-superchat-id="numbers-c-value">1</div><div class="label" data-superchat-id="numbers-c-label">Incident, resolved in a day</div></div>
         </div>
-        <div class="foot" data-nova-id="numbers-foot"><span data-nova-id="numbers-foot-left">Quarterly review</span><span data-nova-id="numbers-foot-page">05</span></div>
+        <div class="foot" data-superchat-id="numbers-foot"><span data-superchat-id="numbers-foot-left">Quarterly review</span><span data-superchat-id="numbers-foot-page">05</span></div>
       </section>
-      <section class="slide t-a l-split" data-screen-label="06 Trade-off" data-nova-id="tradeoff">
-        <div class="kicker" data-nova-id="tradeoff-kicker">The trade-off</div>
-        <h2 class="title" data-nova-id="tradeoff-title">Speed against review depth</h2>
-        <div class="cols" data-nova-id="tradeoff-cols">
-          <div class="col" data-nova-id="tradeoff-left"><h3 data-nova-id="tradeoff-left-h">What we gain</h3><p data-nova-id="tradeoff-left-p">Faster feedback and fewer large, risky releases.</p></div>
-          <div class="col" data-nova-id="tradeoff-right"><div class="panel" data-nova-id="tradeoff-panel"><p data-nova-id="tradeoff-panel-a">Reviewers see less context per change.</p><p data-nova-id="tradeoff-panel-b">We add a weekly design review to compensate.</p></div></div>
+      <section class="slide t-a l-split" data-screen-label="06 Trade-off" data-superchat-id="tradeoff">
+        <div class="kicker" data-superchat-id="tradeoff-kicker">The trade-off</div>
+        <h2 class="title" data-superchat-id="tradeoff-title">Speed against review depth</h2>
+        <div class="cols" data-superchat-id="tradeoff-cols">
+          <div class="col" data-superchat-id="tradeoff-left"><h3 data-superchat-id="tradeoff-left-h">What we gain</h3><p data-superchat-id="tradeoff-left-p">Faster feedback and fewer large, risky releases.</p></div>
+          <div class="col" data-superchat-id="tradeoff-right"><div class="panel" data-superchat-id="tradeoff-panel"><p data-superchat-id="tradeoff-panel-a">Reviewers see less context per change.</p><p data-superchat-id="tradeoff-panel-b">We add a weekly design review to compensate.</p></div></div>
         </div>
-        <div class="foot" data-nova-id="tradeoff-foot"><span data-nova-id="tradeoff-foot-left">Quarterly review</span><span data-nova-id="tradeoff-foot-page">06</span></div>
+        <div class="foot" data-superchat-id="tradeoff-foot"><span data-superchat-id="tradeoff-foot-left">Quarterly review</span><span data-superchat-id="tradeoff-foot-page">06</span></div>
       </section>
-      <section class="slide t-c l-quote" data-screen-label="07 Voice" data-nova-id="voice">
-        <div class="kicker" data-nova-id="voice-kicker">From a customer</div>
-        <blockquote class="quote" data-nova-id="voice-quote">The updates now arrive before we ask for them.</blockquote>
-        <p class="by" data-nova-id="voice-by">Operations lead, pilot customer</p>
-        <div class="foot" data-nova-id="voice-foot"><span data-nova-id="voice-foot-left">Quarterly review</span><span data-nova-id="voice-foot-page">07</span></div>
+      <section class="slide t-c l-quote" data-screen-label="07 Voice" data-superchat-id="voice">
+        <div class="kicker" data-superchat-id="voice-kicker">From a customer</div>
+        <blockquote class="quote" data-superchat-id="voice-quote">The updates now arrive before we ask for them.</blockquote>
+        <p class="by" data-superchat-id="voice-by">Operations lead, pilot customer</p>
+        <div class="foot" data-superchat-id="voice-foot"><span data-superchat-id="voice-foot-left">Quarterly review</span><span data-superchat-id="voice-foot-page">07</span></div>
       </section>
-      <section class="slide t-b l-closing" data-screen-label="08 Decision" data-nova-id="decision">
-        <div class="kicker" data-nova-id="decision-kicker">Next</div>
-        <h2 class="title" data-nova-id="decision-title">Approve weekly releases</h2>
-        <p class="lead" data-nova-id="decision-lead">We start with two teams in November and review the result in January.</p>
-        <p class="contact" data-nova-id="decision-contact">platform@example.com</p>
-        <div class="foot" data-nova-id="decision-foot"><span data-nova-id="decision-foot-left">Quarterly review</span><span data-nova-id="decision-foot-page">08</span></div>
+      <section class="slide t-b l-closing" data-screen-label="08 Decision" data-superchat-id="decision">
+        <div class="kicker" data-superchat-id="decision-kicker">Next</div>
+        <h2 class="title" data-superchat-id="decision-title">Approve weekly releases</h2>
+        <p class="lead" data-superchat-id="decision-lead">We start with two teams in November and review the result in January.</p>
+        <p class="contact" data-superchat-id="decision-contact">platform@example.com</p>
+        <div class="foot" data-superchat-id="decision-foot"><span data-superchat-id="decision-foot-left">Quarterly review</span><span data-superchat-id="decision-foot-page">08</span></div>
       </section>
-      <!-- /nova:slides -->
+      <!-- /superchat:slides -->
 
     </div>
   </div>
@@ -357,7 +357,7 @@
       var next = document.getElementById('deck-next');
       var cur = document.getElementById('deck-cur');
       var total = document.getElementById('deck-total');
-      var STORE = 'nova-deck:idx:' + (location.pathname || '/');
+      var STORE = 'superchat-deck:idx:' + (location.pathname || '/');
       var idx = 0;
 
       // ---- scale-to-fit ---------------------------------------------------
@@ -370,7 +370,7 @@
       // scale wrapper at zoom != 100%).
       function fit() {
         // The exporter (PPTX/PDF) renders the stage at its authored 1920×1080, unscaled.
-        if (document.documentElement.hasAttribute('data-nova-export')) {
+        if (document.documentElement.hasAttribute('data-superchat-export')) {
           stage.style.transform = 'none';
           return;
         }
@@ -399,12 +399,12 @@
         paint();
         try { localStorage.setItem(STORE, String(idx)); } catch (_) {}
       }
-      var NOVA_DECK_PROTOCOL_VERSION = 1;
+      var SUPERCHAT_DECK_PROTOCOL_VERSION = 1;
       function postDeckState() {
         try {
           window.parent.postMessage({
-            type: 'nova:slide-state',
-            protocolVersion: NOVA_DECK_PROTOCOL_VERSION,
+            type: 'superchat:slide-state',
+            protocolVersion: SUPERCHAT_DECK_PROTOCOL_VERSION,
             active: idx,
             count: slides.length
           }, '*');
@@ -413,16 +413,16 @@
       function announceDeckProtocol() {
         try {
           window.parent.postMessage({
-            type: 'nova:deck-ready',
-            protocolVersion: NOVA_DECK_PROTOCOL_VERSION,
+            type: 'superchat:deck-ready',
+            protocolVersion: SUPERCHAT_DECK_PROTOCOL_VERSION,
             capabilities: ["absolute-navigation","state-events"]
           }, '*');
         } catch (_) {}
       }
       window.addEventListener('message', function (event) {
         var data = event && event.data;
-        if (!data || data.type !== 'nova:slide') return;
-        if (data.protocolVersion != null && data.protocolVersion !== NOVA_DECK_PROTOCOL_VERSION) return;
+        if (!data || data.type !== 'superchat:slide') return;
+        if (data.protocolVersion != null && data.protocolVersion !== SUPERCHAT_DECK_PROTOCOL_VERSION) return;
         var target = idx;
         if (data.action === 'go') {
           if (typeof data.index !== 'number' || !isFinite(data.index)) return;
@@ -435,14 +435,14 @@
         go(target);
       });
       function onKey(e) {
-        if (e.__novaDeckKeyHandled) return;
+        if (e.__superchatDeckKeyHandled) return;
         var t = e.target;
         if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
         if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
-        if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.__novaDeckKeyHandled = true; e.preventDefault(); go(idx + 1); }
-        else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.__novaDeckKeyHandled = true; e.preventDefault(); go(idx - 1); }
-        else if (e.key === 'Home' || String(e.key).toLowerCase() === 'r') { e.__novaDeckKeyHandled = true; e.preventDefault(); go(0); }
-        else if (e.key === 'End') { e.__novaDeckKeyHandled = true; e.preventDefault(); go(slides.length - 1); }
+        if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.__superchatDeckKeyHandled = true; e.preventDefault(); go(idx + 1); }
+        else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.__superchatDeckKeyHandled = true; e.preventDefault(); go(idx - 1); }
+        else if (e.key === 'Home' || String(e.key).toLowerCase() === 'r') { e.__superchatDeckKeyHandled = true; e.preventDefault(); go(0); }
+        else if (e.key === 'End') { e.__superchatDeckKeyHandled = true; e.preventDefault(); go(slides.length - 1); }
       }
       // Capture phase + listen on both targets — inside the host iframe,
       // focus may be on window OR document; a single non-capture listener

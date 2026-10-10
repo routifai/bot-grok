@@ -1,9 +1,9 @@
 {
   "expo": {
-    "name": "Nova",
-    "slug": "nova",
+    "name": "Superchat",
+    "slug": "superchat",
     "owner": "inbox-zero",
-    "scheme": "nova",
+    "scheme": "superchat",
     "version": "1.0.3",
     "orientation": "default",
     "userInterfaceStyle": "dark",
@@ -33,8 +33,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Nova uses your photo library so you can attach images to a bot message.",
-          "cameraPermission": "Nova uses the camera so you can attach photos to a bot message.",
+          "photosPermission": "Superchat uses your photo library so you can attach images to a bot message.",
+          "cameraPermission": "Superchat uses the camera so you can attach photos to a bot message.",
           "microphonePermission": false
         }
       ],
@@ -43,24 +43,24 @@
       "./plugins/with-scene-lifecycle"
     ],
     "ios": {
-      "bundleIdentifier": "com.nova.app",
+      "bundleIdentifier": "com.superchat.app",
       "buildNumber": "1",
       "supportsTablet": false,
-      "icon": "../../packages/ui-tokens/assets/Nova.icon",
+      "icon": "../../packages/ui-tokens/assets/Superchat.icon",
       "config": {
         "usesNonExemptEncryption": false
       },
       "infoPlist": {
-        "NSCameraUsageDescription": "Nova uses the camera so you can attach photos to a bot message.",
-        "NSPhotoLibraryUsageDescription": "Nova uses your photo library so you can attach images to a bot message.",
-        "NSLocalNetworkUsageDescription": "Nova connects to a self-hosted Nova server on your local network.",
+        "NSCameraUsageDescription": "Superchat uses the camera so you can attach photos to a bot message.",
+        "NSPhotoLibraryUsageDescription": "Superchat uses your photo library so you can attach images to a bot message.",
+        "NSLocalNetworkUsageDescription": "Superchat connects to a self-hosted Superchat server on your local network.",
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         }
       }
     },
     "android": {
-      "package": "com.nova.app",
+      "package": "com.superchat.app",
       "versionCode": 10,
       "softwareKeyboardLayoutMode": "resize",
       "icon": "./assets/icon.png",

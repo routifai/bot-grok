@@ -397,7 +397,7 @@ async def _scheduled_model(
     env: dict[str, str],
 ) -> str | None:
     monkeypatch.setenv("TAVILY_API_KEY", "x")
-    monkeypatch.setenv("NOVA_CLAUDE_MODEL", "muse-model")
+    monkeypatch.setenv("SUPERCHAT_CLAUDE_MODEL", "muse-model")
     for key, value in env.items():
         monkeypatch.setenv(key, value)
     conv_store = _ParentConversationStore(_Parent(model_override=parent_model))
@@ -424,7 +424,7 @@ async def test_scheduled_helper_on_pi_bundle_never_gets_a_global_claude_id(
     agent_type: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     model = await _scheduled_model(
-        "nova-pi", agent_type, "openai/gpt-5.6-luna", monkeypatch, _GLOBAL_CLAUDE_IDS
+        "superchat-pi", agent_type, "openai/gpt-5.6-luna", monkeypatch, _GLOBAL_CLAUDE_IDS
     )
     assert model == "openai/gpt-5.6-luna"
 
@@ -433,14 +433,14 @@ async def test_scheduled_helper_on_pi_bundle_uses_the_pi_fast_mapping(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     env = {**_GLOBAL_CLAUDE_IDS, "OMNIGENT_HELPER_MODEL_FAST_PI": "openai/gpt-5.6-mini"}
-    model = await _scheduled_model("nova-pi", "goal", "openai/gpt-5.6-luna", monkeypatch, env)
+    model = await _scheduled_model("superchat-pi", "goal", "openai/gpt-5.6-luna", monkeypatch, env)
     assert model == "openai/gpt-5.6-mini"
 
 
 async def test_scheduled_helper_on_claude_bundle_keeps_the_global_fast_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    model = await _scheduled_model("nova-claude", "worker", None, monkeypatch, _GLOBAL_CLAUDE_IDS)
+    model = await _scheduled_model("superchat-claude", "worker", None, monkeypatch, _GLOBAL_CLAUDE_IDS)
     assert model == "claude-haiku-4-5"
 
 

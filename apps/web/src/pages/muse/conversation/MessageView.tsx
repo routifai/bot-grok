@@ -1,13 +1,13 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import { ChatMarkdown } from "@nova/chat-ui/web";
-import type { ThreadMessage } from "@nova/contracts";
+import { ChatMarkdown } from "@superchat/chat-ui/web";
+import type { ThreadMessage } from "@superchat/contracts";
 import {
   ENGINE_ERROR_NOTE,
   isEngineErrorText,
   isToolActivityBlock,
   parseAttachmentReferences,
-} from "@nova/core";
-import { BotAvatar, cn, resolvePersonaColorDef } from "@nova/ui-web";
+} from "@superchat/core";
+import { BotAvatar, cn, resolvePersonaColorDef } from "@superchat/ui-web";
 import { Folder } from "lucide-react";
 import { memo, useMemo } from "react";
 import { CollaborationMarker } from "../../../components/ai/CollaborationMarker";

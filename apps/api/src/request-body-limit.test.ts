@@ -1,4 +1,4 @@
-import { ATTACHMENT_MAX_BASE64_LENGTH } from "@nova/contracts";
+import { ATTACHMENT_MAX_BASE64_LENGTH } from "@superchat/contracts";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import {

@@ -1,11 +1,11 @@
-import type { AdapterContext, ConnectorCall, ManagedConnectorProvider } from "@nova/adapter-kit";
+import type { AdapterContext, ConnectorCall, ManagedConnectorProvider } from "@superchat/adapter-kit";
 import {
   type IntegrationProviderConfig,
   IntegrationProviderConfigSchema,
   type IntegrationProviderId,
   IntegrationProviderIdSchema,
-} from "@nova/contracts";
-import type { PrismaClient } from "@nova/db";
+} from "@superchat/contracts";
+import type { PrismaClient } from "@superchat/db";
 import { ComposioConnector } from "./composio-connector.js";
 import { PipedreamConnector } from "./pipedream-connector.js";
 import type { EncryptedSecretStore } from "./secrets.js";

@@ -1,4 +1,4 @@
-import type { RunStatus } from "@nova/contracts";
+import type { RunStatus } from "@superchat/contracts";
 
 export const ACTIVE_RUN_STATUSES = [
   "queued",

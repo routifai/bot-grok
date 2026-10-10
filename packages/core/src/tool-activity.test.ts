@@ -1,4 +1,4 @@
-import type { MessageBlock } from "@nova/contracts";
+import type { MessageBlock } from "@superchat/contracts";
 import { describe, expect, it } from "vitest";
 import { isToolActivityBlock } from "./tool-activity.js";
 

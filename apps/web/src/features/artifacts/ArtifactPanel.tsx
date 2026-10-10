@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import { Button, cn } from "@nova/ui-web";
+import { Button, cn } from "@superchat/ui-web";
 import { Download, ExternalLink, Lock, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { formatSize } from "../../components/cards/catalog";

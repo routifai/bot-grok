@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
-contextBridge.exposeInMainWorld("novaSetup", {
+contextBridge.exposeInMainWorld("superchatSetup", {
   platform: process.platform,
   state: () => ipcRenderer.invoke("desktop.setup.state"),
   test: (url) => ipcRenderer.invoke("desktop.setup.test", url),

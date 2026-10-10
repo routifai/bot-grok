@@ -1,6 +1,6 @@
-import type { EncryptedSecretStore } from "@nova/adapters";
-import type { Actor } from "@nova/contracts";
-import { Prisma, type PrismaClient, withTransactionRetry } from "@nova/db";
+import type { EncryptedSecretStore } from "@superchat/adapters";
+import type { Actor } from "@superchat/contracts";
+import { Prisma, type PrismaClient, withTransactionRetry } from "@superchat/db";
 import { ORPCError } from "@orpc/server";
 
 type AgentSecretDeps = {

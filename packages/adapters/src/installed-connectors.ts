@@ -4,8 +4,8 @@ import type {
   ConnectorEvent,
   ConnectorProvider,
   ConnectorTool,
-} from "@nova/adapter-kit";
-import type { PrismaClient } from "@nova/db";
+} from "@superchat/adapter-kit";
+import type { PrismaClient } from "@superchat/db";
 import { z } from "zod";
 import {
   AuthSchema,

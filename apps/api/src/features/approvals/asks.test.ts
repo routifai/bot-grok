@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@nova/db";
+import type { PrismaClient } from "@superchat/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { engineAnswerAsk, engineListAsks, isEngineAskId } from "./asks.js";
 
@@ -125,7 +125,7 @@ describe("engine asks", () => {
     });
   });
 
-  it("maps the engine's kinds and choice ids to Nova's copy", async () => {
+  it("maps the engine's kinds and choice ids to Superchat's copy", async () => {
     stub({
       "GET /v1/me/asks": {
         data: [

@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@nova/db";
+import type { PrismaClient } from "@superchat/db";
 import type { ORPCError } from "@orpc/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { connectEngineModel } from "../models/index.js";
@@ -12,7 +12,7 @@ import {
 
 const client = { baseUrl: "http://engine.test", proxySecret: "proxy", secrets: [], tenant: "s1" };
 const actor = { userId: "user-1", spaceId: "s1" } as never;
-const deps = (agentName: string | null = "nova-pi") => ({
+const deps = (agentName: string | null = "superchat-pi") => ({
   prisma: {
     user: { findUnique: vi.fn(async () => ({ email: "p@example.test" })) },
     bot: {
@@ -98,7 +98,7 @@ describe("admin gating", () => {
 });
 
 describe("suspension", () => {
-  function nova(users: Array<{ id: string; email: string }>) {
+  function superchat(users: Array<{ id: string; email: string }>) {
     const d = deps();
     const updateMany = vi.fn(async () => ({ count: 1 }));
     const findMany = vi.fn(async ({ where }: { where: { email: { equals: string } } }) =>
@@ -108,24 +108,24 @@ describe("suspension", () => {
     return { d, updateMany };
   }
 
-  it("also suspends and restores the Nova account, matched by the engine's email id", async () => {
+  it("also suspends and restores the Superchat account, matched by the engine's email id", async () => {
     stub(() => json({ user_id: "p", is_admin: true, ok: true }));
-    const { d, updateMany } = nova([{ id: "nova-9", email: "Bob@Acme.test" }]);
+    const { d, updateMany } = superchat([{ id: "superchat-9", email: "Bob@Acme.test" }]);
     await setUserSuspended(d, client, actor, { userId: "bob@acme.test", suspended: true });
     expect(updateMany).toHaveBeenLastCalledWith({
-      where: { id: "nova-9", status: "active" },
+      where: { id: "superchat-9", status: "active" },
       data: { status: "suspended" },
     });
     await setUserSuspended(d, client, actor, { userId: "bob@acme.test", suspended: false });
     expect(updateMany).toHaveBeenLastCalledWith({
-      where: { id: "nova-9", status: "suspended" },
+      where: { id: "superchat-9", status: "suspended" },
       data: { status: "active" },
     });
   });
 
   it("refuses when no single account matches, rather than guess", async () => {
     stub(() => json({ user_id: "p", is_admin: true, ok: true }));
-    const none = nova([]);
+    const none = superchat([]);
     expect(
       (
         await rejection(
@@ -133,7 +133,7 @@ describe("suspension", () => {
         )
       ).code,
     ).toBe("NOT_FOUND");
-    const twice = nova([
+    const twice = superchat([
       { id: "a", email: "x@acme.test" },
       { id: "b", email: "X@acme.test" },
     ]);

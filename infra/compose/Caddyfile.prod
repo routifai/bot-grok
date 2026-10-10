@@ -3,7 +3,7 @@
 	lb_try_interval 250ms
 }
 
-{$NOVA_HOST:app.example.com} {
+{$SUPERCHAT_HOST:app.example.com} {
 	encode zstd gzip
 
 	handle /health {

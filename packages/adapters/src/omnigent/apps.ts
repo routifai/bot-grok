@@ -57,7 +57,7 @@ export async function getOmnigentPublication(
  * has checked the viewer against the app's audience.
  */
 export function omnigentPublishedGatewayEmail(env: NodeJS.ProcessEnv = process.env): string {
-  return env.OMNIGENT_PUBLISHED_GATEWAY_USER?.trim() || "nova-apps-gateway@nova.invalid";
+  return env.OMNIGENT_PUBLISHED_GATEWAY_USER?.trim() || "superchat-apps-gateway@superchat.invalid";
 }
 
 export interface OmnigentPublishedApp {

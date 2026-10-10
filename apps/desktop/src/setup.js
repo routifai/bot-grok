@@ -1,5 +1,5 @@
 (() => {
-  const bridge = window.novaSetup;
+  const bridge = window.superchatSetup;
   document.documentElement.dataset.platform = bridge?.platform ?? "browser";
 
   const form = document.getElementById("setup");
@@ -23,10 +23,10 @@
   const PHASE_LABELS = {
     "checking-docker": "Getting ready…",
     preparing: "Getting ready…",
-    pulling: "Downloading Nova…",
-    starting: "Starting Nova…",
+    pulling: "Downloading Superchat…",
+    starting: "Starting Superchat…",
     "waiting-healthy": "Almost ready…",
-    ready: "Nova is ready.",
+    ready: "Superchat is ready.",
   };
   const TERMINAL_PHASES = new Set([
     "idle",
@@ -266,7 +266,7 @@
       const result = await bridge.test(value);
       if (result.ok) {
         serverUrl.value = result.url;
-        setStatus(`Nova answered at ${result.url}.`, "ok");
+        setStatus(`Superchat answered at ${result.url}.`, "ok");
       } else {
         setStatus(result.error ?? "Could not reach that address.", "error");
       }
@@ -362,7 +362,7 @@
         continueButton.focus();
       }
     } catch {
-      setStatus("Setup could not start. Quit Nova and try again.", "error");
+      setStatus("Setup could not start. Quit Superchat and try again.", "error");
       setBusy(true);
     }
   }

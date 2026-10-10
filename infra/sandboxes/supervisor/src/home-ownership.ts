@@ -223,7 +223,7 @@ export function homeWritableAsUser(
 ): boolean {
   const probe = [
     `[ "$(stat -c %u "$1")" = "${uid}" ]`,
-    'p="$1/.nova-write-probe-$$"',
+    'p="$1/.superchat-write-probe-$$"',
     ': > "$p"',
     'rm -f "$p"',
   ].join(" && ");

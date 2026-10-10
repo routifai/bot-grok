@@ -4,9 +4,9 @@ import {
   omnigentClientConfigFromEnv,
   omnigentClientFor,
   putOmnigentArchiving,
-} from "@nova/adapters";
-import type { Actor, Archiving, ArchivingUpdate } from "@nova/contracts";
-import { IsolationError, type PrismaClient } from "@nova/db";
+} from "@superchat/adapters";
+import type { Actor, Archiving, ArchivingUpdate } from "@superchat/contracts";
+import { IsolationError, type PrismaClient } from "@superchat/db";
 import { ORPCError } from "@orpc/server";
 
 // muse.archiving / muse.updateArchiving: the person's side chat auto-archive setting. The engine

@@ -1,7 +1,7 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import { ChatMarkdown } from "@nova/chat-ui/web";
-import type { Artifact, ArtifactVersion, Bot } from "@nova/contracts";
-import { isAttachmentImageMimeType } from "@nova/contracts";
+import { ChatMarkdown } from "@superchat/chat-ui/web";
+import type { Artifact, ArtifactVersion, Bot } from "@superchat/contracts";
+import { isAttachmentImageMimeType } from "@superchat/contracts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,7 +16,7 @@ import {
   NativeSelectOption,
   parseBotAvatar,
   resolvePersonaColorDef,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import {
   Download,
   Filter,
@@ -31,7 +31,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { AppRail } from "../../components/AppRail";
-import { NovaOrb } from "../../components/ai/orb";
+import { SuperchatOrb } from "../../components/ai/orb";
 import { PdfViewer } from "../../components/PdfViewer";
 import { SandboxedHtmlViewer } from "../../components/SandboxedHtmlViewer";
 import { decodeArtifactBase64, downloadArtifactBytes } from "../../lib/artifact-open";
@@ -43,7 +43,7 @@ import { useArtifactExtensions } from "./registry";
 
 type ViewMode = "grid" | "list";
 type DateFilter = "all" | "today" | "week" | "month";
-const VIEW_MODE_STORAGE_KEY = "nova:artifacts-view-mode";
+const VIEW_MODE_STORAGE_KEY = "superchat:artifacts-view-mode";
 const LIST_PAGE_SIZE = 60;
 
 type ArtifactSummary = Artifact & { versionCount: number };
@@ -610,7 +610,7 @@ function BotFilterChip({
           : "text-muted-foreground hover:bg-accent/40 hover:text-accent-foreground"
       }`}
     >
-      <NovaOrb size={16} flies={false} />
+      <SuperchatOrb size={16} flies={false} />
       <span className="max-w-[120px] truncate">{bot.name}</span>
     </button>
   );
@@ -685,7 +685,7 @@ function ArtifactCard({
         <div className="mt-auto flex items-center gap-2 text-[12px] text-muted-foreground">
           {bot ? (
             <>
-              <NovaOrb size={20} flies={false} />
+              <SuperchatOrb size={20} flies={false} />
               <span className="min-w-0 flex-1 truncate">{bot.name}</span>
             </>
           ) : (
@@ -745,7 +745,7 @@ function ArtifactRow({
         <div className="flex items-center gap-1.5 ps-8 text-[11.5px] text-muted-foreground">
           {bot ? (
             <>
-              <NovaOrb size={14} flies={false} />
+              <SuperchatOrb size={14} flies={false} />
               <span className="max-w-[140px] truncate">{bot.name}</span>
               <span aria-hidden="true">·</span>
             </>

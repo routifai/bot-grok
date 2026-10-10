@@ -1,4 +1,4 @@
-import { DASHBOARD_FIXTURE } from "@nova/charts";
+import { DASHBOARD_FIXTURE } from "@superchat/charts";
 import { useEffect } from "react";
 import { DashboardView } from "../../features/charts/DashboardView";
 

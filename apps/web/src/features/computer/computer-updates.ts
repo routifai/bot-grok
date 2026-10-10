@@ -1,4 +1,4 @@
-import { createComputerUpdates } from "@nova/core";
+import { createComputerUpdates } from "@superchat/core";
 import { rpc } from "../../lib/rpc";
 export const computerUpdates = createComputerUpdates({
   list: () => rpc.computer.updates(),

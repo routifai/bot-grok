@@ -25,9 +25,9 @@ export type EngineModelConnection = z.infer<typeof EngineModelConnectionSchema>;
 export const EngineModelHarnessSchema = z.object({ id: z.string(), label: z.string() });
 
 export const EngineModelsStatusSchema = z.object({
-  /** `false` when Nova runs without the engine: nothing below applies. */
+  /** `false` when Superchat runs without the engine: nothing below applies. */
   enabled: z.boolean(),
-  /** The harnesses the person's Nova may run on: one when known, both when not yet. */
+  /** The harnesses the person's Superchat may run on: one when known, both when not yet. */
   harnesses: z.array(EngineModelHarnessSchema),
   isAdmin: z.boolean(),
   /** The engine can serve a model for this person (their key or the organization's). */

@@ -17,13 +17,13 @@ test("two users are isolated and a bot completes durable work", async ({ browser
   const pageB = await b.newPage();
 
   const stamp = Date.now();
-  await signup(pageA, `ada-${stamp}@nova.test`, "password12", "Ada", testInfo);
+  await signup(pageA, `ada-${stamp}@superchat.test`, "password12", "Ada", testInfo);
   await completeOnboarding(pageA, testInfo);
-  await expect(pageA.getByText("Nova").first()).toBeVisible();
+  await expect(pageA.getByText("Superchat").first()).toBeVisible();
 
-  await signup(pageB, `bob-${stamp}@nova.test`, "password12", "Bob");
+  await signup(pageB, `bob-${stamp}@superchat.test`, "password12", "Bob");
   await completeOnboarding(pageB);
-  await expect(pageB.getByText("Nova").first()).toBeVisible();
+  await expect(pageB.getByText("Superchat").first()).toBeVisible();
   await expect(pageB.getByText("Ada", { exact: true })).toHaveCount(0);
 
   const composer = pageA.getByPlaceholder(/Message/);
@@ -44,12 +44,12 @@ test("two users are isolated and a bot completes durable work", async ({ browser
 });
 
 // The Integrations/Plugins catalog this test used to exercise here (connectors, MCP/OpenAPI/
-// GraphQL/Executor/Treg sources) has no reachable entry point in Nova: PluginsOverlay is only
+// GraphQL/Executor/Treg sources) has no reachable entry point in Superchat: PluginsOverlay is only
 // ever opened by setPluginsOpen(true), which nothing calls anymore. That coverage was removed;
 // this test now only covers computer takeover and routine creation.
 test("takeover and routine creation are reachable", async ({ page }, testInfo) => {
   const stamp = Date.now();
-  await signup(page, `flow-${stamp}@nova.test`, "password12", "Flow");
+  await signup(page, `flow-${stamp}@superchat.test`, "password12", "Flow");
   await completeOnboarding(page);
 
   const composer = page.getByPlaceholder(/Message/);

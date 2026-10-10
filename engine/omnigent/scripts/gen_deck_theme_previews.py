@@ -1,7 +1,7 @@
 """Regenerate the theme gallery thumbnails (``kit/previews/<id>.webp``).
 
 Builds two of the kit's sample slides in each theme, renders them in the same headless Chromium
-the deck tests and the export use (``nova-deck-export``'s ``find_chromium``), and saves a small
+the deck tests and the export use (``superchat-deck-export``'s ``find_chromium``), and saves a small
 WebP: the cover as a card over the main surface, at 2x the size a picker tile draws it. Run it
 after changing a theme, from ``engine/omnigent``:
 ``PYTHONPATH=. .venv/bin/python scripts/gen_deck_theme_previews.py``.
@@ -21,7 +21,7 @@ from PIL import Image, ImageDraw, ImageFilter
 
 from omnigent.superchat.decks import kit
 
-HELPER = Path(__file__).resolve().parents[3] / "infra/sandboxes/computer/nova-deck-export"
+HELPER = Path(__file__).resolve().parents[3] / "infra/sandboxes/computer/superchat-deck-export"
 OUT = kit.KIT_DIR / "previews"
 #: A thumbnail shows two sample slides at once: the theme's main surface (the agenda: title type,
 #: cards, accent) behind its cover (the bold surface and display face), so light and dark themes,
@@ -33,8 +33,8 @@ FRONT_SCALE, FRONT_INSET = 0.56, 0.06
 
 
 def _chromium() -> str:
-    loader = importlib.machinery.SourceFileLoader("nova_deck_export", str(HELPER))
-    spec = importlib.util.spec_from_loader("nova_deck_export", loader)
+    loader = importlib.machinery.SourceFileLoader("superchat_deck_export", str(HELPER))
+    spec = importlib.util.spec_from_loader("superchat_deck_export", loader)
     assert spec is not None
     module = importlib.util.module_from_spec(spec)
     loader.exec_module(module)
@@ -44,7 +44,7 @@ def _chromium() -> str:
 def _only_slide(slides: str, slide_id: str) -> str:
     """The sample slide ``slide_id`` alone (and active)."""
     parts = re.split(r"(?=\s*<section\b)", slides)
-    chosen = next(p for p in parts if f'data-nova-id="{slide_id}"' in p.split(">", 1)[0])
+    chosen = next(p for p in parts if f'data-superchat-id="{slide_id}"' in p.split(">", 1)[0])
     return re.sub(r'class="slide( active)?', 'class="slide active', chosen, count=1).strip()
 
 
@@ -52,9 +52,9 @@ def _shoot(chrome: str, tmp: Path, template_id: str, slide: str, name: str) -> I
     """One slide of the theme, rendered at its authored 1920x1080."""
     page = tmp / f"{name}.html"
     deck = kit.build_deck(template_id, "Quarterly review", slide)
-    # data-nova-export is what the exporter sets: the stage stays at its authored 1920x1080
+    # data-superchat-export is what the exporter sets: the stage stays at its authored 1920x1080
     # instead of being scaled to fit (which would leave a letterbox in the picture).
-    page.write_text(deck.replace("<html ", "<html data-nova-export ", 1), "utf-8")
+    page.write_text(deck.replace("<html ", "<html data-superchat-export ", 1), "utf-8")
     shot = tmp / f"{name}.png"
     subprocess.run(
         [

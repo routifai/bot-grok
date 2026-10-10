@@ -160,7 +160,7 @@ async def handle_deck_check(args: dict[str, Any]) -> str:
     region = document[start + len(kit.SLOTS_OPEN) : end] if 0 <= start < end else document
     errors, warnings = kit.check_slides(region)
     # A scratch copy keeps the check independent of how the file is served.
-    with tempfile.TemporaryDirectory(prefix="nova-deck-check-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="superchat-deck-check-") as tmp:
         copy = Path(tmp) / "deck.html"
         copy.write_text(document, "utf-8")
         report = await _layout_report(copy)

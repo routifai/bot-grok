@@ -15,9 +15,9 @@ import type {
   SandboxProvider,
   ScreenRequest,
   ScreenSession,
-} from "@nova/adapter-kit";
-import { boundedSandboxCommandTimeoutMs, resolveSupervisorToken } from "@nova/core";
-import { outgoingCorrelationHeaders } from "@nova/logging";
+} from "@superchat/adapter-kit";
+import { boundedSandboxCommandTimeoutMs, resolveSupervisorToken } from "@superchat/core";
+import { outgoingCorrelationHeaders } from "@superchat/logging";
 import {
   boundedComputerActions,
   clampRounded,
@@ -131,12 +131,12 @@ export class DockerSandboxProvider implements SandboxProvider {
   private headers(context: AdapterContext, botId?: string) {
     return {
       authorization: `Bearer ${this.supervisorToken}`,
-      "x-nova-space-id": context.spaceId,
+      "x-superchat-space-id": context.spaceId,
       ...outgoingCorrelationHeaders(),
-      ...(botId ? { "x-nova-bot-id": botId } : {}),
-      ...(context.botId ? { "x-nova-screen-id": context.botId } : {}),
-      ...(context.screenLeaseId ? { "x-nova-screen-lease-id": context.screenLeaseId } : {}),
-      ...(context.cancelRunWork ? { "x-nova-cancel-run-work": "1" } : {}),
+      ...(botId ? { "x-superchat-bot-id": botId } : {}),
+      ...(context.botId ? { "x-superchat-screen-id": context.botId } : {}),
+      ...(context.screenLeaseId ? { "x-superchat-screen-lease-id": context.screenLeaseId } : {}),
+      ...(context.cancelRunWork ? { "x-superchat-cancel-run-work": "1" } : {}),
     };
   }
 
@@ -551,9 +551,9 @@ function requestDeadline(timeoutMs: number, message: string) {
 }
 
 function dockerCwd(cwd: string | undefined) {
-  if (!cwd || cwd === "." || cwd === "/" || cwd === "/home/nova") return "/home/nova";
-  const relative = cwd.startsWith("/home/nova/")
-    ? cwd.slice("/home/nova/".length)
+  if (!cwd || cwd === "." || cwd === "/" || cwd === "/home/superchat") return "/home/superchat";
+  const relative = cwd.startsWith("/home/superchat/")
+    ? cwd.slice("/home/superchat/".length)
     : normalizeWorkspacePath(cwd);
-  return path.posix.join("/home/nova", relative);
+  return path.posix.join("/home/superchat", relative);
 }

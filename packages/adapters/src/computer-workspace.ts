@@ -7,10 +7,10 @@ import type {
   ComputerRef,
   PortableFile,
   SandboxProvider,
-} from "@nova/adapter-kit";
-import type { ComputerMode } from "@nova/contracts";
-import { parseScreenLeaseId } from "@nova/core";
-import type { PrismaClient } from "@nova/db";
+} from "@superchat/adapter-kit";
+import type { ComputerMode } from "@superchat/contracts";
+import { parseScreenLeaseId } from "@superchat/core";
+import type { PrismaClient } from "@superchat/db";
 import { normalizeWorkspacePath, teamBotWorkspaceDirectory } from "./computer-support.js";
 import { LocalAgentHomeStore } from "./home.js";
 
@@ -91,7 +91,7 @@ export async function checkpointComputerWorkspace(
   if (computer.kind === "docker" && home instanceof LocalAgentHomeStore) {
     return home.revise(homeKey);
   }
-  const staging = await mkdtemp(path.join(tmpdir(), "nova-workspace-"));
+  const staging = await mkdtemp(path.join(tmpdir(), "superchat-workspace-"));
   try {
     for await (const file of sandbox.exportWorkspace(computer, context)) {
       await writePortableFile(staging, file);

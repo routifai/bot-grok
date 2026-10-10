@@ -1,4 +1,4 @@
-import type { MessageBlock } from "@nova/contracts";
+import type { MessageBlock } from "@superchat/contracts";
 import type { Prisma, PrismaClient } from "./client.js";
 import { withTransactionRetry } from "./transaction-retry.js";
 

@@ -1,15 +1,15 @@
-// The engine's transcript page -> Nova's `ThreadMessagePage`. Mechanical only: snake_case to
+// The engine's transcript page -> Superchat's `ThreadMessagePage`. Mechanical only: snake_case to
 // camelCase and engine block types onto the chat's existing block types. Every rule (de-duping,
 // dropping system notices, hiding a Side Chat's copied context, error codes) is the engine's
 // (engine/omnigent/omnigent/superchat/transcript/). The wording of the file and secure-entry
-// fallbacks is Nova's.
+// fallbacks is Superchat's.
 import type {
   MessageBlock,
   MessageFork,
   ReplyCardBlock,
   ThreadMessage,
   ThreadMessagePage,
-} from "@nova/contracts";
+} from "@superchat/contracts";
 import type {
   OmnigentTranscriptBlock,
   OmnigentTranscriptFork,
@@ -36,7 +36,7 @@ function fileCard(block: Extract<OmnigentTranscriptBlock, { type: "file" }>): Re
       ...(block.versions !== undefined ? { versions: block.versions } : {}),
       ...(block.by === "user" ? { byYou: true } : {}),
     },
-    fallback: `Saved **${label}**${revision}. Open it in Nova's Library.`,
+    fallback: `Saved **${label}**${revision}. Open it in Superchat's Library.`,
   };
 }
 
@@ -52,7 +52,7 @@ function secureEntryCard(
       site: block.site,
       ...(block.reason ? { reason: block.reason } : {}),
     },
-    fallback: `Nova needs a login for ${block.site}. Open this chat in Nova to enter it securely.`,
+    fallback: `Superchat needs a login for ${block.site}. Open this chat in Superchat to enter it securely.`,
   };
 }
 

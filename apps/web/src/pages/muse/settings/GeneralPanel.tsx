@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import { Button, Input, Switch } from "@nova/ui-web";
+import { Button, Input, Switch } from "@superchat/ui-web";
 import { KeyRound, Link2, Mail, ShieldCheck, UserRound } from "lucide-react";
 import { useId, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -16,8 +16,8 @@ import {
   getUiAppearancePreference,
   setUiAppearance,
 } from "../../../lib/ui-appearance";
-import { SparkGlyph } from "../chrome/NovaGlyphs";
-import { NovaTile } from "../chrome/NovaTile";
+import { SparkGlyph } from "../chrome/SuperchatGlyphs";
+import { SuperchatTile } from "../chrome/SuperchatTile";
 import {
   SETTINGS_ROW,
   SettingsGroup,
@@ -109,9 +109,9 @@ export function GeneralPanel({
       >
         <label htmlFor={streamId} className={SETTINGS_ROW}>
           <span className="flex min-w-0 items-center gap-3">
-            <NovaTile tone="purple" size={28}>
+            <SuperchatTile tone="purple" size={28}>
               <SparkGlyph />
-            </NovaTile>
+            </SuperchatTile>
             <span className="min-w-0 truncate text-foreground">
               <Trans>Show replies as they're written</Trans>
             </span>
@@ -154,7 +154,7 @@ export function GeneralPanel({
           type="button"
           disabled={signingOut}
           onClick={() => void logOut()}
-          className={`${SETTINGS_ROW} nova-row-plain text-start text-destructive transition-colors hover:bg-selection disabled:opacity-60`}
+          className={`${SETTINGS_ROW} superchat-row-plain text-start text-destructive transition-colors hover:bg-selection disabled:opacity-60`}
         >
           {signingOut ? <Trans>Logging out…</Trans> : <Trans>Log out</Trans>}
         </button>

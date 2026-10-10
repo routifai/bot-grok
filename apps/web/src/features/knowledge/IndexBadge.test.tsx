@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { KnowledgeFile } from "@nova/contracts";
+import type { KnowledgeFile } from "@superchat/contracts";
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -14,7 +14,7 @@ vi.mock("@lingui/react/macro", () => {
     parts.reduce((acc, part, i) => `${acc}${part}${values[i] ?? ""}`, "");
   return { useLingui: () => ({ t }) };
 });
-vi.mock("@nova/ui-web", () => ({
+vi.mock("@superchat/ui-web", () => ({
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
 }));
 const status = vi.fn();

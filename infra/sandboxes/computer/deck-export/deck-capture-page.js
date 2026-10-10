@@ -12,9 +12,9 @@
 //   pinDeckStage 2969-2975, measureSlide 2981-3049, collectLayeredPptxBackgroundTargets 583-948,
 //   restoreLayeredPptxBackgroundIsolation 960-973, isolateLayeredPptxBackground 975-1332.
 // The Electron-only orchestration (BrowserWindow, nativeImage, the debugger attach) is replaced by
-// `../nova-deck-export` driving the same sequence over CDP. The per-slide screenshot paths of
+// `../superchat-deck-export` driving the same sequence over CDP. The per-slide screenshot paths of
 // deck-capture.ts (renderDeckSlides image mode, showSlide, restackActiveSlide, stitching) are NOT
-// ported: Nova never exports slide images.
+// ported: Superchat never exports slide images.
 
 // Non-mutating: count the real slide surfaces (presenter clones excluded). Used
 // to decide page-vs-deck BEFORE any deck-only DOM mutation, so page-mode exports
@@ -836,7 +836,7 @@ export async function runDomToPptx(
     const importedFonts = await exposeImportedFontFaces();
     await document.fonts?.ready;
     if (phase !== "export-prepared") {
-      // Nova addition: Chart.js charts become native PowerPoint charts (never a canvas picture).
+      // Superchat addition: Chart.js charts become native PowerPoint charts (never a canvas picture).
       markNativeCharts(slideSelector);
       ensureExplicitSlideBackgrounds(slides);
       stabilizeLargeSingleLineText(slides);
@@ -1887,7 +1887,7 @@ export function waitForPrintableContentInPage(budgetMs) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Nova additions (original).
+// Superchat additions (original).
 // ---------------------------------------------------------------------------------------------
 
 /** The slide-surface family and real-slide filter used by every Open Design step above. */
@@ -1925,10 +1925,10 @@ export async function pngHasPaint(b64) {
 }
 
 /**
- * Authoring lint for a Nova deck, run in the same laid-out render the exporter uses (every slide
+ * Authoring lint for a Superchat deck, run in the same laid-out render the exporter uses (every slide
  * stacked at the origin, unscaled). It reports what would make the PowerPoint differ from the
  * page, so authoring can fix it before export: content outside the slide or inside the footer
- * rail, clipped text, text objects without a stable data-nova-id, duplicate ids, unembedded
+ * rail, clipped text, text objects without a stable data-superchat-id, duplicate ids, unembedded
  * fonts, unreadable sizes, long headlines, and effects that can only become a picture layer.
  * Pure measurement: nothing is changed in the document.
  *
@@ -1980,18 +1980,18 @@ export function lintDeck(options) {
     );
   slides.forEach((slide, index) => {
     const label = slide.getAttribute("data-screen-label") || "";
-    const slideId = slide.getAttribute("data-nova-id") || "";
+    const slideId = slide.getAttribute("data-superchat-id") || "";
     const add = (el, severity, code, message) =>
       issues.push({
         slide: index + 1,
         label,
-        id: (el && el.getAttribute && el.getAttribute("data-nova-id")) || slideId,
+        id: (el && el.getAttribute && el.getAttribute("data-superchat-id")) || slideId,
         severity,
         code,
         message,
       });
     if (!label) add(slide, "error", "slide-label", "The slide has no data-screen-label.");
-    if (!slideId) add(slide, "error", "slide-id", "The slide has no data-nova-id.");
+    if (!slideId) add(slide, "error", "slide-id", "The slide has no data-superchat-id.");
     const box = slide.getBoundingClientRect();
     for (const el of slide.querySelectorAll("*")) {
       if (el.closest(".foot")) continue;
@@ -1999,10 +1999,10 @@ export function lintDeck(options) {
       if (style.display === "none" || style.visibility === "hidden") continue;
       const tag = el.tagName.toLowerCase();
       if (tag === "script" || tag === "style" || tag === "br") continue;
-      const id = el.getAttribute("data-nova-id");
+      const id = el.getAttribute("data-superchat-id");
       if (id) {
         if (seenIds.has(id))
-          add(el, "error", "duplicate-id", `data-nova-id "${id}" is used more than once.`);
+          add(el, "error", "duplicate-id", `data-superchat-id "${id}" is used more than once.`);
         seenIds.set(id, true);
       }
       const isText = hasOwnText(el);
@@ -2040,7 +2040,7 @@ export function lintDeck(options) {
         }
       }
       if ((isText || isMedia) && style.display !== "inline" && !id) {
-        add(el, "error", "missing-id", `A <${tag}> with content has no data-nova-id.`);
+        add(el, "error", "missing-id", `A <${tag}> with content has no data-superchat-id.`);
       }
       if (isText) {
         const size = parseFloat(style.fontSize);
@@ -2081,7 +2081,7 @@ export function lintDeck(options) {
         rasterEffects.push({ el, slide: index + 1, label, what: raster.join(", ") });
     }
   });
-  // Nova addition: a chart must be able to become a native PowerPoint chart.
+  // Superchat addition: a chart must be able to become a native PowerPoint chart.
   for (const chartIssue of lintCharts(slideSelector)) {
     issues.push({
       slide: chartIssue.slide,
@@ -2096,7 +2096,7 @@ export function lintDeck(options) {
     issues.push({
       slide: r.slide,
       label: r.label,
-      id: r.el.getAttribute("data-nova-id") || "",
+      id: r.el.getAttribute("data-superchat-id") || "",
       severity: "note",
       code: "picture-layer",
       message: `${r.what} becomes a picture layer behind the text in PowerPoint (the text stays editable).`,
@@ -2106,7 +2106,7 @@ export function lintDeck(options) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Native charts (Nova addition, not in Open Design).
+// Native charts (Superchat addition, not in Open Design).
 //
 // A deck chart is Chart.js on a <canvas> (the ported chart-*.html templates). At export each
 // Chart.js instance is read as it was configured (type, labels, datasets, colors, axes, legend,
@@ -2899,8 +2899,8 @@ export function lintCharts(slideSelector) {
       issues.push({
         slide,
         id:
-          canvas.getAttribute("data-nova-id") ||
-          canvas.closest("[data-nova-id]")?.getAttribute("data-nova-id") ||
+          canvas.getAttribute("data-superchat-id") ||
+          canvas.closest("[data-superchat-id]")?.getAttribute("data-superchat-id") ||
           "",
         message: error instanceof Error ? error.message : String(error),
       });

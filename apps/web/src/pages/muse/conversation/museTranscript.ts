@@ -1,4 +1,4 @@
-import type { ThreadMessage, ThreadMessagePage } from "@nova/contracts";
+import type { ThreadMessage, ThreadMessagePage } from "@superchat/contracts";
 
 const epochSeconds = (iso: string) => Math.floor(new Date(iso).getTime() / 1000);
 
@@ -25,7 +25,7 @@ export function mergeNewestTranscriptPage(
   };
 }
 
-/** The person's messages Nova has accepted that the engine's transcript does not show yet: the
+/** The person's messages Superchat has accepted that the engine's transcript does not show yet: the
  * send is acknowledged at once, the engine records it a moment later. Anything not newer than
  * the transcript's last message *of the person's* is already in it (the engine stamps whole
  * seconds). The Muse's own work (tool calls, replies) keeps landing meanwhile and must not hide a
@@ -52,8 +52,8 @@ export function quotedMessageText(quote: string, text: string): string {
   return text ? `${block}\n\n${text}` : block;
 }
 
-/** The block kinds the engine's transcript itself produces (plus the legacy reply shapes Nova
- * once stored). A Nova thread row made only of these is a copy of engine content. */
+/** The block kinds the engine's transcript itself produces (plus the legacy reply shapes Superchat
+ * once stored). A Superchat thread row made only of these is a copy of engine content. */
 const ENGINE_BLOCK_KINDS: ReadonlySet<string> = new Set([
   "text",
   "reply_card",
@@ -66,27 +66,27 @@ const ENGINE_BLOCK_KINDS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The Conversation as shown: the engine's transcript, plus Nova's own thread rows, by time.
+ * The Conversation as shown: the engine's transcript, plus Superchat's own thread rows, by time.
  *
- * These rows are Nova-owned, not engine behaviour: cards and notices Nova writes into the
+ * These rows are Superchat-owned, not engine behaviour: cards and notices Superchat writes into the
  * Muse's thread itself (a taught-skill draft, an app-connect card, a messaging notice, a
  * Muse-to-Muse marker). The engine knows nothing of them, so they are layered in here, purely
- * for display. Nova's copies of the person's messages and of replies are left out (the
+ * for display. Superchat's copies of the person's messages and of replies are left out (the
  * transcript is the source), except a message accepted but not yet recorded by the engine.
  */
 export function conversationMessages(
   engine: readonly ThreadMessage[],
-  novaThread: readonly ThreadMessage[],
+  superchatThread: readonly ThreadMessage[],
 ): ThreadMessage[] {
   // Rows older than what is loaded wait until "Load earlier" reaches them.
   const from = engine[0] ? epochSeconds(engine[0].createdAt) : Number.NEGATIVE_INFINITY;
-  const novaOwned = novaThread.filter(
+  const superchatOwned = superchatThread.filter(
     (message) =>
       message.blocks.some((block) => !ENGINE_BLOCK_KINDS.has(block.kind)) &&
       epochSeconds(message.createdAt) >= from,
   );
   const extra = new Map<string, ThreadMessage>();
-  for (const message of [...novaOwned, ...pendingUserMessages(novaThread, engine)]) {
+  for (const message of [...superchatOwned, ...pendingUserMessages(superchatThread, engine)]) {
     extra.set(message.id, message);
   }
   // Array.sort is stable: on a tie the engine's message stays first.

@@ -40,9 +40,9 @@ _CATALOG: list[dict[str, object]] = [
         # A tier hung off a major alone has no minor to dot, so its slug
         # keeps every segment hyphenated. The id is a shape placeholder,
         # not a shipped arm.
-        ("system.ai.gpt-6-nova", "gpt-6-nova"),
-        ("databricks-gpt-6-nova", "gpt-6-nova"),
-        ("gpt-6-nova", "gpt-6-nova"),
+        ("system.ai.gpt-6-superchat", "gpt-6-superchat"),
+        ("databricks-gpt-6-superchat", "gpt-6-superchat"),
+        ("gpt-6-superchat", "gpt-6-superchat"),
         # A numeric second segment is still the minor version, not a tier.
         ("system.ai.gpt-6-1", "gpt-6.1"),
         # GLM is spawnable only under the id the gateway serves it as, which

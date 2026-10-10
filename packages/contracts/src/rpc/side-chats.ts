@@ -6,7 +6,7 @@ import { Id } from "../ids.js";
 /**
  * A Side Chat branched from the Super Chat (CONTEXT.md "Side Chat"): a short-lived aside
  * that starts with context (a summary of the Super Chat) or blank (only the Memory
- * Profile). The Super Chat itself never appears in this list; NOVA shows it as the
+ * Profile). The Super Chat itself never appears in this list; SUPERCHAT shows it as the
  * "Conversation" row Side Chats nest under. Served by the Super Chat backend.
  */
 export const SideChatStartSchema = z.enum(["withContext", "blank"]);
@@ -19,7 +19,7 @@ export const ChatSummarySchema = z.object({
   summary: z.string().nullable(),
   /** Ended and hidden from the default list, but kept and readable (CONTEXT.md "Archived"). */
   archived: z.boolean(),
-  /** Whether Nova is currently working in this Side Chat. */
+  /** Whether Superchat is currently working in this Side Chat. */
   live: z.boolean(),
   /** The engine's per-person read state: a reply landed that the person has not seen. */
   unread: z.boolean().optional(),

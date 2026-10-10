@@ -1,7 +1,7 @@
 """File search that runs in the person's Computer.
 
 The Computer's workspace is the one copy of a person's files, so parsing, passages, thumbnails and
-the index live here too, on the home volume (``~/.nova/knowledge``). Nothing about a file is
+the index live here too, on the home volume (``~/.superchat/knowledge``). Nothing about a file is
 kept in
 the engine: it only relays (``omnigent.superchat.knowledge``), and embeddings come from the
 engine's

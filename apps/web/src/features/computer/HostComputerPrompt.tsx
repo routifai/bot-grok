@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { Me } from "@nova/contracts";
+import type { Me } from "@superchat/contracts";
 import {
   Button,
   Dialog,
@@ -7,7 +7,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import { useEffect, useState } from "react";
 import { desktopBridge } from "../../lib/desktop";
 import { rpc } from "../../lib/rpc";

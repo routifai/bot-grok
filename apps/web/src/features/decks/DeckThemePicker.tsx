@@ -1,6 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
-import type { Artifact, DeckPatch, DeckTheme } from "@nova/contracts";
-import { Button, cn } from "@nova/ui-web";
+import type { Artifact, DeckPatch, DeckTheme } from "@superchat/contracts";
+import { Button, cn } from "@superchat/ui-web";
 import { Check, Expand, Undo2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type DeckThemesSource, loadDeckThemes, resetDeckThemeCache } from "../../lib/deck-themes";
@@ -29,7 +29,7 @@ const CATEGORY_ORDER = ["professional", "editorial", "bold", "dark"] as const;
  * The deck panel's Theme gallery: every theme with its thumbnail, name and mood, the current one
  * marked. Picking one swaps the deck's theme through a `set-theme` source patch (the engine
  * rewrites the kit's theme regions; the slides and the deck's own CSS are not touched), which
- * saves a new `manual` version Nova is told about like any hand edit. The last switch can be
+ * saves a new `manual` version Superchat is told about like any hand edit. The last switch can be
  * undone here by putting the earlier source back as a newer version.
  *
  * The cards are one radio group with a roving tab stop: Tab enters on the current theme, the
@@ -168,7 +168,7 @@ export function DeckThemePicker({
     const onReady = (event: MessageEvent) => {
       if (!frameRef?.current || event.source !== frameRef.current.contentWindow) return;
       const type = (event.data as { type?: unknown } | null)?.type;
-      if (type !== "nova:deck-ready" && type !== "nova:edit-ready") return;
+      if (type !== "superchat:deck-ready" && type !== "superchat:edit-ready") return;
       window.requestAnimationFrame(() => {
         if (document.activeElement instanceof HTMLIFrameElement) {
           cards.current[stopRef.current]?.focus({ preventScroll: true });

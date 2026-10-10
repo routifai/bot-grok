@@ -5,7 +5,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import {
   Check,
   ChevronDown,

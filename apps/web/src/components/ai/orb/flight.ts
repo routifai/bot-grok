@@ -1,6 +1,6 @@
 /**
  * The orb's flight from the start page to its home (docs/muse/DESIGN.md "Orb"): one object
- * moving, not two. Both the hero orb and its destination carry `view-transition-name: nova-orb`
+ * moving, not two. Both the hero orb and its destination carry `view-transition-name: superchat-orb`
  * (only one is ever mounted), so the View Transitions API morphs one into the other while the
  * rest of the page crossfades. Where View Transitions are missing, a WAAPI FLIP flies the new
  * orb in from the hero's spot. Reduced motion is an instant cut.
@@ -16,7 +16,7 @@ type ViewTransitionDocument = Document & {
 };
 
 function visibleOrb(doc: Document): HTMLElement | null {
-  for (const element of doc.querySelectorAll<HTMLElement>("[data-nova-orb]")) {
+  for (const element of doc.querySelectorAll<HTMLElement>("[data-superchat-orb]")) {
     const rect = element.getBoundingClientRect();
     if (rect.width > 0 && rect.height > 0) return element;
   }

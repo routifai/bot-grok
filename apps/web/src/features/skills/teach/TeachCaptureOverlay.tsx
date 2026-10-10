@@ -1,5 +1,5 @@
-import type { TaughtSkill } from "@nova/contracts";
-import { DEFAULT_COMPUTER_SCREEN, mapTeachPointer, teachCaptureKey } from "@nova/core";
+import type { TaughtSkill } from "@superchat/contracts";
+import { DEFAULT_COMPUTER_SCREEN, mapTeachPointer, teachCaptureKey } from "@superchat/core";
 import { useEffect, useRef } from "react";
 import { rpc } from "../../../lib/rpc";
 

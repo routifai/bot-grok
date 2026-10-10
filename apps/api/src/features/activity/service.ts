@@ -8,8 +8,8 @@ import {
   listOmnigentActivities,
   mapActivity,
   streamOmnigentActivityChanges,
-} from "@nova/adapters";
-import type { Activity, ActivityChanged, ActivityPage, Actor } from "@nova/contracts";
+} from "@superchat/adapters";
+import type { Activity, ActivityChanged, ActivityPage, Actor } from "@superchat/contracts";
 import { onSuperChat } from "../../omnigent-errors.js";
 import { requireClient, requireSuperChat, type SuperChatDeps } from "../../super-chat-session.js";
 

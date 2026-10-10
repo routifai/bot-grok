@@ -24,8 +24,8 @@ from omnigent.superchat.decks.edit_routes import create_deck_edit_router
 _SESSION = uuid.uuid4().hex
 H = {"x-user": "alice"}
 DECK = (
-    '<html><body><section class="slide active" data-screen-label="01 A" data-nova-id="s1">\n'
-    '<h1 data-nova-id="title" style="font-size: 64px">A</h1>\n</section></body></html>'
+    '<html><body><section class="slide active" data-screen-label="01 A" data-superchat-id="s1">\n'
+    '<h1 data-superchat-id="title" style="font-size: 64px">A</h1>\n</section></body></html>'
 )
 
 
@@ -123,11 +123,11 @@ def test_stale_base_is_a_409(env) -> None:
     assert stale.status_code == 409 and "changed since you opened" in stale.json()["error"]
 
 
-def test_ambiguous_patch_is_a_409_ask_nova(env) -> None:
+def test_ambiguous_patch_is_a_409_ask_superchat(env) -> None:
     store, client = env
     v1 = _save(store)
     resp = _edit(client, v1.id, patches=[{"kind": "remove-element", "id": "missing"}])
-    assert resp.status_code == 409 and resp.json()["error"].endswith("ask Nova instead.")
+    assert resp.status_code == 409 and resp.json()["error"].endswith("ask Superchat instead.")
     assert len(store.versions(v1)) == 1
 
 

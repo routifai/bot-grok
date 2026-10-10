@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import type { Ask } from "@nova/contracts";
-import type * as UiWeb from "@nova/ui-web";
+import type { Ask } from "@superchat/contracts";
+import type * as UiWeb from "@superchat/ui-web";
 import { ORPCError } from "@orpc/client";
 import type { ComponentProps, ReactNode } from "react";
 import { act } from "react";
@@ -39,7 +39,7 @@ vi.mock("@lingui/react/macro", () => {
     Trans: ({ children }: { children: ReactNode }) => children,
   };
 });
-vi.mock("@nova/ui-web", async (importOriginal) => ({
+vi.mock("@superchat/ui-web", async (importOriginal) => ({
   ...(await importOriginal<typeof UiWeb>()),
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
   BotAvatar: ({ face }: { face?: string }) => (
@@ -87,7 +87,7 @@ async function renderPanel(props: Partial<Parameters<typeof ContextPanel>[0]> = 
     root.render(
       <ContextPanel
         botId="bot-1"
-        museName="Nova"
+        museName="Superchat"
         collapsed={false}
         onOpenWaiting={onOpenWaiting}
         {...props}
@@ -218,7 +218,7 @@ it("shows the Muse's name once, in the identity header, and Connected once a pol
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.asks.list.mockResolvedValue([]);
   api.activities.list.mockResolvedValue(activitiesPage());
-  const page = await renderPanel({ museName: "Nova" });
+  const page = await renderPanel({ museName: "Superchat" });
   try {
     await act(async () => {
       await vi.waitFor(() => {
@@ -229,7 +229,7 @@ it("shows the Muse's name once, in the identity header, and Connected once a pol
     });
     expect(
       page.container.querySelector("[data-testid='context-panel-muse-name']")?.textContent,
-    ).toBe("Nova");
+    ).toBe("Superchat");
   } finally {
     await page.cleanup();
     vi.unstubAllGlobals();

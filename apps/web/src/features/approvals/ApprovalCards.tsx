@@ -1,4 +1,4 @@
-import type { Ask } from "@nova/contracts";
+import type { Ask } from "@superchat/contracts";
 import { Check, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { AskItem } from "./AskItem";
@@ -32,7 +32,7 @@ export function ApprovalCards({ botId, chatId }: { botId: string; chatId: string
       {locked.map(({ ask, label }) => (
         <div
           key={ask.id}
-          className="nova-card flex items-center gap-3 px-4 py-3 text-[14px] text-ink-2"
+          className="superchat-card flex items-center gap-3 px-4 py-3 text-[14px] text-ink-2"
         >
           <ShieldCheck size={15} strokeWidth={1.75} aria-hidden="true" />
           <span className="min-w-0 flex-1" dir="auto">

@@ -1,6 +1,6 @@
 import { createContext, type ReactNode, useContext, useSyncExternalStore } from "react";
 
-/** Where Nova's one orb lives right now (docs/muse/DESIGN.md "Orb"). */
+/** Where Superchat's one orb lives right now (docs/muse/DESIGN.md "Orb"). */
 export type OrbHome = "hero" | "sidebar" | "toolbar";
 
 /**

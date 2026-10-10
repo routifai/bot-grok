@@ -2,12 +2,12 @@
 
 The language of the long-running assistant: one Super Chat per user, short
 side chats, and sub-agents doing delegated work. This is the backend that will
-be the main driver for **NOVA**, the assistant's user-facing app.
+be the main driver for **SUPERCHAT**, the assistant's user-facing app.
 
 ## Current scope: frontend and wires only
 
 The backend described here is the contract, not today's work. Right now only
-the NOVA frontend and the **Wires** to this backend are being built:
+the SUPERCHAT frontend and the **Wires** to this backend are being built:
 
 - Build the UI surfaces named below (Chat List, Super Chat view, Side Chats,
   Activity Panel, Agent Identity) and connect each one to its Wire.
@@ -144,21 +144,21 @@ reaches its size limit, or on the first message after the chat has been idle
 for a set time (refresh on return). The engine's own compaction is not used.
 _Avoid_: compaction (as a user-facing word), truncation, reset
 
-**NOVA**:
+**SUPERCHAT**:
 The user-facing app for the long-running assistant. Its frontend shows the
 Super Chat, Side Chats and Activity, and talks to this backend only through
 Wires.
-_Avoid_: the client, the shell, Muse (the product NOVA is modelled on)
+_Avoid_: the client, the shell, Muse (the product SUPERCHAT is modelled on)
 
 **Wire**:
-One connection between a NOVA UI surface and the backend: the request it
+One connection between a SUPERCHAT UI surface and the backend: the request it
 makes, the data it reads, and the updates it listens for. Each UI surface has
 named Wires; a Wire to a capability that isn't built yet reports "not
 available yet".
 _Avoid_: endpoint (for the whole surface), integration, binding
 
 **Chat List**:
-The NOVA sidebar listing the Super Chat (labelled "Main chat"), then the
+The SUPERCHAT sidebar listing the Super Chat (labelled "Main chat"), then the
 user's Side Chats under "Side chats", with search. Archived Side Chats are
 hidden from it.
 _Avoid_: conversation list, threads
@@ -169,7 +169,7 @@ Activity Panel. The user can rename it and change the avatar.
 _Avoid_: persona card, bot profile
 
 **Connection Status**:
-Whether NOVA is live-connected to the backend: Connecting or Connected. It
+Whether SUPERCHAT is live-connected to the backend: Connecting or Connected. It
 describes the Wire, not whether the assistant is busy.
 _Avoid_: online, presence, agent status
 
@@ -210,6 +210,6 @@ _Avoid_: harness (in user-facing language)
 ## Flagged ambiguities
 
 - "rollover" means the shortening mechanism only (see **Rollover**). It is not the name of the Super Chat model. The mode value `rollover` (native CLIs) and the mode value `superside-chat` (Super Chat on the Claude SDK) both use Rollover, but they are different modes; never use "rollover" to mean the Super Chat capability.
-- NOVA labels the Super Chat **"Main chat"** in the Chat List. That label is UI copy only; in design, code and Wires the term is still **Super Chat**.
+- SUPERCHAT labels the Super Chat **"Main chat"** in the Chat List. That label is UI copy only; in design, code and Wires the term is still **Super Chat**.
 - The Activity Panel's icon tabs (shield, clock, fingerprint) are named here by their likely purpose (permissions, scheduled work, Memory). Confirm each against the backend before wiring it.
 - Earlier work also covered native CLIs (Claude Code, Codex, Pi), where each CLI compacts itself at Omnigent's threshold. For the Super Chat on the Claude SDK engine, Omnigent writes the summary itself.

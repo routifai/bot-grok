@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 const listOmnigentTaughtSkills = vi.fn();
-vi.mock("@nova/adapters", () => ({ listOmnigentTaughtSkills }));
+vi.mock("@superchat/adapters", () => ({ listOmnigentTaughtSkills }));
 vi.mock("./engine-client.js", () => ({
   engineComputerClient: () => ({ baseUrl: "http://omnigent.test" }),
   engineSessionOf: vi.fn(async () => ({ email: "me@example.test", sessionId: "sess-1" })),

@@ -1,10 +1,10 @@
-import { CanvasView } from "@nova/ui-web";
+import { CanvasView } from "@superchat/ui-web";
 import { useEffect } from "react";
 import { CREDIT_CARD_CANVAS_FIXTURE } from "./canvas-fixture";
 
 /**
  * Dev-only route (`/dev/canvas`, gated by `import.meta.env.DEV` in App.tsx) for eyeballing
- * and screenshotting the Nova Canvas catalog without needing a signed-in session or a live
+ * and screenshotting the Superchat Canvas catalog without needing a signed-in session or a live
  * agent run. `?theme=light|dark` forces a theme for deterministic screenshots.
  */
 export function CanvasPreviewPage() {

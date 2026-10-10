@@ -6,7 +6,7 @@ index 6db918e..a6be00e 100644
    return pptx.ShapeType.rect;
  }
  
-+// Nova patch: native chart hook ---------------------------------------------------------------
++// Superchat patch: native chart hook ---------------------------------------------------------------
 +// The page puts a PptxGenJS chart spec on a <canvas data-pptx-chart>:
 +//   { "types": [{ "type": "bar", "data": [...], "options": {...} }, ...], "options": {...} }
 +// One entry in `types` is a single chart, several are a combo chart (PptxGenJS addChart with a
@@ -78,7 +78,7 @@ index 6db918e..a6be00e 100644
          y: item.options.y,
          w: item.options.w,
          colW: item.tableData.colWidths, // Essential for correct layout
-+        // Nova patch: the rendered <tr> heights, so PowerPoint does not collapse rows to text height.
++        // Superchat patch: the rendered <tr> heights, so PowerPoint does not collapse rows to text height.
 +        ...(item.tableData.rowHeights.length === item.tableData.rows.length &&
 +          item.tableData.rowHeights.length > 0 && {
 +            rowH: item.tableData.rowHeights,
@@ -91,7 +91,7 @@ index 6db918e..a6be00e 100644
      style.getPropertyValue('--shape-type') ||
      style.getPropertyValue('--pptx-shape');
  
-+  // Nova patch: a <canvas data-pptx-chart="{...}"> becomes a native PowerPoint chart (never a
++  // Superchat patch: a <canvas data-pptx-chart="{...}"> becomes a native PowerPoint chart (never a
 +  // picture of the canvas). The attribute holds the PptxGenJS chart spec, see readChartSpec().
 +  if (node.tagName === 'CANVAS' && node.hasAttribute('data-pptx-chart')) {
 +    return {
@@ -132,7 +132,7 @@ index a8d28e6..da26dff 100644
  export function extractTableData(node, scale) {
    const rows = [];
    const colWidths = [];
-+  const rowHeights = []; // Nova patch: rendered <tr> heights in inches, parallel to `rows`
++  const rowHeights = []; // Superchat patch: rendered <tr> heights in inches, parallel to `rows`
  
    // 1. Calculate Column Widths based on the first row of cells
    // We look at the first <tr>'s children to determine visual column widths.

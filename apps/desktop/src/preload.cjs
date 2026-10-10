@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
-contextBridge.exposeInMainWorld("novaDesktop", {
+contextBridge.exposeInMainWorld("superchatDesktop", {
   platform: process.platform,
   localSettings: {
     request: (pathname, body) =>

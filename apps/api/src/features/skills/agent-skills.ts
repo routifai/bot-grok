@@ -1,5 +1,5 @@
-import { BUILTIN_AGENT_SKILLS } from "@nova/adapters";
-import type { Actor, AgentSkill, AgentSkillSource } from "@nova/contracts";
+import { BUILTIN_AGENT_SKILLS } from "@superchat/adapters";
+import type { Actor, AgentSkill, AgentSkillSource } from "@superchat/contracts";
 import {
   buildSkillMd,
   findSkillByName,
@@ -7,8 +7,8 @@ import {
   mergeBuiltinSkills,
   parseSkillMd,
   type SkillSource,
-} from "@nova/core";
-import { IsolationError, type PrismaClient } from "@nova/db";
+} from "@superchat/core";
+import { IsolationError, type PrismaClient } from "@superchat/db";
 import { ORPCError } from "@orpc/server";
 
 type AgentSkillRow = {

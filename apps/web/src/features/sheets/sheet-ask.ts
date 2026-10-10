@@ -10,7 +10,7 @@ import {
 } from "../../lib/composer-attachments";
 import { parseRange, rangeCellCount } from "./sheet-model";
 
-/** A selection from a sheet the person wants Nova to look at: the chip label the composer shows
+/** A selection from a sheet the person wants Superchat to look at: the chip label the composer shows
  * and the engine's untrusted-data block that travels ahead of their message. */
 export type SheetAsk = { label: string; block: string };
 
@@ -26,7 +26,7 @@ export function useSheetAsk(): SheetAsk | null {
   );
 }
 
-/** Registers a mounted composer, so a sheet only offers "Ask Nova" when there is one to ask in. */
+/** Registers a mounted composer, so a sheet only offers "Ask Superchat" when there is one to ask in. */
 export const useSheetAskTarget = useComposerAttachTarget;
 export const useSheetAskAvailable = useComposerAttachAvailable;
 

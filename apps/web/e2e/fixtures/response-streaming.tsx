@@ -1,8 +1,8 @@
 import { I18nProvider } from "@lingui/react";
-import { ChatMarkdown } from "@nova/chat-ui/web";
-import type { ProductEvent, ThreadMessage, ThreadSnapshot } from "@nova/contracts";
-import { isToolActivityBlock, withLiveStreamingProgress } from "@nova/core";
-import { DEFAULT_GROK_BOT_COLOR } from "@nova/ui-web";
+import { ChatMarkdown } from "@superchat/chat-ui/web";
+import type { ProductEvent, ThreadMessage, ThreadSnapshot } from "@superchat/contracts";
+import { isToolActivityBlock, withLiveStreamingProgress } from "@superchat/core";
+import { DEFAULT_GROK_BOT_COLOR } from "@superchat/ui-web";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { ActiveBotGlyph } from "../../src/components/ai/CollaborationMarker";

@@ -1,4 +1,4 @@
-import type { MessageBlock } from "@nova/contracts";
+import type { MessageBlock } from "@superchat/contracts";
 
 export function cloudAgentHttpsUrl(value: string | null | undefined): string | undefined {
   if (!value) return undefined;

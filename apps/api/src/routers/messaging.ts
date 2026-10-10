@@ -1,11 +1,11 @@
-import { messagingDeliverJob } from "@nova/adapter-kit";
-import type { PrismaClient } from "@nova/db";
+import { messagingDeliverJob } from "@superchat/adapter-kit";
+import type { PrismaClient } from "@superchat/db";
 import {
   createExternalConversationRepos,
   formatMessagingLinkCode,
   issueMessagingLinkCode,
-} from "@nova/db";
-import { getLogger } from "@nova/logging";
+} from "@superchat/db";
+import { getLogger } from "@superchat/logging";
 import { ORPCError } from "@orpc/server";
 
 import type { RouterContext } from "./context.js";

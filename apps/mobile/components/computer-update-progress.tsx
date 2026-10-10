@@ -1,5 +1,5 @@
-import { COMPUTER_UPDATE_STAGES, type ComputerUpdate } from "@nova/contracts";
-import { computerUpdateNeedsAttention, computerUpdateStages } from "@nova/core";
+import { COMPUTER_UPDATE_STAGES, type ComputerUpdate } from "@superchat/contracts";
+import { computerUpdateNeedsAttention, computerUpdateStages } from "@superchat/core";
 import { usePathname } from "expo-router";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, Text, View } from "react-native";

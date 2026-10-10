@@ -1,9 +1,9 @@
 import { t } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { ChatMarkdown } from "@nova/chat-ui/web";
-import type { ThreadMessage } from "@nova/contracts";
-import { isApprovalAskBlock, isSecretAskBlock, selectedAskActionLabel } from "@nova/core";
-import { Button, Input } from "@nova/ui-web";
+import { ChatMarkdown } from "@superchat/chat-ui/web";
+import type { ThreadMessage } from "@superchat/contracts";
+import { isApprovalAskBlock, isSecretAskBlock, selectedAskActionLabel } from "@superchat/core";
+import { Button, Input } from "@superchat/ui-web";
 import { useState } from "react";
 
 export type AskBlock = Extract<ThreadMessage["blocks"][number], { kind: "ask" }>;

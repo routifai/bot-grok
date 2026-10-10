@@ -1,4 +1,4 @@
-import { readBoundedJsonResponse } from "@nova/core";
+import { readBoundedJsonResponse } from "@superchat/core";
 import { t } from "./i18n";
 
 const LOCAL_API = "http://127.0.0.1:3100";
@@ -71,7 +71,7 @@ export async function probeApiBase(
     const res = await withAbort(
       fetchImpl(`${parsed.url}/rpc/health`, {
         method: "POST",
-        headers: { "content-type": "application/json", origin: "nova://" },
+        headers: { "content-type": "application/json", origin: "superchat://" },
         body: JSON.stringify({ json: {} }),
         signal: controller.signal,
       }),
@@ -79,7 +79,7 @@ export async function probeApiBase(
     );
     if (!res.ok) {
       cancelResponseBody(res);
-      return { ok: false, error: t("That URL did not look like a Nova server") };
+      return { ok: false, error: t("That URL did not look like a Superchat server") };
     }
     let body: HealthResponse;
     try {
@@ -93,7 +93,7 @@ export async function probeApiBase(
       body = {};
     }
     if (body.error || body.json?.ok !== true) {
-      return { ok: false, error: t("That URL did not look like a Nova server") };
+      return { ok: false, error: t("That URL did not look like a Superchat server") };
     }
     return parsed;
   } catch {

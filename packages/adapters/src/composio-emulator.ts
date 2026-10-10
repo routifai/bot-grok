@@ -3,7 +3,7 @@ import type {
   ConnectorCall,
   ConnectorEvent,
   ConnectorTool,
-} from "@nova/adapter-kit";
+} from "@superchat/adapter-kit";
 import {
   type ComposioCatalogItem,
   type ComposioProvider,
@@ -194,11 +194,11 @@ function seedMailbox(): Mailbox {
       {
         messageId: "18c5f5d1a2b3c4d5",
         threadId: "18c5f5d1a2b3c4d5",
-        subject: "Welcome to Nova",
-        sender: "hello@nova.test",
+        subject: "Welcome to Superchat",
+        sender: "hello@superchat.test",
         to: "me@example.test",
         snippet: "Your inbox is ready for agent workflows.",
-        messageText: "Your inbox is ready for agent workflows.\n\n— Nova",
+        messageText: "Your inbox is ready for agent workflows.\n\n— Superchat",
         labelIds: ["INBOX", "UNREAD"],
         internalDate: String(base),
       },

@@ -30,7 +30,7 @@ type Status = Awaited<ReturnType<typeof rpc.engineModels.status>>;
 
 /** What the engine's model layer says about this person. `status` is `null` until the first
  * answer and when the engine cannot be asked (`settled` tells which); `enabled: false` means
- * Nova runs without the engine. `refresh` asks again. */
+ * Superchat runs without the engine. `refresh` asks again. */
 export function useEngineModelsStatus(
   active = true,
 ): [status: Status | null, refresh: () => void, settled: boolean] {

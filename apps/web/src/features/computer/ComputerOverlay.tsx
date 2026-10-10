@@ -1,11 +1,11 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { Bot, ComputerStatus } from "@nova/contracts";
-import { Button } from "@nova/ui-web";
+import type { Bot, ComputerStatus } from "@superchat/contracts";
+import { Button } from "@superchat/ui-web";
 import { Monitor, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { type activeThreadRuns, userHoldsComputerControl } from "../../lib/thread-events";
 import { museMode } from "../../pages/muse/chrome/museMode";
-import { NovaTile } from "../../pages/muse/chrome/NovaTile";
+import { SuperchatTile } from "../../pages/muse/chrome/SuperchatTile";
 import { StatusPill } from "../../pages/muse/ui/index";
 import { ComputerMaintenanceActions } from "./ComputerMaintenanceActions";
 import { screenIframeSandbox } from "./computer-screen";
@@ -23,7 +23,7 @@ import type { useComputerScreen } from "./useComputerScreen";
 export interface ComputerTeachSlots {
   /** A skill is being recorded: the title bar shows the recording, not the Computer's name. */
   recording: boolean;
-  /** Nova's own overlay captures the demonstration, so the screen itself takes no input. */
+  /** Superchat's own overlay captures the demonstration, so the screen itself takes no input. */
   capturesInput: boolean;
   recordingChrome: ReactNode;
   stopButton: ReactNode;
@@ -113,9 +113,9 @@ export function ComputerOverlay({
               }
             >
               <div className="flex min-w-0 flex-1 items-center gap-3">
-                <NovaTile tone="gray" size={28}>
+                <SuperchatTile tone="gray" size={28}>
                   <Monitor strokeWidth={2.2} />
-                </NovaTile>
+                </SuperchatTile>
                 {recording ? (
                   teach.recordingChrome
                 ) : (

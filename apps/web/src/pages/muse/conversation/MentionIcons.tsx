@@ -1,6 +1,6 @@
-import type { ComposerMention } from "@nova/core";
+import type { ComposerMention } from "@superchat/core";
 import { Clock, Puzzle } from "lucide-react";
-import { NovaOrb } from "../../../components/ai/orb";
+import { SuperchatOrb } from "../../../components/ai/orb";
 
 export function MentionOptionIcon({ mention }: { mention: ComposerMention }) {
   if (mention.kind === "routine") {
@@ -23,7 +23,7 @@ export function MentionOptionIcon({ mention }: { mention: ComposerMention }) {
       </span>
     );
   }
-  return <NovaOrb size={16} flies={false} />;
+  return <SuperchatOrb size={16} flies={false} />;
 }
 
 export function MentionChipIcon({ mention }: { mention: ComposerMention }) {
@@ -40,5 +40,5 @@ export function MentionChipIcon({ mention }: { mention: ComposerMention }) {
       </span>
     );
   }
-  return <NovaOrb size={16} flies={false} />;
+  return <SuperchatOrb size={16} flies={false} />;
 }

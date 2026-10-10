@@ -1,4 +1,4 @@
-import { cn } from "@nova/ui-web";
+import { cn } from "@superchat/ui-web";
 import { useEffect, useState } from "react";
 import { artifactPanelWidth } from "../../features/artifacts/ArtifactPanel";
 import { DeckHeaderActions } from "../../features/decks/DeckHeaderActions";

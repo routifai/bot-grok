@@ -16,8 +16,8 @@ import {
   parseModelMaxImagesPerPrompt,
   parseModelMaxTokens,
   type ThinkingLevel,
-} from "@nova/contracts";
-import { createModelProbe, initialModelProbeState } from "@nova/core";
+} from "@superchat/contracts";
+import { createModelProbe, initialModelProbeState } from "@superchat/core";
 import {
   Button,
   cn,
@@ -28,7 +28,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IntegrationSetup } from "../components/integrations/IntegrationSetup";
@@ -44,10 +44,10 @@ import {
   welcomeSubmitClass,
 } from "./welcome/WelcomeFrame";
 
-const CUSTOM_MODEL_OPTION = "__nova_custom_model__";
+const CUSTOM_MODEL_OPTION = "__superchat_custom_model__";
 const FIRST_BOT_NAME = "Chief";
 const FIRST_BOT_SPAWN_KEY = "onboarding:first";
-const FIRST_BOT_LOCK = "nova:onboarding-first-bot";
+const FIRST_BOT_LOCK = "superchat:onboarding-first-bot";
 /** The Muse identity/model steps that show progress dots; "intro" and "bot" don't. */
 const MUSE_ONBOARDING_STEPS = ["name", "museName", "model"] as const;
 
@@ -156,7 +156,7 @@ export function OnboardingPage() {
   const [integrationSetup, setIntegrationSetup] = useState<IntegrationSetupState | null>(null);
   const needsIntegrationSetup = integrationSetup?.needsSetup ?? false;
   const [integrationServers, setIntegrationServers] = useState<string[]>([]);
-  /** Nova runs on the engine: the model step saves a key there instead of in Nova. */
+  /** Superchat runs on the engine: the model step saves a key there instead of in Superchat. */
   const [engineModels, setEngineModels] = useState(false);
   const [catalog, setCatalog] = useState<ModelCatalogEntry[]>([]);
   const [provider, setProvider] = useState("openrouter");
@@ -468,7 +468,7 @@ export function OnboardingPage() {
             <span aria-hidden="true" className="welcome-orb size-14 rounded-full" />
             <h1 className={`mt-7 ${welcomeHeadingClass}`}>
               <Trans>
-                Hi, I'm Nova — <em className="italic">already on it.</em>
+                Hi, I'm Superchat — <em className="italic">already on it.</em>
               </Trans>
             </h1>
             <p className="mt-3 text-[15px] text-welcome-night-ink-2">

@@ -11,7 +11,7 @@ export interface OmnigentComputerState {
 }
 
 export interface OmnigentComputerScreen {
-  /** The supervisor's noVNC URL incl. token — reachable from Nova's API host, not the browser. */
+  /** The supervisor's noVNC URL incl. token — reachable from Superchat's API host, not the browser. */
   screen_url: string;
   in_control: boolean;
 }
@@ -87,7 +87,7 @@ export interface OmnigentFileContent {
   bytes: Uint8Array;
 }
 
-/** Biggest file Nova previews or saves. */
+/** Biggest file Superchat previews or saves. */
 export const WORKSPACE_FILE_MAX_BYTES = 5 * 1024 * 1024;
 
 export class WorkspacePathError extends Error {

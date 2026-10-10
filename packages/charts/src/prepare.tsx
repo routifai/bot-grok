@@ -1,4 +1,4 @@
-/* Portions modified from getnao/nao apps/backend/src/components/generate-chart.tsx@5bde830, Apache-2.0; changes: the SVG/PNG plumbing moved to the api (`features/charts`), this keeps the spec-to-chart preparation so the web view and the server render draw the same chart; Nova tokens replace the white background. */
+/* Portions modified from getnao/nao apps/backend/src/components/generate-chart.tsx@5bde830, Apache-2.0; changes: the SVG/PNG plumbing moved to the api (`features/charts`), this keeps the spec-to-chart preparation so the web view and the server render draw the same chart; Superchat tokens replace the white background. */
 import type React from "react";
 
 import {

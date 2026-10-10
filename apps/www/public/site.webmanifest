@@ -1,6 +1,6 @@
 {
-  "name": "Nova",
-  "short_name": "Nova",
+  "name": "Superchat",
+  "short_name": "Superchat",
   "description": "A private Grok Bot alternative for persistent AI teammates that do real work.",
   "start_url": "/",
   "display": "browser",

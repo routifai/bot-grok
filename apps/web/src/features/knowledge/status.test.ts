@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { KnowledgeFile, KnowledgeStatus } from "@nova/contracts";
+import type { KnowledgeFile, KnowledgeStatus } from "@superchat/contracts";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";

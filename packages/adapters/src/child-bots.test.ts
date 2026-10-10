@@ -4,8 +4,8 @@ import type {
   ArtifactStore,
   JobPublisher,
   SandboxProvider,
-} from "@nova/adapter-kit";
-import type { createRepos, PrismaClient } from "@nova/db";
+} from "@superchat/adapter-kit";
+import type { createRepos, PrismaClient } from "@superchat/db";
 import { describe, expect, it, vi } from "vitest";
 import {
   archiveBot,
@@ -102,7 +102,7 @@ describe("spawned bot creation", () => {
       title: "",
       threadId: "thread-2",
     });
-    const createReposSpy = vi.spyOn(await import("@nova/db"), "createRepos").mockReturnValue({
+    const createReposSpy = vi.spyOn(await import("@superchat/db"), "createRepos").mockReturnValue({
       createBot,
     } as unknown as ReturnType<typeof createRepos>);
 
@@ -472,7 +472,7 @@ describe("destroyBot", () => {
           sandbox: {} as SandboxProvider,
           home: {} as AgentHomeStore,
           jobs: { cancel: vi.fn() } as unknown as JobPublisher,
-          dataDir: "/tmp/nova-destroy-bot-test",
+          dataDir: "/tmp/superchat-destroy-bot-test",
         },
         {
           id: "bot-1",

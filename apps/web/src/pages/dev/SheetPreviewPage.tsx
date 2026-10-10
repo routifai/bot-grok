@@ -1,4 +1,4 @@
-import type { ThreadMessage } from "@nova/contracts";
+import type { ThreadMessage } from "@superchat/contracts";
 import { useEffect, useState } from "react";
 import { ComposerAttachmentChip } from "../../components/ComposerAttachmentChip";
 import { SheetView } from "../../features/sheets/SheetView";

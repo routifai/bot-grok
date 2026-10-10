@@ -11,8 +11,8 @@ import type {
   SandboxProvider,
   ScreenRequest,
   ScreenSession,
-} from "@nova/adapter-kit";
-import { canReleaseScreenLease, canTakeScreenLease } from "@nova/core";
+} from "@superchat/adapter-kit";
+import { canReleaseScreenLease, canTakeScreenLease } from "@superchat/core";
 import { ComputerScreenUnavailableError, screenSessionKey } from "./computer-screens.js";
 import {
   applyPlaceholderAction,

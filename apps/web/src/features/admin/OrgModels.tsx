@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import { Button, Checkbox, NativeSelect, NativeSelectOption, Switch } from "@nova/ui-web";
+import { Button, Checkbox, NativeSelect, NativeSelectOption, Switch } from "@superchat/ui-web";
 import { useEffect, useState } from "react";
 import { errorText } from "../../lib/error-text";
 import { rpc } from "../../lib/rpc";

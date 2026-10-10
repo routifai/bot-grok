@@ -1,4 +1,4 @@
-import type { MessageBlock, ThreadMessage } from "@nova/contracts";
+import type { MessageBlock, ThreadMessage } from "@superchat/contracts";
 
 export interface PeerMessage {
   messageId: string;

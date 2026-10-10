@@ -16,7 +16,7 @@ export function Closing() {
           </div>
         </section>
         <footer className="flex flex-wrap justify-between gap-3 border-t border-welcome-sheet-line pt-5 pb-[max(2rem,env(safe-area-inset-bottom))] text-[13px] text-welcome-mute">
-          <span className="welcome-display text-lg text-welcome-sheet-ink-2">nova</span>
+          <span className="welcome-display text-lg text-welcome-sheet-ink-2">superchat</span>
           <span>
             <Trans>Your computer · Your model · Your say</Trans>
           </span>

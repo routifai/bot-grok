@@ -1,7 +1,7 @@
 import { t } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { Bot, BotMcpServer, McpServer, McpTransport } from "@nova/contracts";
-import { deriveMcpSlug } from "@nova/core";
+import type { Bot, BotMcpServer, McpServer, McpTransport } from "@superchat/contracts";
+import { deriveMcpSlug } from "@superchat/core";
 import {
   Badge,
   Button,
@@ -22,7 +22,7 @@ import {
   Tabs,
   TabsList,
   TabsTrigger,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import { Check, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { connectMcpOauth, MCP_OAUTH_CHANNEL } from "../lib/mcp-connect";

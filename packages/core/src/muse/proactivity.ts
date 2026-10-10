@@ -2,14 +2,14 @@
 //
 // How eagerly the Muse works on Goals on its own (CONTEXT.md, "Proactivity") and the quiet-hours
 // window that pauses it, as stored on the Bot row. The engine applies both
-// (docs/adr/0005-proactive-work-is-scheduled-helper-runs.md); Nova only stores and shows them.
+// (docs/adr/0005-proactive-work-is-scheduled-helper-runs.md); Superchat only stores and shows them.
 
 import {
   DEFAULT_MUSE_SETTINGS,
   type MuseSettings,
   PROACTIVITY_LEVELS,
   type Proactivity,
-} from "@nova/contracts";
+} from "@superchat/contracts";
 
 /** The Bot columns `MuseSettings` is stored in (apps/api/src/muse-settings.ts, B7). */
 export interface MuseSettingsRow {

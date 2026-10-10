@@ -1,13 +1,13 @@
-import { runContinueJob, runJobKey } from "@nova/adapter-kit";
-import { ACTIVE_RUN_STATUSES } from "@nova/core";
+import { runContinueJob, runJobKey } from "@superchat/adapter-kit";
+import { ACTIVE_RUN_STATUSES } from "@superchat/core";
 import {
   appendEventInTransaction,
   createThreadMessageInTransaction,
   IsolationError,
   lockOwnedGroup,
   touchGroupUpdatedAt,
-} from "@nova/db";
-import { getLogger } from "@nova/logging";
+} from "@superchat/db";
+import { getLogger } from "@superchat/logging";
 import { ORPCError } from "@orpc/server";
 import { assertTeachingSendAllowed } from "../teaching-guard.js";
 import {

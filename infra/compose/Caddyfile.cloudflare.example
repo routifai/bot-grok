@@ -13,16 +13,16 @@
 	lb_try_interval 250ms
 }
 
-http://{$NOVA_HOST:app.example.com} {
+http://{$SUPERCHAT_HOST:app.example.com} {
 	import cloudflare_only
-	redir https://{$NOVA_HOST:app.example.com}{uri} 308
+	redir https://{$SUPERCHAT_HOST:app.example.com}{uri} 308
 }
 
 :80 {
 	abort
 }
 
-{$NOVA_HOST:app.example.com} {
+{$SUPERCHAT_HOST:app.example.com} {
 	import cloudflare_only
 	encode zstd gzip
 

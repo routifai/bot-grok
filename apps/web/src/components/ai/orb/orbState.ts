@@ -1,6 +1,6 @@
-import type { MuseState } from "@nova/contracts";
+import type { MuseState } from "@superchat/contracts";
 
-/** What an orb shows: calm, or brighter and faster while Nova works. */
+/** What an orb shows: calm, or brighter and faster while Superchat works. */
 export type OrbState = "idle" | "working";
 
 /** Device pixels are capped at 2: past that the shader costs more than anyone can see. */
@@ -11,7 +11,7 @@ const SMALL_ORB_ENERGY_FLOOR = 0.35;
 /** How fast energy eases toward its target, per second (the mockup's 2.5). */
 const ENERGY_EASE = 2.5;
 
-/** Nova's live state as an orb state: thinking and working brighten it; idle and waiting rest. */
+/** Superchat's live state as an orb state: thinking and working brighten it; idle and waiting rest. */
 export function orbStateFor(state: MuseState | undefined): OrbState {
   return state === "thinking" || state === "working" ? "working" : "idle";
 }

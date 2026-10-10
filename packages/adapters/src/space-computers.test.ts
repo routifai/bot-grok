@@ -1,5 +1,5 @@
-import type { SandboxProvider } from "@nova/adapter-kit";
-import type { PrismaClient } from "@nova/db";
+import type { SandboxProvider } from "@superchat/adapter-kit";
+import type { PrismaClient } from "@superchat/db";
 import { describe, expect, it, vi } from "vitest";
 import {
   destroyPersonalComputers,

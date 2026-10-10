@@ -1,4 +1,4 @@
-import type { PrismaClient, ThreadEvents } from "@nova/db";
+import type { PrismaClient, ThreadEvents } from "@superchat/db";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OmnigentApiError } from "./client.js";
 import {
@@ -246,7 +246,7 @@ describe("runTurnOnOmnigent", () => {
     expect(events.finalizeRun).toHaveBeenCalledWith(
       expect.objectContaining({
         outcome: "completed",
-        // The reply is the engine's transcript, never a Nova message.
+        // The reply is the engine's transcript, never a Superchat message.
         blocks: [],
         runId: "run-1",
       }),
@@ -422,10 +422,10 @@ describe("runTurnOnOmnigent", () => {
 
     it("adopts an existing Conversation once, so the person keeps it", async () => {
       completed();
-      adoptOmnigentMuse.mockResolvedValue({ session_id: "conv_old", agent: "nova-claude" });
+      adoptOmnigentMuse.mockResolvedValue({ session_id: "conv_old", agent: "superchat-claude" });
       getOmnigentMuse.mockResolvedValue({
         session_id: "conv_old",
-        agent: "nova-claude",
+        agent: "superchat-claude",
         created: false,
       });
       const prisma = prismaWithRow({ omnigentSessionId: "conv_old", engineAdoptedAt: null });
@@ -539,7 +539,7 @@ describe("runTurnOnOmnigent", () => {
       expect(events.finalizeRun).toHaveBeenCalledWith(
         expect.objectContaining({
           outcome: "failed",
-          error: "Nova couldn't start. Try again in a moment.",
+          error: "Superchat couldn't start. Try again in a moment.",
         }),
       );
     });
@@ -756,7 +756,7 @@ describe("a message the person sends while the turn runs", () => {
     expect(await done).toBe(true);
   });
 
-  it("stops the engine's turn when the run is stopped in Nova", async () => {
+  it("stops the engine's turn when the run is stopped in Superchat", async () => {
     const { thread, events, done, start } = setup([]);
     await start();
     thread.push({ type: "run.cancelled", runId: "run-1", payload: {} });

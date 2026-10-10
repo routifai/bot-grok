@@ -1,4 +1,4 @@
-import type { ProductEvent } from "@nova/contracts";
+import type { ProductEvent } from "@superchat/contracts";
 import { abortableDelay } from "./async.js";
 
 type ThreadHead = { threadId: string; cursor: number };

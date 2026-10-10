@@ -1,5 +1,5 @@
 import { Plural, Trans, useLingui } from "@lingui/react/macro";
-import type { Me, ThinkingLevel } from "@nova/contracts";
+import type { Me, ThinkingLevel } from "@superchat/contracts";
 import {
   DEFAULT_MODEL_CONTEXT_WINDOW,
   DEFAULT_MODEL_MAX_TOKENS,
@@ -11,8 +11,8 @@ import {
   parseModelContextWindow,
   parseModelMaxImagesPerPrompt,
   parseModelMaxTokens,
-} from "@nova/contracts";
-import { createModelProbe, initialModelProbeState } from "@nova/core";
+} from "@superchat/contracts";
+import { createModelProbe, initialModelProbeState } from "@superchat/core";
 import {
   Button,
   Dialog,
@@ -25,7 +25,7 @@ import {
   ModelThinkingOptions,
   NativeSelect,
   NativeSelectOption,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import { ChevronDown, X } from "lucide-react";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
@@ -837,7 +837,7 @@ export function ModelSettingsOverlay({
               {selected.auth === "oauth" && !subscriptionSignIn ? (
                 <p className="mt-5 text-sm leading-[1.5] text-muted-foreground">
                   <Trans>
-                    This subscription sign-in is not available in Nova yet. Use a deployment
+                    This subscription sign-in is not available in Superchat yet. Use a deployment
                     credential or choose another provider.
                   </Trans>
                 </p>

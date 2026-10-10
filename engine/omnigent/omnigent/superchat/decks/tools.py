@@ -125,7 +125,7 @@ class DeckNewTool(Tool):
                             "description": (
                                 "Omit to get the layout menu. The slides: one "
                                 '<section class="slide ..." data-screen-label="NN Name" '
-                                'data-nova-id="..."> per slide, using the layouts in the deck '
+                                'data-superchat-id="..."> per slide, using the layouts in the deck '
                                 'rules. The first has class "slide active".'
                             ),
                         },

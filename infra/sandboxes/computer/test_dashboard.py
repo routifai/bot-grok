@@ -1,4 +1,4 @@
-"""nova-dashboard: numbers computed from files, typed numbers refused, one self-contained page."""
+"""superchat-dashboard: numbers computed from files, typed numbers refused, one self-contained page."""
 
 import importlib.machinery
 import importlib.util
@@ -12,7 +12,7 @@ from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 loader = importlib.machinery.SourceFileLoader(
-    "nova_dashboard", str(HERE / "nova-dashboard")
+    "superchat_dashboard", str(HERE / "superchat-dashboard")
 )
 spec = importlib.util.spec_from_loader(loader.name, loader)
 dashboard = importlib.util.module_from_spec(spec)
@@ -31,7 +31,7 @@ CSV = """date,region,revenue,units
 
 def embedded(page: str) -> dict:
     raw = re.search(
-        r'<script type="application/json" id="nova-dashboard-data">(.*?)</script>',
+        r'<script type="application/json" id="superchat-dashboard-data">(.*?)</script>',
         page,
         re.S,
     )

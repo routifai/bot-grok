@@ -1,4 +1,4 @@
-import type { AdapterContext, SandboxProvider } from "@nova/adapter-kit";
+import type { AdapterContext, SandboxProvider } from "@superchat/adapter-kit";
 import {
   claimQuarantinedForPurge,
   deleteQuarantinedOrganizations,
@@ -8,8 +8,8 @@ import {
   QUARANTINE_TTL_MS,
   quarantinedOrganizationsToPurge,
   releasePurgeClaim,
-} from "@nova/db";
-import { getLogger } from "@nova/logging";
+} from "@superchat/db";
+import { getLogger } from "@superchat/logging";
 import { toComputerRef } from "./computer-support.js";
 
 type Deps = { prisma: PrismaClient; sandbox: SandboxProvider };

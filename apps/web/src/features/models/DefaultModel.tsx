@@ -1,6 +1,6 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { EngineModelCatalog, EngineModelRow } from "@nova/contracts";
-import { NativeSelect, NativeSelectOption } from "@nova/ui-web";
+import type { EngineModelCatalog, EngineModelRow } from "@superchat/contracts";
+import { NativeSelect, NativeSelectOption } from "@superchat/ui-web";
 import { Cpu } from "lucide-react";
 import { useEffect, useState } from "react";
 import { errorText } from "../../lib/error-text";
@@ -30,7 +30,7 @@ function HarnessDefault({
   label,
 }: {
   harness: string;
-  /** Names the harness when the person's Nova could run on more than one. */
+  /** Names the harness when the person's Superchat could run on more than one. */
   label: string | null;
 }) {
   const { t } = useLingui();
@@ -103,7 +103,7 @@ function HarnessDefault({
   );
 }
 
-/** The model new chats start on, for each harness the person's Nova may run. */
+/** The model new chats start on, for each harness the person's Superchat may run. */
 export function DefaultModel({ harnesses }: { harnesses: { id: string; label: string }[] }) {
   if (harnesses.length === 0) return null;
   return (

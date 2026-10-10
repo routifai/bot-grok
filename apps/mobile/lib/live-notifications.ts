@@ -35,7 +35,7 @@ type NativeNotifications = {
 };
 
 const nativeNotifications =
-  Platform.OS === "android" ? requireNativeModule<NativeNotifications>("NovaNotifications") : null;
+  Platform.OS === "android" ? requireNativeModule<NativeNotifications>("SuperchatNotifications") : null;
 
 export type NotificationThreadTarget = { botId?: string; threadId?: string };
 
@@ -47,10 +47,10 @@ export function notificationTargetsThread(
   target: NotificationThreadTarget | null,
 ): boolean {
   if (!data || !target) return false;
-  const dataThreadId = data.threadId ?? data["nova.threadId"];
+  const dataThreadId = data.threadId ?? data["superchat.threadId"];
   if (target.threadId && dataThreadId) return dataThreadId === target.threadId;
   return Boolean(
-    target.botId && (data.botId === target.botId || data["nova.botId"] === target.botId),
+    target.botId && (data.botId === target.botId || data["superchat.botId"] === target.botId),
   );
 }
 

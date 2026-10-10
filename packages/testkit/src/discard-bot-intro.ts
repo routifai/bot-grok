@@ -1,7 +1,7 @@
-import { runJobKey } from "@nova/adapter-kit";
-import type { RunStatus } from "@nova/contracts";
-import { isActive } from "@nova/core";
-import type { PrismaClient } from "@nova/db";
+import { runJobKey } from "@superchat/adapter-kit";
+import type { RunStatus } from "@superchat/contracts";
+import { isActive } from "@superchat/core";
+import type { PrismaClient } from "@superchat/db";
 
 type App = { request: (input: string, init?: RequestInit) => Promise<Response> };
 
@@ -89,7 +89,7 @@ async function rpc(
       "content-type": "application/json",
       cookie,
       origin: "http://127.0.0.1:5173",
-      ...(spaceId ? { "x-nova-space-id": spaceId } : {}),
+      ...(spaceId ? { "x-superchat-space-id": spaceId } : {}),
     },
     body: JSON.stringify({ json: body }),
   });

@@ -1,13 +1,13 @@
-import type { Actor } from "@nova/contracts";
-import { buildSkillMd } from "@nova/core";
-import type { PrismaClient } from "@nova/db";
+import type { Actor } from "@superchat/contracts";
+import { buildSkillMd } from "@superchat/core";
+import type { PrismaClient } from "@superchat/db";
 import { describe, expect, it, vi } from "vitest";
 import { createAgentSkillsService } from "./agent-skills.js";
 
 const actor: Actor = {
   spaceId: "space-1",
   userId: "user-1",
-  email: "user@nova.test",
+  email: "user@superchat.test",
   isDeploymentOwner: true,
 };
 

@@ -1,4 +1,4 @@
-import type { AdapterContext, AutoReviewRequest } from "@nova/adapter-kit";
+import type { AdapterContext, AutoReviewRequest } from "@superchat/adapter-kit";
 import { describe, expect, it } from "vitest";
 import { JevAutoReviewProvider } from "./jev-auto-review.js";
 

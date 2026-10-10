@@ -1,6 +1,6 @@
 // Deferring a routine's next wakeup job when it is scheduled far enough in the future.
-import type { JobPublisher } from "@nova/adapter-kit";
-import { routineWakeupJob } from "@nova/adapter-kit";
+import type { JobPublisher } from "@superchat/adapter-kit";
+import { routineWakeupJob } from "@superchat/adapter-kit";
 
 export async function deferFutureRoutine(
   jobs: JobPublisher,

@@ -1,4 +1,4 @@
-import type { ChatSummary, SideChatStart } from "@nova/contracts";
+import type { ChatSummary, SideChatStart } from "@superchat/contracts";
 import { ORPCError } from "@orpc/client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { watchFamily } from "../../lib/family-stream";

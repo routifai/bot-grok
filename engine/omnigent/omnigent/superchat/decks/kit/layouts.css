@@ -1,4 +1,4 @@
-/* Nova deck layout vocabulary (original). One fixed 1920x1080 canvas; every size is in px.
+/* Superchat deck layout vocabulary (original). One fixed 1920x1080 canvas; every size is in px.
    Safe area: 128px left/right, 104px top, 168px bottom (the footer rail, pinned, lives in the
    bottom band: nothing else may enter it). Layouts are flex/grid flow so content can never be
    positioned off its box: that is what keeps the PowerPoint export exact. */

@@ -1,5 +1,5 @@
-import { openScreenCapability } from "@nova/core/node/screen-capability";
-import type { PrismaClient } from "@nova/db";
+import { openScreenCapability } from "@superchat/core/node/screen-capability";
+import type { PrismaClient } from "@superchat/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   engineComputerRelease,
@@ -125,7 +125,7 @@ describe("engine-owned computer", () => {
   it("refuses take over when there is no Computer", async () => {
     stubEngine({ available: false, in_control: false });
     await expect(engineComputerTakeover(deps().deps, client, actor, "bot-1")).rejects.toThrow(
-      "Nova's computer starts when Nova needs it",
+      "Superchat's computer starts when Superchat needs it",
     );
   });
 });

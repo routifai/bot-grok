@@ -1,4 +1,4 @@
-import type { IntegrationSetupState } from "@nova/contracts";
+import type { IntegrationSetupState } from "@superchat/contracts";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {

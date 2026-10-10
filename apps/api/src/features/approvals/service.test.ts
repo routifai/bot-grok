@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@nova/db";
+import type { PrismaClient } from "@superchat/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { listApprovalRules, revokeApprovalRule, setApprovalSpending } from "./service.js";
 

@@ -149,7 +149,7 @@ alone.
 
 - Vite + React 19 + TypeScript
 - Tailwind v4 (`@import "tailwindcss"`, no config file)
-- shadcn/ui (`radix-nova` preset, neutral base, CSS variables)
+- shadcn/ui (`radix-superchat` preset, neutral base, CSS variables)
 - TanStack Query, Zustand, React Router v7
 - streamdown (+ `@streamdown/code`, `@streamdown/math`, `@streamdown/mermaid`),
   shiki, framer-motion, cmdk, react-hotkeys-hook, use-stick-to-bottom,

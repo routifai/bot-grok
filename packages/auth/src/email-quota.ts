@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@nova/db";
+import type { PrismaClient } from "@superchat/db";
 
 /**
  * Fixed-window counters keyed by string, for per-address caps. Kept apart from Better Auth's own

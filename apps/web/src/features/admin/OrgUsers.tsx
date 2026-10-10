@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { EngineAdminUser } from "@nova/contracts";
+import type { EngineAdminUser } from "@superchat/contracts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,7 +11,7 @@ import {
   AlertDialogTitle,
   Button,
   cn,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import { useCallback, useEffect, useState } from "react";
 import { errorText } from "../../lib/error-text";
 import { rpc } from "../../lib/rpc";

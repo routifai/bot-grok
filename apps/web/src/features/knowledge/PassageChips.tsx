@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import type { ReplyCardDataOf } from "@nova/contracts";
+import type { ReplyCardDataOf } from "@superchat/contracts";
 import { FileText } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useArtifactPanel, useReplyCardBotId } from "../../components/cards/context";
@@ -89,7 +89,7 @@ export function PassageChips({ data }: { data: ReplyCardDataOf<"passages"> }) {
             </>
           );
           const chip =
-            "nova-glass-pill flex max-w-[15rem] items-center gap-2 rounded-xl p-1 pe-3 text-start";
+            "superchat-glass-pill flex max-w-[15rem] items-center gap-2 rounded-xl p-1 pe-3 text-start";
           return (
             <li key={`${fileId ?? artifactId}:${item.page}`} className="min-w-0">
               {artifactId ? (

@@ -1,6 +1,6 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { DesktopUpdateState } from "@nova/contracts";
-import { Button } from "@nova/ui-web";
+import type { DesktopUpdateState } from "@superchat/contracts";
+import { Button } from "@superchat/ui-web";
 import { createContext, type ReactNode, useContext, useEffect, useRef, useState } from "react";
 import { desktopBridge } from "../lib/desktop";
 

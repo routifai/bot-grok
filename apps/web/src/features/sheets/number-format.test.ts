@@ -1,4 +1,4 @@
-import type { TableCell } from "@nova/contracts";
+import type { TableCell } from "@superchat/contracts";
 import { describe, expect, it } from "vitest";
 import { formatCellValue, serialToParts } from "./number-format";
 

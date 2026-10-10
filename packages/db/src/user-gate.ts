@@ -1,4 +1,4 @@
-import { unverifiedAccessAllowed } from "@nova/core";
+import { unverifiedAccessAllowed } from "@superchat/core";
 import type { PrismaClient } from "./client.js";
 
 /**

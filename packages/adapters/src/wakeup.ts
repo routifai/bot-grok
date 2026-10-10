@@ -4,9 +4,9 @@ import {
   dispatchBackgroundJob,
   type JobPublisher,
   type JobWorkerHost,
-} from "@nova/adapter-kit";
-import { isTooManyDatabaseConnections } from "@nova/db";
-import { runCorrelatedJob, unwrapJobPayload, wrapJobPayload } from "@nova/logging";
+} from "@superchat/adapter-kit";
+import { isTooManyDatabaseConnections } from "@superchat/db";
+import { runCorrelatedJob, unwrapJobPayload, wrapJobPayload } from "@superchat/logging";
 import { makeWorkerUtils, type Runner, run, type WorkerUtils } from "graphile-worker";
 import type { Pool } from "pg";
 

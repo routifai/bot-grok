@@ -1,4 +1,4 @@
-import type { Artifact } from "@nova/contracts";
+import type { Artifact } from "@superchat/contracts";
 import type { ArtifactExtension } from "../artifacts";
 import { IndexBadge } from "./IndexBadge";
 

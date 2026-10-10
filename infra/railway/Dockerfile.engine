@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # Omnigent engine for Railway. Build context is the REPO ROOT (Railway: root directory "/"),
 # because the image needs both engine/omnigent (the engine, incl. the "computer" sandbox
-# launcher) and infra/omnigent/agents (the rendered nova-claude bundle).
+# launcher) and infra/omnigent/agents (the rendered superchat-claude bundle).
 # The server stages mirror engine/omnigent/deploy/docker/Dockerfile (server target) with
 # `engine/omnigent/` path prefixes; keep them in step when that file changes.
 ARG PYTHON_VERSION=3.12
@@ -49,10 +49,10 @@ RUN apt-get update \
 COPY --from=server-builder /opt/venv /opt/venv
 COPY --from=server-builder /build /build
 COPY engine/omnigent/deploy/docker/entrypoint.py /app/entrypoint.py
-# Nova additions: the agent bundle(s), the config template and the start wrapper.
-COPY infra/omnigent/agents /opt/nova/agents
-COPY infra/railway/engine.config.yaml.tmpl /opt/nova/config.yaml.tmpl
-COPY --chmod=755 infra/railway/engine-start.sh /opt/nova/engine-start.sh
+# Superchat additions: the agent bundle(s), the config template and the start wrapper.
+COPY infra/omnigent/agents /opt/superchat/agents
+COPY infra/railway/engine.config.yaml.tmpl /opt/superchat/config.yaml.tmpl
+COPY --chmod=755 infra/railway/engine-start.sh /opt/superchat/engine-start.sh
 WORKDIR /app
 RUN mkdir -p /data/artifacts
 
@@ -62,20 +62,20 @@ ENV PORT=8000 \
     OMNIGENT_DATA_DIR=/data \
     OMNIGENT_CONFIG_HOME=/data/config \
     OMNIGENT_DISABLE_KEYRING=1 \
-    OMNIGENT_BUILTIN_AGENT_DIRS=/opt/nova/agents/nova-claude:/opt/nova/agents/nova-pi \
+    OMNIGENT_BUILTIN_AGENT_DIRS=/opt/superchat/agents/superchat-claude:/opt/superchat/agents/superchat-pi \
     OMNIGENT_AUTH_PROVIDER=header \
     OMNIGENT_AUTH_TENANT_HEADER=X-Omnigent-Tenant \
-    OMNIGENT_SUPERCHAT_DEFAULT_AGENT=nova-claude \
+    OMNIGENT_SUPERCHAT_DEFAULT_AGENT=superchat-claude \
     OMNIGENT_SUPERCHAT_SANDBOX_PROVIDER=computer \
     OMNIGENT_COMPUTER_HOME_ROOT=/data \
     OMNIGENT_ADMIN_LIST_PATH=/data/admins \
     OMNIGENT_QUIET_MOMENT_MIN_GAP_SECONDS=21600 \
     OMNIGENT_BROWSER_BACKEND=local \
     OMNIGENT_PROACTIVE_PROVISION=1 \
-    NOVA_CLAUDE_MODEL=claude-sonnet-5-5 \
+    SUPERCHAT_CLAUDE_MODEL=claude-sonnet-5-5 \
     OMNIGENT_HELPER_MODEL_FAST=claude-haiku-4-5
 
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
     CMD curl -fsS "http://127.0.0.1:${PORT}/health" || exit 1
-CMD ["/opt/nova/engine-start.sh"]
+CMD ["/opt/superchat/engine-start.sh"]

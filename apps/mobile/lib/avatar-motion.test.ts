@@ -1,4 +1,4 @@
-import { workingAvatarDuration, workingAvatarFrame } from "@nova/core";
+import { workingAvatarDuration, workingAvatarFrame } from "@superchat/core";
 import { describe, expect, it } from "vitest";
 
 describe("working avatar motion", () => {

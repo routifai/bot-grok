@@ -3,8 +3,8 @@ export const DE_MESSAGES: Record<string, string> = {
   "Chat Settings": "Chat-Einstellungen",
   "Configure a plugin catalog on the server to connect apps.":
     "Richte auf dem Server einen Plugin-Katalog ein, um Apps zu verbinden.",
-  "Paste the OpenAI-compatible address from your server. Nova adds /v1 if needed.":
-    "Füge die OpenAI-kompatible Adresse deines Servers ein. Nova ergänzt /v1 bei Bedarf.",
+  "Paste the OpenAI-compatible address from your server. Superchat adds /v1 if needed.":
+    "Füge die OpenAI-kompatible Adresse deines Servers ein. Superchat ergänzt /v1 bei Bedarf.",
   "Settings: General": "Einstellungen: Allgemein",
   "Settings: Usage": "Einstellungen: Nutzung",
   "Sign-in did not return a session": "Die Anmeldung hat keine Sitzung zurückgegeben",
@@ -37,7 +37,7 @@ export const DE_MESSAGES: Record<string, string> = {
   "Don’t have an account?": "Du hast noch kein Konto?",
   "Sign up on the web": "Konto im Web erstellen",
   Email: "E-Mail",
-  "Enter your Nova server address.": "Gib die Adresse deines Nova-Servers ein.",
+  "Enter your Superchat server address.": "Gib die Adresse deines Superchat-Servers ein.",
   "Forgot password?": "Passwort vergessen?",
   "Loading…": "Wird geladen…",
   Password: "Passwort",
@@ -46,9 +46,9 @@ export const DE_MESSAGES: Record<string, string> = {
   "Reset your password": "Setze dein Passwort zurück",
   "Send reset link": "Link zum Zurücksetzen senden",
   Server: "Server",
-  "Sign in to Nova": "Bei Nova anmelden",
+  "Sign in to Superchat": "Bei Superchat anmelden",
   "Sign up": "Registrieren",
-  "Sign up for Nova": "Bei Nova registrieren",
+  "Sign up for Superchat": "Bei Superchat registrieren",
   "Use a custom server": "Eigenen Server verwenden",
   "Use default server": "Standardserver verwenden",
   // app/index.tsx
@@ -314,8 +314,8 @@ export const DE_MESSAGES: Record<string, string> = {
   "Switching…": "Wird gewechselt…",
   "The final page may not load. Paste its URL or code here.":
     "Die letzte Seite lädt womöglich nicht. Füge ihre URL oder ihren Code hier ein.",
-  "This subscription sign-in is not available in Nova yet. Use a deployment credential or choose another provider.":
-    "Diese Abonnementanmeldung ist in Nova noch nicht verfügbar. Verwende Zugangsdaten der Bereitstellung oder wähle einen anderen Anbieter.",
+  "This subscription sign-in is not available in Superchat yet. Use a deployment credential or choose another provider.":
+    "Diese Abonnementanmeldung ist in Superchat noch nicht verfügbar. Verwende Zugangsdaten der Bereitstellung oder wähle einen anderen Anbieter.",
   "Use a found model": "Gefundenes Modell verwenden",
   "Use this model": "Dieses Modell verwenden",
   "Waiting for sign-in…": "Warten auf Anmeldung…",
@@ -598,7 +598,7 @@ export const DE_MESSAGES: Record<string, string> = {
   "Enter a server URL": "Gib eine Server-URL ein",
   "Public servers need https://. HTTP only works on your local network.":
     "Öffentliche Server brauchen https://. HTTP funktioniert nur im lokalen Netzwerk.",
-  "That URL did not look like a Nova server": "Diese URL sieht nicht nach einem Nova-Server aus",
+  "That URL did not look like a Superchat server": "Diese URL sieht nicht nach einem Superchat-Server aus",
   "That URL is missing a host": "Dieser URL fehlt ein Host",
   "That doesn’t look like a URL": "Das sieht nicht nach einer URL aus",
   "Use an http or https URL": "Verwende eine http- oder https-URL",

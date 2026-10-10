@@ -1,12 +1,12 @@
 import { plural } from "@lingui/core/macro";
 import { useLingui } from "@lingui/react/macro";
-import { deckSlideCount, isDeckArtifactName, type ReplyCardDataOf } from "@nova/contracts";
+import { deckSlideCount, isDeckArtifactName, type ReplyCardDataOf } from "@superchat/contracts";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import { Download, ExternalLink, MoreHorizontal } from "lucide-react";
 import { lazy, Suspense, useCallback, useState } from "react";
 import { catalog, formatSize } from "../../../components/cards/catalog";
@@ -62,7 +62,7 @@ function SavedFileCard({ title, data }: { title?: string; data: ReplyCardDataOf<
   const artifactId = data.artifactId;
   const [open, setOpen] = useState(false);
   const [failed, setFailed] = useState(false);
-  // Without a title from Nova, the card reads the document's own heading once it loads.
+  // Without a title from Superchat, the card reads the document's own heading once it loads.
   const [documentTitle, setDocumentTitle] = useState<string | null>(null);
   const isDeck = isDeckArtifactName(data.name);
   // A deck reads as a deck: "Deck · 7 slides" once its file is here.

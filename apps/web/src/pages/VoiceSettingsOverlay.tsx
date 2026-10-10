@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { VoiceCatalogEntry, VoiceCredential, VoiceInfo, VoiceStatus } from "@nova/contracts";
+import type { VoiceCatalogEntry, VoiceCredential, VoiceInfo, VoiceStatus } from "@superchat/contracts";
 import {
   Button,
   Dialog,
@@ -11,7 +11,7 @@ import {
   Input,
   NativeSelect,
   NativeSelectOption,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import { XIcon } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 import { rpc } from "../lib/rpc";

@@ -52,7 +52,7 @@ def write_bytes_idempotent(target: Path, data: bytes) -> bool:
     except OSError:
         pass
     target.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".nova-edit-")
+    fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".superchat-edit-")
     try:
         with os.fdopen(fd, "wb") as handle:
             handle.write(data)

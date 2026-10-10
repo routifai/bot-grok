@@ -813,7 +813,7 @@ def supervise_host_command(command: str, *, host_id: str | None = None) -> str:
     restart attempts — it is the supervising shell, not the host process) at
     :func:`supervised_host_pidfile_path`, written before the first attempt so
     a sandbox whose provider persists across launches (a relaunch onto a
-    still-live sandbox, or Nova's ``computer`` provider, which never
+    still-live sandbox, or Superchat's ``computer`` provider, which never
     terminates — see :mod:`omnigent.onboarding.sandboxes.computer`) can detect
     an already-running loop for the same host id and skip starting a second
     one (see :meth:`SandboxExecTransport.is_host_supervisor_running`).
@@ -1065,7 +1065,7 @@ class SandboxHostLauncher(SandboxLifecycle):
 
         :param agent_name: Server-resolved built-in agent name the session runs, as passed by
             every call site today.
-        :param labels: The launching session's labels (e.g. Nova's ``nova.bot`` / ``nova.space``
+        :param labels: The launching session's labels (e.g. Superchat's ``superchat.bot`` / ``superchat.space``
             — see :mod:`omnigent.onboarding.sandboxes.computer`), on a first launch. ``None`` on
             a relaunch/resume of an existing host, which has no session labels handy.
         :param previous_sandbox_id: The host's previous :meth:`SandboxLifecycle.provision` /
@@ -1161,7 +1161,7 @@ class ExecModelHostLauncher(SandboxHostLauncher, SandboxExecTransport):
         host`` loop for *host_id* is already running in the sandbox (see
         :meth:`SandboxExecTransport.is_host_supervisor_running`) — a RELAUNCH
         onto a sandbox that never actually died, or a repeat launch onto a
-        provider whose sandbox outlives any one session (Nova's ``computer``
+        provider whose sandbox outlives any one session (Superchat's ``computer``
         provider never terminates its container — see
         :mod:`omnigent.onboarding.sandboxes.computer`) — this skips cloning
         and starting a second loop and returns the already-running host's

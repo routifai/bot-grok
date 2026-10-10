@@ -1,4 +1,4 @@
-import { Button, cn, Input } from "@nova/ui-web";
+import { Button, cn, Input } from "@superchat/ui-web";
 import { type ReactNode, useId, useState } from "react";
 
 // Small controls of the style panel. They are controlled by the selection (so they always show

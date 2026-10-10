@@ -4,7 +4,7 @@ import { alertForReply, type ReplyAlertDeps } from "./replyAlerts";
 function deps(overrides: Partial<ReplyAlertDeps> = {}): ReplyAlertDeps {
   return {
     botId: "bot-1",
-    botName: "Nova",
+    botName: "Superchat",
     enabled: true,
     conversationId: "conv-1",
     focused: () => false,
@@ -27,7 +27,7 @@ describe("alertForReply", () => {
         botId: "bot-1",
         payload: { role: "bot", blocks: [{ kind: "text", text: "All done." }] },
       }),
-      "Nova",
+      "Superchat",
       true,
     );
   });
@@ -58,7 +58,7 @@ describe("alertForReply", () => {
     await alertForReply({ type: "messageDone", chatId: "conv-1", itemId: "i1" }, d);
     expect(d.notify).toHaveBeenCalledWith(
       expect.objectContaining({ payload: { role: "bot", blocks: [] } }),
-      "Nova",
+      "Superchat",
       true,
     );
   });

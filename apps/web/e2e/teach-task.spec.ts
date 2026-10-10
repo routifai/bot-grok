@@ -3,7 +3,7 @@ import { captureScreenshot, completeOnboarding, signup } from "./helpers";
 
 test("teach a task records interaction and saves a draft", async ({ page }, testInfo) => {
   const stamp = Date.now();
-  await signup(page, `teach-${stamp}@nova.test`, "password12", "Teach");
+  await signup(page, `teach-${stamp}@superchat.test`, "password12", "Teach");
   await completeOnboarding(page);
 
   await page.getByTitle("Agent computer").click();
@@ -31,7 +31,7 @@ test("teach a task records interaction and saves a draft", async ({ page }, test
   const chrome = page.getByTestId("computer-chrome");
   await expect(chrome.getByText("You have control", { exact: true })).toBeVisible();
   await expect(
-    chrome.getByRole("button", { name: "Hand back to Nova", exact: true }),
+    chrome.getByRole("button", { name: "Hand back to Superchat", exact: true }),
   ).toBeVisible();
   await expect(chrome.getByTestId("teach-start-button")).toBeVisible();
   const more = chrome.getByTestId("computer-more-button");

@@ -1,7 +1,7 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { ThreadMessage, ThreadSnapshot } from "@nova/contracts";
-import { isSecretAskBlock, narrateTool, speechFromBlocks, spokenDecision } from "@nova/core";
-import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from "@nova/ui-web";
+import type { ThreadMessage, ThreadSnapshot } from "@superchat/contracts";
+import { isSecretAskBlock, narrateTool, speechFromBlocks, spokenDecision } from "@superchat/core";
+import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from "@superchat/ui-web";
 import { useEffect, useRef, useState } from "react";
 import { dictation } from "../lib/dictation";
 import { speaker } from "../lib/tts";

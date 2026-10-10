@@ -1,4 +1,4 @@
-import type { ModelCatalogEntry } from "@nova/contracts";
+import type { ModelCatalogEntry } from "@superchat/contracts";
 
 export const POPULAR_MODEL_PROVIDER_IDS = [
   "openrouter",

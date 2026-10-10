@@ -9,7 +9,7 @@ const restoreScript = path.resolve("scripts/restore.sh");
 
 function postgresUp() {
   try {
-    execSync(`docker compose -f ${composeFile} exec -T postgres pg_isready -U nova`, {
+    execSync(`docker compose -f ${composeFile} exec -T postgres pg_isready -U superchat`, {
       stdio: "ignore",
       timeout: 8_000,
     });
@@ -29,9 +29,9 @@ describeBackup("compose backup and restore", () => {
     execSync(`${backupScript} ${stamp}`, {
       stdio: "pipe",
       timeout: 60_000,
-      env: { ...process.env, NOVA_BACKUP_SKIP_HOMES: "1" },
+      env: { ...process.env, SUPERCHAT_BACKUP_SKIP_HOMES: "1" },
     });
-    const dump = path.resolve("backups", stamp, "nova.sql");
+    const dump = path.resolve("backups", stamp, "superchat.sql");
     expect(existsSync(dump)).toBe(true);
     const sql = readFileSync(dump, "utf8");
     expect(sql).toMatch(/CREATE TABLE|CREATE TABLE IF NOT EXISTS/i);
@@ -39,15 +39,15 @@ describeBackup("compose backup and restore", () => {
     expect(sql).not.toMatch(/OPENROUTER_API_KEY|sk-or-v1-/);
 
     execSync(
-      `docker compose -f ${composeFile} exec -T postgres psql -U nova -d postgres -c "DROP DATABASE IF EXISTS nova_restore_test"`,
+      `docker compose -f ${composeFile} exec -T postgres psql -U superchat -d postgres -c "DROP DATABASE IF EXISTS superchat_restore_test"`,
       { stdio: "pipe", timeout: 20_000 },
     );
     execSync(
-      `docker compose -f ${composeFile} exec -T postgres psql -U nova -d postgres -c "CREATE DATABASE nova_restore_test"`,
+      `docker compose -f ${composeFile} exec -T postgres psql -U superchat -d postgres -c "CREATE DATABASE superchat_restore_test"`,
       { stdio: "pipe", timeout: 20_000 },
     );
     execSync(
-      `docker compose -f ${composeFile} exec -T postgres psql -U nova -d nova_restore_test`,
+      `docker compose -f ${composeFile} exec -T postgres psql -U superchat -d superchat_restore_test`,
       {
         input: sql,
         stdio: ["pipe", "pipe", "pipe"],
@@ -55,12 +55,12 @@ describeBackup("compose backup and restore", () => {
       },
     );
     const tables = execSync(
-      `docker compose -f ${composeFile} exec -T postgres psql -U nova -d nova_restore_test -c "\\dt"`,
+      `docker compose -f ${composeFile} exec -T postgres psql -U superchat -d superchat_restore_test -c "\\dt"`,
       { encoding: "utf8", timeout: 20_000 },
     );
     expect(tables).toMatch(/bots/);
     execSync(
-      `docker compose -f ${composeFile} exec -T postgres psql -U nova -d postgres -c "DROP DATABASE nova_restore_test"`,
+      `docker compose -f ${composeFile} exec -T postgres psql -U superchat -d postgres -c "DROP DATABASE superchat_restore_test"`,
       { stdio: "pipe", timeout: 20_000 },
     );
     rmSync(path.resolve("backups", stamp), { recursive: true, force: true });

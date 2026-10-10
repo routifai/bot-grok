@@ -1,5 +1,5 @@
-import { ChatMarkdown } from "@nova/chat-ui/web";
-import type { ThreadMessage } from "@nova/contracts";
+import { ChatMarkdown } from "@superchat/chat-ui/web";
+import type { ThreadMessage } from "@superchat/contracts";
 import { personText } from "../../../lib/message-text";
 
 /** A plain-text message bubble, matching the Conversation's own bubble tokens

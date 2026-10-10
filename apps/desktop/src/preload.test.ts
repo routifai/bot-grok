@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
-import type { NovaDesktop, NovaSetup } from "@nova/contracts";
+import type { SuperchatDesktop, SuperchatSetup } from "@superchat/contracts";
 import { describe, expect, it, vi } from "vitest";
 
 function runPreload(file: string, ipc: { invoke?: unknown; on?: unknown; off?: unknown } = {}) {
@@ -28,8 +28,8 @@ describe("desktop preload bridge", () => {
     const { invoke, exposeInMainWorld } = runPreload("preload.cjs");
 
     expect(exposeInMainWorld).toHaveBeenCalledTimes(1);
-    const [globalName, bridge] = exposeInMainWorld.mock.calls[0] as [string, NovaDesktop];
-    expect(globalName).toBe("novaDesktop");
+    const [globalName, bridge] = exposeInMainWorld.mock.calls[0] as [string, SuperchatDesktop];
+    expect(globalName).toBe("superchatDesktop");
     expect(bridge.platform).toBe("linux");
     expect(Object.keys(bridge).sort()).toEqual([
       "localSettings",
@@ -90,7 +90,7 @@ describe("desktop preload bridge", () => {
     const off = vi.fn();
     const { exposeInMainWorld } = runPreload("preload.cjs", { on, off });
 
-    const [, bridge] = exposeInMainWorld.mock.calls[0] as [string, NovaDesktop];
+    const [, bridge] = exposeInMainWorld.mock.calls[0] as [string, SuperchatDesktop];
     const received: unknown[] = [];
     const unsubscribe = bridge.oauth.onCallback((callback) => received.push(callback));
 
@@ -108,8 +108,8 @@ describe("setup preload bridge", () => {
     const { invoke, on, exposeInMainWorld } = runPreload("setup-preload.cjs");
 
     expect(exposeInMainWorld).toHaveBeenCalledTimes(1);
-    const [globalName, bridge] = exposeInMainWorld.mock.calls[0] as [string, NovaSetup];
-    expect(globalName).toBe("novaSetup");
+    const [globalName, bridge] = exposeInMainWorld.mock.calls[0] as [string, SuperchatSetup];
+    expect(globalName).toBe("superchatSetup");
     expect(bridge.platform).toBe("linux");
     expect(Object.keys(bridge).sort()).toEqual([
       "openLink",

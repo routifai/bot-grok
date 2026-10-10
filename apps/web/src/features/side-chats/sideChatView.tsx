@@ -1,4 +1,4 @@
-import { userVisibleMessages } from "@nova/core";
+import { userVisibleMessages } from "@superchat/core";
 import { useEffect, useMemo, useRef } from "react";
 import type { ArtifactTarget } from "../../lib/artifact-open";
 import type { MuseLiveRun } from "../../pages/muse/chrome/useMuseLiveState";

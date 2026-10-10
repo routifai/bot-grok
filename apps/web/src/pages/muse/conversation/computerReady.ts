@@ -1,4 +1,4 @@
-import type { ComputerStatus } from "@nova/contracts";
+import type { ComputerStatus } from "@superchat/contracts";
 
 /** How long a step waits for a Computer that is starting (the managed launch window). */
 export const COMPUTER_LAUNCH_WINDOW_MS = 120_000;

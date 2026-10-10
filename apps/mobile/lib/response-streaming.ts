@@ -1,9 +1,9 @@
-import type { ResponseStreamingPreference } from "@nova/core";
+import type { ResponseStreamingPreference } from "@superchat/core";
 import {
   normalizeResponseStreamingPreference,
   RESPONSE_STREAMING_STORAGE_KEY,
   responseStreamingEnabled,
-} from "@nova/core";
+} from "@superchat/core";
 import * as SecureStore from "expo-secure-store";
 
 export type { ResponseStreamingPreference };

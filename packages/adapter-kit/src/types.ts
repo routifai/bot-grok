@@ -1,4 +1,4 @@
-import type { ConnectionCatalogItem, SandboxKind } from "@nova/contracts";
+import type { ConnectionCatalogItem, SandboxKind } from "@superchat/contracts";
 
 export interface AdapterContext {
   operationId: string;

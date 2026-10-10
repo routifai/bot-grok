@@ -1,4 +1,4 @@
-import { ChatMarkdown } from "@nova/chat-ui/native";
+import { ChatMarkdown } from "@superchat/chat-ui/native";
 import { useEffect, useState } from "react";
 import { Alert, Modal, Pressable, SafeAreaView, ScrollView, Text, View } from "react-native";
 import { mobileTokens } from "../lib/appearance";

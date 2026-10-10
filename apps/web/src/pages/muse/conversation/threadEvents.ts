@@ -1,4 +1,4 @@
-import type { Bot, ComputerStatus, Group, ProductEvent, ThreadSnapshot } from "@nova/contracts";
+import type { Bot, ComputerStatus, Group, ProductEvent, ThreadSnapshot } from "@superchat/contracts";
 import type { MutableRefObject } from "react";
 import {
   isComputerStatusEvent,

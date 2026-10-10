@@ -3,13 +3,13 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { desktopBridge } from "../../lib/desktop";
 import { WindowChrome } from "../WindowChrome";
-import { NovaMark } from "./Brand";
+import { SuperchatMark } from "./Brand";
 import { FOCUS, GetStarted, GUTTER } from "./Cta";
 
 const LOOP_SRC = "/welcome/hero-loop.mp4";
-const FILM_SRC = "/welcome/nova-film.mp4";
-const POSTER = "/welcome/nova-film-poster.jpg";
-const CAPTIONS = "/welcome/nova-film.en.vtt";
+const FILM_SRC = "/welcome/superchat-film.mp4";
+const POSTER = "/welcome/superchat-film-poster.jpg";
+const CAPTIONS = "/welcome/superchat-film.en.vtt";
 
 /** Time since you arrived, as T+ hh:mm:ss. */
 function MissionClock() {
@@ -105,7 +105,7 @@ export function Hero() {
         <header className="flex items-center gap-5 py-[22px] max-[560px]:gap-3">
           {/* Window controls only inside the desktop app; on the web the wordmark sits flush left. */}
           {desktopBridge() ? <WindowChrome /> : null}
-          <NovaMark />
+          <SuperchatMark />
           <span className="flex-1" />
           <MissionClock />
           <Link
@@ -130,7 +130,7 @@ export function Hero() {
           <Trans>
             Hand it off.
             <br />
-            Nova's already on it.
+            Superchat's already on it.
           </Trans>
         </h1>
         <p className="mx-auto mt-[18px] max-w-[44ch] text-[clamp(16px,1.4vw,19px)] leading-[1.55] text-welcome-night-sub [text-shadow:0_1px_20px_rgb(0_0_0/0.7)]">

@@ -1,7 +1,7 @@
-# Wiring Nova to Omnigent superside-chat
+# Wiring Superchat to Omnigent superside-chat
 
-How each Nova screen reaches the engine. Concepts: [README.md](README.md).
-Ground rule (engine ADR 0001): **Omnigent owns every capability**. Nova's API
+How each Superchat screen reaches the engine. Concepts: [README.md](README.md).
+Ground rule (engine ADR 0001): **Omnigent owns every capability**. Superchat's API
 only checks who is asking and passes calls through; it never re-implements
 side chats, memory or activity.
 
@@ -17,12 +17,12 @@ Code lives in feature files: oRPC routers in `apps/api/src/routers/` (for exampl
 
 ## Identity and ownership
 
-- Nova calls Omnigent as the person (`X-Forwarded-Email` + proxy secret, matching the
+- Superchat calls Omnigent as the person (`X-Forwarded-Email` + proxy secret, matching the
   engine's `OMNIGENT_AUTH_HEADER_SECRET`).
 - One **Super Chat** per person and space, decided by the engine
-  (`GET /v1/me/muse`, ADR 0009): Nova's `OmnigentSession` row
+  (`GET /v1/me/muse`, ADR 0009): Superchat's `OmnigentSession` row
   (`botId → omnigentSessionId`) only mirrors what the engine answers, and is
-  refreshed from it on each turn. A Conversation Nova started before that is
+  refreshed from it on each turn. A Conversation Superchat started before that is
   claimed once with `POST /v1/me/muse/adopt`.
 - Any other session id the app receives (`chatId`) must be a Side Chat of
   that Super Chat (`related_chats`) or a Helper below it (its
@@ -57,14 +57,14 @@ Code lives in feature files: oRPC routers in `apps/api/src/routers/` (for exampl
 summary of a with-context chat, else `null`), `archived`, `live` (a turn is
 running), `unread`, `updatedAt`.
 
-### Engine route shapes Nova relies on (ADR 0009)
+### Engine route shapes Superchat relies on (ADR 0009)
 
 - **Unread.** `related_chats` rows add `unread: bool` and `last_read_at`. `POST /v1/sessions/{id}/read`
   `{item_id?}` marks a chat read (baseline never moves back) and emits `chats.changed`. The sidebar
   dot is `ChatSummary.unread`; a chat in view is marked read on opening, on each `message.done`
   while visible and focused, and when the window regains focus. The root Conversation is not in
   `related_chats` and the session GET only carries `viewer_last_seen` / `viewer_unread` (the
-  explicit flag), so its unread stays Nova's (`threads.markUnread` on a reply while the window
+  explicit flag), so its unread stays Superchat's (`threads.markUnread` on a reply while the window
   is not focused).
 - **Family search.** `GET /v1/sessions/{id}/items/search?query=…&scope=family` →
   `{data:[{session_id, message_id, role, created_at, text, item}]}` for the Conversation and its side
@@ -75,15 +75,15 @@ running), `unread`, `updatedAt`.
   `FamilyEvent.chatReset`; clients refetch. The transcript response has `reset: {item_id, created_at}|null`,
   stops (`has_more: false`) at the reset, and `?before_reset=true` pages the older history
   (`ThreadMessagePage.reset`, `chats.transcript({beforeReset})`). The 409 reaches the client as
-  `CONFLICT` ("Wait for Nova to finish, then clear.").
+  `CONFLICT` ("Wait for Superchat to finish, then clear.").
 - **Live.** The transcript response has `live: bool` → `ThreadMessagePage.running`; the session GET
   is no longer read for it.
 - **Side chat creation.** `POST /v1/sessions/{id}/side_chats` retries the first message itself and
-  answers `first_message_error` + `first_message_error_code` when it still fails. Nova does not
+  answers `first_message_error` + `first_message_error_code` when it still fails. Superchat does not
   retry; `ChatSummary.firstMessageErrorCode` opens the chat in the "Didn't send" state, to resend there.
 - **Redaction.** The engine redacts engine-known secrets (secret-named env vars, vault values) on
-  transcript, items, search, related chats, activities, feed and asks, so Nova passes those through.
-  Nova still redacts what the engine does not: the Goal log (`redactThreadMessages`), the memory
+  transcript, items, search, related chats, activities, feed and asks, so Superchat passes those through.
+  Superchat still redacts what the engine does not: the Goal log (`redactThreadMessages`), the memory
   profile, claims and daily notes (`redactMemoryProfile`), and engine error bodies in thrown errors.
 
 The single switch is "Omnigent connection configured": `OMNIGENT_URL` +
@@ -105,7 +105,7 @@ The single switch is "Omnigent connection configured": `OMNIGENT_URL` +
 
 | Change | Why |
 |---|---|
-| Agent bundle `nova-claude` = Super Chat bundle (claude-sdk, Nova prompt, one general Helper type `worker` with `fast`/`strong` models, ADR 0007); `nova-pi` is a second bundle from the same templates, chosen by the engine's `OMNIGENT_SUPERCHAT_DEFAULT_AGENT=nova-pi`, with the Muse and every Helper type on Pi; drop `nova-openai`, `nova-codex` and every `nova_*` tool | Claude SDK by default; the `nova_*` tools are gone from the engine |
+| Agent bundle `superchat-claude` = Super Chat bundle (claude-sdk, Superchat prompt, one general Helper type `worker` with `fast`/`strong` models, ADR 0007); `superchat-pi` is a second bundle from the same templates, chosen by the engine's `OMNIGENT_SUPERCHAT_DEFAULT_AGENT=superchat-pi`, with the Muse and every Helper type on Pi; drop `superchat-openai`, `superchat-codex` and every `superchat_*` tool | Claude SDK by default; the `superchat_*` tools are gone from the engine |
 | Gateway creates the Super Chat with the mode label; replaces a session without it | Turns the capability on |
 | Remove the context-provider route (`/internal/omnigent/context`) and `context-provider.ts` | The engine no longer calls it; memory comes from Omnigent |
 | Implement `chats.*` and add `activities.list` / `activities.get` (contracts + router + adapter client) with the ownership rule above | Side chats, Helper status, Activity panel |

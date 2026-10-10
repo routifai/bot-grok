@@ -13,7 +13,7 @@ export function makeEditNonce(): string {
  * source file never contains the bridge.
  */
 export function injectEditBridge(html: string, nonce: string): string {
-  const script = `<script data-nova-edit-bridge>${bridgeSource.split("__NOVA_NONCE__").join(nonce)}</script>`;
+  const script = `<script data-superchat-edit-bridge>${bridgeSource.split("__SUPERCHAT_NONCE__").join(nonce)}</script>`;
   const head = /<head\b[^>]*>/i.exec(html);
   if (head)
     return (

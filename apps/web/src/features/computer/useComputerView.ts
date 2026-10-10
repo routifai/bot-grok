@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 
 export type ComputerView = "screen" | "files";
 
-const STORAGE_KEY = "nova.computerView";
+const STORAGE_KEY = "superchat.computerView";
 
 /** Which Computer panel view the person last used, remembered across sessions. */
 export function useComputerView(): [ComputerView, (next: ComputerView) => void] {

@@ -8,7 +8,7 @@ index 6de7e508a1674c2ff54cb7ea1341e474a9fc7497..03eaaf7de21b6cf9973682a5bd3186e9
        _,
 -      n.map((K) => K.name),
 +      S && n.length === 1
-+        ? novaPointLegend(c, (_name, index) => {
++        ? superchatPointLegend(c, (_name, index) => {
 +            const point = A[0].data[index];
 +            return point && typeof point === "object" && point.itemStyle?.color || v[index % v.length];
 +          })
@@ -20,18 +20,18 @@ index 6de7e508a1674c2ff54cb7ea1341e474a9fc7497..03eaaf7de21b6cf9973682a5bd3186e9
      series: b
    };
  }
-+/* Nova patch (pptx-renderer 1.3.0, legend swatch colours). The custom legend takes a swatch colour
++/* Superchat patch (pptx-renderer 1.3.0, legend swatch colours). The custom legend takes a swatch colour
 +   from the legend entry, else from the series at the same position, else from the theme palette.
 +   A pie/doughnut legend lists categories, and a varyColors bar chart's legend does too, but their
 +   colours live on the data points (c:dPt), so the swatches showed palette colours instead of the
 +   slice/bar colours. Entries now carry the colour of the point they stand for. */
-+function novaPointLegend(names, colorOf) {
++function superchatPointLegend(names, colorOf) {
 +  return names.map((name, index) => {
 +    const color = colorOf(name, index);
 +    return typeof color === "string" ? { name, itemStyle: { color } } : name;
 +  });
 +}
-+function novaSliceColor(seriesList, name) {
++function superchatSliceColor(seriesList, name) {
 +  for (const series of seriesList)
 +    for (const point of series.data ?? [])
 +      if (point && point.name === name && typeof point.itemStyle?.color === "string")
@@ -45,7 +45,7 @@ index 6de7e508a1674c2ff54cb7ea1341e474a9fc7497..03eaaf7de21b6cf9973682a5bd3186e9
        } : {}
      },
 -    legend: fi(l, s, $, S, a),
-+    legend: fi(l, s, $, novaPointLegend(S, (name) => novaSliceColor(g, name)), a),
++    legend: fi(l, s, $, superchatPointLegend(S, (name) => superchatSliceColor(g, name)), a),
      series: g
    };
  }

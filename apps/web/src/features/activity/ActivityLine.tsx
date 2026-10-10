@@ -1,10 +1,10 @@
 import { useLingui } from "@lingui/react/macro";
-import type { Activity, ActivitySource } from "@nova/contracts";
-import { cn } from "@nova/ui-web";
+import type { Activity, ActivitySource } from "@superchat/contracts";
+import { cn } from "@superchat/ui-web";
 import { CircleAlert, CircleSlash } from "lucide-react";
 import type { ReactNode } from "react";
-import { ChevronGlyph } from "../../pages/muse/chrome/NovaGlyphs";
-import { NovaTile, type TileTone } from "../../pages/muse/chrome/NovaTile";
+import { ChevronGlyph } from "../../pages/muse/chrome/SuperchatGlyphs";
+import { SuperchatTile, type TileTone } from "../../pages/muse/chrome/SuperchatTile";
 import { ACTIVITY_SOURCE_ICON } from "../../pages/muse/chrome/toolIcons";
 
 /** Live work: a small accent dot with a slow opacity pulse (still under reduced motion). The
@@ -54,23 +54,23 @@ function WorkLead({
   }
   if (status === "failed") {
     return (
-      <NovaTile tone="red" size={size}>
+      <SuperchatTile tone="red" size={size}>
         <CircleAlert strokeWidth={2.4} />
-      </NovaTile>
+      </SuperchatTile>
     );
   }
   if (status === "cancelled") {
     return (
-      <NovaTile tone="gray" size={size}>
+      <SuperchatTile tone="gray" size={size}>
         <CircleSlash strokeWidth={2.4} />
-      </NovaTile>
+      </SuperchatTile>
     );
   }
   const Icon = ACTIVITY_SOURCE_ICON[source ?? "turn"];
   return (
-    <NovaTile tone={SOURCE_TONE[source ?? "turn"]} size={size}>
+    <SuperchatTile tone={SOURCE_TONE[source ?? "turn"]} size={size}>
       <Icon strokeWidth={2.4} />
-    </NovaTile>
+    </SuperchatTile>
   );
 }
 
@@ -78,7 +78,7 @@ function WorkLead({
  * One piece of work (the "Working" line), in two shapes:
  * - `list` (the inspector): an iOS grouped-list row, 52px, a pulsing dot or a colored source tile
  *   on the left, the title over "Now · <live step>" or the outcome, a mono figure (elapsed
- *   while working, else the clock) and a chevron. Rows sit in a `.nova-group`.
+ *   while working, else the clock) and a chevron. Rows sit in a `.superchat-group`.
  * - `inline` (under a message that started a Helper): a soft rounded row with a tiny orb, the
  *   title, the step and a timer (a small pulsing dot while it works).
  */
@@ -202,7 +202,7 @@ export function ActivityLine({
     </>
   );
   const className = cn(
-    "nova-row grid min-h-[52px] w-full grid-cols-[28px_minmax(0,1fr)_auto_8px] items-center gap-x-3 py-2 pe-3 text-start",
+    "superchat-row grid min-h-[52px] w-full grid-cols-[28px_minmax(0,1fr)_auto_8px] items-center gap-x-3 py-2 pe-3 text-start",
     nested ? "ps-6" : "ps-3",
   );
   if (!onClick) return <div className={className}>{body}</div>;

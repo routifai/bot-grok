@@ -1,9 +1,9 @@
-import type { Actor } from "@nova/contracts";
+import type { Actor } from "@superchat/contracts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RenderBusyError } from "./pool.js";
 
 const adapters = vi.hoisted(() => ({ meta: vi.fn(), content: vi.fn() }));
-vi.mock("@nova/adapters", () => ({
+vi.mock("@superchat/adapters", () => ({
   getOmnigentArtifact: adapters.meta,
   fetchOmnigentArtifactContent: adapters.content,
 }));

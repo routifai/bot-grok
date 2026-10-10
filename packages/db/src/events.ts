@@ -1,4 +1,4 @@
-import type { RealtimeFanout } from "@nova/adapter-kit";
+import type { RealtimeFanout } from "@superchat/adapter-kit";
 import {
   type BotSecretDestination,
   encodeLoginSecret,
@@ -6,7 +6,7 @@ import {
   type MessageBlock,
   MessageBlock as MessageBlockSchema,
   type ProductEvent,
-} from "@nova/contracts";
+} from "@superchat/contracts";
 import {
   blocksToAgentHistoryText,
   isApprovalAskBlock,
@@ -15,8 +15,8 @@ import {
   messagingChannelId,
   resolveAskChoice,
   sanitizeJsonValue,
-} from "@nova/core";
-import { getLogger } from "@nova/logging";
+} from "@superchat/core";
+import { getLogger } from "@superchat/logging";
 import { cancelRunsInTransaction } from "./cancel-runs.js";
 import type { Prisma, PrismaClient } from "./client.js";
 import { expireComputerExecutionLeases } from "./computers.js";

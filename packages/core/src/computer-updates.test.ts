@@ -1,4 +1,4 @@
-import type { ComputerUpdate } from "@nova/contracts";
+import type { ComputerUpdate } from "@superchat/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createComputerUpdates } from "./computer-updates.js";
 

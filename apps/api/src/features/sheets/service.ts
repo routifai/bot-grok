@@ -6,8 +6,8 @@ import {
   getOmnigentTableRange,
   type OmnigentClientConfig,
   OmnigentTableConflictError,
-} from "@nova/adapters";
-import type { Actor, Artifact, ArtifactTable, TableCellEdit } from "@nova/contracts";
+} from "@superchat/adapters";
+import type { Actor, Artifact, ArtifactTable, TableCellEdit } from "@superchat/contracts";
 import { ORPCError } from "@orpc/server";
 import { type EngineArtifactsDeps, emailOf, notFound, toArtifact } from "../artifacts/index.js";
 

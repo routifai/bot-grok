@@ -1,6 +1,6 @@
 import { plural } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { ChatSummary, ThreadMessage } from "@nova/contracts";
+import type { ChatSummary, ThreadMessage } from "@superchat/contracts";
 import {
   cn,
   Sheet,
@@ -10,13 +10,13 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import { ChevronRight, Plus } from "lucide-react";
 import type { ReactNode } from "react";
 import { Fragment, useState } from "react";
-import { NovaOrb, useIsDesktop, useOrbHome } from "../../../components/ai/orb";
+import { SuperchatOrb, useIsDesktop, useOrbHome } from "../../../components/ai/orb";
 import { SuperchatMark } from "../../../components/SuperchatLogo";
-import { useNovaWork } from "../../../features/activity/useNovaWork";
+import { useSuperchatWork } from "../../../features/activity/useSuperchatWork";
 import {
   FORK_TONE_CLASS,
   type ForkFilter,
@@ -30,7 +30,7 @@ import {
   SettingsGlyph,
   SidebarGlyph,
   WaitingGlyph,
-} from "./NovaGlyphs";
+} from "./SuperchatGlyphs";
 import { type MuseLiveRun, useMuseLiveState } from "./useMuseLiveState";
 
 const COLLAPSED_KEY = "muse:sidebar-collapsed";
@@ -84,10 +84,10 @@ function Badge({ count, tone = "quiet" }: { count: number; tone?: "alert" | "qui
   );
 }
 
-/** Nova at the top of the sidebar: the orb's home, the name, and what it is doing. While the
+/** Superchat at the top of the sidebar: the orb's home, the name, and what it is doing. While the
  * orb lives elsewhere (the start page, or the toolbar while collapsed) the slot keeps its size
  * empty, so nothing shifts when the orb lands here. */
-function NovaIdentity({
+function SuperchatIdentity({
   name,
   working,
   collapsed,
@@ -107,9 +107,9 @@ function NovaIdentity({
   return (
     <div className="flex items-center gap-2.5 px-0.5 pt-1 pb-2">
       {hasOrb ? (
-        <NovaOrb size={34} />
+        <SuperchatOrb size={34} />
       ) : (
-        <span aria-hidden="true" data-testid="nova-orb-slot" className="size-[34px] shrink-0" />
+        <span aria-hidden="true" data-testid="superchat-orb-slot" className="size-[34px] shrink-0" />
       )}
       <div className={cn("min-w-0 flex-1", FADE)}>
         <p
@@ -119,7 +119,7 @@ function NovaIdentity({
           {name}
         </p>
         <p
-          data-testid="nova-status"
+          data-testid="superchat-status"
           className="flex items-center gap-1.5 text-[11.5px] text-ink-3"
           aria-live="polite"
         >
@@ -143,7 +143,7 @@ function NovaIdentity({
 }
 
 /**
- * The Muse-mode sidebar (docs/muse/DESIGN.md "Sidebar"): a glass panel with Nova and what
+ * The Muse-mode sidebar (docs/muse/DESIGN.md "Sidebar"): a glass panel with Superchat and what
  * it is doing, the Conversation with its side chats and forks, its places, and the person with Settings. Collapses to an icon rail.
  */
 export function MuseSidebar({
@@ -202,7 +202,7 @@ export function MuseSidebar({
 }) {
   const { t } = useLingui();
   const { askCount } = useMuseLiveState({ botId, runs, messages });
-  const { count: working } = useNovaWork({ botId, runs, messages });
+  const { count: working } = useSuperchatWork({ botId, runs, messages });
   const [ownCollapsed, ownToggle] = useSidebarCollapsed();
   const desktopCollapsed = collapsedProp ?? ownCollapsed;
   const toggleCollapsed = onToggleCollapsed ?? ownToggle;
@@ -254,7 +254,7 @@ export function MuseSidebar({
           "group/rail app-drag flex shrink-0 flex-col overflow-hidden px-2 pt-2.5 pb-2",
           mobile
             ? "h-full w-full overflow-y-auto"
-            : "nova-glass m-2 hidden transition-[width] duration-200 ease-out motion-reduce:transition-none md:flex",
+            : "superchat-glass m-2 hidden transition-[width] duration-200 ease-out motion-reduce:transition-none md:flex",
           !mobile && (collapsed ? "w-[54px]" : "w-[244px]"),
         )}
       >
@@ -264,7 +264,7 @@ export function MuseSidebar({
             superchat
           </div>
         ) : null}
-        <NovaIdentity
+        <SuperchatIdentity
           name={museName}
           working={working}
           collapsed={collapsed}
@@ -369,7 +369,7 @@ export function MuseSidebar({
         <SheetContent
           side="left"
           showCloseButton={false}
-          className="nova-glass w-[min(86vw,320px)] gap-0 border-0 p-0 md:hidden"
+          className="superchat-glass w-[min(86vw,320px)] gap-0 border-0 p-0 md:hidden"
         >
           <SheetTitle className="sr-only">
             <Trans>Sections</Trans>
@@ -408,7 +408,7 @@ function UnreadDot({ className }: { className?: string }) {
 
 /**
  * The Side Chats, under the Conversation row they branch from (agreed behavior #1): small
- * rows with a 13px glyph under a "Side chats" header, newest first, a pulsing dot while Nova is
+ * rows with a 13px glyph under a "Side chats" header, newest first, a pulsing dot while Superchat is
  * working in one, a "New side chat" row, and a collapsed-by-default Archived fold.
  * Nothing renders while the chats wire can't be reached (NOT_IMPLEMENTED): no heading,
  * no disabled button.
@@ -554,7 +554,7 @@ export function ChatTree({
 const MAX_OPEN_FORKS = 4;
 
 /**
- * The Conversation's forks in the sidebar (ADR 0010): the ones Nova is working in, then the open
+ * The Conversation's forks in the sidebar (ADR 0010): the ones Superchat is working in, then the open
  * ones (a few, then a link to the rest), then the finished ones folded into counts that open the
  * All forks list. Nothing renders without forks.
  */

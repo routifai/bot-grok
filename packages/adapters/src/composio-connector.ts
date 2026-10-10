@@ -8,8 +8,8 @@ import type {
   ConnectorProvider,
   ConnectorTool,
   ManagedConnectorProvider,
-} from "@nova/adapter-kit";
-import { getLogger } from "@nova/logging";
+} from "@superchat/adapter-kit";
+import { getLogger } from "@superchat/logging";
 import {
   composioToolkitDirectory,
   mergeCatalogWithConnected,
@@ -345,7 +345,7 @@ export class ComposioConnector implements ComposioProvider {
   }
 
   private async loadDirectory(): Promise<ToolkitDirectoryEntry[]> {
-    const session = await this.sessionFor("__nova_catalog__");
+    const session = await this.sessionFor("__superchat_catalog__");
     const toolkits = await collectPages((cursor) => session.toolkits({ limit: 50, cursor }));
     return toolkits.map((toolkit) => ({
       slug: toolkit.slug,

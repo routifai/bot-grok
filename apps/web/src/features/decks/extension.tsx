@@ -1,6 +1,6 @@
 import { t } from "@lingui/core/macro";
-import { type Artifact, isDeckArtifactName } from "@nova/contracts";
-import { DropdownMenuItem } from "@nova/ui-web";
+import { type Artifact, isDeckArtifactName } from "@superchat/contracts";
+import { DropdownMenuItem } from "@superchat/ui-web";
 import { ExternalLink } from "lucide-react";
 import type { ArtifactExtension, ArtifactPanelArgs, ArtifactPanelParts } from "../artifacts";
 import { useDeckExport } from "./DeckExport";

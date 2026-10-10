@@ -43,7 +43,7 @@ from omnigent.superchat.models.upstreams import UPSTREAMS, Upstream
 
 _logger = logging.getLogger(__name__)
 
-KEY_REQUIRED_MESSAGE = "Add your Anthropic or OpenRouter API key in Settings to use Nova."
+KEY_REQUIRED_MESSAGE = "Add your Anthropic or OpenRouter API key in Settings to use Superchat."
 # connect/write/pool are short; a long read covers a model that thinks silently for minutes.
 _TIMEOUT = httpx.Timeout(connect=10.0, read=900.0, write=60.0, pool=10.0)
 # Request headers never forwarded: the caller's auth, hop-by-hop and transport framing.

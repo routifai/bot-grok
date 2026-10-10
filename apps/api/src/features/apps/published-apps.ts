@@ -1,14 +1,14 @@
-// `GET /apps/<slug>`: a published mini app, served from Nova's own origin but locked into an
+// `GET /apps/<slug>`: a published mini app, served from Superchat's own origin but locked into an
 // opaque origin by the response headers (CSP `sandbox` without `allow-same-origin`), so the page
-// can never read Nova cookies, storage or API. Every response of this route carries those headers.
+// can never read Superchat cookies, storage or API. Every response of this route carries those headers.
 import { createHmac } from "node:crypto";
 import {
   fetchOmnigentPublishedApp,
   type OmnigentClientConfig,
   type OmnigentPublishAudience,
   recordOmnigentPublishedView,
-} from "@nova/adapters";
-import type { PrismaClient } from "@nova/db";
+} from "@superchat/adapters";
+import type { PrismaClient } from "@superchat/db";
 import type { Context, Hono } from "hono";
 
 export interface PublishedAppViewer {
@@ -25,7 +25,7 @@ export interface PublishedAppsDeps {
   ownerMayAct?: (ownerEmail: string) => Promise<boolean>;
   /** The signed-in viewer for this request, or null. */
   viewer: (c: Context) => Promise<PublishedAppViewer | null>;
-  /** The engine connection, or undefined when Nova runs without one. */
+  /** The engine connection, or undefined when Superchat runs without one. */
   engine: () => OmnigentClientConfig | undefined;
   /** Keys the daily-rotating viewer hash salt (never stored, never the raw IP). */
   secret: string;
@@ -35,7 +35,7 @@ export interface PublishedAppsDeps {
 
 const SLUG = /^[a-z0-9][a-z0-9-]{1,94}$/;
 
-/** Opaque origin, no network, no Nova cookies: scripts and inline styles run, nothing leaves. */
+/** Opaque origin, no network, no Superchat cookies: scripts and inline styles run, nothing leaves. */
 export const PUBLISHED_APP_CSP =
   "sandbox allow-scripts allow-forms allow-popups allow-modals; default-src 'none'; " +
   "script-src 'unsafe-inline' https:; style-src 'unsafe-inline' https:; " +

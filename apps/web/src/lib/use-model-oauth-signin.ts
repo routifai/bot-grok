@@ -1,5 +1,5 @@
-import type { ModelOAuthBegin } from "@nova/contracts";
-import { cancelModelOAuthAttempt, finishModelOAuthAttempt } from "@nova/core";
+import type { ModelOAuthBegin } from "@superchat/contracts";
+import { cancelModelOAuthAttempt, finishModelOAuthAttempt } from "@superchat/core";
 import { useEffect, useRef, useState } from "react";
 import { desktopBridge, oauthStateOf, onDesktopOAuthCallback } from "./desktop";
 import { waitForModelOAuth } from "./model-auth";
@@ -159,7 +159,7 @@ export function useModelOAuthSignIn(options: {
         await browserAuth.open(started.verificationUri);
         if (controller.signal.aborted) return;
       } else {
-        window.open(started.verificationUri, "nova-model-oauth", "noopener,noreferrer");
+        window.open(started.verificationUri, "superchat-model-oauth", "noopener,noreferrer");
       }
       waitingForCode = started.mode === "auth-url";
       if (!waitingForCode) await finishSubscriptionSignIn(started.loginId, controller);

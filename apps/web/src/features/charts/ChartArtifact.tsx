@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import { type ChartDocument, parseChartDocument } from "@nova/charts";
+import { type ChartDocument, parseChartDocument } from "@superchat/charts";
 import { BarChart3 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { decodeArtifactBase64 } from "../../lib/artifact-open";

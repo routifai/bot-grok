@@ -18,7 +18,7 @@ from omnigent.superchat.features import _load
 
 REPO = Path(__file__).resolve().parents[4]
 BUNDLES = [
-    REPO / "infra/omnigent/agents" / name / "config.yaml" for name in ("nova-claude", "nova-pi")
+    REPO / "infra/omnigent/agents" / name / "config.yaml" for name in ("superchat-claude", "superchat-pi")
 ]
 MUSE_LABELS = {"omnigent.context.mode": "superside-chat", "omnigent.superchat.muse": "true"}
 

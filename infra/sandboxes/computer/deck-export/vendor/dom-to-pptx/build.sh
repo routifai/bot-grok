@@ -1,5 +1,5 @@
 #!/bin/sh
-# Rebuilds dom-to-pptx.bundle.js.gz from upstream source plus Nova's patches (see README.md).
+# Rebuilds dom-to-pptx.bundle.js.gz from upstream source plus Superchat's patches (see README.md).
 #
 #   build.sh [work-dir]      default: a temporary directory
 #

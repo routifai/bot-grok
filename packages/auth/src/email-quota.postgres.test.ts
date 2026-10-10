@@ -1,4 +1,4 @@
-import { createDb } from "@nova/db";
+import { createDb } from "@superchat/db";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { prismaEmailQuota } from "./email-quota.js";
 import { createAuth } from "./index.js";

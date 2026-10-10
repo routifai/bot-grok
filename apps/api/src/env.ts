@@ -1,14 +1,14 @@
-import { resolveDeploymentModel, resolveSandboxProvider } from "@nova/adapters";
-import { assertOidcConfig, type OidcConfig } from "@nova/auth";
+import { resolveDeploymentModel, resolveSandboxProvider } from "@superchat/adapters";
+import { assertOidcConfig, type OidcConfig } from "@superchat/auth";
 import {
   parseDomains,
   resolveAuthSecret,
   resolveEncryptionKey,
   resolveScreenProxySecret,
   resolveSupervisorToken,
-} from "@nova/core";
+} from "@superchat/core";
 
-export { resolveSandboxProvider } from "@nova/adapters";
+export { resolveSandboxProvider } from "@superchat/adapters";
 
 export interface AppEnv {
   nodeEnv: string;
@@ -101,7 +101,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     nodeEnv: source.NODE_ENV ?? "",
     databaseUrl: required(source, "DATABASE_URL"),
     realtimeDatabaseUrl: source.REALTIME_DATABASE_URL ?? required(source, "DATABASE_URL"),
-    desktopStackToken: optional(source.NOVA_DESKTOP_STACK_TOKEN),
+    desktopStackToken: optional(source.SUPERCHAT_DESKTOP_STACK_TOKEN),
     authSecret,
     authUrl: source.BETTER_AUTH_URL ?? source.WEB_ORIGIN ?? "http://127.0.0.1:5173",
     webOrigin: source.WEB_ORIGIN ?? "http://127.0.0.1:5173",
@@ -186,7 +186,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
       .filter(Boolean),
     mcpAllowPrivateEndpoint: source.MCP_ALLOW_PRIVATE_ENDPOINT === "true",
     port: Number(source.API_PORT ?? 3100),
-    gitSha: optional(source.GIT_SHA) ?? optional(source.NOVA_GIT_SHA),
+    gitSha: optional(source.GIT_SHA) ?? optional(source.SUPERCHAT_GIT_SHA),
   };
 }
 

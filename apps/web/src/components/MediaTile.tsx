@@ -1,4 +1,4 @@
-import { cn } from "@nova/ui-web";
+import { cn } from "@superchat/ui-web";
 import { FileText, Image as ImageIcon, LayoutTemplate, Presentation } from "lucide-react";
 import type { ReactNode, Ref } from "react";
 import type { ArtifactKind } from "../lib/artifact-kind";
@@ -15,7 +15,7 @@ const KIND_GLYPH: Record<ArtifactKind, typeof FileText> = {
 /**
  * A result in the Conversation as a media tile (docs/muse/DESIGN.md "Results"): a dark rounded
  * card with a deep blue glow, the brand line and a big title on the left, art on the right, and
- * a white "Open" pill with a meta line at the bottom. `art` is the real preview when Nova has
+ * a white "Open" pill with a meta line at the bottom. `art` is the real preview when Superchat has
  * one (framed like a window rising from the bottom edge); otherwise `MediaArt` draws one for
  * the kind. Extra actions (download, a menu) sit at the end of the bottom row.
  */
@@ -50,14 +50,14 @@ export function MediaTile({
   return (
     <div
       data-testid="media-tile"
-      className="nova-media relative isolate flex min-h-[250px] w-[620px] max-w-full flex-col justify-between overflow-hidden rounded-[28px] px-[22px] pt-[22px] pb-[18px] text-white"
+      className="superchat-media relative isolate flex min-h-[250px] w-[620px] max-w-full flex-col justify-between overflow-hidden rounded-[28px] px-[22px] pt-[22px] pb-[18px] text-white"
     >
       <div className="relative z-10 min-w-0">
         <span className="flex items-center gap-1.5 text-[15px] font-semibold tracking-[-0.2px] opacity-95">
           <span
             aria-hidden="true"
             data-tone="blue"
-            className="nova-tile size-[22px] rounded-[28%] [&>svg]:size-[13px]"
+            className="superchat-tile size-[22px] rounded-[28%] [&>svg]:size-[13px]"
           >
             <Glyph strokeWidth={2.4} />
           </span>
@@ -119,21 +119,21 @@ export function MediaArt({ kind }: { kind: ArtifactKind }) {
   if (kind === "deck") {
     return (
       <div className="absolute inset-0">
-        <span className="nova-media-bar absolute end-0 bottom-[34%] h-[46%] w-[82%] rounded-[12px]" />
-        <span className="nova-media-bar absolute end-[8%] bottom-[20%] h-[46%] w-[82%] rounded-[12px]" />
-        <span className="nova-media-key absolute end-[16%] bottom-[6%] h-[46%] w-[82%] rounded-[12px]" />
+        <span className="superchat-media-bar absolute end-0 bottom-[34%] h-[46%] w-[82%] rounded-[12px]" />
+        <span className="superchat-media-bar absolute end-[8%] bottom-[20%] h-[46%] w-[82%] rounded-[12px]" />
+        <span className="superchat-media-key absolute end-[16%] bottom-[6%] h-[46%] w-[82%] rounded-[12px]" />
       </div>
     );
   }
   if (kind === "page") {
     return (
-      <div className="nova-media-bar absolute inset-x-0 bottom-0 h-[86%] overflow-hidden rounded-t-[14px]">
+      <div className="superchat-media-bar absolute inset-x-0 bottom-0 h-[86%] overflow-hidden rounded-t-[14px]">
         <div className="flex gap-1.5 p-3">
           <span className="size-2 rounded-full bg-white/25" />
           <span className="size-2 rounded-full bg-white/25" />
           <span className="size-2 rounded-full bg-white/25" />
         </div>
-        <span className="nova-media-key mx-3 block h-[34%] rounded-[8px]" />
+        <span className="superchat-media-key mx-3 block h-[34%] rounded-[8px]" />
         <span className="mx-3 mt-3 block h-2 w-[70%] rounded-full bg-white/15" />
         <span className="mx-3 mt-2 block h-2 w-[50%] rounded-full bg-white/15" />
       </div>
@@ -141,9 +141,9 @@ export function MediaArt({ kind }: { kind: ArtifactKind }) {
   }
   if (kind === "image") {
     return (
-      <div className="nova-media-bar absolute inset-x-0 bottom-0 h-[80%] overflow-hidden rounded-t-[14px]">
+      <div className="superchat-media-bar absolute inset-x-0 bottom-0 h-[80%] overflow-hidden rounded-t-[14px]">
         <span className="absolute end-[22%] top-[18%] size-8 rounded-full bg-white/30" />
-        <span className="nova-media-key absolute -start-[10%] -bottom-[30%] h-[80%] w-[80%] rotate-45 rounded-[12px]" />
+        <span className="superchat-media-key absolute -start-[10%] -bottom-[30%] h-[80%] w-[80%] rotate-45 rounded-[12px]" />
         <span className="absolute -end-[20%] -bottom-[40%] h-[80%] w-[80%] rotate-45 rounded-[12px] bg-white/15" />
       </div>
     );
@@ -151,8 +151,8 @@ export function MediaArt({ kind }: { kind: ArtifactKind }) {
   if (kind === "file") {
     return (
       <div className="absolute inset-0">
-        <span className="nova-media-bar absolute end-[18%] bottom-0 h-[72%] w-[56%] -rotate-6 rounded-t-[12px]" />
-        <span className="nova-media-key absolute end-[6%] bottom-0 h-[80%] w-[56%] rounded-t-[12px]" />
+        <span className="superchat-media-bar absolute end-[18%] bottom-0 h-[72%] w-[56%] -rotate-6 rounded-t-[12px]" />
+        <span className="superchat-media-key absolute end-[6%] bottom-0 h-[80%] w-[56%] rounded-t-[12px]" />
       </div>
     );
   }
@@ -168,7 +168,7 @@ export function MediaArt({ kind }: { kind: ArtifactKind }) {
       {bars.map((bar, index) => (
         <span
           key={index}
-          className={cn("w-[34px] rounded-t-[10px]", bar.key ? "nova-media-key" : "nova-media-bar")}
+          className={cn("w-[34px] rounded-t-[10px]", bar.key ? "superchat-media-key" : "superchat-media-bar")}
           style={{ height: bar.height }}
         />
       ))}

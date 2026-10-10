@@ -1,6 +1,6 @@
 import { plural } from "@lingui/core/macro";
 import { useLingui } from "@lingui/react/macro";
-import type { ArtifactPublish, ArtifactPublishAudience } from "@nova/contracts";
+import type { ArtifactPublish, ArtifactPublishAudience } from "@superchat/contracts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,13 +21,13 @@ import {
   Label,
   RadioGroup,
   RadioGroupItem,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import { Check, Copy } from "lucide-react";
 import { useEffect, useState } from "react";
 
 const AUDIENCES: ArtifactPublishAudience[] = ["owner", "org", "link"];
 
-/** Where a published app opens: Nova's own origin plus its `/apps/<slug>` path. */
+/** Where a published app opens: Superchat's own origin plus its `/apps/<slug>` path. */
 export function appAddress(urlPath: string): string {
   return `${window.location.origin}${urlPath}`;
 }

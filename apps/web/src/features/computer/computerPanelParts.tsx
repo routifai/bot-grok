@@ -1,7 +1,7 @@
 import { t } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { Bot, ComputerReleaseReason, ComputerStatus } from "@nova/contracts";
-import { Button } from "@nova/ui-web";
+import type { Bot, ComputerReleaseReason, ComputerStatus } from "@superchat/contracts";
+import { Button } from "@superchat/ui-web";
 import { StatusPill } from "../../pages/muse/ui/index";
 import { embeddableScreenUrl } from "./computer-screen";
 import type { useComputerScreen } from "./useComputerScreen";

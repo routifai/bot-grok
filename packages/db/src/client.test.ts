@@ -15,16 +15,16 @@ afterEach(async () => {
 
 describe("createDb", () => {
   it("caps the pg pool and swallows idle-client errors so they cannot crash the process", () => {
-    const { pool } = createDb("postgres://nova:nova@127.0.0.1:9/nova", {
+    const { pool } = createDb("postgres://superchat:superchat@127.0.0.1:9/superchat", {
       poolMax: 3,
-      applicationName: "nova-test",
+      applicationName: "superchat-test",
     });
     pools.push(pool);
 
     expect(pool.options.max).toBe(3);
     expect(pool.options.connectionTimeoutMillis).toBe(10_000);
     expect(pool.options.idleTimeoutMillis).toBe(0);
-    expect(pool.options.application_name).toBe("nova-test");
+    expect(pool.options.application_name).toBe("superchat-test");
     expect(pool.listenerCount("error")).toBeGreaterThan(0);
     expect(pool.listenerCount("connect")).toBeGreaterThan(0);
 
@@ -32,7 +32,7 @@ describe("createDb", () => {
   });
 
   it("defaults to a four-connection pool", () => {
-    const { pool } = createDb("postgres://nova:nova@127.0.0.1:9/nova");
+    const { pool } = createDb("postgres://superchat:superchat@127.0.0.1:9/superchat");
     pools.push(pool);
     expect(pool.options.max).toBe(4);
   });
@@ -99,15 +99,15 @@ describe("retryOnTooManyConnections", () => {
 
 describe("createPool", () => {
   it("builds a bounded pool with connect-retry and idle-error listeners", () => {
-    const pool = createPool("postgres://nova:nova@127.0.0.1:9/nova", {
+    const pool = createPool("postgres://superchat:superchat@127.0.0.1:9/superchat", {
       poolMax: 2,
-      applicationName: "nova-pool-test",
+      applicationName: "superchat-pool-test",
     });
     pools.push(pool);
     expect(pool.options.max).toBe(2);
     expect(pool.options.connectionTimeoutMillis).toBe(10_000);
     expect(pool.options.idleTimeoutMillis).toBe(0);
-    expect(pool.options.application_name).toBe("nova-pool-test");
+    expect(pool.options.application_name).toBe("superchat-pool-test");
     expect(pool.listenerCount("error")).toBeGreaterThan(0);
     expect(pool.listenerCount("connect")).toBeGreaterThan(0);
     expect(() => pool.emit("error", new Error("idle client lost"))).not.toThrow();

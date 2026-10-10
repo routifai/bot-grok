@@ -1,6 +1,6 @@
 import { t } from "@lingui/core/macro";
-import type { ThreadMessage } from "@nova/contracts";
-import { parseAttachmentReferences, plainTextFromMarkdown } from "@nova/core";
+import type { ThreadMessage } from "@superchat/contracts";
+import { parseAttachmentReferences, plainTextFromMarkdown } from "@superchat/core";
 import { splitComposerAttachments } from "../../../lib/composer-attachments";
 
 export function previewMessageText(message: ThreadMessage): string {

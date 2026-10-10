@@ -1,5 +1,5 @@
-import { type JobPublisher, runContinueJob } from "@nova/adapter-kit";
-import type { BotMessageIntent, MessageBlock } from "@nova/contracts";
+import { type JobPublisher, runContinueJob } from "@superchat/adapter-kit";
+import type { BotMessageIntent, MessageBlock } from "@superchat/contracts";
 import {
   BOT_MESSAGE_MAX_LENGTH,
   botMessageContext,
@@ -8,15 +8,15 @@ import {
   clampBotMessage,
   nextBotMessageHop,
   resolveBotAddress,
-} from "@nova/core";
+} from "@superchat/core";
 import {
   appendEventInTransaction,
   createThreadMessageInTransaction,
   type PrismaClient,
   type ThreadEvents,
   withTransactionRetry,
-} from "@nova/db";
-import { getLogger } from "@nova/logging";
+} from "@superchat/db";
+import { getLogger } from "@superchat/logging";
 
 export interface BotMessageDeps {
   prisma: PrismaClient;

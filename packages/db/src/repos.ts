@@ -5,8 +5,8 @@ import {
   type BotSection,
   type MessageBlock,
   type SpaceBot,
-} from "@nova/contracts";
-import { userVisibleMessages } from "@nova/core";
+} from "@superchat/contracts";
+import { userVisibleMessages } from "@superchat/core";
 import type { PrismaClient } from "./client.js";
 import { type ComputerMode, ensureComputerRecord, parseComputerMode } from "./computers.js";
 import { createThreadMessageInTransaction } from "./messages.js";

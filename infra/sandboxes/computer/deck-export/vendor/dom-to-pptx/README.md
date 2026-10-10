@@ -1,16 +1,16 @@
-# Vendored: dom-to-pptx (browser UMD bundle), built from upstream source with Nova's patch
+# Vendored: dom-to-pptx (browser UMD bundle), built from upstream source with Superchat's patch
 
 `dom-to-pptx.bundle.js.gz` is the compressed **browser UMD build** of
 [`dom-to-pptx`](https://github.com/atharva9167j/dom-to-pptx) (MIT, see `LICENSE`) 2.0.1, built by
 `build.sh` from upstream source plus the patch in `patches/`. Open Design vendors the unpatched
 2.0.1 bundle (nexu-io/open-design `apps/desktop/vendor/dom-to-pptx/` at commit 802708f,
-Apache-2.0); building the pinned commit without Nova's changes reproduces that file apart from
+Apache-2.0); building the pinned commit without Superchat's changes reproduces that file apart from
 whitespace and two build-path strings.
 
 - **Version:** 2.0.1
 - **Fork point:** upstream commit `c0447adc47d3bc734d017050834edf0941adc189` (tag `v2.0.1`)
 - **Global:** exposes `window.domToPptx.exportToPptx(elementOrSelector, options)`
-- **Use:** `../../../nova-deck-export` injects it into a headless Chromium page; the Computer image
+- **Use:** `../../../superchat-deck-export` injects it into a headless Chromium page; the Computer image
   expands it with `gzip -dc` at build time (`infra/sandboxes/computer/Dockerfile`), and the helper
   also reads the `.gz` directly when the expanded file is absent (tests, a checkout).
 
@@ -18,7 +18,7 @@ It walks a rendered slide's live DOM and emits native PowerPoint shapes, text an
 screenshot) via PptxGenJS. The npm package is not installed because its Node entry pulls in
 puppeteer; only this self-contained browser bundle is used.
 
-## Nova's changes
+## Superchat's changes
 
 `patches/dom-to-pptx-2.0.1-native-charts.patch` (applies to `src/` at the fork point):
 

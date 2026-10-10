@@ -23,8 +23,8 @@ import type {
   SandboxProvider,
   ScreenRequest,
   ScreenSession,
-} from "@nova/adapter-kit";
-import { boundedSandboxCommandTimeoutMs } from "@nova/core";
+} from "@superchat/adapter-kit";
+import { boundedSandboxCommandTimeoutMs } from "@superchat/core";
 import { boxResponseError, wrapBoxCall } from "./box-errors.js";
 import { normalizeWorkspacePath, shellQuote, workspacePath } from "./computer-support.js";
 import {
@@ -35,7 +35,7 @@ import { LinuxDesktop, PREPARE_LINUX_DESKTOP } from "./linux-desktop.js";
 import { withAbort } from "./web-ssrf.js";
 
 const BOX_API_BASE = "https://ascii.dev/api/box/v1";
-const BOX_WORKSPACE = "/home/user/nova-home";
+const BOX_WORKSPACE = "/home/user/superchat-home";
 const BOX_BROWSER_PROFILES = `${BOX_WORKSPACE}/.browser-profiles`;
 const BOX_READY_TIMEOUT_MS = 5 * 60_000;
 const BOX_API_COMMAND_TIMEOUT_SECONDS = 600;
@@ -193,8 +193,8 @@ export class BoxSandboxProvider implements SandboxProvider {
           ttlSeconds: BOX_TTL_SECONDS,
           noEnv: true,
           env: {
-            NOVA_BOT_ID: request.botId,
-            NOVA_SANDBOX: "computer",
+            SUPERCHAT_BOT_ID: request.botId,
+            SUPERCHAT_SANDBOX: "computer",
           },
         },
       },
@@ -593,7 +593,7 @@ export class BoxSandboxProvider implements SandboxProvider {
     timeoutMs: number,
     signal?: AbortSignal,
   ): Promise<BoxCommandResult> {
-    const marker = `/tmp/nova-command-${randomUUID()}.completed-124`;
+    const marker = `/tmp/superchat-command-${randomUUID()}.completed-124`;
     const wrapped = timeoutCommand(command, timeoutMs, marker);
     const timeoutSeconds = Math.ceil(timeoutMs / 1_000);
     const detached = timeoutSeconds + 5 > BOX_API_COMMAND_TIMEOUT_SECONDS;
@@ -664,7 +664,7 @@ export class BoxSandboxProvider implements SandboxProvider {
   }
 
   private async terminateCommand(id: string, marker: string): Promise<void> {
-    const pattern = marker.replace("nova", "[r]akazo");
+    const pattern = marker.replace("superchat", "[r]akazo");
     await this.rawCommand(
       id,
       `pkill -TERM -f ${shellQuote(pattern)} 2>/dev/null || true; sleep 0.2; pkill -KILL -f ${shellQuote(pattern)} 2>/dev/null || true`,
@@ -795,18 +795,18 @@ function boxCwd(cwd: string | undefined): string {
     !cwd ||
     cwd === "." ||
     cwd === "/" ||
-    cwd === "/home/nova" ||
+    cwd === "/home/superchat" ||
     cwd === "/home/user" ||
     cwd === BOX_WORKSPACE
   ) {
-    return "nova-home";
+    return "superchat-home";
   }
   const relative = cwd.startsWith(`${BOX_WORKSPACE}/`)
     ? cwd.slice(BOX_WORKSPACE.length + 1)
-    : cwd.startsWith("/home/nova/")
-      ? cwd.slice("/home/nova/".length)
+    : cwd.startsWith("/home/superchat/")
+      ? cwd.slice("/home/superchat/".length)
       : cwd;
-  return path.posix.join("nova-home", normalizeWorkspacePath(relative));
+  return path.posix.join("superchat-home", normalizeWorkspacePath(relative));
 }
 
 function configureBoxWorkspaceCommand(): string {

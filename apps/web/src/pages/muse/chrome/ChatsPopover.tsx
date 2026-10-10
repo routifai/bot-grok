@@ -1,6 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
-import type { ChatSummary } from "@nova/contracts";
-import { cn, Popover, PopoverContent, PopoverTrigger } from "@nova/ui-web";
+import type { ChatSummary } from "@superchat/contracts";
+import { cn, Popover, PopoverContent, PopoverTrigger } from "@superchat/ui-web";
 import { Archive, ArchiveRestore, MessagesSquare, Plus } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import {

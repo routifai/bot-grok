@@ -1,12 +1,12 @@
-import type { AgentRunRequest } from "@nova/adapter-kit";
-import type { Actor } from "@nova/contracts";
-import { usableModelId } from "@nova/contracts";
+import type { AgentRunRequest } from "@superchat/adapter-kit";
+import type { Actor } from "@superchat/contracts";
+import { usableModelId } from "@superchat/contracts";
 import {
   chooseModelCredential,
   type findDefaultModelCredential,
   findModelCredential,
   type PrismaClient,
-} from "@nova/db";
+} from "@superchat/db";
 import type { ModelCredentialAuthKind } from "./pi-catalog-availability.js";
 import {
   catalogModelAvailableForAuth,

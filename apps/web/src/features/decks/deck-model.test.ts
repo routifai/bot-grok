@@ -19,13 +19,13 @@ it("ignores presenter clones and returns nothing for a plain page", () => {
 });
 
 it("reads only well-formed deck protocol messages", () => {
-  expect(readDeckEvent({ type: "nova:deck-ready", protocolVersion: 1 })).toEqual({ kind: "ready" });
+  expect(readDeckEvent({ type: "superchat:deck-ready", protocolVersion: 1 })).toEqual({ kind: "ready" });
   expect(
-    readDeckEvent({ type: "nova:slide-state", protocolVersion: 1, active: 2, count: 3 }),
+    readDeckEvent({ type: "superchat:slide-state", protocolVersion: 1, active: 2, count: 3 }),
   ).toEqual({ kind: "state", active: 2, count: 3 });
   expect(
-    readDeckEvent({ type: "nova:slide-state", protocolVersion: 2, active: 2, count: 3 }),
+    readDeckEvent({ type: "superchat:slide-state", protocolVersion: 2, active: 2, count: 3 }),
   ).toBeNull();
-  expect(readDeckEvent({ type: "nova:slide-state", protocolVersion: 1, active: "2" })).toBeNull();
+  expect(readDeckEvent({ type: "superchat:slide-state", protocolVersion: 1, active: "2" })).toBeNull();
   expect(readDeckEvent("x")).toBeNull();
 });

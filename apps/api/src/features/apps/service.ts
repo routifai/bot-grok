@@ -4,8 +4,8 @@ import {
   type OmnigentClientConfig,
   publishOmnigentArtifact,
   unpublishOmnigentArtifact,
-} from "@nova/adapters";
-import type { Actor, ArtifactPublish, ArtifactPublishAudience } from "@nova/contracts";
+} from "@superchat/adapters";
+import type { Actor, ArtifactPublish, ArtifactPublishAudience } from "@superchat/contracts";
 import { ORPCError } from "@orpc/server";
 import { type EngineArtifactsDeps, emailOf, notFound, toPublish } from "../artifacts/index.js";
 

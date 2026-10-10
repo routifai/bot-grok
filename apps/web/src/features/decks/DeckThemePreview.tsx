@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import type { DeckTheme } from "@nova/contracts";
+import type { DeckTheme } from "@superchat/contracts";
 import {
   Button,
   cn,
@@ -9,7 +9,7 @@ import {
   DialogDescription,
   DialogTitle,
   Skeleton,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import { Check, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { type RefObject, useEffect, useState } from "react";
 import { loadDeckThemeSample } from "../../lib/deck-themes";

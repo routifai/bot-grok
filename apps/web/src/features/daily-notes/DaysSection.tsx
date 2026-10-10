@@ -69,7 +69,7 @@ function Day({
   const filled = DAY_SECTION_KEYS.filter((key) => (note.sections[key] ?? "").trim() !== "");
   return (
     <li
-      className="group/day nova-row nova-row-plain px-3 py-2.5 transition-colors hover:bg-selection focus-within:bg-selection"
+      className="group/day superchat-row superchat-row-plain px-3 py-2.5 transition-colors hover:bg-selection focus-within:bg-selection"
       data-testid="day-note"
     >
       <div className="flex items-baseline justify-between gap-2">
@@ -167,7 +167,7 @@ export function DaysSection({ botId, wire }: { botId: string; wire: DaysWire }) 
   return (
     <div data-testid="memory-days">
       <MemorySection id="days" title={t`Days`} count={notes.length}>
-        <ul className="nova-group flex flex-col">
+        <ul className="superchat-group flex flex-col">
           {notes.map((note) => (
             <Day key={note.date} botId={botId} note={note} wire={wire} onSaved={replace} />
           ))}

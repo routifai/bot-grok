@@ -2,7 +2,7 @@
 
 Publishing is a state on top of an artifact (the publication rows live in the artifacts store),
 so this router resolves the artifact through the artifacts capability and adds the app routes.
-``/published/*`` is gateway-only: the Nova API's ``/apps/<slug>`` gateway checks the viewer
+``/published/*`` is gateway-only: the Superchat API's ``/apps/<slug>`` gateway checks the viewer
 against the audience first.
 """
 
@@ -28,9 +28,9 @@ from omnigent.superchat.artifacts import (
     request_owner,
 )
 
-#: The identity the Nova API's ``/apps/<slug>`` gateway calls ``/v1/published`` with. Only this
+#: The identity the Superchat API's ``/apps/<slug>`` gateway calls ``/v1/published`` with. Only this
 #: caller may read published bytes or record views: it checks the viewer's audience first.
-PUBLISHED_GATEWAY_USER_DEFAULT = "nova-apps-gateway@nova.invalid"
+PUBLISHED_GATEWAY_USER_DEFAULT = "superchat-apps-gateway@superchat.invalid"
 
 
 def published_gateway_user() -> str:
@@ -114,7 +114,7 @@ def create_apps_router(
     async def read_published(request: Request, slug: str) -> Response:
         """The pinned HTML bytes of a published app plus its audience and owner.
 
-        Gateway-only: the Nova API checks the viewer against the audience first. The viewer-facing
+        Gateway-only: the Superchat API checks the viewer against the audience first. The viewer-facing
         security headers are the gateway's job; this response is never served to a browser.
         """
         _require_gateway(request)

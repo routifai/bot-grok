@@ -18,7 +18,7 @@ vi.mock("@lingui/core/macro", () => ({
   plural: (n: number, forms: { one: string; other: string }) =>
     (n === 1 ? forms.one : forms.other).replace("#", String(n)),
 }));
-vi.mock("@nova/ui-web", () => {
+vi.mock("@superchat/ui-web", () => {
   const Passthrough = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
   return {
     DropdownMenu: Passthrough,

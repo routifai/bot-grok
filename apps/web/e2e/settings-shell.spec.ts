@@ -1,17 +1,17 @@
 import { expect, test } from "@playwright/test";
 import { captureScreenshot, completeOnboarding, openUserSettings, signup } from "./helpers";
 
-test("settings: Nova, General, Model, Memory and Voice, one size, iOS rows", async ({
+test("settings: Superchat, General, Model, Memory and Voice, one size, iOS rows", async ({
   page,
 }, testInfo) => {
   const stamp = Date.now();
   const userName = `Settings shell ${stamp}`;
-  await signup(page, `settings-shell-${stamp}@nova.test`, "password12", userName);
+  await signup(page, `settings-shell-${stamp}@superchat.test`, "password12", userName);
   await completeOnboarding(page);
 
   const settings = await openUserSettings(page);
   const nav = settings.getByTestId("settings-nav");
-  await expect(nav.getByRole("button")).toHaveText(["Nova", "General", "Model", "Memory", "Voice"]);
+  await expect(nav.getByRole("button")).toHaveText(["Superchat", "General", "Model", "Memory", "Voice"]);
   await expect(settings.getByTestId("settings-nav-general")).toHaveAttribute(
     "aria-current",
     "page",
@@ -27,7 +27,7 @@ test("settings: Nova, General, Model, Memory and Voice, one size, iOS rows", asy
   await streamReplies.click();
   await expect(streamReplies).toBeChecked();
   await expect
-    .poll(() => page.evaluate(() => window.localStorage.getItem("nova.responseStreaming")))
+    .poll(() => page.evaluate(() => window.localStorage.getItem("superchat.responseStreaming")))
     .toBe("on");
   await expect(settings.getByRole("button", { name: "Log out", exact: true })).toBeVisible();
   await captureScreenshot(page, testInfo, "settings-general");

@@ -10,21 +10,21 @@ runner needs.
 ## Runner location
 
 Every runner lives in the Muse's **Computer**: a per-Muse Docker container
-managed by Nova's sandbox supervisor (`infra/sandboxes/supervisor`,
+managed by Superchat's sandbox supervisor (`infra/sandboxes/supervisor`,
 `infra/sandboxes/computer`). There is no laptop (`omnigent host`) location.
 
-Nova's gateway (`packages/adapters/src/omnigent/gateway.ts`,
+Superchat's gateway (`packages/adapters/src/omnigent/gateway.ts`,
 `resolveRunnerBinding`) picks "computer" by selecting the Omnigent
 `"computer"` sandbox provider
 (`engine/omnigent/omnigent/onboarding/sandboxes/computer.py`). The engine
-server provisions the container through Nova's supervisor, starts
+server provisions the container through Superchat's supervisor, starts
 `omnigent host` inside it, and that host spawns runners for every turn —
 see `engine/omnigent/omnigent/server/managed_hosts.py`
 (`launch_managed_host`) and
 `engine/omnigent/omnigent/onboarding/sandboxes/base.py`
 (`ExecModelHostLauncher.start_host`).
 
-The computer container is Nova's, not the session's: it outlives any one
+The computer container is Superchat's, not the session's: it outlives any one
 conversation (skills, canvas, and browser use share it too), and a repeated
 launch for the same Muse reuses the same container and the same supervised
 `omnigent host` loop rather than piling up a second one.
@@ -53,7 +53,7 @@ say which of its own environment variables to hand down:
 sandbox:
   provider: computer
   server_url: http://<host reachable from the container>:<the server's port>
-  runner_env: [ANTHROPIC_API_KEY, TAVILY_API_KEY, NOVA_CLAUDE_MODEL,
+  runner_env: [ANTHROPIC_API_KEY, TAVILY_API_KEY, SUPERCHAT_CLAUDE_MODEL,
                OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS, OMNIGENT_SUBAGENT_MAX_CONCURRENT,
                OMNIGENT_BROWSER_BACKEND, OMNIGENT_HELPER_MODEL_FAST,
                OMNIGENT_HELPER_MODEL_STRONG]
@@ -67,8 +67,8 @@ global ids do not apply: set `OMNIGENT_HELPER_MODEL_FAST_PI` / `OMNIGENT_HELPER_
 
 `OMNIGENT_BROWSER_BACKEND=local` (set in the Omnigent server's own environment,
 and named in `runner_env` above) makes the `browser_*` tools drive the
-Chromium on the Computer's own screen (via `nova-browser` /
-`nova-page-browser`, `engine/omnigent/omnigent/tools/browser_backend.py`)
+Chromium on the Computer's own screen (via `superchat-browser` /
+`superchat-page-browser`, `engine/omnigent/omnigent/tools/browser_backend.py`)
 instead of relaying to the desktop app. Unset, the default desktop backend
 applies, so a Computer without this variable has no working browser tools.
 
@@ -93,14 +93,14 @@ The Omnigent server process itself needs:
 
 | Variable | What it is |
 |---|---|
-| `OMNIGENT_COMPUTER_SUPERVISOR_URL` | Base URL of Nova's sandbox supervisor, e.g. `http://localhost:7091` |
-| `OMNIGENT_COMPUTER_SUPERVISOR_TOKEN` | The shared bearer the supervisor expects on every request (same secret Nova's own API process uses — `resolveSupervisorToken` / `SANDBOX_SUPERVISOR_TOKEN`) |
-| `OMNIGENT_COMPUTER_HOME_ROOT` | Root directory a Computer's persistent home lives under (`<root>/homes/<key>`) — must resolve to the SAME host path Nova's API process uses (`resolveAgentHomePath` in `packages/adapters/src/home.ts`). Defaults to `./data` for local/dev parity only. |
-| `OMNIGENT_SUPERCHAT_DEFAULT_AGENT` | The bundle a new Muse runs on (`nova-claude`, or `nova-pi` for Pi). The engine creates the Muse (`GET /v1/me/muse`); Nova names no bundle. |
+| `OMNIGENT_COMPUTER_SUPERVISOR_URL` | Base URL of Superchat's sandbox supervisor, e.g. `http://localhost:7091` |
+| `OMNIGENT_COMPUTER_SUPERVISOR_TOKEN` | The shared bearer the supervisor expects on every request (same secret Superchat's own API process uses — `resolveSupervisorToken` / `SANDBOX_SUPERVISOR_TOKEN`) |
+| `OMNIGENT_COMPUTER_HOME_ROOT` | Root directory a Computer's persistent home lives under (`<root>/homes/<key>`) — must resolve to the SAME host path Superchat's API process uses (`resolveAgentHomePath` in `packages/adapters/src/home.ts`). Defaults to `./data` for local/dev parity only. |
+| `OMNIGENT_SUPERCHAT_DEFAULT_AGENT` | The bundle a new Muse runs on (`superchat-claude`, or `superchat-pi` for Pi). The engine creates the Muse (`GET /v1/me/muse`); Superchat names no bundle. |
 | `OMNIGENT_SUPERCHAT_SANDBOX_PROVIDER` | `computer`, so a new Muse's runner launches on its own Computer. |
-| `OMNIGENT_AUTH_TENANT_HEADER` | `X-Omnigent-Tenant`: Nova sends the space id in it on every call, and a Muse belongs to one person in one space. |
+| `OMNIGENT_AUTH_TENANT_HEADER` | `X-Omnigent-Tenant`: Superchat sends the space id in it on every call, and a Muse belongs to one person in one space. |
 
-The `OMNIGENT_NOVA_*` names are deprecated and still read.
+The `OMNIGENT_SUPERCHAT_*` names are deprecated and still read.
 
 Plus the usual `sandbox.server_url` (the engine server's own URL on the
 server's port, reachable from inside the container so the host can dial back) and `sandbox.host_config` for
@@ -109,20 +109,20 @@ any non-secret in-sandbox provider config.
 Deployment requirements found live:
 
 - With a `sandbox:` block in the server config, the Omnigent server must pin
-  `OMNIGENT_AUTH_PROVIDER=header` (Nova calls it with header auth).
-- Nova's api/worker `DATA_DIR` must equal the supervisor's `DATA_DIR`: the
+  `OMNIGENT_AUTH_PROVIDER=header` (Superchat calls it with header auth).
+- Superchat's api/worker `DATA_DIR` must equal the supervisor's `DATA_DIR`: the
   supervisor accepts only `homePath = <dataDir>/homes/<botId>` and rejects
   anything else (`assertBotHomePath`, `infra/sandboxes/supervisor/src/index.ts`).
 - Sessions carry `omnigent.computer.key` or `omnigent.computer.owner`, and
   `omnigent.tenant`. A Muse the engine creates sets the owner (its opaque
   person-and-space key) and the tenant itself. The provider prefers the key and
   falls back to the owner (`prepare_for_launch`, `computer.py`). Conversations
-  started before ADR 0009 keep their deprecated `nova.computer` / `nova.bot` /
-  `nova.space` labels, which are still read.
+  started before ADR 0009 keep their deprecated `superchat.computer` / `superchat.bot` /
+  `superchat.space` labels, which are still read.
 
 ## The Computer: screen and Take over
 
-The engine owns the Computer (ADR 0004); Nova holds no Computer state and
+The engine owns the Computer (ADR 0004); Superchat holds no Computer state and
 only relays.
 
 - The computer provider re-resolves a recreated container by Muse identity
@@ -135,7 +135,7 @@ only relays.
 - The supervisor's `screen-mode` returns the Muse's X `display`; the provider
   forwards it to the runner as `DISPLAY`, so the viewer and the runner share
   one screen.
-- Nova's API (`apps/api/src/features/computer/service.ts`) calls those routes and
+- Superchat's API (`apps/api/src/features/computer/service.ts`) calls those routes and
   relays the noVNC stream through its same-origin screen proxy; browsers
   never reach the engine.
 - While the person holds control, the Muse's computer tools (`sys_os_*`,
@@ -149,10 +149,10 @@ only relays.
 In order, each depending on the one before:
 
 1. **Postgres** — the engine server's store.
-2. **Build the computer image** — `docker build -t nova/computer:local -f infra/sandboxes/computer/Dockerfile .` (repo root context; also `pnpm sandbox:build`). The supervisor does **not** auto-build this image — if it's missing, `POST /computers` fails with this exact command in the error.
-3. **Nova's sandbox supervisor** (`infra/sandboxes/supervisor`) — needs the Docker socket.
+2. **Build the computer image** — `docker build -t superchat/computer:local -f infra/sandboxes/computer/Dockerfile .` (repo root context; also `pnpm sandbox:build`). The supervisor does **not** auto-build this image — if it's missing, `POST /computers` fails with this exact command in the error.
+3. **Superchat's sandbox supervisor** (`infra/sandboxes/supervisor`) — needs the Docker socket.
 4. **The Omnigent server**, configured with the `sandbox:` block above and the required env from the previous section. Install the engine with the `memory` extra (`uv sync --extra memory ...`); without it the memory routes are not mounted and the Muse's memory tools fail with "not configured". On macOS the memory stack also needs `KMP_DUPLICATE_LIB_OK=TRUE` in the server's environment.
-5. **Nova's own `apps/api`, `apps/worker`, `apps/web`** — talk to the Omnigent server through the gateway.
+5. **Superchat's own `apps/api`, `apps/worker`, `apps/web`** — talk to the Omnigent server through the gateway.
 
 ## Known gaps
 

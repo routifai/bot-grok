@@ -10,7 +10,7 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import {
   HelpCircle,
   MoreHorizontal,
@@ -23,7 +23,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { NovaTile } from "../../pages/muse/chrome/NovaTile";
+import { SuperchatTile } from "../../pages/muse/chrome/SuperchatTile";
 import { MemoryEmptyLine, MemorySection } from "../../pages/muse/ui/MemorySection";
 import {
   commitmentLabel,
@@ -44,7 +44,7 @@ export type MemoryClaim = {
   date: number;
   /** The person's own words this came from, when the engine kept them. */
   quote?: string;
-  /** Past its end date: Nova no longer uses it; it stays listed so the person can forget it. */
+  /** Past its end date: Superchat no longer uses it; it stays listed so the person can forget it. */
   expired?: boolean;
 };
 
@@ -125,7 +125,7 @@ const iconButton =
   "inline-flex size-7 items-center justify-center rounded-full text-ink-3 outline-none hover:bg-selection hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 data-popup-open:bg-selection data-popup-open:text-foreground";
 
 /** A memory's tile by section: you (blue), projects (green), open questions (purple), how
- * Nova works with you (indigo). */
+ * Superchat works with you (indigo). */
 function SectionTile({ sectionId }: { sectionId: SectionId }) {
   const [tone, Icon] =
     sectionId === "projects"
@@ -136,9 +136,9 @@ function SectionTile({ sectionId }: { sectionId: SectionId }) {
           ? (["indigo", Sparkles] as const)
           : (["blue", UserRound] as const);
   return (
-    <NovaTile tone={tone} size={28}>
+    <SuperchatTile tone={tone} size={28}>
       <Icon strokeWidth={2.4} />
-    </NovaTile>
+    </SuperchatTile>
   );
 }
 
@@ -234,7 +234,7 @@ function Claim({
 
   if (draft !== null) {
     return (
-      <li className="nova-row nova-row-plain px-3 py-2" data-testid="memory-claim">
+      <li className="superchat-row superchat-row-plain px-3 py-2" data-testid="memory-claim">
         <textarea
           // biome-ignore lint/a11y/noAutofocus: the person just chose to edit this memory
           autoFocus
@@ -269,7 +269,7 @@ function Claim({
   if (pending) {
     return (
       <li
-        className="nova-row flex min-h-[52px] items-center gap-3 px-3 py-2 text-[14px] leading-5"
+        className="superchat-row flex min-h-[52px] items-center gap-3 px-3 py-2 text-[14px] leading-5"
         data-testid="memory-claim-pending"
       >
         {isCommitment ? <Checkbox checked className="mt-0.5" aria-label={title} /> : null}
@@ -287,7 +287,7 @@ function Claim({
 
   return (
     <li
-      className="group/claim nova-row flex min-h-[52px] items-center gap-3 px-3 py-2 transition-colors hover:bg-selection focus-within:bg-selection"
+      className="group/claim superchat-row flex min-h-[52px] items-center gap-3 px-3 py-2 transition-colors hover:bg-selection focus-within:bg-selection"
       data-testid="memory-claim"
     >
       {isCommitment && !claim.expired ? (
@@ -299,9 +299,9 @@ function Claim({
           />
         </span>
       ) : person ? (
-        <NovaTile tone="orange" size={28}>
+        <SuperchatTile tone="orange" size={28}>
           <span className="text-[11px] font-semibold">{initials(person.name)}</span>
-        </NovaTile>
+        </SuperchatTile>
       ) : (
         <SectionTile sectionId={sectionId} />
       )}
@@ -384,7 +384,7 @@ function Claim({
 }
 
 /** The Memory tab's editable sections: About you, Commitments, Projects & focus, Open
- * questions, People, How Nova works with you. Items show a short label (the stored text is
+ * questions, People, How Superchat works with you. Items show a short label (the stored text is
  * untouched); source and quote sit behind a hover icon; an edit marks an item person-authored
  * (the engine's upkeep and Helpers never overwrite it); forgetting waits for an undo. */
 export function MemorySections({
@@ -460,7 +460,7 @@ export function MemorySections({
           {group.claims.length === 0 ? (
             <MemoryEmptyLine>{t`Nothing yet`}</MemoryEmptyLine>
           ) : (
-            <ul className="nova-group flex flex-col">
+            <ul className="superchat-group flex flex-col">
               {group.claims.map((claim) => (
                 <Claim
                   key={claim.id}

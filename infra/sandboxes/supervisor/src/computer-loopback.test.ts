@@ -2,7 +2,7 @@ import type * as NodeFsPromises from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { Readable } from "node:stream";
-import { resolveSupervisorToken } from "@nova/core";
+import { resolveSupervisorToken } from "@superchat/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { COMPUTER_IMAGE, computerNetworkNameFor, hostComputerUser } from "./computer-spec.js";
 
@@ -40,7 +40,7 @@ beforeEach(async () => {
   vi.resetModules();
   vi.resetAllMocks();
   vi.stubEnv("HOSTNAME", "");
-  vi.stubEnv("DATA_DIR", "/tmp/nova-loopback-test");
+  vi.stubEnv("DATA_DIR", "/tmp/superchat-loopback-test");
   vi.stubEnv("SANDBOX_SCREEN_NETWORK", "published");
   vi.stubEnv("SANDBOX_SCREEN_HOST", "127.0.0.1");
   screen = http.createServer((_req, res) => res.end("ok"));
@@ -71,8 +71,8 @@ describe("computer image build", () => {
       headers: {
         authorization: `Bearer ${resolveSupervisorToken(process.env)}`,
         "content-type": "application/json",
-        "x-nova-bot-id": "bot",
-        "x-nova-space-id": "space",
+        "x-superchat-bot-id": "bot",
+        "x-superchat-space-id": "space",
       },
       body: JSON.stringify({ botId: "bot", spaceId: "space", homePath }),
     });
@@ -115,8 +115,8 @@ describe("computer loopback provision lifecycle", () => {
       method: "POST",
       headers: {
         authorization: `Bearer ${resolveSupervisorToken(process.env)}`,
-        "x-nova-bot-id": "bot",
-        "x-nova-space-id": "space",
+        "x-superchat-bot-id": "bot",
+        "x-superchat-space-id": "space",
       },
     });
     expect(response.status).toBe(status);
@@ -129,7 +129,7 @@ describe("computer loopback provision lifecycle", () => {
     const container = {
       inspect: vi.fn().mockResolvedValue({
         Config: {
-          Labels: { "nova.managed": "true", "nova.botId": "other", "nova.spaceId": "other" },
+          Labels: { "superchat.managed": "true", "superchat.botId": "other", "superchat.spaceId": "other" },
         },
       }),
       stop: vi.fn(),
@@ -140,8 +140,8 @@ describe("computer loopback provision lifecycle", () => {
       method: "POST",
       headers: {
         authorization: `Bearer ${resolveSupervisorToken(process.env)}`,
-        "x-nova-bot-id": "bot",
-        "x-nova-space-id": "space",
+        "x-superchat-bot-id": "bot",
+        "x-superchat-space-id": "space",
       },
     });
     expect(response.status).toBe(403);
@@ -163,7 +163,7 @@ describe("computer loopback provision lifecycle", () => {
     const container = {
       inspect: vi.fn(async () => ({
         Config: {
-          Labels: { "nova.managed": "true", "nova.botId": "bot", "nova.spaceId": "space" },
+          Labels: { "superchat.managed": "true", "superchat.botId": "bot", "superchat.spaceId": "space" },
         },
         State: { Running: running },
       })),
@@ -183,8 +183,8 @@ describe("computer loopback provision lifecycle", () => {
         method: "POST",
         headers: {
           authorization: `Bearer ${resolveSupervisorToken(process.env)}`,
-          "x-nova-bot-id": "bot",
-          "x-nova-space-id": "space",
+          "x-superchat-bot-id": "bot",
+          "x-superchat-space-id": "space",
         },
       });
     const first = stop();
@@ -203,7 +203,7 @@ describe("computer loopback provision lifecycle", () => {
     const container = {
       inspect: vi.fn(async () => ({
         Config: {
-          Labels: { "nova.managed": "true", "nova.botId": "bot", "nova.spaceId": "space" },
+          Labels: { "superchat.managed": "true", "superchat.botId": "bot", "superchat.spaceId": "space" },
         },
         State: { Running: true },
       })),
@@ -218,8 +218,8 @@ describe("computer loopback provision lifecycle", () => {
       method: "POST",
       headers: {
         authorization: `Bearer ${resolveSupervisorToken(process.env)}`,
-        "x-nova-bot-id": "bot",
-        "x-nova-space-id": "space",
+        "x-superchat-bot-id": "bot",
+        "x-superchat-space-id": "space",
       },
     });
     expect(response.status).toBe(500);
@@ -231,7 +231,7 @@ describe("computer loopback provision lifecycle", () => {
     const container = {
       inspect: vi.fn(async () => ({
         Config: {
-          Labels: { "nova.managed": "true", "nova.botId": "bot", "nova.spaceId": "space" },
+          Labels: { "superchat.managed": "true", "superchat.botId": "bot", "superchat.spaceId": "space" },
         },
         State: { Running: true },
       })),
@@ -246,8 +246,8 @@ describe("computer loopback provision lifecycle", () => {
       method: "POST",
       headers: {
         authorization: `Bearer ${resolveSupervisorToken(process.env)}`,
-        "x-nova-bot-id": "bot",
-        "x-nova-space-id": "space",
+        "x-superchat-bot-id": "bot",
+        "x-superchat-space-id": "space",
       },
     });
     expect(response.status).toBe(200);
@@ -277,7 +277,7 @@ describe("computer loopback provision lifecycle", () => {
       Image: "test-image-id",
       Config: {
         User: hostComputerUser(),
-        Labels: { "nova.managed": "true", "nova.botId": "bot", "nova.spaceId": "space" },
+        Labels: { "superchat.managed": "true", "superchat.botId": "bot", "superchat.spaceId": "space" },
       },
       HostConfig: {
         NetworkMode: computerNetworkNameFor("bot"),
@@ -310,8 +310,8 @@ describe("computer loopback provision lifecycle", () => {
       headers: {
         authorization: `Bearer ${resolveSupervisorToken(process.env)}`,
         "content-type": "application/json",
-        "x-nova-bot-id": "bot",
-        "x-nova-space-id": "space",
+        "x-superchat-bot-id": "bot",
+        "x-superchat-space-id": "space",
       },
       body: JSON.stringify({ botId: "bot", spaceId: "space", homePath }),
     });
@@ -332,8 +332,8 @@ describe("computer loopback provision lifecycle", () => {
       expect(options.HostConfig.PortBindings["7070/tcp"]).toEqual(
         enabled ? [{ HostIp: "127.0.0.1", HostPort: "0" }] : undefined,
       );
-      expect(options.HostConfig.Binds).toEqual([`${homePath}:/home/nova`]);
-      expect(options.Env).toContainEqual(expect.stringMatching(/^NOVA_COMPUTER_CONTROL_TOKEN=.+/));
+      expect(options.HostConfig.Binds).toEqual([`${homePath}:/home/superchat`]);
+      expect(options.Env).toContainEqual(expect.stringMatching(/^SUPERCHAT_COMPUTER_CONTROL_TOKEN=.+/));
     }
   });
 });
@@ -360,8 +360,8 @@ describe("provisioning network rollback", () => {
       headers: {
         authorization: `Bearer ${resolveSupervisorToken(process.env)}`,
         "content-type": "application/json",
-        "x-nova-bot-id": "bot",
-        "x-nova-space-id": "space",
+        "x-superchat-bot-id": "bot",
+        "x-superchat-space-id": "space",
       },
       body: JSON.stringify({ botId: "bot", spaceId: "space", homePath }),
     });
@@ -402,7 +402,7 @@ describe("provisioning network rollback", () => {
                 expect.objectContaining({
                   Type: "volume",
                   Source: "example_appdata",
-                  Target: "/home/nova",
+                  Target: "/home/superchat",
                   VolumeOptions: { NoCopy: true, Subpath: "homes/bot" },
                 }),
               ],
@@ -462,7 +462,7 @@ describe("provisioning network rollback", () => {
       inspect: vi.fn().mockResolvedValue({
         Image: "old-image",
         Config: {
-          Labels: { "nova.managed": "true", "nova.botId": "bot", "nova.spaceId": "space" },
+          Labels: { "superchat.managed": "true", "superchat.botId": "bot", "superchat.spaceId": "space" },
         },
         HostConfig: { PortBindings: {} },
       }),
@@ -545,8 +545,8 @@ describe("space computer limit enforcement", () => {
       headers: {
         authorization: `Bearer ${resolveSupervisorToken(process.env)}`,
         "content-type": "application/json",
-        "x-nova-bot-id": botId,
-        "x-nova-space-id": spaceId,
+        "x-superchat-bot-id": botId,
+        "x-superchat-space-id": spaceId,
       },
       body: JSON.stringify({ botId, spaceId, homePath }),
     });
@@ -560,13 +560,13 @@ describe("space computer limit enforcement", () => {
       async (opts?: { filters?: { label?: string[] } }) => {
         const labels = opts?.filters?.label ?? [];
         // For findBotContainer check
-        if (labels.some((l: string) => l.startsWith("nova.botId="))) {
+        if (labels.some((l: string) => l.startsWith("superchat.botId="))) {
           return [];
         }
         // For countSpaceContainers
         return [
-          { Id: "c1", Labels: { "nova.managed": "true", "nova.spaceId": "space-1" } },
-          { Id: "c2", Labels: { "nova.managed": "true", "nova.spaceId": "space-1" } },
+          { Id: "c1", Labels: { "superchat.managed": "true", "superchat.spaceId": "space-1" } },
+          { Id: "c2", Labels: { "superchat.managed": "true", "superchat.spaceId": "space-1" } },
         ];
       },
     );
@@ -586,10 +586,10 @@ describe("space computer limit enforcement", () => {
     mocks.docker.listContainers.mockImplementation(
       async (opts?: { filters?: { label?: string[] } }) => {
         const labels = opts?.filters?.label ?? [];
-        if (labels.some((l: string) => l.startsWith("nova.botId="))) {
+        if (labels.some((l: string) => l.startsWith("superchat.botId="))) {
           return [];
         }
-        return [{ Id: "c1", Labels: { "nova.managed": "true", "nova.spaceId": "space-1" } }];
+        return [{ Id: "c1", Labels: { "superchat.managed": "true", "superchat.spaceId": "space-1" } }];
       },
     );
 
@@ -612,9 +612,9 @@ describe("space computer limit enforcement", () => {
         Config: {
           User: hostComputerUser(process.getuid?.(), process.getgid?.()),
           Labels: {
-            "nova.managed": "true",
-            "nova.botId": "bot-existing",
-            "nova.spaceId": "space-1",
+            "superchat.managed": "true",
+            "superchat.botId": "bot-existing",
+            "superchat.spaceId": "space-1",
           },
         },
         State: { Running: true },
@@ -631,19 +631,19 @@ describe("space computer limit enforcement", () => {
     mocks.docker.listContainers.mockImplementation(
       async (opts?: { filters?: { label?: string[] } }) => {
         const labels = opts?.filters?.label ?? [];
-        if (labels.some((l: string) => l === "nova.botId=bot-existing")) {
+        if (labels.some((l: string) => l === "superchat.botId=bot-existing")) {
           return [
             {
               Id: existing.id,
               Labels: {
-                "nova.managed": "true",
-                "nova.botId": "bot-existing",
-                "nova.spaceId": "space-1",
+                "superchat.managed": "true",
+                "superchat.botId": "bot-existing",
+                "superchat.spaceId": "space-1",
               },
             },
           ];
         }
-        return [{ Id: existing.id, Labels: { "nova.managed": "true", "nova.spaceId": "space-1" } }];
+        return [{ Id: existing.id, Labels: { "superchat.managed": "true", "superchat.spaceId": "space-1" } }];
       },
     );
 
@@ -663,15 +663,15 @@ describe("space computer limit enforcement", () => {
     mocks.docker.listContainers.mockImplementation(
       async (opts?: { filters?: { label?: string[] } }) => {
         const labels = opts?.filters?.label ?? [];
-        if (labels.some((l: string) => l.startsWith("nova.botId="))) {
+        if (labels.some((l: string) => l.startsWith("superchat.botId="))) {
           return [];
         }
-        // Legacy managed computer: COMPUTER_IMAGE + workspaceId, no nova.managed.
+        // Legacy managed computer: COMPUTER_IMAGE + workspaceId, no superchat.managed.
         return [
           {
             Id: "legacy",
             Image: COMPUTER_IMAGE,
-            Labels: { "nova.workspaceId": "space-1", "nova.botId": "legacy-bot" },
+            Labels: { "superchat.workspaceId": "space-1", "superchat.botId": "legacy-bot" },
           },
         ];
       },
@@ -693,12 +693,12 @@ describe("space computer limit enforcement", () => {
     mocks.docker.listContainers.mockImplementation(
       async (opts?: { filters?: { label?: string[] } }) => {
         const labels = opts?.filters?.label ?? [];
-        if (labels.some((l: string) => l.startsWith("nova.botId="))) {
+        if (labels.some((l: string) => l.startsWith("superchat.botId="))) {
           return [];
         }
         return Array.from({ length: created }, (_, index) => ({
           Id: `c${index}`,
-          Labels: { "nova.managed": "true", "nova.spaceId": "space-1" },
+          Labels: { "superchat.managed": "true", "superchat.spaceId": "space-1" },
         }));
       },
     );
@@ -736,9 +736,9 @@ describe("space computer limit enforcement", () => {
         Config: {
           User: hostComputerUser(process.getuid?.(), process.getgid?.()),
           Labels: {
-            "nova.managed": "true",
-            "nova.botId": "bot-existing",
-            "nova.spaceId": "space-1",
+            "superchat.managed": "true",
+            "superchat.botId": "bot-existing",
+            "superchat.spaceId": "space-1",
           },
         },
         State: { Running: true },
@@ -761,26 +761,26 @@ describe("space computer limit enforcement", () => {
     mocks.docker.listContainers.mockImplementation(
       async (opts?: { filters?: { label?: string[] } }) => {
         const labels = opts?.filters?.label ?? [];
-        if (labels.some((l: string) => l === "nova.botId=bot-existing")) {
+        if (labels.some((l: string) => l === "superchat.botId=bot-existing")) {
           return present.has(existing.id)
             ? [
                 {
                   Id: existing.id,
                   Labels: {
-                    "nova.managed": "true",
-                    "nova.botId": "bot-existing",
-                    "nova.spaceId": "space-1",
+                    "superchat.managed": "true",
+                    "superchat.botId": "bot-existing",
+                    "superchat.spaceId": "space-1",
                   },
                 },
               ]
             : [];
         }
-        if (labels.some((l: string) => l.startsWith("nova.botId="))) {
+        if (labels.some((l: string) => l.startsWith("superchat.botId="))) {
           return [];
         }
         return [...present].map((Id) => ({
           Id,
-          Labels: { "nova.managed": "true", "nova.spaceId": "space-1" },
+          Labels: { "superchat.managed": "true", "superchat.spaceId": "space-1" },
         }));
       },
     );
@@ -814,7 +814,7 @@ describe("screen registry across run boundaries", () => {
     const container = {
       inspect: vi.fn().mockResolvedValue({
         Config: {
-          Labels: { "nova.managed": "true", "nova.botId": "bot", "nova.spaceId": "space" },
+          Labels: { "superchat.managed": "true", "superchat.botId": "bot", "superchat.spaceId": "space" },
         },
         HostConfig: { NetworkMode: computerNetworkNameFor("bot") },
         State: { Running: true },
@@ -831,9 +831,9 @@ describe("screen registry across run boundaries", () => {
     const headers = {
       authorization: `Bearer ${resolveSupervisorToken(process.env)}`,
       "content-type": "application/json",
-      "x-nova-bot-id": "bot",
-      "x-nova-space-id": "space",
-      "x-nova-screen-id": "writer",
+      "x-superchat-bot-id": "bot",
+      "x-superchat-space-id": "space",
+      "x-superchat-screen-id": "writer",
     };
     const view = () =>
       supervisorApp.request("/computers/registry/screen-mode", {
@@ -842,14 +842,14 @@ describe("screen registry across run boundaries", () => {
         body: JSON.stringify({ interactive: false, revokeControl: false }),
       });
     const resets = () =>
-      commands.filter((command) => command.includes("for marker in /tmp/nova/browser-profile-*"))
+      commands.filter((command) => command.includes("for marker in /tmp/superchat/browser-profile-*"))
         .length;
 
     expect((await view()).status).toBe(200);
     expect(resets()).toBe(1);
     const released = await supervisorApp.request("/computers/registry/screen", {
       method: "DELETE",
-      headers: { ...headers, "x-nova-screen-lease-id": "run-1:1" },
+      headers: { ...headers, "x-superchat-screen-lease-id": "run-1:1" },
     });
     expect(released.status).toBe(200);
     expect((await view()).status).toBe(200);

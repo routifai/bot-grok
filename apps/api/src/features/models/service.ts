@@ -1,5 +1,5 @@
 // The engine's model layer for the signed-in person (docs/adr: the engine owns models, keys and
-// budgets). Nova keeps no key, price or budget row here: it asks the engine as the person, maps
+// budgets). Superchat keeps no key, price or budget row here: it asks the engine as the person, maps
 // the answer to the web's shapes and turns the engine's public error codes into typed errors
 // the web renders (`data.code`). Admin calls are gated twice: here (the engine's own idea of an
 // admin, `GET /v1/me`) and by the engine, which refuses anyone else.
@@ -21,15 +21,15 @@ import {
   putOmnigentModelConnection,
   putOmnigentModelPreferences,
   setOmnigentSessionModel,
-} from "@nova/adapters";
+} from "@superchat/adapters";
 import type {
   Actor,
   EngineBudget,
   EngineModelCatalog,
   EngineModelConnection,
   EngineModelsStatus,
-} from "@nova/contracts";
-import type { PrismaClient } from "@nova/db";
+} from "@superchat/contracts";
+import type { PrismaClient } from "@superchat/db";
 import { ORPCError } from "@orpc/server";
 
 export interface EngineModelsDeps {
@@ -78,12 +78,12 @@ export async function onModels<T>(call: Promise<T>): Promise<T> {
 
 const NO_ENGINE = "Models need the engine";
 
-/** The built-in agents Nova's deployments run the Muse on, and the harness each runs. */
+/** The built-in agents Superchat's deployments run the Muse on, and the harness each runs. */
 const AGENT_HARNESS: Record<string, { id: string; label: string }> = {
-  "nova-claude": { id: "claude-sdk", label: "Claude" },
-  "nova-pi": { id: "pi", label: "Pi" },
+  "superchat-claude": { id: "claude-sdk", label: "Claude" },
+  "superchat-pi": { id: "pi", label: "Pi" },
 };
-const ALL_HARNESSES = [AGENT_HARNESS["nova-claude"], AGENT_HARNESS["nova-pi"]] as {
+const ALL_HARNESSES = [AGENT_HARNESS["superchat-claude"], AGENT_HARNESS["superchat-pi"]] as {
   id: string;
   label: string;
 }[];
@@ -118,7 +118,7 @@ export async function adminActor(
   return target;
 }
 
-/** The harness this person's Nova runs, from the agent their Muse last reported; both when
+/** The harness this person's Superchat runs, from the agent their Muse last reported; both when
  * there is no Muse yet (the deployment decides at the first turn). */
 async function harnessesOf(deps: EngineModelsDeps, actor: Actor) {
   const session = await deps.prisma.omnigentSession.findFirst({

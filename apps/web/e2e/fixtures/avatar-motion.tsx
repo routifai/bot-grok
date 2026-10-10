@@ -1,4 +1,4 @@
-import { BotAvatar } from "@nova/ui-web";
+import { BotAvatar } from "@superchat/ui-web";
 import { createRoot } from "react-dom/client";
 
 createRoot(document.getElementById("root")!).render(

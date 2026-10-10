@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 const computerRoot = fileURLToPath(new URL("../../computer/", import.meta.url));
-const localBinSnippet = path.join(computerRoot, "nova-local-bin.sh");
+const localBinSnippet = path.join(computerRoot, "superchat-local-bin.sh");
 
 // Debian /etc/profile replaces PATH, then sources /etc/profile.d/*.sh. Bash login
 // shells (`bash -lc`) do that before any home profile. Reproduce that order in a
@@ -19,7 +19,7 @@ const LOGIN_SHELL_STARTUP = [
   '  PATH="/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games"',
   "fi",
   "export PATH",
-  '. "$NOVA_LOCAL_BIN_SNIPPET"',
+  '. "$SUPERCHAT_LOCAL_BIN_SNIPPET"',
   'if [ -f "$HOME/.bash_profile" ]; then',
   '  . "$HOME/.bash_profile"',
   'elif [ -f "$HOME/.bash_login" ]; then',
@@ -109,16 +109,16 @@ describe("agent shell PATH after Debian login startup", () => {
 
   it("installs the snippet where Debian login shells source it", () => {
     const dockerfile = readFileSync(path.join(computerRoot, "Dockerfile"), "utf8");
-    const copy = "COPY --chmod=644 nova-local-bin.sh /etc/profile.d/nova-local-bin.sh";
+    const copy = "COPY --chmod=644 superchat-local-bin.sh /etc/profile.d/superchat-local-bin.sh";
     const copyAt = dockerfile.indexOf(copy);
     const userAt = dockerfile.indexOf("USER 1000:1000");
     expect(copyAt).toBeGreaterThan(-1);
     expect(userAt).toBeGreaterThan(copyAt);
-    expect(dockerfile).toContain("/etc/profile.d/nova-local-bin.sh");
+    expect(dockerfile).toContain("/etc/profile.d/superchat-local-bin.sh");
   });
 
   function createHome(): string {
-    const home = mkdtempSync(path.join(tmpdir(), "nova-local-bin-"));
+    const home = mkdtempSync(path.join(tmpdir(), "superchat-local-bin-"));
     homes.push(home);
     return home;
   }
@@ -142,10 +142,10 @@ function loginShell(
     encoding: "utf8",
     env: {
       HOME: home,
-      LOGNAME: "nova",
+      LOGNAME: "superchat",
       PATH: `${home}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
-      USER: "nova",
-      NOVA_LOCAL_BIN_SNIPPET: localBinSnippet,
+      USER: "superchat",
+      SUPERCHAT_LOCAL_BIN_SNIPPET: localBinSnippet,
     },
   });
   return { stdout: stdout.trim() };

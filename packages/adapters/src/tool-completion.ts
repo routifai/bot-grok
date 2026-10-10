@@ -1,9 +1,9 @@
 // Redacted audit trail for tool-call completions: what to log on `agent.tool.completed`
 // without leaking secrets or the full result payload.
-import type { AgentToolCompletion } from "@nova/adapter-kit";
-import { redactSecrets } from "@nova/core";
-import type { ThreadEvents } from "@nova/db";
-import { getLogger } from "@nova/logging";
+import type { AgentToolCompletion } from "@superchat/adapter-kit";
+import { redactSecrets } from "@superchat/core";
+import type { ThreadEvents } from "@superchat/db";
+import { getLogger } from "@superchat/logging";
 import { isToolPauseResult } from "./approval-effect.js";
 import { sanitizeConnectorError } from "./connector-safety.js";
 

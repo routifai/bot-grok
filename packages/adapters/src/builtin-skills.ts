@@ -1,4 +1,4 @@
-import { buildSkillMd } from "@nova/core";
+import { buildSkillMd } from "@superchat/core";
 
 /**
  * Built-in Agent Skills (SKILL.md recipes) available to every user.

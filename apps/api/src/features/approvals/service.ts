@@ -1,5 +1,5 @@
 // The standing approval rules and daily spending cap Settings shows (docs/muse/PLAN.md, Q5).
-// Nova keeps no approval rows: the engine decides what needs asking, remembers what the person
+// Superchat keeps no approval rows: the engine decides what needs asking, remembers what the person
 // always allows and never lets an unanswered one through. Waiting approvals are Asks
 // (./asks.ts).
 import {
@@ -8,9 +8,9 @@ import {
   listOmnigentApprovalRules,
   type OmnigentClientConfig,
   putOmnigentApprovalSettings,
-} from "@nova/adapters";
-import type { Actor, ApprovalSpending, ApprovalStandingRule } from "@nova/contracts";
-import type { PrismaClient } from "@nova/db";
+} from "@superchat/adapters";
+import type { Actor, ApprovalSpending, ApprovalStandingRule } from "@superchat/contracts";
+import type { PrismaClient } from "@superchat/db";
 import { ORPCError } from "@orpc/server";
 import { onSuperChat } from "../../omnigent-errors.js";
 

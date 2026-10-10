@@ -19,7 +19,7 @@ vi.mock("@lingui/react/macro", () => {
   };
 });
 
-import { MODEL_ERROR_COPY } from "@nova/core";
+import { MODEL_ERROR_COPY } from "@superchat/core";
 import { Composer } from "./Composer";
 
 vi.stubGlobal(
@@ -57,7 +57,7 @@ async function render(
 it("offers Add your API key and Raise budget on the failed turn, opening Settings > Models", async () => {
   const opened: unknown[] = [];
   const listener = (event: Event) => opened.push((event as CustomEvent<unknown>).detail);
-  window.addEventListener("nova:open-settings", listener);
+  window.addEventListener("superchat:open-settings", listener);
   try {
     const key = await render(MODEL_ERROR_COPY.model_key_required);
     const keyButton = key.host.querySelector(
@@ -76,7 +76,7 @@ it("offers Add your API key and Raise budget on the failed turn, opening Setting
     await budget.cleanup();
     expect(opened).toEqual(["models", "models"]);
   } finally {
-    window.removeEventListener("nova:open-settings", listener);
+    window.removeEventListener("superchat:open-settings", listener);
   }
 });
 

@@ -1,5 +1,5 @@
-import type { MessageBlock } from "@nova/contracts";
-import { isToolActivityBlock } from "@nova/core";
+import type { MessageBlock } from "@superchat/contracts";
+import { isToolActivityBlock } from "@superchat/core";
 
 export function isCenteredAgentEvent(blocks: readonly MessageBlock[]): boolean {
   return blocks.some(

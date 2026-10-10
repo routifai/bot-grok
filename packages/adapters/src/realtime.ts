@@ -1,7 +1,7 @@
-import type { RealtimeFanout } from "@nova/adapter-kit";
+import type { RealtimeFanout } from "@superchat/adapter-kit";
 import { Client, type Notification } from "pg";
 
-const POSTGRES_CHANNEL = "nova_events";
+const POSTGRES_CHANNEL = "superchat_events";
 const MAX_NOTIFY_PAYLOAD_BYTES = 7_900;
 
 type Subscriber = (payload: string) => void;
@@ -45,7 +45,7 @@ export class PostgresRealtimeFanout implements RealtimeFanout {
       (() =>
         new Client({
           connectionString: options.connectionString,
-          application_name: "nova-realtime",
+          application_name: "superchat-realtime",
           connectionTimeoutMillis: 5_000,
         }) as RealtimeListenerClient);
     this.reconnectBaseMs = options.reconnectBaseMs ?? 250;

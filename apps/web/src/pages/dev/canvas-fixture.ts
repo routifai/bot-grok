@@ -1,7 +1,7 @@
-import type { CanvasNode } from "@nova/contracts";
+import type { CanvasNode } from "@superchat/contracts";
 
 /**
- * Dev-only proof fixture for Nova Canvas (see AGENTS task: the Canadian credit-card
+ * Dev-only proof fixture for Superchat Canvas (see AGENTS task: the Canadian credit-card
  * comparison the agent should have answered with a canvas instead of a failing chart spec
  * and a hand-written HTML page). All numbers are illustrative, not current rates.
  */

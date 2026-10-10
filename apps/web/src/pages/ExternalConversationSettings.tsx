@@ -5,8 +5,8 @@ import type {
   Bot,
   ExternalConversation,
   ExternalConversationPolicy,
-} from "@nova/contracts";
-import { Button } from "@nova/ui-web";
+} from "@superchat/contracts";
+import { Button } from "@superchat/ui-web";
 import { RotateCcw } from "lucide-react";
 import { useMemo, useState } from "react";
 import { SuccessPop } from "../components/ai/primitives";

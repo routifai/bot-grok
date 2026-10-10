@@ -1,0 +1,590 @@
+#!/usr/bin/env python3
+"""Export a Superchat deck (an HTML file of 1920x1080 slides) to an editable PPTX or a vector PDF.
+
+Usage: superchat-deck-export --format pptx|pdf --html PATH --out PATH
+       superchat-deck-export --format lint --html PATH
+
+Runs a separate headless Chromium on this computer over CDP (the same CdpClient as
+``superchat-page-browser``; the person's visible browser is never touched), then:
+
+* pptx: the Open Design pipeline. Lay out every slide, inject the vendored dom-to-pptx bundle,
+  run the ported deck-capture logic (font normalisation, layered backgrounds, imported fonts) and
+  write the native PowerPoint shapes and text it produces. Nothing is a screenshot of a slide.
+* pdf: print the same render with the deck's print CSS (``Page.printToPDF``), which stays vector.
+
+* lint: measure the laid-out deck for what would not survive export one-to-one (content past the
+  slide or in the footer band, clipped text, missing data-superchat-id, unembedded fonts, ...).
+
+Prints one JSON object as the last stdout line: ``{"ok": true, "path", "slides", "width",
+"height"}`` (lint: ``{"ok": true, "slides", "issues": [...]}``) or ``{"ok": false, "error",
+"code"}``. Exit code 0 either way.
+
+Portions modified from nexu-io/open-design apps/desktop/src/main/deck-capture.ts@802708f and
+apps/desktop/src/main/pdf-export.ts@802708f, Apache-2.0 (see /NOTICE). Changes: Electron's
+BrowserWindow/debugger orchestration is replaced by CDP calls on a headless Chromium with the same
+steps in the same order; the page-side functions live in ``deck-capture-page.js`` next to this
+file; the image-per-slide modes are not ported (Superchat never exports slide screenshots).
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.request
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlsplit
+
+HERE = Path(__file__).resolve().parent
+
+# The deck canvas when the authored size cannot be measured (deck-capture.ts SLIDE_W/H and bounds).
+SLIDE_W = 1920
+SLIDE_H = 1080
+SLIDE_MIN_PX = 320
+SLIDE_MAX_PX = 8192
+# deck-pdf: pdf-export.ts DECK_PAGE_SIZE (inches); preferCSSPageSize makes the deck's @page win.
+DECK_PAGE_INCHES = (13.333333, 7.5)
+PRINTABLE_WAIT_BUDGET_MS = 15_000
+ARTIFACT_LOAD_TIMEOUT_S = 15.0
+GOOGLE_FONT_STYLESHEET_TIMEOUT_S = 10.0
+MAX_CDP_MESSAGE = 512 * 1024 * 1024
+LAYERED_CAPTURE_ATTEMPTS = 3
+
+
+class ExportError(Exception):
+    """A failure the person can be told about; ``code`` is stable for callers."""
+
+    def __init__(self, message: str, code: str = "RENDER_FAILED") -> None:
+        super().__init__(message)
+        self.code = code
+
+
+# ---------------------------------------------------------------------------------------------
+# Locating things
+# ---------------------------------------------------------------------------------------------
+
+
+def load_cdp_module() -> Any:
+    """Load ``superchat-page-browser`` (a script, not a package) to reuse its CdpClient."""
+    candidates = [os.environ.get("SUPERCHAT_PAGE_BROWSER", ""), shutil.which("superchat-page-browser") or ""]
+    candidates.append(str(HERE / "superchat-page-browser"))
+    for candidate in candidates:
+        if candidate and Path(candidate).is_file():
+            loader = importlib.machinery.SourceFileLoader("superchat_page_browser", candidate)
+            spec = importlib.util.spec_from_loader("superchat_page_browser", loader)
+            assert spec is not None
+            module = importlib.util.module_from_spec(spec)
+            loader.exec_module(module)
+            return module
+    raise ExportError("superchat-page-browser is not installed", "NO_CDP_CLIENT")
+
+
+def find_chromium() -> str:
+    override = os.environ.get("SUPERCHAT_DECK_CHROME")
+    if override:
+        return override
+    for name in ("chromium", "chromium-browser", "google-chrome", "google-chrome-stable"):
+        found = shutil.which(name)
+        if found:
+            return found
+    mac = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    if Path(mac).is_file():
+        return mac
+    raise ExportError("Chromium is not installed on this computer", "NO_BROWSER")
+
+
+def find_asset(env: str, names: list[str]) -> Path:
+    """The first existing file: the env override, then next to this script, then the image path."""
+    candidates: list[Path] = []
+    if os.environ.get(env):
+        candidates.append(Path(os.environ[env]))
+    for name in names:
+        candidates.append(HERE / "deck-export" / name)
+        candidates.append(Path("/usr/local/share/superchat/deck-export") / name)
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    raise ExportError(f"missing export asset: {names[0]}", "NO_ASSET")
+
+
+def read_bundle() -> str:
+    """The vendored dom-to-pptx browser bundle (decompressed at image build, or the .gz)."""
+    try:
+        return find_asset("SUPERCHAT_DOM_TO_PPTX", ["dom-to-pptx.bundle.js"]).read_text("utf-8")
+    except ExportError:
+        gz = find_asset("SUPERCHAT_DOM_TO_PPTX_GZ", ["vendor/dom-to-pptx/dom-to-pptx.bundle.js.gz"])
+        import gzip
+
+        return gzip.decompress(gz.read_bytes()).decode("utf-8")
+
+
+def page_script() -> str:
+    """``deck-capture-page.js`` (an ES module) as a script that sets ``window.__superchatDeck``."""
+    source = find_asset("SUPERCHAT_DECK_PAGE_JS", ["deck-capture-page.js"]).read_text("utf-8")
+    names = re.findall(r"^export\s+(?:async\s+)?(?:function|const)\s+([A-Za-z0-9_]+)", source, re.M)
+    body = re.sub(r"^export\s+", "", source, flags=re.M)
+    return f"window.__superchatDeck = (function () {{\n{body}\nreturn {{ {', '.join(names)} }};\n}})();"
+
+
+# ---------------------------------------------------------------------------------------------
+# Chromium over CDP
+# ---------------------------------------------------------------------------------------------
+
+
+class Chromium:
+    """A throwaway headless Chromium with its own profile, driven over one CDP connection."""
+
+    def __init__(self) -> None:
+        self.cdp = load_cdp_module()
+        self.profile = Path(tempfile.mkdtemp(prefix="superchat-deck-"))
+        self.proc: subprocess.Popen[bytes] | None = None
+        self.client: Any = None
+        self.session: str = ""
+
+    def __enter__(self) -> Chromium:
+        try:
+            return self._start()
+        except BaseException:
+            self.__exit__()
+            raise
+
+    def _start(self) -> Chromium:
+        flags = [
+            "--headless=new",
+            "--no-sandbox",
+            "--disable-gpu",
+            "--disable-dev-shm-usage",
+            "--hide-scrollbars",
+            "--mute-audio",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-background-networking",
+            "--disable-extensions",
+            "--force-device-scale-factor=1",
+            "--window-size=1920,1080",
+            "--remote-debugging-address=127.0.0.1",
+            "--remote-debugging-port=0",
+            f"--user-data-dir={self.profile}",
+            "about:blank",
+        ]
+        self.proc = subprocess.Popen(
+            [find_chromium(), *flags],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        port = self._wait_for_port()
+        ws_url = self.cdp.discover_ws_url(port)
+        self.client = self.cdp.CdpClient(ws_url)
+        self.client.max_frame_bytes = MAX_CDP_MESSAGE
+        self.client.connect()
+        target = self.client.call("Target.createTarget", {"url": "about:blank"})
+        attached = self.client.call(
+            "Target.attachToTarget", {"targetId": target["targetId"], "flatten": True}
+        )
+        self.session = attached["sessionId"]
+        self.send("Page.enable")
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        if self.client is not None:
+            self.client.close()
+        if self.proc is not None:
+            try:
+                os.killpg(self.proc.pid, signal.SIGTERM)
+            except OSError:
+                pass
+            try:
+                self.proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(self.proc.pid, signal.SIGKILL)
+                except OSError:
+                    pass
+        shutil.rmtree(self.profile, ignore_errors=True)
+
+    def _wait_for_port(self) -> int:
+        """Chromium writes the chosen debug port to ``DevToolsActivePort`` in its profile."""
+        marker = self.profile / "DevToolsActivePort"
+        deadline = time.time() + 20
+        while time.time() < deadline:
+            if self.proc is not None and self.proc.poll() is not None:
+                raise ExportError("Chromium exited before it was ready", "NO_BROWSER")
+            if marker.is_file():
+                first = marker.read_text().splitlines()[:1]
+                if first and first[0].isdigit():
+                    return int(first[0])
+            time.sleep(0.1)
+        raise ExportError("Chromium did not start in time", "NO_BROWSER")
+
+    def send(self, method: str, params: dict[str, Any] | None = None, timeout_s: float = 60.0) -> dict[str, Any]:
+        return self.client.call(method, params or {}, session_id=self.session, timeout_s=timeout_s)
+
+    def evaluate(self, expression: str, timeout_s: float = 60.0) -> Any:
+        result = self.send(
+            "Runtime.evaluate",
+            {"expression": expression, "returnByValue": True, "awaitPromise": True},
+            timeout_s=timeout_s,
+        )
+        details = result.get("exceptionDetails")
+        if details:
+            text = (details.get("exception") or {}).get("description") or details.get("text")
+            raise ExportError(f"page script failed: {str(text)[:400]}")
+        return (result.get("result") or {}).get("value")
+
+    def call_page(self, name: str, *args: Any, timeout_s: float = 60.0) -> Any:
+        """Call a function of ``window.__superchatDeck`` with JSON-encoded arguments."""
+        rendered = ", ".join(json.dumps(a) for a in args)
+        return self.evaluate(f"window.__superchatDeck.{name}({rendered})", timeout_s=timeout_s)
+
+    def set_viewport(self, width: int, height: int) -> None:
+        self.send(
+            "Emulation.setDeviceMetricsOverride",
+            {"width": width, "height": height, "deviceScaleFactor": 1, "mobile": False},
+        )
+
+    def load_document(self, html_path: Path) -> None:
+        """Open the deck without letting one stalled subresource block the export.
+
+        deck-capture.ts `loadArtifactDocument`: dom-ready (parsed and scriptable) is the signal we
+        need; waiting for every subresource is `waitForPrintableContent`'s bounded job.
+        """
+        result = self.send("Page.navigate", {"url": html_path.resolve().as_uri()}, timeout_s=30)
+        if result.get("errorText"):
+            raise ExportError(f"could not open the deck: {result['errorText']}")
+        deadline = time.time() + ARTIFACT_LOAD_TIMEOUT_S
+        while time.time() < deadline:
+            state = self.evaluate("document.readyState")
+            if state in ("interactive", "complete"):
+                return
+            time.sleep(0.1)
+
+    def wait_for_printable_content(self) -> None:
+        """pdf-export.ts `waitForPrintableContent`: fonts, images and CSS images, bounded."""
+        self.install_page_script()
+        stalled = False
+        try:
+            outcome = self.evaluate(
+                f"window.__superchatDeck.waitForPrintableContentInPage({PRINTABLE_WAIT_BUDGET_MS})",
+                timeout_s=PRINTABLE_WAIT_BUDGET_MS / 1000 + 5,
+            )
+            stalled = bool(isinstance(outcome, dict) and outcome.get("stalled"))
+        except (TimeoutError, ExportError):
+            stalled = True
+        if stalled:
+            # Cancel the requests we stopped waiting for so the renderer is handed back.
+            try:
+                self.send("Page.stopLoading", timeout_s=5)
+            except Exception:  # noqa: BLE001
+                pass
+
+    def install_page_script(self) -> None:
+        if not self.evaluate("typeof window.__superchatDeck === 'object'"):
+            self.evaluate(page_script())
+
+    def next_frames(self) -> None:
+        self.call_page("nextFrames")
+
+
+# ---------------------------------------------------------------------------------------------
+# PPTX (deck-capture.ts renderDeckSlides editable path + renderEditablePptx)
+# ---------------------------------------------------------------------------------------------
+
+
+def fetch_google_font_stylesheets(urls: list[str]) -> list[dict[str, str]]:
+    """deck-capture.ts `fetchGoogleFontStylesheets`: TTF-flavoured CSS, bounded, best effort."""
+    sheets: list[dict[str, str]] = []
+    for url in urls:
+        try:
+            if urlsplit(url).hostname != "fonts.googleapis.com":
+                continue
+            # A generic UA makes Google Fonts return complete TTF faces. Chromium's WOFF2 subsets
+            # are less reliable in the vendored PowerPoint converter.
+            request = urllib.request.Request(url, headers={"user-agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(request, timeout=GOOGLE_FONT_STYLESHEET_TIMEOUT_S) as resp:
+                sheets.append({"cssText": resp.read().decode("utf-8", "replace"), "url": url})
+        except Exception:  # noqa: BLE001 - the page-side fetch remains the fallback
+            continue
+    return sheets
+
+
+# A deck embeds its fonts as @font-face data URIs (the viewer's CSP blocks remote fonts), which
+# dom-to-pptx's own scanner skips. Open Design hands imported font faces to the converter through
+# an `@import` plus a stylesheet override (see `runDomToPptx` / `exposeImportedFontFaces`); the
+# deck's embedded faces take exactly that path, so PowerPoint receives the font files too.
+EMBEDDED_FONTS_URL = "data:text/css,/*superchat-embedded-fonts*/"
+
+
+def expose_embedded_fonts(browser: Chromium) -> list[dict[str, str]]:
+    css = browser.evaluate(
+        "Array.from(document.querySelectorAll('style[data-superchat-fonts]'))"
+        ".map((s) => s.textContent || '').join('\\n')"
+    )
+    if not isinstance(css, str) or "@font-face" not in css:
+        return []
+    browser.evaluate(
+        "(() => { const s = document.createElement('style'); s.setAttribute('data-superchat-export-fonts', '');"
+        f" s.textContent = '@import url(\"{EMBEDDED_FONTS_URL}\");'; document.head.appendChild(s); return true; }})()"
+    )
+    return [{"cssText": css, "url": EMBEDDED_FONTS_URL}]
+
+
+def measure_stage(browser: Chromium, slide_selector: str, stage_selector: str) -> tuple[int, int]:
+    """Measure the deck's authored slide size; fall back to 1920x1080 (measureSlideStage)."""
+    try:
+        measured = browser.call_page("measureSlide", slide_selector, stage_selector)
+    except ExportError:
+        measured = None
+    if isinstance(measured, dict):
+        w, h = measured.get("w"), measured.get("h")
+        if (
+            isinstance(w, (int, float))
+            and isinstance(h, (int, float))
+            and SLIDE_MIN_PX <= w <= SLIDE_MAX_PX
+            and SLIDE_MIN_PX <= h <= SLIDE_MAX_PX
+        ):
+            return round(w), round(h)
+    return SLIDE_W, SLIDE_H
+
+
+def capture_layered_backgrounds(browser: Chromium, slide_selector: str) -> dict[str, Any]:
+    """deck-capture.ts `captureEditablePptxLayeredBackgrounds` over CDP."""
+    targets = browser.call_page("collectLayeredPptxBackgroundTargets", slide_selector)
+    if not targets:
+        return {}
+    # CDP multiplies clip.scale by the device scale factor. Keep the layer at a stable 2 physical
+    # pixels per CSS pixel instead of double-scaling.
+    dpr = float(browser.evaluate("window.devicePixelRatio") or 1)
+    capture_scale = min(2.0, 2.0 / dpr)
+    captures: dict[str, Any] = {}
+    try:
+        browser.send(
+            "Emulation.setDefaultBackgroundColorOverride", {"color": {"r": 0, "g": 0, "b": 0, "a": 0}}
+        )
+        for target in targets:
+            geometry = browser.evaluate(
+                "(() => window.__superchatDeck.isolateLayeredPptxBackground("
+                f"{json.dumps(slide_selector)}, {json.dumps(target['id'])}))()"
+            )
+            if not geometry:
+                raise ExportError(f"could not isolate layered PPTX background {target['id']}")
+            browser.next_frames()
+            data = ""
+            for attempt in range(LAYERED_CAPTURE_ATTEMPTS):
+                shot = browser.send(
+                    "Page.captureScreenshot",
+                    {
+                        "captureBeyondViewport": True,
+                        "clip": {
+                            "height": geometry["height"],
+                            "scale": capture_scale,
+                            "width": geometry["width"],
+                            "x": geometry["pageX"],
+                            "y": geometry["pageY"],
+                        },
+                        "format": "png",
+                        "fromSurface": True,
+                    },
+                    timeout_s=120,
+                )
+                data = shot.get("data") or ""
+                if not data:
+                    raise ExportError(f"Chromium returned no layered PPTX capture for {target['id']}")
+                if browser.call_page("pngHasPaint", data):
+                    break
+                if attempt < LAYERED_CAPTURE_ATTEMPTS - 1:
+                    browser.next_frames()
+            else:
+                raise ExportError(f"transparent chromium capture: {target['id']}")
+            captures[target["id"]] = {
+                "dataUrl": f"data:image/png;base64,{data}",
+                "height": geometry["height"],
+                "left": geometry["left"],
+                "slideIndex": geometry["slideIndex"],
+                "top": geometry["top"],
+                "width": geometry["width"],
+            }
+            browser.call_page("restoreLayeredPptxBackgroundIsolation")
+    finally:
+        try:
+            browser.call_page("restoreLayeredPptxBackgroundIsolation")
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            browser.send("Emulation.setDefaultBackgroundColorOverride")
+        except Exception:  # noqa: BLE001
+            pass
+    return captures
+
+
+def export_pptx(browser: Chromium, out: Path) -> dict[str, Any]:
+    sel, stage_sel = json.loads(json.dumps([SLIDE_SELECTOR, DECK_STAGE_SELECTOR]))
+    count = browser.call_page("countRealSlides", sel)
+    if not isinstance(count, int) or count < 1:
+        raise ExportError("no slide surfaces found in this deck", "NO_SLIDES")
+    # Deck-only DOM prep: hide presenter chrome, authored 1:1 size, frozen animations.
+    browser.call_page("prepareDeckStage", HIDE_CHROME_SELECTOR, stage_sel)
+    width, height = measure_stage(browser, sel, stage_sel)
+    browser.set_viewport(width, height)
+    browser.next_frames()
+    browser.call_page("pinDeckStage", width, height, stage_sel)
+
+    # dom-to-pptx measures each element's live layout, so all slides must be laid out at once.
+    browser.call_page("showAllSlides", sel)
+    browser.next_frames()
+    # Charts drawn while their slide was hidden have no size yet: lay them out before measuring.
+    browser.call_page("resizeCharts")
+    browser.next_frames()
+    embedded_fonts = expose_embedded_fonts(browser)
+    imported = browser.call_page("collectImportedStylesheetUrls")
+    overrides = embedded_fonts + fetch_google_font_stylesheets(imported or [])
+    browser.evaluate(read_bundle(), timeout_s=120)
+    prepared = browser.call_page("runDomToPptx", sel, {}, "prepare", overrides, timeout_s=120)
+    if not isinstance(prepared, dict) or not prepared.get("prepared") or prepared.get("error"):
+        message = prepared.get("error") if isinstance(prepared, dict) else None
+        raise ExportError(message or "editable PPTX export DOM normalization failed")
+    browser.next_frames()
+    layered = capture_layered_backgrounds(browser, sel)
+    result = browser.call_page(
+        "runDomToPptx", sel, layered, "export-prepared", overrides, timeout_s=300
+    )
+    if not isinstance(result, dict) or result.get("error") or not result.get("b64"):
+        message = result.get("error") if isinstance(result, dict) else None
+        raise ExportError(message or "editable PPTX export produced no output")
+    out.write_bytes(base64.b64decode(result["b64"]))
+    return {"slides": count, "width": width, "height": height}
+
+
+# ---------------------------------------------------------------------------------------------
+# PDF (pdf-export.ts exportPdfFromHtml, deck branch)
+# ---------------------------------------------------------------------------------------------
+
+
+def export_pdf(browser: Chromium, out: Path) -> dict[str, Any]:
+    count = browser.call_page("countRealSlides", SLIDE_SELECTOR)
+    if not isinstance(count, int) or count < 1:
+        raise ExportError("no slide surfaces found in this deck", "NO_SLIDES")
+    # Marks every slide active so the deck's own `.slide.active` styling applies to all of them.
+    browser.call_page("unhideDeckSlidesForPrint")
+    # Chart.js canvases are laid out at the printed size and painted (animations are off in decks).
+    browser.call_page("resizeCharts")
+    browser.evaluate(
+        "(() => { const s = document.createElement('style'); s.setAttribute('data-superchat-deck-pdf', '');"
+        f" s.textContent = window.__superchatDeck.DECK_PRINT_CSS; document.head.appendChild(s); return true; }})()"
+    )
+    browser.next_frames()
+    pdf = browser.send(
+        "Page.printToPDF",
+        {
+            "printBackground": True,
+            "preferCSSPageSize": True,
+            "marginTop": 0,
+            "marginBottom": 0,
+            "marginLeft": 0,
+            "marginRight": 0,
+            "paperWidth": DECK_PAGE_INCHES[0],
+            "paperHeight": DECK_PAGE_INCHES[1],
+            "transferMode": "ReturnAsBase64",
+        },
+        timeout_s=240,
+    )
+    data = pdf.get("data")
+    if not data:
+        raise ExportError("Chromium returned no PDF")
+    out.write_bytes(base64.b64decode(data))
+    return {"slides": count, "width": SLIDE_W, "height": SLIDE_H}
+
+
+SLIDE_SELECTOR = ".slide, [data-screen-label], .deck-slide, .ppt-slide"
+DECK_STAGE_SELECTOR = "deck-stage, #deck-stage, .deck-stage"
+HIDE_CHROME_SELECTOR = (
+    ".progress-bar, .notes-overlay, aside.notes, .speaker-notes, .deck-nav, .deck-hint, .deck-counter"
+)
+
+
+# The footer rail starts here (slide-relative px): authored content stays above it.
+FOOTER_RAIL_TOP = SLIDE_H - 168
+
+
+def run_lint(browser: Chromium) -> dict[str, Any]:
+    """Superchat addition: measure the laid-out deck for what would not survive export 1:1."""
+    count = browser.call_page("countRealSlides", SLIDE_SELECTOR)
+    if not isinstance(count, int) or count < 1:
+        raise ExportError("no slide surfaces found in this deck", "NO_SLIDES")
+    browser.call_page("prepareDeckStage", HIDE_CHROME_SELECTOR, DECK_STAGE_SELECTOR)
+    width, height = measure_stage(browser, SLIDE_SELECTOR, DECK_STAGE_SELECTOR)
+    browser.set_viewport(width, height)
+    browser.next_frames()
+    browser.call_page("pinDeckStage", width, height, DECK_STAGE_SELECTOR)
+    browser.call_page("showAllSlides", SLIDE_SELECTOR)
+    browser.next_frames()
+    issues = browser.call_page(
+        "lintDeck", {"slideSelector": SLIDE_SELECTOR, "railTop": FOOTER_RAIL_TOP}
+    )
+    return {"ok": True, "slides": count, "width": width, "height": height, "issues": issues or []}
+
+
+def run_export(fmt: str, html_path: Path, out: Path | None) -> dict[str, Any]:
+    if not html_path.is_file():
+        raise ExportError("the deck file is missing", "NO_INPUT")
+    with Chromium() as browser:
+        browser.set_viewport(SLIDE_W, SLIDE_H)
+        browser.load_document(html_path)
+        browser.wait_for_printable_content()
+        # Superchat decks fit their stage to the viewport with a scale transform; at export the stage
+        # must stay at its authored size, so the deck's fit() honours this attribute.
+        browser.evaluate(
+            "(() => { document.documentElement.setAttribute('data-superchat-export', '');"
+            " window.dispatchEvent(new Event('resize')); return true; })()"
+        )
+        if fmt == "lint":
+            return run_lint(browser)
+        assert out is not None
+        info = export_pptx(browser, out) if fmt == "pptx" else export_pdf(browser, out)
+    assert out is not None
+    if not out.is_file() or out.stat().st_size == 0:
+        raise ExportError("the export produced an empty file")
+    return {"ok": True, "path": str(out), **info}
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="superchat-deck-export")
+    parser.add_argument("--format", choices=["pptx", "pdf", "lint"], required=True)
+    parser.add_argument("--html", required=True)
+    parser.add_argument("--out")
+    args = parser.parse_args(argv[1:])
+    if args.format != "lint" and not args.out:
+        parser.error("--out is required for pptx and pdf")
+    budget = int(os.environ.get("SUPERCHAT_DECK_EXPORT_TIMEOUT", "170"))
+
+    def on_alarm(_signum: int, _frame: Any) -> None:
+        raise ExportError("the export took too long", "TIMEOUT")
+
+    signal.signal(signal.SIGALRM, on_alarm)
+    signal.alarm(budget)
+    try:
+        result = run_export(args.format, Path(args.html), Path(args.out) if args.out else None)
+    except ExportError as exc:
+        result = {"ok": False, "error": str(exc), "code": exc.code}
+    except Exception as exc:  # noqa: BLE001
+        result = {"ok": False, "error": f"export failed: {exc}", "code": "RENDER_FAILED"}
+    finally:
+        signal.alarm(0)
+    print(json.dumps(result))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

@@ -1,4 +1,4 @@
-import type { ChatSummary, ThreadMessage } from "@nova/contracts";
+import type { ChatSummary, ThreadMessage } from "@superchat/contracts";
 import { useMemo, useRef, useState } from "react";
 import { ApprovalCards } from "../../features/approvals";
 import {

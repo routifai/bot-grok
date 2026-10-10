@@ -1,6 +1,6 @@
 import { t } from "@lingui/core/macro";
 import { Trans } from "@lingui/react/macro";
-import type { Bot } from "@nova/contracts";
+import type { Bot } from "@superchat/contracts";
 import {
   Badge,
   BotAvatar,
@@ -13,7 +13,7 @@ import {
   CommandList,
   CommandShortcut,
   Kbd,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import { useEffect, useMemo, useState } from "react";
 
 function isApplePlatform() {

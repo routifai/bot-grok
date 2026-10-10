@@ -1,4 +1,4 @@
-import type { ActivityStep } from "@nova/contracts";
+import type { ActivityStep } from "@superchat/contracts";
 
 // One registry, one source of truth for how an Activity Step reads in the UI
 // (docs/super-chat/README.md "The Activity panel"; AGENTS.md "no hex, tokens only" applies to
@@ -278,7 +278,7 @@ const PLUMBING = /\[System:|\bsys_[a-z_]+|\b__[a-z_]+/;
 const ID_LIKE = /^(?:[a-z_-]+[_-])?[0-9a-f]{6,}(?:[_-][0-9a-f]+)*$/i;
 
 /** The engine's own title for a Conversation turn that carried no message of its own. */
-const CONVERSATION_TITLE = /^nova conversation$/i;
+const CONVERSATION_TITLE = /^superchat conversation$/i;
 
 /** An Activity title in plain words: a Helper's "agent: topic" shows just the topic (the
  * Helper pill says who), falling back to the Helper's name when the topic is only an id;

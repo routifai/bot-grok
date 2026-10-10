@@ -1,4 +1,4 @@
-import { cn } from "@nova/ui-web";
+import { cn } from "@superchat/ui-web";
 
 /** The superchat mark: two overlapping circle outlines and a dot. */
 export function SuperchatMark({ size = 34, className }: { size?: number; className?: string }) {

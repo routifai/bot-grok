@@ -12,7 +12,7 @@ from omnigent.spec.types import AgentSpec, ExecutorSpec
 def _spec(model: str) -> AgentSpec:
     return AgentSpec(
         spec_version=1,
-        name="nova-pi",
+        name="superchat-pi",
         executor=ExecutorSpec(type="omnigent", config={"harness": "pi"}, model=model),
     )
 
@@ -25,8 +25,8 @@ def test_expanded_model_reaches_pi_spawn_env() -> None:
 
 @pytest.mark.parametrize("harness", ["pi", "claude-sdk"])
 def test_unresolved_spec_model_fails_loudly(harness: str) -> None:
-    with pytest.raises(OmnigentError, match=r"\$\{NOVA_CLAUDE_MODEL\}"):
-        _build_spawn_env_from_spec(_spec("${NOVA_CLAUDE_MODEL}"), harness)
+    with pytest.raises(OmnigentError, match=r"\$\{SUPERCHAT_CLAUDE_MODEL\}"):
+        _build_spawn_env_from_spec(_spec("${SUPERCHAT_CLAUDE_MODEL}"), harness)
 
 
 def test_unresolved_model_override_fails_loudly() -> None:

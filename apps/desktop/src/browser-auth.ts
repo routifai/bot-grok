@@ -1,5 +1,5 @@
 import { createServer, type Server } from "node:http";
-import type { NovaDesktopOAuthCallback } from "@nova/contracts";
+import type { SuperchatDesktopOAuthCallback } from "@superchat/contracts";
 import { LOOPBACK_HOSTS } from "./oauth-callback.js";
 
 /** Native transport only: providers still own PKCE, token exchange and persistence. */
@@ -8,7 +8,7 @@ export async function openBrowserAuth(
   options: {
     signal: AbortSignal;
     openExternal: (url: string) => Promise<unknown>;
-    onCallback: (callback: NovaDesktopOAuthCallback) => void;
+    onCallback: (callback: SuperchatDesktopOAuthCallback) => void;
     onClose?: () => void;
   },
 ): Promise<void> {
@@ -83,11 +83,11 @@ export async function openBrowserAuth(
             !code ||
             target.searchParams.has("error")
           ) {
-            response.writeHead(400).end("Sign-in callback rejected. Return to Nova to retry.");
+            response.writeHead(400).end("Sign-in callback rejected. Return to Superchat to retry.");
             return;
           }
           consumed = true;
-          response.end("You can close this tab and return to Nova.", close);
+          response.end("You can close this tab and return to Superchat.", close);
           options.onCallback({ code, state });
         });
         server.requestTimeout = 10_000;

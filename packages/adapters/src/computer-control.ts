@@ -4,9 +4,9 @@ import {
   type JobPublisher,
   runContinueJob,
   type SandboxProvider,
-} from "@nova/adapter-kit";
-import type { PrismaClient, ThreadEvents } from "@nova/db";
-import { getLogger } from "@nova/logging";
+} from "@superchat/adapter-kit";
+import type { PrismaClient, ThreadEvents } from "@superchat/db";
+import { getLogger } from "@superchat/logging";
 import { toComputerRef } from "./computer-support.js";
 
 export const DEFAULT_TAKEOVER_LEASE_MS = 15 * 60 * 1000;

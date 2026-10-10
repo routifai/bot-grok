@@ -46,11 +46,11 @@ def test_theme_library_has_licenses_metadata_and_embeddable_fonts() -> None:
 def test_assembled_deck_keeps_the_framework_and_embeds_fonts(template: str) -> None:
     deck = kit.build_deck(template, "Q3 <review> & plans", SAMPLE)
     assert deck.startswith("<!doctype html>")
-    assert '<html lang="en" data-nova-deck-protocol="1">' in deck
+    assert '<html lang="en" data-superchat-deck-protocol="1">' in deck
     assert "<title>Q3 &lt;review&gt; &amp; plans</title>" in deck
     # the framework: one stage, print rules, protocol, export-aware fit()
     assert 'class="deck-stage" id="deck-stage"' in deck and "@media print" in deck
-    assert "nova:slide-state" in deck and "data-nova-export" in deck
+    assert "superchat:slide-state" in deck and "data-superchat-export" in deck
     # the theme and slides went into their slots; no slot comment is left behind
     assert "SLOT:" not in deck.replace("SLOT: theme tokens", "")
     assert kit.SLOTS_OPEN in deck and kit.SLOTS_CLOSE in deck
@@ -73,13 +73,13 @@ def test_static_checks_report_what_a_slide_must_fix() -> None:
         "<script>1</script></section>"
     )
     joined = " ".join(errors)
-    assert "data-screen-label" in joined and "data-nova-id" in joined
+    assert "data-screen-label" in joined and "data-superchat-id" in joined
     assert "<script>" in joined and "web" in joined
     assert warnings and "active" in warnings[0]
     dup, _ = kit.check_slides(
-        '<section class="slide active" data-screen-label="01 A" data-nova-id="a">'
-        '<p data-nova-id="x">1</p><p data-nova-id="x">2</p>'
-        '<p data-nova-id="Bad_Id">3</p></section>'
+        '<section class="slide active" data-screen-label="01 A" data-superchat-id="a">'
+        '<p data-superchat-id="x">1</p><p data-superchat-id="x">2</p>'
+        '<p data-superchat-id="Bad_Id">3</p></section>'
     )
     assert any('"x" is used more than once' in e for e in dup)
     assert any("Bad_Id" in e for e in dup)
@@ -234,9 +234,9 @@ async def test_deck_check_still_checks_structure_when_chromium_is_missing(
     workspace: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     broken = kit.build_deck("magazine-mono", "T", SAMPLE).replace(
-        ' data-nova-id="why-statement"', ""
+        ' data-superchat-id="why-statement"', ""
     )
-    broken = broken.replace('data-nova-id="why"', 'data-nova-id="cover"')
+    broken = broken.replace('data-superchat-id="why"', 'data-superchat-id="cover"')
     (workspace / "d.deck.html").write_text(broken, "utf-8")
     monkeypatch.setenv(HELPER_ENV, str(_fake_helper(tmp_path, None)))
     out = json.loads(await handle_authoring_tool("deck_check", {"path": "d.deck.html"}))
@@ -296,7 +296,7 @@ async def test_deck_theme_set_refuses_bad_input(workspace: Path) -> None:
     hand_made = await handle_authoring_tool(
         "deck_theme_set", {"path": "d.deck.html", "theme_id": "nord"}
     )
-    assert "ask Nova" in json.loads(hand_made)["error"]
+    assert "ask Superchat" in json.loads(hand_made)["error"]
     missing = await handle_authoring_tool(
         "deck_theme_set", {"path": "no.deck.html", "theme_id": "nord"}
     )

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
-import type { ComputerAction, ComputerObservation, ComputerRef } from "@nova/adapter-kit";
-import type { ComputerMode } from "@nova/contracts";
+import type { ComputerAction, ComputerObservation, ComputerRef } from "@superchat/adapter-kit";
+import type { ComputerMode } from "@superchat/contracts";
 
 export function toComputerRef(computer: {
   homeKey: string;
@@ -137,4 +137,4 @@ function stripVirtualWorkspaceRoot(value: string): string | null {
   return portable.startsWith("/") ? portable.slice(1) : null;
 }
 
-export { shellQuote } from "@nova/core/node/desktop-runtime";
+export { shellQuote } from "@superchat/core/node/desktop-runtime";

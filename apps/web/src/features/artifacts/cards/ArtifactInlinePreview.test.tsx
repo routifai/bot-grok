@@ -13,7 +13,7 @@ vi.mock("react-dom/client", async (orig) =>
 
 const api = vi.hoisted(() => ({ getById: vi.fn(), listVersions: vi.fn() }));
 vi.mock("../../../lib/rpc", () => ({ rpc: { artifacts: api } }));
-vi.mock("@nova/chat-ui/web", () => ({
+vi.mock("@superchat/chat-ui/web", () => ({
   ChatMarkdown: ({ children }: { children?: ReactNode }) => <div data-testid="md">{children}</div>,
 }));
 vi.mock("../../../components/SandboxedHtmlViewer", () => ({

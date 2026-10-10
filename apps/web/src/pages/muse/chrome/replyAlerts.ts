@@ -1,4 +1,4 @@
-import type { FamilyEvent, ProductEvent } from "@nova/contracts";
+import type { FamilyEvent, ProductEvent } from "@superchat/contracts";
 
 type Notification = Pick<ProductEvent, "id" | "type" | "threadId" | "seq" | "botId" | "payload">;
 

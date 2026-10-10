@@ -5,7 +5,7 @@ import type {
   ConnectorEvent,
   ConnectorProvider,
   ConnectorTool,
-} from "@nova/adapter-kit";
+} from "@superchat/adapter-kit";
 
 export interface DestinationRecord {
   id: string;

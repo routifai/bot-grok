@@ -4,15 +4,15 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { ALWAYS_ON_SUPERSIDE_CHAT_TOOLS, TOOL_PRESENTATION } from "./tool-presentation.js";
 
-// Forces registering a tool's presentation the moment it's added to Nova's agent bundle
-// (infra/omnigent/agents/nova-claude/, generated from infra/omnigent/templates/) — see
+// Forces registering a tool's presentation the moment it's added to Superchat's agent bundle
+// (infra/omnigent/agents/superchat-claude/, generated from infra/omnigent/templates/) — see
 // docs/super-chat/README.md "How to register a tool". No YAML dependency in this workspace, so
 // this reads the `tools: builtins: - name: <tool>` lists with a small indentation-aware scan
 // rather than a real parser; good enough for this bundle's shape.
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, "../../..");
-const NOVA_AGENT_BUNDLE_DIR = join(REPO_ROOT, "infra/omnigent/agents/nova-claude");
+const SUPERCHAT_AGENT_BUNDLE_DIR = join(REPO_ROOT, "infra/omnigent/agents/superchat-claude");
 
 function findConfigYamlFiles(dir: string): string[] {
   const found: string[] = [];
@@ -57,8 +57,8 @@ function builtinToolNames(yamlText: string): string[] {
 }
 
 describe("tool presentation registry completeness", () => {
-  it("has a presentation entry for every builtin tool declared in Nova's agent bundle", () => {
-    const configFiles = findConfigYamlFiles(NOVA_AGENT_BUNDLE_DIR);
+  it("has a presentation entry for every builtin tool declared in Superchat's agent bundle", () => {
+    const configFiles = findConfigYamlFiles(SUPERCHAT_AGENT_BUNDLE_DIR);
     expect(configFiles.length).toBeGreaterThan(0);
 
     const declaredTools = new Set<string>();

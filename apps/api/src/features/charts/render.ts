@@ -1,4 +1,4 @@
-/* Portions modified from getnao/nao apps/backend/src/components/generate-chart.tsx and apps/backend/src/utils/generate-chart.ts@5bde830, Apache-2.0; changes: the SVG is stitched with string operations (no cheerio), `var(--token)` colors resolve against Nova's light and dark tokens, a KPI card gets its own SVG, the PNG is drawn by @resvg/resvg-js (MPL-2.0, used unmodified as a library). */
+/* Portions modified from getnao/nao apps/backend/src/components/generate-chart.tsx and apps/backend/src/utils/generate-chart.ts@5bde830, Apache-2.0; changes: the SVG is stitched with string operations (no cheerio), `var(--token)` colors resolve against Superchat's light and dark tokens, a KPI card gets its own SVG, the PNG is drawn by @resvg/resvg-js (MPL-2.0, used unmodified as a library). */
 
 import { fileURLToPath } from "node:url";
 import {
@@ -11,8 +11,8 @@ import {
   prepareChart,
   resolveDataKey,
   VERTICAL_LEGEND_WIDTH,
-} from "@nova/charts";
-import { museDarkTokens, museLightTokens } from "@nova/ui-tokens";
+} from "@superchat/charts";
+import { museDarkTokens, museLightTokens } from "@superchat/ui-tokens";
 import { Resvg } from "@resvg/resvg-js";
 import { cloneElement } from "react";
 import { renderToString } from "react-dom/server";

@@ -5,7 +5,7 @@ import type {
   MessagingAgentConnection,
   MessagingChannelMembership,
   MessagingStatus,
-} from "@nova/contracts";
+} from "@superchat/contracts";
 import {
   Button,
   Dialog,
@@ -14,7 +14,7 @@ import {
   DialogTitle,
   NativeSelect,
   NativeSelectOption,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import { XIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 

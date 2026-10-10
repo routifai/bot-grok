@@ -1,4 +1,4 @@
-import type { Activity, ThreadMessagePage } from "@nova/contracts";
+import type { Activity, ThreadMessagePage } from "@superchat/contracts";
 import { useMemo, useState } from "react";
 import type { ActivitiesState, ActivityWire } from "../../features/activity";
 import type { MemoryWire } from "../../features/memory";

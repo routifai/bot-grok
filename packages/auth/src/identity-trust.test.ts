@@ -1,6 +1,6 @@
 import { generateKeyPairSync, sign } from "node:crypto";
-import type { TransactionalEmail } from "@nova/adapter-kit";
-import { bootstrapUserSpace, personalOrganizations, quarantineUserSpaces } from "@nova/db";
+import type { TransactionalEmail } from "@superchat/adapter-kit";
+import { bootstrapUserSpace, personalOrganizations, quarantineUserSpaces } from "@superchat/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   assertIdentityConfig,
@@ -19,7 +19,7 @@ vi.mock("better-auth/adapters/prisma", async () => {
       memoryAdapter(prisma.authData),
   };
 });
-vi.mock("@nova/db", () => ({
+vi.mock("@superchat/db", () => ({
   bootstrapUserSpace: vi.fn(async () => ({ spaceId: "space-1" })),
   personalOrganizations: vi.fn(async () => [{ id: "org-1", spaceIds: ["space-1"] }]),
   quarantineUserSpaces: vi.fn(async () => ({ organizationIds: ["org-1"], spaceIds: ["space-1"] })),
@@ -295,8 +295,8 @@ describe("verified email", () => {
     expect(f.data.session).toHaveLength(0);
     expect(bootstrapUserSpace).not.toHaveBeenCalled();
     expect(f.messages).toHaveLength(1);
-    expect(f.messages[0]!.subject).toMatch(/^\d{6} is your Nova code$/);
-    expect(f.messages[0]!.html).toContain("Nova");
+    expect(f.messages[0]!.subject).toMatch(/^\d{6} is your Superchat code$/);
+    expect(f.messages[0]!.html).toContain("Superchat");
 
     expect((await f.signin()).status).toBe(403);
     expect(f.messages).toHaveLength(2);

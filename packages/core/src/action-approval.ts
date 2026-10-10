@@ -1,4 +1,4 @@
-import type { ActionApprovalRule as StoredActionApprovalRule } from "@nova/contracts";
+import type { ActionApprovalRule as StoredActionApprovalRule } from "@superchat/contracts";
 
 const APPROVAL_EXEMPT_TOOLS = new Set([
   "computer_observe",

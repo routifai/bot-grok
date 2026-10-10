@@ -9,8 +9,8 @@ import {
   OmnigentApiError,
   type OmnigentClientConfig,
   OmnigentDeckConflictError,
-} from "@nova/adapters";
-import type { Actor, Artifact, DeckExportFormat, DeckPatch, DeckTheme } from "@nova/contracts";
+} from "@superchat/adapters";
+import type { Actor, Artifact, DeckExportFormat, DeckPatch, DeckTheme } from "@superchat/contracts";
 import { ORPCError } from "@orpc/server";
 import { type EngineArtifactsDeps, emailOf, notFound, toArtifact } from "../artifacts/index.js";
 
@@ -47,7 +47,7 @@ export async function engineExportDeck(
 }
 
 /** Hand edits as source patches. A stale base and a patch the engine will not apply exactly are
- * both CONFLICT; the message tells the web which (it reloads, or says "ask Nova instead"). */
+ * both CONFLICT; the message tells the web which (it reloads, or says "ask Superchat instead"). */
 export async function engineEditDeck(
   deps: EngineArtifactsDeps,
   client: OmnigentClientConfig,

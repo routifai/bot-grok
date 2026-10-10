@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { EngineModelCatalog } from "@nova/contracts";
+import type { EngineModelCatalog } from "@superchat/contracts";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,7 +9,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import { Cpu } from "lucide-react";
 import { useState } from "react";
 import { errorText } from "../../lib/error-text";
@@ -22,7 +22,7 @@ const DEFAULT_VALUE = "__default__";
 /**
  * The model this Conversation runs on, in the toolbar: a quiet button that opens the list the
  * engine serves for the Conversation's harness. "Default" returns to the person's own default.
- * Absent when Nova runs without the engine; the list is only fetched when it opens.
+ * Absent when Superchat runs without the engine; the list is only fetched when it opens.
  */
 export function ConversationModelPicker({ botId }: { botId: string }) {
   const { t } = useLingui();

@@ -1,6 +1,6 @@
-import type { ArtifactStore } from "@nova/adapter-kit";
-import type { Actor } from "@nova/contracts";
-import type { PrismaClient } from "@nova/db";
+import type { ArtifactStore } from "@superchat/adapter-kit";
+import type { Actor } from "@superchat/contracts";
+import type { PrismaClient } from "@superchat/db";
 import { describe, expect, it, vi } from "vitest";
 import {
   ArtifactListCursorError,

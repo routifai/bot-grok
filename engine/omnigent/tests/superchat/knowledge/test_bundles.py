@@ -18,7 +18,7 @@ TOOLS = (
 )
 
 
-@pytest.mark.parametrize("bundle", ["nova-claude", "nova-pi"])
+@pytest.mark.parametrize("bundle", ["superchat-claude", "superchat-pi"])
 def test_the_bundle_teaches_the_qmd_search_strategy(bundle: str) -> None:
     text = (AGENTS / bundle / "AGENTS.md").read_text()
     section = text.split("## The person's files", 1)[1].split("\n## ", 1)[0]
@@ -29,7 +29,7 @@ def test_the_bundle_teaches_the_qmd_search_strategy(bundle: str) -> None:
         assert gone not in text, gone
 
 
-@pytest.mark.parametrize("bundle", ["nova-claude", "nova-pi"])
+@pytest.mark.parametrize("bundle", ["superchat-claude", "superchat-pi"])
 def test_helpers_get_the_same_tools(bundle: str) -> None:
     for config in (
         AGENTS / bundle / "agents" / "worker" / "config.yaml",

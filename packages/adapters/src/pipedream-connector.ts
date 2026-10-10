@@ -6,8 +6,8 @@ import type {
   ConnectorEvent,
   ConnectorTool,
   ManagedConnectorProvider,
-} from "@nova/adapter-kit";
-import { getLogger } from "@nova/logging";
+} from "@superchat/adapter-kit";
+import { getLogger } from "@superchat/logging";
 import { catalogToolPrefix } from "./approval-effect.js";
 import { collectPages, filterCatalog } from "./composio-connector.js";
 import {

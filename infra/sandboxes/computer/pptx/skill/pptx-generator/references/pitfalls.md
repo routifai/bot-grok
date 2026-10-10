@@ -1,4 +1,4 @@
-<!-- Portions from MiniMax-AI/skills skills/pptx-generator/references/pitfalls.md@60aaae5, MIT; changes: python3 for the markitdown commands; two Nova rules appended to the mistakes list (native charts, no invented numbers). See ../NOTICE.md and ../LICENSE. -->
+<!-- Portions from MiniMax-AI/skills skills/pptx-generator/references/pitfalls.md@60aaae5, MIT; changes: python3 for the markitdown commands; two Superchat rules appended to the mistakes list (native charts, no invented numbers). See ../NOTICE.md and ../LICENSE. -->
 
 # QA Process & Common Pitfalls
 
@@ -60,8 +60,8 @@ Check for missing content, placeholder text, missing page number badge.
 - **NEVER encode opacity in hex strings** — use the `opacity` property instead
 - **NEVER use async/await in createSlide()** — compile.js won't await
 - **NEVER reuse option objects across PptxGenJS calls** — PptxGenJS mutates objects in-place
-- **NEVER invent chart or table numbers** — every value comes from the person's files, computed with pandas or duckdb (Nova rule)
-- **NEVER draw a chart as a picture or shapes** — use `addChart` so Edit Data works in PowerPoint (Nova rule)
+- **NEVER invent chart or table numbers** — every value comes from the person's files, computed with pandas or duckdb (Superchat rule)
+- **NEVER draw a chart as a picture or shapes** — use `addChart` so Edit Data works in PowerPoint (Superchat rule)
 
 ---
 

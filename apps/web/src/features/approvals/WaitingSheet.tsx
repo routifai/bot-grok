@@ -1,9 +1,9 @@
 import { useLingui } from "@lingui/react/macro";
-import type { Ask } from "@nova/contracts";
+import type { Ask } from "@superchat/contracts";
 import { Check, Minus } from "lucide-react";
 import { useState } from "react";
 import { DockSheet, DockSheetHeader } from "../../pages/muse/chrome/DockSheet";
-import { NovaTile } from "../../pages/muse/chrome/NovaTile";
+import { SuperchatTile } from "../../pages/muse/chrome/SuperchatTile";
 import { EmptyState, MUSE_INSET_GROUP, MUSE_LIST_ROW, SegmentedControl } from "../../pages/muse/ui";
 import { CardSkeletonList } from "../../pages/muse/ui/CardSkeleton";
 import { AskList, useAsks } from ".";
@@ -111,9 +111,9 @@ export function WaitingSheet({
             <div className={MUSE_INSET_GROUP}>
               {decided.map((entry) => (
                 <div key={entry.ask.id} className={MUSE_LIST_ROW}>
-                  <NovaTile tone={entry.primary ? "green" : "gray"} size={28}>
+                  <SuperchatTile tone={entry.primary ? "green" : "gray"} size={28}>
                     {entry.primary ? <Check strokeWidth={2.6} /> : <Minus strokeWidth={2.6} />}
-                  </NovaTile>
+                  </SuperchatTile>
                   <span className="min-w-0">
                     <span className="block truncate text-foreground" dir="auto">
                       {entry.ask.kind === "approval" && !entry.ask.approval

@@ -1,4 +1,4 @@
-import type { ThreadMessage } from "@nova/contracts";
+import type { ThreadMessage } from "@superchat/contracts";
 import { expect, it } from "vitest";
 import type { TranscriptRow } from "./failureNotes";
 import { foldGroupRuns } from "./transcriptGroups";

@@ -27,7 +27,7 @@ type MemoryState =
  * The context panel's Memory tab: a read-only view of the Muse's Memory Profile
  * (`rpc.memory.profile`) — what it remembers about the person, in its own words, grouped
  * under the headings the engine gives it. When the claim wire is there, the tab shows the
- * editable sections instead (About you, Commitments, Projects & focus, People, How Nova works
+ * editable sections instead (About you, Commitments, Projects & focus, People, How Superchat works
  * with you; see MemorySections.tsx). The Days section (daily notes, supplied through `days`) sits under them; Memory settings
  * (apps/web/src/pages/muse/settings/MemoryPanel.tsx) owns changing it.
  */
@@ -117,11 +117,11 @@ export function MemoryTab({
           {section.heading ? (
             <h3 className="px-1.5 text-[13px] font-semibold text-foreground">{section.heading}</h3>
           ) : null}
-          <ul className="nova-group flex flex-col">
+          <ul className="superchat-group flex flex-col">
             {section.items.map((item, itemIndex) => (
               <li
                 key={itemIndex}
-                className="nova-row nova-row-plain px-3 py-2.5 text-[14px] leading-[1.4] text-foreground"
+                className="superchat-row superchat-row-plain px-3 py-2.5 text-[14px] leading-[1.4] text-foreground"
                 dir="auto"
               >
                 {addressMemoryItem(item)}

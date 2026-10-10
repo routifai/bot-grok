@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { Bot } from "@nova/contracts";
+import type { Bot } from "@superchat/contracts";
 import type { ComponentProps, ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -15,7 +15,7 @@ vi.mock("@lingui/react/macro", () => {
   return { useLingui: () => ({ t }), Trans: ({ children }: { children: ReactNode }) => children };
 });
 
-vi.mock("@nova/ui-web", () => ({
+vi.mock("@superchat/ui-web", () => ({
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
   Button: (props: ComponentProps<"button">) => <button type="button" {...props} />,
   Dialog: ({ children }: { children?: ReactNode }) => <>{children}</>,
@@ -50,7 +50,7 @@ vi.mock("@nova/ui-web", () => ({
 
 // Every panel below is presentational chrome not under test here: this file only
 // exercises the nav (which sections exist, in which order, for which product mode)
-// and the wiring into the Nova section. Each stub reports the props it cares about
+// and the wiring into the Superchat section. Each stub reports the props it cares about
 // via data-testid so assertions can read them back.
 vi.mock("./AccountSettingsOverlay", () => ({
   GeneralSettingsPanels: ({ museMode }: { museMode?: boolean }) => (
@@ -70,18 +70,18 @@ vi.mock("./muse/settings/GeneralPanel", () => ({
   GeneralPanel: () => <div data-testid="general-panel" data-muse-mode="true" />,
 }));
 vi.mock("./muse/settings/VoicePanel", () => ({ VoicePanel: () => <div /> }));
-vi.mock("./muse/NovaSettingsPanel", () => ({
-  NovaSettingsPanel: ({
+vi.mock("./muse/SuperchatSettingsPanel", () => ({
+  SuperchatSettingsPanel: ({
     bot,
     onSave,
   }: {
     bot: Bot;
     onSave: (patch: { name?: string; color?: string }) => Promise<void>;
   }) => (
-    <div data-testid="nova-panel" data-bot-name={bot.name}>
+    <div data-testid="superchat-panel" data-bot-name={bot.name}>
       <button
         type="button"
-        data-testid="nova-panel-save"
+        data-testid="superchat-panel-save"
         onClick={() => void onSave({ name: "New name" })}
       >
         save
@@ -108,7 +108,7 @@ function bot(overrides: Partial<Bot> = {}): Bot {
   return {
     id: "bot-1",
     spaceId: "space-1",
-    name: "Nova",
+    name: "Superchat",
     title: "",
     description: "",
     instructions: "",
@@ -158,7 +158,7 @@ const baseProps = {
   onClose: () => undefined,
 };
 
-it("upstream mode: shows Avatars-capable General and Updates, no Nova section", async () => {
+it("upstream mode: shows Avatars-capable General and Updates, no Superchat section", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const { container, root } = render();
   try {
@@ -175,7 +175,7 @@ it("upstream mode: shows Avatars-capable General and Updates, no Nova section", 
   }
 });
 
-it("muse mode: adds Nova first, drops Usage and Updates, and uses the Muse General panel", async () => {
+it("muse mode: adds Superchat first, drops Usage and Updates, and uses the Muse General panel", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const { container, root } = render();
   try {
@@ -184,16 +184,16 @@ it("muse mode: adds Nova first, drops Usage and Updates, and uses the Muse Gener
         <SettingsOverlay
           {...baseProps}
           museMode
-          museBot={bot({ name: "Nova" })}
+          museBot={bot({ name: "Superchat" })}
           onMuseBotSave={async () => undefined}
         />,
       ),
     );
     const ids = navIds(container);
-    expect(ids).toEqual(["nova", "general", "voice"]);
+    expect(ids).toEqual(["superchat", "general", "voice"]);
     expect(ids).not.toContain("updates");
-    expect(container.querySelector('[data-testid="settings-nav-nova"]')?.textContent).toContain(
-      "Nova",
+    expect(container.querySelector('[data-testid="settings-nav-superchat"]')?.textContent).toContain(
+      "Superchat",
     );
     expect(
       container.querySelector('[data-testid="general-panel"]')?.getAttribute("data-muse-mode"),
@@ -205,7 +205,7 @@ it("muse mode: adds Nova first, drops Usage and Updates, and uses the Muse Gener
   }
 });
 
-it("muse mode: opening Nova renders the panel wired to the Muse bot and its save callback", async () => {
+it("muse mode: opening Superchat renders the panel wired to the Muse bot and its save callback", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const onMuseBotSave = vi.fn().mockResolvedValue(undefined);
   const { container, root } = render();
@@ -215,19 +215,19 @@ it("muse mode: opening Nova renders the panel wired to the Muse bot and its save
         <SettingsOverlay
           {...baseProps}
           museMode
-          museBot={bot({ name: "Nova" })}
+          museBot={bot({ name: "Superchat" })}
           onMuseBotSave={onMuseBotSave}
         />,
       ),
     );
     const navButton = container.querySelector<HTMLButtonElement>(
-      '[data-testid="settings-nav-nova"]',
+      '[data-testid="settings-nav-superchat"]',
     );
     await act(async () => navButton?.click());
-    const panel = container.querySelector('[data-testid="nova-panel"]');
-    expect(panel?.getAttribute("data-bot-name")).toBe("Nova");
+    const panel = container.querySelector('[data-testid="superchat-panel"]');
+    expect(panel?.getAttribute("data-bot-name")).toBe("Superchat");
     const saveButton = container.querySelector<HTMLButtonElement>(
-      '[data-testid="nova-panel-save"]',
+      '[data-testid="superchat-panel-save"]',
     );
     await act(async () => saveButton?.click());
     expect(onMuseBotSave).toHaveBeenCalledWith({ name: "New name" });
@@ -249,8 +249,8 @@ it("muse mode on the engine: Models for everyone, Organization only for admins",
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   try {
     for (const [isAdmin, expected] of [
-      [false, ["nova", "general", "models", "voice"]],
-      [true, ["nova", "general", "models", "voice", "organization"]],
+      [false, ["superchat", "general", "models", "voice"]],
+      [true, ["superchat", "general", "models", "voice", "organization"]],
     ] as const) {
       engine.status = { enabled: true, harnesses: [], isAdmin, ready: true };
       const { container, root } = render();
@@ -298,8 +298,8 @@ it("offers Signups to the deployment owner only, whether or not the engine is re
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   try {
     for (const [isDeploymentOwner, expected] of [
-      [false, ["nova", "general", "voice"]],
-      [true, ["nova", "general", "voice", "signups"]],
+      [false, ["superchat", "general", "voice"]],
+      [true, ["superchat", "general", "voice", "signups"]],
     ] as const) {
       engine.status = null;
       const { container, root } = render();

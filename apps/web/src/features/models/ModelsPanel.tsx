@@ -1,4 +1,4 @@
-import type { EngineModelsStatus } from "@nova/contracts";
+import type { EngineModelsStatus } from "@superchat/contracts";
 import { useState } from "react";
 import { BudgetGroup } from "./BudgetGroup";
 import { DefaultModel } from "./DefaultModel";

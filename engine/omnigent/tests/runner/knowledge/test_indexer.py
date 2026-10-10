@@ -143,7 +143,7 @@ def test_delete_removes_passages_vectors_and_thumbnails(tmp_path: Path) -> None:
     indexer.scan()
     run_all(indexer)
     fid = file_id_for("your_files/report.pdf")
-    thumbs = tmp_path / "home" / ".nova" / "knowledge" / "thumbs" / fid
+    thumbs = tmp_path / "home" / ".superchat" / "knowledge" / "thumbs" / fid
     assert thumbs.is_dir()
     pdf.unlink()
     indexer.scan()

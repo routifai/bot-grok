@@ -1,4 +1,4 @@
-# Run Nova locally with Docker
+# Run Superchat locally with Docker
 
 This builds the app stack (Postgres, API, worker, web, sandbox supervisor) from this checkout with
 Docker Compose. **Chat needs the Omnigent engine, which this stack does not start**: run it as
@@ -27,7 +27,7 @@ You do **not** need Node.js or pnpm — everything builds inside Docker.
 ## Quick start
 
 ```bash
-git clone <repository-url> nova && cd nova
+git clone <repository-url> superchat && cd superchat
 ./scripts/setup.sh
 ```
 
@@ -40,7 +40,7 @@ That's it. The script:
 4. Detects your Docker socket path (Docker Desktop vs. colima) for the sandbox supervisor.
 5. Asks once for an optional OpenRouter API key to connect a model for every account — press
    Enter to skip and connect one per-account from the UI instead (see below).
-6. Builds the computer image (`nova/computer:local`) and the api/worker/web/supervisor images
+6. Builds the computer image (`superchat/computer:local`) and the api/worker/web/supervisor images
    from this checkout, then starts the stack and waits for it to become healthy.
 
 When it finishes, open **http://127.0.0.1:5173**.
@@ -52,7 +52,7 @@ setup step — just sign up like any other user.
 
 ## Choosing the model
 
-Set the model once in `.env`. Nova then uses it for everyone, and nobody is asked to connect a
+Set the model once in `.env`. Superchat then uses it for everyone, and nobody is asked to connect a
 model in the app. After editing `.env`, re-run `./scripts/setup.sh`.
 
 **OpenRouter or Anthropic**
@@ -60,22 +60,22 @@ model in the app. After editing `.env`, re-run `./scripts/setup.sh`.
 ```bash
 PI_DEFAULT_PROVIDER=openrouter      # or anthropic
 OPENROUTER_API_KEY=sk-or-...        # or ANTHROPIC_API_KEY=sk-ant-...
-PI_DEFAULT_MODEL=                   # optional; blank uses Nova's default for that provider
+PI_DEFAULT_MODEL=                   # optional; blank uses Superchat's default for that provider
 ```
 
 **Your own OpenAI-compatible server (LiteLLM, vLLM, Ollama, LM Studio)**
 
 ```bash
 PI_DEFAULT_PROVIDER=local
-NOVA_LOCAL_MODELS_URL=http://host.docker.internal:4000/v1   # LiteLLM on this machine
-NOVA_LOCAL_MODELS=gpt-4o,claude-sonnet                       # as the server names them; first = default
-NOVA_LOCAL_MODELS_API_KEY=sk-litellm-...                     # only if the server needs a key
-NOVA_LOCAL_VISION_MODELS=gpt-4o,claude-sonnet                # the ones that accept images
+SUPERCHAT_LOCAL_MODELS_URL=http://host.docker.internal:4000/v1   # LiteLLM on this machine
+SUPERCHAT_LOCAL_MODELS=gpt-4o,claude-sonnet                       # as the server names them; first = default
+SUPERCHAT_LOCAL_MODELS_API_KEY=sk-litellm-...                     # only if the server needs a key
+SUPERCHAT_LOCAL_VISION_MODELS=gpt-4o,claude-sonnet                # the ones that accept images
 ```
 
 - Inside Docker, `localhost` is the container itself, so a server on your laptop is
   `host.docker.internal`. A server elsewhere on your network: use its LAN address or hostname.
-- List the image-capable models in `NOVA_LOCAL_VISION_MODELS` so Nova can see its computer's
+- List the image-capable models in `SUPERCHAT_LOCAL_VISION_MODELS` so Superchat can see its computer's
   screen.
 
 People can still connect their own model under **Settings → Models** if you leave all of this
@@ -86,16 +86,16 @@ blank.
 | Thing | Where |
 | --- | --- |
 | `.env` | Repo root — your secrets and settings. Never commit this. |
-| Postgres data | Docker volume `nova_pgdata` (internal network only, no host port) |
+| Postgres data | Docker volume `superchat_pgdata` (internal network only, no host port) |
 | Bot computer / app data | `./data` in this checkout |
-| Images | `nova/computer:local` (bot computers), `nova/app:local` (api/worker/web share one build), `nova-supervisor` (sandbox supervisor) |
+| Images | `superchat/computer:local` (bot computers), `superchat/app:local` (api/worker/web share one build), `superchat-supervisor` (sandbox supervisor) |
 
-Everything runs under the Compose project name `nova`; containers are named `nova-<service>-1`.
+Everything runs under the Compose project name `superchat`; containers are named `superchat-<service>-1`.
 
 ## Where data lives / backups
 
 Bot computer homes and other application state live under `./data`; Postgres lives in the
-`nova_pgdata` Docker volume. Back both up with:
+`superchat_pgdata` Docker volume. Back both up with:
 
 ```bash
 ./scripts/backup.sh
@@ -123,7 +123,7 @@ restarts the stack.
 ## Troubleshooting
 
 **A bot's computer pane is black, or never leaves "starting."**
-The sandbox supervisor mounts the Docker socket to start per-Nova computers. The mount path is
+The sandbox supervisor mounts the Docker socket to start per-Superchat computers. The mount path is
 resolved inside the Docker VM, where both Docker Desktop and colima use `/var/run/docker.sock`, so
 leave `DOCKER_SOCKET_PATH` blank. Set it only for unusual setups such as rootless Docker on Linux
 (for example `/run/user/1000/docker.sock`). Never use colima's Mac-side
@@ -149,7 +149,7 @@ Each of `api` and `worker` keeps its own bounded Postgres pool (`api` defaults t
 **Port already in use (3100 or 5173).**
 `./scripts/setup.sh` moves to the next free port on its own and prints the address to open. It
 also points the app's own URLs (`BETTER_AUTH_URL`, `WEB_ORIGIN`, `API_URL`) at that port. To choose
-ports yourself, set `NOVA_WEB_PORT` / `NOVA_API_PORT` in `.env` and re-run the script; don't
+ports yourself, set `SUPERCHAT_WEB_PORT` / `SUPERCHAT_API_PORT` in `.env` and re-run the script; don't
 change only the port, or sign-in and the page's product settings won't match.
 
 **Still stuck?** See the full [self-hosting guide](./self-host.md) for provider setup, SMTP,
@@ -159,6 +159,6 @@ messaging integrations, and the single-VM production deployment path.
 
 ```bash
 ./scripts/reset.sh    # stops containers and deletes the database + ./data
-docker image rm nova/computer:local   # optional: also drop the built computer image
-cd .. && rm -rf nova                   # remove the checkout itself
+docker image rm superchat/computer:local   # optional: also drop the built computer image
+cd .. && rm -rf superchat                   # remove the checkout itself
 ```

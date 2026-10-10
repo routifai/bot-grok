@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { TransactionalEmail, TransactionalEmailProvider } from "@nova/adapter-kit";
+import type { TransactionalEmail, TransactionalEmailProvider } from "@superchat/adapter-kit";
 
 export interface HttpEmailConfig {
   /** Send endpoint of a Resend-compatible API, e.g. `https://api.resend.com/emails`. */

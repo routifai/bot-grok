@@ -19,7 +19,7 @@ vi.mock("@lingui/react/macro", () => {
     parts.reduce((acc, part, i) => `${acc}${part}${values[i] ?? ""}`, "");
   return { useLingui: () => ({ t }), Trans: ({ children }: { children: ReactNode }) => children };
 });
-vi.mock("@nova/ui-web", () => ({
+vi.mock("@superchat/ui-web", () => ({
   Input: (props: ComponentProps<"input">) => <input {...props} />,
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
 }));

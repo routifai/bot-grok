@@ -7,7 +7,7 @@ import {
   MUSE_FACE_SPARK,
   MUSE_SPARK_PATH,
   MuseAvatar,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import { useEffect, useRef, useState } from "react";
 import { supportsWebGL } from "../webgl";
 import { bloopPalette } from "./expression";

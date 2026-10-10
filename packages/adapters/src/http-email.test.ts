@@ -4,7 +4,7 @@ import { HttpEmailProvider } from "./http-email.js";
 const config = {
   url: "https://mail.example.test/emails",
   apiKey: "key-1",
-  from: "Nova <a@b.test>",
+  from: "Superchat <a@b.test>",
 };
 const message = { to: "ada@example.test", subject: "Hi", text: "Plain", html: "<p>Hi</p>" };
 

@@ -2,8 +2,8 @@ import {
   deploymentAutoReviewDefault,
   isAutoReviewCheckerConfigured,
   resolveAutoReviewChecker,
-} from "@nova/adapters";
-import type { Actor } from "@nova/contracts";
+} from "@superchat/adapters";
+import type { Actor } from "@superchat/contracts";
 import { engineComputerClient } from "../../engine-client.js";
 import type { RouterContext, RouterDeps } from "../../routers/context.js";
 import { answerAsk, countAsks, listAsks } from "./asks-service.js";

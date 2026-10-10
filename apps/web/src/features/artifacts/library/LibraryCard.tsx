@@ -4,7 +4,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import { Download, Ellipsis, Maximize2 } from "lucide-react";
 import { Fragment } from "react";
 import { artifactKind, kindLabel } from "../../../lib/artifact-kind";

@@ -15,8 +15,8 @@ import {
   ResponsiveContainer,
   resolveDataKey,
   Tooltip,
-} from "@nova/charts";
-import { cn } from "@nova/ui-web";
+} from "@superchat/charts";
+import { cn } from "@superchat/ui-web";
 import {
   type ComponentProps,
   cloneElement,
@@ -131,7 +131,7 @@ function pieShares({ spec, data }: Pick<ChartDocument, "spec" | "data">): Map<st
 }
 
 /**
- * A saved chart: its title, the interactive chart (hover tooltip, legend) in the Nova tokens, and
+ * A saved chart: its title, the interactive chart (hover tooltip, legend) in the Superchat tokens, and
  * the source line. `height` is the plot's height in px, or `"fill"` to use the parent's;
  * `palette` colors the series that have no color of their own.
  */

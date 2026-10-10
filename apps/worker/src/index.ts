@@ -1,6 +1,6 @@
-import type { JobPublisher, JobWorkerHost } from "@nova/adapter-kit";
-import { ComposioConnector, IntegrationProviderSettings } from "@nova/adapters";
-import { loadRootEnv } from "@nova/core/node/load-root-env";
+import type { JobPublisher, JobWorkerHost } from "@superchat/adapter-kit";
+import { ComposioConnector, IntegrationProviderSettings } from "@superchat/adapters";
+import { loadRootEnv } from "@superchat/core/node/load-root-env";
 
 loadRootEnv();
 
@@ -36,22 +36,22 @@ import {
   resolveDeploymentModel,
   resolveSandboxProvider,
   sandboxProviderOptionsFromEnv,
-} from "@nova/adapters";
+} from "@superchat/adapters";
 import {
   emailDeliveryConfigured,
   isHostedDeployment,
   resolveEncryptionKey,
   resolveSupervisorToken,
-} from "@nova/core";
+} from "@superchat/core";
 import {
   createDb,
   createThreadEvents,
   isTooManyDatabaseConnections,
   parsePositiveInteger,
   userMayAct,
-} from "@nova/db";
-import { SERVICE_NAMES } from "@nova/logging";
-import { createRootLogger } from "@nova/logging/axiom";
+} from "@superchat/db";
+import { SERVICE_NAMES } from "@superchat/logging";
+import { createRootLogger } from "@superchat/logging/axiom";
 
 const logger = createRootLogger(SERVICE_NAMES.worker);
 
@@ -65,7 +65,7 @@ async function main() {
   // larger max just competes for Postgres max_connections (53300).
   const { prisma, pool } = createDb(databaseUrl, {
     poolMax: parsePositiveInteger(process.env.DB_POOL_MAX, 8),
-    applicationName: "nova-worker",
+    applicationName: "superchat-worker",
   });
   const realtime = new PostgresRealtimeFanout({
     connectionString: process.env.REALTIME_DATABASE_URL ?? databaseUrl,

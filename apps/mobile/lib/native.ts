@@ -1,4 +1,4 @@
-import { tokensForAppearance } from "@nova/ui-tokens";
+import { tokensForAppearance } from "@superchat/ui-tokens";
 import { useMemo, useSyncExternalStore } from "react";
 import { type ColorValue, Platform, PlatformColor } from "react-native";
 import {

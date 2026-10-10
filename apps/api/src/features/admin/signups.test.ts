@@ -1,9 +1,9 @@
-import { purgeQuarantinedOrganizations } from "@nova/adapters";
+import { purgeQuarantinedOrganizations } from "@superchat/adapters";
 import {
   bootstrapUserSpace,
   quarantinedOrganizationsToPurge,
   restoreQuarantinedSpaces,
-} from "@nova/db";
+} from "@superchat/db";
 import type { ORPCError } from "@orpc/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resetEngineAccount, setEngineAccountSuspended } from "./service.js";
@@ -17,13 +17,13 @@ import {
   updateSignupSettings,
 } from "./signups.js";
 
-vi.mock("@nova/db", async (importOriginal) => ({
+vi.mock("@superchat/db", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   bootstrapUserSpace: vi.fn(async () => ({ spaceId: "space-1" })),
   restoreQuarantinedSpaces: vi.fn(async () => 1),
   quarantinedOrganizationsToPurge: vi.fn(async () => [{ id: "org-1", spaces: [{ id: "s-1" }] }]),
 }));
-vi.mock("@nova/adapters", () => ({
+vi.mock("@superchat/adapters", () => ({
   purgeQuarantinedOrganizations: vi.fn(async () => ["org-1"]),
 }));
 vi.mock("./service.js", () => ({

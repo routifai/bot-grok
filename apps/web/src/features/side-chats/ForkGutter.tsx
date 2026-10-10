@@ -1,7 +1,7 @@
 import { plural } from "@lingui/core/macro";
 import { useLingui } from "@lingui/react/macro";
-import type { MessageFork, ThreadMessage } from "@nova/contracts";
-import { cn, Popover, PopoverContent, PopoverTrigger } from "@nova/ui-web";
+import type { MessageFork, ThreadMessage } from "@superchat/contracts";
+import { cn, Popover, PopoverContent, PopoverTrigger } from "@superchat/ui-web";
 import { type CSSProperties, type RefObject, useEffect, useMemo, useState } from "react";
 import {
   FORK_TONE_CLASS,
@@ -24,7 +24,7 @@ type View = { top: number; height: number };
  * Where the forks are, at a glance (ADR 0010): a thin rail on the Conversation's end edge. A
  * message with forks is a mark at its place in the scrolled content; marks closer than 16px merge
  * into one count capsule whose popover lists them. One open fork is a dot in its color (pulsing
- * while Nova works in it), a finished one a short grey tick; a group with an open fork gets a
+ * while Superchat works in it), a finished one a short grey tick; a group with an open fork gets a
  * ring in that fork's color. Forks whose message is in history not loaded yet show as "↑ N" at the
  * top, which loads it. A band shows what is in view. Nothing renders while no fork is on the rail.
  */

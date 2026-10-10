@@ -1,6 +1,6 @@
 import { Trans } from "@lingui/react/macro";
-import type { SkillPlaybook } from "@nova/contracts";
-import { Button } from "@nova/ui-web";
+import type { SkillPlaybook } from "@superchat/contracts";
+import { Button } from "@superchat/ui-web";
 import { useState } from "react";
 import { rpc } from "../../../lib/rpc";
 import { SkillReviewSheet, useTaughtSkill } from "./SkillReviewSheet";

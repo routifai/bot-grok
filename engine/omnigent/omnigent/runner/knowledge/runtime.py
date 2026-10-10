@@ -3,7 +3,7 @@
 It is a service of the runner process (not a daemon of its own): it starts with the runner in a
 managed Computer, reconciles the files area with the index, then waits for a nudge (an upload, a
 saved artifact) or a slow tick and indexes whatever is due. Tool handlers reach it through
-:func:`get_runtime`. The index lives under the home volume (``~/.nova/knowledge``), so it
+:func:`get_runtime`. The index lives under the home volume (``~/.superchat/knowledge``), so it
 moves with
 the volume.
 """
@@ -24,17 +24,17 @@ _logger = logging.getLogger(__name__)
 
 #: Longest wait between two looks at the disk (a file the Muse wrote by hand is noticed by then).
 IDLE_SECONDS = 30.0
-HOME_ENV = "NOVA_KNOWLEDGE_HOME"
-ROOT_ENV = "NOVA_KNOWLEDGE_ROOT"
+HOME_ENV = "SUPERCHAT_KNOWLEDGE_HOME"
+ROOT_ENV = "SUPERCHAT_KNOWLEDGE_ROOT"
 
 
 def default_home() -> Path:
-    """``~/.nova/knowledge`` unless ``NOVA_KNOWLEDGE_HOME`` says otherwise."""
-    return Path(os.environ.get(HOME_ENV) or Path.home() / ".nova" / "knowledge")
+    """``~/.superchat/knowledge`` unless ``SUPERCHAT_KNOWLEDGE_HOME`` says otherwise."""
+    return Path(os.environ.get(HOME_ENV) or Path.home() / ".superchat" / "knowledge")
 
 
 def default_workspace() -> Path:
-    """``~/workspace`` unless ``NOVA_KNOWLEDGE_ROOT`` says otherwise."""
+    """``~/workspace`` unless ``SUPERCHAT_KNOWLEDGE_ROOT`` says otherwise."""
     return Path(os.environ.get(ROOT_ENV) or Path.home() / "workspace")
 
 
@@ -65,7 +65,7 @@ class KnowledgeRuntime:
         if self._thread is not None and self._thread.is_alive():
             return
         self._stop.clear()
-        self._thread = threading.Thread(target=self._run, name="nova-knowledge", daemon=True)
+        self._thread = threading.Thread(target=self._run, name="superchat-knowledge", daemon=True)
         self._thread.start()
 
     def stop(self) -> None:

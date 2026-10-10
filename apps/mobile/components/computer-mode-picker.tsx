@@ -1,4 +1,4 @@
-import type { ComputerMode } from "@nova/contracts";
+import type { ComputerMode } from "@superchat/contracts";
 import { Pressable, Text, View } from "react-native";
 import { useI18n } from "../lib/i18n";
 import { useMobileTokens } from "../lib/native";

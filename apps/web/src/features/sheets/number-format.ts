@@ -1,4 +1,4 @@
-import type { TableCell } from "@nova/contracts";
+import type { TableCell } from "@superchat/contracts";
 
 /**
  * Display formatting for the common Excel number formats. Display only: the formula bar and the

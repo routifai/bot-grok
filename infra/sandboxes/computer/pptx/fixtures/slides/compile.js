@@ -1,4 +1,4 @@
-// The skill's compile.js (SKILL.md, Step 6) with the output path taken from NOVA_PPTX_OUT.
+// The skill's compile.js (SKILL.md, Step 6) with the output path taken from SUPERCHAT_PPTX_OUT.
 const pptxgen = require("pptxgenjs");
 const pres = new pptxgen();
 pres.layout = "LAYOUT_16x9";
@@ -16,4 +16,4 @@ for (let i = 1; i <= 4; i++) {
   require(`./slide-${num}.js`).createSlide(pres, theme);
 }
 
-pres.writeFile({ fileName: process.env.NOVA_PPTX_OUT || "./presentation.pptx" });
+pres.writeFile({ fileName: process.env.SUPERCHAT_PPTX_OUT || "./presentation.pptx" });

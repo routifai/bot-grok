@@ -11,7 +11,7 @@ import type {
   MessagingSendRequest,
   MessagingSendResult,
   MessagingSurface,
-} from "@nova/adapter-kit";
+} from "@superchat/adapter-kit";
 import type { Adapter, Message, Thread } from "chat";
 import { Chat } from "chat";
 
@@ -69,7 +69,7 @@ export class ChatSdkMessagingSurface implements MessagingSurface {
     if (platforms.length === 0) throw new Error("ChatSdkMessagingSurface needs >=1 platform");
     for (const platform of platforms) this.byProvider.set(platform.provider, platform);
     this.chat = new Chat({
-      userName: options.userName ?? "nova",
+      userName: options.userName ?? "superchat",
       adapters: Object.fromEntries(platforms.map((p) => [p.provider, p.adapter])),
       state: createMemoryState(),
       // The SDK default ("drop") takes a per-conversation lock and discards

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { ChatSummary, FamilyEvent } from "@nova/contracts";
+import type { ChatSummary, FamilyEvent } from "@superchat/contracts";
 import { ORPCError } from "@orpc/client";
 import type { ComponentProps, ReactNode } from "react";
 import { act, useState } from "react";
@@ -34,10 +34,10 @@ vi.mock("@lingui/react/macro", () => {
     Trans: ({ children }: { children: ReactNode }) => children,
   };
 });
-vi.mock("@nova/chat-ui/web", () => ({
+vi.mock("@superchat/chat-ui/web", () => ({
   ChatMarkdown: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
 }));
-vi.mock("@nova/ui-web", () => ({
+vi.mock("@superchat/ui-web", () => ({
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
   BotAvatar: () => null,
   Tooltip: ({ children }: { children: ReactNode }) => children,
@@ -265,7 +265,7 @@ it("lists Side Chats newest first, with a pulsing dot while superchat is working
   // The archived chat is folded away by default, behind a count.
   expect(text).not.toContain("Old pricing copy");
   expect(text).toContain("1");
-  // Nova's pulsing dot (announced via sr-only text) only marks the live chat.
+  // Superchat's pulsing dot (announced via sr-only text) only marks the live chat.
   const liveRow = [...host.querySelectorAll("button")].find((b) =>
     b.textContent?.includes("superchat is working"),
   );
@@ -298,7 +298,7 @@ it("a Side Chat draft locks its start from the switch and calls createSide with 
   const onCreated = vi.fn();
   const host = await mount(
     <SideChatSession
-      bot={{ id: "bot-1", name: "Nova", color: "#000" }}
+      bot={{ id: "bot-1", name: "Superchat", color: "#000" }}
       view={fakeView}
       chat="draft"
       wire={wire}
@@ -343,7 +343,7 @@ it("clicking the switch knob itself toggles 'Knows our conversation' exactly onc
   };
   const host = await mount(
     <SideChatSession
-      bot={{ id: "bot-1", name: "Nova", color: "#000" }}
+      bot={{ id: "bot-1", name: "Superchat", color: "#000" }}
       view={fakeView}
       chat="draft"
       wire={wire}
@@ -389,7 +389,7 @@ it("an archived Side Chat opens read-only: no composer, its messages still show"
   };
   const host = await mount(
     <SideChatSession
-      bot={{ id: "bot-1", name: "Nova", color: "#000" }}
+      bot={{ id: "bot-1", name: "Superchat", color: "#000" }}
       view={fakeView}
       chat={archived}
       wire={wire}
@@ -418,7 +418,7 @@ it("an archived Side Chat offers Restore; restoring makes it writable again", as
     const [archived, setArchived] = useState(true);
     return (
       <SideChatSession
-        bot={{ id: "bot-1", name: "Nova", color: "#000" }}
+        bot={{ id: "bot-1", name: "Superchat", color: "#000" }}
         view={fakeView}
         chat={chat({ id: "side-old", title: "Old pricing copy", archived })}
         wire={wire}
@@ -451,7 +451,7 @@ it("an open Side Chat has no Restore", async () => {
   };
   const host = await mount(
     <SideChatSession
-      bot={{ id: "bot-1", name: "Nova", color: "#000" }}
+      bot={{ id: "bot-1", name: "Superchat", color: "#000" }}
       view={fakeView}
       chat={chat({ id: "side-1", archived: false })}
       wire={wire}
@@ -477,7 +477,7 @@ it("a failed Side Chat send is retried once, then shows a calm note with a Retry
     };
     const host = await mount(
       <SideChatSession
-        bot={{ id: "bot-1", name: "Nova", color: "#000" }}
+        bot={{ id: "bot-1", name: "Superchat", color: "#000" }}
         view={fakeView}
         chat={chat({ id: "side-1" })}
         wire={wire}
@@ -528,7 +528,7 @@ it("a failed Side Chat draft keeps the message and offers Retry", async () => {
   };
   const host = await mount(
     <SideChatSession
-      bot={{ id: "bot-1", name: "Nova", color: "#000" }}
+      bot={{ id: "bot-1", name: "Superchat", color: "#000" }}
       view={fakeView}
       chat="draft"
       wire={wire}
@@ -615,7 +615,7 @@ it("a Side Chat reads its transcript again when its own reply lands, and not on 
     };
     const host = await mount(
       <SideChatSession
-        bot={{ id: "bot-1", name: "Nova", color: "#000" }}
+        bot={{ id: "bot-1", name: "Superchat", color: "#000" }}
         view={fakeView}
         chat={chat({ id: "side-1" })}
         wire={wire}
@@ -682,7 +682,7 @@ it("shows a loading state until a Side Chat's first page arrives", async () => {
   };
   const host = await mount(
     <SideChatSession
-      bot={{ id: "bot-1", name: "Nova", color: "#000" }}
+      bot={{ id: "bot-1", name: "Superchat", color: "#000" }}
       view={fakeView}
       chat={chat({})}
       wire={wire}
@@ -709,7 +709,7 @@ it("reads an unread Side Chat when it is opened in view", async () => {
   };
   await mount(
     <SideChatSession
-      bot={{ id: "bot-1", name: "Nova", color: "#000" }}
+      bot={{ id: "bot-1", name: "Superchat", color: "#000" }}
       view={fakeView}
       chat={chat({ unread: true })}
       wire={wire}
@@ -737,7 +737,7 @@ it("opens the chat the engine created when its first message did not send, ready
     const [current, setCurrent] = useState<ChatSummary | "draft">("draft");
     return (
       <SideChatSession
-        bot={{ id: "bot-1", name: "Nova", color: "#000" }}
+        bot={{ id: "bot-1", name: "Superchat", color: "#000" }}
         view={fakeView}
         chat={current}
         wire={wire}

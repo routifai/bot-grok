@@ -1,15 +1,15 @@
 // `computer.*` for Muses whose Computer the engine owns (docs/adr/0004-engine-owns-the-computer.md).
-// Nova's API asks the engine which Computer, its screen and who controls it, and relays the screen
+// Superchat's API asks the engine which Computer, its screen and who controls it, and relays the screen
 // stream through its same-origin proxy. It keeps no Computer state: no providerRef, no lease row.
 import {
   getOmnigentComputer,
   type OmnigentClientConfig,
   openOmnigentComputerScreen,
   releaseOmnigentComputer,
-} from "@nova/adapters";
-import type { Actor, ComputerStatus } from "@nova/contracts";
-import { ENGINE_COMPUTER_ID, SCREEN_PROXY_TTL_MS } from "@nova/core/node/screen-capability";
-import type { PrismaClient } from "@nova/db";
+} from "@superchat/adapters";
+import type { Actor, ComputerStatus } from "@superchat/contracts";
+import { ENGINE_COMPUTER_ID, SCREEN_PROXY_TTL_MS } from "@superchat/core/node/screen-capability";
+import type { PrismaClient } from "@superchat/db";
 import { ORPCError } from "@orpc/server";
 import {
   type EngineComputer,
@@ -98,7 +98,7 @@ export async function engineComputerTakeover(
 ): Promise<{ leaseId: string; expiresAt: string }> {
   const target = await resolveEngineComputer(deps, client, actor, botId);
   if (!target.sessionId || !(await state(target)).available) {
-    throw new ORPCError("BAD_REQUEST", { message: "Nova's computer starts when Nova needs it" });
+    throw new ORPCError("BAD_REQUEST", { message: "Superchat's computer starts when Superchat needs it" });
   }
   await openOmnigentComputerScreen(client, target.email, target.sessionId, true);
   return {
@@ -118,7 +118,7 @@ export async function engineComputerRelease(
   return { ok: true };
 }
 
-/** A thread snapshot's `computer`, as the engine sees it, when Nova runs on the engine. */
+/** A thread snapshot's `computer`, as the engine sees it, when Superchat runs on the engine. */
 export async function withEngineComputer<
   T extends { botId?: string; computer?: ComputerStatus | null },
 >(deps: EngineComputerDeps, actor: Actor, snapshot: T): Promise<T> {

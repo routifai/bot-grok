@@ -1,4 +1,4 @@
-import type { DeckTheme } from "@nova/contracts";
+import type { DeckTheme } from "@superchat/contracts";
 import { useEffect, useState } from "react";
 import { rpc } from "./rpc";
 

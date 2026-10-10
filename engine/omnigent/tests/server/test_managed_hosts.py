@@ -901,12 +901,12 @@ def test_parse_runner_env_accepts_valid_names() -> None:
         {
             "provider": "modal",
             "server_url": "https://s.example.com",
-            "runner_env": ["ANTHROPIC_API_KEY", "TAVILY_API_KEY", "NOVA_CLAUDE_MODEL"],
+            "runner_env": ["ANTHROPIC_API_KEY", "TAVILY_API_KEY", "SUPERCHAT_CLAUDE_MODEL"],
         }
     )
     assert cfg is not None
     cfg = cfg.default
-    assert cfg.runner_env == ("ANTHROPIC_API_KEY", "TAVILY_API_KEY", "NOVA_CLAUDE_MODEL")
+    assert cfg.runner_env == ("ANTHROPIC_API_KEY", "TAVILY_API_KEY", "SUPERCHAT_CLAUDE_MODEL")
 
 
 def test_parse_absent_runner_env_is_empty() -> None:
@@ -5320,7 +5320,7 @@ async def test_recreated_sandbox_that_keeps_its_files_records_no_reset_notice(
 
     await orchestration._bind_and_launch_managed_runner(
         session_id="conv_1",
-        managed=ManagedHostLaunch(host_id="host_1", workspace="/home/nova/workspace"),
+        managed=ManagedHostLaunch(host_id="host_1", workspace="/home/superchat/workspace"),
         sandbox_config=SimpleNamespace(configs=()),
         tracker=tracker,
         conversation_store=_ConversationStore(),

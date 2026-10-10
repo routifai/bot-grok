@@ -58,7 +58,7 @@ async function render() {
 it("shows the headline and links the CTAs to sign-up and sign-in", async () => {
   await render();
   expect(host.querySelector("h1")?.textContent).toContain("Hand it off.");
-  expect(host.querySelector("h1")?.textContent).toContain("Nova's already on it.");
+  expect(host.querySelector("h1")?.textContent).toContain("Superchat's already on it.");
   const hrefs = (label: string) =>
     [...host.querySelectorAll("a")]
       .filter((a) => a.textContent === label)
@@ -66,7 +66,7 @@ it("shows the headline and links the CTAs to sign-up and sign-in", async () => {
   expect(hrefs("Get started")).toEqual(["/sign-up", "/sign-up", "/sign-up"]);
   expect(hrefs("I have an account")).toEqual(["/sign-in"]);
   expect(hrefs("Sign in")).toEqual(["/sign-in"]);
-  expect(host.firstElementChild?.getAttribute("data-nova-surface")).toBe("welcome");
+  expect(host.firstElementChild?.getAttribute("data-superchat-surface")).toBe("welcome");
 });
 
 it("lights the whole statement under reduced motion", async () => {
@@ -89,7 +89,7 @@ it("plays the film in place, with captions, and closes it again", async () => {
   await render();
   const video = host.querySelector("video");
   expect(video?.getAttribute("src")).toBe("/welcome/hero-loop.mp4");
-  expect(video?.querySelector("track")?.getAttribute("src")).toContain("nova-film.en.vtt");
+  expect(video?.querySelector("track")?.getAttribute("src")).toContain("superchat-film.en.vtt");
   const button = [...host.querySelectorAll("button")].find((b) =>
     b.textContent?.includes("Watch the film"),
   );
@@ -97,7 +97,7 @@ it("plays the film in place, with captions, and closes it again", async () => {
   await act(async () => {
     button?.click();
   });
-  expect(host.querySelector("video")?.getAttribute("src")).toBe("/welcome/nova-film.mp4");
+  expect(host.querySelector("video")?.getAttribute("src")).toBe("/welcome/superchat-film.mp4");
   const close = [...host.querySelectorAll("button")].find((b) => b.textContent === "Close");
   await act(async () => {
     close?.click();

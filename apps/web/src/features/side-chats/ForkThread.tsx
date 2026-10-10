@@ -1,7 +1,7 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { MessageFork, ThreadMessage } from "@nova/contracts";
-import { userVisibleMessages } from "@nova/core";
-import { Button, cn, Spinner } from "@nova/ui-web";
+import type { MessageFork, ThreadMessage } from "@superchat/contracts";
+import { userVisibleMessages } from "@superchat/core";
+import { Button, cn, Spinner } from "@superchat/ui-web";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ReplyCardBotProvider,
@@ -413,7 +413,7 @@ function StatePill({ status, tone }: { status: ForkStatus; tone: ForkTone }) {
   );
 }
 
-/** The short line from the thread's spine to a reply of Nova's. */
+/** The short line from the thread's spine to a reply of Superchat's. */
 function Connector({ tone }: { tone: ForkTone }) {
   return (
     <span
@@ -426,7 +426,7 @@ function Connector({ tone }: { tone: ForkTone }) {
   );
 }
 
-/** One message of the fork: the person's in a bubble of the fork's color, Nova's on a card
+/** One message of the fork: the person's in a bubble of the fork's color, Superchat's on a card
  * hanging off the spine, with the same rendering as the Conversation. */
 function ThreadReply({
   message,

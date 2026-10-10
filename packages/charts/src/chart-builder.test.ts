@@ -93,7 +93,7 @@ describe("helpers", () => {
     expect(formatPercentShare(1, 0)).toBe("0%");
   });
 
-  it("colors series from the Nova chart tokens, never hex", () => {
+  it("colors series from the Superchat chart tokens, never hex", () => {
     expect(DEFAULT_COLORS).toHaveLength(8);
     for (const color of DEFAULT_COLORS) expect(color).toMatch(/^var\(--chart-[1-8]\)$/);
     expect(defaultColorFor("x", 9)).toBe("var(--chart-2)");

@@ -123,7 +123,7 @@ def test_tables_indexed_as_rows_by_an_older_version_are_read_again_as_a_schema(
 
     indexer.db.replace_chunks(row.file_id, [Chunk(1, 1, "csv", "", "id | north | 1.5")])
     indexer.db.update_file(row.file_id, parser_version=1)  # read by the old reader
-    reopened = Indexer(tmp_path / "home" / ".nova" / "knowledge", ws, FakeEmbedder())
+    reopened = Indexer(tmp_path / "home" / ".superchat" / "knowledge", ws, FakeEmbedder())
     assert reopened.db.file_by_path(f"{UPLOADS}/sales.csv").state == STATE_QUEUED
     run_all(reopened)
     (chunk,) = reopened.db.chunks_for(row.file_id)
@@ -372,11 +372,11 @@ def test_only_files_read_by_an_older_reader_are_read_again(tmp_path: Path) -> No
     run_all(indexer)
     for name in ("a.txt", "t.csv"):
         assert indexer.db.file_by_path(f"{UPLOADS}/{name}").parser_version >= 1
-    reopened = Indexer(tmp_path / "home" / ".nova" / "knowledge", ws, FakeEmbedder())
+    reopened = Indexer(tmp_path / "home" / ".superchat" / "knowledge", ws, FakeEmbedder())
     assert {r.state for r in reopened.db.files()} == {STATE_READY}  # nothing outdated: no rework
     csv_row = reopened.db.file_by_path(f"{UPLOADS}/t.csv")
     reopened.db.update_file(csv_row.file_id, parser_version=1)
-    again = Indexer(tmp_path / "home" / ".nova" / "knowledge", ws, FakeEmbedder())
+    again = Indexer(tmp_path / "home" / ".superchat" / "knowledge", ws, FakeEmbedder())
     assert again.db.file_by_path(f"{UPLOADS}/t.csv").state == STATE_QUEUED
     assert again.db.file_by_path(f"{UPLOADS}/a.txt").state == STATE_READY
 
@@ -434,7 +434,7 @@ def test_a_failed_file_is_not_queued_again_by_a_restart(tmp_path: Path) -> None:
     indexer.scan()
     row = indexer.db.file_by_path(f"{UPLOADS}/t.csv")
     indexer.db.update_file(row.file_id, state="failed", parser_version=1, last_error="boom")
-    again = Indexer(tmp_path / "home" / ".nova" / "knowledge", ws, FakeEmbedder())
+    again = Indexer(tmp_path / "home" / ".superchat" / "knowledge", ws, FakeEmbedder())
     assert again.db.file_by_path(f"{UPLOADS}/t.csv").state == "failed"
 
 

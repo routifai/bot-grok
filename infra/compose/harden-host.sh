@@ -29,7 +29,7 @@ apt-get install -y --no-install-recommends \
   unattended-upgrades
 
 install -d -m 755 /etc/ssh/sshd_config.d
-cat >/etc/ssh/sshd_config.d/99-nova-hardening.conf <<EOF
+cat >/etc/ssh/sshd_config.d/99-superchat-hardening.conf <<EOF
 PermitRootLogin no
 PubkeyAuthentication yes
 PasswordAuthentication no
@@ -54,7 +54,7 @@ UseDNS no
 LogLevel VERBOSE
 AllowUsers ${DEPLOY_USER}
 EOF
-chmod 600 /etc/ssh/sshd_config.d/99-nova-hardening.conf
+chmod 600 /etc/ssh/sshd_config.d/99-superchat-hardening.conf
 sshd -t
 
 cat >/etc/fail2ban/jail.d/sshd.local <<EOF
@@ -78,13 +78,13 @@ APT::Periodic::Unattended-Upgrade "1";
 APT::Periodic::AutocleanInterval "7";
 EOF
 
-cat >/etc/apt/apt.conf.d/52nova-unattended-upgrades <<'EOF'
+cat >/etc/apt/apt.conf.d/52superchat-unattended-upgrades <<'EOF'
 Unattended-Upgrade::Remove-Unused-Dependencies "true";
 Unattended-Upgrade::Remove-New-Unused-Dependencies "true";
 Unattended-Upgrade::Automatic-Reboot "false";
 EOF
 
-cat >/etc/sysctl.d/99-nova-hardening.conf <<'EOF'
+cat >/etc/sysctl.d/99-superchat-hardening.conf <<'EOF'
 fs.protected_fifos = 2
 fs.protected_hardlinks = 1
 fs.protected_regular = 2
@@ -118,7 +118,7 @@ EOF
 sysctl --system >/dev/null
 
 install -d -m 750 /etc/audit/rules.d
-cat >/etc/audit/rules.d/50-nova.rules <<'EOF'
+cat >/etc/audit/rules.d/50-superchat.rules <<'EOF'
 -w /etc/ssh/sshd_config -p wa -k sshd_config
 -w /etc/ssh/sshd_config.d/ -p wa -k sshd_config
 -w /etc/sudoers -p wa -k sudoers
@@ -143,4 +143,4 @@ systemctl enable --now apparmor auditd fail2ban unattended-upgrades
 systemctl restart fail2ban
 systemctl reload ssh
 
-echo "Nova host hardening applied. Verify a fresh SSH session before closing the current one."
+echo "Superchat host hardening applied. Verify a fresh SSH session before closing the current one."

@@ -30,7 +30,7 @@ from omnigent.superchat.feature import HandlerCtx
 
 _CHAT = uuid.uuid4().hex
 _OTHER_CHAT = uuid.uuid4().hex
-_HTML = b"<!doctype html><html data-nova-deck><body><section class='slide'>x</section></body>"
+_HTML = b"<!doctype html><html data-superchat-deck><body><section class='slide'>x</section></body>"
 
 
 class _Auth:
@@ -87,7 +87,7 @@ def _helper(tmp_path: Path, body: str) -> Path:
 
 _OK_HELPER = r"""
 while [ $# -gt 0 ]; do case "$1" in --format) F=$2;; --out) O=$2;; --html) H=$2;; esac; shift; done
-grep -q "data-nova-deck" "$H" || { echo '{"ok":false,"error":"not a deck"}'; exit 0; }
+grep -q "data-superchat-deck" "$H" || { echo '{"ok":false,"error":"not a deck"}'; exit 0; }
 printf "FAKE-%s" "$F" > "$O"
 echo "noise on stdout"
 echo "{\"ok\":true,\"path\":\"$O\",\"slides\":1,\"width\":1920,\"height\":1080}"

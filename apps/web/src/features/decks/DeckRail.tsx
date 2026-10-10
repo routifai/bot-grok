@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import { Button, cn } from "@nova/ui-web";
+import { Button, cn } from "@superchat/ui-web";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useState } from "react";
 import { DeckThumb } from "./DeckThumb";

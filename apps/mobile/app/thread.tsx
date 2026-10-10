@@ -1,12 +1,12 @@
-import { ChatMarkdown } from "@nova/chat-ui/native";
+import { ChatMarkdown } from "@superchat/chat-ui/native";
 import type {
   AgentSkillCatalogEntry,
   Connection,
   ConnectionCatalogItem,
   MessageBlock,
   Routine,
-} from "@nova/contracts";
-import { canReactToThreadMessage, MESSAGE_REACTIONS, type MessageReaction } from "@nova/contracts";
+} from "@superchat/contracts";
+import { canReactToThreadMessage, MESSAGE_REACTIONS, type MessageReaction } from "@superchat/contracts";
 import {
   abortableDelay,
   attachmentsForThread,
@@ -28,7 +28,7 @@ import {
   truncateSlashDescription,
   userVisibleMessages,
   withLiveStreamingProgress,
-} from "@nova/core";
+} from "@superchat/core";
 import * as Clipboard from "expo-clipboard";
 import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useHeaderHeight } from "expo-router/react-navigation";

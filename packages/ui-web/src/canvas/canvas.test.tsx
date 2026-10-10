@@ -1,4 +1,4 @@
-import type { CanvasNode } from "@nova/contracts";
+import type { CanvasNode } from "@superchat/contracts";
 import type { ReactNode } from "react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
@@ -19,7 +19,7 @@ describe("CanvasView", () => {
       type: "stack",
       props: { gap: "lg" },
       children: [
-        { type: "heading", props: { text: "Nova Canvas" } },
+        { type: "heading", props: { text: "Superchat Canvas" } },
         { type: "text", props: { text: "Compare **five** cards." } },
         {
           type: "grid",
@@ -35,7 +35,7 @@ describe("CanvasView", () => {
       ],
     };
     const html = renderToString(<CanvasView tree={tree} />);
-    expect(html).toContain("Nova Canvas");
+    expect(html).toContain("Superchat Canvas");
     expect(html).toContain("Compare");
     expect(html).toContain("<strong>five</strong>");
     expect(html).toContain("New");

@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import { Button } from "@nova/ui-web";
+import { Button } from "@superchat/ui-web";
 import { Maximize2, Minimize2 } from "lucide-react";
 
 /** The "Open full screen" header button shared by every surface that previews an HTML app. */

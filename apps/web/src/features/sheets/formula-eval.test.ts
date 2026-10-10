@@ -1,4 +1,4 @@
-import type { TableCell, TableSheet } from "@nova/contracts";
+import type { TableCell, TableSheet } from "@superchat/contracts";
 import { describe, expect, it } from "vitest";
 import { createEvaluator } from "./formula-eval";
 

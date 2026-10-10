@@ -6,10 +6,10 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@nova/ui-web/components/ui/dialog";
-import { InputGroup, InputGroupAddon } from "@nova/ui-web/components/ui/input-group";
+} from "@superchat/ui-web/components/ui/dialog";
+import { InputGroup, InputGroupAddon } from "@superchat/ui-web/components/ui/input-group";
 
-import { cn } from "@nova/ui-web/lib/utils";
+import { cn } from "@superchat/ui-web/lib/utils";
 import { Command as CommandPrimitive } from "cmdk";
 import { CheckIcon, SearchIcon } from "lucide-react";
 import type * as React from "react";

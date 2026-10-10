@@ -40,7 +40,7 @@ function withPreviewDocument(html: string, decorative: boolean): string {
 }
 
 // Opt-in relay for a document that talks to its host (a deck): the preview is nested one frame
-// deep, so its messages would stop at this shell. Only `nova:`-typed messages cross, in both
+// deep, so its messages would stop at this shell. Only `superchat:`-typed messages cross, in both
 // directions, and only from the preview or the host.
 const RELAY_SCRIPT = `<script>
 (function () {
@@ -48,7 +48,7 @@ const RELAY_SCRIPT = `<script>
   window.addEventListener("message", function (event) {
     var data = event.data;
     if (!data || typeof data !== "object" || typeof data.type !== "string") return;
-    if (data.type.indexOf("nova:") !== 0) return;
+    if (data.type.indexOf("superchat:") !== 0) return;
     if (event.source === preview.contentWindow) window.parent.postMessage(data, "*");
     else if (event.source === window.parent) preview.contentWindow.postMessage(data, "*");
   });
@@ -69,7 +69,7 @@ export function SandboxedHtmlViewer({
 }: {
   html: string;
   title: string;
-  /** Pass `nova:` messages between the host and the document (decks). */
+  /** Pass `superchat:` messages between the host and the document (decks). */
   relay?: boolean;
   /** A picture of the document (a thumbnail): it may not take focus. */
   decorative?: boolean;

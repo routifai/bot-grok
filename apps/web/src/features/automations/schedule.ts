@@ -1,4 +1,4 @@
-import type { AutomationSchedule } from "@nova/contracts";
+import type { AutomationSchedule } from "@superchat/contracts";
 
 /** Monday-first, matching the contract's `weekday`. */
 export const WEEKDAYS = [

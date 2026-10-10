@@ -35,7 +35,7 @@ from typing import Any
 
 _logger = logging.getLogger(__name__)
 
-#: What a redacted value is replaced with (the same token Nova's client used).
+#: What a redacted value is replaced with (the same token Superchat's client used).
 REDACTED = "[redacted]"
 #: Shorter values are never redacted.
 MIN_SECRET_LENGTH = 8

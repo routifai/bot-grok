@@ -2,7 +2,7 @@
 
 import { i18n } from "@lingui/core";
 import { I18nProvider } from "@lingui/react";
-import type { DeckTheme } from "@nova/contracts";
+import type { DeckTheme } from "@superchat/contracts";
 import { act, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";

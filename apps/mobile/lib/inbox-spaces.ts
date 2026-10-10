@@ -1,5 +1,5 @@
-import type { SpaceBot, SpaceGroup } from "@nova/contracts";
-import { groupBotsForSidebar, nestRosterByParent } from "@nova/core";
+import type { SpaceBot, SpaceGroup } from "@superchat/contracts";
+import { groupBotsForSidebar, nestRosterByParent } from "@superchat/core";
 import {
   adoptDeletedSpaceFallback,
   type MobileBot,

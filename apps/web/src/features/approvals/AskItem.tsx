@@ -1,12 +1,12 @@
 import { t } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { ChatMarkdown } from "@nova/chat-ui/web";
-import type { Ask } from "@nova/contracts";
-import { cn, Input } from "@nova/ui-web";
+import { ChatMarkdown } from "@superchat/chat-ui/web";
+import type { Ask } from "@superchat/contracts";
+import { cn, Input } from "@superchat/ui-web";
 import { BookmarkPlus, HelpCircle, ShieldCheck, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { formatRelativeTime } from "../../lib/relative-time";
-import { NovaTile } from "../../pages/muse/chrome/NovaTile";
+import { SuperchatTile } from "../../pages/muse/chrome/SuperchatTile";
 import { DetailRows, PRIMARY_BUTTON, QUIET_BUTTON } from "../../pages/muse/ui";
 import { askDecision } from "./askDecision";
 
@@ -104,11 +104,11 @@ export function AskItem({
     pending === choice.id ? <Trans>Sending…</Trans> : choice.label;
 
   return (
-    <div data-testid="ask-item" className="nova-card flex flex-col gap-3 p-4">
+    <div data-testid="ask-item" className="superchat-card flex flex-col gap-3 p-4">
       <div className="flex items-start gap-3.5">
-        <NovaTile tone={tone} size={44}>
+        <SuperchatTile tone={tone} size={44}>
           <Icon strokeWidth={2.2} />
-        </NovaTile>
+        </SuperchatTile>
         <div className="flex min-w-0 flex-1 flex-col gap-0.5 pt-0.5">
           <h3 className="text-[16px] leading-[1.3] font-semibold tracking-[-0.1px] text-foreground">
             {title}

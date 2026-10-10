@@ -1,6 +1,6 @@
-import { listOmnigentTaughtSkills } from "@nova/adapters";
-import type { Actor } from "@nova/contracts";
-import type { PrismaClient } from "@nova/db";
+import { listOmnigentTaughtSkills } from "@superchat/adapters";
+import type { Actor } from "@superchat/contracts";
+import type { PrismaClient } from "@superchat/db";
 import { ORPCError } from "@orpc/server";
 import { engineComputerClient, engineSessionOf } from "./engine-client.js";
 

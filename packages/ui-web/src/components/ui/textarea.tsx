@@ -1,4 +1,4 @@
-import { cn } from "@nova/ui-web/lib/utils";
+import { cn } from "@superchat/ui-web/lib/utils";
 import type * as React from "react";
 
 function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {

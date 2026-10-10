@@ -1,4 +1,4 @@
-import { Skeleton } from "@nova/ui-web";
+import { Skeleton } from "@superchat/ui-web";
 import { LibraryCard } from "./LibraryCard";
 import type { ArtifactSummary } from "./types";
 

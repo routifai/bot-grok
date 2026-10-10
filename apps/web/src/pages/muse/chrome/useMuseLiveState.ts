@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import type { MuseState, Run, ThreadMessage } from "@nova/contracts";
+import type { MuseState, Run, ThreadMessage } from "@superchat/contracts";
 import { useAsks } from "../../../features/approvals";
 import { useComputerLaunch } from "../../../features/computer/useComputerLaunch";
 import { currentToolName, deriveMuseState, museActivityLabel } from "./museState";

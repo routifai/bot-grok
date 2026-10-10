@@ -1,7 +1,7 @@
-import { deletePushToken, savePushToken, toComputerRef } from "@nova/adapters";
-import type { Actor, Me, SpaceNavigation } from "@nova/contracts";
-import { validTimezoneOrUtc } from "@nova/core";
-import type { PrismaClient } from "@nova/db";
+import { deletePushToken, savePushToken, toComputerRef } from "@superchat/adapters";
+import type { Actor, Me, SpaceNavigation } from "@superchat/contracts";
+import { validTimezoneOrUtc } from "@superchat/core";
+import type { PrismaClient } from "@superchat/db";
 import {
   CannotDeleteDefaultSpaceError,
   CannotDeleteLastSpaceError,
@@ -21,8 +21,8 @@ import {
   SpaceLimitError,
   SpaceNotEmptyError,
   SpaceNotFoundError,
-} from "@nova/db";
-import { getLogger } from "@nova/logging";
+} from "@superchat/db";
+import { getLogger } from "@superchat/logging";
 import { ORPCError } from "@orpc/server";
 import { aiConsentStatus, allowAiConsent } from "../ai-consent.js";
 import { syncEngineTimezone } from "../engine-timezone.js";

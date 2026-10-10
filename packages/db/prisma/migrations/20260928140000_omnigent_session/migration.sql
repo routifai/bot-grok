@@ -1,4 +1,4 @@
--- NOVA_ENGINE=omnigent spike (docs/omnigent-spike.md): one Omnigent session id per Muse
+-- SUPERCHAT_ENGINE=omnigent spike (docs/omnigent-spike.md): one Omnigent session id per Muse
 -- (bot), so every turn continues the same Omnigent conversation instead of creating a
 -- new one each time.
 

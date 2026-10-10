@@ -1,12 +1,12 @@
-<!-- Nova original (no upstream): a bar and a line sharing one chart on two value axes, the shape of
+<!-- Superchat original (no upstream): a bar and a line sharing one chart on two value axes, the shape of
      "volume and rate". Chart.js draws it from per-dataset `type` and `yAxisID`; the export turns it into
      one PowerPoint combo chart with a secondary axis. -->
-<section class="slide t-a l-chart" data-screen-label="08 Orders and conversion" data-nova-id="orders-combo">
-  <div class="kicker" data-nova-id="orders-combo-kicker">Chart · bar and line</div>
-  <h2 class="title" data-nova-id="orders-combo-title">Orders grew while conversion held</h2>
-  <div class="chart" data-nova-id="orders-combo-chart"><canvas id="orders-combo-canvas" data-nova-id="orders-combo-canvas"></canvas></div>
-  <p class="source" data-nova-id="orders-combo-source">Source: sales/orders.csv, columns orders and conversion_pct, by month</p>
-  <script data-nova-chart>
+<section class="slide t-a l-chart" data-screen-label="08 Orders and conversion" data-superchat-id="orders-combo">
+  <div class="kicker" data-superchat-id="orders-combo-kicker">Chart · bar and line</div>
+  <h2 class="title" data-superchat-id="orders-combo-title">Orders grew while conversion held</h2>
+  <div class="chart" data-superchat-id="orders-combo-chart"><canvas id="orders-combo-canvas" data-superchat-id="orders-combo-canvas"></canvas></div>
+  <p class="source" data-superchat-id="orders-combo-source">Source: sales/orders.csv, columns orders and conversion_pct, by month</p>
+  <script data-superchat-chart>
     addEventListener('DOMContentLoaded',()=>{
       const canvas=document.getElementById('orders-combo-canvas');
       const css=getComputedStyle(canvas);
@@ -26,5 +26,5 @@
                   y1:{position:'right',ticks:{color:text2,format:{minimumFractionDigits:1}},grid:{drawOnChartArea:false}}}}});
     });
   </script>
-  <div class="foot" data-nova-id="orders-combo-foot"><span data-nova-id="orders-combo-foot-left">Deck name</span><span data-nova-id="orders-combo-foot-page">08</span></div>
+  <div class="foot" data-superchat-id="orders-combo-foot"><span data-superchat-id="orders-combo-foot-left">Deck name</span><span data-superchat-id="orders-combo-foot-page">08</span></div>
 </section>

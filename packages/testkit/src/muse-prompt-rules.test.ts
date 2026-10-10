@@ -38,7 +38,7 @@ const rules = [
 ];
 
 describe("Muse prompt rules", () => {
-  it.each(["templates/AGENTS.md", "agents/nova-claude/AGENTS.md", "agents/nova-pi/AGENTS.md"])(
+  it.each(["templates/AGENTS.md", "agents/superchat-claude/AGENTS.md", "agents/superchat-pi/AGENTS.md"])(
     "%s carries every rule",
     (path) => {
       const text = read(path);
@@ -46,7 +46,7 @@ describe("Muse prompt rules", () => {
     },
   );
 
-  it("keeps Nova's memory kinds and portrait evidence tools", () => {
+  it("keeps Superchat's memory kinds and portrait evidence tools", () => {
     const text = read("templates/AGENTS.md");
     for (const kind of ["fact", "project", "preference", "instruction", "decision", "commitment"]) {
       expect(text).toContain(`\`${kind}\``);
@@ -54,7 +54,7 @@ describe("Muse prompt rules", () => {
     expect(text).toContain("`memory_search`");
   });
 
-  it.each(["agents/nova-claude/config.yaml", "agents/nova-pi/config.yaml"])(
+  it.each(["agents/superchat-claude/config.yaml", "agents/superchat-pi/config.yaml"])(
     "%s allows both card tools",
     (path) => {
       const text = read(path);
@@ -87,7 +87,7 @@ describe("Muse deck theme choice", () => {
     "Asking ends your turn",
     "exactly that theme, never another one",
   ];
-  it.each(["templates/decks.md", "agents/nova-claude/AGENTS.md", "agents/nova-pi/AGENTS.md"])(
+  it.each(["templates/decks.md", "agents/superchat-claude/AGENTS.md", "agents/superchat-pi/AGENTS.md"])(
     "%s asks for the look of every new deck before building it",
     (path) => {
       const text = read(path).replace(/\s+/g, " ");
@@ -115,7 +115,7 @@ describe("Muse dashboard rules", () => {
     "Never write a spec or other scratch file into `your_files/`",
     "never delete your own temp files",
   ];
-  it.each(["templates/AGENTS.md", "agents/nova-claude/AGENTS.md", "agents/nova-pi/AGENTS.md"])(
+  it.each(["templates/AGENTS.md", "agents/superchat-claude/AGENTS.md", "agents/superchat-pi/AGENTS.md"])(
     "%s keeps dashboards citing the person's files",
     (path) => {
       const text = read(path).replace(/\s+/g, " ");

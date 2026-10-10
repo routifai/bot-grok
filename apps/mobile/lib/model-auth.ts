@@ -1,7 +1,7 @@
-import { waitForModelOAuthCompletion } from "@nova/core";
+import { waitForModelOAuthCompletion } from "@superchat/core";
 import { rpc } from "./api";
 
-export { cancelModelOAuthAttempt, finishModelOAuthAttempt } from "@nova/core";
+export { cancelModelOAuthAttempt, finishModelOAuthAttempt } from "@superchat/core";
 
 type CompleteOAuthResult =
   | { status: "pending" }

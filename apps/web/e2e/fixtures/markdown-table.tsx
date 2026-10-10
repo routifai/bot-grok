@@ -1,5 +1,5 @@
-import { ChatMarkdown } from "@nova/chat-ui/web";
-import { Dialog, DialogContent, DialogTitle } from "@nova/ui-web";
+import { ChatMarkdown } from "@superchat/chat-ui/web";
+import { Dialog, DialogContent, DialogTitle } from "@superchat/ui-web";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "../../src/styles.css";

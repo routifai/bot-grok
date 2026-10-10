@@ -1,12 +1,12 @@
-import type { Actor } from "@nova/contracts";
-import type { PrismaClient } from "@nova/db";
+import type { Actor } from "@superchat/contracts";
+import type { PrismaClient } from "@superchat/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getArchiving, updateArchiving } from "./archiving.js";
 
 const actor: Actor = {
   spaceId: "space-1",
   userId: "user-1",
-  email: "user@nova.test",
+  email: "user@superchat.test",
   isDeploymentOwner: true,
 };
 const ENV = { OMNIGENT_URL: "http://engine.test", OMNIGENT_PROXY_SECRET: "s" };
@@ -15,7 +15,7 @@ function depsFor(bot: { id: string } | null) {
   const findFirst = vi.fn(async () => bot);
   const prisma = {
     bot: { findFirst },
-    user: { findUnique: vi.fn(async () => ({ email: "user@nova.test" })) },
+    user: { findUnique: vi.fn(async () => ({ email: "user@superchat.test" })) },
   } as unknown as PrismaClient;
   return { deps: { prisma }, findFirst };
 }

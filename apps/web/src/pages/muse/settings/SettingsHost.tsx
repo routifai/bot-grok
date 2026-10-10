@@ -1,4 +1,4 @@
-import type { Bot, Me, VoiceStatus } from "@nova/contracts";
+import type { Bot, Me, VoiceStatus } from "@superchat/contracts";
 import { type Dispatch, lazy, type SetStateAction } from "react";
 import { rpc } from "../../../lib/rpc";
 

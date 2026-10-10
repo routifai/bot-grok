@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { Bot, ComputerStatus } from "@nova/contracts";
+import type { Bot, ComputerStatus } from "@superchat/contracts";
 import { ORPCError } from "@orpc/client";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";

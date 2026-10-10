@@ -21,8 +21,8 @@ import type {
   SandboxProvider,
   ScreenRequest,
   ScreenSession,
-} from "@nova/adapter-kit";
-import { boundedSandboxCommandTimeoutMs } from "@nova/core";
+} from "@superchat/adapter-kit";
+import { boundedSandboxCommandTimeoutMs } from "@superchat/core";
 import { screenSessionKey } from "./computer-screens.js";
 import { normalizeWorkspacePath, shellQuote, workspacePath } from "./computer-support.js";
 import {
@@ -139,7 +139,7 @@ export class DaytonaSandboxProvider implements SandboxProvider {
     const sandbox = await this.client.create(
       {
         ...(this.snapshotName ? { snapshot: this.snapshotName } : {}),
-        labels: { botId: request.botId, nova: "computer" },
+        labels: { botId: request.botId, superchat: "computer" },
         envVars: { VNC_RESOLUTION: "1280x800" },
         autoStopInterval: 0,
         autoDeleteInterval: -1,
@@ -412,7 +412,7 @@ export class DaytonaSandboxProvider implements SandboxProvider {
     if (cached) return cached;
     const home = (await sandbox.getUserHomeDir()) ?? (await sandbox.getWorkDir());
     if (!home) throw new Error("Daytona did not report a sandbox home directory");
-    const root = path.posix.join(home, "nova-home");
+    const root = path.posix.join(home, "superchat-home");
     if (this.boxes.get(sandbox.id) === sandbox) this.workspaceRoots.set(sandbox.id, root);
     return root;
   }
@@ -556,7 +556,7 @@ function daytonaCwd(root: string, cwd: string | undefined): string {
     !cwd ||
     cwd === "." ||
     cwd === "/" ||
-    cwd === "/home/nova" ||
+    cwd === "/home/superchat" ||
     cwd === "/home/user" ||
     cwd === "/home/daytona" ||
     cwd === root

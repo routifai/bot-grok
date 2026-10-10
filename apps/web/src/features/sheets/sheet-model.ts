@@ -1,4 +1,4 @@
-import type { TableCell, TableCellEdit, TableSheet } from "@nova/contracts";
+import type { TableCell, TableCellEdit, TableSheet } from "@superchat/contracts";
 
 import { formatCellValue } from "./number-format";
 

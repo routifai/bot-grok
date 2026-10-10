@@ -1,4 +1,4 @@
-import { plainTextFromMarkdown } from "@nova/core";
+import { plainTextFromMarkdown } from "@superchat/core";
 
 const MAX_PREVIEW_WORDS = 12;
 

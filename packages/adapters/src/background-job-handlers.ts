@@ -4,10 +4,10 @@ import type {
   JobPublisher,
   MessagingSurface,
   SandboxProvider,
-} from "@nova/adapter-kit";
-import { messagingDeliverJob } from "@nova/adapter-kit";
-import { cancelRunsInTransaction, type PrismaClient, type ThreadEvents } from "@nova/db";
-import { getLogger } from "@nova/logging";
+} from "@superchat/adapter-kit";
+import { messagingDeliverJob } from "@superchat/adapter-kit";
+import { cancelRunsInTransaction, type PrismaClient, type ThreadEvents } from "@superchat/db";
+import { getLogger } from "@superchat/logging";
 import { expireComputerControl } from "./computer-control.js";
 import { scheduleComputerSleep, sleepComputerIfIdle } from "./computer-idle.js";
 import { performComputerUpdate } from "./computer-update.js";

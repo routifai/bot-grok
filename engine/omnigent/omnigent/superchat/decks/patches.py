@@ -1,10 +1,10 @@
 """Deterministic source patches for a deck: what the editor's controls turn into.
 
-Every patch finds its element by ``data-nova-id`` in the file's own HTML (stdlib ``html.parser``
+Every patch finds its element by ``data-superchat-id`` in the file's own HTML (stdlib ``html.parser``
 gives each tag's exact offset) and rewrites only that element's span, so every byte outside it
 is untouched. Anything that cannot be done exactly (a duplicate id, an element the parser had to
 close for the author, mixed text and tags) is refused with :class:`AmbiguousEdit`: the person is
-told to ask Nova instead of getting a guess.
+told to ask Superchat instead of getting a guess.
 
 Patch kinds (the wire shape, ``kind`` discriminates): ``set-text``, ``set-style``,
 ``set-attributes`` (``href`` on ``<a>``, ``alt`` on ``<img>``), ``remove-element``,
@@ -57,7 +57,7 @@ class InvalidPatch(PatchError):
 
 
 class AmbiguousEdit(PatchError):
-    """The file cannot be patched exactly here: a 409 whose message says to ask Nova."""
+    """The file cannot be patched exactly here: a 409 whose message says to ask Superchat."""
 
 
 class SetText(BaseModel):
@@ -254,7 +254,7 @@ def _clip(text: str, n: int = 50) -> str:
 
 
 def _ambiguous(why: str) -> AmbiguousEdit:
-    return AmbiguousEdit(f"Can't apply that edit exactly: {why}; ask Nova instead.")
+    return AmbiguousEdit(f"Can't apply that edit exactly: {why}; ask Superchat instead.")
 
 
 @dataclass
@@ -275,7 +275,7 @@ class _Doc:
         hits = [
             n
             for n in self.root.walk()
-            if (a := n.attr("data-nova-id")) is not None and a.value == element_id
+            if (a := n.attr("data-superchat-id")) is not None and a.value == element_id
         ]
         if not hits:
             raise _ambiguous(f'no element "{element_id}" in the file (it may have been removed)')
@@ -307,7 +307,7 @@ class _Doc:
 
     def where(self, node: _Node) -> str:
         """``slide 2 title`` for the note."""
-        ident = node.attr("data-nova-id")
+        ident = node.attr("data-superchat-id")
         name = ident.value if ident else node.tag
         for i, slide in enumerate(self.slides, 1):
             if slide is node:
@@ -317,7 +317,7 @@ class _Doc:
         return name
 
     def ids(self) -> set[str]:
-        return {a.value for n in self.root.walk() if (a := n.attr("data-nova-id"))}
+        return {a.value for n in self.root.walk() if (a := n.attr("data-superchat-id"))}
 
 
 def _splice(source: str, start: int, end: int, new: str) -> str:
@@ -545,7 +545,7 @@ def _apply_duplicate(doc: _Doc, patch: DuplicateElement) -> tuple[str, str]:
     pieces: list[tuple[int, int, str]] = []  # spans relative to the copy
     base = node.start
     for n in node.walk():
-        a = n.attr("data-nova-id")
+        a = n.attr("data-superchat-id")
         if a is None or a.value_start is None or a.value_end is None:
             continue
         stem, k = a.value, 1
@@ -606,7 +606,7 @@ def _apply_full_source(doc: _Doc, patch: SetFullSource) -> tuple[str, str]:
     for rx, what in ((_RISKY_RE, "scripts or embeds"), (_EXTERNAL_RE, "web addresses")):
         if len(rx.findall(new)) > len(rx.findall(doc.source)):
             raise InvalidPatch(f"That version adds {what} the deck doesn't allow")
-    ids = [a.value for n in _parse(new).walk() if (a := n.attr("data-nova-id"))]
+    ids = [a.value for n in _parse(new).walk() if (a := n.attr("data-superchat-id"))]
     dup = sorted({i for i in ids if ids.count(i) > 1})
     if dup:
         raise _ambiguous(f'"{dup[0]}" would be used more than once')
@@ -639,7 +639,7 @@ def apply_patches(
     """Apply ``patches`` in order; return ``(new_bytes, summary)``.
 
     :raises InvalidPatch: for a malformed patch (HTTP 400).
-    :raises AmbiguousEdit: when it cannot be done exactly (HTTP 409, "ask Nova instead").
+    :raises AmbiguousEdit: when it cannot be done exactly (HTTP 409, "ask Superchat instead").
     """
     if not patches or len(patches) > MAX_PATCHES:
         raise InvalidPatch(f"Send between 1 and {MAX_PATCHES} patches")
@@ -652,7 +652,7 @@ def apply_patches(
         doc = _Doc.load(text)
         if patch.kind not in ("set-full-source", "set-theme"):
             target = doc.find(patch.id)
-            ident = target.attr("data-nova-id")
+            ident = target.attr("data-superchat-id")
             if ident is not None and ident.value_start is None:
                 raise _ambiguous("that element has no readable id")
         text, note = _APPLY[patch.kind](doc, patch)  # type: ignore[operator]

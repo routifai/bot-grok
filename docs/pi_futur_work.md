@@ -1,15 +1,15 @@
 # Pi harness: future work
 
-The Muse can run on Omnigent's `pi` harness (`NOVA_MUSE_HARNESS=pi`, bundle `nova-pi`), including
+The Muse can run on Omnigent's `pi` harness (`SUPERCHAT_MUSE_HARNESS=pi`, bundle `superchat-pi`), including
 non-Claude models through OpenRouter. Verified live on a test side chat: search turns,
 `start_helper` to a worker, artifacts. Not urgent; pick up when Pi matters.
 
 1. **File card posted by the engine.** A non-Claude Muse (GPT via OpenRouter) skipped the
    `render_card` file card after a Helper finished. Have the engine post the card for a Helper's
    saved files so delivery never depends on the model following the instruction.
-2. **Helpers under a Pi Muse.** The switch is total: with `NOVA_MUSE_HARNESS=pi`, the Muse and
+2. **Helpers under a Pi Muse.** The switch is total: with `SUPERCHAT_MUSE_HARNESS=pi`, the Muse and
    every Helper type (`worker`, `subworker`, `goal`, `teacher`), including scheduled and
-   background Helper runs, run on Pi (bundle `nova-pi`); nothing stays on Claude. Open: a
+   background Helper runs, run on Pi (bundle `superchat-pi`); nothing stays on Claude. Open: a
    coordinator worker under a Pi Muse has not yet split a job into subworkers (it did a
    multi-part trip plan alone); check whether that is model or prompt. Verify live that a
    worker's tool-call ids are no longer Anthropic `toolu_` ids.

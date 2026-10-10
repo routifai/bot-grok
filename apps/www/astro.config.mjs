@@ -7,7 +7,7 @@ import { resolveWwwPort } from "./www-port.mjs";
 const wwwPort = resolveWwwPort();
 
 export default defineConfig({
-  site: "https://nova.example",
+  site: "https://superchat.example",
   output: "static",
   i18n: {
     defaultLocale: "en",

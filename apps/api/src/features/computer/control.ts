@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { SandboxProvider } from "@nova/adapter-kit";
-import { computerControlExpireJobKey } from "@nova/adapter-kit";
+import type { SandboxProvider } from "@superchat/adapter-kit";
+import { computerControlExpireJobKey } from "@superchat/adapter-kit";
 import {
   clearInactiveUserComputerControl,
   displayBotWorkspacePath,
@@ -15,9 +15,9 @@ import {
   takeoverLeaseMs,
   toComputerRef,
   touchRunningComputer,
-} from "@nova/adapters";
-import { IsolationError, parseComputerMode } from "@nova/db";
-import { getLogger } from "@nova/logging";
+} from "@superchat/adapters";
+import { IsolationError, parseComputerMode } from "@superchat/db";
+import { getLogger } from "@superchat/logging";
 import { ORPCError } from "@orpc/server";
 import { engineComputerClient } from "../../engine-client.js";
 import type { RouterContext } from "../../routers/context.js";

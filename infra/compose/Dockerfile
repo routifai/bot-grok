@@ -20,11 +20,11 @@ WORKDIR /app
 COPY --chmod=755 . .
 
 # The pnpm store lives in a build cache, so it speeds up rebuilds without landing in the image.
-RUN --mount=type=cache,id=nova-pnpm-store,target=/pnpm/store \
+RUN --mount=type=cache,id=superchat-pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --store-dir /pnpm/store --package-import-method copy \
-      --filter "@nova/api..." --filter "@nova/worker..." --filter "@nova/web..."
-RUN pnpm --filter @nova/db generate
-RUN NOVA_ALLOW_DEV_SECRETS=1 pnpm --filter @nova/web build
+      --filter "@superchat/api..." --filter "@superchat/worker..." --filter "@superchat/web..."
+RUN pnpm --filter @superchat/db generate
+RUN SUPERCHAT_ALLOW_DEV_SECRETS=1 pnpm --filter @superchat/web build
 RUN install -d -m 750 -o node -g node /data /app/apps/web/node_modules/.vite-temp
 
 ARG GIT_SHA
@@ -32,4 +32,4 @@ ENV NODE_ENV=production
 ENV GIT_SHA=$GIT_SHA
 EXPOSE 3100 5173 7091
 USER node
-CMD ["pnpm", "--filter", "@nova/api", "start"]
+CMD ["pnpm", "--filter", "@superchat/api", "start"]

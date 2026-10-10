@@ -9,8 +9,8 @@ import {
   EmailEmulator,
   PipedreamConnector,
   ThirdPartyConnectorEmulator,
-} from "@nova/adapters";
-import { createThreadMessage, type PrismaClient } from "@nova/db";
+} from "@superchat/adapters";
+import { createThreadMessage, type PrismaClient } from "@superchat/db";
 import { sessionCookieHeader } from "../index.js";
 import { runProcess } from "./process.js";
 
@@ -38,7 +38,7 @@ async function main() {
   await mkdir(REPORT_DIR, { recursive: true });
   await mkdir(DATA_DIR, { recursive: true });
 
-  execFileSync("pnpm", ["--filter", "@nova/db", "exec", "prisma", "migrate", "deploy"], {
+  execFileSync("pnpm", ["--filter", "@superchat/db", "exec", "prisma", "migrate", "deploy"], {
     cwd: path.join(ROOT, "packages", "db"),
     env: process.env,
     stdio: "inherit",
@@ -95,19 +95,19 @@ async function main() {
           "--output",
           path.join(REPORT_DIR, `${flow}.html`),
           "-e",
-          `NOVA_SCREENSHOT_EMAIL=${EMAIL}`,
+          `SUPERCHAT_SCREENSHOT_EMAIL=${EMAIL}`,
           "-e",
-          `NOVA_SCREENSHOT_PASSWORD=${PASSWORD}`,
+          `SUPERCHAT_SCREENSHOT_PASSWORD=${PASSWORD}`,
           "-e",
-          `NOVA_SCREENSHOT_BOT_ID=${fixture.botId}`,
+          `SUPERCHAT_SCREENSHOT_BOT_ID=${fixture.botId}`,
           "-e",
-          `NOVA_SCREENSHOT_GROUP_ID=${fixture.groupId}`,
+          `SUPERCHAT_SCREENSHOT_GROUP_ID=${fixture.groupId}`,
           "-e",
-          `NOVA_SCREENSHOT_ROUTINE_ID=${fixture.routineId}`,
+          `SUPERCHAT_SCREENSHOT_ROUTINE_ID=${fixture.routineId}`,
           "-e",
-          `NOVA_NOTIFICATION_VIDEO=${path.join(REPORT_DIR, "notification-demo")}`,
+          `SUPERCHAT_NOTIFICATION_VIDEO=${path.join(REPORT_DIR, "notification-demo")}`,
           "-e",
-          `NOVA_EXPAND_NOTIFICATIONS_URL=${EXPAND_NOTIFICATIONS_URL}`,
+          `SUPERCHAT_EXPAND_NOTIFICATIONS_URL=${EXPAND_NOTIFICATIONS_URL}`,
           path.join(FLOW_DIR, `${flow}.yaml`),
         ],
         process.env,

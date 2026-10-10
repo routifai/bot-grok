@@ -1,5 +1,5 @@
 import { t } from "@lingui/core/macro";
-import { isAttachmentImageMimeType, isDeckArtifactName } from "@nova/contracts";
+import { isAttachmentImageMimeType, isDeckArtifactName } from "@superchat/contracts";
 import type { LucideIcon } from "lucide-react";
 import { File, FileText, Image as ImageIcon, LayoutTemplate, Presentation } from "lucide-react";
 

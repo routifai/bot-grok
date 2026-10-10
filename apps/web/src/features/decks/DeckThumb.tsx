@@ -1,4 +1,4 @@
-import { cn } from "@nova/ui-web";
+import { cn } from "@superchat/ui-web";
 import { useEffect, useRef, useState } from "react";
 import { SandboxedHtmlViewer } from "../../components/SandboxedHtmlViewer";
 import { postDeckNavigation, readDeckEvent } from "./deck-model";

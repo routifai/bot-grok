@@ -4,8 +4,8 @@ import {
   FORK_ANCHOR_INVALID,
   FORK_TOO_DEEP,
   type ThreadMessage,
-} from "@nova/contracts";
-import { Button } from "@nova/ui-web";
+} from "@superchat/contracts";
+import { Button } from "@superchat/ui-web";
 import { useRef, useState } from "react";
 import { ForkComposer } from "./ForkComposer";
 import { ForkOverlay, type ForkWire, LiftedMessage, OverlayTopBar } from "./ForkOverlay";

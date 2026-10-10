@@ -1,4 +1,4 @@
-import type { Bot, Group, ThreadSnapshot } from "@nova/contracts";
+import type { Bot, Group, ThreadSnapshot } from "@superchat/contracts";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { useNavigate } from "react-router-dom";
 import { rpc } from "../../../lib/rpc";

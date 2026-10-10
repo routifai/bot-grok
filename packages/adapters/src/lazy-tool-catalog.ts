@@ -3,7 +3,7 @@ import type {
   ConnectorEvent,
   ConnectorRoute,
   ConnectorTool,
-} from "@nova/adapter-kit";
+} from "@superchat/adapter-kit";
 import { z } from "zod";
 
 export const DIRECT_TOOL_LIMIT = 20;

@@ -2,14 +2,14 @@ import {
   fetchOmnigentArtifactContent,
   getOmnigentArtifact,
   type OmnigentClientConfig,
-} from "@nova/adapters";
-import { parseChartDocument, parseDashboardDocument } from "@nova/charts";
+} from "@superchat/adapters";
+import { parseChartDocument, parseDashboardDocument } from "@superchat/charts";
 import {
   type Actor,
   type ChartThumbnail,
   isChartArtifactName,
   isDashboardArtifactName,
-} from "@nova/contracts";
+} from "@superchat/contracts";
 import { ORPCError } from "@orpc/server";
 import { type EngineArtifactsDeps, emailOf, notFound } from "../artifacts/index.js";
 import { ThumbnailCache } from "./cache.js";

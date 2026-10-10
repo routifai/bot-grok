@@ -1,4 +1,4 @@
-import type { ThreadMessage, ThreadMessagePage } from "@nova/contracts";
+import type { ThreadMessage, ThreadMessagePage } from "@superchat/contracts";
 import { describe, expect, it } from "vitest";
 import {
   conversationMessages,
@@ -118,7 +118,7 @@ describe("conversationMessages", () => {
     { kind: "meta", text: "Created routine" },
   ]);
 
-  it("layers Nova's own rows in among the engine's, by time", () => {
+  it("layers Superchat's own rows in among the engine's, by time", () => {
     expect(conversationMessages([e1, e2], [draft]).map((m) => m.id)).toEqual([
       "e1",
       "n-draft",
@@ -126,7 +126,7 @@ describe("conversationMessages", () => {
     ]);
   });
 
-  it("leaves out Nova's copies of messages and replies, which the transcript supplies", () => {
+  it("leaves out Superchat's copies of messages and replies, which the transcript supplies", () => {
     const copyOfUser = message("n-user", "2026-10-01T10:00:00.200Z", "user");
     const copyOfReply = withBlocks("n-reply", "2026-10-01T10:02:00.100Z", "bot", [
       { kind: "text", text: "hi" },
@@ -137,14 +137,14 @@ describe("conversationMessages", () => {
     ]);
   });
 
-  it("holds back Nova rows older than the loaded window, and keeps a not-yet-recorded send once", () => {
+  it("holds back Superchat rows older than the loaded window, and keeps a not-yet-recorded send once", () => {
     const old = withBlocks("n-old", "2026-09-01T10:00:00Z", "bot", [{ kind: "meta", text: "old" }]);
     const sent = message("n-sent", "2026-10-01T10:05:00Z", "user");
     const merged = conversationMessages([e1, e2], [old, sent, sent]);
     expect(merged.map((m) => m.id)).toEqual(["e1", "e2", "n-sent"]);
   });
 
-  it("shows every Nova-owned row while the engine has nothing yet", () => {
+  it("shows every Superchat-owned row while the engine has nothing yet", () => {
     expect(conversationMessages([], [draft]).map((m) => m.id)).toEqual(["n-draft"]);
   });
 });

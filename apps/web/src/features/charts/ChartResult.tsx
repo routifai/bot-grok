@@ -1,7 +1,7 @@
 import { useLingui } from "@lingui/react/macro";
-import type { ChartDocument } from "@nova/charts";
-import { isChartArtifactName, type ThreadMessage } from "@nova/contracts";
-import { Button, cn, Dialog, DialogClose, DialogContent, DialogTitle } from "@nova/ui-web";
+import type { ChartDocument } from "@superchat/charts";
+import { isChartArtifactName, type ThreadMessage } from "@superchat/contracts";
+import { Button, cn, Dialog, DialogClose, DialogContent, DialogTitle } from "@superchat/ui-web";
 import { BarChart3, Maximize2, X } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { useArtifactPanel } from "../../components/cards/context";

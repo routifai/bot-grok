@@ -2,7 +2,7 @@
 
 import { i18n } from "@lingui/core";
 import { I18nProvider } from "@lingui/react";
-import { CHART_FIXTURES, type ChartDocument, DASHBOARD_FIXTURE } from "@nova/charts";
+import { CHART_FIXTURES, type ChartDocument, DASHBOARD_FIXTURE } from "@superchat/charts";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -336,7 +336,7 @@ it("shows a dashboard page live at full width, as tall as the page says, with Op
   act(() => {
     window.dispatchEvent(
       new MessageEvent("message", {
-        data: { type: "nova:dashboard-height", height: 910 },
+        data: { type: "superchat:dashboard-height", height: 910 },
         source: frame.contentWindow,
       }),
     );
@@ -345,7 +345,7 @@ it("shows a dashboard page live at full width, as tall as the page says, with Op
   // Another window cannot resize it.
   act(() => {
     window.dispatchEvent(
-      new MessageEvent("message", { data: { type: "nova:dashboard-height", height: 20 } }),
+      new MessageEvent("message", { data: { type: "superchat:dashboard-height", height: 20 } }),
     );
   });
   expect(box.style.height).toBe("910px");

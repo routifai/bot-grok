@@ -1,4 +1,4 @@
-import type { ChatSummary, MessageFork, ThreadMessage } from "@nova/contracts";
+import type { ChatSummary, MessageFork, ThreadMessage } from "@superchat/contracts";
 import { type RefObject, useCallback, useMemo, useState } from "react";
 import { type ForkThreadTarget, forkTarget } from "./ForkThread";
 import { ForkUnderMessage } from "./ForkUnderMessage";

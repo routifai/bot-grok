@@ -1,4 +1,4 @@
-import { COMPUTER_UPDATE_STAGES, type ComputerUpdate } from "@nova/contracts";
+import { COMPUTER_UPDATE_STAGES, type ComputerUpdate } from "@superchat/contracts";
 
 /** Shared polling and local presentation state; the server owns operation lifetime. */
 export function createComputerUpdates(client: {

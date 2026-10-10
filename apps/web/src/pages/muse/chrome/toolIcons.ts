@@ -1,5 +1,5 @@
-import type { ActivitySource } from "@nova/contracts";
-import type { ToolIconKey } from "@nova/core";
+import type { ActivitySource } from "@superchat/contracts";
+import type { ToolIconKey } from "@superchat/core";
 import type { LucideIcon } from "lucide-react";
 import {
   Bot,

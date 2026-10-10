@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { ThreadMessage } from "@nova/contracts";
+import type { ThreadMessage } from "@superchat/contracts";
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -25,7 +25,7 @@ vi.mock("@lingui/core/macro", () => ({
   t: (parts: TemplateStringsArray, ...values: unknown[]) =>
     parts.reduce((acc, part, i) => `${acc}${part}${values[i] ?? ""}`, ""),
 }));
-vi.mock("@nova/chat-ui/web", () => ({ ChatMarkdown: () => null }));
+vi.mock("@superchat/chat-ui/web", () => ({ ChatMarkdown: () => null }));
 vi.mock("../../../features/artifacts/ArtifactFileCard", () => ({ ArtifactFileCard: () => null }));
 vi.mock("../../../features/approvals/AskCard", () => ({ AskCard: () => null }));
 vi.mock("../../../components/ai/CollaborationMarker", () => ({ CollaborationMarker: () => null }));
@@ -42,7 +42,7 @@ vi.mock("../../shell/message-cards", () => ({
 }));
 vi.mock("../intro", () => ({ FirstRunHint: () => null }));
 vi.mock("./HelperTracker", () => ({ HelperTracker: () => null }));
-vi.mock("@nova/ui-web", () => ({
+vi.mock("@superchat/ui-web", () => ({
   BotAvatar: () => null,
   Button: () => null,
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
@@ -128,7 +128,7 @@ it("words the model-layer failures calmly", async () => {
 it("offers the fix for a missing key or an used-up budget by opening Settings > Models", async () => {
   const opened: unknown[] = [];
   const listener = (event: Event) => opened.push((event as CustomEvent<unknown>).detail);
-  window.addEventListener("nova:open-settings", listener);
+  window.addEventListener("superchat:open-settings", listener);
   try {
     await render("model_key_required");
     const key = lastHost?.querySelector('[data-testid="message-error-action"]') as HTMLElement;
@@ -145,7 +145,7 @@ it("offers the fix for a missing key or an used-up budget by opening Settings > 
     await render("model_not_supported");
     expect(lastHost?.querySelector('[data-testid="message-error-action"]')).toBeNull();
   } finally {
-    window.removeEventListener("nova:open-settings", listener);
+    window.removeEventListener("superchat:open-settings", listener);
   }
 });
 
@@ -249,7 +249,7 @@ it("falls back to the plain chip when the image cannot be read, and omits an emp
   expect(host.querySelector('[data-testid="message-user-bubble"]')).toBeNull();
 });
 
-describe("a message sent while Nova was working", () => {
+describe("a message sent while Superchat was working", () => {
   const userMessage = (delivered?: "queued"): ThreadMessage => ({
     id: "u1",
     threadId: "s1",
@@ -260,7 +260,7 @@ describe("a message sent while Nova was working", () => {
     ...(delivered ? { delivered } : {}),
   });
 
-  it("says Nova will see it after the current step while it is queued", async () => {
+  it("says Superchat will see it after the current step while it is queued", async () => {
     const host = await mount(userMessage("queued"));
     expect(host.querySelector('[data-testid="message-queued-note"]')?.textContent).toBe(
       "superchat will see this after the current step",

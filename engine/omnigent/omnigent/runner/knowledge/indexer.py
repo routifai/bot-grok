@@ -148,7 +148,7 @@ class Indexer:
         clock: Callable[[], float] = time.time,
     ) -> None:
         """
-        :param home: The index directory (``~/.nova/knowledge``): the database and thumbnails.
+        :param home: The index directory (``~/.superchat/knowledge``): the database and thumbnails.
         :param workspace: The workspace root the indexed paths are relative to (``~/workspace``).
         :param embedder: Makes the vectors (or says why it cannot).
         :param reranker: Reorders the best hybrid hits with a model (``None``: fused order).
@@ -678,7 +678,7 @@ class Indexer:
     # ------------------------------------------------------------------ Markdown
 
     def markdown_path(self, file_id: str) -> Path:
-        """Where a file's Markdown version lives (``~/.nova/knowledge/md/<file_id>.md``)."""
+        """Where a file's Markdown version lives (``~/.superchat/knowledge/md/<file_id>.md``)."""
         return self._md / f"{file_id}.md"
 
     def _write_markdown(self, file_id: str, text: str) -> None:

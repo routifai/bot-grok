@@ -163,7 +163,7 @@ def test_is_host_supervisor_running_reflects_the_liveness_check() -> None:
 def test_start_host_skips_relaunch_when_the_host_is_already_running() -> None:
     """A repeated ``start_host`` for a host id whose supervised loop is still alive (a
     relaunch onto a sandbox that never died, or a provider whose sandbox outlives any one
-    session — e.g. Nova's ``computer`` provider) must not clone again or start a second
+    session — e.g. Superchat's ``computer`` provider) must not clone again or start a second
     loop; it returns the same workspace the live host is already using."""
     launcher = _RecordingLauncher(host_already_running=True)
 

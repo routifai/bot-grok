@@ -20,11 +20,11 @@ executor:
 
 os_env:
   type: caller_process
-  cwd: /home/nova/workspace
+  cwd: /home/superchat/workspace
   sandbox:
     type: none
     # A session opened on a Project starts in its folder; file tools still reach the workspace.
-    write_paths: [/home/nova/workspace]
+    write_paths: [/home/superchat/workspace]
 
 max_sessions: 5
 

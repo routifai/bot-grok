@@ -1,6 +1,6 @@
-import { confineWorkspacePath, WorkspacePathError } from "@nova/adapters";
-import { isAllowedAttachmentMimeType, type WorkspaceAttachment } from "@nova/contracts";
-import { WORKSPACE_UPLOADS_PREFIX, type WorkspaceAttachmentRef } from "@nova/core";
+import { confineWorkspacePath, WorkspacePathError } from "@superchat/adapters";
+import { isAllowedAttachmentMimeType, type WorkspaceAttachment } from "@superchat/contracts";
+import { WORKSPACE_UPLOADS_PREFIX, type WorkspaceAttachmentRef } from "@superchat/core";
 import { ORPCError } from "@orpc/server";
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: a reference line must stay on one line

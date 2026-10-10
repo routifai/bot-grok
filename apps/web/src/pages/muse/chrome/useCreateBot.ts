@@ -1,5 +1,5 @@
-import type { Bot, ComputerMode } from "@nova/contracts";
-import { normalizeCreateBotProfile } from "@nova/contracts";
+import type { Bot, ComputerMode } from "@superchat/contracts";
+import { normalizeCreateBotProfile } from "@superchat/contracts";
 import {
   type Dispatch,
   type MutableRefObject,

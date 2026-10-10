@@ -176,7 +176,7 @@ def test_provider_without_any_connection_is_model_key_required(store) -> None:
     assert r.status_code == 412
     assert r.json() == {
         "code": "model_key_required",
-        "message": "Add your Anthropic or OpenRouter API key in Settings to use Nova.",
+        "message": "Add your Anthropic or OpenRouter API key in Settings to use Superchat.",
     }
     assert seen == []
 

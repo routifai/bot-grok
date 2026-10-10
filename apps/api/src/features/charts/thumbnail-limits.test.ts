@@ -1,4 +1,4 @@
-import type { ChartDocument } from "@nova/charts";
+import type { ChartDocument } from "@superchat/charts";
 import { describe, expect, it } from "vitest";
 import {
   limitForThumbnail,

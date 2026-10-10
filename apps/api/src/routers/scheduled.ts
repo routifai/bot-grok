@@ -1,12 +1,12 @@
-import { routineJobKey, routineWakeupJob, runContinueJob } from "@nova/adapter-kit";
+import { routineJobKey, routineWakeupJob, runContinueJob } from "@superchat/adapter-kit";
 import {
   expandSkillReferencesInPrompt,
   hasMixedOneShotSchedule,
   isOneShotRoutineCrons,
   nextCronDateAcrossStrict,
-} from "@nova/core";
-import { IsolationError } from "@nova/db";
-import { getLogger } from "@nova/logging";
+} from "@superchat/core";
+import { IsolationError } from "@superchat/db";
+import { getLogger } from "@superchat/logging";
 import { ORPCError } from "@orpc/server";
 
 import type { RouterContext } from "./context.js";

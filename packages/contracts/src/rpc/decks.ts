@@ -28,7 +28,7 @@ export type DeckExportFormat = z.infer<typeof DeckExportFormatSchema>;
 
 const ElementId = z.string().min(1).max(128);
 
-/** One source patch of a deck, applied by the engine on `data-nova-id` (same shape on the wire). */
+/** One source patch of a deck, applied by the engine on `data-superchat-id` (same shape on the wire). */
 export const DeckPatchSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("set-text"), id: ElementId, text: z.string().max(20_000) }),
   z.object({
@@ -87,7 +87,7 @@ export const decksContract = {
       .input(z.object({ themeId: z.string().min(1).max(60) }))
       .output(z.object({ html: z.string() })),
     /** Hand edits as source patches: a new `manual` version; CONFLICT when `baseVersion` is no
-     * longer the newest or the engine cannot apply a patch exactly (ask Nova instead). */
+     * longer the newest or the engine cannot apply a patch exactly (ask Superchat instead). */
     edit: oc
       .input(
         z.object({

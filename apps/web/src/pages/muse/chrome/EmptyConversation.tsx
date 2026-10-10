@@ -1,14 +1,14 @@
 import { useLingui } from "@lingui/react/macro";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
-import { NovaOrb, useOrbHome } from "../../../components/ai/orb";
+import { SuperchatOrb, useOrbHome } from "../../../components/ai/orb";
 import { greetingLead } from "./greeting";
-import { CalendarGlyph, SearchGlyph, SparkGlyph } from "./NovaGlyphs";
-import { NovaTile, type TileTone } from "./NovaTile";
+import { CalendarGlyph, SearchGlyph, SparkGlyph } from "./SuperchatGlyphs";
+import { SuperchatTile, type TileTone } from "./SuperchatTile";
 
 /**
  * The empty Conversation's start page, above the composer (docs/muse/DESIGN.md "First run"):
- * Nova's orb, a time-of-day greeting and one muted line, sitting on the Ask field (Shell.tsx
+ * Superchat's orb, a time-of-day greeting and one muted line, sitting on the Ask field (Shell.tsx
  * centers the composer between this and `EmptyConversationSuggestions`).
  */
 export function EmptyConversationLead({ personName }: { personName: string }) {
@@ -23,7 +23,7 @@ export function EmptyConversationLead({ personName }: { personName: string }) {
       className="flex flex-1 flex-col justify-end px-5 pt-10 pb-5 sm:px-8"
     >
       <div className="mx-auto flex w-full max-w-[640px] flex-col items-center text-center motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-500">
-        {orbHere ? <NovaOrb size={96} /> : <span aria-hidden="true" className="size-24" />}
+        {orbHere ? <SuperchatOrb size={96} /> : <span aria-hidden="true" className="size-24" />}
         <h1 className="mt-5 text-[30px] leading-[1.15] font-semibold tracking-[-0.4px] text-balance text-foreground">
           {lead}
         </h1>
@@ -66,13 +66,13 @@ export function EmptyConversationSuggestions({ onSend }: { onSend: (text: string
             onClick={() => onSend(app.prompt)}
             className="group/app flex w-[72px] flex-col items-center gap-[7px] rounded-xl pb-1 text-[12px] tracking-[-0.08px] text-ink-2 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
-            <NovaTile
+            <SuperchatTile
               tone={app.tone}
               size={48}
               className="rounded-[32%] shadow-[0_4px_12px_rgb(0_0_0/0.12)] transition-transform duration-200 group-hover/app:-translate-y-0.5 motion-reduce:transition-none"
             >
               {app.glyph}
-            </NovaTile>
+            </SuperchatTile>
             {app.label}
           </button>
         ))}

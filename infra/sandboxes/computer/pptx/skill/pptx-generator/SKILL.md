@@ -10,7 +10,7 @@ metadata:
     - https://github.com/microsoft/markitdown
 ---
 
-<!-- Portions from MiniMax-AI/skills skills/pptx-generator/SKILL.md@60aaae5, MIT; changes: Nova Computer paths and runtime (preinstalled libraries, NODE_PATH), artifact_save delivery, chart and table data rules, QA commands; the pipeline, rules and page-type guidance are unchanged. See NOTICE.md and LICENSE next to this file. -->
+<!-- Portions from MiniMax-AI/skills skills/pptx-generator/SKILL.md@60aaae5, MIT; changes: Superchat Computer paths and runtime (preinstalled libraries, NODE_PATH), artifact_save delivery, chart and table data rules, QA commands; the pipeline, rules and page-type guidance are unchanged. See NOTICE.md and LICENSE next to this file. -->
 
 # PPTX Generator & Editor
 
@@ -18,7 +18,7 @@ metadata:
 
 This skill handles all PowerPoint tasks: reading/analyzing existing presentations, editing template-based decks via XML manipulation, and creating presentations from scratch using PptxGenJS. It includes a complete design system (color palettes, fonts, style recipes) and detailed guidance for every slide type.
 
-## In Nova's Computer (read this first)
+## In Superchat's Computer (read this first)
 
 Everything below is MiniMax's pipeline. These rules adapt it to the Computer and override the
 upstream text where they differ.
@@ -33,7 +33,7 @@ upstream text where they differ.
   (see the workspace rules: `~/workspace/your_files/<name>.pptx`, or the Goal's `files/`) by
   setting `fileName` in `compile.js`; never copy it there afterwards.
 - **Deliver with `artifact_save`** on that path once QA is clean. That puts the `.pptx` in the
-  person's Library with a file card that opens a preview in Nova. Reply in one line. Saving the
+  person's Library with a file card that opens a preview in Superchat. Reply in one line. Saving the
   same name again adds a version, so revise in place.
 - **Numbers come from the person's data.** Never invent a figure for a chart, table or stat
   callout. Read the person's files, compute every value with pandas or duckdb in the Computer
@@ -46,7 +46,7 @@ upstream text where they differ.
   caption that names what it shows and its unit. Where the page-type guides below mention an SVG
   chart, use a native chart instead.
 - **Tables: always pass `rowH`** (one number, in inches, big enough for the text) next to `colW`,
-  so every row has an explicit height; Nova's preview clips a table to its frame otherwise.
+  so every row has an explicit height; Superchat's preview clips a table to its frame otherwise.
 - **Text extraction.** Where this skill says `python -m markitdown`, run `python3 -m markitdown`.
 
 ## Quick Reference

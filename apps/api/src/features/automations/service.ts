@@ -1,6 +1,6 @@
 // `automations.*`: the person's scheduled prompts, run by the engine's scheduled tasks
 // (`/v1/scheduled-tasks`). Each is a scheduled Helper task parented on the Muse's Super Chat and
-// marked `automation`, so the engine fires it, owns its schedule and records its runs; Nova keeps
+// marked `automation`, so the engine fires it, owns its schedule and records its runs; Superchat keeps
 // no rows. Every call is owner-scoped: the Muse must be the actor's own, and only tasks bound to
 // its Super Chat with this marker are listed, changed, run or removed.
 import {
@@ -11,9 +11,9 @@ import {
   type OmnigentScheduledTask,
   patchOmnigentScheduledTask,
   runOmnigentScheduledTask,
-} from "@nova/adapters";
-import type { Actor, Automation, AutomationSchedule } from "@nova/contracts";
-import type { PrismaClient } from "@nova/db";
+} from "@superchat/adapters";
+import type { Actor, Automation, AutomationSchedule } from "@superchat/contracts";
+import type { PrismaClient } from "@superchat/db";
 import { ORPCError } from "@orpc/server";
 import { rruleToSchedule, scheduleToRrule } from "./schedule.js";
 

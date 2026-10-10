@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import "@nova/ui-web/styles.css";
+@import "@superchat/ui-web/styles.css";
 @import "@fontsource-variable/geist/wght.css";
 @import "@fontsource-variable/geist-mono/wght.css";
 @import "@fontsource-variable/instrument-sans/wght.css";
@@ -18,7 +18,7 @@
 }
 
 /* Signed-out welcome: the app's own type, and a soft pulse on the "working" dot. */
-[data-nova-surface="welcome"] {
+[data-superchat-surface="welcome"] {
   font-family:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "Instrument Sans Variable", "Geist Variable",
     ui-sans-serif, system-ui, sans-serif;
@@ -347,35 +347,35 @@ body {
   background-color: var(--window);
 }
 
-/* Nova's Mac window (docs/muse/DESIGN.md "Window"): the content is one rounded window on
+/* Superchat's Mac window (docs/muse/DESIGN.md "Window"): the content is one rounded window on
    the window ground; the sidebar and inspector float inside it as glass panels inset 8px. */
 [data-product="muse"] {
-  --nova-window-shadow: 0 10px 30px rgb(0 0 0 / 0.08), 0 0 0 0.5px rgb(0 0 0 / 0.1);
-  --nova-lift: 0 1px 3px rgb(0 0 0 / 0.06);
+  --superchat-window-shadow: 0 10px 30px rgb(0 0 0 / 0.08), 0 0 0 0.5px rgb(0 0 0 / 0.1);
+  --superchat-lift: 0 1px 3px rgb(0 0 0 / 0.06);
 }
 [data-product="muse"][data-theme="dark"] {
-  --nova-window-shadow: 0 10px 30px rgb(0 0 0 / 0.5), 0 0 0 0.5px rgb(255 255 255 / 0.08);
-  --nova-lift: 0 1px 3px rgb(0 0 0 / 0.4);
+  --superchat-window-shadow: 0 10px 30px rgb(0 0 0 / 0.5), 0 0 0 0.5px rgb(255 255 255 / 0.08);
+  --superchat-lift: 0 1px 3px rgb(0 0 0 / 0.4);
 }
-/* Nova's surfaces live in the components layer, so a utility on the same element still wins. */
+/* Superchat's surfaces live in the components layer, so a utility on the same element still wins. */
 @layer components {
-  .nova-window {
+  .superchat-window {
     background-color: var(--content);
   }
   @media (min-width: 768px) {
-    .nova-window {
+    .superchat-window {
       border-radius: 22px;
-      box-shadow: var(--nova-window-shadow);
+      box-shadow: var(--superchat-window-shadow);
     }
   }
-  .nova-glass {
+  .superchat-glass {
     background-color: var(--glass);
     -webkit-backdrop-filter: blur(30px) saturate(1.8);
     backdrop-filter: blur(30px) saturate(1.8);
     box-shadow: inset 0 0 0 0.5px var(--glass-line);
   }
   @media (min-width: 768px) {
-    .nova-glass {
+    .superchat-glass {
       border-radius: 18px;
     }
   }
@@ -387,17 +387,17 @@ body {
     border: 1px solid var(--glass-line);
   }
   /* Activity inside a superchat glass card: flat rows, no inner group box. */
-  .sc-activity .nova-group {
+  .sc-activity .superchat-group {
     background-color: transparent;
     box-shadow: none;
     border-radius: 0;
     overflow: visible;
   }
-  .sc-activity .nova-group > .nova-row + .nova-row::before {
+  .sc-activity .superchat-group > .superchat-row + .superchat-row::before {
     background: var(--glass-line);
     inset-inline: 56px 8px;
   }
-  .sc-activity .nova-row {
+  .sc-activity .superchat-row {
     border-radius: 14px;
   }
   /* superchat: the person's messages sit in a soft slate panel, not a colored pill. */
@@ -420,22 +420,22 @@ body {
     backdrop-filter: blur(5px);
   }
   /* A small glass pill (the toolbar's button group). */
-  .nova-glass-pill {
+  .superchat-glass-pill {
     background-color: var(--glass);
     -webkit-backdrop-filter: blur(20px);
     backdrop-filter: blur(20px);
     box-shadow:
       inset 0 0 0 0.5px var(--glass-line),
-      var(--nova-lift);
+      var(--superchat-lift);
   }
   /* iOS inset grouped list: one rounded card, rows split by inset hairlines. */
-  .nova-group {
+  .superchat-group {
     background-color: var(--group);
     border-radius: 16px;
     box-shadow: inset 0 0 0 0.5px var(--separator);
     overflow: hidden;
   }
-  .nova-group > .nova-row + .nova-row::before {
+  .superchat-group > .superchat-row + .superchat-row::before {
     content: "";
     position: absolute;
     inset-inline: 52px 0;
@@ -443,16 +443,16 @@ body {
     height: 0.5px;
     background: var(--separator);
   }
-  .nova-row {
+  .superchat-row {
     position: relative;
   }
   /* A row without a tile: its separator starts at the text. */
-  .nova-group > .nova-row-plain + .nova-row::before,
-  .nova-group > .nova-row + .nova-row-plain::before {
+  .superchat-group > .superchat-row-plain + .superchat-row::before,
+  .superchat-group > .superchat-row + .superchat-row-plain::before {
     inset-inline-start: 12px;
   }
   /* A card (Goals, Waiting decisions, Library tiles): 18px, the group fill, a hairline. */
-  .nova-card {
+  .superchat-card {
     background-color: var(--group);
     border-radius: 18px;
     box-shadow:
@@ -460,7 +460,7 @@ body {
       0 1px 3px rgb(0 0 0 / 0.04);
   }
   /* The Feed's media tiles take a tone: warm, pink or green instead of the blue glow. */
-  .nova-media[data-tone="warm"] {
+  .superchat-media[data-tone="warm"] {
     background-image: radial-gradient(
       120% 120% at 80% 110%,
       var(--media-warm-glow) 0%,
@@ -468,7 +468,7 @@ body {
       var(--media) 85%
     );
   }
-  .nova-media[data-tone="pink"] {
+  .superchat-media[data-tone="pink"] {
     background-image: radial-gradient(
       120% 120% at 80% 110%,
       var(--media-pink-glow) 0%,
@@ -476,7 +476,7 @@ body {
       var(--media) 85%
     );
   }
-  .nova-media[data-tone="green"] {
+  .superchat-media[data-tone="green"] {
     background-image: radial-gradient(
       120% 120% at 80% 110%,
       var(--media-green-glow) 0%,
@@ -487,12 +487,12 @@ body {
 
   /* The Ask field (the composer): a rounded 24px field on the group surface, a hairline and a
      soft drop; focus adds a quiet accent halo. */
-  .nova-ask {
+  .superchat-ask {
     box-shadow:
       inset 0 0 0 0.5px var(--separator),
       0 6px 20px rgb(0 0 0 / 0.06);
   }
-  .nova-ask:focus-within {
+  .superchat-ask:focus-within {
     box-shadow:
       inset 0 0 0 0.5px var(--separator),
       0 0 0 4px color-mix(in srgb, var(--tint) 25%, transparent),
@@ -500,7 +500,7 @@ body {
   }
 
   /* A colored app tile: an Apple-style rounded square with a soft top-to-bottom gradient. */
-  .nova-tile {
+  .superchat-tile {
     display: grid;
     place-items: center;
     flex: none;
@@ -508,40 +508,40 @@ body {
     border-radius: 30%;
     box-shadow: inset 0 0 0 0.5px rgb(0 0 0 / 0.06);
   }
-  .nova-tile > svg {
+  .superchat-tile > svg {
     width: 60%;
     height: 60%;
   }
-  .nova-tile[data-tone="blue"] {
+  .superchat-tile[data-tone="blue"] {
     background-image: linear-gradient(var(--tile-blue-from), var(--tile-blue-to));
   }
-  .nova-tile[data-tone="green"] {
+  .superchat-tile[data-tone="green"] {
     background-image: linear-gradient(var(--tile-green-from), var(--tile-green-to));
   }
-  .nova-tile[data-tone="yellow"] {
+  .superchat-tile[data-tone="yellow"] {
     background-image: linear-gradient(var(--tile-yellow-from), var(--tile-yellow-to));
   }
-  .nova-tile[data-tone="orange"] {
+  .superchat-tile[data-tone="orange"] {
     background-image: linear-gradient(var(--tile-orange-from), var(--tile-orange-to));
   }
-  .nova-tile[data-tone="purple"] {
+  .superchat-tile[data-tone="purple"] {
     background-image: linear-gradient(var(--tile-purple-from), var(--tile-purple-to));
   }
-  .nova-tile[data-tone="red"] {
+  .superchat-tile[data-tone="red"] {
     background-image: linear-gradient(var(--tile-red-from), var(--tile-red-to));
   }
-  .nova-tile[data-tone="indigo"] {
+  .superchat-tile[data-tone="indigo"] {
     background-image: linear-gradient(var(--tile-indigo-from), var(--tile-indigo-to));
   }
-  .nova-tile[data-tone="teal"] {
+  .superchat-tile[data-tone="teal"] {
     background-image: linear-gradient(var(--tile-teal-from), var(--tile-teal-to));
   }
-  .nova-tile[data-tone="gray"] {
+  .superchat-tile[data-tone="gray"] {
     background-image: linear-gradient(var(--tile-gray-from), var(--tile-gray-to));
   }
 
   /* The result tile (Conversation): a dark card with a deep blue glow from the bottom right. */
-  .nova-media {
+  .superchat-media {
     background-color: var(--media);
     background-image: radial-gradient(
       120% 120% at 85% 110%,
@@ -550,11 +550,11 @@ body {
       var(--media) 80%
     );
   }
-  .nova-media-bar {
+  .superchat-media-bar {
     background-image: linear-gradient(var(--media-bar), var(--media-bar-2));
     box-shadow: inset 0 0 0 0.5px rgb(255 255 255 / 0.08);
   }
-  .nova-media-key {
+  .superchat-media-key {
     background-image: linear-gradient(
       var(--media-key-from),
       var(--tile-blue-to) 60%,
@@ -563,9 +563,9 @@ body {
     box-shadow: 0 0 40px color-mix(in srgb, var(--tile-blue-to) 55%, transparent);
   }
 
-  /* Nova's orb before its first frame, and where WebGL is unavailable: a still sphere in the
+  /* Superchat's orb before its first frame, and where WebGL is unavailable: a still sphere in the
      shader's own colors (components/ai/orb/shader.ts), filling the same 90% circle. */
-  .nova-orb {
+  .superchat-orb {
     background: radial-gradient(
       circle closest-side,
       rgb(16 17 28) 0%,
@@ -576,15 +576,15 @@ body {
       transparent 91%
     );
   }
-  .nova-orb[data-orb-state="working"][data-orb-fallback] {
+  .superchat-orb[data-orb-state="working"][data-orb-fallback] {
     filter: brightness(1.25) saturate(1.2);
   }
-  .nova-orb:has(canvas) {
+  .superchat-orb:has(canvas) {
     background: none;
   }
 }
 
-/* Nova's switches are iOS toggles: 44×26, green when on, a white knob with a soft shadow.
+/* Superchat's switches are iOS toggles: 44×26, green when on, a white knob with a soft shadow.
    Unlayered, so it outranks the shadcn switch's utilities. */
 [data-product="muse"] [data-slot="switch"][data-size="default"] {
   width: 44px;
@@ -612,13 +612,13 @@ body {
 
 /* The orb's flight from the start page to its home (components/ai/orb/flight.ts): the orb and
    the composer move as one object each on an Apple-like spring; the rest crossfades. */
-::view-transition-group(nova-orb),
-::view-transition-group(nova-composer) {
+::view-transition-group(superchat-orb),
+::view-transition-group(superchat-composer) {
   animation-duration: 600ms;
   animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
 }
-::view-transition-old(nova-orb),
-::view-transition-new(nova-orb) {
+::view-transition-old(superchat-orb),
+::view-transition-new(superchat-orb) {
   animation-duration: 600ms;
   height: 100%;
 }
@@ -634,7 +634,7 @@ body {
   }
 }
 
-/* Keyboard focus everywhere in Nova: the accent at 50%. */
+/* Keyboard focus everywhere in Superchat: the accent at 50%. */
 [data-product="muse"] :focus-visible {
   outline-color: var(--ring);
 }
@@ -651,7 +651,7 @@ body {
   }
 }
 
-/* Muse replies (MessageView.tsx `muse-reply`): one reading rhythm for Nova's markdown.
+/* Muse replies (MessageView.tsx `muse-reply`): one reading rhythm for Superchat's markdown.
    Headings stay at the body size and lean on weight; lists breathe; code sits on the
    bubble surface in Geist Mono. */
 .muse-reply .rk-chat-markdown p,

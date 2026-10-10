@@ -1,7 +1,7 @@
 // Asks for Muses on the engine (ADR 0009): the engine's decisions inbox (`GET /v1/me/asks`) is
 // the one list of what waits on the person (approvals, plan proposals, blocked Tasks), and
 // `POST /v1/me/asks/{id}/answer` answers any of them. The engine sends kinds and choice ids;
-// the wording below is Nova's.
+// the wording below is Superchat's.
 import {
   answerOmnigentAsk,
   createChatOwnershipResolver,
@@ -9,9 +9,9 @@ import {
   OmnigentApiError,
   type OmnigentAsk,
   type OmnigentClientConfig,
-} from "@nova/adapters";
-import type { Actor, Ask } from "@nova/contracts";
-import type { PrismaClient } from "@nova/db";
+} from "@superchat/adapters";
+import type { Actor, Ask } from "@superchat/contracts";
+import type { PrismaClient } from "@superchat/db";
 import { ORPCError } from "@orpc/server";
 
 export interface EngineAsksDeps {

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Superchat Browser
+Comment=Chromium with Superchat container flags and profile isolation
+Exec=/usr/local/bin/superchat-browser %U
+Terminal=false
+Categories=Network;WebBrowser;
+MimeType=x-scheme-handler/http;x-scheme-handler/https;text/html;
+StartupNotify=false

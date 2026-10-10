@@ -5,7 +5,7 @@ import {
   resolveAppearance,
   resolveAppearancePreference,
   tokensForAppearance,
-} from "@nova/ui-tokens";
+} from "@superchat/ui-tokens";
 
 export type { AppearancePreference, ResolvedAppearance };
 

@@ -4,10 +4,10 @@ import {
   prepareGraphqlInstall,
   sanitizeComposioError,
   verifyMcpInstall,
-} from "@nova/adapters";
-import { IntegrationProviderIdSchema } from "@nova/contracts";
-import { containsSecret } from "@nova/core";
-import type { Prisma } from "@nova/db";
+} from "@superchat/adapters";
+import { IntegrationProviderIdSchema } from "@superchat/contracts";
+import { containsSecret } from "@superchat/core";
+import type { Prisma } from "@superchat/db";
 import { ORPCError } from "@orpc/server";
 import { searchIntegrationCatalog } from "../integration-catalog.js";
 import {

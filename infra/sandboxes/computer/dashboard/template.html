@@ -1,17 +1,17 @@
 <!doctype html>
 <!-- Portions modified from nexu-io/open-design skills/data-report/example.html@802708f, Apache-2.0
-     (see /NOTICE). Changes: rewritten as Nova's one dashboard page, filled by nova-dashboard from
+     (see /NOTICE). Changes: rewritten as Superchat's one dashboard page, filled by superchat-dashboard from
      the person's files: the header, KPI cards with a sparkline and change, the chart grid with a
      fixed-height chart box (the data-report rule) and the data table are kept; Tailwind, the CDN
      Chart.js and Google Fonts are replaced by plain CSS, an inlined Chart.js and system fonts;
-     Nova's chart palette (@nova/ui-tokens --chart-*) in light and dark; a source line and a
+     Superchat's chart palette (@superchat/ui-tokens --chart-*) in light and dark; a source line and a
      "Data" table under every chart; the insight cards and methodology block are dropped. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<meta name="generator" content="nova-dashboard">
+<meta name="generator" content="superchat-dashboard">
 <title>{{title}}</title>
 <style>
 :root {
@@ -24,7 +24,7 @@
   --grid: rgba(0, 0, 0, 0.06);
   --up: #1f9a3f;
   --down: #c93400;
-  /* @nova/ui-tokens, light */
+  /* @superchat/ui-tokens, light */
   --chart-1: #1d1d1f;
   --chart-2: #0071e3;
   --chart-3: #8e8e93;
@@ -46,7 +46,7 @@
     --grid: rgba(255, 255, 255, 0.07);
     --up: #30d158;
     --down: #f0532b;
-    /* @nova/ui-tokens, dark */
+    /* @superchat/ui-tokens, dark */
     --chart-1: #f5f5f7;
     --chart-2: #0a84ff;
     --chart-3: #78787d;
@@ -68,7 +68,7 @@
   --grid: rgba(255, 255, 255, 0.07);
   --up: #30d158;
   --down: #f0532b;
-  /* @nova/ui-tokens, dark */
+  /* @superchat/ui-tokens, dark */
   --chart-1: #f5f5f7;
   --chart-2: #0a84ff;
   --chart-3: #78787d;
@@ -188,12 +188,12 @@ tbody tr:last-child td { border-bottom: 0; }
 /* Chart.js (MIT), vendored and inlined so the page works offline: never edit this block. */
 {{chartjs}}
 </script>
-<script type="application/json" id="nova-dashboard-data">{{data}}</script>
+<script type="application/json" id="superchat-dashboard-data">{{data}}</script>
 <script>
 (function () {
   "use strict";
-  var DATA = JSON.parse(document.getElementById("nova-dashboard-data").textContent);
-  // Series colors: the palette's accents first (as in Nova's own charts), then the neutrals.
+  var DATA = JSON.parse(document.getElementById("superchat-dashboard-data").textContent);
+  // Series colors: the palette's accents first (as in Superchat's own charts), then the neutrals.
   var ORDER = [2, 8, 7, 6, 4, 5, 3, 1];
 
   function css(name) {
@@ -209,7 +209,7 @@ tbody tr:last-child td { border-bottom: 0; }
     return "rgba(" + (n >> 16 & 255) + "," + (n >> 8 & 255) + "," + (n & 255) + "," + a + ")";
   }
 
-  // The same rules as nova-dashboard's Python formatter (prefix, suffix, decimals, compact, percent).
+  // The same rules as superchat-dashboard's Python formatter (prefix, suffix, decimals, compact, percent).
   function format(value, f, axis) {
     if (value === null || value === undefined || isNaN(value)) return "–";
     f = f || {};
@@ -391,14 +391,14 @@ tbody tr:last-child td { border-bottom: 0; }
     if (scheme.addEventListener) scheme.addEventListener("change", draw);
   }
 
-  // Inside Nova's chat the page is framed: tell the frame how tall the page is so it shows whole.
+  // Inside Superchat's chat the page is framed: tell the frame how tall the page is so it shows whole.
   if (window.parent !== window) {
     var last = 0;
     var report = function () {
       var height = Math.ceil(document.documentElement.scrollHeight);
       if (height === last) return;
       last = height;
-      window.parent.postMessage({ type: "nova:dashboard-height", height: height }, "*");
+      window.parent.postMessage({ type: "superchat:dashboard-height", height: height }, "*");
     };
     report();
     if (window.ResizeObserver) new ResizeObserver(report).observe(document.body);

@@ -1,7 +1,7 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { CanvasNode, MessageBlock } from "@nova/contracts";
-import { abortableDelay } from "@nova/core";
-import { Button, CanvasView, Dialog, DialogClose, DialogContent, DialogTitle } from "@nova/ui-web";
+import type { CanvasNode, MessageBlock } from "@superchat/contracts";
+import { abortableDelay } from "@superchat/core";
+import { Button, CanvasView, Dialog, DialogClose, DialogContent, DialogTitle } from "@superchat/ui-web";
 import { X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { BuiCard, SuccessPop } from "../../components/ai/primitives";
@@ -168,7 +168,7 @@ export function AppConnectCard({
         displayName: block.name,
       });
       if (started.authorizationUrl) {
-        window.open(started.authorizationUrl, "nova-app-connect", "popup,width=560,height=720");
+        window.open(started.authorizationUrl, "superchat-app-connect", "popup,width=560,height=720");
       }
       for (let i = 0; i < 60; i += 1) {
         if (controller.signal.aborted) return;
@@ -262,7 +262,7 @@ function ChartCanvas({
     // Plot loads lazily so threads without charts never pay for the library.
     void (async () => {
       try {
-        const { buildPlotParts } = await import("@nova/core/plot");
+        const { buildPlotParts } = await import("@superchat/core/plot");
         if (cancelled || !ref.current) return;
         // Hover inspection by default: give the first mark a tooltip unless
         // the spec already asks for one somewhere.
@@ -485,7 +485,7 @@ export function ChartBlockView({
   );
 }
 
-/** Nova Canvas (docs: show_canvas). `tree` already passed the catalog schema before
+/** Superchat Canvas (docs: show_canvas). `tree` already passed the catalog schema before
  * publish, so this only needs to dispatch it — no re-validation on the client. */
 export function CanvasBlockView({
   block,

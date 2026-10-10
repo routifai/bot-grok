@@ -1,4 +1,4 @@
-import type { WorkspaceAttachmentRef } from "@nova/core";
+import type { WorkspaceAttachmentRef } from "@superchat/core";
 import { FileText, Image as ImageIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { rpc } from "../lib/rpc";

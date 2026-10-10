@@ -1,6 +1,6 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { VoiceCatalogEntry, VoiceCredential, VoiceInfo } from "@nova/contracts";
-import { Button, Input, Skeleton } from "@nova/ui-web";
+import type { VoiceCatalogEntry, VoiceCredential, VoiceInfo } from "@superchat/contracts";
+import { Button, Input, Skeleton } from "@superchat/ui-web";
 import { Check } from "lucide-react";
 import { useEffect, useState } from "react";
 import { rpc } from "../../../lib/rpc";

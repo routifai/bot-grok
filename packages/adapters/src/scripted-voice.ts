@@ -8,7 +8,7 @@ import type {
   VoiceSynthesizeRequest,
   VoiceTranscribeRequest,
   VoiceVerifyResult,
-} from "@nova/adapter-kit";
+} from "@superchat/adapter-kit";
 
 export const SCRIPTED_VOICE_ID = "alloy-test";
 export const SCRIPTED_TRANSCRIPT = "hello from the test microphone";

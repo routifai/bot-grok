@@ -10,8 +10,8 @@ import type {
   OAuthClientMetadata,
   OAuthTokens,
 } from "@modelcontextprotocol/sdk/shared/auth.js";
-import { isLocalMcpHost } from "@nova/contracts";
-import type { PrismaClient } from "@nova/db";
+import { isLocalMcpHost } from "@superchat/contracts";
+import type { PrismaClient } from "@superchat/db";
 import { actorMayUsePrivateRemoteMcp } from "./mcp-private-endpoint.js";
 import { secureFetch, validateUrl, withEndpointOriginFallback } from "./mcp-transport.js";
 import type { RemoteTransportDependencies } from "./remote-mcp.js";
@@ -205,7 +205,7 @@ export class StoredMcpOAuthProvider implements OAuthClientProvider {
     const applicationType = hostname === "localhost" || hostname === "127.0.0.1" ? "native" : "web";
     return {
       redirect_uris: [redirectUri],
-      client_name: "Nova",
+      client_name: "Superchat",
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
       token_endpoint_auth_method: "none",
@@ -460,7 +460,7 @@ export class McpOAuthBroker {
       authProvider: provider,
       fetch: networkFetch.fetch,
     });
-    const client = new Client({ name: "nova-oauth", version: "0.1.0" });
+    const client = new Client({ name: "superchat-oauth", version: "0.1.0" });
     const signal = AbortSignal.timeout(15_000);
     try {
       await client.connect(transport, { signal, timeout: 15_000 });

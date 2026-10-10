@@ -5,13 +5,13 @@ for (const platform of ["darwin", "win32"]) {
   test(`host computer choice explains file access on ${platform}`, async ({ page }, testInfo) => {
     await signup(
       page,
-      `host-choice-${platform}-${Date.now()}@nova.test`,
+      `host-choice-${platform}-${Date.now()}@superchat.test`,
       "password12",
       "Host Tester",
     );
     await completeOnboarding(page);
     await page.addInitScript((platform) => {
-      Object.defineProperty(window, "novaDesktop", {
+      Object.defineProperty(window, "superchatDesktop", {
         value: {
           platform,
           window: {

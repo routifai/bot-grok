@@ -1,14 +1,14 @@
-// Nova owns the person's timezone; the engine keeps a copy in its per-owner preferences
+// Superchat owns the person's timezone; the engine keeps a copy in its per-owner preferences
 // (`/v1/me/proactivity`) for the Muse's local-time line, quiet hours and scheduled runs created
 // without a timezone. Best-effort: a failed sync never blocks the caller.
 import {
   omnigentClientConfigFromEnv,
   omnigentClientFor,
   putOmnigentTimezone,
-} from "@nova/adapters";
-import type { Actor } from "@nova/contracts";
-import type { PrismaClient } from "@nova/db";
-import { getLogger } from "@nova/logging";
+} from "@superchat/adapters";
+import type { Actor } from "@superchat/contracts";
+import type { PrismaClient } from "@superchat/db";
+import { getLogger } from "@superchat/logging";
 
 export async function syncEngineTimezone(
   prisma: Pick<PrismaClient, "user">,

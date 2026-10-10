@@ -1,16 +1,16 @@
 import { createHash } from "node:crypto";
-import type { ArtifactStore } from "@nova/adapter-kit";
-import type { Actor } from "@nova/contracts";
-import { ATTACHMENT_MAX_COUNT } from "@nova/contracts";
+import type { ArtifactStore } from "@superchat/adapter-kit";
+import type { Actor } from "@superchat/contracts";
+import { ATTACHMENT_MAX_COUNT } from "@superchat/contracts";
 import {
   AttachmentValidationError,
   decodeAttachmentBase64,
   messageBlockForArtifact,
   promptTextForAttachments,
   validateAttachmentMimeType,
-} from "@nova/core";
-import type { PrismaClient } from "@nova/db";
-import { IsolationError, Prisma, withResolvedArtifactVersion } from "@nova/db";
+} from "@superchat/core";
+import type { PrismaClient } from "@superchat/db";
+import { IsolationError, Prisma, withResolvedArtifactVersion } from "@superchat/db";
 
 function adapterContext(actor: Actor, botId: string, operationId: string) {
   return {

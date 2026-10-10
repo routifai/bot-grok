@@ -1,7 +1,7 @@
-# STAGE B (bring-your-own key) Omnigent server config for the Nova engine on Railway. To switch the
+# STAGE B (bring-your-own key) Omnigent server config for the Superchat engine on Railway. To switch the
 # hosted deployment to it, COPY this file as the config template in Dockerfile.engine and set
-# OMNIGENT_SUPERCHAT_DEFAULT_AGENT=nova-pi there.
-# Omnigent server config for the Nova engine on Railway. NON-SECRET: engine-start.sh renders
+# OMNIGENT_SUPERCHAT_DEFAULT_AGENT=superchat-pi there.
+# Omnigent server config for the Superchat engine on Railway. NON-SECRET: engine-start.sh renders
 # __ENGINE_PUBLIC_URL__ from the ENGINE_PUBLIC_URL variable; ${...} is expanded by the engine.
 llm:
   # Server-side helper model (titles, summaries). Same generic Anthropic connection as the Muse.
@@ -20,7 +20,7 @@ sandbox:
   # the `byok` provider with the `operator` block, and add ANTHROPIC_API_KEY back to this list.
   runner_env:
     - TAVILY_API_KEY
-    - NOVA_CLAUDE_MODEL
+    - SUPERCHAT_CLAUDE_MODEL
     - OMNIGENT_HELPER_MODEL_FAST
     - OMNIGENT_HELPER_MODEL_STRONG
     - OMNIGENT_BROWSER_BACKEND
@@ -29,7 +29,7 @@ sandbox:
     providers:
       # Bring-your-own key: base_url + auth are filled per person at session start (a person
       # without a saved key gets `model_key_required`). The harness binding below must list the
-      # models the person may pick; keep it in step with NOVA_CLAUDE_MODEL / the helper models.
+      # models the person may pick; keep it in step with SUPERCHAT_CLAUDE_MODEL / the helper models.
       byok:
         kind: gateway
         connection: model
@@ -48,7 +48,7 @@ sandbox:
           provider: byok          # operator-key self-hosting: provider: operator
           model_allowlist: [claude-sonnet-5-5, claude-haiku-4-5]
           default_model: claude-sonnet-5-5
-        # pi is the hosted default Muse harness (Dockerfile.engine: nova-pi). With an Anthropic key
+        # pi is the hosted default Muse harness (Dockerfile.engine: superchat-pi). With an Anthropic key
         # it speaks Anthropic Messages through /v1/model/anthropic; with an OpenRouter key it
         # speaks Chat Completions through /v1/model/openrouter/v1. Anthropic ids and OpenRouter
         # ids share this list (the person's model picker offers all of them; use ids that match

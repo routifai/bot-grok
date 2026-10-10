@@ -1,7 +1,7 @@
 import { plural } from "@lingui/core/macro";
 import { useLingui } from "@lingui/react/macro";
-import type { Activity } from "@nova/contracts";
-import { presentActivityTitle } from "@nova/core";
+import type { Activity } from "@superchat/contracts";
+import { presentActivityTitle } from "@superchat/core";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { ActivityBranch, ActivityLine } from "../../../features/activity/ActivityLine";
 import { ActivityRunDialog } from "../../../features/activity/ActivityRunDialog";

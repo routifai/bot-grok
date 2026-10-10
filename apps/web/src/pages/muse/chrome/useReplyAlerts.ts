@@ -1,4 +1,4 @@
-import type { Bot, ProductEvent } from "@nova/contracts";
+import type { Bot, ProductEvent } from "@superchat/contracts";
 import { useEffect, useRef } from "react";
 import { watchFamily } from "../../../lib/family-stream";
 import { rpc } from "../../../lib/rpc";
@@ -15,7 +15,7 @@ type Notify = (
 ) => void;
 
 /** Unread dot and browser notification for the Muse's replies, driven by the family stream
- * because the reply is no longer a Nova thread row that raises them itself. */
+ * because the reply is no longer a Superchat thread row that raises them itself. */
 export function useReplyAlerts({
   bot,
   conversationId,

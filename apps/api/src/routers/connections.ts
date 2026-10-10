@@ -1,7 +1,7 @@
-import type { ConnectorCatalogItem } from "@nova/adapter-kit";
-import { sanitizeComposioError } from "@nova/adapters";
-import { IsolationError } from "@nova/db";
-import { getLogger } from "@nova/logging";
+import type { ConnectorCatalogItem } from "@superchat/adapter-kit";
+import { sanitizeComposioError } from "@superchat/adapters";
+import { IsolationError } from "@superchat/db";
+import { getLogger } from "@superchat/logging";
 import { ORPCError } from "@orpc/server";
 import { connectProcedures } from "./connections-connect.js";
 import {

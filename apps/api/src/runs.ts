@@ -1,6 +1,6 @@
-import { type Actor, MessageBlock, type RunActivityRow } from "@nova/contracts";
-import { ACTIVE_RUN_STATUSES, botMessageContext } from "@nova/core";
-import type { PrismaClient } from "@nova/db";
+import { type Actor, MessageBlock, type RunActivityRow } from "@superchat/contracts";
+import { ACTIVE_RUN_STATUSES, botMessageContext } from "@superchat/core";
+import type { PrismaClient } from "@superchat/db";
 
 const RECENT_LIMIT = 20;
 const TERMINAL_STATUSES = ["completed", "failed", "cancelled"] as const;

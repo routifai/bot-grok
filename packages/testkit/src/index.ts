@@ -1,4 +1,4 @@
-export { DestinationEmulator, McpEmulator } from "@nova/adapters";
+export { DestinationEmulator, McpEmulator } from "@superchat/adapters";
 
 export function sessionCookieHeader(response: Response) {
   const cookies = response.headers.getSetCookie?.() ?? [];

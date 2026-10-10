@@ -8,7 +8,7 @@ import {
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { CallToolResult, ListToolsResult } from "@modelcontextprotocol/sdk/types.js";
-import { isLocalMcpHost } from "@nova/contracts";
+import { isLocalMcpHost } from "@superchat/contracts";
 import { combineSignals } from "./connector-safety.js";
 import {
   createSafeRemoteFetch,
@@ -258,7 +258,7 @@ export class McpSession {
 
   private newClient(): Client {
     return new Client(
-      { name: this.clientOptions.name ?? "nova", version: this.clientOptions.version ?? "0.1.0" },
+      { name: this.clientOptions.name ?? "superchat", version: this.clientOptions.version ?? "0.1.0" },
       this.clientOptions.capabilities,
     );
   }

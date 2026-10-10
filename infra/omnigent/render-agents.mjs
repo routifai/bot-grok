@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Renders Nova's single Omnigent Super Chat bundle (`nova-claude`,
+// Renders Superchat's single Omnigent Super Chat bundle (`superchat-claude`,
 // docs/super-chat/WIRING.md slice A1) from the templates under infra/omnigent/templates/, so
 // the prompt, config and Sub-agent Types stay generated rather than hand-edited. Run after
 // editing anything under templates/:
@@ -13,11 +13,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-/** Where bundles are written; `NOVA_RENDER_AGENTS_DIR` redirects it (tests render to a temp dir). */
+/** Where bundles are written; `SUPERCHAT_RENDER_AGENTS_DIR` redirects it (tests render to a temp dir). */
 // biome-ignore lint/suspicious/noUndeclaredEnvVars: a test-only redirect, not a build input
-const AGENTS_DIR = process.env.NOVA_RENDER_AGENTS_DIR || join(here, "agents");
-/** One entry per Muse bundle. The engine's `OMNIGENT_SUPERCHAT_DEFAULT_AGENT` (`nova-claude` |
- * `nova-pi`) picks which one a new Muse runs on (ADR 0009): this script renders BOTH every run
+const AGENTS_DIR = process.env.SUPERCHAT_RENDER_AGENTS_DIR || join(here, "agents");
+/** One entry per Muse bundle. The engine's `OMNIGENT_SUPERCHAT_DEFAULT_AGENT` (`superchat-claude` |
+ * `superchat-pi`) picks which one a new Muse runs on (ADR 0009): this script renders BOTH every run
  * from the same templates. The choice is total: every Sub-agent Type (worker, subworker) of a bundle runs on that bundle's harness, so the Muse, its Helpers and
  * scheduled/background Helper runs all share one harness. Pi's extra keys keep it from fighting Omnigent: no AGENTS.md/CLAUDE.md
  * auto-discovery, our prompt replaces pi's base prompt, no host skills; they are defined once
@@ -26,14 +26,14 @@ const AGENTS_DIR = process.env.NOVA_RENDER_AGENTS_DIR || join(here, "agents");
  */
 const MUSE_BUNDLES = [
   {
-    name: "nova-claude",
+    name: "superchat-claude",
     harness: "claude-sdk",
     harnessName: "Claude Agent SDK",
     executorExtra: "",
     skillsFilter: "",
   },
   {
-    name: "nova-pi",
+    name: "superchat-pi",
     harness: "pi",
     harnessName: "Pi",
     executorExtra: "    context_files: false\n    system_prompt_mode: replace",
@@ -41,7 +41,7 @@ const MUSE_BUNDLES = [
   },
 ];
 /** Env var naming documented in docs/omnigent-spike.md / docs/super-chat/README.md. */
-const MODEL_ENV = "NOVA_CLAUDE_MODEL";
+const MODEL_ENV = "SUPERCHAT_CLAUDE_MODEL";
 /** One directory per Sub-agent Type (CONTEXT.md), each a config.yaml template rendered with the
  * bundle's harness keys. */
 const SUB_AGENT_TYPES = ["worker", "worker/agents/subworker"];

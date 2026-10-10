@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { PrismaClient } from "@nova/db";
+import type { PrismaClient } from "@superchat/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   dedupeUploadName,
@@ -434,7 +434,7 @@ describe("engine attachment ingest", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     await expect(
       engineIngestAttachment(ingestDeps, client, actor, { botId: "bot-1", path }),
-    ).rejects.toMatchObject({ code: "BAD_REQUEST", message: "Nova couldn't read this file." });
+    ).rejects.toMatchObject({ code: "BAD_REQUEST", message: "Superchat couldn't read this file." });
   });
 
   it("maps a starting Computer to the calm message", async () => {

@@ -1,4 +1,4 @@
-import type { AgentToolExecutionResult } from "@nova/adapter-kit";
+import type { AgentToolExecutionResult } from "@superchat/adapter-kit";
 
 export type ApprovalPausedToolResult = AgentToolExecutionResult & { terminate: true };
 

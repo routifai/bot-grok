@@ -8,10 +8,10 @@ import {
 } from "./pi-local-provider.js";
 
 const ENV_KEYS = [
-  "NOVA_LOCAL_MODELS",
-  "NOVA_LOCAL_MODELS_URL",
-  "NOVA_LOCAL_CONTEXT_WINDOW",
-  "NOVA_LOCAL_MAX_TOKENS",
+  "SUPERCHAT_LOCAL_MODELS",
+  "SUPERCHAT_LOCAL_MODELS_URL",
+  "SUPERCHAT_LOCAL_CONTEXT_WINDOW",
+  "SUPERCHAT_LOCAL_MAX_TOKENS",
 ] as const;
 
 const saved = new Map<string, string | undefined>();
@@ -26,8 +26,8 @@ afterEach(() => {
 });
 
 function setModels(value: string | undefined) {
-  if (value === undefined) delete process.env.NOVA_LOCAL_MODELS;
-  else process.env.NOVA_LOCAL_MODELS = value;
+  if (value === undefined) delete process.env.SUPERCHAT_LOCAL_MODELS;
+  else process.env.SUPERCHAT_LOCAL_MODELS = value;
 }
 
 describe("local model provider", () => {
@@ -56,10 +56,10 @@ describe("local model provider", () => {
   });
 
   it("defaults to the Ollama endpoint and honours an override", () => {
-    delete process.env.NOVA_LOCAL_MODELS_URL;
+    delete process.env.SUPERCHAT_LOCAL_MODELS_URL;
     expect(localBaseUrl()).toBe("http://127.0.0.1:11434/v1");
 
-    process.env.NOVA_LOCAL_MODELS_URL = "http://127.0.0.1:1234/v1";
+    process.env.SUPERCHAT_LOCAL_MODELS_URL = "http://127.0.0.1:1234/v1";
     setModels("some-local-model");
     expect(localBaseUrl()).toBe("http://127.0.0.1:1234/v1");
     expect(localProvider()?.getModels()[0]?.baseUrl).toBe("http://127.0.0.1:1234/v1");
@@ -67,23 +67,23 @@ describe("local model provider", () => {
 
   it("rejects an invalid or non-HTTP endpoint", () => {
     for (const bad of ["not-a-url", "file:///tmp/model.sock", "ftp://127.0.0.1/models"]) {
-      process.env.NOVA_LOCAL_MODELS_URL = bad;
+      process.env.SUPERCHAT_LOCAL_MODELS_URL = bad;
       expect(() => localBaseUrl(), `endpoint "${bad}"`).toThrow(
-        /NOVA_LOCAL_MODELS_URL must be an absolute HTTP\(S\) URL/,
+        /SUPERCHAT_LOCAL_MODELS_URL must be an absolute HTTP\(S\) URL/,
       );
     }
   });
 
   it("defaults token limits when unset, and honours valid overrides", () => {
     setModels("qwen3:4b");
-    delete process.env.NOVA_LOCAL_CONTEXT_WINDOW;
-    delete process.env.NOVA_LOCAL_MAX_TOKENS;
+    delete process.env.SUPERCHAT_LOCAL_CONTEXT_WINDOW;
+    delete process.env.SUPERCHAT_LOCAL_MAX_TOKENS;
     let model = localProvider()?.getModels()[0];
     expect(model?.contextWindow).toBe(32_768);
     expect(model?.maxTokens).toBe(4_096);
 
-    process.env.NOVA_LOCAL_CONTEXT_WINDOW = "8192";
-    process.env.NOVA_LOCAL_MAX_TOKENS = "512";
+    process.env.SUPERCHAT_LOCAL_CONTEXT_WINDOW = "8192";
+    process.env.SUPERCHAT_LOCAL_MAX_TOKENS = "512";
     model = localProvider()?.getModels()[0];
     expect(model?.contextWindow).toBe(8192);
     expect(model?.maxTokens).toBe(512);
@@ -94,15 +94,15 @@ describe("local model provider", () => {
     // A typo must not masquerade as the default, and a negative or fractional
     // window must not reach the model definition.
     for (const bad of ["abc", "-5", "0", "3.7", "Infinity", "1e400"]) {
-      process.env.NOVA_LOCAL_CONTEXT_WINDOW = bad;
+      process.env.SUPERCHAT_LOCAL_CONTEXT_WINDOW = bad;
       expect(() => localProvider(), `context window "${bad}"`).toThrow(
-        /NOVA_LOCAL_CONTEXT_WINDOW must be a positive integer/,
+        /SUPERCHAT_LOCAL_CONTEXT_WINDOW must be a positive integer/,
       );
     }
-    delete process.env.NOVA_LOCAL_CONTEXT_WINDOW;
+    delete process.env.SUPERCHAT_LOCAL_CONTEXT_WINDOW;
 
-    process.env.NOVA_LOCAL_MAX_TOKENS = "-1";
-    expect(() => localProvider()).toThrow(/NOVA_LOCAL_MAX_TOKENS must be a positive integer/);
+    process.env.SUPERCHAT_LOCAL_MAX_TOKENS = "-1";
+    expect(() => localProvider()).toThrow(/SUPERCHAT_LOCAL_MAX_TOKENS must be a positive integer/);
   });
 
   it("registers onto a Models collection only when configured", () => {

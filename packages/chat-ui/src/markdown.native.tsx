@@ -1,4 +1,4 @@
-import { type ColorTokens, darkTokens, type ResolvedAppearance } from "@nova/ui-tokens";
+import { type ColorTokens, darkTokens, type ResolvedAppearance } from "@superchat/ui-tokens";
 import Markdown, {
   createMarkdownIt,
   MarkdownStream,

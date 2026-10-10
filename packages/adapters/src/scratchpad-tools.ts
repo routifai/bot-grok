@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@nova/db";
+import type { PrismaClient } from "@superchat/db";
 
 export const SCRATCHPAD_STATUSES = ["open", "parked", "done"] as const;
 export type ScratchpadStatus = (typeof SCRATCHPAD_STATUSES)[number];

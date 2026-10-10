@@ -3,7 +3,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 export const SCREEN_PROXY_TTL_MS = 60 * 60_000;
 export const SCREEN_TARGET_ENDPOINT = "/api/internal/screen-target";
 export const SCREEN_RECHECK_MS = 1_000;
-/** Scope `computerId` of a screen whose Computer the engine owns (Nova holds no Computer row). */
+/** Scope `computerId` of a screen whose Computer the engine owns (Superchat holds no Computer row). */
 export const ENGINE_COMPUTER_ID = "engine";
 
 export interface ScreenCapabilityScope {
@@ -182,6 +182,6 @@ function isAllowedTargetName(hostname: string) {
     /^100\.(?:6[4-9]|[7-9]\d|1(?:[01]\d|2[0-7]))\.(?:\d{1,3})\.\d{1,3}$/.test(hostname) ||
     /^172\.(?:1[6-9]|2\d|3[01])\.(?:\d{1,3})\.\d{1,3}$/.test(hostname) ||
     /^192\.168\.(?:\d{1,3})\.\d{1,3}$/.test(hostname) ||
-    /^nova-bot-[a-zA-Z0-9_.-]+$/.test(hostname)
+    /^superchat-bot-[a-zA-Z0-9_.-]+$/.test(hostname)
   );
 }

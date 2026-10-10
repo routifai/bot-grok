@@ -1,6 +1,6 @@
-import type { MessageBlock, ThreadMessage, ThreadMessagePage } from "@nova/contracts";
-import { isPeerReceiptBlocks } from "@nova/core";
-import type { Prisma, PrismaClient } from "@nova/db";
+import type { MessageBlock, ThreadMessage, ThreadMessagePage } from "@superchat/contracts";
+import { isPeerReceiptBlocks } from "@superchat/core";
+import type { Prisma, PrismaClient } from "@superchat/db";
 
 type MessageDb = PrismaClient | Prisma.TransactionClient;
 

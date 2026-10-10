@@ -1,7 +1,7 @@
-"""The deck kit: assembles a Nova deck file from the skeleton, a template and the slides.
+"""The deck kit: assembles a Superchat deck file from the skeleton, a template and the slides.
 
 A deck is one self-contained HTML file (``*.deck.html``): the fixed 1920x1080 skeleton (scale to
-fit, navigation, print rules, the Nova Deck Protocol), a template's tokens, theme and Latin-subset
+fit, navigation, print rules, the Superchat Deck Protocol), a template's tokens, theme and Latin-subset
 fonts (embedded as data URIs, because the viewer's CSP blocks remote fonts), the shared layout
 vocabulary, and the slides the Muse wrote. Only the slides are the Muse's; everything else comes
 from here, so every deck starts exact for the PowerPoint export.
@@ -9,7 +9,7 @@ from here, so every deck starts exact for the PowerPoint export.
 Portions modified from nexu-io/open-design
 packages/contracts/src/prompts/deck-framework.ts@802708f, Apache-2.0; changes: the skeleton is
 ``kit/skeleton.html`` (see its header), slides are inserted by this module instead of being
-hand-copied by the model, and the template set, tokens and fonts are Nova's (``kit/templates``,
+hand-copied by the model, and the template set, tokens and fonts are Superchat's (``kit/templates``,
 MIT upstream designs; fonts SIL OFL 1.1).
 """
 
@@ -33,8 +33,8 @@ CHARTJS_PATH = KIT_DIR / "vendor" / "chart.js" / "chart.umd.js"
 #: The restrained professional theme the Muse starts from unless the request calls for more.
 DEFAULT_THEME = "corporate-clean"
 PREVIEWS_DIR = KIT_DIR / "previews"
-SLOTS_OPEN = "<!-- nova:slides -->"
-SLOTS_CLOSE = "<!-- /nova:slides -->"
+SLOTS_OPEN = "<!-- superchat:slides -->"
+SLOTS_CLOSE = "<!-- /superchat:slides -->"
 _FONT_MIME = {".ttf": "font/ttf", ".otf": "font/otf", ".woff2": "font/woff2"}
 
 
@@ -113,10 +113,10 @@ def theme_gallery() -> list[dict[str, str]]:
     return out
 
 
-#: The sample slides a theme preview shows (``data-nova-id`` of each, in order): the cover, an
+#: The sample slides a theme preview shows (``data-superchat-id`` of each, in order): the cover, an
 #: agenda, figures, a chart, a table, a quote and the close. All of it is made-up sample content.
 PREVIEW_SLIDES = ("cover", "agenda", "numbers", "trend", "teams", "voice", "decision")
-_SECTION_RE = re.compile(r'\s*<section\b[^>]*\bdata-nova-id="([a-z0-9-]+)".*?</section>', re.S)
+_SECTION_RE = re.compile(r'\s*<section\b[^>]*\bdata-superchat-id="([a-z0-9-]+)".*?</section>', re.S)
 
 
 @cache
@@ -164,15 +164,15 @@ def menu() -> str:
 
 @cache
 def _chart_runtime() -> str:
-    """Chart.js (vendored, MIT) and Nova's defaults for it, as the deck's inline head script."""
+    """Chart.js (vendored, MIT) and Superchat's defaults for it, as the deck's inline head script."""
     library = CHARTJS_PATH.read_text("utf-8")
     bootstrap = (CHARTS_DIR / "bootstrap.js").read_text("utf-8")
     return (
-        "  <script data-nova-chartjs>\n"
+        "  <script data-superchat-chartjs>\n"
         "/* Chart.js (MIT), vendored: never read or edit this block. */\n"
         f"{library}\n"
         "  </script>\n"
-        f"  <script data-nova-chartjs-defaults>\n{bootstrap}  </script>\n"
+        f"  <script data-superchat-chartjs-defaults>\n{bootstrap}  </script>\n"
     )
 
 
@@ -181,7 +181,7 @@ def _chart_runtime() -> str:
 # ---------------------------------------------------------------------------------------------
 
 _SLIDE_RE = re.compile(r"<section\b[^>]*\bclass\s*=\s*\"[^\"]*\bslide\b[^\"]*\"[^>]*>", re.I)
-_ID_RE = re.compile(r"""\bdata-nova-id\s*=\s*["']([^"']*)["']""")
+_ID_RE = re.compile(r"""\bdata-superchat-id\s*=\s*["']([^"']*)["']""")
 _EXTERNAL_RE = re.compile(
     r"""(?:\bsrc|\bhref|\bposter|\bsrcset|\baction)\s*=\s*["']\s*(?:https?:)?//|url\(\s*["']?\s*(?:https?:)?//|@import""",
     re.I,
@@ -189,7 +189,7 @@ _EXTERNAL_RE = re.compile(
 _FORBIDDEN_TAG_RE = re.compile(r"<\s*(script|iframe|object|embed|link|base|form|meta)\b", re.I)
 # The one script a slide may carry: the Chart.js call that draws a chart on its canvas.
 _CHART_SCRIPT_RE = re.compile(
-    r"<script\b(?=[^>]*\bdata-nova-chart(?:\s|=|>))[^>]*>(.*?)</script\s*>", re.I | re.S
+    r"<script\b(?=[^>]*\bdata-superchat-chart(?:\s|=|>))[^>]*>(.*?)</script\s*>", re.I | re.S
 )
 _ID_FORMAT = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
@@ -206,25 +206,25 @@ def check_slides(slides_html: str) -> tuple[list[str], list[str]]:
     for tag in tags:
         if "data-screen-label" not in tag:
             errors.append('A slide has no data-screen-label (for example "02 Problem").')
-        if "data-nova-id" not in tag:
-            errors.append("A slide has no data-nova-id.")
+        if "data-superchat-id" not in tag:
+            errors.append("A slide has no data-superchat-id.")
     plain = _CHART_SCRIPT_RE.sub("", slides_html)
     if _FORBIDDEN_TAG_RE.search(plain):
         errors.append(
             "Slides may not contain <script>, <iframe>, <object>, <embed>, <link>, <base>, "
-            "<form> or <meta> (the one exception is <script data-nova-chart>, a chart's data)."
+            "<form> or <meta> (the one exception is <script data-superchat-chart>, a chart's data)."
         )
     for script in _CHART_SCRIPT_RE.findall(slides_html):
         if "new Chart(" not in script:
             errors.append(
-                "A <script data-nova-chart> must create a Chart.js chart with new Chart(...)."
+                "A <script data-superchat-chart> must create a Chart.js chart with new Chart(...)."
             )
         if re.search(
             r"\b(fetch|XMLHttpRequest|import|eval|Function|WebSocket)\s*\(|\bdocument\.write",
             script,
         ):
             errors.append(
-                "A <script data-nova-chart> may only configure its chart: the data goes in the "
+                "A <script data-superchat-chart> may only configure its chart: the data goes in the "
                 "script, nothing is fetched or evaluated."
             )
     if _EXTERNAL_RE.search(slides_html):
@@ -234,9 +234,9 @@ def check_slides(slides_html: str) -> tuple[list[str], list[str]]:
         )
     ids = _ID_RE.findall(slides_html)
     for dup in sorted({i for i in ids if ids.count(i) > 1}):
-        errors.append(f'data-nova-id "{dup}" is used more than once.')
+        errors.append(f'data-superchat-id "{dup}" is used more than once.')
     for bad in sorted({i for i in ids if not _ID_FORMAT.match(i)}):
-        errors.append(f'data-nova-id "{bad}" must be lower-case words joined by hyphens.')
+        errors.append(f'data-superchat-id "{bad}" must be lower-case words joined by hyphens.')
     if tags and "active" not in tags[0].split("class=", 1)[-1].split('"')[1].split():
         warnings.append('The first slide should have class="slide active ...".')
     return errors, warnings
@@ -254,27 +254,27 @@ def check_slides(slides_html: str) -> tuple[list[str], list[str]]:
 # its hash is the kit's and is replaced whole, whatever kit version wrote it. One that does not
 # match was edited inside, and the switch is refused: nothing is dropped and the deck is not
 # changed (per-deck CSS belongs after the close marker).
-_TOKENS_OPEN = "      /* nova:theme-tokens id={id} sha={sha} */"
-_TOKENS_CLOSE = "      /* /nova:theme-tokens */"
-_CSS_OPEN = "    /* nova:theme id={id} sha={sha} \u00b7 {name} */"
-_CSS_CLOSE = "    /* /nova:theme */"
+_TOKENS_OPEN = "      /* superchat:theme-tokens id={id} sha={sha} */"
+_TOKENS_CLOSE = "      /* /superchat:theme-tokens */"
+_CSS_OPEN = "    /* superchat:theme id={id} sha={sha} \u00b7 {name} */"
+_CSS_CLOSE = "    /* /superchat:theme */"
 _DECK_HINT = (
     "    /* Per-deck rules and token overrides (for example :root { --accent: ... }) go below,\n"
-    "       after the closing nova:theme marker; a theme switch keeps everything outside the\n"
+    "       after the closing superchat:theme marker; a theme switch keeps everything outside the\n"
     "       markers. Do not edit between them. */"
 )
 _ROOT_RE = re.compile(r"    :root \{.*?\n    \}", re.S)
 _TOKENS_RE = re.compile(
-    r"      /\* nova:theme-tokens id=([a-z0-9-]+)(?: sha=([0-9a-f]{12}))? \*/\n"
-    r"(.*?)\n      /\* /nova:theme-tokens \*/",
+    r"      /\* superchat:theme-tokens id=([a-z0-9-]+)(?: sha=([0-9a-f]{12}))? \*/\n"
+    r"(.*?)\n      /\* /superchat:theme-tokens \*/",
     re.S,
 )
 _CSS_RE = re.compile(
-    r"    /\* nova:theme id=([a-z0-9-]+)(?: sha=([0-9a-f]{12}))? \u00b7 [^\n]*?\*/\n"
-    r"(.*?)\n    /\* /nova:theme \*/",
+    r"    /\* superchat:theme id=([a-z0-9-]+)(?: sha=([0-9a-f]{12}))? \u00b7 [^\n]*?\*/\n"
+    r"(.*?)\n    /\* /superchat:theme \*/",
     re.S,
 )
-_THEME_ID_RE = re.compile(r"/\* nova:theme id=([a-z0-9-]+)[ *]")
+_THEME_ID_RE = re.compile(r"/\* superchat:theme id=([a-z0-9-]+)[ *]")
 # Decks saved before the markers existed: one whole ``:root`` and one whole style block.
 _LEGACY_STYLE_RE = re.compile(
     r"  <style>\n    /\* [^\n]*? \u00b7 layout vocabulary and theme \*/.*?\n  </style>", re.S
@@ -283,7 +283,7 @@ _LEGACY_NAME_RE = re.compile(r"/\* ([^\n]*?) \u00b7 layout vocabulary and theme 
 _PLACEHOLDER_STYLE_RE = re.compile(
     r"  <style>\n    /\* SLOT: per-deck styles.*?\n  </style>", re.S
 )
-_FONTS_RE = re.compile(r"  <style data-nova-fonts>.*?\n  </style>\n", re.S)
+_FONTS_RE = re.compile(r"  <style data-superchat-fonts>.*?\n  </style>\n", re.S)
 
 
 def _digest(content: str) -> str:
@@ -322,7 +322,7 @@ def _style_block(template: Template) -> str:
 
 def _fonts_block(template_id: str) -> str:
     return (
-        "  <style data-nova-fonts>\n"
+        "  <style data-superchat-fonts>\n"
         "/* Embedded fonts (Latin subset, SIL OFL 1.1): never read or edit this block. */\n"
         f"{_font_faces_css(template_id)}\n  </style>\n"
     )
@@ -383,8 +383,8 @@ def deck_theme_id(document: str) -> str | None:
     return next((t.id for t in templates().values() if t.name == legacy.group(1)), None)
 
 
-_INEXACT = "this deck's theme can't be swapped exactly; ask Nova to restyle it"
-_EDITED = "this deck's theme block was edited between its markers; ask Nova to restyle it"
+_INEXACT = "this deck's theme can't be swapped exactly; ask Superchat to restyle it"
+_EDITED = "this deck's theme block was edited between its markers; ask Superchat to restyle it"
 
 
 def _only(
@@ -477,16 +477,16 @@ def restyle_deck(document: str, template_id: str) -> str:
         _TOKENS_RE,
         _tokens_region(template),
         kind="tokens",
-        opens="/* nova:theme-tokens id=",
-        closes="/* /nova:theme-tokens */",
+        opens="/* superchat:theme-tokens id=",
+        closes="/* /superchat:theme-tokens */",
     )
     out = _refresh(
         out,
         _CSS_RE,
         _css_region(template),
         kind="css",
-        opens="/* nova:theme id=",
-        closes="/* /nova:theme */",
+        opens="/* superchat:theme id=",
+        closes="/* /superchat:theme */",
     )
     fonts = _only(_FONTS_RE, out)
     return out[: fonts.start()] + _fonts_block(template_id) + out[fonts.end() :]

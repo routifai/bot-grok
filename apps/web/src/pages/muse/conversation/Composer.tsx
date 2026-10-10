@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import type { AgentSkillCatalogEntry, ThreadMessage } from "@nova/contracts";
+import type { AgentSkillCatalogEntry, ThreadMessage } from "@superchat/contracts";
 import {
   type ComposerMention,
   clampMentionHighlightIndex,
@@ -10,7 +10,7 @@ import {
   type SlashActionId,
   serializeComposerPrompt,
   truncateSlashDescription,
-} from "@nova/core";
+} from "@superchat/core";
 import {
   Button,
   cn,
@@ -18,7 +18,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import {
   AlertCircle,
   ArrowUp,

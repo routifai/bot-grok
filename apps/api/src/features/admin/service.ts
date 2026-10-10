@@ -12,8 +12,8 @@ import {
   putOmnigentBudget,
   putOmnigentModelOverlay,
   setOmnigentUserSuspended,
-} from "@nova/adapters";
-import type { Actor, EngineAdminUsage, EngineAdminUser } from "@nova/contracts";
+} from "@superchat/adapters";
+import type { Actor, EngineAdminUsage, EngineAdminUser } from "@superchat/contracts";
 import { ORPCError } from "@orpc/server";
 import { adminActor, type EngineModelsDeps, onModels } from "../models/index.js";
 
@@ -65,7 +65,7 @@ export async function setUserSuspended(
   input: { userId: string; suspended: boolean },
 ): Promise<{ ok: true }> {
   const target = await adminActor(deps, client, actor);
-  // Engine users are identified by email, so match the Nova account by email, and refuse
+  // Engine users are identified by email, so match the Superchat account by email, and refuse
   // anything but exactly one match rather than guess. Resolve it before touching the engine, so a
   // refusal leaves both sides as they were.
   const matches = await deps.prisma.user.findMany({
@@ -78,7 +78,7 @@ export async function setUserSuspended(
   await onModels(
     setOmnigentUserSuspended(target.client, target.email, input.userId, input.suspended),
   );
-  // One suspension: the engine stops model use, and Nova stops sign-in and space access. A
+  // One suspension: the engine stops model use, and Superchat stops sign-in and space access. A
   // waiting signup stays in the approval queue, so only active and suspended accounts toggle.
   await deps.prisma.user.updateMany({
     where: { id: matches[0]!.id, status: input.suspended ? "active" : "suspended" },

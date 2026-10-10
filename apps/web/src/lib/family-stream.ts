@@ -1,4 +1,4 @@
-import type { FamilyEvent } from "@nova/contracts";
+import type { FamilyEvent } from "@superchat/contracts";
 import { rpc } from "./rpc";
 
 /** Opens the Muse's family stream (`chats.watch`). A seam so tests and fixtures can supply

@@ -1,4 +1,4 @@
-import type { ComputerStatus } from "@nova/contracts";
+import type { ComputerStatus } from "@superchat/contracts";
 import { useState } from "react";
 import { Alert, Pressable, Text, View } from "react-native";
 import { rpc } from "../lib/api";

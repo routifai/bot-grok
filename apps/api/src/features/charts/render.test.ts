@@ -1,4 +1,4 @@
-import { CHART_FIXTURES } from "@nova/charts";
+import { CHART_FIXTURES } from "@superchat/charts";
 import { describe, expect, it } from "vitest";
 import { renderChart, renderChartSvg, resolveTokens, truncateLabel } from "./render.js";
 

@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@nova/db";
+import type { PrismaClient } from "@superchat/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   engineDeckTheme,
@@ -113,7 +113,7 @@ describe("engine deck edit", () => {
       vi.fn(async () =>
         json(
           {
-            error: { code: "conflict", message: "Can't apply that edit exactly: ask Nova instead" },
+            error: { code: "conflict", message: "Can't apply that edit exactly: ask Superchat instead" },
           },
           409,
         ),
@@ -121,7 +121,7 @@ describe("engine deck edit", () => {
     );
     await expect(
       engineEditDeck(deps, client, actor, { artifactId: "a1", baseVersion: 1, patches }),
-    ).rejects.toMatchObject({ code: "CONFLICT", message: expect.stringContaining("ask Nova") });
+    ).rejects.toMatchObject({ code: "CONFLICT", message: expect.stringContaining("ask Superchat") });
   });
 });
 

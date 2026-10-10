@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import type { ReplyCardDataOf, ReplyCardKind } from "@nova/contracts";
+import type { ReplyCardDataOf, ReplyCardKind } from "@superchat/contracts";
 import {
   Badge,
   Button,
@@ -12,7 +12,7 @@ import {
   Checkbox,
   cn,
   Skeleton,
-} from "@nova/ui-web";
+} from "@superchat/ui-web";
 import {
   ArrowDownRight,
   ArrowUpRight,

@@ -1,16 +1,16 @@
 // biome-ignore-all lint: a plain ES5-style script that runs inside the sandboxed deck frame
 // Portions modified from nexu-io/open-design apps/web/src/edit-mode/bridge.ts@802708f, Apache-2.0;
-// changes: rewritten for Nova decks. The nonce is baked in and checked on every message together
-// with event.source, messages are the nova:edit-* protocol (see deck-edit-protocol.ts), targets are
-// `data-nova-id` elements on the active slide only, selection chrome is a separate overlay layer
+// changes: rewritten for Superchat decks. The nonce is baked in and checked on every message together
+// with event.source, messages are the superchat:edit-* protocol (see deck-edit-protocol.ts), targets are
+// `data-superchat-id` elements on the active slide only, selection chrome is a separate overlay layer
 // (no attributes or classes are written to the deck), multi-select, keyboard nudge, and no
 // drag / guides / brand-kit / link-preview handling.
 //
-// Runs inside the sandboxed deck frame (srcdoc, no same-origin). __NOVA_NONCE__ is replaced by
+// Runs inside the sandboxed deck frame (srcdoc, no same-origin). __SUPERCHAT_NONCE__ is replaced by
 // the host before injection. It must be the first script of the document, so its capture
 // listeners run before the deck's own click and key handlers and can stop them.
 (() => {
-  var NONCE = "__NOVA_NONCE__";
+  var NONCE = "__SUPERCHAT_NONCE__";
   var V = 1;
   var layer = null;
   var selected = [];
@@ -36,7 +36,7 @@
     return Array.prototype.slice.call(document.querySelectorAll("section.slide, .slide"));
   }
   function isTarget(el) {
-    if (!el || el.nodeType !== 1 || !el.hasAttribute("data-nova-id")) return false;
+    if (!el || el.nodeType !== 1 || !el.hasAttribute("data-superchat-id")) return false;
     if (el === document.body || el === document.documentElement) return false;
     var slide = slideOf(el);
     return !!slide && slide.classList.contains("active");
@@ -151,7 +151,7 @@
     var r = el.getBoundingClientRect();
     var kind = kindOf(el);
     return {
-      id: el.getAttribute("data-nova-id"),
+      id: el.getAttribute("data-superchat-id"),
       kind: kind,
       tag: el.tagName.toLowerCase(),
       slide: slideNumber(el),
@@ -207,7 +207,7 @@
   function ensureLayer() {
     if (layer && layer.isConnected) return layer;
     layer = document.createElement("div");
-    layer.setAttribute("data-nova-edit-layer", "");
+    layer.setAttribute("data-superchat-edit-layer", "");
     layer.style.cssText =
       "position:fixed;inset:0;pointer-events:none;z-index:2147483000;font:600 11px/1 -apple-system,system-ui,sans-serif";
     document.body.appendChild(layer);
@@ -231,7 +231,7 @@
   function labelOf(el) {
     var t = kindOf(el);
     var word = t === "slide" ? "Slide " + slideNumber(el) : el.tagName.toLowerCase();
-    return word + " · " + el.getAttribute("data-nova-id");
+    return word + " · " + el.getAttribute("data-superchat-id");
   }
   // Where the label chip goes: above the selection, else below it, at its left or right end, the
   // first spot that stays on screen and covers no other text of the slide.
@@ -242,7 +242,7 @@
     var others = [];
     var slide = slideOf(el);
     if (slide) {
-      slide.querySelectorAll("[data-nova-id]").forEach((o) => {
+      slide.querySelectorAll("[data-superchat-id]").forEach((o) => {
         if (o === el || o.contains(el) || el.contains(o) || !isLeaf(o) || !isVisible(o)) return;
         others.push(o.getBoundingClientRect());
       });
@@ -285,8 +285,8 @@
       "max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
     var ask = document.createElement("button");
     ask.type = "button";
-    ask.setAttribute("data-nova-edit-ask", "");
-    ask.textContent = "Ask Nova";
+    ask.setAttribute("data-superchat-edit-ask", "");
+    ask.textContent = "Ask Superchat";
     ask.style.cssText =
       "pointer-events:auto;cursor:pointer;border:0;border-radius:4px;padding:2px 6px;font:inherit;" +
       "background:rgba(255,255,255,.22);color:#fff";
@@ -351,7 +351,7 @@
 
   // ---- selection ----------------------------------------------------------------------------
   function postSelection() {
-    send({ type: "nova:edit-selection", targets: selected.map(targetOf) });
+    send({ type: "superchat:edit-selection", targets: selected.map(targetOf) });
   }
   function setSelection(list, silent) {
     selected = list.filter(Boolean);
@@ -361,7 +361,7 @@
   function selectIds(ids) {
     var els = [];
     ids.forEach((id) => {
-      var el = document.querySelector('[data-nova-id="' + esc(id) + '"]');
+      var el = document.querySelector('[data-superchat-id="' + esc(id) + '"]');
       if (el && isTarget(el)) els.push(el);
     });
     setSelection(els, false);
@@ -405,7 +405,7 @@
       sel.removeAllRanges();
       sel.addRange(range);
     } catch (e) {}
-    send({ type: "nova:edit-text-session", id: el.getAttribute("data-nova-id"), active: true });
+    send({ type: "superchat:edit-text-session", id: el.getAttribute("data-superchat-id"), active: true });
     repaint();
   }
   function finishEdit(commit) {
@@ -419,13 +419,13 @@
     if (!commit) el.innerHTML = s.beforeHtml;
     else if (text !== s.before) {
       send({
-        type: "nova:edit-text-commit",
-        id: el.getAttribute("data-nova-id"),
+        type: "superchat:edit-text-commit",
+        id: el.getAttribute("data-superchat-id"),
         text: text,
         before: s.before,
       });
     }
-    send({ type: "nova:edit-text-session", id: el.getAttribute("data-nova-id"), active: false });
+    send({ type: "superchat:edit-text-session", id: el.getAttribute("data-superchat-id"), active: false });
     try {
       window.getSelection().removeAllRanges();
       document.body.focus({ preventScroll: true });
@@ -442,9 +442,9 @@
   }
   function onClick(e) {
     if (e.button !== undefined && e.button !== 0) return;
-    if (e.target && e.target.closest && e.target.closest("[data-nova-edit-ask]")) {
+    if (e.target && e.target.closest && e.target.closest("[data-superchat-edit-ask]")) {
       stop(e, true);
-      return send({ type: "nova:edit-ask" });
+      return send({ type: "superchat:edit-ask" });
     }
     if (editing && editing.el.contains(e.target)) return stop(e, false);
     stop(e, true);
@@ -470,7 +470,7 @@
     if (isLeaf(el) && kindOf(el) !== "slide") startEdit(el, { x: e.clientX, y: e.clientY });
   }
   function swallow(e) {
-    if (e.target && e.target.closest && e.target.closest("[data-nova-edit-ask]")) return;
+    if (e.target && e.target.closest && e.target.closest("[data-superchat-edit-ask]")) return;
     if (editing && editing.el.contains(e.target)) return;
     // The deck refocuses itself on mousedown and navigates on click; neither may run in edit mode.
     e.stopImmediatePropagation();
@@ -509,11 +509,11 @@
     var k = e.key;
     if (mod && k.toLowerCase() === "z") {
       stop(e, true);
-      return send({ type: "nova:edit-key", action: e.shiftKey ? "redo" : "undo" });
+      return send({ type: "superchat:edit-key", action: e.shiftKey ? "redo" : "undo" });
     }
     if (mod && k.toLowerCase() === "y") {
       stop(e, true);
-      return send({ type: "nova:edit-key", action: "redo" });
+      return send({ type: "superchat:edit-key", action: "redo" });
     }
     if (!selected.length) return; // no selection: the deck's own keys (slide navigation) apply
     if (k === "Escape") {
@@ -531,11 +531,11 @@
     }
     if (k === "Delete" || k === "Backspace") {
       stop(e, true);
-      return send({ type: "nova:edit-key", action: "delete" });
+      return send({ type: "superchat:edit-key", action: "delete" });
     }
     if (mod && k.toLowerCase() === "d") {
       stop(e, true);
-      return send({ type: "nova:edit-key", action: "duplicate" });
+      return send({ type: "superchat:edit-key", action: "duplicate" });
     }
     var step = e.shiftKey ? 10 : 1;
     var arrows = {
@@ -546,7 +546,7 @@
     };
     if (arrows[k] && !mod && selected.every((el) => kindOf(el) !== "slide")) {
       stop(e, true);
-      send({ type: "nova:edit-key", action: "nudge", dx: arrows[k][0], dy: arrows[k][1] });
+      send({ type: "superchat:edit-key", action: "nudge", dx: arrows[k][0], dy: arrows[k][1] });
     }
   }
 
@@ -555,11 +555,11 @@
     if (e.source !== window.parent) return;
     var d = e.data;
     if (!d || typeof d !== "object" || d.nonce !== NONCE || d.v !== V) return;
-    if (d.type === "nova:edit-select" && Array.isArray(d.ids)) {
+    if (d.type === "superchat:edit-select" && Array.isArray(d.ids)) {
       if (editing) finishEdit(true);
       selectIds(d.ids);
-    } else if (d.type === "nova:edit-preview" && typeof d.id === "string" && d.style) {
-      var el = document.querySelector('[data-nova-id="' + esc(d.id) + '"]');
+    } else if (d.type === "superchat:edit-preview" && typeof d.id === "string" && d.style) {
+      var el = document.querySelector('[data-superchat-id="' + esc(d.id) + '"]');
       if (!el) return;
       Object.keys(d.style).forEach((prop) => {
         if (!/^[a-z-]{1,64}$/.test(prop)) return;
@@ -569,10 +569,10 @@
       });
       repaint();
       postSelection();
-    } else if (d.type === "nova:edit-chip-inset" && typeof d.left === "number") {
+    } else if (d.type === "superchat:edit-chip-inset" && typeof d.left === "number") {
       chipInset = d.left >= 0 && d.left <= 400 ? d.left : 0;
       repaint();
-    } else if (d.type === "nova:edit-text-finish") {
+    } else if (d.type === "superchat:edit-text-finish") {
       finishEdit(d.commit !== false);
     }
   }
@@ -597,11 +597,11 @@
       true,
     );
     var style = document.createElement("style");
-    style.setAttribute("data-nova-edit-style", "");
+    style.setAttribute("data-superchat-edit-style", "");
     style.textContent =
       "[contenteditable]{outline:none;caret-color:#0a84ff;cursor:text}body{cursor:default}";
     document.head.appendChild(style);
-    send({ type: "nova:edit-ready", theme: themeOf() });
+    send({ type: "superchat:edit-ready", theme: themeOf() });
   }
   if (document.readyState === "complete") boot();
   else window.addEventListener("load", boot);

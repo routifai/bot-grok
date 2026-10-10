@@ -8,7 +8,7 @@ import {
 import { ORB_FRAGMENT_SHADER, ORB_VERTEX_SHADER } from "./shader";
 
 /**
- * One shared WebGL renderer for every Nova orb on the page.
+ * One shared WebGL renderer for every Superchat orb on the page.
  *
  * A page may show many orbs (the sidebar, the inspector, one per working row), and browsers
  * cap live WebGL contexts at ~16. So there is exactly one hidden WebGL canvas: each frame it
@@ -239,7 +239,7 @@ export type OrbHandle = {
 };
 
 /**
- * Draws Nova's orb into `canvas` (a 2D canvas the caller owns) at `size` CSS pixels.
+ * Draws Superchat's orb into `canvas` (a 2D canvas the caller owns) at `size` CSS pixels.
  * Returns null when WebGL is unavailable, so the caller shows its CSS fallback instead.
  */
 export function registerOrb(

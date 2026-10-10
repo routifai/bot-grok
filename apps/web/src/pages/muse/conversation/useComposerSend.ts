@@ -1,13 +1,13 @@
 import { useLingui } from "@lingui/react/macro";
-import type { Bot, ThreadMessage, ThreadSnapshot, WorkspaceAttachment } from "@nova/contracts";
-import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_COUNT, type MessageReaction } from "@nova/contracts";
+import type { Bot, ThreadMessage, ThreadSnapshot, WorkspaceAttachment } from "@superchat/contracts";
+import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_COUNT, type MessageReaction } from "@superchat/contracts";
 import {
   attachmentsForThread,
   type ComposerMention,
   inferAttachmentMimeType,
   isIngestableAttachmentMimeType,
   resolveComposerSendPlan,
-} from "@nova/core";
+} from "@superchat/core";
 import { ORPCError } from "@orpc/client";
 import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -499,7 +499,7 @@ export function useComposerSend({
             replyQuote: reroutedToGroup ? undefined : (activeReplyQuote ?? undefined),
           });
         } else if (botTarget) {
-          // The Muse's messages are the engine's, with ids Nova has no row for: a quote travels
+          // The Muse's messages are the engine's, with ids Superchat has no row for: a quote travels
           // as text the engine records and the model reads, not as a reply link.
           const quoted = activeReplyQuote ? quotedMessageText(activeReplyQuote, trimmed) : trimmed;
           const sent = await rpc.threads.send({

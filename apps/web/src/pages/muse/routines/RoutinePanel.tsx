@@ -1,4 +1,4 @@
-import type { Bot } from "@nova/contracts";
+import type { Bot } from "@superchat/contracts";
 import type { Dispatch, SetStateAction } from "react";
 import { localTimezone } from "../../../lib/local-timezone";
 import { RoutineEditor } from "../../RoutineEditor";

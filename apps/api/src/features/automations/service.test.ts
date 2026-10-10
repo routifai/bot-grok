@@ -1,5 +1,5 @@
-import type { Actor } from "@nova/contracts";
-import type { PrismaClient } from "@nova/db";
+import type { Actor } from "@superchat/contracts";
+import type { PrismaClient } from "@superchat/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { listTasks, createTask, patchTask, runTask, deleteTask } = vi.hoisted(() => ({
@@ -10,8 +10,8 @@ const { listTasks, createTask, patchTask, runTask, deleteTask } = vi.hoisted(() 
   deleteTask: vi.fn(),
 }));
 
-vi.mock("@nova/adapters", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@nova/adapters")>()),
+vi.mock("@superchat/adapters", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@superchat/adapters")>()),
   listOmnigentScheduledTasks: listTasks,
   createOmnigentScheduledTask: createTask,
   patchOmnigentScheduledTask: patchTask,

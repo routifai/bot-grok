@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { Activity } from "@nova/contracts";
+import type { Activity } from "@superchat/contracts";
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
