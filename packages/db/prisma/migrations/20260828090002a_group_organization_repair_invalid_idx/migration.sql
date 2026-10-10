@@ -9,7 +9,7 @@ BEGIN
     FROM pg_catalog.pg_class c
     JOIN pg_catalog.pg_index i ON i.indexrelid = c.oid
     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname = 'public'
+    WHERE n.nspname = current_schema()
       AND c.relname = 'chat_groups_workspaceId_userId_archivedAt_pinned_updatedAt_idx'
       AND NOT i.indisvalid
   ) THEN
@@ -20,7 +20,7 @@ BEGIN
     SELECT 1
     FROM pg_catalog.pg_class c
     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname = 'public'
+    WHERE n.nspname = current_schema()
       AND c.relname = 'chat_groups_workspaceId_userId_archivedAt_pinned_updatedAt_idx'
   ) THEN
     EXECUTE 'CREATE INDEX "chat_groups_workspaceId_userId_archivedAt_pinned_updatedAt_idx" ON "chat_groups"("workspaceId", "userId", "archivedAt", "pinned", "updatedAt")';
@@ -31,7 +31,7 @@ BEGIN
     FROM pg_catalog.pg_class c
     JOIN pg_catalog.pg_index i ON i.indexrelid = c.oid
     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname = 'public'
+    WHERE n.nspname = current_schema()
       AND c.relname = 'chat_groups_sectionId_idx'
       AND NOT i.indisvalid
   ) THEN
@@ -42,7 +42,7 @@ BEGIN
     SELECT 1
     FROM pg_catalog.pg_class c
     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname = 'public'
+    WHERE n.nspname = current_schema()
       AND c.relname = 'chat_groups_sectionId_idx'
   ) THEN
     EXECUTE 'CREATE INDEX "chat_groups_sectionId_idx" ON "chat_groups"("sectionId")';
