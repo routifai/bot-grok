@@ -155,7 +155,12 @@ async def test_deck_new_without_slides_returns_the_layout_menu_and_writes_nothin
     out = json.loads(
         await handle_authoring_tool(
             "deck_new",
-            {"path": "d.deck.html", "template": "magazine-mono", "title": "T"},
+            {
+                "path": "d.deck.html",
+                "template": "magazine-mono",
+                "look_from": "background",
+                "title": "T",
+            },
             helper_ctx(),
         )
     )

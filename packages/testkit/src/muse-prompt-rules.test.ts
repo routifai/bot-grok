@@ -70,6 +70,8 @@ describe("Muse deck theme choice", () => {
     "It checks this against the conversation and memory",
     'call `deck_new` with `look_from: "ask"`',
     "The card ends your turn",
+    "Settle the look BEFORE handing deck work to a Helper",
+    "a Helper never picks a look",
     "leaving its current theme out",
     '"kind": "deck-theme"',
     "do not ask again",

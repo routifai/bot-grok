@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 
+from omnigent.context.labels import SCHEDULED_HELPER_LABEL_KEY
 from omnigent.superchat.feature import HandlerCtx
 
 SESSION = "conv_look"
@@ -36,18 +37,29 @@ def card_output(themes: list[tuple[str, str]]) -> dict[str, Any]:
     return {"type": "function_call_output", "call_id": "c1", "output": json.dumps(card)}
 
 
+HELPER = "conv_helper"
+
+
 def ctx(
     items: list[dict[str, Any]] | None = None,
     *,
-    kind: str = "default",
     claims: list[dict[str, Any]] | None = None,
+    helper: dict[str, str] | None = None,
+    root_labels: dict[str, str] | None = None,
 ) -> HandlerCtx:
-    """A call context whose server holds *items* (oldest first), *kind* and *claims*."""
+    """A call from the chat :data:`SESSION` holding *items* (oldest first) and *claims*; with
+    *helper* (that Helper's labels), the call comes from a Helper the chat started."""
+    sessions = {
+        SESSION: {"kind": "default", "parent_session_id": None, "labels": root_labels or {}}
+    }
+    if helper is not None:
+        sessions[HELPER] = {"kind": "sub_agent", "parent_session_id": SESSION, "labels": helper}
 
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
-        if path == f"/v1/sessions/{SESSION}":
-            return httpx.Response(200, json={"kind": kind, "parent_session_id": None})
+        for sid, info in sessions.items():
+            if path == f"/v1/sessions/{sid}":
+                return httpx.Response(200, json=info)
         if path == f"/v1/sessions/{SESSION}/items":
             assert request.url.params["order"] == "desc"
             return httpx.Response(200, json={"data": list(reversed(items or []))})
@@ -56,9 +68,10 @@ def ctx(
         return httpx.Response(404)
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://srv")
-    return HandlerCtx(tool_name="deck_new", server_client=client, conversation_id=SESSION)
+    caller = HELPER if helper is not None else SESSION
+    return HandlerCtx(tool_name="deck_new", server_client=client, conversation_id=caller)
 
 
 def helper_ctx() -> HandlerCtx:
-    """A Helper session: background work, where any look passes."""
-    return ctx(kind="sub_agent")
+    """A scheduled Helper: background work, where ``look_from: background`` passes."""
+    return ctx(helper={SCHEDULED_HELPER_LABEL_KEY: "task1"})

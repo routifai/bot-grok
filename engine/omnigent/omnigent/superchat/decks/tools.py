@@ -113,9 +113,10 @@ class DeckNewTool(Tool):
                                 "the theme or a mood), picked (their answer to the 'Which "
                                 "look?' card), preference (a preference they stated names it), "
                                 "you_choose (they said you choose / just do it), background "
-                                "(Helper work, no person). Checked against the conversation; "
-                                "ask, or a claim it does not back, shows the person the "
-                                "'Which look?' card instead and ends your turn."
+                                "(scheduled work, no person). Checked against the person's "
+                                "chat (a Helper's: the chat that started it); ask, or a claim "
+                                "it does not back, shows the 'Which look?' card instead and "
+                                "ends your turn (a Helper is refused and reports back)."
                             ),
                         },
                         "title": {"type": "string", "description": "The deck's title."},

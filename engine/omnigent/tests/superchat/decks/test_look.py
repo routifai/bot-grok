@@ -8,14 +8,15 @@ from pathlib import Path
 
 import pytest
 
+from omnigent.context.labels import SCHEDULED_FIRE_LABEL_KEY
 from omnigent.inner.executor import result_ends_turn
 from omnigent.superchat.decks import kit
 from omnigent.superchat.decks.authoring import handle_authoring_tool
 from omnigent.superchat.decks.handlers import HELPER_ENV, handle_deck_tool
-from omnigent.superchat.decks.look import pick_three
+from omnigent.superchat.decks.look import HELPER_REFUSAL, pick_three
 from omnigent.superchat.transcript.blocks import project_items
 
-from .look_fakes import card_call, card_output, ctx, user
+from .look_fakes import card_call, card_output, ctx, helper_ctx, user
 
 SAMPLE = (kit.KIT_DIR / "sample-slides.html").read_text("utf-8")
 
@@ -118,10 +119,31 @@ async def test_you_choose_needs_the_person_to_hand_over_the_choice(workspace: Pa
     assert _is_card(await _new("you_choose", "minimal-white", ctx([user("a deck")])), workspace)
 
 
-async def test_background_only_in_a_helper_session(workspace: Path) -> None:
-    assert _built(await _new("background", "swiss-grid", ctx(kind="sub_agent")))
+async def test_background_only_for_work_no_person_started(workspace: Path) -> None:
+    assert _built(await _new("background", "swiss-grid", helper_ctx()))
+    (workspace / "d.deck.html").unlink()
+    fired = ctx(root_labels={SCHEDULED_FIRE_LABEL_KEY: "task1"})  # a scheduled fire's own chat
+    assert _built(await _new("background", "swiss-grid", fired))
     (workspace / "d.deck.html").unlink()
     assert _is_card(await _new("background", "swiss-grid", ctx([user("a deck")])), workspace)
+
+
+async def test_a_helper_is_checked_against_the_chat_that_started_it(workspace: Path) -> None:
+    """The live bypass: the Muse delegated, and its Helper built in a look nobody chose."""
+    asked = [user("Make a 5-slide deck about our 2026 sales from sales_2026.csv")]
+    for look_from in ("preference", "background", "named", None):
+        out = await _new(look_from, "corporate-clean", ctx(asked, helper={}))
+        assert out["error"].startswith(HELPER_REFUSAL), look_from
+        assert "card" not in out and not (workspace / "d.deck.html").exists()
+    # the Muse asked first and passed the pick in the Brief: the chat's answered card backs it
+    offered = [("Corporate Clean", "corporate-clean"), ("Cartesian", "cartesian")]
+    picked = [*asked, card_call(), card_output(offered), user("Cartesian")]
+    assert _built(await _new("picked", "cartesian", ctx(picked, helper={})))
+    (workspace / "d.deck.html").unlink()
+    out = await _new("picked", "corporate-clean", ctx(picked, helper={}))
+    assert out["error"].startswith(HELPER_REFUSAL)
+    named = [user("A deck about 2026 sales, in Nord")]
+    assert _built(await _new("named", "nord", ctx(named, helper={})))
 
 
 async def test_missing_ask_or_unknown_look_from_shows_the_card(workspace: Path) -> None:
