@@ -2955,6 +2955,9 @@ msgstr "Open {0}, page {1}"
 msgid "Open {name} in new tab"
 msgstr "Open {name} in new tab"
 
+msgid "Open {title}"
+msgstr "Open {title}"
+
 msgid "Open as side chat"
 msgstr "Open as side chat"
 
