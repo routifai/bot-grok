@@ -62,31 +62,39 @@ jobs:
             dockerfile: infra/compose/Dockerfile
             context: .
             build-args: GIT_SHA=${{ github.sha }}
-          # Omnigent's own Dockerfile with infra/omnigent baked in (Railway pulls this image).
+          # FROM Omnigent's server image + infra/omnigent (Railway pulls this image).
           - name: engine
-            dockerfile: engine/omnigent/deploy/docker/Dockerfile
-            context: engine/omnigent
-            build-args: OMNIGENT_EXTRAS=memory
-            build-contexts: bundle=infra/omnigent
-          # FROM Omnigent's host image, built first into an OCI layout (see the host step).
+            dockerfile: infra/omnigent/Dockerfile
+            context: infra/omnigent
+            base: omnigent-server
+            base-target: runtime
+            base-args: OMNIGENT_EXTRAS=memory,postgres
+          # FROM Omnigent's host image on Playwright's image, as in docker-compose.superchat.yaml.
           - name: computer
             dockerfile: infra/sandboxes/computer/Dockerfile
             context: .
+            base: omnigent-host
+            base-target: host
+            base-args: |
+              MINIMAL_HOST=1
+              PYTHON_IMAGE=mcr.microsoft.com/playwright/python:v1.63.0-noble@sha256:72bd171a9ffc2b4b59532aaa6210e21014d07093120dc25528870c0b840da1f0
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
-      - id: host
-        if: matrix.name == 'computer'
+      # The Omnigent image this one is built FROM, into an OCI layout.
+      - id: base
+        if: matrix.base
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: engine/omnigent
           file: engine/omnigent/deploy/docker/Dockerfile
-          target: host
-          outputs: type=oci,dest=/tmp/omnigent-host,tar=false
-          cache-from: type=gha,scope=omnigent-host
-          cache-to: type=gha,mode=max,scope=omnigent-host
+          target: ${{ matrix.base-target }}
+          build-args: ${{ matrix.base-args }}
+          outputs: type=oci,dest=/tmp/${{ matrix.base }},tar=false
+          cache-from: type=gha,scope=${{ matrix.base }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.base }}
       - id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
@@ -100,7 +108,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: ${{ matrix.build-args }}
-          build-contexts: ${{ matrix.name == 'computer' && format('omnigent-host=oci-layout:///tmp/omnigent-host@{0}', steps.host.outputs.digest) || matrix.build-contexts }}
+          build-contexts: ${{ matrix.base && format('{0}=oci-layout:///tmp/{0}@{1}', matrix.base, steps.base.outputs.digest) || '' }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=pr-${{ github.event.pull_request.number }}-${{ matrix.name }}
           provenance: false
@@ -128,16 +136,22 @@ jobs:
             dockerfile: infra/compose/Dockerfile
             context: .
             build-args: GIT_SHA=${{ github.sha }}
-          # Omnigent's own Dockerfile with infra/omnigent baked in (Railway pulls this image).
+          # FROM Omnigent's server image + infra/omnigent (Railway pulls this image).
           - name: engine
-            dockerfile: engine/omnigent/deploy/docker/Dockerfile
-            context: engine/omnigent
-            build-args: OMNIGENT_EXTRAS=memory
-            build-contexts: bundle=infra/omnigent
-          # FROM Omnigent's host image, built first into an OCI layout (see the host step).
+            dockerfile: infra/omnigent/Dockerfile
+            context: infra/omnigent
+            base: omnigent-server
+            base-target: runtime
+            base-args: OMNIGENT_EXTRAS=memory,postgres
+          # FROM Omnigent's host image on Playwright's image, as in docker-compose.superchat.yaml.
           - name: computer
             dockerfile: infra/sandboxes/computer/Dockerfile
             context: .
+            base: omnigent-host
+            base-target: host
+            base-args: |
+              MINIMAL_HOST=1
+              PYTHON_IMAGE=mcr.microsoft.com/playwright/python:v1.63.0-noble@sha256:72bd171a9ffc2b4b59532aaa6210e21014d07093120dc25528870c0b840da1f0
           - arch: amd64
             runner: ubuntu-latest
           - arch: arm64
@@ -153,17 +167,19 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - id: host
-        if: matrix.name == 'computer'
+      # The Omnigent image this one is built FROM, into an OCI layout.
+      - id: base
+        if: matrix.base
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: engine/omnigent
           file: engine/omnigent/deploy/docker/Dockerfile
-          target: host
+          target: ${{ matrix.base-target }}
+          build-args: ${{ matrix.base-args }}
           platforms: linux/${{ matrix.arch }}
-          outputs: type=oci,dest=/tmp/omnigent-host,tar=false
-          cache-from: type=gha,scope=omnigent-host-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=omnigent-host-${{ matrix.arch }}
+          outputs: type=oci,dest=/tmp/${{ matrix.base }},tar=false
+          cache-from: type=gha,scope=${{ matrix.base }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.base }}-${{ matrix.arch }}
       - id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
@@ -181,7 +197,7 @@ jobs:
           outputs: type=image,name=ghcr.io/${{ github.repository }}/${{ matrix.name }},push-by-digest=true,name-canonical=true,push=true
           # GET /health can report the exact source commit without a deployment-supplied override.
           build-args: ${{ matrix.build-args }}
-          build-contexts: ${{ matrix.name == 'computer' && format('omnigent-host=oci-layout:///tmp/omnigent-host@{0}', steps.host.outputs.digest) || matrix.build-contexts }}
+          build-contexts: ${{ matrix.base && format('{0}=oci-layout:///tmp/{0}@{1}', matrix.base, steps.base.outputs.digest) || '' }}
           cache-from: type=gha,scope=${{ matrix.name }}-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}-${{ matrix.arch }}
           provenance: mode=max

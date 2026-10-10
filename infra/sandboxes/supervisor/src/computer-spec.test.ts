@@ -146,16 +146,19 @@ describe("graphical computer spec", () => {
     expect(legacyNetworkOwnedSolelyBy("ab", [undefined, undefined])).toBe(false);
   });
 
-  it("ships a headless computer: Playwright Chromium, no desktop stack", () => {
+  it("ships a headless computer: one Chromium, no desktop stack", () => {
     const root = path.resolve(import.meta.dirname, "../../computer");
     const dockerfile = readFileSync(path.join(root, "Dockerfile"), "utf8");
     const start = readFileSync(path.join(root, "start.sh"), "utf8");
     const browser = readFileSync(path.join(root, "superchat-browser"), "utf8");
     // Omnigent's host image is the base; this file only adds Superchat's layer.
     expect(dockerfile).toMatch(/^FROM omnigent-host$/m);
-    // Chromium from the distro's packages, so it comes through the same apt mirror.
-    expect(dockerfile).toMatch(/apt-get install[^\n]* chromium /);
-    expect(dockerfile).not.toMatch(/playwright/i);
+    // The base image's Chromium under /ms-playwright when it has one (Playwright's image), else the
+    // distro's package. Never a Playwright browser download.
+    expect(dockerfile).toMatch(/ln -sf "\$chrome" \/usr\/local\/bin\/chromium/);
+    expect(dockerfile).toMatch(/pkgs=chromium/);
+    expect(dockerfile).not.toMatch(/playwright install/i);
+    expect(dockerfile).toMatch(/chromium --version/);
     expect(dockerfile).toMatch(/superchat-page-browser/);
     expect(dockerfile).toMatch(/USER 1000:1000/);
     for (const gone of [

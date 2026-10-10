@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # One-command Docker setup: writes .env from .env.docker.example, fills its secrets, then builds
-# and starts infra/compose/docker-compose.yml. Safe to re-run: existing values are kept.
+# and starts Omnigent's compose file with infra/compose/docker-compose.superchat.yaml on top. Safe to re-run: existing values are kept.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ENV_FILE="$ROOT/.env"
-compose=(docker compose --env-file "$ENV_FILE" -f "$ROOT/infra/compose/docker-compose.yml")
+compose=(docker compose --env-file "$ENV_FILE" -f "$ROOT/engine/omnigent/deploy/docker/docker-compose.yaml" -f "$ROOT/infra/compose/docker-compose.superchat.yaml")
 
 docker info >/dev/null 2>&1 || { echo "error: Docker isn't running." >&2; exit 1; }
 

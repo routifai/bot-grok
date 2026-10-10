@@ -1,11 +1,12 @@
 # syntax=docker/dockerfile:1.7
 # The Computer: Omnigent's own host image (engine/omnigent/deploy/docker/Dockerfile, target `host`:
 # the omnigent runner, git, tmux, Node and the harness CLIs) plus what Superchat's Muse needs on
-# top. Headless: no display server, no VNC.
+# top. Headless: no display server, no VNC. The host image's base is Omnigent's PYTHON_IMAGE: Debian
+# python-slim, or (Compose's COMPUTER_BASE_IMAGE) Playwright's Ubuntu image, whose Chromium is used.
 #
 # `omnigent-host` is a named build context, so this file never rebuilds what Omnigent ships.
-# Compose wires it (infra/compose/docker-compose.yml); by hand, from the repo root:
-#   docker build -t superchat/omnigent-host:local --target host \
+# Compose wires it (infra/compose/docker-compose.superchat.yaml); by hand, from the repo root:
+#   docker build -t superchat/omnigent-host:local --target host --build-arg MINIMAL_HOST=1 \
 #     -f engine/omnigent/deploy/docker/Dockerfile engine/omnigent
 #   docker build -t superchat/computer:local -f infra/sandboxes/computer/Dockerfile \
 #     --build-context omnigent-host=docker-image://superchat/omnigent-host:local .
@@ -14,26 +15,39 @@ FROM omnigent-host
 ARG PYPI_INDEX_URL=https://pypi.org/simple
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 
+# Optional company CA (build secret `ca_bundle`, a PEM file), trusted by apt, pip and npm below.
+# Without the secret this is a no-op.
+RUN --mount=type=secret,id=ca_bundle,target=/usr/local/share/ca-certificates/ca_bundle.crt,required=false \
+    if [ -s /usr/local/share/ca-certificates/ca_bundle.crt ]; then update-ca-certificates; fi
+ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt \
+    PIP_CERT=/etc/ssl/certs/ca-certificates.crt \
+    REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+
 # Tools the Muse's shell uses beyond the host image's (patch: the pptx runtime install below).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends imagemagick jq openssh-client patch \
  && rm -rf /var/lib/apt/lists/*
 
 # Python's data stack and the pptx skill's libraries, in the system Python the Muse's shell runs
-# (the supervisor's PATH leaves /opt/venv out). Agg keeps matplotlib headless.
-RUN /usr/local/bin/python3 -m pip install --no-cache-dir --break-system-packages \
+# (the supervisor's PATH leaves /opt/venv out): /usr/local/bin's on python-slim, /usr/bin's on
+# Ubuntu. Agg keeps matplotlib headless.
+RUN PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin python3 -m pip install --no-cache-dir --break-system-packages \
       --index-url "${PYPI_INDEX_URL}" \
       pandas==2.2.3 openpyxl==3.1.5 xlsxwriter==3.2.0 matplotlib==3.9.2 duckdb==1.1.3 \
       python-pptx==1.0.2 "markitdown[pptx]==0.1.8"
 ENV MPLBACKEND=Agg
 
-# Headless Chromium from the distro's packages (so it comes through the same apt mirror as
-# everything else) for deck and dashboard export and the browser_* tools; `chromium` on PATH is what
-# the superchat-* helpers look up. Fonts so decks render the same as in the person's browser.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends chromium fonts-liberation fonts-dejavu-core fonts-noto-color-emoji \
- && rm -rf /var/lib/apt/lists/* \
- && chromium --version
+# Headless Chromium for deck and dashboard export and the browser_* tools; `chromium` on PATH is
+# what the superchat-* helpers look up. On Playwright's image it is the Chromium already under
+# /ms-playwright; on Debian it comes from the distro (the same apt mirror as everything else).
+# Fonts so decks render the same as in the person's browser.
+RUN set -eu; \
+    chrome="$(ls -d /ms-playwright/chromium-*/chrome-linux*/chrome 2>/dev/null | head -n1 || true)"; \
+    if [ -n "$chrome" ]; then ln -sf "$chrome" /usr/local/bin/chromium; pkgs=""; else pkgs=chromium; fi; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends $pkgs fonts-liberation fonts-dejavu-core fonts-noto-color-emoji; \
+    rm -rf /var/lib/apt/lists/*; \
+    chromium --version
 
 # The pptx-generator runtime (PptxGenJS with its pinned fixes, react-icons, sharp), on NODE_PATH so
 # `require('pptxgenjs')` works from any script the Muse writes.

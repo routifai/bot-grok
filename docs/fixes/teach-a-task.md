@@ -60,7 +60,8 @@ Bugs 1 and 5 were already present in the original codebase; the rest came from t
    To confirm the tool calls:
 
    ```bash
-   docker compose -f infra/compose/docker-compose.yml exec postgres \
+   docker compose --env-file .env -f engine/omnigent/deploy/docker/docker-compose.yaml \
+     -f infra/compose/docker-compose.superchat.yaml exec postgres \
      sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select \"createdAt\", payload->>'"'"'name'"'"', payload->>'"'"'outcome'"'"' from events where type='"'"'agent.tool.completed'"'"' order by \"createdAt\" desc limit 10"'
    ```
 

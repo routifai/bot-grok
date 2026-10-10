@@ -936,7 +936,8 @@ export async function ensureComputerImage() {
         () => {
           throw new Error(
             `Missing ${COMPUTER_IMAGE}. Build it from the repo root with: ` +
-              "docker compose --env-file .env -f infra/compose/docker-compose.yml build computer",
+              "docker compose --env-file .env -f engine/omnigent/deploy/docker/docker-compose.yaml " +
+              "-f infra/compose/docker-compose.superchat.yaml build computer",
           );
         },
       );

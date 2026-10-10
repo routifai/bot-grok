@@ -1,21 +1,31 @@
 name: superchat
 
-# The shape of Omnigent's own engine/omnigent/deploy/docker/docker-compose.yaml (Postgres + the
-# Omnigent server), plus Superchat's Computers (Omnigent's host image + a thin layer, started one
-# per person by the supervisor) and the app (api, worker, web: one image).
+# Superchat on Omnigent's own Compose stack. Layer it on top of Omnigent's file, unchanged; from the
+# repo root:
 #
-#   ./scripts/setup.sh        or   docker compose --env-file .env -f infra/compose/docker-compose.yml up -d --build
+#   docker compose --env-file .env \
+#     -f engine/omnigent/deploy/docker/docker-compose.yaml \
+#     -f infra/compose/docker-compose.superchat.yaml up --build
+#
+# (./scripts/setup.sh writes .env and runs exactly that.) A machine behind a company firewall adds
+# its own third `-f` file for mirrors and its CA bundle; see docs/SETUP.md.
+#
+# Compose resolves every relative path against the FIRST file's directory,
+# engine/omnigent/deploy/docker, so the repo root is ../../../.. here.
+#
+# Omnigent's file brings `postgres` and `omnigent`. This file turns `omnigent` into Superchat's
+# engine (Omnigent's server image + infra/omnigent) and adds the Computers (Omnigent's host image +
+# a thin layer, started one per person by the supervisor) and the app (api, worker, web: one image).
 
-# Optional build inputs, all unset by default (see .env.docker.example). Omnigent's Dockerfile
-# reads the same three.
+# Optional build inputs, all unset by default (see .env.docker.example).
 x-build-args: &build-args
-  - PYTHON_IMAGE
+  - NODE_IMAGE
   - PYPI_INDEX_URL
   - NPM_CONFIG_REGISTRY
 
 # api, worker and web share this one image and differ only in their command.
 x-app-build: &app-build
-  context: ../..
+  context: ../../../..
   dockerfile: infra/compose/Dockerfile
   args: *build-args
 
@@ -28,31 +38,42 @@ x-proxy-env: &proxy-env
   no_proxy: ${no_proxy:-${NO_PROXY:-}}
 
 services:
-  # One database, two schemas: `app` (API, Prisma) and `engine` (Omnigent), created on first init.
+  # Omnigent's Postgres, as is: one database, two schemas, `app` (API, Prisma) and `engine`
+  # (Omnigent), created on first init.
   postgres:
-    image: ${POSTGRES_IMAGE:-postgres:16}
-    environment:
-      # USER/PASSWORD/DB apply only on first pgdata init; down -v deletes all DB state.
-      POSTGRES_USER: ${POSTGRES_USER:-superchat}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-      POSTGRES_DB: ${POSTGRES_DB:-superchat_db}
     volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./postgres/schemas.sql:/docker-entrypoint-initdb.d/schemas.sql:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-superchat} -d ${POSTGRES_DB:-superchat_db}"]
-      interval: 3s
-      timeout: 5s
-      retries: 20
+      - ../../../../infra/compose/postgres/schemas.sql:/docker-entrypoint-initdb.d/schemas.sql:ro
 
-  # Build-only: Omnigent's host image (its Dockerfile's `host` target), the Computer's base.
+  # Build-only: Omnigent's server image, from Omnigent's Dockerfile (or a variant of it: a
+  # machine's own -f file may swap the dockerfile, args and secrets here). The engine is built FROM it.
+  omnigent-server:
+    image: superchat/omnigent-server:local
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+      args:
+        - NODE_IMAGE
+        - PYTHON_IMAGE
+        - PYPI_INDEX_URL
+        - NPM_CONFIG_REGISTRY
+        - OMNIGENT_EXTRAS=memory,postgres
+    command: ["true"]
+    restart: "no"
+
+  # Build-only: Omnigent's host image (its Dockerfile's `host` target), the Computer's base. On
+  # Playwright's Ubuntu image, whose Chromium the Computer uses; only the claude and pi CLIs.
   omnigent-host:
     image: superchat/omnigent-host:local
     build:
-      context: ../../engine/omnigent
+      context: ../..
       dockerfile: deploy/docker/Dockerfile
       target: host
-      args: *build-args
+      args:
+        - NODE_IMAGE
+        - PYTHON_IMAGE=${COMPUTER_BASE_IMAGE:-mcr.microsoft.com/playwright/python:v1.63.0-noble@sha256:72bd171a9ffc2b4b59532aaa6210e21014d07093120dc25528870c0b840da1f0}
+        - PYPI_INDEX_URL
+        - NPM_CONFIG_REGISTRY
+        - MINIMAL_HOST=1
     command: ["true"]
     restart: "no"
 
@@ -60,7 +81,7 @@ services:
   computer:
     image: superchat/computer:local
     build:
-      context: ../..
+      context: ../../../..
       dockerfile: infra/sandboxes/computer/Dockerfile
       additional_contexts:
         omnigent-host: service:omnigent-host
@@ -68,29 +89,25 @@ services:
     command: ["true"]
     restart: "no"
 
-  # The Omnigent engine: Omnigent's server image with infra/omnigent (agent bundles, config
-  # templates, start script) baked in at /opt/bundle. Each Computer's runner dials it back at
-  # ENGINE_PUBLIC_URL, so it is also published on the host.
-  engine:
+  # Superchat's engine: the server image above with infra/omnigent at /opt/bundle, started by
+  # /opt/bundle/engine/start.sh. Each Computer's runner dials it back at ENGINE_PUBLIC_URL, so it is
+  # also published on the host.
+  omnigent:
     image: superchat/engine:local
-    build:
-      context: ../../engine/omnigent
-      dockerfile: deploy/docker/Dockerfile
+    build: !override
+      context: ../../../../infra/omnigent
+      dockerfile: Dockerfile
       additional_contexts:
-        bundle: ../omnigent
-      args:
-        - OMNIGENT_EXTRAS=memory
-        - PYTHON_IMAGE
-        - PYPI_INDEX_URL
-        - NPM_CONFIG_REGISTRY
-    command: ["/opt/bundle/engine/start.sh"]
+        omnigent-server: service:omnigent-server
     environment:
       <<: *proxy-env
-      DATABASE_URL: postgres://${POSTGRES_USER:-superchat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-superchat_db}?options=-csearch_path%3Dengine
+      DATABASE_URL: postgres://${POSTGRES_USER:-omnigent}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-omnigent}?options=-csearch_path%3Dengine
       ENGINE_PUBLIC_URL: ${ENGINE_PUBLIC_URL:-http://host.docker.internal:${SUPERCHAT_ENGINE_PORT:-8012}}
       # The API signs every call with this; the engine trusts the identity headers only with it.
+      OMNIGENT_AUTH_PROVIDER: header
       OMNIGENT_AUTH_HEADER_SECRET: ${OMNIGENT_PROXY_SECRET:?Set OMNIGENT_PROXY_SECRET in .env}
       OMNIGENT_VAULT_KEY: ${OMNIGENT_VAULT_KEY:?Set OMNIGENT_VAULT_KEY in .env}
+      OMNIGENT_SUPERCHAT_SANDBOX_PROVIDER: computer
       OMNIGENT_COMPUTER_SUPERVISOR_URL: http://supervisor:7091
       OMNIGENT_COMPUTER_SUPERVISOR_TOKEN: ${SANDBOX_SUPERVISOR_TOKEN:?Set SANDBOX_SUPERVISOR_TOKEN in .env}
       # Must equal the supervisor's DATA_DIR: Computer homes are <root>/homes/<id> there.
@@ -104,13 +121,9 @@ services:
     extra_hosts:
       # Docker Desktop and colima resolve this already; native Linux needs it.
       - "host.docker.internal:host-gateway"
-    ports:
+    ports: !override
       - "${SUPERCHAT_ENGINE_BIND:-127.0.0.1}:${SUPERCHAT_ENGINE_PORT:-8012}:8000"
-    volumes:
-      - enginedata:/data
     depends_on:
-      postgres:
-        condition: service_healthy
       supervisor:
         condition: service_healthy
     healthcheck:
@@ -122,7 +135,7 @@ services:
 
   supervisor:
     build:
-      context: ../..
+      context: ../../../..
       dockerfile: infra/sandboxes/supervisor/Dockerfile
       args: *build-args
     # /data is shared with the app, which runs as uid 1000.
@@ -150,7 +163,7 @@ services:
       # The Docker socket, resolved inside the Docker VM: /var/run/docker.sock for Docker Desktop and colima alike.
       # DOCKER_SOCKET_PATH in .env overrides it only for unusual setups (e.g. rootless Docker).
       - ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:/var/run/docker.sock
-      - ../../data:/data
+      - ../../../../data:/data
     depends_on:
       computer:
         condition: service_completed_successfully
@@ -170,28 +183,28 @@ services:
     build: *app-build
     command: ["bash", "-lc", "pnpm --filter @superchat/db exec prisma migrate deploy && pnpm --filter @superchat/api start"]
     env_file:
-      - ../../.env
+      - ../../../../.env
     environment:
       <<: *proxy-env
-      DATABASE_URL: postgres://${POSTGRES_USER:-superchat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-superchat_db}?schema=app
+      DATABASE_URL: postgres://${POSTGRES_USER:-omnigent}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-omnigent}?schema=app
       API_HOST: "0.0.0.0"
       DATA_DIR: /data
       SANDBOX_SUPERVISOR_URL: http://supervisor:7091
       WAKEUP_DRIVER: graphile
       SANDBOX_PROVIDER: docker
-      # The Omnigent chat engine (the engine service unless OMNIGENT_URL points elsewhere).
-      OMNIGENT_URL: ${OMNIGENT_URL:-http://engine:8000}
+      # The Omnigent chat engine (the omnigent service unless OMNIGENT_URL points elsewhere).
+      OMNIGENT_URL: ${OMNIGENT_URL:-http://omnigent:8000}
       OMNIGENT_PROXY_SECRET: ${OMNIGENT_PROXY_SECRET:?Set OMNIGENT_PROXY_SECRET in .env}
     ports:
       - "127.0.0.1:${SUPERCHAT_API_PORT:-3100}:3100"
     volumes:
-      - ../../data:/data
+      - ../../../../data:/data
     depends_on:
       postgres:
         condition: service_healthy
       supervisor:
         condition: service_healthy
-      engine:
+      omnigent:
         condition: service_healthy
     healthcheck:
       test:
@@ -209,20 +222,20 @@ services:
     build: *app-build
     command: ["pnpm", "--filter", "@superchat/worker", "start"]
     env_file:
-      - ../../.env
+      - ../../../../.env
     environment:
       <<: *proxy-env
       BETTER_AUTH_SECRET: ""
-      DATABASE_URL: postgres://${POSTGRES_USER:-superchat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-superchat_db}?schema=app
+      DATABASE_URL: postgres://${POSTGRES_USER:-omnigent}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-omnigent}?schema=app
       DATA_DIR: /data
       SANDBOX_SUPERVISOR_URL: http://supervisor:7091
       WAKEUP_DRIVER: graphile
       SANDBOX_PROVIDER: docker
-      OMNIGENT_URL: ${OMNIGENT_URL:-http://engine:8000}
+      OMNIGENT_URL: ${OMNIGENT_URL:-http://omnigent:8000}
       OMNIGENT_PROXY_SECRET: ${OMNIGENT_PROXY_SECRET:?Set OMNIGENT_PROXY_SECRET in .env}
       SCREEN_PROXY_SECRET: ""
     volumes:
-      - ../../data:/data
+      - ../../../../data:/data
     depends_on:
       api:
         condition: service_healthy
@@ -240,7 +253,3 @@ services:
     depends_on:
       api:
         condition: service_healthy
-
-volumes:
-  pgdata:
-  enginedata:

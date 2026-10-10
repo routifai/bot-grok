@@ -87,7 +87,7 @@ supervisor at startup naming the variable, rather than surfacing later as a fail
 1. Copy `.env.example` to `.env` and set `POSTGRES_PASSWORD` (`openssl rand -hex 16`), plus `BETTER_AUTH_SECRET`, `ENCRYPTION_KEY`, and `SCREEN_PROXY_SECRET` to independent long random strings (32+ characters; 64 hex for `ENCRYPTION_KEY`). Docker sandboxes also need a dedicated `SANDBOX_SUPERVISOR_TOKEN`. Keep existing `ENCRYPTION_KEY` values so stored credentials stay decryptable.
 2. Set `OPENROUTER_API_KEY` (and `COMPOSIO_API_KEY` if you want Plugins).
 3. Build the computer image: `pnpm sandbox:build` (Compose also builds it via the `computer` service).
-4. `docker compose --env-file .env -f infra/compose/docker-compose.yml up --build`
+4. `docker compose --env-file .env -f engine/omnigent/deploy/docker/docker-compose.yaml -f infra/compose/docker-compose.superchat.yaml up --build` (Omnigent's Compose file with Superchat's on top; see [SETUP.md](./SETUP.md))
 5. Open the web origin (`http://127.0.0.1:5173` by default). The first registered user becomes the deployment owner.
 
 On Windows, if an older clone with `core.autocrlf=true` leaves the computer pane hung on boot (`bash\r` in sandbox logs): from a clean worktree, set `git config core.autocrlf false`, run `git add --renormalize . && git checkout -- .`, then rebuild with `pnpm sandbox:build`.
@@ -102,7 +102,7 @@ init, so an existing `pgdata` volume keeps its original identity: keep those val
 change them in place with `ALTER ROLE` / rename. Recreate the volume only after a backup (or when
 the data is disposable); `docker compose down -v` deletes all Postgres state. For a one-off session
 use
-`docker compose --env-file .env -f infra/compose/docker-compose.yml exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'`.
+`docker compose --env-file .env -f engine/omnigent/deploy/docker/docker-compose.yaml -f infra/compose/docker-compose.superchat.yaml exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'`.
 Do not publish Postgres on a public interface.
 
 The Docker supervisor is not published as its own image and is not exposed on the host. It runs from

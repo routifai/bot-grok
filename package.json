@@ -16,7 +16,7 @@
     "format": "biome check --write .",
     "db:generate": "pnpm --filter @superchat/db generate",
     "db:migrate": "pnpm --filter @superchat/db migrate",
-    "sandbox:build": "docker compose --env-file .env -f infra/compose/docker-compose.yml build computer",
+    "sandbox:build": "docker compose --env-file .env -f engine/omnigent/deploy/docker/docker-compose.yaml -f infra/compose/docker-compose.superchat.yaml build computer",
     "test": "vitest run",
     "test:compose-smoke": "bash infra/compose/run-smokes.sh",
     "test:integration": "tsx packages/testkit/src/cli/harness.ts --integration",
@@ -26,8 +26,8 @@
     "test:canary": "tsx packages/testkit/src/cli/canary.ts",
     "perf:desktop": "tsx packages/testkit/src/cli/desktop-performance.ts",
     "perf:compare": "tsx packages/testkit/src/cli/compare-performance.ts",
-    "compose:up": "docker compose --env-file .env -f infra/compose/docker-compose.yml up --build",
-    "compose:down": "docker compose --env-file .env -f infra/compose/docker-compose.yml down -v"
+    "compose:up": "docker compose --env-file .env -f engine/omnigent/deploy/docker/docker-compose.yaml -f infra/compose/docker-compose.superchat.yaml up --build",
+    "compose:down": "docker compose --env-file .env -f engine/omnigent/deploy/docker/docker-compose.yaml -f infra/compose/docker-compose.superchat.yaml down -v"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.13",
