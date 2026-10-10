@@ -90,3 +90,10 @@
 .l-chart .panel { background: var(--surface); border: 2px solid var(--line); border-radius: var(--radius); padding: 44px 48px; }
 .l-chart .panel h3 { font-family: var(--font-display); font-weight: var(--display-weight); font-size: 44px; line-height: 1.1; }
 .l-chart .panel p { font-size: 30px; line-height: 1.45; color: var(--muted); margin-top: 20px; }
+
+/* table: a title and one small table (up to 6 rows, 5 columns). Every cell has the same full
+   border: a single-side border would reach PowerPoint as a picture. */
+.l-table table { width: 100%; margin-top: 64px; border-collapse: collapse; font-size: 32px; line-height: 1.3; }
+.l-table th, .l-table td { padding: 26px 32px; border: 2px solid var(--line); text-align: left; }
+.l-table th { background: var(--surface); font: 500 24px/1.2 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.l-table td:first-child { font-family: var(--font-display); font-weight: var(--display-weight); }

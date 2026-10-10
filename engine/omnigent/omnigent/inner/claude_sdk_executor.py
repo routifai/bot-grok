@@ -90,6 +90,7 @@ from .executor import (
     TurnComplete,
     classify_tool_result,
     describe_exception,
+    result_ends_turn,
 )
 from .native_attachments import framework_notices, unresolved_attachment_marker
 from .sandbox import (
@@ -2449,6 +2450,36 @@ class ClaudeSDKExecutor(Executor):
         hooks.setdefault("UserPromptSubmit", []).append(hook_matcher(hooks=[add_context]))
         options.hooks = hooks
 
+    def _install_ends_turn_hook(self, sdk: _ClaudeSDK, options: SdkOptions) -> None:
+        """End the turn after a tool batch in which a card tool asked to (``ends_turn``).
+
+        The CLI's own stop: a ``PostToolBatch`` hook answering ``continue: false`` returns
+        from the turn once every call in the batch has resolved, before the next model call
+        and before queued input is attached, so a steer waiting in the CLI's queue runs as its
+        next turn. Nothing is interrupted and the warm history stays clean.
+        """
+        hook_matcher = getattr(sdk, "HookMatcher", None)
+        if hook_matcher is None:
+            return
+
+        async def stop_after_card(
+            payload: object, _tool_use_id: str | None, _context: object
+        ) -> _JsonObject:
+            calls = payload.get("tool_calls") if isinstance(payload, dict) else None
+            if not isinstance(calls, list):
+                return {}
+            if any(
+                isinstance(call, dict)
+                and result_ends_turn(str(call.get("tool_name") or ""), call.get("tool_response"))
+                for call in calls
+            ):
+                return {"continue_": False, "stopReason": "Waiting for the person's answer."}
+            return {}
+
+        hooks = dict(getattr(options, "hooks", None) or {})
+        hooks.setdefault("PostToolBatch", []).append(hook_matcher(hooks=[stop_after_card]))
+        options.hooks = hooks
+
     def _install_subagent_router_hook(
         self,
         sdk: _ClaudeSDK,
@@ -2978,6 +3009,7 @@ class ClaudeSDKExecutor(Executor):
 
         self._install_subagent_router_hook(sdk, options, model)
         self._install_framework_context_hook(sdk, options, session_key)
+        self._install_ends_turn_hook(sdk, options)
 
         # Log the full configuration for debugging
         logger.info(

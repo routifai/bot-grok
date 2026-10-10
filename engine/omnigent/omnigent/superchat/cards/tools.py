@@ -26,6 +26,7 @@ import unicodedata
 from collections.abc import Callable
 from typing import Any
 
+from omnigent.inner.executor import ENDS_TURN_KEY
 from omnigent.tools.base import Tool, ToolContext
 
 CARD_TOOL_NAME = "render_card"
@@ -354,11 +355,22 @@ def _clean_strings(
 #: its kind with :func:`register_preview_kind` (decks: ``deck-theme``); the client draws the
 #: preview from its own data. An unknown kind or id is refused.
 PREVIEW_KINDS: dict[str, Callable[[], set[str]]] = {}
+#: ``kind`` -> a check of the ids one question offers together: the problem with the set, or None.
+PREVIEW_CHECKS: dict[str, Callable[[list[str]], str | None]] = {}
 
 
-def register_preview_kind(kind: str, ids: Callable[[], set[str]]) -> None:
-    """Allow ``{"kind": kind, "id": <one of ids()>}`` as an ask option's preview."""
+def register_preview_kind(
+    kind: str,
+    ids: Callable[[], set[str]],
+    check: Callable[[list[str]], str | None] | None = None,
+) -> None:
+    """Allow ``{"kind": kind, "id": <one of ids()>}`` as an ask option's preview.
+
+    :param check: Refuses a set of ids offered together (e.g. near-identical choices).
+    """
     PREVIEW_KINDS[kind] = ids
+    if check is not None:
+        PREVIEW_CHECKS[kind] = check
 
 
 def _split_options(raw: Any) -> tuple[list[Any], list[Any], str | None]:
@@ -389,6 +401,10 @@ def _split_options(raw: Any) -> tuple[list[Any], list[Any], str | None]:
                 return [], [], f"options[{i}].preview.id is not a known {preview['kind']}"
         labels.append(item.get("label"))
         previews.append(preview)
+    for kind, check in PREVIEW_CHECKS.items():
+        problem = check([p["id"] for p in previews if p and p["kind"] == kind])
+        if problem:
+            return [], [], problem
     return labels, previews, None
 
 
@@ -433,9 +449,10 @@ def build_clarification(args: dict[str, Any]) -> dict[str, Any]:
     )
     if "error" not in out:
         out["note"] = (
-            "Shown to the person with one button per option. End your turn now with no more "
-            "text; their pick arrives as their next message."
+            "Shown to the person with one button per option. Your turn ends here; their pick "
+            "arrives as their next message."
         )
+        out[ENDS_TURN_KEY] = True
     return out
 
 
@@ -461,10 +478,8 @@ def build_follow_ups(args: dict[str, Any]) -> dict[str, Any]:
         "card": "follow_ups",
         "data": {"suggestions": suggestions},
         "fallback": "\n".join(f"- {s}" for s in suggestions),
-        "note": (
-            "Shown as quiet chips under your answer. End your turn now with no more text; "
-            "do not mention them."
-        ),
+        "note": "Shown as quiet chips under your answer. Your turn ends here.",
+        ENDS_TURN_KEY: True,
     }
 
 

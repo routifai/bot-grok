@@ -241,6 +241,7 @@ describe("card titles", () => {
     const { readableFileName } = await import("./ArtifactFileCard");
     expect(readableFileName("plateau_cafes_montreal.md")).toBe("Plateau cafes montreal");
     expect(readableFileName("q3-report.pdf")).toBe("Q3 report");
+    expect(readableFileName("q3-review.deck.html")).toBe("Q3 review");
     expect(readableFileName(".md")).toBe(".md");
   });
 });

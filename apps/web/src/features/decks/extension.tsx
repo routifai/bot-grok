@@ -48,7 +48,8 @@ function useDecksPanel({ artifact, bytes, openUrl }: ArtifactPanelArgs): Artifac
  * (`.pptx`, such as the Muse's native-chart decks) in a read-only preview. */
 export const decksExtension: ArtifactExtension = {
   usePanel: useDecksPanel,
-  card: (artifact) => (isDeckArtifactName(artifact.name) ? { meta: t`Slide deck` } : null),
+  // The Library already labels a deck "Deck" (lib/artifact-kind).
+  card: () => null,
   view: ({ artifact, bytes, onEdited, fallback }) => {
     if (isPptxArtifact(artifact)) return <PptxPreview bytes={bytes} fallback={fallback} />;
     if (!isDeckArtifactName(artifact.name)) return null;

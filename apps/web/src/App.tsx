@@ -60,6 +60,9 @@ export function App() {
   if (import.meta.env.DEV && window.location.pathname === "/dev/clarify") {
     return <CardsPreviewPage scenario="clarify" />;
   }
+  if (import.meta.env.DEV && window.location.pathname === "/dev/looks") {
+    return <CardsPreviewPage scenario="looks" />;
+  }
   if (import.meta.env.DEV && window.location.pathname === "/dev/followups") {
     return <CardsPreviewPage scenario="followups" />;
   }

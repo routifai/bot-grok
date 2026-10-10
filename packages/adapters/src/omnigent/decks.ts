@@ -31,6 +31,8 @@ export async function exportOmnigentDeck(
 export interface OmnigentDeckTheme {
   id: string;
   name: string;
+  /** Two to four words: what a picker tile says under the thumbnail. */
+  tagline: string;
   mood: string;
   category: "professional" | "editorial" | "bold" | "dark";
   mode: "light" | "dark";
@@ -48,6 +50,21 @@ export async function listOmnigentDeckThemes(
   });
   await throwOnError(response, "list deck themes", config.secrets);
   return (await response.json()) as { themes: OmnigentDeckTheme[]; default: string };
+}
+
+/** `GET /decks/themes/{id}/sample` — the kit's sample deck built in one theme (a `.deck.html`),
+ * for a theme preview. */
+export async function getOmnigentDeckThemeSample(
+  config: OmnigentClientConfig,
+  email: string,
+  themeId: string,
+): Promise<string> {
+  const response = await fetch(
+    new URL(`/v1/decks/themes/${encodeURIComponent(themeId)}/sample`, config.baseUrl),
+    { headers: omnigentHeaders(config, email) },
+  );
+  await throwOnError(response, "read deck theme sample", config.secrets);
+  return ((await response.json()) as { html: string }).html;
 }
 
 /** `GET /decks/{id}/theme` — the theme id a deck is on, `null` when hand-made. */

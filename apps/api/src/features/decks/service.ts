@@ -4,6 +4,7 @@ import {
   editOmnigentDeck,
   exportOmnigentDeck,
   getOmnigentDeckTheme,
+  getOmnigentDeckThemeSample,
   listOmnigentDeckThemes,
   OmnigentApiError,
   type OmnigentClientConfig,
@@ -100,6 +101,22 @@ export async function engineDeckTheme(
   try {
     return {
       theme: await getOmnigentDeckTheme(client, await emailOf(deps, actor), input.artifactId),
+    };
+  } catch (error) {
+    return notFound(error);
+  }
+}
+
+/** One theme's sample deck, for the theme preview. */
+export async function engineDeckThemeSample(
+  deps: EngineArtifactsDeps,
+  client: OmnigentClientConfig,
+  actor: Actor,
+  input: { themeId: string },
+): Promise<{ html: string }> {
+  try {
+    return {
+      html: await getOmnigentDeckThemeSample(client, await emailOf(deps, actor), input.themeId),
     };
   } catch (error) {
     return notFound(error);

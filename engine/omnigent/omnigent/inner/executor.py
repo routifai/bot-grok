@@ -658,6 +658,49 @@ def classify_tool_result(
     return ToolResultClassification(status=ToolCallStatus.SUCCESS, error="")
 
 
+#: A card tool's result carrying ``"ends_turn": true`` ends the turn once its tool batch has
+#: answered: the harness makes no further model call, so the card (a question, chips) is the
+#: turn's last word and the person's reply starts the next turn. Each executor maps it to its
+#: own stop primitive (Pi's ``terminate``, the Claude CLI's ``PostToolBatch`` hook).
+ENDS_TURN_KEY = "ends_turn"
+#: The only tools whose result may end the turn: Omnigent's own card tools that opt in. Any
+#: other tool's output (a file, a web page, shell output) is content, never a stop signal.
+ENDS_TURN_TOOLS = frozenset({"ask_clarification", "suggest_follow_ups"})
+#: The MCP server name Omnigent's own tools are exposed under (``mcp__omnigent__<tool>``).
+_OMNIGENT_MCP_PREFIX = "mcp__omnigent__"
+
+
+def is_ends_turn_tool(tool_name: str) -> bool:
+    """Whether *tool_name* (bare, or as Omnigent's MCP server exposes it) may end the turn."""
+    return tool_name.removeprefix(_OMNIGENT_MCP_PREFIX) in ENDS_TURN_TOOLS
+
+
+def result_ends_turn(tool_name: str, result: ToolResult) -> bool:
+    """Whether a card tool's own result ends the turn (:data:`ENDS_TURN_KEY` at its top level).
+
+    Only a tool in :data:`ENDS_TURN_TOOLS` counts, and only its top-level object is read: the
+    object itself, its JSON text, or one level of MCP text blocks (``[{"type": "text", "text":
+    "{...}"}]``, possibly under ``content``). Nothing nested deeper is looked at.
+
+    :param tool_name: The called tool, bare or ``mcp__omnigent__``-prefixed.
+    :param result: The tool's result as the harness hands it back.
+    :returns: ``True`` only for an opted-in tool whose result says ``ends_turn: true``.
+    """
+    if not is_ends_turn_tool(tool_name):
+        return False
+    if isinstance(result, dict) and isinstance(result.get("content"), list):
+        result = result["content"]
+    if isinstance(result, list):
+        texts = [b.get("text") for b in result if isinstance(b, dict) and b.get("type") == "text"]
+        result = texts[0] if len(texts) == 1 else None
+    if isinstance(result, str):
+        try:
+            result = json.loads(result)
+        except (TypeError, json.JSONDecodeError):
+            return False
+    return isinstance(result, dict) and result.get(ENDS_TURN_KEY) is True
+
+
 # ---------------------------------------------------------------------------
 # Abstract executor
 # ---------------------------------------------------------------------------

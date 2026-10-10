@@ -62,13 +62,19 @@ describe("Muse prompt rules", () => {
 
 describe("Muse deck theme choice", () => {
   const deckRules = [
-    "Offering the look first",
+    "Offering the look",
+    "an existing deck they ask to restyle without naming a theme or mood",
+    "leave its current theme out",
     '"kind": "deck-theme"',
     "do not ask again",
     "Never ask when redoing, fixing or extending an existing deck",
+    "three different categories and moods",
+    "Never offer two themes of the same category and mode",
+    "Asking ends your turn",
+    "exactly that theme, never another one",
   ];
   it.each(["templates/decks.md", "agents/nova-claude/AGENTS.md", "agents/nova-pi/AGENTS.md"])(
-    "%s offers three themes before a new deck",
+    "%s offers three themes before a new deck or a restyle",
     (path) => {
       const text = read(path).replace(/\s+/g, " ");
       for (const rule of deckRules) expect(text, rule).toContain(rule);

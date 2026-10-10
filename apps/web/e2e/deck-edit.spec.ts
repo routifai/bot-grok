@@ -168,6 +168,7 @@ test("the Theme gallery opens from the header, picking a theme sends one set-the
   ].map(([id, name, category, mode]) => ({
     id,
     name,
+    tagline: `${name} tagline`,
     mood: `${name} mood`,
     category,
     mode,

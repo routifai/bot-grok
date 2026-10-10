@@ -40,7 +40,7 @@ import {
   orbPlacement,
   useIsDesktop,
 } from "../components/ai/orb";
-import { ArtifactPanelProvider } from "../components/cards/context";
+import { ArtifactPanelProvider, AskPreviewsProvider } from "../components/cards/context";
 import { useNovaWork } from "../features/activity";
 import { ApprovalCards, FeedAsks, useAsks, WaitingSheet } from "../features/approvals";
 import { appsExtension } from "../features/apps";
@@ -56,7 +56,7 @@ import { useComputer } from "../features/computer/useComputer";
 import { useComputerScreen } from "../features/computer/useComputerScreen";
 import { useComputerStore } from "../features/computer/useComputerStore";
 import { useComputerView } from "../features/computer/useComputerView";
-import { decksExtension } from "../features/decks";
+import { DeckThemeChoice, decksExtension } from "../features/decks";
 import { FeedScreen } from "../features/feed";
 import { GoalsScreen } from "../features/goals";
 import { IdeasScreen } from "../features/ideas";
@@ -189,6 +189,9 @@ const ARTIFACT_EXTENSIONS = [
   chartsExtension,
   knowledgeExtension,
 ];
+
+/** Ask cards whose options preview a capability's things, drawn by that capability. */
+const ASK_PREVIEWS = { "deck-theme": DeckThemeChoice };
 
 /** The charts the Muse showed in a row (a dashboard reply) draw as one set: KPIs, then a grid. */
 const CHART_RUNS: TranscriptGroup = {
@@ -1525,26 +1528,28 @@ export function ShellPage() {
       <ArtifactPanelProvider value={chatArtifacts.api}>
         <ArtifactRegistryProvider value={ARTIFACT_EXTENSIONS}>
           <TranscriptGroupProvider value={CHART_RUNS}>
-            {museMode ? (
-              // The window ground around Nova's rounded content window.
-              <div className="muse-wash pt-safe pb-safe ps-safe pe-safe flex h-full md:p-2">
-                {active ? (
-                  <OrbHomeProvider home={orbHome}>
-                    <NovaPresence
-                      botId={active.id}
-                      runs={currentRuns}
-                      messages={activeSnapshot?.messages}
-                    >
-                      {shell}
-                    </NovaPresence>
-                  </OrbHomeProvider>
-                ) : (
-                  shell
-                )}
-              </div>
-            ) : (
-              shell
-            )}
+            <AskPreviewsProvider value={ASK_PREVIEWS}>
+              {museMode ? (
+                // The window ground around Nova's rounded content window.
+                <div className="muse-wash pt-safe pb-safe ps-safe pe-safe flex h-full md:p-2">
+                  {active ? (
+                    <OrbHomeProvider home={orbHome}>
+                      <NovaPresence
+                        botId={active.id}
+                        runs={currentRuns}
+                        messages={activeSnapshot?.messages}
+                      >
+                        {shell}
+                      </NovaPresence>
+                    </OrbHomeProvider>
+                  ) : (
+                    shell
+                  )}
+                </div>
+              ) : (
+                shell
+              )}
+            </AskPreviewsProvider>
           </TranscriptGroupProvider>
         </ArtifactRegistryProvider>
       </ArtifactPanelProvider>

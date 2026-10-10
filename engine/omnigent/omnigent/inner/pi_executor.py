@@ -86,6 +86,7 @@ from .async_utils import run_sync_on_thread
 from .databricks_executor import _read_databrickscfg
 from .datamodel import OSEnvSandboxSpec, OSEnvSpec
 from .executor import (
+    ENDS_TURN_TOOLS,
     Executor,
     ExecutorConfig,
     ExecutorError,
@@ -100,6 +101,7 @@ from .executor import (
     ToolCallStatus,
     ToolSpec,
     TurnComplete,
+    result_ends_turn,
 )
 
 logger = logging.getLogger(__name__)
@@ -352,6 +354,9 @@ class _ToolServer:
             resolved = await raw if asyncio.iscoroutine(raw) or asyncio.isfuture(raw) else raw
             if not isinstance(resolved, dict):
                 resolved = {"result": resolved}
+            # ``terminate`` is Pi's own stop primitive: no follow-up model call after this tool.
+            if result_ends_turn(name, resolved):
+                return {"result": resolved, "terminate": True}
             return {"result": resolved}
         except Exception as exc:  # noqa: BLE001 — tool errors are surfaced via the JSON response envelope
             return {"error": str(exc)}
@@ -469,6 +474,7 @@ def _generate_extension_js(port: int, tool_schemas: list[ToolSpec], token: str) 
     tools_json = json.dumps(descriptors, indent=2)
     # json.dumps so the secret is correctly JS-string-escaped.
     token_json = json.dumps(token)
+    ends_turn_json = json.dumps(sorted(ENDS_TURN_TOOLS))
 
     return f"""\
 // Auto-generated Omnigent tool bridge extension for Pi.
@@ -479,6 +485,10 @@ const TOOLS = {tools_json};
 const BRIDGED = new Set(TOOLS.map((t) => t.name));
 const PORT = {port};
 const TOKEN = {token_json};
+/** Card tools whose own result may end the turn (Omnigent's ENDS_TURN_TOOLS). */
+const ENDS_TURN = new Set({ends_turn_json});
+/** Ids of the calls batched with such a card: they agree to end the turn with it. */
+const CARD_BATCH = new Set();
 
 /** Send a tool call request over TCP and return the result. */
 function callTool(toolName, args, callId) {{
@@ -511,8 +521,10 @@ function callTool(toolName, args, callId) {{
               const text = typeof resp.result === "string"
                 ? resp.result
                 : JSON.stringify(resp.result);
-              const isError = resp.result && (resp.result.error || resp.result.blocked);
-              finish({{ content: [{{ type: "text", text }}], isError: !!isError }});
+              const isError = !!(resp.result && (resp.result.error || resp.result.blocked));
+              // terminate: Pi ends the turn after this tool result (no follow-up model call).
+              const terminate = !isError && resp.terminate === true;
+              finish({{ content: [{{ type: "text", text }}], isError, terminate }});
             }}
           }} catch (e) {{
             client.end();
@@ -586,6 +598,17 @@ module.exports = function(pi) {{
     }}
   }});
 
+  // Pi ends a turn only when every result in the batch says ``terminate``. A card that ends
+  // the turn decides by its own result; the bridged calls batched with it agree, so the turn
+  // ends after the batch, as on every harness.
+  pi.on("message_end", (event) => {{
+    const message = event && event.message;
+    if (!message || message.role !== "assistant" || !Array.isArray(message.content)) return;
+    const calls = message.content.filter((part) => part && part.type === "toolCall");
+    if (!calls.some((call) => ENDS_TURN.has(call.name))) return;
+    for (const call of calls) if (!ENDS_TURN.has(call.name)) CARD_BATCH.add(call.id);
+  }});
+
   for (const tool of TOOLS) {{
     // Pi passes tool.parameters directly to the LLM as JSON Schema, so we
     // can use the Omnigent schema as-is without TypeBox conversion.
@@ -596,7 +619,9 @@ module.exports = function(pi) {{
       promptSnippet: tool.promptSnippet || tool.description,
       parameters: tool.parameters || {{ type: "object", properties: {{}} }},
       async execute(toolCallId, _params, _signal, _onUpdate, _ctx) {{
-        return callTool(tool.name, _params, toolCallId);
+        const result = await callTool(tool.name, _params, toolCallId);
+        if (CARD_BATCH.delete(toolCallId)) result.terminate = true;
+        return result;
       }},
     }});
   }}

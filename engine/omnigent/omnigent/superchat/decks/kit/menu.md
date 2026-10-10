@@ -9,6 +9,7 @@ Layouts (put the layout class and one surface class on each `<section class="sli
 | `l-split` | two sides of one idea | `.kicker`, `h2.title`, `.cols` of 2 `.col` (`h3`, `p`, or `.panel` with `p`s) |
 | `l-stats` | up to three real figures | `.kicker`, `h2.title`, `.grid` of 3 `.stat` (`.value`, `.label`); use only numbers you were given |
 | `l-chart` | one Chart.js chart from the person's data | `.kicker`, `h2.title`, `.chart` holding one `<canvas id="…">`, `p.source` naming the file and columns the numbers came from, and the chart's `<script data-nova-chart>` (recipes below). A `.cols-chart` grid puts a chart beside a `.panel` of takeaways |
+| `l-table` | a small table of the person's figures | `.kicker`, `h2.title`, one `<table>` with a `<thead>` row and up to 6 `<tbody>` rows of 5 cells, each cell with its own `data-nova-id` |
 | `l-quote` | a quotation | `.kicker`, `blockquote.quote`, `.by` |
 | `l-closing` | the ask or next step | `.kicker`, `h2.title`, `p.lead`, `p.contact` |
 
@@ -31,4 +32,4 @@ Example slide:
 </section>
 ```
 
-Charts: copy a chart recipe (`deck_new` without slides returns them) and change only its ids, labels, data and colors. They are Chart.js 4 on a canvas (already in the deck, offline); the export turns each one into a native PowerPoint chart the person can edit with Edit Data. Rules: the canvas stays inside a `.chart` box that has a fixed height (the CSS gives it one); every canvas id is unique in the deck; use bar (also stacked and horizontal), line, area (a filled line), pie, doughnut, radar, scatter, bubble, or a bar with a line on a second axis. `polarArea` and anything else without a PowerPoint chart type fails `deck_check`: use one of those or a table. Numbers come from the person's files, never from memory.
+Charts: copy a chart recipe (`deck_new` without slides returns them) and change only its ids, labels, data and colors. They are Chart.js 4 on a canvas (already in the deck, offline); the export turns each one into a native PowerPoint chart the person can edit with Edit Data. Rules: the canvas stays inside a `.chart` box that has a fixed height (the CSS gives it one); every canvas id is unique in the deck; use bar (also stacked and horizontal), line, area (a filled line), pie, doughnut, radar, scatter, bubble, or a bar with a line on a second axis. `polarArea` and anything else without a PowerPoint chart type fails `deck_check`: use one of those or an `l-table` slide. Numbers come from the person's files, never from memory.

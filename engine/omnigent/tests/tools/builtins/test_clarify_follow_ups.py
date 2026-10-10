@@ -40,7 +40,7 @@ def test_clarification_builds_an_ask_card_with_option_ids() -> None:
         ],
     }
     assert out["fallback"] == "Which quarter?\n\n- Q1\n- Q2\n- Q3"
-    assert "End your turn" in out["note"]
+    assert out["ends_turn"] is True
 
 
 @pytest.mark.parametrize(
@@ -66,7 +66,7 @@ def test_follow_ups_builds_a_chip_card_that_ends_the_turn() -> None:
     assert out["card"] == "follow_ups" and out["type"] == "card"
     assert out["data"] == {"suggestions": ["Compare with last year", "Show by region"]}
     assert out["fallback"] == "- Compare with last year\n- Show by region"
-    assert "no more text" in out["note"]
+    assert out["ends_turn"] is True
 
 
 @pytest.mark.parametrize(
@@ -235,6 +235,14 @@ def test_clarification_rejects_unknown_preview_ids_and_kinds() -> None:
     assert (
         "label and preview" in _ask(question="Q?", options=[{"label": "A", "x": 1}, "B"])["error"]
     )
+
+
+def test_clarification_refuses_look_alike_deck_themes() -> None:
+    """The incident: three light professional themes are one choice, not three."""
+    alike = _themed("corporate-clean", "arctic-cool", "blue-professional")
+    assert "look alike" in _ask(question="Which look?", options=alike)["error"]
+    distinct = _themed("corporate-clean", "editorial-serif", "tokyo-night")
+    assert _ask(question="Which look?", options=distinct)["card"] == "ask"
 
 
 def test_transcript_carries_the_option_previews() -> None:

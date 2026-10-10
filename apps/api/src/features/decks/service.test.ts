@@ -1,6 +1,12 @@
 import type { PrismaClient } from "@nova/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { engineDeckTheme, engineDeckThemes, engineEditDeck, engineExportDeck } from "./service.js";
+import {
+  engineDeckTheme,
+  engineDeckThemeSample,
+  engineDeckThemes,
+  engineEditDeck,
+  engineExportDeck,
+} from "./service.js";
 
 const client = {
   baseUrl: "http://engine.test",
@@ -129,6 +135,7 @@ describe("engine deck themes", () => {
           {
             id: "corporate-clean",
             name: "Corporate Clean",
+            tagline: "Sober, board-ready",
             mood: "White and navy.",
             category: "professional",
             mode: "light",
@@ -145,6 +152,7 @@ describe("engine deck themes", () => {
         {
           id: "corporate-clean",
           name: "Corporate Clean",
+          tagline: "Sober, board-ready",
           mood: "White and navy.",
           category: "professional",
           mode: "light",
@@ -161,6 +169,31 @@ describe("engine deck themes", () => {
     vi.stubGlobal("fetch", fetchMock);
     await engineEditDeck(deps, client, actor, { artifactId: "a1", baseVersion: 1, patches });
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).patches).toEqual(patches);
+  });
+});
+
+describe("engine deck theme sample", () => {
+  it("returns the theme's sample deck html", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: URL) => {
+        expect(url.pathname).toBe("/v1/decks/themes/nord/sample");
+        return json({ html: "<!doctype html><title>Quarterly review</title>" });
+      }),
+    );
+    expect(await engineDeckThemeSample(deps, client, actor, { themeId: "nord" })).toEqual({
+      html: "<!doctype html><title>Quarterly review</title>",
+    });
+  });
+
+  it("maps an unknown theme to NOT_FOUND", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => json({ error: { code: "not_found", message: "Unknown theme" } }, 404)),
+    );
+    await expect(
+      engineDeckThemeSample(deps, client, actor, { themeId: "nope" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });
 

@@ -1,10 +1,11 @@
 import { useLingui } from "@lingui/react/macro";
 import type { Artifact, DeckPatch, DeckTheme } from "@nova/contracts";
 import { Button, cn } from "@nova/ui-web";
-import { Check, Undo2, X } from "lucide-react";
+import { Check, Expand, Undo2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type DeckThemesSource, loadDeckThemes, resetDeckThemeCache } from "../../lib/deck-themes";
 import { rpc } from "../../lib/rpc";
+import { DeckThemePreview } from "./DeckThemePreview";
 import { flushDeckEdits, noteDeckVersionEdit, setDeckThemeOpen } from "./deck-ui-state";
 import { isInexact, isStale } from "./edit/edit-model";
 import type { DeckEditSource } from "./edit/useDeckEditor";
@@ -62,6 +63,11 @@ export function DeckThemePicker({
   const [error, setError] = useState<string | null>(null);
   const [undo, setUndo] = useState<{ prev: string; name: string; version: number } | null>(null);
   const [stop, setStop] = useState(0);
+  /** The theme whose sample deck is open in the preview lightbox. */
+  const [previewing, setPreviewing] = useState<string | null>(null);
+  const previewingRef = useRef<string | null>(null);
+  previewingRef.current = previewing;
+  const previewOpener = useRef<HTMLElement | null>(null);
   const stopRef = useRef(0);
   stopRef.current = stop;
   const root = useRef<HTMLDivElement>(null);
@@ -114,11 +120,13 @@ export function DeckThemePicker({
   }, [artifact.id]);
 
   useEffect(() => {
+    // While a theme's preview is open, Escape and clicks belong to the lightbox.
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close(true);
+      if (event.key === "Escape" && !previewingRef.current) close(true);
     };
     const onDown = (event: PointerEvent) => {
       const target = event.target as Element | null;
+      if (previewingRef.current || target?.closest?.("[data-deck-preview]")) return;
       if (root.current?.contains(target) || target?.closest?.(`[${THEME_BUTTON_ATTR}]`)) return;
       close(false);
     };
@@ -313,58 +321,73 @@ export function DeckThemePicker({
                       const index = position;
                       const selected = theme.id === current;
                       return (
-                        // biome-ignore lint/a11y/useSemanticElements: a styled card, not a form radio
-                        <button
-                          key={theme.id}
-                          ref={(node) => {
-                            cards.current[index] = node;
-                          }}
-                          type="button"
-                          role="radio"
-                          aria-checked={selected}
-                          aria-disabled={current === null || busy !== null || undefined}
-                          tabIndex={index === stop ? 0 : -1}
-                          data-testid={`deck-theme-${theme.id}`}
-                          onClick={() => void pick(theme)}
-                          onFocus={() => setStop(index)}
-                          onKeyDown={(event) => move(event, index)}
-                          className={cn(
-                            "group flex min-w-0 flex-col gap-1.5 rounded-xl text-start outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                            busy !== null && "opacity-60",
-                            current === null && "opacity-60",
-                          )}
-                        >
-                          <span
+                        <div key={theme.id} className="group/tile relative min-w-0">
+                          {/* biome-ignore lint/a11y/useSemanticElements: a styled card, not a form radio */}
+                          <button
+                            ref={(node) => {
+                              cards.current[index] = node;
+                            }}
+                            type="button"
+                            role="radio"
+                            aria-checked={selected}
+                            aria-disabled={current === null || busy !== null || undefined}
+                            tabIndex={index === stop ? 0 : -1}
+                            data-testid={`deck-theme-${theme.id}`}
+                            onClick={() => void pick(theme)}
+                            onFocus={() => setStop(index)}
+                            onKeyDown={(event) => move(event, index)}
                             className={cn(
-                              "relative block aspect-video overflow-hidden rounded-lg bg-muted outline -outline-offset-1 motion-safe:transition-[outline-color]",
-                              selected
-                                ? "outline-2 -outline-offset-2 outline-foreground"
-                                : "outline-1 outline-border group-hover:outline-foreground/40",
+                              "group flex min-w-0 flex-col gap-1.5 rounded-xl text-start outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                              busy !== null && "opacity-60",
+                              current === null && "opacity-60",
                             )}
                           >
-                            {theme.preview ? (
-                              <img
-                                src={theme.preview}
-                                alt=""
-                                draggable={false}
-                                className="size-full object-cover"
-                              />
-                            ) : null}
-                            {selected ? (
-                              <span className="absolute end-1.5 top-1.5 grid size-5 place-items-center rounded-full bg-foreground text-background shadow">
-                                <Check size={12} />
+                            <span
+                              className={cn(
+                                "relative block aspect-video overflow-hidden rounded-lg bg-muted outline -outline-offset-1 motion-safe:transition-[outline-color]",
+                                selected
+                                  ? "outline-2 -outline-offset-2 outline-foreground"
+                                  : "outline-1 outline-border group-hover:outline-foreground/40",
+                              )}
+                            >
+                              {theme.preview ? (
+                                <img
+                                  src={theme.preview}
+                                  alt=""
+                                  draggable={false}
+                                  className="size-full object-cover"
+                                />
+                              ) : null}
+                              {selected ? (
+                                <span className="absolute start-1.5 top-1.5 grid size-5 place-items-center rounded-full bg-foreground text-background shadow">
+                                  <Check size={12} />
+                                </span>
+                              ) : null}
+                            </span>
+                            <span className="px-0.5">
+                              <span className="block truncate text-[12px] font-medium">
+                                {theme.name}
                               </span>
-                            ) : null}
-                          </span>
-                          <span className="px-0.5">
-                            <span className="block truncate text-[12px] font-medium">
-                              {theme.name}
+                              <span className="block truncate text-[11px] leading-snug text-muted-foreground">
+                                {theme.tagline}
+                              </span>
                             </span>
-                            <span className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">
-                              {theme.mood}
-                            </span>
-                          </span>
-                        </button>
+                          </button>
+                          <button
+                            type="button"
+                            tabIndex={index === stop ? 0 : -1}
+                            aria-label={t`Preview ${theme.name}`}
+                            title={t`Preview`}
+                            data-testid={`deck-theme-preview-${theme.id}`}
+                            onClick={(event) => {
+                              previewOpener.current = event.currentTarget;
+                              setPreviewing(theme.id);
+                            }}
+                            className="absolute top-1.5 right-1.5 grid size-6 place-items-center rounded-full bg-background/90 text-foreground opacity-0 shadow-sm ring-1 ring-border outline-none backdrop-blur-sm transition-opacity group-hover/tile:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring [@media(hover:none)]:opacity-100"
+                          >
+                            <Expand size={12} aria-hidden="true" />
+                          </button>
+                        </div>
                       );
                     })}
                   </div>
@@ -395,6 +418,22 @@ export function DeckThemePicker({
           </footer>
         ) : null}
       </div>
+      <DeckThemePreview
+        themes={order}
+        themeId={previewing}
+        onThemeChange={setPreviewing}
+        onOpenChange={(open) => !open && setPreviewing(null)}
+        finalFocus={previewOpener}
+        current={current}
+        onUse={
+          current === null
+            ? undefined
+            : (theme) => {
+                setPreviewing(null);
+                void pick(theme);
+              }
+        }
+      />
     </>
   );
 }

@@ -953,8 +953,13 @@ class TestToolServer(unittest.TestCase):
         port: int,
         token: str,
         timeout: float = 5.0,
+        tool_name: str = "exotic",
+        batch: list[str] | None = None,
     ) -> dict:
         """Run the generated JS extension under Node and execute one tool.
+
+        ``batch`` names the other calls of the same assistant message (announced to the
+        extension's ``message_end`` handler before the tool runs).
 
         This is intentionally cross-runtime: Python starts the real loopback
         server, while Node loads the generated Pi extension, captures the
@@ -967,7 +972,7 @@ class TestToolServer(unittest.TestCase):
 
         schema = [
             {
-                "name": "exotic",
+                "name": tool_name,
                 "description": "exercise generated bridge",
                 "parameters": {"type": "object", "properties": {}},
             }
@@ -982,9 +987,11 @@ class TestToolServer(unittest.TestCase):
                 textwrap.dedent(
                     """
                     const extension = require(process.argv[2]);
+                    const batch = JSON.parse(process.argv[3]);
                     let registered;
+                    const handlers = {};
                     const fakePi = {
-                      on() {},
+                      on(name, handler) { handlers[name] = handler; },
                       registerTool(tool) { registered = tool; },
                     };
 
@@ -992,6 +999,12 @@ class TestToolServer(unittest.TestCase):
                       extension(fakePi);
                       if (!registered) {
                         throw new Error("tool was not registered");
+                      }
+                      if (batch) {
+                        const calls = [{ type: "toolCall", id: "call-1", name: registered.name }];
+                        batch.forEach((name, i) =>
+                          calls.push({ type: "toolCall", id: `call-${i + 2}`, name }));
+                        handlers.message_end({ message: { role: "assistant", content: calls } });
                       }
                       const result = await registered.execute(
                         "call-1",
@@ -1013,6 +1026,7 @@ class TestToolServer(unittest.TestCase):
                 node_path,
                 str(runner_path),
                 str(extension_path),
+                json.dumps(batch),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -1029,6 +1043,49 @@ class TestToolServer(unittest.TestCase):
                 stderr.decode("utf-8", errors="replace"),
             )
             return json.loads(stdout.decode("utf-8"))
+
+    def test_ends_turn_result_terminates_the_pi_turn(self):
+        """A card that ends the turn reaches Pi as ``terminate``; a refused one does not."""
+        from omnigent.superchat.cards.tools import build_clarification
+
+        async def _run_with(result: dict, tool: str = "ask_clarification", batch=None) -> dict:
+            server = _ToolServer()
+            await server.start()
+
+            async def executor(name, args, *, call_id=None):
+                return result
+
+            server._tool_executor = executor
+            try:
+                return await self._run_generated_bridge_tool(
+                    port=server.port, token=server.token, tool_name=tool, batch=batch
+                )
+            finally:
+                await server.stop()
+
+        async def _test():
+            card = build_clarification({"question": "Which look?", "options": ["A", "B"]})
+            asked = await _run_with(card)
+            self.assertIs(asked["terminate"], True)
+            self.assertFalse(asked["isError"])
+            refused = await _run_with(build_clarification({"question": "q", "options": ["a"]}))
+            self.assertIs(refused["terminate"], False)
+            plain = await _run_with({"sum": 7}, tool="exotic")
+            self.assertIs(plain["terminate"], False)
+            # Third-party content carrying the key never ends the turn: only a card tool's own
+            # top-level result does.
+            page = {"ends_turn": True}
+            self.assertIs((await _run_with(page, tool="web_fetch"))["terminate"], False)
+            nested = {"result": json.dumps(page)}
+            self.assertIs((await _run_with(nested))["terminate"], False)
+            # A call batched with a card agrees to end the turn with it (Pi stops only when
+            # every result in the batch says terminate); without a card it does not.
+            sibling = await _run_with({"sum": 7}, tool="exotic", batch=["ask_clarification"])
+            self.assertIs(sibling["terminate"], True)
+            alone = await _run_with({"sum": 7}, tool="exotic", batch=["web_fetch"])
+            self.assertIs(alone["terminate"], False)
+
+        _run(_test())
 
     def test_start_and_stop(self):
         async def _test():

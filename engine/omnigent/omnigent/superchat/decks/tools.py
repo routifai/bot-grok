@@ -207,7 +207,9 @@ class DeckThemeSetTool(Tool):
             "again with artifact_save. Custom CSS and token overrides the deck has outside the "
             "theme markers (written after the closing marker) are kept. If something was edited "
             "between the markers the call fails and says so, and the file is not changed. "
-            "Do not use it unless they asked for a new theme."
+            "Do not use it unless they asked for a new theme. If they asked for a different "
+            "look without naming a theme or mood, first offer 3 distinct themes other than the "
+            "current one with ask_clarification and switch only to the one they pick."
         )
 
     def get_schema(self) -> dict[str, Any]:

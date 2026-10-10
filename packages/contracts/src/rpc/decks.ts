@@ -11,6 +11,11 @@ export function isDeckArtifactName(name: string): boolean {
   return name.length > DECK_NAME_SUFFIX.length && name.toLowerCase().endsWith(DECK_NAME_SUFFIX);
 }
 
+/** How many slides a deck's HTML holds (its `<section class="slide …">` elements). */
+export function deckSlideCount(html: string): number {
+  return html.match(/<section\b[^>]*\bclass="[^"]*\bslide\b/g)?.length ?? 0;
+}
+
 export const DECK_EXPORT_FORMATS = ["pptx", "pdf"] as const;
 export const DeckExportFormatSchema = z.enum(DECK_EXPORT_FORMATS);
 export type DeckExportFormat = z.infer<typeof DeckExportFormatSchema>;
@@ -50,6 +55,8 @@ export const DECK_THEME_CATEGORIES = ["professional", "editorial", "bold", "dark
 export const DeckThemeSchema = z.object({
   id: z.string(),
   name: z.string(),
+  /** Two to four words, shown under a picker tile's thumbnail. */
+  tagline: z.string(),
   mood: z.string(),
   category: z.enum(DECK_THEME_CATEGORIES),
   mode: z.enum(["light", "dark"]),
@@ -68,6 +75,11 @@ export const decksContract = {
     themes: oc
       .input(z.object({}))
       .output(z.object({ themes: z.array(DeckThemeSchema), defaultTheme: z.string() })),
+    /** The kit's sample deck (cover, agenda, figures, chart, table, quote, close) built in one
+     * theme: a complete `.deck.html` for the theme preview. */
+    sample: oc
+      .input(z.object({ themeId: z.string().min(1).max(60) }))
+      .output(z.object({ html: z.string() })),
     /** Hand edits as source patches: a new `manual` version; CONFLICT when `baseVersion` is no
      * longer the newest or the engine cannot apply a patch exactly (ask Nova instead). */
     edit: oc

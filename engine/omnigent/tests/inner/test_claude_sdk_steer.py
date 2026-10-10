@@ -8,8 +8,10 @@ boundary and when it runs it as its own next turn) was checked against the bundl
 """
 
 import asyncio
+import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -67,6 +69,9 @@ def _sdk(cli: _Cli, options_seen: list):
         SystemMessage = type("SystemMessage", (), {})
         ResultMessage = _Result
         StreamEvent = type("StreamEvent", (), {})
+        HookMatcher = staticmethod(
+            lambda matcher=None, hooks=(), **_: SimpleNamespace(hooks=hooks)
+        )
         ClaudeAgentOptions = type(
             "ClaudeAgentOptions",
             (),
@@ -353,3 +358,87 @@ async def test_a_stream_end_with_a_steer_pending_closes_the_cli_once():
     cli.print_(END)
     await asyncio.wait_for(task, 5)
     assert cli.disconnected == 1
+
+
+async def _stop_after(options, tool_calls: list[dict]) -> dict:
+    """What the turn's ``PostToolBatch`` hook answers the CLI for a batch of calls."""
+    (matcher,) = options.hooks["PostToolBatch"]
+    return await matcher.hooks[0]({"tool_calls": tool_calls}, None, None)
+
+
+def _card(name: str = "mcp__omnigent__ask_clarification") -> dict:
+    from omnigent.superchat.cards.tools import build_clarification
+
+    card = build_clarification({"question": "Which look?", "options": ["A", "B"]})
+    return {"tool_name": name, "tool_response": [{"type": "text", "text": json.dumps(card)}]}
+
+
+@pytest.mark.asyncio
+async def test_a_card_stops_the_cli_after_its_batch_and_nothing_else_does():
+    executor, cli, seen = ClaudeSDKExecutor(), _Cli(), []
+    task, _ = await _start_turn(executor, cli, seen)
+    options = seen[0]
+    stop = {"continue_": False, "stopReason": "Waiting for the person's answer."}
+    assert await _stop_after(options, [_card()]) == stop
+    # a sibling call in the batch does not change it: the turn ends after the whole batch
+    assert (
+        await _stop_after(options, [{"tool_name": "Read", "tool_response": "x"}, _card()]) == stop
+    )
+    # a refused card lets the model retry
+    bad = {"tool_name": "mcp__omnigent__ask_clarification", "tool_response": '{"error": "no"}'}
+    assert await _stop_after(options, [bad]) == {}
+    # third-party content carrying the key never ends the turn
+    page = json.dumps({"ends_turn": True})
+    for call in (
+        {"tool_name": "WebFetch", "tool_response": page},
+        {"tool_name": "Read", "tool_response": [{"type": "text", "text": page}]},
+        {"tool_name": "mcp__omnigent__sys_os_read", "tool_response": page},
+        {"tool_name": "mcp__github__ask_clarification", "tool_response": page},
+        {"tool_name": "mcp__omnigent__ask_clarification",
+         "tool_response": json.dumps({"result": page})},
+    ):  # fmt: skip
+        assert await _stop_after(options, [call]) == {}, call
+    cli.print_(_Result("ok"))
+    await asyncio.wait_for(task, 5)
+
+
+@pytest.mark.asyncio
+async def test_a_steer_pending_when_the_card_ends_the_turn_is_answered_not_dropped():
+    executor, cli, seen = ClaudeSDKExecutor(), _Cli(), []
+    task, events = await _start_turn(executor, cli, seen)
+    assert await executor.steer_session_message(SESSION, "make it blue", steer_id="b") == "pending"
+    uuid = cli.writes[-1]["uuid"]
+
+    # The card's batch resolves: the hook stops the CLI before it attaches the queued steer,
+    # so the CLI ends this turn and runs the steer as its next one. Nothing is interrupted.
+    assert (await _stop_after(seen[0], [_card()]))["continue_"] is False
+    cli.print_(_Result(""))
+    await asyncio.sleep(0.05)
+    assert not task.done()  # an answer is still owed for the steer
+    cli.print_(_User(uuid))
+    cli.print_(_Result("blue answer"))
+    await asyncio.wait_for(task, 5)
+
+    assert _outcomes(events) == [("b", True)]
+    assert isinstance(events[-1], TurnComplete) and events[-1].response == "blue answer"
+    assert cli.disconnected == 0
+
+
+@pytest.mark.asyncio
+async def test_a_steer_after_the_card_stop_runs_in_order_and_later_ones_are_refused():
+    executor, cli, seen = ClaudeSDKExecutor(), _Cli(), []
+    task, events = await _start_turn(executor, cli, seen)
+    assert (await _stop_after(seen[0], [_card()]))["continue_"] is False
+
+    # Sent after the stop but before the CLI's result: still read, as the CLI's next turn.
+    assert await executor.steer_session_message(SESSION, "also this", steer_id="late") == "pending"
+    uuid = cli.writes[-1]["uuid"]
+    cli.print_(_Result(""))
+    cli.print_(_User(uuid))
+    cli.print_(_Result("late answer"))
+    await asyncio.wait_for(task, 5)
+    assert _outcomes(events) == [("late", True)]
+    assert events[-1].response == "late answer"
+
+    # Once the turn is over, a steer is refused: it runs as the next turn instead.
+    assert await executor.steer_session_message(SESSION, "after", steer_id="x") == "refused"

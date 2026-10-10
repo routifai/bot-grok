@@ -18,8 +18,19 @@ if TYPE_CHECKING:
     from omnigent.tools.base import Tool
 
 
+def _distinct_looks(ids: list[str]) -> str | None:
+    """Themes offered together must be real alternatives, never two of the same kind of look."""
+    looks = [(kit.templates()[i].category, kit.templates()[i].mode) for i in ids]
+    if len(set(looks)) < len(looks):
+        return (
+            "the theme options look alike: offer themes from different categories "
+            "(for example one professional, one editorial, one bold or dark)"
+        )
+    return None
+
+
 # An ask_clarification option may show a deck theme's thumbnail (the client has the dictionary).
-register_preview_kind("deck-theme", lambda: set(kit.templates()))
+register_preview_kind("deck-theme", lambda: set(kit.templates()), _distinct_looks)
 
 
 def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]:

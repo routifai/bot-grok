@@ -5,6 +5,7 @@ import { DeckHeaderActions } from "../../features/decks/DeckHeaderActions";
 import { DeckViewer } from "../../features/decks/DeckViewer";
 import { useDeckEditing } from "../../features/decks/deck-ui-state";
 import sample from "../../features/decks/edit/sample-deck.txt?raw";
+import { setDeckThemeSources } from "../../lib/deck-themes";
 
 const NAME = "sample.deck.html";
 
@@ -18,6 +19,8 @@ type DevWindow = Window & {
   __deckTheme?: (html: string) => Promise<string | null>;
   /** What the engine would answer to a `set-theme` patch: the restyled source. */
   __deckRestyle?: (html: string, theme: string) => Promise<string>;
+  /** A theme's sample deck (the engine's kit builds it), for the theme preview. */
+  __deckThemeSample?: (themeId: string) => Promise<string>;
 };
 
 /**
@@ -31,6 +34,16 @@ export function DeckPreviewPage() {
   const editing = useDeckEditing(NAME);
   const [version, setVersion] = useState(1);
   const [html, setHtml] = useState(sample);
+  // Read at call time: a run exposes the function after the page has loaded.
+  useState(() =>
+    setDeckThemeSources({
+      sample: async (id) => {
+        const dev = window as DevWindow;
+        if (!dev.__deckThemeSample) throw new Error("no sample deck in this run");
+        return dev.__deckThemeSample(id);
+      },
+    }),
+  );
   useEffect(() => {
     const dev = window as DevWindow;
     dev.__deckSetHtml = (next) => {

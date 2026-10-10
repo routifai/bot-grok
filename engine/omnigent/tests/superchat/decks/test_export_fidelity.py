@@ -63,7 +63,7 @@ def deck(
 
 def test_layout_is_clean_by_construction(deck: tuple[str, Path]) -> None:
     result = _run("lint", deck[1])
-    assert result["ok"] is True and result["slides"] == 8
+    assert result["ok"] is True and result["slides"] == 11
     assert result["issues"] == []
 
 
@@ -78,7 +78,7 @@ def test_pptx_is_native_with_embedded_fonts_and_no_pictures(
         slides = [n for n in names if re.fullmatch(r"ppt/slides/slide\d+\.xml", n)]
         xml = {n: z.read(n).decode("utf-8") for n in slides}
         presentation = z.read("ppt/presentation.xml").decode("utf-8")
-    assert len(slides) == 8
+    assert len(slides) == 11
     # shapes and text only: not one picture, so nothing a person edits is a screenshot
     assert [n for n in names if n.startswith("ppt/media/") and not n.endswith("/")] == []
     assert all("<p:pic>" not in x for x in xml.values())
@@ -99,6 +99,7 @@ def test_pdf_is_vector_with_one_page_per_slide(deck: tuple[str, Path], tmp_path:
     out = tmp_path / "deck.pdf"
     assert _run("pdf", deck[1], out)["ok"] is True
     data = out.read_bytes()
-    assert len(re.findall(rb"/Type\s*/Page[^s]", data)) == 8
+    assert len(re.findall(rb"/Type\s*/Page[^s]", data)) == 11
     assert b"/FontFile" in data
-    assert len(re.findall(rb"/Subtype\s*/Image", data)) == 0
+    # only a chart's canvas is a picture in a PDF (its pixels and their alpha mask)
+    assert len(re.findall(rb"/Subtype\s*/Image", data)) <= 2 * SAMPLE.count("<canvas")

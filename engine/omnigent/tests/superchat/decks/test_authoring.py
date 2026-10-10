@@ -52,7 +52,7 @@ def test_assembled_deck_keeps_the_framework_and_embeds_fonts(template: str) -> N
     # the theme and slides went into their slots; no slot comment is left behind
     assert "SLOT:" not in deck.replace("SLOT: theme tokens", "")
     assert kit.SLOTS_OPEN in deck and kit.SLOTS_CLOSE in deck
-    assert _slides_in(deck).count('<section class="slide') == 8
+    assert _slides_in(deck).count('<section class="slide') == 11
     # fonts are data URIs (the viewer's CSP blocks remote fonts); nothing is fetched from the web
     assert "data:font/ttf;base64," in deck
     assert not re.search(r"https?://fonts\.", deck)
@@ -140,7 +140,7 @@ async def test_deck_new_writes_the_deck_and_reports_a_clean_layout(workspace: Pa
     assert out["ok"] is True and out["written"] is True and out["layout_checked"] is True
     target = workspace / "your_files" / "q3.deck.html"
     assert out["path"] == str(target.resolve())
-    assert _slides_in(target.read_text("utf-8")).count('<section class="slide') == 8
+    assert _slides_in(target.read_text("utf-8")).count('<section class="slide') == 11
     assert "artifact_save" in out["next"]
 
 
@@ -245,9 +245,9 @@ def test_every_theme_has_a_small_thumbnail() -> None:
         path = kit.PREVIEWS_DIR / f"{theme['id']}.webp"
         assert path.stat().st_size < 40_000
         with Image.open(path) as image:
-            assert image.size == (480, 270)
+            assert image.size == (640, 360)
         with Image.open(path) as image:  # no baked-in letterbox: the corners are the slide
-            corners = [image.convert("L").getpixel(xy) for xy in ((0, 0), (479, 0), (0, 269))]
+            corners = [image.convert("L").getpixel(xy) for xy in ((0, 0), (639, 0), (0, 359))]
         assert (max(corners) < 90) == (theme["mode"] == "dark")
     gallery = {t["id"]: t for t in kit.theme_gallery()}
     assert all(t["preview"].startswith("data:image/webp;base64,") for t in gallery.values())
@@ -258,7 +258,8 @@ async def test_deck_themes_returns_the_dictionary_and_a_restrained_default() -> 
     ids = [t["id"] for t in out["themes"]]
     assert ids == [t["id"] for t in kit.theme_dictionary()] and len(ids) == 18
     assert out["default"] == "corporate-clean"
-    assert set(out["themes"][0]) == {"id", "name", "mood", "category", "mode", "best_for"}
+    keys = {"id", "name", "tagline", "mood", "category", "mode", "best_for"}
+    assert set(out["themes"][0]) == keys
     assert {t["category"] for t in out["themes"]} == {"professional", "editorial", "bold", "dark"}
     assert {t["mode"] for t in out["themes"]} == {"light", "dark"}
 
@@ -289,3 +290,22 @@ async def test_deck_theme_set_refuses_bad_input(workspace: Path) -> None:
         "deck_theme_set", {"path": "no.deck.html", "theme_id": "nord"}
     )
     assert "not found" in json.loads(missing)["error"].lower()
+
+
+def test_thumbnails_of_themes_offered_together_read_apart() -> None:
+    """Two themes the Muse may offer side by side (different category or mode) never share a
+    near-identical thumbnail: the mean per-pixel difference at tile scale stays clear of zero."""
+    from itertools import combinations
+
+    from PIL import Image, ImageChops, ImageStat
+
+    themes = kit.templates()
+    small = {
+        t: Image.open(kit.PREVIEWS_DIR / f"{t}.webp").convert("RGB").resize((64, 36))
+        for t in themes
+    }
+    for a, b in combinations(themes, 2):
+        if (themes[a].category, themes[a].mode) == (themes[b].category, themes[b].mode):
+            continue
+        diff = sum(ImageStat.Stat(ImageChops.difference(small[a], small[b])).mean) / 3
+        assert diff > 6, (a, b, diff)

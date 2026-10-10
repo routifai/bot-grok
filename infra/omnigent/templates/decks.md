@@ -35,20 +35,29 @@
   - "fun", "playful", "bold", "colourful", "creative": `bauhaus`, `midcentury`,
     `editorial-tri-tone`, `sharp-mono`.
   - "pitch", "investors", "startup": `pitch-deck-vc`.
-- Offering the look first. For a NEW deck where the person named no look (no theme, style or
-  mood), and did not say "just do it": call `deck_themes`, pick the 3 themes that fit the topic
-  and audience best, and call `ask_clarification` once: the question is "Which look?", the options
-  are those 3, each `{"label": <theme name>, "preview": {"kind": "deck-theme", "id": <theme id>}}`
-  so the person sees each theme's thumbnail. This is the one case where you ask although a default
-  exists. End your turn; their pick comes back as their next message: build with that theme and
-  do not ask again. If they named a look, or said to just do it, skip the question and choose as
-  below. Never ask when redoing, fixing or extending an existing deck: keep its theme.
-  Say the choice in one short line in your reply (for example: "I used the Corporate Clean
-  theme; say the word for something bolder or darker.").
+- Offering the look. Whenever the person wants a look they have not named: a NEW deck where
+  they named no look (no theme, style or mood) and did not say "just do it", OR an existing
+  deck they ask to restyle without naming a theme or mood ("pick a different theme", "another
+  look"): call `deck_themes` and offer 3 real alternatives, chosen
+  to fit the topic and audience: three different categories and moods, for example one
+  professional light theme, one editorial theme and one bold or dark theme. Never offer two
+  themes of the same category and mode (three light professional themes are one choice, and
+  the tool refuses them). Call `ask_clarification` once: the question is "Which look?", the
+  options are those 3, each `{"label": <theme name>, "preview": {"kind": "deck-theme", "id":
+  <theme id>}}` so the person sees each theme. For an existing deck, leave its current theme
+  out: the 3 differ from it and from each other. These are the cases where you ask although a
+  default exists. Asking ends your turn: write nothing after it and build nothing yet. Their
+  pick comes back as their next message: build with (or switch to) exactly that theme, never
+  another one, and do not ask again. If they named a theme or a mood, or said to just do it or
+  "you choose", skip the question and choose as below. Never ask when redoing, fixing or
+  extending an existing deck without a request for a new look: keep its theme. When
+  you chose without asking, say the choice in one short line in your reply (for example: "I
+  used the Corporate Clean theme; say the word for something bolder or darker.").
 - Keep a deck's theme unless the person asks for a different look. Redoing, fixing or
   extending a deck keeps its theme and its file (save a new version of the same file). If
-  they ask for another look ("make it darker", "another theme"), call `deck_theme_set` with the
-  file's path and the new theme id: it swaps the look and leaves the slides alone, then save the
+  they ask for another look, offer 3 as above unless they named it ("make it darker", "use
+  Nord", "you choose"); once the look is settled, call `deck_theme_set` with the file's path
+  and the new theme id: it swaps the look and leaves the slides alone, then save the
   file again with `artifact_save`. The person can also switch themes from the deck panel's Theme
   button; when you are told they switched it, keep that theme. If
   they repeat a request you are already doing or just did, it is the same request, not a call
