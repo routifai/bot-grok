@@ -190,6 +190,37 @@ async def test_catalog_offers_claude_sdk_every_chat_model_whatever_its_name(
 
 
 @pytest.mark.asyncio
+async def test_the_prices_litellm_reports_choose_the_light_model(
+    monkeypatch, litellm_url: str
+) -> None:
+    from omnigent.server.inference_catalog import SandboxInferenceService
+    from omnigent.superchat.models.listing import clear_model_info_cache
+    from omnigent.superchat.models.tiers import person_models_from_catalog
+
+    clear_model_info_cache()
+    state = _litellm_state(monkeypatch, harness="pi")
+    info = [
+        {
+            "model_name": "team-big",
+            "model_info": {"input_cost_per_token": 3e-6, "output_cost_per_token": 1.5e-5},
+        },
+        {
+            "model_name": "team-small",
+            "model_info": {"input_cost_per_token": 2e-7, "output_cost_per_token": 8e-7},
+        },
+    ]
+    transport = _listing_with_info(["team-big", "team-small"], info)
+    snapshot = await SandboxInferenceService(state, transport=transport).prepare(
+        "computer", "pi", "alice"
+    )
+    assert snapshot is not None
+    rows = {row["id"]: row for row in snapshot["catalog"]["models"]}
+    assert rows["team-small"]["costPerToken"] == {"input": 2e-7, "output": 8e-7}
+    resolved = person_models_from_catalog(snapshot["catalog"], default_pick=None, light_pick=None)
+    assert (resolved.default, resolved.light) == ("team-big", "team-small")
+
+
+@pytest.mark.asyncio
 async def test_the_operator_key_serves_people_without_one_and_stays_in_the_engine(
     monkeypatch, litellm_url: str
 ) -> None:

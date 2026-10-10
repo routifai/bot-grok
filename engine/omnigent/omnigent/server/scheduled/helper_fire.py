@@ -547,10 +547,11 @@ async def _create_helper_session(
     run_type = scheduled_helper_type(task.agent_type)
     from omnigent.superchat.models.tiers import tier_models
 
-    tiers = await asyncio.to_thread(tier_models, await _helper_harness(deps, parent, run_type))
+    harness = await _helper_harness(deps, parent, run_type)
+    tiers = await tier_models(deps.app_state, task.user_id, harness)
     _, run_model = resolve_scheduled_helper(task.agent_type, task.model_override, tiers)
-    # Nothing picked for this harness, or the owner's connection does not serve it: inherit
-    # the parent's model like a dispatch does.
+    # No usable catalog for this harness, or the parent's snapshot does not serve the model:
+    # inherit the parent's model like a dispatch does.
     from omnigent.server.routes.sandbox_inference import snapshot_serves_model
 
     if run_model is not None and not snapshot_serves_model(parent.inference_snapshot, run_model):

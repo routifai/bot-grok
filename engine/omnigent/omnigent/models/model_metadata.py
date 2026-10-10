@@ -84,6 +84,10 @@ class ModelMetadata:
     cost_tier: ModelCostTier | None = None
     wire_apis: frozenset[ModelWireAPI] = frozenset()
     reasoning: ModelReasoningMetadata | None = None
+    #: USD per input / output token as the provider reports them (e.g. a LiteLLM proxy's
+    #: ``/model/info``), or ``None`` when it says nothing.
+    input_cost_per_token: float | None = None
+    output_cost_per_token: float | None = None
 
     def __post_init__(self) -> None:
         overlap = self.supported_capabilities & self.unsupported_capabilities

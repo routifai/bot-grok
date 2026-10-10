@@ -1,6 +1,6 @@
-"""Organization admin: the admin-only ``/v1/admin/{models,users,usage}`` routes.
+"""Organization admin: the admin-only ``/v1/admin/{users,usage}`` routes.
 
-Layout: ``routes`` (the router: model overlay, people, usage, suspend/resume/remove). Sits on top
+Layout: ``routes`` (the router: people, usage, suspend/resume/remove). Sits on top
 of ``models`` and reads its stores through the package entry point only; the budget and the
 organization's connections stay in ``models``.
 """

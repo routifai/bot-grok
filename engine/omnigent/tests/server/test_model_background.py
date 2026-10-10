@@ -1,4 +1,4 @@
-"""Background work's model: the organization's fast pick over the owner's connection."""
+"""Background work's model: the owner's Light model over the owner's connection."""
 
 from __future__ import annotations
 
@@ -15,43 +15,57 @@ from omnigent.llms.background import (
 )
 from omnigent.onboarding.provider_config import load_providers
 from omnigent.server.managed_hosts import parse_sandbox_config
+from omnigent.superchat.models import tiers
 from omnigent.superchat.models.background import BackgroundModels, background_harness
+from omnigent.superchat.models.selection import ModelPicks
 
 from .test_byok_pi import _hosted_state, _service
 
-DEFAULT_TEMPLATE = Path(__file__).resolve().parents[4] / "infra/railway/engine.config.yaml.tmpl"
+DEFAULT_TEMPLATE = Path(__file__).resolve().parents[4] / "infra/omnigent/engine/config.yaml.tmpl"
 
 
-def _with_picks(state: SimpleNamespace, picks: dict) -> SimpleNamespace:
-    state.model_org_overlay = SimpleNamespace(get=lambda: picks)
+def _with_picks(state: SimpleNamespace, light: dict, defaults: dict | None = None):
+    picks = ModelPicks(defaults=defaults or {}, light=light)
+    state.model_preference_store = SimpleNamespace(read=lambda _owner: picks)
     return state
 
 
-def test_the_harness_is_the_one_with_a_fast_pick_else_a_default_else_the_first() -> None:
+def test_the_harness_is_the_one_with_a_light_pick_else_a_default_else_the_first() -> None:
     bound = ["claude-sdk", "pi"]
-    assert background_harness(bound, {}) == "claude-sdk"
-    assert background_harness(bound, {"pi": {"default": "x"}}) == "pi"
-    assert background_harness(bound, {"pi": {"default": "x"}, "claude-sdk": {"fast": "y"}}) == (
-        "claude-sdk"
-    )
-    assert background_harness([], {}) is None
+    assert background_harness(bound, ModelPicks()) == "claude-sdk"
+    assert background_harness(bound, ModelPicks(defaults={"pi": "x"})) == "pi"
+    assert background_harness(
+        bound, ModelPicks(defaults={"pi": "x"}, light={"claude-sdk": "y"})
+    ) == ("claude-sdk")
+    assert background_harness([], ModelPicks()) is None
 
 
 @pytest.mark.asyncio
-async def test_the_fast_pick_runs_on_the_owners_anthropic_key() -> None:
+async def test_the_persons_light_pick_runs_on_their_anthropic_key() -> None:
     state = _with_picks(
-        _hosted_state({"alice": ("anthropic", "sk-ant-x")}),
-        {"claude-sdk": {"fast": "claude-haiku-4-5"}},
+        _hosted_state({"alice": ("anthropic", "sk-ant-x")}), {"claude-sdk": "claude-haiku-4-5"}
     )
     resolved = await BackgroundModels(state).resolve("alice")
     assert resolved == (
         "anthropic/claude-haiku-4-5",
         {"api_key": "sk-ant-x", "base_url": "https://api.anthropic.com/v1"},
     )
+    assert await BackgroundModels(state).light_model("alice") == "claude-haiku-4-5"
 
 
 @pytest.mark.asyncio
-async def test_nothing_picked_uses_the_connections_own_first_model() -> None:
+async def test_nothing_picked_runs_on_the_cheapest_model_by_price(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prices = {"claude-sonnet-5-5": (3e-6, 15e-6), "claude-haiku-4-5": (1e-6, 5e-6)}
+    monkeypatch.setattr(tiers, "catalog_price", prices.get)
+    state = _with_picks(_hosted_state({"alice": ("anthropic", "sk-ant-x")}), {})
+    model, _ = await BackgroundModels(state).resolve("alice") or ("", None)
+    assert model == "anthropic/claude-haiku-4-5"
+
+
+@pytest.mark.asyncio
+async def test_nothing_picked_and_nothing_priced_uses_the_catalog_default() -> None:
     state = _with_picks(_hosted_state({"alice": ("anthropic", "sk-ant-x")}), {})
     model, _ = await BackgroundModels(state).resolve("alice") or ("", None)
     assert model == "anthropic/claude-sonnet-5-5"
@@ -69,7 +83,7 @@ async def test_a_bearer_upstream_is_called_over_chat_completions() -> None:
 
 @pytest.mark.asyncio
 async def test_no_key_means_nothing_to_call_not_an_error() -> None:
-    state = _with_picks(_hosted_state({}), {"claude-sdk": {"fast": "claude-haiku-4-5"}})
+    state = _with_picks(_hosted_state({}), {"claude-sdk": "claude-haiku-4-5"})
     assert await BackgroundModels(state).resolve("carol") is None
 
 
@@ -87,10 +101,8 @@ async def test_an_operator_gateway_is_called_through_its_own_family(
         databricks_store=None,
         databricks_client=None,
         model_connection_store=None,
-        model_org_overlay=SimpleNamespace(
-            get=lambda: {"claude-sdk": {"fast": "claude-haiku-4-5"}}
-        ),
     )
+    _with_picks(state, {"claude-sdk": "claude-haiku-4-5"})
     state.inference_catalog = _service(state)
     resolved = await BackgroundModels(state).resolve(None)
     assert resolved == (

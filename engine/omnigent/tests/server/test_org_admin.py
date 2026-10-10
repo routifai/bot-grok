@@ -1,4 +1,4 @@
-"""Organization admin: model overlay, people and usage, suspend/resume and delete."""
+"""Organization admin: people and usage, suspend/resume and delete."""
 
 from __future__ import annotations
 
@@ -21,7 +21,6 @@ from omnigent.db.utils import (
 from omnigent.errors import OmnigentError
 from omnigent.runtime.public_error_codes import classify_provider_failure
 from omnigent.server.auth import LEVEL_OWNER
-from omnigent.server.routes.sandbox_inference import selected_catalog_model
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
 from omnigent.stores.host_store import Host
 from omnigent.stores.permission_store.sqlalchemy_store import SqlAlchemyPermissionStore
@@ -30,9 +29,7 @@ from omnigent.superchat.models import budget as budget_module
 from omnigent.superchat.models import org as org_module
 from omnigent.superchat.models.budget import Budget, ModelBudgets, ModelBudgetStore
 from omnigent.superchat.models.org import (
-    ModelOrgOverlayStore,
     SuspensionStore,
-    apply_overlay,
     bind_suspensions,
     refuse_if_suspended,
 )
@@ -94,7 +91,6 @@ class World(SimpleNamespace):
     connections: ModelConnectionStore
     budgets: ModelBudgets
     suspensions: SuspensionStore
-    overlay: ModelOrgOverlayStore
     auth: _Auth
     hosts: _Hosts
     terminated: list[str]
@@ -113,7 +109,6 @@ def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
     ledger = SqlAlchemyConversationStore(uri)
     connections = ModelConnectionStore(uri)
     suspensions = SuspensionStore(uri)
-    overlay = ModelOrgOverlayStore(uri)
     budgets = ModelBudgets(ModelBudgetStore(uri), ledger)
     auth = _Auth()
     hosts = _Hosts({})
@@ -136,13 +131,11 @@ def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
     app.state.databricks_store = None
     app.state.databricks_client = None
     app.state.model_connection_store = _Keys()
-    app.state.model_org_overlay = overlay
     app.state.host_store = hosts
     # The template names no model: catalogs are the key's own listing.
     app.state.inference_catalog = _service(app.state)
     app.include_router(
         create_org_admin_router(
-            overlay=overlay,
             suspensions=suspensions,
             budgets=budgets,
             connections=connections,
@@ -169,7 +162,6 @@ def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
         connections=connections,
         budgets=budgets,
         suspensions=suspensions,
-        overlay=overlay,
         auth=auth,
         hosts=hosts,
         terminated=terminated,
@@ -182,9 +174,6 @@ def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
 # ---- gating -----------------------------------------------------------------------------
 
 ROUTES = [
-    ("GET", "/v1/admin/models"),
-    ("PUT", "/v1/admin/models"),
-    ("GET", "/v1/admin/models/catalog?harness=claude-sdk"),
     ("GET", "/v1/admin/users"),
     ("GET", "/v1/admin/usage"),
     ("POST", "/v1/admin/users/bob/suspend"),
@@ -202,162 +191,6 @@ def test_every_route_needs_an_admin_with_a_neutral_message(
     assert "organization" in r.json()["message"] and "polic" not in r.json()["message"]
     assert world.perms.get_user("bob") is not None  # nothing happened
     assert world.suspensions.suspended_since() == {}
-
-
-# ---- overlay ----------------------------------------------------------------------------
-
-
-async def _catalog(world: World, user: str = "alice") -> dict[str, Any]:
-    snapshot = await _service(world.app.state).prepare(None, "claude-sdk", user)
-    assert snapshot is not None
-    return snapshot
-
-
-def test_apply_overlay_intersects_and_drops_a_default_outside_the_list() -> None:
-    binding = {"provider": "p", "model_allowlist": ["a", "b", "c"], "default_model": "a"}
-    apply_overlay(binding, {"allow": ["c", "b", "z"], "default": None})
-    assert binding == {"provider": "p", "model_allowlist": ["b", "c"]}
-    open_binding: dict[str, Any] = {"provider": "p", "default_model": "a"}
-    apply_overlay(open_binding, {"allow": ["x", "y"], "default": "y"})
-    assert open_binding == {"provider": "p", "model_allowlist": ["x", "y"], "default_model": "y"}
-    untouched = {"provider": "p", "model_allowlist": ["a"]}
-    apply_overlay(untouched, None)
-    assert untouched == {"provider": "p", "model_allowlist": ["a"]}
-
-
-@pytest.mark.asyncio
-async def test_overlay_narrows_the_catalog_and_org_default_sits_below_the_users(
-    world: World,
-) -> None:
-    base = await _catalog(world)
-    assert [m["id"] for m in base["catalog"]["models"]] == [
-        "claude-sonnet-5-5",
-        "claude-haiku-4-5",
-    ]
-    assert base["catalog"]["default_model"] == "claude-sonnet-5-5"
-
-    put = world.client.put(
-        "/v1/admin/models",
-        json={"harnesses": {"claude-sdk": {"allow": ["claude-haiku-4-5"]}}},
-        headers=ROOT,
-    )
-    assert put.status_code == 200
-    assert world.client.get("/v1/admin/models", headers=ROOT).json() == put.json()
-    narrowed = await _catalog(world)
-    assert [m["id"] for m in narrowed["catalog"]["models"]] == ["claude-haiku-4-5"]
-    assert narrowed["catalog"]["default_model"] == "claude-haiku-4-5"
-    # A new allowlist changes the configuration revision, so stale pickers refresh.
-    assert narrowed["configuration_revision"] != base["configuration_revision"]
-
-    world.client.put(
-        "/v1/admin/models",
-        json={"harnesses": {"claude-sdk": {"default": "claude-haiku-4-5"}}},
-        headers=ROOT,
-    )
-    catalog = (await _catalog(world))["catalog"]
-    assert [m["id"] for m in catalog["models"]] == ["claude-sonnet-5-5", "claude-haiku-4-5"]
-    assert catalog["default_model"] == "claude-haiku-4-5"  # org default replaces the binding's
-    # override > user default > org default > binding default
-    assert selected_catalog_model(catalog, None) == "claude-haiku-4-5"
-    assert selected_catalog_model(catalog, None, "claude-sonnet-5-5") == "claude-sonnet-5-5"
-    assert selected_catalog_model(catalog, "claude-sonnet-5-5", "claude-haiku-4-5") == (
-        "claude-sonnet-5-5"
-    )
-
-    cleared = world.client.put("/v1/admin/models", json={"harnesses": {}}, headers=ROOT)
-    assert cleared.json() == {"harnesses": {}}
-    assert (await _catalog(world))["catalog"]["default_model"] == "claude-sonnet-5-5"
-
-
-def test_overlay_editor_lists_the_whole_binding_even_when_the_overlay_narrows_it(
-    world: World,
-) -> None:
-    world.client.put(
-        "/v1/admin/models",
-        json={"harnesses": {"claude-sdk": {"allow": ["claude-haiku-4-5"]}}},
-        headers=ROOT,
-    )
-    r = world.client.get("/v1/admin/models/catalog?harness=claude-sdk", headers=ROOT)
-    assert r.status_code == 200
-    body = r.json()
-    assert [m["id"] for m in body["models"]] == ["claude-sonnet-5-5", "claude-haiku-4-5"]
-    assert body["default_model"] == "claude-sonnet-5-5"
-    assert all("family" in m and "label" in m for m in body["models"])
-
-
-@pytest.mark.parametrize(
-    ("entry", "status", "code"),
-    [
-        ({"allow": ["gpt-5-4"]}, 400, "model_not_supported"),
-        ({"default": "claude-gone"}, 400, "model_not_supported"),
-        ({"allow": []}, 400, "invalid_input"),
-        ({"allow": ["claude-haiku-4-5"], "default": "claude-sonnet-5-5"}, 400, "invalid_input"),
-        ({"allow": "claude-haiku-4-5"}, 422, None),
-        ({"fast": "claude-gone"}, 400, "model_not_supported"),
-        ({"allow": ["claude-sonnet-5-5"], "strong": "claude-haiku-4-5"}, 400, "invalid_input"),
-    ],
-)
-def test_overlay_is_validated_against_what_the_binding_serves(
-    world: World, entry: dict, status: int, code: str | None
-) -> None:
-    r = world.client.put(
-        "/v1/admin/models", json={"harnesses": {"claude-sdk": entry}}, headers=ROOT
-    )
-    assert r.status_code == status
-    if code:
-        assert r.json()["code"] == code
-    assert world.overlay.get() == {}
-
-
-def test_fast_and_strong_picks_are_stored_and_read_as_the_helper_tiers(
-    world: World, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from omnigent.superchat.models import tiers
-
-    r = world.client.put(
-        "/v1/admin/models",
-        json={"harnesses": {"claude-sdk": {"fast": "claude-haiku-4-5"}}},
-        headers=ROOT,
-    )
-    assert r.status_code == 200
-    assert r.json()["harnesses"]["claude-sdk"] == {
-        "allow": None,
-        "default": None,
-        "fast": "claude-haiku-4-5",
-        "strong": None,
-    }
-    monkeypatch.setattr(tiers, "_overlay", world.overlay)
-    assert tiers.tier_models("claude-sdk") == {"fast": "claude-haiku-4-5", "strong": None}
-    assert tiers.tier_models("pi") == {"fast": None, "strong": None}
-    assert tiers.org_fast_model() == "claude-haiku-4-5"
-    # A tier pick alone does not narrow the catalog or change its default.
-    catalog = world.client.get("/v1/admin/models/catalog?harness=claude-sdk", headers=ROOT)
-    assert catalog.json()["default_model"] == "claude-sonnet-5-5"
-
-
-def test_overlay_for_an_unmanaged_harness_is_rejected(world: World) -> None:
-    r = world.client.put(
-        "/v1/admin/models", json={"harnesses": {"nope": {"allow": ["x"]}}}, headers=ROOT
-    )
-    assert r.status_code == 400 and r.json()["code"] == "invalid_input"
-
-
-def test_overlay_row_lives_in_preferences_under_the_workspace_owner(world: World) -> None:
-    world.client.put(
-        "/v1/admin/models",
-        json={"harnesses": {"claude-sdk": {"allow": ["claude-haiku-4-5"]}}},
-        headers=ROOT,
-    )
-    maker = make_named_managed_session_maker(
-        get_or_create_engine(world.uri), query_name_prefix="t"
-    )
-    with maker("t") as session:
-        row = session.get(
-            SqlPreference, (current_workspace_id(), "__workspace__", "model_org_overlay")
-        )
-        assert row is not None and "claude-haiku-4-5" in row.value
-        row.value = "not json"
-    assert ModelOrgOverlayStore(world.uri).get() == {}
 
 
 # ---- people and usage -------------------------------------------------------------------

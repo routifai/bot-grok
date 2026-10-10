@@ -1,9 +1,5 @@
 """Organization admin routes (``/v1/admin/...``), admin-only; the organization is the workspace.
 
-* ``GET``/``PUT /admin/models``: the model overlay ``{harnesses: {h: {allow, default, fast,
-  strong}}}`` that narrows what each harness's connection binding offers and picks the Helper
-  tiers (see :mod:`omnigent.superchat.models.org`).
-* ``GET /admin/models/catalog?harness=``: the binding's full model list the overlay narrows.
 * ``GET /admin/users``: every person with role, status, spend, sessions, connections, budget and
   Computer; ``GET /admin/usage?window=day|month``: org totals, per-person and per-day.
 * ``POST /admin/users/{id}/suspend`` and ``/resume``: stop and restore a person's usage.
@@ -21,11 +17,9 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, Request
-from pydantic import BaseModel, ConfigDict
 
 from omnigent.db.utils import utc_day
 from omnigent.errors import ErrorCode, OmnigentError
-from omnigent.inference_config import normalize_inference_harness
 from omnigent.server.auth import (
     RESERVED_USER_LOCAL,
     RESERVED_USER_PUBLIC,
@@ -37,8 +31,6 @@ from omnigent.superchat.models import (
     SCOPE_USER,
     ModelBudgets,
     ModelConnectionStore,
-    ModelOrgOverlayStore,
-    Overlay,
     SuspensionStore,
 )
 from omnigent.superchat.models import budget as budget_module
@@ -50,33 +42,12 @@ _PAGE = 200
 _WINDOWS = ("day", "month")
 
 
-class OverlayEntry(BaseModel):
-    """One harness's overlay: ``allow`` (``null`` = no restriction), the ``default`` model and
-    the ``fast``/``strong`` Helper tiers (``null`` = not chosen)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    allow: list[str] | None = None
-    default: str | None = None
-    fast: str | None = None
-    strong: str | None = None
-
-
-class PutOverlay(BaseModel):
-    """Body of ``PUT /admin/models``: replaces the whole overlay."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    harnesses: dict[str, OverlayEntry]
-
-
 def _invalid(message: str) -> OmnigentError:
     return OmnigentError(message, code=ErrorCode.INVALID_INPUT)
 
 
 def create_org_admin_router(
     *,
-    overlay: ModelOrgOverlayStore,
     suspensions: SuspensionStore,
     budgets: ModelBudgets,
     connections: ModelConnectionStore,
@@ -111,98 +82,6 @@ def create_org_admin_router(
             for u in _require_directory().list_users()
             if u.is_admin and u.id != target and u.id not in gone
         ]
-
-    # ---- model overlay -------------------------------------------------------------------
-
-    @router.get("/admin/models")
-    async def get_models(request: Request) -> dict[str, Any]:
-        await _admin(request)
-        return {"harnesses": await asyncio.to_thread(overlay.get)}
-
-    @router.put("/admin/models")
-    async def put_models(request: Request, body: PutOverlay) -> dict[str, Any]:
-        """Replace the overlay. Every model must be served by the harness's binding.
-
-        ``INVALID_INPUT`` for an empty allowlist, a default outside the allowlist or a harness
-        with no managed binding; ``MODEL_NOT_SUPPORTED`` for a model the binding cannot serve.
-        """
-        admin_id = await _admin(request)
-        from omnigent.server.routes.sandbox_inference import inference_service
-
-        result: Overlay = {}
-        for raw_harness, entry in body.harnesses.items():
-            harness = normalize_inference_harness(raw_harness)
-            chosen = {"default": entry.default, "fast": entry.fast, "strong": entry.strong}
-            if entry.allow is None and not any(chosen.values()):
-                continue
-            if entry.allow is not None and not entry.allow:
-                raise _invalid("allow must list at least one model, or be null for no restriction")
-            for role, model in chosen.items():
-                if entry.allow is not None and model and model not in entry.allow:
-                    raise _invalid(f"{role} for {harness!r} must be one of its allowed models")
-            try:  # the bare binding, as the admin's own connection resolves it
-                snapshot = await inference_service(request).prepare(
-                    None, harness, admin_id, org_overlay=False
-                )
-            except (OmnigentError, ValueError) as exc:
-                raise _invalid(
-                    exc.message if isinstance(exc, OmnigentError) else "Invalid configuration"
-                ) from None
-            catalog = snapshot["catalog"] if snapshot is not None else None
-            if catalog is None or catalog["status"] != "ready":
-                raise _invalid(
-                    (catalog or {}).get("error")
-                    or f"No models are managed for harness {harness!r}"
-                )
-            served = {row["id"] for row in catalog["models"]}
-            for model in [*(entry.allow or []), *(m for m in chosen.values() if m)]:
-                if model not in served:
-                    raise OmnigentError(
-                        f"Model {model!r} is not served for {harness!r}",
-                        code=ErrorCode.MODEL_NOT_SUPPORTED,
-                    )
-            result[harness] = {
-                "allow": list(dict.fromkeys(entry.allow)) if entry.allow is not None else None,
-                **chosen,
-            }
-        await asyncio.to_thread(overlay.set, result)
-        return {"harnesses": result}
-
-    @router.get("/admin/models/catalog")
-    async def get_models_catalog(request: Request, harness: str) -> dict[str, Any]:
-        """The harness binding's full model list, before the overlay narrows it.
-
-        What the overlay editor picks from: ``GET /me/models`` already shows the narrowed list.
-        """
-        admin_id = await _admin(request)
-        from omnigent.server.inference_catalog import catalog_row_details
-        from omnigent.server.routes.sandbox_inference import inference_service
-
-        harness = normalize_inference_harness(harness)
-        try:
-            snapshot = await inference_service(request).prepare(
-                None, harness, admin_id, org_overlay=False
-            )
-        except (OmnigentError, ValueError) as exc:
-            raise _invalid(
-                exc.message if isinstance(exc, OmnigentError) else "Invalid configuration"
-            ) from None
-        catalog = snapshot["catalog"] if snapshot is not None else None
-        if catalog is None:
-            raise _invalid(f"No models are managed for harness {harness!r}")
-        return {
-            "harness": harness,
-            "status": catalog["status"],
-            "default_model": catalog["default_model"],
-            "models": [
-                {
-                    "id": row["id"],
-                    "label": row.get("displayName") or row["id"],
-                    "family": catalog_row_details(snapshot, row["id"])["family"],
-                }
-                for row in catalog["models"]
-            ],
-        }
 
     # ---- people and usage ----------------------------------------------------------------
 

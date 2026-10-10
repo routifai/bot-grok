@@ -74,16 +74,69 @@ def test_models_are_filtered_per_harness_and_flagged(app: FastAPI) -> None:
 
 def test_preferences_round_trip_and_flag(app: FastAPI) -> None:
     client = TestClient(app)
-    assert client.get("/v1/me/model-preferences").json() == {"defaults": {}}
+    empty = {"defaults": {}, "light": {}}
+    assert client.get("/v1/me/model-preferences").json() == empty
     put = client.put(
         "/v1/me/model-preferences", json={"defaults": {"claude-sdk": "claude-haiku-4-5"}}
     )
-    assert put.json() == {"defaults": {"claude-sdk": "claude-haiku-4-5"}}
+    assert put.json() == {"defaults": {"claude-sdk": "claude-haiku-4-5"}, "light": {}}
     assert client.get("/v1/me/model-preferences").json() == put.json()
     flagged = {m["id"]: m["is_user_default"] for m in _models(client, "claude-sdk")["models"]}
     assert flagged == {"claude-sonnet-5-5": False, "claude-haiku-4-5": True}
     client.put("/v1/me/model-preferences", json={"defaults": {}})
-    assert client.get("/v1/me/model-preferences").json() == {"defaults": {}}
+    assert client.get("/v1/me/model-preferences").json() == empty
+
+
+def test_light_is_automatic_until_picked_and_kept_apart_from_the_default(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnigent.superchat.models import tiers
+
+    prices = {"claude-sonnet-5-5": (3e-6, 15e-6), "claude-haiku-4-5": (1e-6, 5e-6)}
+    monkeypatch.setattr(tiers, "catalog_price", prices.get)
+    client = TestClient(app)
+    sdk = _models(client, "claude-sdk")
+    assert sdk["light_pick"] is None
+    assert sdk["light_model"] == sdk["automatic_light_model"] == "claude-haiku-4-5"
+    assert {m["id"]: m["is_light"] for m in sdk["models"]} == {
+        "claude-sonnet-5-5": False,
+        "claude-haiku-4-5": True,
+    }
+    # The person picks Light; their Default is left alone, and vice versa.
+    client.put("/v1/me/model-preferences", json={"defaults": {"claude-sdk": "claude-haiku-4-5"}})
+    put = client.put(
+        "/v1/me/model-preferences", json={"light": {"claude-sdk": "claude-sonnet-5-5"}}
+    )
+    assert put.json() == {
+        "defaults": {"claude-sdk": "claude-haiku-4-5"},
+        "light": {"claude-sdk": "claude-sonnet-5-5"},
+    }
+    sdk = _models(client, "claude-sdk")
+    assert sdk["light_pick"] == sdk["light_model"] == "claude-sonnet-5-5"
+    assert sdk["automatic_light_model"] == "claude-haiku-4-5"
+    client.put("/v1/me/model-preferences", json={"defaults": {}})
+    assert client.get("/v1/me/model-preferences").json()["light"] == {
+        "claude-sdk": "claude-sonnet-5-5"
+    }
+    # Back to Automatic.
+    client.put("/v1/me/model-preferences", json={"light": {}})
+    assert _models(client, "claude-sdk")["light_pick"] is None
+    bad = client.put("/v1/me/model-preferences", json={"light": {"claude-sdk": "gpt-5-4"}})
+    assert bad.status_code == 400 and bad.json() == {"code": "model_not_supported"}
+
+
+def test_a_row_written_before_light_reads_as_defaults(app: FastAPI) -> None:
+    import json
+
+    from omnigent.db.db_models import SqlPreference
+
+    store = app.state.model_preference_store
+    store.set("local", {"claude-sdk": "claude-haiku-4-5"})
+    with store._session_immediate("legacy") as session:
+        row = session.query(SqlPreference).one()
+        row.value = json.dumps({"claude-sdk": "claude-haiku-4-5"})
+    picks = store.read("local")
+    assert picks.defaults == {"claude-sdk": "claude-haiku-4-5"} and picks.light == {}
 
 
 def test_preferences_reject_models_the_connection_does_not_serve(app: FastAPI) -> None:
@@ -92,7 +145,7 @@ def test_preferences_reject_models_the_connection_does_not_serve(app: FastAPI) -
     assert bad.status_code == 400 and bad.json() == {"code": "model_not_supported"}
     nope = client.put("/v1/me/model-preferences", json={"defaults": {"nope": "x"}})
     assert nope.status_code == 400 and nope.json() == {"code": "invalid_input"}
-    assert client.get("/v1/me/model-preferences").json() == {"defaults": {}}
+    assert client.get("/v1/me/model-preferences").json() == {"defaults": {}, "light": {}}
 
 
 def _create(app: FastAPI, **kwargs):
@@ -173,19 +226,23 @@ def test_providers_are_the_engines_registry(app: FastAPI, monkeypatch: pytest.Mo
     assert names == ["anthropic", "openrouter", "litellm"]
 
 
-def test_helper_models_answer_the_organizations_picks(
+def test_helper_models_answer_the_owners_light_and_default(
     app: FastAPI, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from omnigent.superchat.models import tiers
 
-    picks = {"pi": {"allow": None, "default": None, "fast": "team-fast", "strong": None}}
-    monkeypatch.setattr(tiers, "_overlay", SimpleNamespace(get=lambda: picks))
+    prices = {"claude-sonnet-5-5": (3e-6, 15e-6), "claude-haiku-4-5": (1e-6, 5e-6)}
+    monkeypatch.setattr(tiers, "catalog_price", prices.get)
     client = TestClient(app)
 
     def ask(harness: str) -> dict:
         return client.get("/v1/sessions/s1/helper-models", params={"harness": harness}).json()
 
-    assert ask("pi") == {"fast": "team-fast", "strong": None}
-    assert ask("claude-sdk") == {"fast": None, "strong": None}
-    monkeypatch.setattr(tiers, "_overlay", None)
-    assert ask("pi") == {"fast": None, "strong": None}
+    # fast: the cheapest; strong: the catalog default (nothing picked).
+    assert ask("claude-sdk") == {"fast": "claude-haiku-4-5", "strong": "claude-sonnet-5-5"}
+    # strong follows the person's Default; fast their Light pick.
+    app.state.model_preference_store.set(
+        "local", {"claude-sdk": "claude-haiku-4-5"}, {"claude-sdk": "claude-sonnet-5-5"}
+    )
+    assert ask("claude-sdk") == {"fast": "claude-sonnet-5-5", "strong": "claude-haiku-4-5"}
+    assert ask("nope") == {"fast": None, "strong": None}

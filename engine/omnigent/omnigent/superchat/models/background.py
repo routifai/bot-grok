@@ -1,12 +1,13 @@
-"""The model background work runs on: the organization's fast pick, over the owner's connection.
+"""The model background work runs on: the owner's Light model, over the owner's connection.
 
-Memory upkeep and a summary written while a session's runner is away are model calls the engine
-makes itself. They run on the organization's ``fast`` model (Settings, Models), else its default
-model, else the connection's own default: the first model of the harness's catalog, never a
-name from configuration. The call goes through the same provider the Muse's harness is bound to:
-for a model connection, straight to the upstream with the owner's key (theirs, else the
-organization's, else the operator's for an upstream the operator runs), over the upstream's own
-wire; for an operator gateway, through its configured family.
+Memory upkeep, the daily note, Dreaming and a summary written while a session's runner is away
+are model calls the engine makes itself. They run on the owner's Light model (their pick in
+Settings, Models, else the cheapest model their catalog serves; see
+:mod:`omnigent.superchat.models.tiers`), never a name from configuration. The call goes through
+the same provider the Muse's harness is bound to: for a model connection, straight to the
+upstream with the owner's key (theirs, else the organization's, else the operator's for an
+upstream the operator runs), over the upstream's own wire; for an operator gateway, through its
+configured family.
 
 Registered with :func:`omnigent.llms.background.register_background_llm` by the models feature.
 With no harness binding, no connection or an empty catalog there is nothing to call: the work is
@@ -21,7 +22,6 @@ from typing import Any
 
 import cachetools
 
-from omnigent.errors import OmnigentError
 from omnigent.inference_config import (
     _is_model_connection,
     binding_for_harness,
@@ -29,19 +29,21 @@ from omnigent.inference_config import (
 )
 from omnigent.llms.background import BackgroundLLM, provider_llm_route
 from omnigent.server.auth import RESERVED_USER_WORKSPACE
+from omnigent.superchat.models.selection import ModelPicks
 from omnigent.superchat.models.store import resolve_model_connection
+from omnigent.superchat.models.tiers import person_models
 from omnigent.superchat.models.upstreams import UPSTREAMS, connection_upstreams, harness_family
 
 _logger = logging.getLogger(__name__)
 _CACHE_SECONDS = 60
 
 
-def background_harness(bindings: list[str], overlay: dict[str, dict[str, Any]]) -> str | None:
-    """The harness whose models background work uses: the first bound harness the organization
-    picked a fast model for, else one with a default pick, else the first bound harness."""
-    for key in ("fast", "default"):
+def background_harness(bindings: list[str], picks: ModelPicks) -> str | None:
+    """The harness whose models background work uses: the first bound harness the person
+    picked a Light model for, else one they picked a Default for, else the first bound one."""
+    for chosen in (picks.light, picks.defaults):
         for harness in bindings:
-            if (overlay.get(harness) or {}).get(key):
+            if chosen.get(harness):
                 return harness
     return bindings[0] if bindings else None
 
@@ -52,6 +54,9 @@ class BackgroundModels:
     def __init__(self, app_state: Any) -> None:
         self._state = app_state
         self._cache: cachetools.TTLCache[str, BackgroundLLM | None] = cachetools.TTLCache(
+            maxsize=256, ttl=_CACHE_SECONDS
+        )
+        self._light: cachetools.TTLCache[str, str | None] = cachetools.TTLCache(
             maxsize=256, ttl=_CACHE_SECONDS
         )
 
@@ -69,38 +74,34 @@ class BackgroundModels:
         self._cache[owner] = resolved
         return resolved
 
-    async def _resolve(self, owner: str) -> BackgroundLLM | None:
+    async def light_model(self, owner_id: str | None) -> str | None:
+        """The model id *owner_id*'s background work runs on (their Light), or ``None``."""
+        owner = owner_id or RESERVED_USER_WORKSPACE
+        if owner in self._light:
+            return self._light[owner]
+        harness = await self._harness(owner)
+        model = (await person_models(self._state, owner, harness)).light if harness else None
+        self._light[owner] = model
+        return model
+
+    async def _harness(self, owner: str) -> str | None:
         raw = self._host_config()
         bindings = list(parse_inference_config(raw)) if raw else []
-        if not raw or not bindings:
+        if not bindings:
             return None
-        store = getattr(self._state, "model_org_overlay", None)
-        overlay = await asyncio.to_thread(store.get) if store is not None else {}
-        harness = background_harness(bindings, overlay)
+        store = getattr(self._state, "model_preference_store", None)
+        picks = await asyncio.to_thread(store.read, owner) if store is not None else ModelPicks()
+        return background_harness(bindings, picks)
+
+    async def _resolve(self, owner: str) -> BackgroundLLM | None:
+        harness = await self._harness(owner)
         if harness is None:
             return None
-        from omnigent.server.inference_catalog import SandboxInferenceService
-
-        service = getattr(self._state, "inference_catalog", None) or SandboxInferenceService(
-            self._state
-        )
-        try:
-            snapshot = await service.prepare(None, harness, owner)
-        except (OmnigentError, ValueError) as exc:
-            # No key, no reachable catalog: nothing to call yet (the work is skipped).
-            _logger.info("no background model for %s: %s", harness, type(exc).__name__)
-            return None
-        catalog = (snapshot or {}).get("catalog") or {}
-        if catalog.get("status") != "ready":
-            return None
-        served = [row["id"] for row in catalog["models"]]
-        picks = overlay.get(harness) or {}
-        model = next(
-            (m for m in (picks.get("fast"), picks.get("default")) if m in served),
-            catalog.get("default_model") or (served[0] if served else None),
-        )
+        model = (await person_models(self._state, owner, harness)).light
         if not model:
             return None
+        raw = self._host_config()
+        assert raw is not None
         binding = binding_for_harness(raw, harness)
         if binding is None:
             return None

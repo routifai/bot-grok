@@ -1882,7 +1882,7 @@ async def _helper_tier_models(
     conversation_id: str,
     harness: str | None,
 ) -> dict[str, str | None] | None:
-    """The organization's ``fast``/``strong`` picks for a Helper on *harness*.
+    """The models ``fast`` (the owner's Light) and ``strong`` (their Default) mean on *harness*.
 
     Asked of the engine (``GET /v1/sessions/{id}/helper-models``): the picks live in its
     database, never in this Computer's configuration. ``None`` when the harness is unknown or the

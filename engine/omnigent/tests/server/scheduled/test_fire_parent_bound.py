@@ -399,8 +399,12 @@ async def _scheduled_model(
     from omnigent.superchat.models import tiers
 
     monkeypatch.setenv("TAVILY_API_KEY", "x")
-    # The organization's Helper tier picks per harness (Settings > Models).
-    monkeypatch.setattr(tiers, "_overlay", SimpleNamespace(get=lambda: picks))
+
+    # The owner's Light (fast) and Default (strong) per harness (Settings > Models).
+    async def tier_models(_state: Any, _owner: str | None, harness: str | None) -> dict:
+        return {"fast": None, "strong": None, **picks.get(harness or "", {})}
+
+    monkeypatch.setattr(tiers, "tier_models", tier_models)
     conv_store = _ParentConversationStore(_Parent(model_override=parent_model))
     store = _Store({"task_1": _bound_task(agent_type=agent_type)})
     await _fire(

@@ -5,13 +5,12 @@ made by the Computer through the model proxy; this only answers *which* provider
 the same resolution as a run (the person's own connection, then the organization's, among the
 providers whose upstream speaks Chat Completions) and the same suspension and budget checks. It
 never falls back to an operator key. A cheap model is used on purpose: the rerank reads twenty
-short passages: the organization's fast model (Settings, Models), the same choice background
-work runs on. With none chosen yet the rerank is skipped (``no_model``), never guessed.
+short passages: the owner's Light model, the same one background work runs on. With no usable
+catalog the rerank is skipped (``no_model``), never guessed.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 
 from omnigent.superchat.models.embeddings import EmbeddingUnavailable, ModelEmbeddings
@@ -51,18 +50,16 @@ class ModelRerank:
         self,
         connections: ModelConnectionStore,
         checks: ModelEmbeddings,
-        fast_model: Callable[[], str | None] = lambda: None,
     ) -> None:
-        """:param fast_model: The organization's chosen fast model, or ``None`` when unset."""
         self._connections = connections
         self._checks = checks
-        self._fast_model = fast_model
 
-    def plan(self, owner_id: str) -> RerankPlan:
+    def plan(self, owner_id: str, model: str | None) -> RerankPlan:
         """The model *owner_id*'s Computer reranks with through the model proxy.
 
+        :param model: The owner's Light model, or ``None`` when they have none.
         :raises RerankUnavailable: suspended, budget used up, no chat-capable connection, or no
-            fast model chosen.
+            Light model.
         """
         try:
             self._checks.check(owner_id)
@@ -73,7 +70,6 @@ class ModelRerank:
         )
         if connection is None:
             raise RerankUnavailable(REASON_NO_CONNECTION)
-        model = self._fast_model()
         if not model:
             raise RerankUnavailable(REASON_NO_MODEL)
         return RerankPlan(connection.provider, model)

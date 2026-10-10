@@ -186,12 +186,12 @@ def refuse_subagent_dispatch_override(
     return None
 
 
-# ── Helper model choice: only ``fast`` or ``strong``, picked by the organization ────
+# ── Helper model choice: only ``fast`` or ``strong``, the person's Light or Default ────
 
-#: The two choices a dispatch may name. The organization's admin picks the model behind each,
-#: per harness, from the connection's own list (Settings, Models; see
-#: :mod:`omnigent.superchat.models.tiers`). A choice with no pick inherits the parent session's
-#: model (the existing inheritance). Model ids never appear in prompts or configuration.
+#: The two choices a dispatch may name: ``fast`` runs on the person's Light model, ``strong`` on
+#: their Default, per harness, from their connection's own list (Settings, Models; see
+#: :mod:`omnigent.superchat.models.tiers`). With no usable catalog the Helper inherits the parent
+#: session's model. Model ids never appear in prompts or configuration.
 HELPER_MODEL_CHOICES = ("fast", "strong")
 HELPER_EFFORT_CHOICES = ("low", "medium", "high")
 
@@ -207,10 +207,10 @@ def resolve_helper_dispatch(
     :param model: The dispatch's ``model`` argument: ``None``, ``"fast"`` or ``"strong"``.
     :param reasoning_effort: The dispatch's reasoning level: ``None``, ``low``, ``medium`` or
         ``high``.
-    :param tiers: ``{"fast": id | None, "strong": id | None}``: the organization's picks for
-        the harness the Helper runs on; ``None`` when unknown (nothing picked).
+    :param tiers: ``{"fast": id | None, "strong": id | None}``: the person's Light and Default
+        on the harness the Helper runs on; ``None`` when unknown.
     :returns: ``(model_id, reasoning_effort)``; ``model_id`` is ``None`` for "inherit the
-        parent's model" (nothing picked for this harness, or no choice made).
+        parent's model" (no model known for this harness, or no choice made).
     :raises ValueError: When the choice is anything else; the message is shown to the model.
     """
     if reasoning_effort is not None and reasoning_effort not in HELPER_EFFORT_CHOICES:
@@ -249,7 +249,7 @@ def resolve_scheduled_helper(
 
     :param agent_type: The stored Sub-agent Type, e.g. ``"researcher"``.
     :param model_override: The stored per-run model: ``None``, ``fast``, ``strong`` or a model id.
-    :param tiers: The organization's tier picks for the harness the resolved Type runs on (the
+    :param tiers: The owner's Light and Default for the harness the resolved Type runs on (the
         bundle's choice), as for a dispatch.
     :returns: ``(type, model_override)`` to run with; ``None`` means inherit the parent's model.
     """

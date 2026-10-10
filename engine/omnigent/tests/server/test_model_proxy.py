@@ -7,6 +7,7 @@ import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -267,7 +268,7 @@ def test_embedding_plan_route_answers_for_the_hosts_owner(store, monkeypatch) ->
     assert yes["tag"].startswith("openrouter:") and not seen
 
 
-def test_rerank_plan_uses_the_fast_pick_only_with_a_chat_connection(store) -> None:
+def test_rerank_plan_uses_the_owners_light_model_only_with_a_chat_connection(store) -> None:
     from omnigent.superchat.models import embeddings as emb
     from omnigent.superchat.models.rerank import ModelRerank
 
@@ -275,12 +276,19 @@ def test_rerank_plan_uses_the_fast_pick_only_with_a_chat_connection(store) -> No
     client = _client(store, seen)
     layer = emb.ModelEmbeddings(store, emb.EmbeddingSettingStore(store.storage_location))
     picked: list[str | None] = [None]
-    client.app.state.model_rerank = ModelRerank(store, layer, lambda: picked[0])  # type: ignore[attr-defined]
+    asked: list[str | None] = []
+
+    async def light_model(owner: str | None) -> str | None:
+        asked.append(owner)
+        return picked[0]
+
+    client.app.state.model_rerank = ModelRerank(store, layer)  # type: ignore[attr-defined]
+    client.app.state.model_background = SimpleNamespace(light_model=light_model)  # type: ignore[attr-defined]
     assert client.get("/v1/model/rerank").status_code == 401
     # alice only has an Anthropic key (Messages API, no Chat Completions): no rerank
     no = client.get("/v1/model/rerank", headers={"x-api-key": CRED})
     assert no.json() == {"available": False, "reason": "no_connection"}
-    # bob's OpenRouter key speaks Chat Completions, but no fast model is picked yet: none guessed
+    # bob's OpenRouter key speaks Chat Completions, but he has no Light model: none guessed
     unpicked = client.get("/v1/model/rerank", headers={"x-api-key": "host-b:tok-b"}).json()
     assert unpicked == {"available": False, "reason": "no_model"}
     picked[0] = "team-fast"
@@ -291,6 +299,7 @@ def test_rerank_plan_uses_the_fast_pick_only_with_a_chat_connection(store) -> No
         "provider": "openrouter",
         "model": "team-fast",
     }
+    assert asked[-1] == "bob"
     assert not seen
 
 

@@ -1,19 +1,10 @@
-"""Organization admin state for models: the model overlay and account suspension.
+"""Account suspension: a person whose usage an organization admin stopped.
 
-Both are small JSON rows in the generic ``preferences`` table, so there is no new table:
-
-* the **overlay** (``model_org_overlay``, owned by :data:`WORKSPACE_OWNER`, the identity no person
-  can hold) narrows what the connection binding offers: per harness an optional allowlist, an
-  optional default model and the two Helper tiers, ``fast`` (quick Helpers and all background
-  work: titles, memory upkeep, the daily note, Dreaming, summaries) and ``strong``.
-  :func:`apply_overlay` merges allow and default into a harness binding while a session's
-  inference snapshot is prepared (``catalog = binding allowlist ∩ org allow``, org default replaces
-  the binding default, and the person's own default still wins over both); the tiers are read by
-  :mod:`omnigent.superchat.models.tiers`. Nothing is chosen until an admin picks it: no model
-  name lives in configuration;
-* a **suspension** (``account_suspended``, one row under the suspended user's id) stops that
-  person's usage. The model proxy and the session create/turn routes read it through
-  :func:`refuse_if_suspended`. Deleting the account deletes its preference rows, flag included.
+A **suspension** (``account_suspended``, one row under the suspended user's id in the generic
+``preferences`` table) stops that person's usage. The model proxy and the session create/turn
+routes read it through :func:`refuse_if_suspended`. Deleting the account deletes its preference
+rows, flag included. The workspace itself is :data:`WORKSPACE_OWNER`, the identity no person can
+hold.
 """
 
 from __future__ import annotations
@@ -35,107 +26,10 @@ from omnigent.db.workspace_cache import WorkspaceScopedCache
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.server.auth import RESERVED_USER_WORKSPACE
 
-OVERLAY_KEY = "model_org_overlay"
 SUSPENDED_KEY = "account_suspended"
 WORKSPACE_OWNER = RESERVED_USER_WORKSPACE
 SUSPENDED_MESSAGE = "Your account is suspended. Contact an admin to continue."
 _CACHE_TTL_SECONDS = 5
-
-# {harness: {"allow": [model ids] | None, "default": id | None, "fast": id | None,
-#            "strong": id | None}}
-Overlay = dict[str, dict[str, Any]]
-
-#: The Helper tiers an organization picks a model for.
-TIERS = ("fast", "strong")
-
-
-def parse_overlay(raw: Any) -> Overlay:
-    """Keep only well-formed per-harness entries of a stored overlay (never raises)."""
-    harnesses = raw.get("harnesses") if isinstance(raw, dict) else None
-    result: Overlay = {}
-    for harness, entry in (harnesses if isinstance(harnesses, dict) else {}).items():
-        if not isinstance(harness, str) or not isinstance(entry, dict):
-            continue
-        allow = entry.get("allow")
-        default = entry.get("default")
-        allow = (
-            list(dict.fromkeys(allow))
-            if isinstance(allow, list) and all(isinstance(m, str) and m for m in allow)
-            else None
-        )
-        default = default if isinstance(default, str) and default else None
-        tiers = {
-            tier: value if isinstance(value := entry.get(tier), str) and value else None
-            for tier in TIERS
-        }
-        if allow is not None or default is not None or any(tiers.values()):
-            result[harness] = {"allow": allow, "default": default, **tiers}
-    return result
-
-
-def apply_overlay(binding: dict[str, Any], entry: dict[str, Any] | None) -> None:
-    """Merge one harness's overlay *entry* into its saved *binding* dict, in place.
-
-    The allowlist is intersected with the binding's own (kept in the binding's order); an
-    unrestricted binding takes the overlay's list as is. The org default replaces the binding's
-    default when the resulting list still contains it.
-    """
-    if not entry:
-        return
-    allow = entry.get("allow")
-    if allow is not None:
-        own = binding.get("model_allowlist")
-        binding["model_allowlist"] = list(allow) if own is None else [m for m in own if m in allow]
-    default = entry.get("default")
-    if default is not None:
-        kept = binding.get("model_allowlist")
-        if kept is None or default in kept:
-            binding["default_model"] = default
-    kept = binding.get("model_allowlist")
-    if binding.get("default_model") is not None and kept is not None:
-        if binding["default_model"] not in kept:
-            binding.pop("default_model")
-
-
-class ModelOrgOverlayStore:
-    """The organization's model overlay: one JSON row under :data:`WORKSPACE_OWNER`."""
-
-    def __init__(self, storage_location: str) -> None:
-        engine = get_or_create_engine(storage_location)
-        prefix = "omnigent.model_org_overlay"
-        self._session = make_named_managed_session_maker(engine, query_name_prefix=prefix)
-        self._session_immediate = make_named_managed_session_maker(
-            engine, query_name_prefix=prefix, immediate=True
-        )
-
-    def get(self) -> Overlay:
-        """The overlay; empty when never set or unreadable."""
-        with self._session("select_model_org_overlay") as session:
-            row = session.get(
-                SqlPreference, (current_workspace_id(), WORKSPACE_OWNER, OVERLAY_KEY)
-            )
-            raw = row.value if row is not None else None
-        try:
-            return parse_overlay(json.loads(raw)) if raw else {}
-        except ValueError:
-            return {}
-
-    def set(self, overlay: Overlay) -> None:
-        """Replace the overlay; an empty one removes the row."""
-
-        def write(session: Any) -> None:
-            pk = (current_workspace_id(), WORKSPACE_OWNER, OVERLAY_KEY)
-            row = session.get(SqlPreference, pk)
-            value = json.dumps({"harnesses": overlay})
-            if not overlay:
-                if row is not None:
-                    session.delete(row)
-            elif row is None:
-                session.add(SqlPreference(user_id=WORKSPACE_OWNER, key=OVERLAY_KEY, value=value))
-            else:
-                row.value = value
-
-        run_write_transaction(self._session_immediate, "upsert_model_org_overlay", write)
 
 
 class SuspensionStore:

@@ -186,8 +186,10 @@ def create_model_proxy_router(
             return JSONResponse({"available": False, "reason": "no_connection"})
         from omnigent.superchat.models.rerank import RerankUnavailable
 
+        background = getattr(request.app.state, "model_background", None)
+        model = await background.light_model(managed.user_id) if background else None
         try:
-            plan = await asyncio.to_thread(rerank.plan, managed.user_id)
+            plan = await asyncio.to_thread(rerank.plan, managed.user_id, model)
         except RerankUnavailable as exc:
             return JSONResponse({"available": False, "reason": exc.reason})
         return JSONResponse(

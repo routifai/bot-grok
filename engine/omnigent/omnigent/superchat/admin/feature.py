@@ -28,7 +28,6 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
         return
     app.include_router(
         create_org_admin_router(
-            overlay=state.model_org_overlay,
             suspensions=state.model_suspensions,
             budgets=state.model_budgets,
             connections=state.model_connection_store,

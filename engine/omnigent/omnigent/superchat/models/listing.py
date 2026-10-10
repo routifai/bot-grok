@@ -4,7 +4,8 @@ A LiteLLM proxy lists every model it routes at ``/v1/models``, chat or not (embe
 audio deployments too), and reports per-model facts at ``/model/info``. The pickers read those
 facts instead of guessing from a name: a model whose ``mode`` is not chat is left out, and one
 reported without tool calling is marked so (the catalog drops it, since every harness calls
-tools). When the endpoint does not answer, the list is offered as is: the model call will tell.
+tools), and the per-token prices it reports are kept (the Light model is the cheapest one).
+When the endpoint does not answer, the list is offered as is: the model call will tell.
 """
 
 from __future__ import annotations
@@ -99,6 +100,15 @@ def upstream_models_with_info(
         window = facts.get("max_input_tokens")
         if metadata.context_window is None and isinstance(window, int) and window > 0:
             metadata = dataclasses.replace(metadata, context_window=window)
+        prices = {
+            field: float(value)
+            for field in ("input_cost_per_token", "output_cost_per_token")
+            if isinstance(value := facts.get(field), (int, float))
+            and not isinstance(value, bool)
+            and value >= 0
+        }
+        if prices:
+            metadata = dataclasses.replace(metadata, **prices)
         refined.append(dataclasses.replace(entry, metadata=metadata))
     return tuple(refined)
 
