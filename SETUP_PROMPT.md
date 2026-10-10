@@ -25,9 +25,9 @@ Then:
 
 1. Check Docker and the Compose plugin are installed and running.
 2. Put the chosen keys in the environment or `.env` (setup.sh copies ANTHROPIC_API_KEY,
-   OPENROUTER_API_KEY, TAVILY_API_KEY, LITELLM_BASE_URL and LITELLM_API_KEY from the environment).
+   OPENROUTER_API_KEY, LITELLM_BASE_URL and LITELLM_API_KEY from the environment).
 3. Run `./scripts/setup.sh`.
-4. Behind a firewall, `COMPUTER_BASE_IMAGE`, `NODE_IMAGE`, `PYTHON_IMAGE`, `PYPI_INDEX_URL` and
+4. Behind a firewall, `UBUNTU_IMAGE`, `CHROMIUM_IMAGE`, `NODE_IMAGE`, `PYTHON_IMAGE`, `TORCH_INDEX_URL`, `PYPI_INDEX_URL` and
    `NPM_CONFIG_REGISTRY` in `.env` point the image builds at mirrors, and a company CA goes in a
    local Compose file (docs/SETUP.md, Restricted networks); set only the ones I give you.
 

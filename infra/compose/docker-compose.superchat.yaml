@@ -57,20 +57,34 @@ services:
         - PYPI_INDEX_URL
         - NPM_CONFIG_REGISTRY
         - OMNIGENT_EXTRAS=memory,postgres
+        - TORCH_INDEX_URL
     command: ["true"]
     restart: "no"
 
   # Build-only: Omnigent's host image (its Dockerfile's `host` target), the Computer's base. On
   # Playwright's Ubuntu image, whose Chromium the Computer uses; only the claude and pi CLIs.
+  # Build-only: plain Ubuntu with the distro's Python, the base of the Computer's runner image.
+  ubuntu-python:
+    image: superchat/ubuntu-python:local
+    build:
+      context: ../../../../infra/sandboxes/computer
+      dockerfile: ubuntu-python.Dockerfile
+      args:
+        - UBUNTU_IMAGE
+    command: ["true"]
+    restart: "no"
+
   omnigent-host:
     image: superchat/omnigent-host:local
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
       target: host
+      additional_contexts:
+        ubuntu-python: service:ubuntu-python
       args:
         - NODE_IMAGE
-        - PYTHON_IMAGE=${COMPUTER_BASE_IMAGE:-mcr.microsoft.com/playwright/python:v1.63.0-noble@sha256:72bd171a9ffc2b4b59532aaa6210e21014d07093120dc25528870c0b840da1f0}
+        - PYTHON_IMAGE=ubuntu-python
         - PYPI_INDEX_URL
         - NPM_CONFIG_REGISTRY
         - MINIMAL_HOST=1
@@ -85,7 +99,10 @@ services:
       dockerfile: infra/sandboxes/computer/Dockerfile
       additional_contexts:
         omnigent-host: service:omnigent-host
-      args: *build-args
+      args:
+        - PYPI_INDEX_URL
+        - NPM_CONFIG_REGISTRY
+        - CHROMIUM_IMAGE
     command: ["true"]
     restart: "no"
 

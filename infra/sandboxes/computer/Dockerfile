@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1.7
 # The Computer: Omnigent's own host image (engine/omnigent/deploy/docker/Dockerfile, target `host`:
 # the omnigent runner, git, tmux, Node and the harness CLIs) plus what Superchat's Muse needs on
-# top. Headless: no display server, no VNC. The host image's base is Omnigent's PYTHON_IMAGE: Debian
-# python-slim, or (Compose's COMPUTER_BASE_IMAGE) Playwright's Ubuntu image, whose Chromium is used.
+# top. Headless: no display server, no VNC. The host image's base is Omnigent's PYTHON_IMAGE, which
+# Compose sets to plain Ubuntu with the distro's Python (ubuntu-python.Dockerfile).
 #
 # `omnigent-host` is a named build context, so this file never rebuilds what Omnigent ships.
 # Compose wires it (infra/compose/docker-compose.superchat.yaml); by hand, from the repo root:
@@ -10,6 +10,12 @@
 #     -f engine/omnigent/deploy/docker/Dockerfile engine/omnigent
 #   docker build -t superchat/computer:local -f infra/sandboxes/computer/Dockerfile \
 #     --build-context omnigent-host=docker-image://superchat/omnigent-host:local .
+# Chromium alone, out of Playwright's image (a registry image, so it comes through the same
+# mirror as the bases); only this stage reads it, the Computer gets none of its other browsers.
+ARG CHROMIUM_IMAGE=mcr.microsoft.com/playwright/python:v1.63.0-noble@sha256:72bd171a9ffc2b4b59532aaa6210e21014d07093120dc25528870c0b840da1f0
+FROM ${CHROMIUM_IMAGE} AS chromium-source
+RUN mkdir /out && cp -a /ms-playwright/chromium-[0-9]* /out/
+
 FROM omnigent-host
 
 ARG PYPI_INDEX_URL=https://pypi.org/simple
@@ -39,15 +45,15 @@ RUN PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin python3 -m
 ENV MPLBACKEND=Agg
 
 # Headless Chromium for deck and dashboard export and the browser_* tools; `chromium` on PATH is
-# what the superchat-* helpers look up. On Playwright's image it is the Chromium already under
-# /ms-playwright; on Debian it comes from the distro (the same apt mirror as everything else).
-# Fonts so decks render the same as in the person's browser.
+# what the superchat-* helpers look up. Its system libraries come from apt (Playwright's own list),
+# fonts so decks render the same as in the person's browser.
+COPY --from=chromium-source /out/ /opt/chromium/
 RUN set -eu; \
-    chrome="$(ls -d /ms-playwright/chromium-*/chrome-linux*/chrome 2>/dev/null | head -n1 || true)"; \
-    if [ -n "$chrome" ]; then ln -sf "$chrome" /usr/local/bin/chromium; pkgs=""; else pkgs=chromium; fi; \
+    ln -sf "$(ls -d /opt/chromium/chromium-*/chrome-linux*/chrome | head -n1)" /usr/local/bin/chromium; \
+    npx -y "playwright@1.63.0" install-deps chromium; \
     apt-get update; \
-    apt-get install -y --no-install-recommends $pkgs fonts-liberation fonts-dejavu-core fonts-noto-color-emoji; \
-    rm -rf /var/lib/apt/lists/*; \
+    apt-get install -y --no-install-recommends fonts-liberation fonts-dejavu-core fonts-noto-color-emoji; \
+    rm -rf /var/lib/apt/lists/*; npm cache clean --force; \
     chromium --version
 
 # The pptx-generator runtime (PptxGenJS with its pinned fixes, react-icons, sharp), on NODE_PATH so

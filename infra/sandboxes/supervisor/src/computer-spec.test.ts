@@ -153,10 +153,8 @@ describe("graphical computer spec", () => {
     const browser = readFileSync(path.join(root, "superchat-browser"), "utf8");
     // Omnigent's host image is the base; this file only adds Superchat's layer.
     expect(dockerfile).toMatch(/^FROM omnigent-host$/m);
-    // The base image's Chromium under /ms-playwright when it has one (Playwright's image), else the
-    // distro's package. Never a Playwright browser download.
-    expect(dockerfile).toMatch(/ln -sf "\$chrome" \/usr\/local\/bin\/chromium/);
-    expect(dockerfile).toMatch(/pkgs=chromium/);
+    // Chromium alone, copied out of a registry image. Never a Playwright browser download.
+    expect(dockerfile).toMatch(/COPY --from=chromium-source \/out\/ \/opt\/chromium\//);
     expect(dockerfile).not.toMatch(/playwright install/i);
     expect(dockerfile).toMatch(/chromium --version/);
     expect(dockerfile).toMatch(/superchat-page-browser/);

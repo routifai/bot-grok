@@ -69,7 +69,7 @@ jobs:
             base: omnigent-server
             base-target: runtime
             base-args: OMNIGENT_EXTRAS=memory,postgres
-          # FROM Omnigent's host image on Playwright's image, as in docker-compose.superchat.yaml.
+          # FROM Omnigent's host image on plain Ubuntu, as in docker-compose.superchat.yaml.
           - name: computer
             dockerfile: infra/sandboxes/computer/Dockerfile
             context: .
@@ -77,12 +77,22 @@ jobs:
             base-target: host
             base-args: |
               MINIMAL_HOST=1
-              PYTHON_IMAGE=mcr.microsoft.com/playwright/python:v1.63.0-noble@sha256:72bd171a9ffc2b4b59532aaa6210e21014d07093120dc25528870c0b840da1f0
+              PYTHON_IMAGE=ubuntu-python
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      # The Computer's runner image is built on plain Ubuntu with the distro's Python.
+      - id: ubuntu
+        if: matrix.name == 'computer'
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: infra/sandboxes/computer
+          file: infra/sandboxes/computer/ubuntu-python.Dockerfile
+          outputs: type=oci,dest=/tmp/ubuntu-python,tar=false
+          cache-from: type=gha,scope=ubuntu-python
+          cache-to: type=gha,mode=max,scope=ubuntu-python
       # The Omnigent image this one is built FROM, into an OCI layout.
       - id: base
         if: matrix.base
@@ -92,6 +102,7 @@ jobs:
           file: engine/omnigent/deploy/docker/Dockerfile
           target: ${{ matrix.base-target }}
           build-args: ${{ matrix.base-args }}
+          build-contexts: ${{ matrix.name == 'computer' && format('ubuntu-python=oci-layout:///tmp/ubuntu-python@{0}', steps.ubuntu.outputs.digest) || '' }}
           outputs: type=oci,dest=/tmp/${{ matrix.base }},tar=false
           cache-from: type=gha,scope=${{ matrix.base }}
           cache-to: type=gha,mode=max,scope=${{ matrix.base }}
@@ -143,7 +154,7 @@ jobs:
             base: omnigent-server
             base-target: runtime
             base-args: OMNIGENT_EXTRAS=memory,postgres
-          # FROM Omnigent's host image on Playwright's image, as in docker-compose.superchat.yaml.
+          # FROM Omnigent's host image on plain Ubuntu, as in docker-compose.superchat.yaml.
           - name: computer
             dockerfile: infra/sandboxes/computer/Dockerfile
             context: .
@@ -151,7 +162,7 @@ jobs:
             base-target: host
             base-args: |
               MINIMAL_HOST=1
-              PYTHON_IMAGE=mcr.microsoft.com/playwright/python:v1.63.0-noble@sha256:72bd171a9ffc2b4b59532aaa6210e21014d07093120dc25528870c0b840da1f0
+              PYTHON_IMAGE=ubuntu-python
           - arch: amd64
             runner: ubuntu-latest
           - arch: arm64
@@ -167,6 +178,16 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # The Computer's runner image is built on plain Ubuntu with the distro's Python.
+      - id: ubuntu
+        if: matrix.name == 'computer'
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: infra/sandboxes/computer
+          file: infra/sandboxes/computer/ubuntu-python.Dockerfile
+          outputs: type=oci,dest=/tmp/ubuntu-python,tar=false
+          cache-from: type=gha,scope=ubuntu-python
+          cache-to: type=gha,mode=max,scope=ubuntu-python
       # The Omnigent image this one is built FROM, into an OCI layout.
       - id: base
         if: matrix.base
@@ -176,6 +197,7 @@ jobs:
           file: engine/omnigent/deploy/docker/Dockerfile
           target: ${{ matrix.base-target }}
           build-args: ${{ matrix.base-args }}
+          build-contexts: ${{ matrix.name == 'computer' && format('ubuntu-python=oci-layout:///tmp/ubuntu-python@{0}', steps.ubuntu.outputs.digest) || '' }}
           platforms: linux/${{ matrix.arch }}
           outputs: type=oci,dest=/tmp/${{ matrix.base }},tar=false
           cache-from: type=gha,scope=${{ matrix.base }}-${{ matrix.arch }}

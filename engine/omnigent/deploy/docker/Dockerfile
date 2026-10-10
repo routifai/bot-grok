@@ -189,7 +189,13 @@ RUN uv pip install --no-cache-dir --index-url ${PYPI_INDEX_URL} 'psycopg[binary]
 # kubernetes`). Off by default; the runner host image needs none of these. Build
 # with `--build-arg OMNIGENT_EXTRAS=kubernetes` (comma-separate for several).
 ARG OMNIGENT_EXTRAS=
+# Extras that pull torch (memory, via txtai) get the CPU build from this index first; PyPI's
+# Linux torch carries ~5 GB of CUDA libraries the server never uses. Empty keeps PyPI's.
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
 RUN if [ -n "${OMNIGENT_EXTRAS}" ]; then \
+        if [ -n "${TORCH_INDEX_URL}" ]; then \
+            uv pip install --no-cache-dir --index-url ${TORCH_INDEX_URL} torch; \
+        fi; \
         uv pip install --no-cache-dir --index-url ${PYPI_INDEX_URL} -e ".[${OMNIGENT_EXTRAS}]"; \
     fi
 

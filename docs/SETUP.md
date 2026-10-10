@@ -40,8 +40,9 @@ the repo root with the files in this order.
 and `omnigent-host` are Omnigent's own images (its Dockerfile's server and `host` targets); the
 engine (`superchat/engine:local`, `infra/omnigent/Dockerfile`) is the server image plus
 `infra/omnigent` at `/opt/bundle`. The Computer (`superchat/computer:local`) is the host image,
-built on Playwright's Ubuntu image (`COMPUTER_BASE_IMAGE`) with only the claude and pi CLIs, plus
-Python's data stack, the pptx runtime, Playwright's Chromium and Superchat's helpers; one per
+built on plain Ubuntu 24.04 (`ubuntu-python`, the distro's Python) with only the claude and pi
+CLIs, plus Python's data stack, the pptx runtime, Chromium alone (copied out of Playwright's image)
+and Superchat's helpers; one per
 person, no desktop or screen. Its runner dials back to `ENGINE_PUBLIC_URL`, which is why the engine
 port is published.
 
@@ -70,7 +71,9 @@ the default, fast and strong models in **Settings > Models**.
 ## Restricted networks
 
 `PYPI_INDEX_URL` and `NPM_CONFIG_REGISTRY` in `.env` point the builds at approved mirrors;
-`COMPUTER_BASE_IMAGE`, `NODE_IMAGE` and `PYTHON_IMAGE` point the base images at a registry mirror.
+`UBUNTU_IMAGE`, `CHROMIUM_IMAGE`, `NODE_IMAGE` and `PYTHON_IMAGE` point the base images at a
+registry mirror, and `TORCH_INDEX_URL` the engine's CPU-only torch at a mirror of PyTorch's CPU
+index.
 Every Dockerfile that downloads packages (Omnigent's, the Computer's, the supervisor's and the
 app's) also takes an optional build secret, `ca_bundle`: a PEM file with your company's CA, added
 to each image's trust store for apt, pip, uv, npm and pnpm. Without it the builds are unchanged.
@@ -95,15 +98,23 @@ services:
         PYPI_INDEX_URL: https://pypi.mirror.example/simple
         NPM_CONFIG_REGISTRY: https://npm.mirror.example/
       secrets: *ca
+  ubuntu-python:
+    build:
+      args:
+        UBUNTU_IMAGE: registry.mirror.example/ubuntu:24.04
+      secrets: *ca
   omnigent-host:
     build:
       args:
-        PYTHON_IMAGE: registry.mirror.example/playwright/python:v1.63.0-noble
         PYPI_INDEX_URL: https://pypi.mirror.example/simple
         NPM_CONFIG_REGISTRY: https://npm.mirror.example/
       secrets: *ca
   # Superchat's layers.
-  computer: { build: { secrets: *ca } }
+  computer:
+    build:
+      args:
+        CHROMIUM_IMAGE: registry.mirror.example/playwright/python:v1.63.0-noble
+      secrets: *ca
   supervisor: { build: { secrets: *ca } }
   api: { build: { secrets: *ca } }
   worker: { build: { secrets: *ca } }
