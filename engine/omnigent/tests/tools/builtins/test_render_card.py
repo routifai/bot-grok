@@ -42,7 +42,7 @@ def test_living_card_does_not_end_the_turn(kind: str) -> None:
 
 
 def test_chart_is_not_a_card_kind_any_more() -> None:
-    # Charts come from display_chart (a result file), never from numbers the model types.
+    # Charts are pages nova-dashboard builds from files, never numbers the model types.
     assert "chart" not in CARD_DATA_SCHEMAS
     out = _call(
         card="chart",
@@ -56,7 +56,7 @@ def test_chart_is_not_a_card_kind_any_more() -> None:
             "enum"
         ]
     )
-    assert "display_chart" in RenderCardTool.description()
+    assert "nova-dashboard" in RenderCardTool.description()
 
 
 def test_every_kind_has_a_valid_fixture() -> None:

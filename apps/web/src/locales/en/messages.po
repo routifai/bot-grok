@@ -2875,6 +2875,9 @@ msgstr "Nova Report"
 msgid "Nova starts fresh. You can still show earlier messages."
 msgstr "Nova starts fresh. You can still show earlier messages."
 
+msgid "Nova will see this after the current step"
+msgstr "Nova will see this after the current step"
+
 msgid "Nova's computer · Live"
 msgstr "Nova's computer · Live"
 
@@ -2966,6 +2969,9 @@ msgstr "Open {0}, page {1}"
 
 msgid "Open {name} in new tab"
 msgstr "Open {name} in new tab"
+
+msgid "Open {title}"
+msgstr "Open {title}"
 
 msgid "Open as side chat"
 msgstr "Open as side chat"

@@ -52,9 +52,9 @@ tools:
     - name: web_fetch
       fetch_provider: tavily
       api_key: ${TAVILY_API_KEY}
-  # Only what the Muse's job needs. Helpers are started with start_helper and followed up
-  # with the inbox; everything else the framework registers (policy, comments, agent
-  # management, model listing, skills, renaming) is withheld.
+  # Only what the Muse's job needs. Helpers are started with start_helper, told more with
+  # message_helper and followed up with the inbox; everything else the framework registers
+  # (policy, comments, agent management, model listing, skills, renaming) is withheld.
   allow:
     - web_search
     - web_fetch
@@ -65,6 +65,7 @@ tools:
     - side_chat_open
     - open_project
     - start_helper
+    - message_helper
     - sys_session_close
     - sys_session_list
     - sys_session_get_history
@@ -82,8 +83,6 @@ tools:
     - render_card
     - ask_clarification
     - suggest_follow_ups
-    - display_chart
-    - display_dashboard
   # The Sub-agent Types this Super Chat may launch — see agents/<dir>/. Each has its own
   # executor and max_sessions; a turn launches one by its declared `name`, never by naming a
   # model (CONTEXT.md "Sub-agent Type").

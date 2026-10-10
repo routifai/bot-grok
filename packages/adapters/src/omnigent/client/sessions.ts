@@ -34,6 +34,31 @@ export async function getOmnigentSession(
   return (await response.json()) as OmnigentSessionSnapshot;
 }
 
+/** `POST /v1/sessions/{id}/events` `interrupt`: stops the running turn; messages waiting behind it
+ * are cancelled (`session.input.delivery` `cancelled`). */
+export async function interruptOmnigentSession(
+  config: OmnigentClientConfig,
+  email: string,
+  sessionId: string,
+): Promise<void> {
+  const response = await fetch(
+    new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/events`, config.baseUrl),
+    {
+      method: "POST",
+      headers: omnigentHeaders(config, email),
+      body: JSON.stringify({ type: "interrupt", data: {} }),
+    },
+  );
+  await throwOnError(response, "interrupt session", config.secrets);
+}
+
+/** What the engine answers for a posted message: its stored id, and the runner's number for the
+ * turn it started or joined (`session.status` edges carry the same number). */
+export interface OmnigentPostedMessage {
+  itemId: string | undefined;
+  turn: number | undefined;
+}
+
 /** `POST /v1/sessions/{id}/events` with a `message` event carrying the user's turn text and, optionally, images as `input_image` data URIs. */
 export async function postOmnigentMessage(
   config: OmnigentClientConfig,
@@ -41,7 +66,7 @@ export async function postOmnigentMessage(
   sessionId: string,
   text: string,
   images?: Array<{ mimeType: string; dataBase64: string }>,
-): Promise<void> {
+): Promise<OmnigentPostedMessage> {
   const content: Array<Record<string, string>> = [{ type: "input_text", text }];
   for (const image of images ?? []) {
     content.push({
@@ -61,6 +86,13 @@ export async function postOmnigentMessage(
     },
   );
   await throwOnError(response, "post message event", config.secrets);
+  const body = (await response.json().catch(() => undefined)) as
+    | { item_id?: unknown; turn?: unknown }
+    | undefined;
+  return {
+    itemId: typeof body?.item_id === "string" ? body.item_id : undefined,
+    turn: typeof body?.turn === "number" ? body.turn : undefined,
+  };
 }
 
 /** `POST /v1/sessions/{id}/read` — the person has the chat open: moves their read baseline

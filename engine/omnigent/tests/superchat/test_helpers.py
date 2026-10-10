@@ -28,7 +28,7 @@ from omnigent.superchat.features import notify_result
 from omnigent.superchat.helpers import handlers as h
 from omnigent.superchat.helpers import saved_files as sf
 from omnigent.superchat.helpers.feature import HELPERS_FEATURE
-from omnigent.superchat.helpers.tools import StartHelperTool
+from omnigent.superchat.helpers.tools import MessageHelperTool, StartHelperTool
 from omnigent.superchat.subagents import (
     HELPER_EFFORT_CHOICES,
     HELPER_MODEL_CHOICES,
@@ -61,9 +61,9 @@ def test_schema_is_one_flat_task_with_fast_strong() -> None:
 
 
 def test_muse_and_worker_get_it_subworker_does_not() -> None:
-    assert _offered(CHAT, _spec("worker", "goal", "teacher")) == ["start_helper"]
+    assert _offered(CHAT, _spec("worker", "goal", "teacher")) == ["start_helper", "message_helper"]
     assert h.helper_type_for(_spec("worker", "goal", "teacher")) == "worker"
-    assert _offered(CHAT, _spec("subworker")) == ["start_helper"]
+    assert _offered(CHAT, _spec("subworker")) == ["start_helper", "message_helper"]
     assert h.helper_type_for(_spec("subworker")) == "subworker"
     assert _offered(CHAT, _spec()) == []
     assert _offered(None, _spec("worker")) == []
@@ -108,6 +108,7 @@ def test_bundle_surfaces() -> None:
         "tools"
     ]["allow"]
     assert "start_helper" in muse
+    assert "message_helper" in muse
     assert "sys_session_send" not in muse
     assert "sys_session_get_info" in muse
     assert "start_helper" in worker
@@ -399,3 +400,103 @@ def test_deleting_a_session_forgets_its_saved_files() -> None:
     _save("conv_gone", "a1", "r.html")
     unregister_subagent_work_for_session("conv_gone")
     assert not sf._saved
+
+
+# ── message_helper: pass a steer on to a running Helper ────────────────────
+
+
+def _messaging_ctx(
+    sent: list[tuple[str, str]],
+    running: list[tuple[str, str]],
+    reply: str | None = None,
+) -> HandlerCtx:
+    async def send(child_id: str, text: str) -> str:
+        sent.append((child_id, text))
+        return (
+            reply if reply is not None else json.dumps({"task_id": child_id, "status": "running"})
+        )
+
+    async def live() -> list[tuple[str, str]]:
+        return running
+
+    async def titles() -> list[str]:
+        return []
+
+    async def spawn(request: SpawnRequest) -> SpawnResult:
+        return SpawnResult(error="unused")
+
+    host = SubAgentHost(
+        declared_types=("worker",), child_titles=titles, spawn=spawn, send=send, running=live
+    )
+    return HandlerCtx("message_helper", object(), "conv_chat", CHAT, sub_agents=host)  # type: ignore[arg-type]
+
+
+def test_message_helper_schema_takes_a_message_and_an_optional_id() -> None:
+    params = MessageHelperTool().get_schema()["function"]["parameters"]
+    assert params["required"] == ["message"]
+    assert set(params["properties"]) == {"message", "helper_id"}
+    assert params["additionalProperties"] is False
+
+
+async def test_the_message_reaches_the_named_running_helper() -> None:
+    sent: list[tuple[str, str]] = []
+    ctx = _messaging_ctx(sent, [("conv_h1", "worker:Deck"), ("conv_h2", "worker:Sheet")])
+    out = json.loads(
+        await h.handle_message_helper(ctx, {"message": "make it blue", "helper_id": "conv_h1"})
+    )
+    assert sent == [("conv_h1", "make it blue")]
+    assert out["sent"] is True and out["helper_id"] == "conv_h1"
+    assert "Do not start another Helper" in out["message"]
+
+
+async def test_one_running_helper_needs_no_id_and_several_must_be_told_apart() -> None:
+    sent: list[tuple[str, str]] = []
+    one = _messaging_ctx(sent, [("conv_h1", "worker:Deck")])
+    assert json.loads(await h.handle_message_helper(one, {"message": "blue"}))["sent"] is True
+    assert sent == [("conv_h1", "blue")]
+
+    many = _messaging_ctx(sent, [("conv_h1", "worker:Deck"), ("conv_h2", "worker:Sheet")])
+    refused = await h.handle_message_helper(many, {"message": "blue"})
+    assert refused.startswith("Error: message_helper: several Helpers are running")
+    assert "conv_h1" in refused and "conv_h2" in refused
+    assert len(sent) == 1  # nothing was sent for the ambiguous call
+
+
+async def test_no_message_goes_to_a_helper_that_is_not_running() -> None:
+    sent: list[tuple[str, str]] = []
+    none = _messaging_ctx(sent, [])
+    assert "no Helper is running" in await h.handle_message_helper(none, {"message": "x"})
+    other = _messaging_ctx(sent, [("conv_h1", "worker:Deck")])
+    assert "not running" in await h.handle_message_helper(
+        other, {"message": "x", "helper_id": "conv_gone"}
+    )
+    assert sent == []
+
+
+async def test_bad_input_and_a_failed_send_are_refused_in_message_helper_terms() -> None:
+    sent: list[tuple[str, str]] = []
+    ctx = _messaging_ctx(
+        sent, [("conv_h1", "worker:Deck")], reply="Error: sys_session_send failed to look up"
+    )
+    assert "non-empty 'message'" in await h.handle_message_helper(ctx, {"message": " "})
+    assert "takes only" in await h.handle_message_helper(ctx, {"message": "x", "why": 1})
+    failed = await h.handle_message_helper(ctx, {"message": "x"})
+    assert failed.startswith("Error: message_helper: failed to look up")
+    no_host = HandlerCtx("message_helper", None, "conv_chat", CHAT)
+    assert "requires server access" in await h.handle_message_helper(no_host, {"message": "x"})
+
+
+async def test_a_helper_that_finished_before_the_note_arrived_refuses_it() -> None:
+    # Listed as running when the tool looked, idle by the time the send reached it: the send
+    # itself refuses, so the note never starts a second task.
+    sent: list[tuple[str, str]] = []
+    ctx = _messaging_ctx(
+        sent,
+        [("conv_h1", "worker:Deck")],
+        reply=json.dumps({"error": "not_running", "conversation_id": "conv_h1"}),
+    )
+    refused = await h.handle_message_helper(ctx, {"message": "blue"})
+    assert refused == (
+        "Error: message_helper: that Helper is not running; its result has arrived or will"
+    )
+    assert sent == [("conv_h1", "blue")]

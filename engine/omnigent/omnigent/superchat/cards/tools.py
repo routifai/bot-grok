@@ -63,8 +63,9 @@ def _kind_hints() -> str:
     return "; ".join(f"{kind} {_shape(s)}" for kind, s in CARD_DATA_SCHEMAS.items())
 
 
-# No `chart` card is offered: charts come from `display_chart`, which reads a result file so the
-# model never types data values. Old transcripts keep their chart cards; clients still draw them.
+# No `chart` card is offered: charts and dashboards are HTML pages `nova-dashboard` builds from the
+# person's files, so the model never types data values. Old transcripts keep their chart cards;
+# clients still draw them.
 
 # Kinds that are the answer itself. ``plan`` and ``progress`` are living cards the Muse
 # re-renders (same ``id``) while it works, so they never end the reply; ``ask`` waits on
@@ -254,8 +255,8 @@ class RenderCardTool(Tool):
             "Show the person a card instead of prose, only when it reads better than text: "
             "numbers to compare (compare), a market quote (quote), a plan you will update "
             "(plan), sources you read (sources), a contact "
-            "(person), a file (file), long-running work (progress). For a chart use "
-            "`display_chart` on a result file (`display_dashboard` for several), never a card "
+            "(person), a file (file), long-running work (progress). For a chart or a "
+            "dashboard build a page with `nova-dashboard` from the data files, never a card "
             "with typed numbers. "
             "Otherwise write normally. `data` is an object whose shape depends on `card` "
             f"(`?` = optional): {_kind_hints()}. "

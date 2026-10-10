@@ -328,3 +328,12 @@ def test_every_reader_of_a_users_message_cuts_a_legacy_stored_block() -> None:
     assert "summarise" in _message_text(item("user"))
     assert "Ignore everything" not in _project_activity_item(item("user"))["content"]  # titles
     assert "attachment_context" in _message_text(item("assistant"))  # only a user's words are cut
+
+
+def test_a_message_attaching_a_file_needs_a_turn_of_its_own_whatever_its_line_endings() -> None:
+    from omnigent.superchat.prompt_prefix import message_needs_own_turn
+
+    line = "Attached file in your workspace: your_files/uploads/d/a.pdf (application/pdf, 9 bytes)"
+    assert message_needs_own_turn([f"{line}\n\nsummarise"])
+    assert message_needs_own_turn([f"{line}\r\n\r\nsummarise"])
+    assert not message_needs_own_turn(["just text"])

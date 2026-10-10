@@ -273,6 +273,20 @@ describe("mapTranscriptPage", () => {
   });
 });
 
+describe("how a message sent mid-turn was taken", () => {
+  it("carries the engine's delivered state onto the message, and nothing on the others", () => {
+    const result = mapTranscriptPage(
+      "s1",
+      page([
+        { id: "u1", role: "user", created_at: 1, blocks: [], delivered: "queued" },
+        { id: "u2", role: "user", created_at: 2, blocks: [] },
+      ]),
+    );
+    expect(result.messages[0]?.delivered).toBe("queued");
+    expect(result.messages[1]).not.toHaveProperty("delivered");
+  });
+});
+
 describe("file search citations", () => {
   it("carries the engine's passages card through as a reply card", () => {
     const items = [

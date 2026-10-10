@@ -160,6 +160,7 @@ export function mapTranscriptPage(chatId: string, page: OmnigentTranscriptPage):
     blocks: message.blocks.map(mapBlock),
     createdAt: epochSecondsToIso(message.created_at),
     ...(message.forks ? { forks: message.forks.map(mapFork) } : {}),
+    ...(message.delivered ? { delivered: message.delivered } : {}),
   }));
   return {
     threadId: chatId,

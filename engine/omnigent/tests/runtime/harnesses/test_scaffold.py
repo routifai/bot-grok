@@ -1903,3 +1903,24 @@ async def test_idle_watchdog_attaches_recent_forwarder_post_failure(
     assert "idle watchdog" in message, message
     assert "external_session_status" in message, message
     assert "No route to host" in message, message
+
+
+async def test_an_injection_for_a_turn_that_has_ended_is_refused_not_run(
+    use_injection: None,
+    manager: HarnessProcessManager,
+) -> None:
+    """A steer forwarded just as the turn ended must not start a turn of its own: the runner
+    keeps its copy and runs it next, so a turn here would answer it twice."""
+    conv_id = "conv_orphan_injection"
+    client = await manager.get_client(conv_id, _TEST_HARNESS_NAME)
+    resp = await client.post(
+        f"/v1/sessions/{conv_id}/events",
+        json={
+            "type": "message",
+            "role": "user",
+            "model": "test-agent",
+            "content": [{"type": "input_text", "text": "late steer"}],
+            "injection_id": "inj_late",
+        },
+    )
+    assert resp.status_code == 409

@@ -12380,6 +12380,99 @@ async def test_message_forward_rejection_surfaces_failed_with_reason(
         await fake_runner.aclose()
 
 
+def _fake_runner_answering(monkeypatch: pytest.MonkeyPatch, answer: httpx.Response):
+    """Bind every session to a runner that answers each forwarded event with *answer*."""
+    from omnigent.server.routes import sessions as sessions_module
+
+    forwarded: list[dict[str, Any]] = []
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path.endswith("/events"):
+            forwarded.append(json.loads(request.content))
+            return answer
+        return httpx.Response(202, json={})
+
+    fake_runner = httpx.AsyncClient(
+        transport=httpx.MockTransport(_handler), base_url="http://runner"
+    )
+
+    async def _fake_get_runner_client(
+        session_id: str, runner_router: object, *, conversation: Any = None
+    ) -> httpx.AsyncClient | None:
+        del session_id, runner_router, conversation
+        return fake_runner
+
+    monkeypatch.setattr(sessions_module, "_get_runner_client", _fake_get_runner_client)
+    return fake_runner, forwarded
+
+
+async def test_message_answer_names_the_turn_it_joined(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The POST answers with the runner's number for the turn the message started or joined,
+    so a sender can tell that turn's ``idle`` from an earlier one's."""
+    fake_runner, _ = _fake_runner_answering(
+        monkeypatch, httpx.Response(202, json={"status": "buffered", "turn": 7})
+    )
+    try:
+        agent = await create_test_agent(client)
+        sid = (await _create_session(client, agent["id"]))["id"]
+        resp = await client.post(
+            f"/v1/sessions/{sid}/events",
+            json={
+                "type": "message",
+                "data": {"role": "user", "content": [{"type": "input_text", "text": "hi"}]},
+            },
+        )
+        assert resp.status_code == 202, resp.text
+        assert resp.json()["turn"] == 7
+        assert resp.json()["item_id"]
+    finally:
+        await fake_runner.aclose()
+
+
+async def test_a_message_only_for_a_running_turn_is_refused_and_not_kept(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``if_running`` reaches the runner, which decides under its turn lock; when no turn
+    runs the message is refused (409) and its persisted item is removed, and the session is
+    not marked failed: nothing happened."""
+    fake_runner, forwarded = _fake_runner_answering(
+        monkeypatch, httpx.Response(409, json={"error": "not_running", "detail": "no turn"})
+    )
+    from omnigent.server.routes._sessions import orchestration as orchestration_module
+
+    announced: list[str] = []
+    monkeypatch.setattr(
+        orchestration_module,
+        "_publish_input_consumed",
+        lambda session_id, item, *args, **kwargs: announced.append(item.id),
+    )
+    try:
+        agent = await create_test_agent(client)
+        sid = (await _create_session(client, agent["id"]))["id"]
+        resp = await client.post(
+            f"/v1/sessions/{sid}/events",
+            json={
+                "type": "message",
+                "if_running": True,
+                "data": {"role": "user", "content": [{"type": "input_text", "text": "note"}]},
+            },
+        )
+        assert resp.status_code == 409, resp.text
+        assert forwarded[-1]["if_running"] is True
+        snap = (await client.get(f"/v1/sessions/{sid}")).json()
+        assert snap["status"] != "failed", snap
+        items = (await client.get(f"/v1/sessions/{sid}/items")).json()["data"]
+        assert not any(i.get("type") == "message" for i in items), items
+        # Never announced either: no client ever saw the refused message.
+        assert announced == []
+    finally:
+        await fake_runner.aclose()
+
+
 async def test_create_child_session_duplicate_title_returns_409(
     client: httpx.AsyncClient,
 ) -> None:

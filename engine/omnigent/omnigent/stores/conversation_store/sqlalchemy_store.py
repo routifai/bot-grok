@@ -66,6 +66,7 @@ from omnigent.db.utils import (
     _supports_fts5,
     build_search_snippet,
     delete_fts_by_conversation_ids,
+    delete_fts_by_item_id,
     ensure_fts_table,
     extract_search_text,
     generate_conversation_id,
@@ -2777,6 +2778,28 @@ class SqlAlchemyConversationStore(ConversationStore):
             )
 
         run_write_transaction(self._conv_session_immediate, "delete_label", write)
+
+    def delete_item(self, conversation_id: str, item_id: str) -> bool:
+        """
+        Delete one item and its search row.
+
+        :param conversation_id: The conversation holding the item.
+        :param item_id: The item to remove.
+        :returns: ``True`` when the item existed.
+        """
+
+        def write(session: Session) -> bool:
+            result = session.execute(
+                delete(SqlConversationItem).where(
+                    SqlConversationItem.workspace_id == current_workspace_id(),
+                    SqlConversationItem.conversation_id == conversation_id,
+                    SqlConversationItem.id == item_id,
+                )
+            )
+            delete_fts_by_item_id(session, item_id)
+            return bool(getattr(result, "rowcount", 0))
+
+        return run_write_transaction(self._conv_session_immediate, "delete_item", write)
 
     def list_conversations(
         self,

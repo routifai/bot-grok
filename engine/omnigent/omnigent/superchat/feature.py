@@ -82,12 +82,19 @@ class SubAgentHost:
         role in their ``params.helper_type``; Types without one keep their literal name.
     :param child_titles: Titles of the caller's existing child sessions.
     :param spawn: Starts one child through the generic sub-agent create path.
+    :param send: Passes a message to one of the caller's own children whose turn is running
+        (``child id, text``); it reads it at its next step. The child itself refuses it when
+        no turn is running by the time it arrives (``{"error": "not_running"}``), so a send
+        never starts a second task. Returns the generic ``sys_session_send`` output.
+    :param running: ``(child id, title)`` of the caller's children whose turn is running.
     """
 
     declared_types: tuple[str, ...]
     child_titles: Callable[[], Awaitable[list[str]]]
     spawn: Callable[[SpawnRequest], Awaitable[SpawnResult]]
     helper_roles: Mapping[str, str] = field(default_factory=dict)
+    send: Callable[[str, str], Awaitable[str]] | None = None
+    running: Callable[[], Awaitable[list[tuple[str, str]]]] | None = None
 
 
 @dataclass(frozen=True)
@@ -163,6 +170,9 @@ class Feature:
     :param message_prefix: Blocks this feature builds from the turn's own message (the files it
         attaches), prepended for the model only: they sit closest to the message and are never
         part of what is stored as the person's words.
+    :param needs_own_turn: Whether a message's text needs a turn of its own to be read whole,
+        e.g. because it attaches a file whose ``message_prefix`` context only a turn start
+        adds; such a message is never steered into a running turn.
     :param install: Wires stores + routers onto the FastAPI app.
     :param jobs: Returns background jobs (objects with ``start()`` / ``shutdown()``).
     """
@@ -174,5 +184,6 @@ class Feature:
     on_result: ResultListener | None = None
     turn_prefix: TurnPrefix | None = None
     message_prefix: MessagePrefix | None = None
+    needs_own_turn: Callable[[str], bool] | None = None
     install: Callable[[FastAPI, InstallDeps], None] | None = None
     jobs: Callable[[FastAPI], list[BackgroundJob]] | None = None

@@ -398,7 +398,7 @@ flowchart LR
 | `function_call` of `start_helper` | a `helper` block `{call_id, session_id, title, status}` under the turn's reply, only when the receipt says `started: true` (`blocks.py:241-258`) |
 | `function_call` of `render_card`, `ask_clarification`, `suggest_follow_ups` | a `card` block (a running card is pending) |
 | `function_call` of `vault_request_secret` | a `secure_entry` block |
-| `function_call` of `artifact_save`, `deck_export`, `display_chart` | a `file` block (a failed save shows nothing) |
+| `function_call` of `artifact_save`, `deck_export`, `display_chart` (retired; older conversations) | a `file` block (a failed save shows nothing) |
 | `function_call` of `files_search`, `files_vsearch`, `files_query` | one `passages` citation card, at most 6 chips (`blocks.py:58`) |
 | **any other `function_call`** | **nothing**: there is no `else` branch (`blocks.py:336-362`) |
 | `function_call_output` | never a block of its own. It is read only to build the blocks above (`blocks.py:83-89`) |

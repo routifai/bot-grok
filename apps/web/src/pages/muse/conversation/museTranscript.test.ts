@@ -77,6 +77,19 @@ describe("pendingUserMessages", () => {
     expect(pendingUserMessages([sent, reply], transcript)).toEqual([]);
   });
 
+  it("keeps a message sent while the Muse works, though its replies landed after the send", () => {
+    // The person's first message, then tool work and a reply stamped after the second send.
+    const transcript = [
+      message("e0", "2026-10-01T10:04:00Z", "user"),
+      message("e1", "2026-10-01T10:05:03Z"),
+      message("e2", "2026-10-01T10:05:09Z"),
+    ];
+    expect(pendingUserMessages([sent], transcript)).toEqual([sent]);
+    // Once the engine records it, it is in the transcript and no longer pending.
+    const recorded = [...transcript, message("e3", "2026-10-01T10:05:10Z", "user")];
+    expect(pendingUserMessages([sent], recorded)).toEqual([]);
+  });
+
   it("shows every accepted message when the transcript is empty", () => {
     expect(pendingUserMessages([sent], [])).toEqual([sent]);
   });
@@ -133,5 +146,33 @@ describe("conversationMessages", () => {
 
   it("shows every Nova-owned row while the engine has nothing yet", () => {
     expect(conversationMessages([], [draft]).map((m) => m.id)).toEqual(["n-draft"]);
+  });
+});
+
+describe("a message sent while the Muse works", () => {
+  it("shows once while pending, then once as the engine echo, with unique ids throughout", () => {
+    const first = message("e0", "2026-10-01T10:04:00Z", "user");
+    const reply = message("e1", "2026-10-01T10:05:03Z");
+    const sent = message("n-sent", "2026-10-01T10:05:05Z", "user");
+    const ids = (messages: ThreadMessage[]) => messages.map((m) => m.id);
+    const unique = (messages: ThreadMessage[]) => new Set(ids(messages)).size === messages.length;
+
+    // The send is accepted; the Muse's own reply stamped before it does not hide it.
+    const pending = conversationMessages([first, reply], [sent, sent]);
+    expect(ids(pending)).toEqual(["e0", "e1", "n-sent"]);
+    expect(unique(pending)).toBe(true);
+
+    // The engine records it (steered into the turn, or queued) and says how.
+    const echo = message("e2", "2026-10-01T10:05:06Z", "user");
+    const settled = conversationMessages([first, reply, echo], [sent]);
+    expect(ids(settled)).toEqual(["e0", "e1", "e2"]);
+    expect(unique(settled)).toBe(true);
+
+    // A queued echo stamped in the same second as the send also replaces the pending copy.
+    const queued = {
+      ...message("e3", "2026-10-01T10:05:05Z", "user"),
+      delivered: "queued" as const,
+    };
+    expect(ids(conversationMessages([first, reply, queued], [sent]))).toEqual(["e0", "e1", "e3"]);
   });
 });

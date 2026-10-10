@@ -1300,6 +1300,7 @@ stream and surface queue/interrupt semantics.
 | `session.collaboration_mode` | `SessionCollaborationModeEvent` | `{type, conversation_id, mode: string}` |
 | `session.codex_approval_mode` | `SessionCodexApprovalModeEvent` | `{type, conversation_id, approval_mode: "ask-for-approval" \| "approve-for-me" \| "full-access" \| "read-only"}` |
 | `session.input.consumed` | `SessionInputConsumedEvent` | `{type, data: {queued_item_id, type, data, position}}` (nested envelope) |
+| `session.input.delivery` | `SessionInputDeliveryEvent` | `{type, data: {item_id}}` — a refetch ping: a message sent while a turn ran started or stopped waiting behind it (the transcript's `delivered: "queued"` reads the runner's live queue). The runner alone owns waiting messages; `session.status` reports `idle` only once none waits, and its `turn` number (also answered by `POST /events`) names the turn that ended. |
 | `session.interrupted` | `SessionInterruptedEvent` | `{type, data: {requested_at, queued_item_id?: null}}` (nested envelope) |
 | `session.created` | `SessionCreatedEvent` | `{type, conversation_id: <parent>, child_conversation_id, agent_id, ...}` — emitted on the PARENT session's stream when a sub-agent is spawned. |
 

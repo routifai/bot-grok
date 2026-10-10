@@ -209,3 +209,64 @@ async def handle_start_helper(ctx: HandlerCtx, args: dict[str, Any]) -> str:
         )
         _recent[key] = (time.monotonic(), receipt)
         return receipt
+
+
+def _message_refusal(reason: str) -> str:
+    return f"Error: message_helper: {reason}"
+
+
+async def handle_message_helper(ctx: HandlerCtx, args: dict[str, Any]) -> str:
+    """
+    Pass a message to a Helper that is already working, through the generic send path.
+
+    A running Helper reads it at its next step (the same steer a person's message gets) and
+    its single result still arrives in the inbox; the message is never a second task.
+
+    :param ctx: The call context (carries the runner's sub-agent host).
+    :param args: ``message`` plus an optional ``helper_id`` (omit it when one Helper runs).
+    :returns: A short receipt JSON, or an ``Error: ...`` string the model can act on.
+    """
+    host = ctx.sub_agents
+    if host is None or host.send is None or host.running is None or not ctx.conversation_id:
+        return "Error: message_helper requires server access"
+    message = args.get("message")
+    if not isinstance(message, str) or not message.strip():
+        return _message_refusal("requires a non-empty 'message'")
+    if set(args) - {"message", "helper_id"}:
+        return _message_refusal("takes only 'message' and 'helper_id'")
+    helper_id = args.get("helper_id")
+    if helper_id is not None and not (isinstance(helper_id, str) and helper_id):
+        return _message_refusal("'helper_id' must be the id start_helper returned")
+    running = await host.running()
+    if helper_id is None:
+        if not running:
+            return _message_refusal("no Helper is running")
+        if len(running) > 1:
+            names = "; ".join(f"{title} ({child})" for child, title in running)
+            return _message_refusal(f"several Helpers are running, say which one: {names}")
+        helper_id = running[0][0]
+    elif helper_id not in {child for child, _ in running}:
+        return _message_refusal("that Helper is not running; its result has arrived or will")
+    # The Helper decides as the message reaches it: idle by then, it refuses rather than
+    # starting a second task (the check above only picks which Helper).
+    output = await host.send(helper_id, message.strip())
+    try:
+        handle = json.loads(output)
+    except ValueError:
+        handle = None
+    if isinstance(handle, dict) and handle.get("error") == "not_running":
+        return _message_refusal("that Helper is not running; its result has arrived or will")
+    if not (isinstance(handle, dict) and isinstance(handle.get("task_id"), str)):
+        reason = output.removeprefix("Error: ").removeprefix("sys_session_send ")
+        return _message_refusal(reason)
+    return json.dumps(
+        {
+            "sent": True,
+            "helper_id": helper_id,
+            "message": (
+                "Passed on. The Helper reads it at its next step and keeps working on the same "
+                "task; its result still arrives here when it finishes. Do not start another "
+                "Helper for this. Tell the person in one short sentence that you passed it on."
+            ),
+        }
+    )

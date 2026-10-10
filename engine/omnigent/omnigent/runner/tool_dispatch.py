@@ -1644,8 +1644,13 @@ async def _post_child_message_event(
     *,
     content: list[_JsonObject],
     created_by: str | None,
+    if_running: bool = False,
 ) -> httpx.Response:
-    """Post a child message, retrying once without best-effort attribution."""
+    """Post a child message, retrying once without best-effort attribution.
+
+    With *if_running* the child takes it only into a turn that is running now; an idle
+    child answers 409 ``not_running`` and keeps nothing.
+    """
 
     def _payload(actor: str | None) -> _JsonObject:
         return {
@@ -1655,6 +1660,7 @@ async def _post_child_message_event(
                 "content": content,
             },
             **({"created_by": actor} if actor is not None else {}),
+            **({"if_running": True} if if_running else {}),
         }
 
     resp = await server_client.post(
@@ -1693,6 +1699,7 @@ async def _send_to_in_flight_child(
     wrapper_label: str | None,
     created_by: str | None = None,
     superside_chat: bool = False,
+    if_running: bool = False,
 ) -> str:
     """Steer a message into a sub-agent whose turn is already in flight.
 
@@ -1743,6 +1750,8 @@ async def _send_to_in_flight_child(
     :param child_display_title: Display title for the fan-out registration.
     :param wrapper_label: Optional child ``omnigent.wrapper`` label.
     :param created_by: Human actor that sent the nudge, if known.
+    :param if_running: Refuse (``not_running``) instead of starting a turn when the child's
+        turn has ended by the time the message reaches it.
     :returns: A JSON handle on success; a descriptive error string otherwise.
     """
     from omnigent.runner import app as _runner_app
@@ -1755,12 +1764,15 @@ async def _send_to_in_flight_child(
             child_session_id,
             content=[{"type": "input_text", "text": message}],
             created_by=created_by,
+            if_running=if_running,
         )
     except httpx.HTTPError as exc:
         return (
             f"Error: failed to steer in-flight sub-agent {agent!r} title {title!r}: "
             f"{type(exc).__name__}: {exc}"
         )
+    if if_running and msg_resp.status_code == 409:
+        return json.dumps({"error": "not_running", "conversation_id": child_session_id})
     if msg_resp.status_code >= 400:
         return (
             f"Error: failed to steer in-flight sub-agent {agent!r} title {title!r}: "
@@ -1774,6 +1786,10 @@ async def _send_to_in_flight_child(
             # Reuse the one entry so its single completion delivers under it;
             # re-stamping/replacing here is what would orphan that completion.
             work_id = entry.work_id
+        elif if_running:
+            # Taken only into the turn that was running, which its own entry tracks: no new
+            # turn was started, so there is nothing new to track.
+            pass
         else:
             # No active tracked turn: the old turn ended and a fresh one started,
             # or the in-flight turn was untracked locally (post-restart). Track
@@ -2648,12 +2664,37 @@ def _sub_agent_host(
         if isinstance(name := getattr(sub, "name", None), str)
     )
     from omnigent.superchat.helpers.handlers import helper_roles_for
+    from omnigent.superchat.subagents import is_live_child_row
+
+    async def send(child_id: str, text: str) -> str:
+        return await _send_to_existing_session(
+            child_id,
+            text,
+            server_client=server_client,
+            conversation_id=conversation_id,
+            publish_event=publish_event,
+            only_if_running=True,
+        )
+
+    async def running() -> list[tuple[str, str]]:
+        rows = await _list_child_sessions(
+            server_client=server_client, conversation_id=conversation_id
+        )
+        if not isinstance(rows, list):
+            return []
+        return [
+            (str(row["id"]), str(row.get("title") or ""))
+            for row in rows
+            if isinstance(row.get("id"), str) and is_live_child_row(row)
+        ]
 
     return SubAgentHost(
         declared_types=declared,
         child_titles=child_titles,
         spawn=spawn,
         helper_roles=helper_roles_for(agent_spec),
+        send=send,
+        running=running,
     )
 
 
@@ -3436,6 +3477,7 @@ async def _send_to_existing_session(
     conversation_id: str,
     publish_event: Callable[[str, _JsonObject], None] | None = None,
     created_by: str | None = None,
+    only_if_running: bool = False,
 ) -> str:
     """
     Post a message to an existing direct-child session, return a handle.
@@ -3463,6 +3505,9 @@ async def _send_to_existing_session(
     :param server_client: HTTP client pointed at the Omnigent server.
     :param conversation_id: The caller's own session id — the required
         parent of the target.
+    :param only_if_running: Deliver only into the child's running turn; an idle child
+        refuses it (``{"error": "not_running"}``) rather than starting a new one. The child
+        decides when the message reaches it, so there is no check-then-send gap.
     :returns: JSON handle on success; a JSON/text error otherwise.
     """
     from omnigent.runner import app as _runner_app
@@ -3523,8 +3568,10 @@ async def _send_to_existing_session(
     # completion is never orphaned. The fresh continuation below is only for a
     # genuinely idle child, where the post starts a new turn.
     _by_id_in_flight = (
-        existing_work is not None and existing_work.status in ("running", "waiting")
-    ) or snap_data.get("busy") is True
+        only_if_running
+        or (existing_work is not None and existing_work.status in ("running", "waiting"))
+        or snap_data.get("busy") is True
+    )
     if _by_id_in_flight:
         return await _send_to_in_flight_child(
             target_session_id,
@@ -3536,6 +3583,7 @@ async def _send_to_existing_session(
             child_display_title=display_title or "",
             wrapper_label=_session_wrapper_label(snap_data),
             created_by=created_by,
+            if_running=only_if_running,
         )
     work_id = _runner_app.new_subagent_work_id()
     stamp_error = await _patch_subagent_label(

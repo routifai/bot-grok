@@ -17,7 +17,7 @@ import secrets
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
-from typing import Any, Literal, cast
+from typing import Any, Literal, NamedTuple, cast
 
 import httpx
 from fastapi import (
@@ -5921,6 +5921,37 @@ def _publish_routed_model(session_id: str, model: str) -> None:
     session_stream.publish(session_id, event.model_dump())
 
 
+class _ForwardedItem(NamedTuple):
+    """A user item the runner took.
+
+    :param item_id: Store-assigned id of the persisted item.
+    :param turn: The runner's number for the turn the message started or joined; ``None``
+        when the runner did not say.
+    """
+
+    item_id: str
+    turn: int | None
+
+
+def _runner_turn(response: httpx.Response) -> int | None:
+    """The ``turn`` a runner's acceptance names, or ``None`` (fakes may expose no body)."""
+    payload: object = None
+    with contextlib.suppress(ValueError, AttributeError, TypeError):
+        payload = response.json()
+    turn = payload.get("turn") if isinstance(payload, dict) else None
+    return turn if isinstance(turn, int) and not isinstance(turn, bool) else None
+
+
+def _is_not_running_refusal(response: httpx.Response) -> bool:
+    """Whether the runner refused an ``if_running`` message because no turn runs."""
+    if response.status_code != 409:
+        return False
+    payload: object = None
+    with contextlib.suppress(ValueError, AttributeError, TypeError):
+        payload = response.json()
+    return isinstance(payload, dict) and payload.get("error") == "not_running"
+
+
 def _runner_reject_detail(response: httpx.Response) -> str:
     """
     Describe a runner's refusal of a forwarded event, for the user-visible error.
@@ -5997,7 +6028,7 @@ async def _forward_event_to_runner(
     created_by: str | None = None,
     host_store: HostStore | None = None,
     persisted_item: ConversationItem | None = None,
-) -> str:
+) -> _ForwardedItem:
     """
     Persist a user event and forward it to the runner.
 
@@ -6118,6 +6149,9 @@ async def _forward_event_to_runner(
         # resolved copy — id-based dedup, not a role/content guess.
         "persisted_item_id": persisted_items[0].id,
     }
+    if body.if_running:
+        # The runner decides under its turn lock: with no turn running it starts none.
+        runner_body["if_running"] = True
     # Persist the turn-initiating actor so /policies/evaluate and MCP
     # tools/call can read it back on any server replica.  Skip system-driven
     # forwards (sub-agent results, parent-wake carry created_by=None) — they
@@ -6468,6 +6502,14 @@ async def _forward_event_to_runner(
         # this only catches "the runner never took the message". Checked on the
         # status rather than via ``raise_for_status`` so the runner-client fakes
         # that only expose ``status_code`` behave as they do in production.
+        if _is_not_running_refusal(_forward_resp):
+            # A message meant only for a running turn found none: it never happened.
+            await asyncio.to_thread(
+                conversation_store.delete_item, session_id, persisted_items[0].id
+            )
+            raise OmnigentError(
+                "No turn is running to take this message.", code=ErrorCode.CONFLICT
+            )
         if _forward_resp.status_code >= 400:
             # The live runner took nothing, so ``idle`` would read as a finished
             # turn that never ran. Persist the reason: the status edge is
@@ -6616,7 +6658,7 @@ async def _forward_event_to_runner(
             code=ErrorCode.RUNNER_UNAVAILABLE,
         ) from exc
 
-    return persisted_items[0].id
+    return _ForwardedItem(persisted_items[0].id, _runner_turn(_forward_resp))
 
 
 async def _stamp_routing_decision_label(
@@ -7277,7 +7319,7 @@ async def _dispatch_session_event_to_runner_impl(
                     decision_id=_native_decision_id,
                 )
         return _SessionEventDispatchResult(item_id=None, pending_id=pending_id)
-    item_id = await _forward_event_to_runner(
+    forwarded = await _forward_event_to_runner(
         session_id,
         conv,
         body,
@@ -7291,7 +7333,9 @@ async def _dispatch_session_event_to_runner_impl(
         host_store=host_store,
         persisted_item=persisted_item,
     )
-    return _SessionEventDispatchResult(item_id=item_id, pending_id=None)
+    return _SessionEventDispatchResult(
+        item_id=forwarded.item_id, pending_id=None, turn=forwarded.turn
+    )
 
 
 # Sized to the runner liveness lease so the relay give-up, the disconnect
@@ -7852,6 +7896,12 @@ async def _relay_runner_stream_once(
                                 blocked_on=(
                                     raw_blocked_on
                                     if isinstance(raw_blocked_on, str) and raw_blocked_on
+                                    else None
+                                ),
+                                turn=(
+                                    event["turn"]
+                                    if isinstance(event.get("turn"), int)
+                                    and not isinstance(event.get("turn"), bool)
                                     else None
                                 ),
                             )

@@ -86,12 +86,15 @@ from .async_utils import run_sync_on_thread
 from .databricks_executor import _read_databrickscfg
 from .datamodel import OSEnvSandboxSpec, OSEnvSpec
 from .executor import (
+    ENDS_TURN_TOOLS,
     Executor,
     ExecutorConfig,
     ExecutorError,
     ExecutorEvent,
     Message,
     ReasoningChunk,
+    SteerOffer,
+    SteerOutcome,
     TextChunk,
     ToolCallComplete,
     ToolCallRequest,
@@ -352,7 +355,7 @@ class _ToolServer:
             if not isinstance(resolved, dict):
                 resolved = {"result": resolved}
             # ``terminate`` is Pi's own stop primitive: no follow-up model call after this tool.
-            if result_ends_turn(resolved):
+            if result_ends_turn(name, resolved):
                 return {"result": resolved, "terminate": True}
             return {"result": resolved}
         except Exception as exc:  # noqa: BLE001 — tool errors are surfaced via the JSON response envelope
@@ -471,6 +474,7 @@ def _generate_extension_js(port: int, tool_schemas: list[ToolSpec], token: str) 
     tools_json = json.dumps(descriptors, indent=2)
     # json.dumps so the secret is correctly JS-string-escaped.
     token_json = json.dumps(token)
+    ends_turn_json = json.dumps(sorted(ENDS_TURN_TOOLS))
 
     return f"""\
 // Auto-generated Omnigent tool bridge extension for Pi.
@@ -481,6 +485,10 @@ const TOOLS = {tools_json};
 const BRIDGED = new Set(TOOLS.map((t) => t.name));
 const PORT = {port};
 const TOKEN = {token_json};
+/** Card tools whose own result may end the turn (Omnigent's ENDS_TURN_TOOLS). */
+const ENDS_TURN = new Set({ends_turn_json});
+/** Ids of the calls batched with such a card: they agree to end the turn with it. */
+const CARD_BATCH = new Set();
 
 /** Send a tool call request over TCP and return the result. */
 function callTool(toolName, args, callId) {{
@@ -590,6 +598,17 @@ module.exports = function(pi) {{
     }}
   }});
 
+  // Pi ends a turn only when every result in the batch says ``terminate``. A card that ends
+  // the turn decides by its own result; the bridged calls batched with it agree, so the turn
+  // ends after the batch, as on every harness.
+  pi.on("message_end", (event) => {{
+    const message = event && event.message;
+    if (!message || message.role !== "assistant" || !Array.isArray(message.content)) return;
+    const calls = message.content.filter((part) => part && part.type === "toolCall");
+    if (!calls.some((call) => ENDS_TURN.has(call.name))) return;
+    for (const call of calls) if (!ENDS_TURN.has(call.name)) CARD_BATCH.add(call.id);
+  }});
+
   for (const tool of TOOLS) {{
     // Pi passes tool.parameters directly to the LLM as JSON Schema, so we
     // can use the Omnigent schema as-is without TypeBox conversion.
@@ -600,7 +619,9 @@ module.exports = function(pi) {{
       promptSnippet: tool.promptSnippet || tool.description,
       parameters: tool.parameters || {{ type: "object", properties: {{}} }},
       async execute(toolCallId, _params, _signal, _onUpdate, _ctx) {{
-        return callTool(tool.name, _params, toolCallId);
+        const result = await callTool(tool.name, _params, toolCallId);
+        if (CARD_BATCH.delete(toolCallId)) result.terminate = true;
+        return result;
       }},
     }});
   }}
@@ -1326,6 +1347,27 @@ class _PiRpcSession:
 # ---------------------------------------------------------------------------
 
 
+def _pi_user_text(content: object) -> str:
+    """A Pi message's text the way Pi reads it: the string, or its text blocks joined."""
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    return "".join(
+        str(block.get("text", ""))
+        for block in content
+        if isinstance(block, dict) and block.get("type") == "text"
+    )
+
+
+@dataclass(frozen=True)
+class _PendingSteer:
+    """A steer sent to Pi: the caller's id and the text Pi will deliver."""
+
+    steer_id: str
+    text: str
+
+
 @dataclass
 class _PiSessionState:
     rpc: _PiRpcSession | None = None
@@ -1335,6 +1377,11 @@ class _PiSessionState:
     # so an unchanged effort costs no RPC and a changed one is applied live.
     applied_thinking: str | None = None
     _has_sent_prompt: bool = False
+    # True while a turn's agent loop runs (prompt sent, ``agent_end`` not yet read): only
+    # then is a steer offered to Pi.
+    turn_streaming: bool = False
+    # Steers Pi has not delivered yet, by RPC command id, in the order they were sent.
+    pending_steers: dict[str, _PendingSteer] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -2047,32 +2094,103 @@ class PiExecutor(Executor):
     def supports_live_message_queue(self) -> bool:
         return True
 
-    async def enqueue_session_message(  # type: ignore[explicit-any]
+    async def steer_session_message(
         self,
         session_key: str,
-        content: str | dict[str, Any],
-    ) -> bool:
-        """Send a steering message to Pi mid-turn.
+        text: str,
+        *,
+        steer_id: str,
+    ) -> SteerOffer:
+        """Offer a message to Pi's running turn (RPC ``steer``).
 
-        Pi's RPC ``steer`` command injects a user message between tool calls
-        within the current agent turn, so the model sees it before its next
-        response.
+        Pi queues it and delivers it after the current tool calls, before its next model
+        call. Its ``response`` only says it was queued, so the outcome comes from the turn's
+        own stream (see :meth:`_steer_outcomes_for`): the user ``message_start`` Pi emits as
+        it delivers the text, or, once the agent ends, what ``clear_queue`` takes back.
+        Refused when no turn's agent loop is running.
         """
         state = self._session_states.get(session_key)
-        if state is None or state.rpc is None:
-            return False
-        text = content if isinstance(content, str) else str(content)
+        if state is None or state.rpc is None or not state.turn_streaming:
+            return "refused"
+        command_id = f"steer-{secrets.token_hex(4)}"
+        state.pending_steers[command_id] = _PendingSteer(steer_id=steer_id, text=text)
         try:
-            await state.rpc.send_command(
-                {
-                    "type": "steer",
-                    "message": text,
-                }
+            await asyncio.shield(
+                state.rpc.send_command({"id": command_id, "type": "steer", "message": text})
             )
-            return True
-        except Exception as exc:  # noqa: BLE001 — steer is best-effort; any failure surfaces as False
-            logger.debug("PiExecutor: failed to enqueue steer message: %s", exc)
-            return False
+        except asyncio.CancelledError:
+            raise  # the write finishes; the turn's stream settles it
+        except Exception as exc:  # noqa: BLE001 — a failed write is a refusal
+            state.pending_steers.pop(command_id, None)
+            logger.debug("PiExecutor: failed to send steer: %s", exc)
+            return "refused"
+        return "pending"
+
+    @staticmethod
+    def _steer_outcomes_for(
+        state: _PiSessionState, event: dict[str, Any]
+    ) -> list[SteerOutcome] | None:  # type: ignore[explicit-any]
+        """Steer outcomes one Pi stdout event settles; ``None`` when it is not about a steer.
+
+        A failed ``response`` to a steer command refuses it. A user ``message_start`` whose
+        text is a pending steer's is Pi delivering it into the turn (Pi matches its own
+        steering queue the same way).
+
+        Limit: Pi's RPC carries no id on a delivered message (0.87), so correlation is by
+        text, first in first out. Two pending steers with the same text are interchangeable
+        in what the model reads; only which of their ids is reported first can swap. The
+        ``clear_queue`` settlement at ``agent_end`` relies on the same first-in-first-out
+        order of Pi's steering queue.
+        """
+        if event.get("type") == "response" and event.get("command") == "steer":
+            pending = state.pending_steers.get(str(event.get("id")))
+            if pending is None or event.get("success", True):
+                return []
+            state.pending_steers.pop(str(event.get("id")), None)
+            logger.warning("PiExecutor: Pi refused a steer: %s", event.get("error"))
+            return [SteerOutcome(steer_id=pending.steer_id, taken=False)]
+        if event.get("type") == "message_start":
+            message = event.get("message")
+            if not isinstance(message, dict) or message.get("role") != "user":
+                return None
+            text = _pi_user_text(message.get("content"))
+            for command_id, pending in state.pending_steers.items():
+                if pending.text == text:
+                    del state.pending_steers[command_id]
+                    return [SteerOutcome(steer_id=pending.steer_id, taken=True)]
+            return None
+        return None
+
+    async def _settle_steers_at_agent_end(
+        self, session_key: str, state: _PiSessionState, rpc: _PiRpcSession
+    ) -> list[SteerOutcome]:
+        """Settle the steers still pending when Pi's agent loop ended.
+
+        Pi keeps an undelivered steer queued for its next prompt, while the caller replays
+        its own copy as the next turn, so the queue is cleared here. ``clear_queue`` answers
+        with the steering texts it removed: the last that many pending steers were never
+        delivered (Pi's queue is first in, first out) and are refused; any earlier ones were
+        delivered under an expanded text and are taken. Without an answer Pi is dropped, so
+        nothing it holds can surface twice.
+        """
+        pending = list(state.pending_steers.values())
+        state.pending_steers.clear()
+        if not pending:
+            return []
+        answer = await rpc.request(
+            {"id": f"clear-{secrets.token_hex(4)}", "type": "clear_queue"}, "clear_queue"
+        )
+        data = answer.get("data") if isinstance(answer, dict) else None
+        cleared = data.get("steering") if isinstance(data, dict) else None
+        if not isinstance(cleared, list):
+            logger.warning("PiExecutor: clear_queue unanswered; dropping the Pi process")
+            await self.close_session(session_key)
+            return [SteerOutcome(steer_id=p.steer_id, taken=False) for p in pending]
+        refused_from = max(0, len(pending) - len(cleared))
+        return [
+            SteerOutcome(steer_id=p.steer_id, taken=index < refused_from)
+            for index, p in enumerate(pending)
+        ]
 
     async def close_session(self, session_key: str) -> None:
         state = self._session_states.pop(session_key, None)
@@ -2538,6 +2656,27 @@ class PiExecutor(Executor):
         system_prompt: str,
         config: ExecutorConfig | None = None,
     ) -> AsyncIterator[ExecutorEvent]:
+        session_key = self._session_key(messages)
+        try:
+            async for event in self._run_turn(messages, tools, system_prompt, config):
+                yield event
+        finally:
+            state = self._session_states.get(session_key)
+            if state is not None:
+                state.turn_streaming = False
+                if state.pending_steers:
+                    # The turn ended before Pi's queue was settled: Pi may still hold these
+                    # steers, so it is dropped; the caller refuses what was never reported.
+                    state.pending_steers.clear()
+                    await self.close_session(session_key)
+
+    async def _run_turn(
+        self,
+        messages: list[Message],
+        tools: list[ToolSpec],
+        system_prompt: str,
+        config: ExecutorConfig | None,
+    ) -> AsyncIterator[ExecutorEvent]:
         if self._gateway:
             if self._gateway_host_override is None:
                 creds = _read_databrickscfg(self._databricks_profile)
@@ -2632,6 +2771,10 @@ class PiExecutor(Executor):
         except Exception as exc:  # noqa: BLE001 — executor boundary surfaces prompt-send errors as ExecutorError
             yield ExecutorError(message=f"Failed to send prompt to Pi: {exc}")
             return
+        if state is not None:
+            # Pi's agent loop is running: a steer can join it from here to ``agent_end``.
+            state.pending_steers.clear()
+            state.turn_streaming = True
 
         # Read events until agent_end.
         response_text = ""
@@ -2691,6 +2834,13 @@ class PiExecutor(Executor):
 
             raw_event_type = event.get("type")
             event_type: str | None = raw_event_type if isinstance(raw_event_type, str) else None
+
+            if state is not None:
+                steer_outcomes = self._steer_outcomes_for(state, event)
+                if steer_outcomes is not None:
+                    for outcome in steer_outcomes:
+                        yield outcome
+                    continue
 
             # Skip the command-ack response.
             if event_type == "response":
@@ -2814,6 +2964,10 @@ class PiExecutor(Executor):
 
             # Agent ended — the turn is complete.
             if event_type == "agent_end":
+                if state is not None:
+                    state.turn_streaming = False
+                    for outcome in await self._settle_steers_at_agent_end(session_key, state, rpc):
+                        yield outcome
                 if pending_error is not None:
                     # Pi reports the provider failure as text only: translate it.
                     yield ExecutorError(

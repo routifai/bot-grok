@@ -32,6 +32,7 @@ from omnigent.inner.executor import (
     ExecutorEvent,
     Message,
     ReasoningChunk,
+    SteerOutcome,
     SubAgentCompleted,
     SubAgentStarted,
     SubAgentToolCall,
@@ -49,6 +50,8 @@ from omnigent.server.schemas import (
     CreateResponseRequest,
     ElicitationRequestParams,
     InjectionConsumedEvent,
+    InjectionOfferedEvent,
+    InjectionRefusedEvent,
     OutputItemDoneEvent,
     OutputTextDeltaEvent,
     ReasoningStartedEvent,
@@ -269,9 +272,11 @@ class ExecutorAdapter(HarnessApp):
 
         user_message = _extract_last_user_message(request.input)
 
+        # Steers offered to the executor whose outcome it has not reported yet, by injection id.
+        offered: set[str] = set()
         # Watcher forwards mid-turn steering injections into the in-flight executor session.
         injection_watcher = asyncio.create_task(
-            self._watch_injections(ctx, executor),
+            self._watch_injections(ctx, executor, offered),
             name=f"executor-adapter-injection-watch:{ctx.response_id}",
         )
         try:
@@ -310,6 +315,11 @@ class ExecutorAdapter(HarnessApp):
                         await executor.interrupt_session(self._session_key)
                         clean_exit = True
                         return
+                    if isinstance(event, SteerOutcome):
+                        if event.steer_id in offered:
+                            offered.discard(event.steer_id)
+                            _report_injection(ctx, event.steer_id, taken=event.taken)
+                        continue
                     # --- Tracing: emit spans per event ---
                     if tctx is not None:
                         if isinstance(event, ToolCallRequest):
@@ -408,6 +418,11 @@ class ExecutorAdapter(HarnessApp):
             injection_watcher.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await injection_watcher
+            # The turn is over: a steer it never reported taking was not read, so the runner
+            # keeps its copy for the next turn.
+            for injection_id in sorted(offered):
+                _report_injection(ctx, injection_id, taken=False)
+            offered.clear()
             if tctx is not None:
                 try:
                     from opentelemetry import trace as otel_trace
@@ -545,11 +560,17 @@ class ExecutorAdapter(HarnessApp):
         finally:
             self._resyncing = False
 
-    async def _watch_injections(self, ctx: TurnContext, executor: Executor) -> None:
-        """Forward mid-turn steering injections into the in-flight executor session.
+    async def _watch_injections(
+        self, ctx: TurnContext, executor: Executor, offered: set[str]
+    ) -> None:
+        """Offer mid-turn steering injections to the in-flight executor session.
 
-        Loops until cancelled by run_turn's finally. Best-effort — a failed or malformed
-        injection logs and continues rather than raising.
+        Loops until cancelled by run_turn's finally. The runner is told how each one ended:
+        ``injection.consumed`` once the executor's running turn took it up,
+        ``injection.refused`` when it did not (the runner then keeps it for the next turn).
+        An executor that learns the outcome later answers ``"pending"``: the id stays in
+        *offered* until its :class:`SteerOutcome` arrives on the turn's events, or the turn
+        ends and run_turn refuses it.
         """
         while True:
             try:
@@ -559,38 +580,48 @@ class ExecutorAdapter(HarnessApp):
             if injection is None:
                 # None signals a sentinel or protocol change; bail to avoid spinning.
                 return
+            # Only a runner-stamped injection has a buffered copy to report on; any other
+            # (e.g. an async completion) is delivered best-effort under a local id.
+            injection_id = getattr(injection, "injection_id", None)
+            steer_id = injection_id or f"local_{uuid.uuid4().hex}"
             text = _extract_user_text(injection.input)
-            if not text:
+            if not text or not _is_text_only(injection.input):
+                # Offered only whole: one that is not plain text runs as a turn instead.
                 _logger.warning(
-                    "skipping in-band injection with no text payload: %r",
+                    "not steering an in-band injection that is not plain text: %r",
                     injection.input,
                 )
+                if injection_id:
+                    _report_injection(ctx, injection_id, taken=False)
                 continue
             if ctx.cancelled.is_set():
                 return
-            try:
-                accepted = await executor.enqueue_session_message(self._session_key, text)
-            except Exception:
-                _logger.exception(
-                    "inner executor.enqueue_session_message failed; in-band injection lost"
-                )
-                continue
-            if not accepted:
-                _logger.warning(
-                    "inner executor refused in-band injection "
-                    "(supports_live_message_queue=False?); LLM will "
-                    "not see the steered message until the next turn"
-                )
-                continue
-            # Echo injection_id so the runner drops the buffered copy and doesn't re-deliver it.
-            injection_id = getattr(injection, "injection_id", None)
             if injection_id:
-                ctx.emit(
-                    InjectionConsumedEvent(
-                        type="injection.consumed",
-                        injection_id=injection_id,
-                    )
+                # Tracked before the call: a cancellation mid-write leaves it for run_turn.
+                offered.add(injection_id)
+            try:
+                offer = await executor.steer_session_message(
+                    self._session_key, text, steer_id=steer_id
                 )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                _logger.exception("inner executor.steer_session_message failed")
+                offer = "refused"
+            if injection_id and offer == "pending" and injection_id in offered:
+                offered_event = InjectionOfferedEvent(
+                    type="injection.offered", injection_id=injection_id
+                )
+                ctx.emit(offered_event)
+            if not injection_id or offer == "pending" or injection_id not in offered:
+                continue  # nothing to report, or settled by its SteerOutcome / the turn's end
+            offered.discard(injection_id)
+            if offer == "refused":
+                _logger.info(
+                    "inner executor refused in-band injection %s; it waits for the next turn",
+                    injection_id,
+                )
+            _report_injection(ctx, injection_id, taken=offer == "taken")
 
     async def _stable_tool_executor(
         self,
@@ -1241,6 +1272,24 @@ def _extract_last_user_message(
             if isinstance(text, str):
                 last_user_text = text
     return last_user_text
+
+
+def _report_injection(ctx: TurnContext, injection_id: str, *, taken: bool) -> None:
+    """Tell the runner whether the running turn took steering injection *injection_id* up."""
+    if taken:
+        ctx.emit(InjectionConsumedEvent(type="injection.consumed", injection_id=injection_id))
+    else:
+        ctx.emit(InjectionRefusedEvent(type="injection.refused", injection_id=injection_id))
+
+
+def _is_text_only(input_value: str | list[dict[str, Any]]) -> bool:
+    """Whether an injection is plain text, so a steer carries all of it."""
+    if isinstance(input_value, str):
+        return True
+    return all(
+        isinstance(block, dict) and block.get("type") in ("input_text", "text")
+        for block in input_value
+    )
 
 
 def _extract_user_text(

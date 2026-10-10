@@ -13,7 +13,7 @@ import json
 import threading
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass, field
-from typing import Any, Protocol, TypeAlias, runtime_checkable
+from typing import Any, Literal, Protocol, TypeAlias, runtime_checkable
 
 from omnigent.runtime.mcp_tool_result import decode_mcp_image_result
 
@@ -318,6 +318,28 @@ class SubAgentToolCall(ExecutorEvent):
     call_id: str
     name: str
     args: ToolArgs = field(default_factory=dict)
+
+
+@dataclass
+class SteerOutcome(ExecutorEvent):
+    """How a message offered with :meth:`Executor.steer_session_message` ended.
+
+    An executor that answered ``"pending"`` yields exactly one of these per offered message
+    before its turn's terminal event.
+
+    :param steer_id: The ``steer_id`` the message was offered with, e.g. ``"inj_ab12"``.
+    :param taken: ``True`` when the running turn took the message up (the model reads it);
+        ``False`` when it did not, so the caller keeps it for the next turn.
+    """
+
+    steer_id: str
+    taken: bool
+
+
+#: An executor's answer to :meth:`Executor.steer_session_message`: ``"taken"`` (the write
+#: itself puts the message in the running turn), ``"pending"`` (a :class:`SteerOutcome` for it
+#: follows in the turn's events) or ``"refused"`` (nothing was delivered).
+SteerOffer: TypeAlias = Literal["taken", "pending", "refused"]
 
 
 @dataclass
@@ -636,36 +658,47 @@ def classify_tool_result(
     return ToolResultClassification(status=ToolCallStatus.SUCCESS, error="")
 
 
-#: A tool result object carrying ``"ends_turn": true`` ends the turn right after that result:
-#: the harness makes no further model call, so whatever the tool showed (a question, chips) is
-#: the turn's last word and the person's reply starts the next turn. Each executor maps it to its
-#: own stop primitive (Pi's ``terminate``, the Claude SDK's ``interrupt``).
+#: A card tool's result carrying ``"ends_turn": true`` ends the turn once its tool batch has
+#: answered: the harness makes no further model call, so the card (a question, chips) is the
+#: turn's last word and the person's reply starts the next turn. Each executor maps it to its
+#: own stop primitive (Pi's ``terminate``, the Claude CLI's ``PostToolBatch`` hook).
 ENDS_TURN_KEY = "ends_turn"
+#: The only tools whose result may end the turn: Omnigent's own card tools that opt in. Any
+#: other tool's output (a file, a web page, shell output) is content, never a stop signal.
+ENDS_TURN_TOOLS = frozenset({"ask_clarification", "suggest_follow_ups"})
+#: The MCP server name Omnigent's own tools are exposed under (``mcp__omnigent__<tool>``).
+_OMNIGENT_MCP_PREFIX = "mcp__omnigent__"
 
 
-def result_ends_turn(result: ToolResult) -> bool:
-    """Whether a successful tool *result* asks to end the turn (:data:`ENDS_TURN_KEY`).
+def is_ends_turn_tool(tool_name: str) -> bool:
+    """Whether *tool_name* (bare, or as Omnigent's MCP server exposes it) may end the turn."""
+    return tool_name.removeprefix(_OMNIGENT_MCP_PREFIX) in ENDS_TURN_TOOLS
 
-    :param result: A tool result in any shape :func:`classify_tool_result` reads: the parsed
-        object, its JSON text, or MCP content blocks ``[{"type": "text", "text": "{...}"}]``.
-    :returns: ``True`` only for a non-error result whose object has ``ends_turn: true``.
+
+def result_ends_turn(tool_name: str, result: ToolResult) -> bool:
+    """Whether a card tool's own result ends the turn (:data:`ENDS_TURN_KEY` at its top level).
+
+    Only a tool in :data:`ENDS_TURN_TOOLS` counts, and only its top-level object is read: the
+    object itself, its JSON text, or one level of MCP text blocks (``[{"type": "text", "text":
+    "{...}"}]``, possibly under ``content``). Nothing nested deeper is looked at.
+
+    :param tool_name: The called tool, bare or ``mcp__omnigent__``-prefixed.
+    :param result: The tool's result as the harness hands it back.
+    :returns: ``True`` only for an opted-in tool whose result says ``ends_turn: true``.
     """
-    if classify_tool_result(result).error:
+    if not is_ends_turn_tool(tool_name):
         return False
+    if isinstance(result, dict) and isinstance(result.get("content"), list):
+        result = result["content"]
+    if isinstance(result, list):
+        texts = [b.get("text") for b in result if isinstance(b, dict) and b.get("type") == "text"]
+        result = texts[0] if len(texts) == 1 else None
     if isinstance(result, str):
         try:
             result = json.loads(result)
         except (TypeError, json.JSONDecodeError):
             return False
-    if isinstance(result, list):
-        return any(
-            isinstance(block, dict) and result_ends_turn(block.get("text", "")) for block in result
-        )
-    if isinstance(result, dict):
-        if result.get(ENDS_TURN_KEY) is True:
-            return True
-        return any(result_ends_turn(result[k]) for k in ("content", "result") if k in result)
-    return False
+    return isinstance(result, dict) and result.get(ENDS_TURN_KEY) is True
 
 
 # ---------------------------------------------------------------------------
@@ -731,6 +764,24 @@ class Executor:
     async def enqueue_session_message(self, session_key: str, content: EnqueuedContent) -> bool:  # noqa: ARG002 — default no-op; subclasses override to support live queueing
         """Send a new user message to a live session without interrupting it, if supported."""
         return False
+
+    async def steer_session_message(
+        self, session_key: str, text: str, *, steer_id: str
+    ) -> SteerOffer:
+        """Offer a message to the turn that is running now (a steer).
+
+        The default writes it with :meth:`enqueue_session_message`, whose acceptance is the
+        take-up. An executor that learns later whether its running turn read the message
+        answers ``"pending"`` and yields one :class:`SteerOutcome` with ``steer_id`` before the
+        turn ends.
+
+        :param session_key: The Omnigent session the turn belongs to.
+        :param text: The message: plain text (only a message that is all text is steered).
+        :param steer_id: Caller's id for the message, echoed on its :class:`SteerOutcome`.
+        :returns: ``"taken"``, ``"pending"`` or ``"refused"`` (see :data:`SteerOffer`).
+        """
+        del steer_id  # only an executor that answers "pending" echoes it
+        return "taken" if await self.enqueue_session_message(session_key, text) else "refused"
 
     def supports_live_message_queue(self) -> bool:
         """Whether ``enqueue_session_message()`` is expected to work during a running turn."""

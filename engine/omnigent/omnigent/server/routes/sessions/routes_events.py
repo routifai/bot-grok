@@ -2199,6 +2199,11 @@ def register_events_routes(
                 )
             )
         ):
+            if body.if_running:
+                # The runner is not up, so no turn is running to take it.
+                raise OmnigentError(
+                    "No turn is running to take this message.", code=ErrorCode.CONFLICT
+                )
             stored = await _persist_user_event_item(
                 session_id, conv, body, conversation_store, created_by=created_by
             )
@@ -2761,6 +2766,10 @@ def register_events_routes(
         response: dict[str, Any] = {"queued": True}
         if dispatch.item_id is not None:
             response["item_id"] = dispatch.item_id
+        if dispatch.turn is not None:
+            # The runner's number for the turn the message started or joined: its
+            # ``session.status`` edges carry it, so a sender can tell that turn's end.
+            response["turn"] = dispatch.turn
         # Native-terminal web message: hand back the pending-input id. It
         # identifies the snapshot's replayed bubble on rebind and is the
         # cleared_pending_id the consume event carries to drop it. Clients

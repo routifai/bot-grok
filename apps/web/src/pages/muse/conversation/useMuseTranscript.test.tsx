@@ -100,3 +100,32 @@ it("offers the earlier history after a clear, pages it before the reset, and dro
   expect(latest.messages).toEqual([]);
   expect(latest.canShowEarlier).toBe(true);
 });
+
+it("reads again when the engine says how a message sent mid-turn was taken", async () => {
+  api.chats.transcript.mockResolvedValueOnce(page(["a"]));
+  await mountHook();
+  expect(api.chats.transcript).toHaveBeenCalledTimes(1);
+
+  api.chats.transcript.mockResolvedValueOnce(page(["a", "b"]));
+  await act(async () => {
+    family.listener?.({
+      type: "messageDelivery",
+      chatId: "conv",
+      itemId: "b",
+    });
+    await vi.advanceTimersByTimeAsync(200);
+  });
+  expect(api.chats.transcript).toHaveBeenCalledTimes(2);
+  expect(latest.messages?.map((m) => m.id)).toEqual(["a", "b"]);
+
+  // Another chat's delivery is not this Conversation's business.
+  await act(async () => {
+    family.listener?.({
+      type: "messageDelivery",
+      chatId: "other",
+      itemId: "x",
+    });
+    await vi.advanceTimersByTimeAsync(200);
+  });
+  expect(api.chats.transcript).toHaveBeenCalledTimes(2);
+});

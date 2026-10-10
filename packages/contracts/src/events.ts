@@ -365,6 +365,8 @@ export const ThreadMessageSchema = z.object({
   /** `chats.transcript` only: the forks started from this message, oldest first. Present on
    * every message the engine can anchor a fork to (empty when none). */
   forks: z.array(MessageForkSchema).optional(),
+  /** `chats.transcript` only: `queued` while this message waits behind the running turn. */
+  delivered: z.literal("queued").optional(),
 });
 export type ThreadMessage = z.infer<typeof ThreadMessageSchema>;
 

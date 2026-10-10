@@ -1950,7 +1950,7 @@ async def test_a_routing_outage_still_delivers_the_turn(
     )
     with patch("omnigent.runtime._globals._caps", new=_outage_caps(failure)):
         async with echo_runner_client() as runner_client:
-            item_id = await orchestration_module._forward_event_to_runner(
+            forwarded = await orchestration_module._forward_event_to_runner(
                 conv.id,
                 conv,
                 body,
@@ -1958,7 +1958,7 @@ async def test_a_routing_outage_still_delivers_the_turn(
                 runner_client,
             )
     # The turn happened.
-    assert item_id
+    assert forwarded.item_id
 
     # And the outage is on the record rather than swallowed.
     decisions = _routing_decisions(conv_store, conv.id)

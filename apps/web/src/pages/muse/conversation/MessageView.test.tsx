@@ -4,7 +4,7 @@ import type { ThreadMessage } from "@nova/contracts";
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { registerAttachmentParser } from "../../../lib/composer-attachments";
 
 vi.mock("react-dom/client", async (orig) =>
@@ -248,4 +248,31 @@ it("falls back to the plain chip when the image cannot be read, and omits an emp
   expect(chip?.textContent).toBe("photo (2).jpg");
   expect(chip?.querySelector("img")).toBeNull();
   expect(host.querySelector('[data-testid="message-user-bubble"]')).toBeNull();
+});
+
+describe("a message sent while Nova was working", () => {
+  const userMessage = (delivered?: "queued"): ThreadMessage => ({
+    id: "u1",
+    threadId: "s1",
+    seq: 1,
+    role: "user",
+    blocks: [{ kind: "text", text: "just redo the deck again" }],
+    createdAt: "2026-10-01T10:00:00.000Z",
+    ...(delivered ? { delivered } : {}),
+  });
+
+  it("says Nova will see it after the current step while it is queued", async () => {
+    const host = await mount(userMessage("queued"));
+    expect(host.querySelector('[data-testid="message-queued-note"]')?.textContent).toBe(
+      "Nova will see this after the current step",
+    );
+    expect(host.querySelector('[data-testid="message-user-bubble"]')?.textContent).toBe(
+      "just redo the deck again",
+    );
+  });
+
+  it("has no label on an ordinary message", async () => {
+    const host = await mount(userMessage());
+    expect(host.querySelector('[data-testid="message-queued-note"]')).toBeNull();
+  });
 });
