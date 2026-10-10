@@ -319,6 +319,7 @@ export function LibraryScreen({
           {apps && total > 0 ? (
             <SegmentedControl
               label={t`Visibility`}
+              className="shrink-0 [&>button]:flex-none"
               value={selectedKind}
               onChange={setSelectedKind}
               options={[

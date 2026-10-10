@@ -86,12 +86,12 @@ import {
   EmptyConversationSuggestions,
 } from "./muse/chrome/EmptyConversation";
 import { Home } from "./muse/chrome/Home";
+import { HomeActivity } from "./muse/chrome/HomeActivity";
 import { MuseSidebar, useSidebarCollapsed } from "./muse/chrome/MuseSidebar";
 import { museMode } from "./muse/chrome/museMode";
 import { BotSettingsPanel, GroupSettingsPanel } from "./muse/chrome/PanelForms";
 import { type ChatProject, useChatProject } from "./muse/chrome/ProjectChip";
 import type { Panel } from "./muse/chrome/panel";
-import { RecentChats } from "./muse/chrome/RecentChats";
 import { SidePanelHeader } from "./muse/chrome/SidePanelHeader";
 import { useBotRoster } from "./muse/chrome/useBotRoster";
 import { useBrowserNotifications } from "./muse/chrome/useBrowserNotifications";
@@ -881,38 +881,12 @@ export function ShellPage() {
           dock={<ConnectedDock botId={active.id} active={dockSheet} onSelect={setDockSheet} />}
           composer={composerEl}
           onOpenSettings={() => openSettings("general")}
-          recent={
-            <RecentChats
-              state={chatList.state}
-              conversationCurrent
-              conversationWorking={composerRunning}
-              activeChatId={null}
-              onOpenConversation={() => {
-                forks.reset();
-                setActiveChat(null);
-                setHome(false);
-              }}
-              onOpenChat={(chat) => {
-                setActiveChat(chat);
-                setHome(false);
-              }}
-              onNewDraft={() => {
-                setActiveChat("draft");
-                setHome(false);
-              }}
-              forks={forks.rows}
-              onOpenFork={(row) => {
-                setActiveChat(null);
-                setHome(false);
-                forks.openRow(row);
-              }}
-              onShowForks={(filter) => {
-                setActiveChat(null);
-                setHome(false);
-                forks.showForks(filter);
-              }}
-            />
-          }
+          recent={<HomeActivity botId={active.id} />}
+          onOpenConversation={() => {
+            forks.reset();
+            setActiveChat(null);
+            setHome(false);
+          }}
         />
       ) : null}
       <ComputerUpdateProgress

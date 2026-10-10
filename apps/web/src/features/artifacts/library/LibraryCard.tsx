@@ -50,7 +50,7 @@ export function LibraryCard({
         ) : showVisibility && !artifact.publish ? (
           <span
             data-testid="private-pill"
-            className="inline-flex shrink-0 items-center rounded-full bg-foreground/10 px-2 py-0.5 text-[11px] font-medium text-ink-2"
+            className="inline-flex shrink-0 items-center rounded-full bg-popover/85 px-2 py-0.5 text-[11px] font-medium text-foreground backdrop-blur-sm"
           >
             {t`Private`}
           </span>

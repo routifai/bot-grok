@@ -18,7 +18,7 @@ import { DockSheet, DockSheetHeader } from "../../pages/muse/chrome/DockSheet";
 import { EmptyState, PRIMARY_BUTTON, QUIET_BUTTON } from "../../pages/muse/ui";
 import { CardSkeletonList } from "../../pages/muse/ui/CardSkeleton";
 import { describeSchedule, WEEKDAYS } from "./schedule";
-import { useAutomations } from "./useAutomations";
+import { type AutomationsWire, useAutomations } from "./useAutomations";
 
 const FIELD =
   "min-h-11 w-full rounded-xl border border-glass-line bg-black/20 px-3.5 text-[14px] text-foreground placeholder:text-ink-2";
@@ -258,13 +258,16 @@ export function AutomationsSheet({
   botId,
   open,
   onClose,
+  wire,
 }: {
   botId: string;
   open: boolean;
   onClose: () => void;
+  /** Dev previews pass their own; the app uses the live RPC. */
+  wire?: AutomationsWire;
 }) {
   const { t } = useLingui();
-  const { state, create, setEnabled, runNow, remove } = useAutomations(botId, open);
+  const { state, create, setEnabled, runNow, remove } = useAutomations(botId, open, wire);
   const [creating, setCreating] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 

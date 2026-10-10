@@ -59,6 +59,7 @@ export function WaitingSheet({
       <DockSheetHeader title={t`Inbox`} subtitle={t`I ask before doing anything I can't undo.`}>
         <SegmentedControl
           label={t`Inbox filter`}
+          className="shrink-0 [&>button]:flex-none"
           value={tab}
           onChange={setTab}
           options={[

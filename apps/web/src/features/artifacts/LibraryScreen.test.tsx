@@ -243,9 +243,7 @@ it("tapping an empty-state suggestion chip calls onSendIdea with its text", asyn
   try {
     await act(async () => {
       await vi.waitFor(() => {
-        expect(page.container.textContent).toContain(
-          "Draft a one-pager on our new product",
-        );
+        expect(page.container.textContent).toContain("Draft a one-pager on our new product");
       });
     });
     const button = findButton(page.container, "Draft a one-pager on our new product");

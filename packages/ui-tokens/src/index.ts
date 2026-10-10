@@ -585,7 +585,7 @@ const novaDark = {
   separator: "rgba(255, 255, 255, 0.12)",
   "selection-strong": "rgba(41, 151, 255, 0.18)",
   tint: "#0A84FF",
-  "tint-ink": "#64B4FF",
+  "tint-ink": "#9FDCF5",
   ok: "#30D158",
   warn: "#FF9F0A",
   alert: "#FF453A",

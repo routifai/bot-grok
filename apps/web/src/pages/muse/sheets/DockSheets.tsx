@@ -106,6 +106,7 @@ function FilesSheet({
       <DockSheetHeader title={t`Files`} subtitle={t`Your workspace, and what I made for you.`}>
         <SegmentedControl
           label={t`Files view`}
+          className="shrink-0 [&>button]:flex-none"
           value={view}
           onChange={setView}
           options={[

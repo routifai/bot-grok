@@ -13,6 +13,7 @@ import {
   showSessionUnavailable,
 } from "./lib/session-gate";
 import { ActivityPreviewPage } from "./pages/dev/ActivityPreviewPage";
+import { AutomationsPreviewPage } from "./pages/dev/AutomationsPreviewPage";
 import { CanvasPreviewPage } from "./pages/dev/CanvasPreviewPage";
 import { CardsPreviewPage } from "./pages/dev/CardsPreviewPage";
 import { ChartPreviewPage } from "./pages/dev/ChartPreviewPage";
@@ -86,6 +87,9 @@ export function App() {
   }
   if (import.meta.env.DEV && window.location.pathname === "/dev/deck") {
     return <DeckPreviewPage />;
+  }
+  if (import.meta.env.DEV && window.location.pathname === "/dev/automations") {
+    return <AutomationsPreviewPage />;
   }
   if (import.meta.env.DEV && window.location.pathname === "/dev/memory") {
     return <MemoryPreviewPage />;

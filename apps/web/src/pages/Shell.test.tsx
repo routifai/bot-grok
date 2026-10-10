@@ -300,7 +300,7 @@ async function renderShell(initialBootstrap: ReturnType<typeof bootstrap>) {
   };
 }
 
-it("starts on the home screen: the greeting, the dock and recent chats", async () => {
+it("starts on the home screen: the greeting, the dock and the activity card", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const page = await renderShell(bootstrap({ me: me() }));
   try {
@@ -312,7 +312,7 @@ it("starts on the home screen: the greeting, the dock and recent chats", async (
       el.getAttribute("aria-label"),
     );
     expect(labels).toEqual(["Inbox", "Mini Apps", "Automations", "Files"]);
-    expect(home?.querySelector('[data-testid="recent-chats"]')).toBeTruthy();
+    expect(home?.querySelector('[data-testid="home-activity"]')).toBeTruthy();
     expect(page.container.querySelector('[data-testid="bots-sidebar"]')).toBeNull();
     expect(page.container.querySelector('[data-testid="create-menu-trigger"]')).toBeNull();
   } finally {
@@ -320,13 +320,13 @@ it("starts on the home screen: the greeting, the dock and recent chats", async (
   }
 });
 
-it("opens the Conversation with its sidebar from the recent chats", async () => {
+it("opens the Conversation with its sidebar from the home", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const page = await renderShell(bootstrap({ me: me() }));
   try {
-    const open = [
-      ...(page.container.querySelectorAll('[data-testid="recent-chats"] button') ?? []),
-    ].find((el) => el.textContent?.includes("Conversation"));
+    const open = [...(page.container.querySelectorAll('[data-testid="home"] button') ?? [])].find(
+      (el) => el.textContent?.includes("Conversation"),
+    );
     await act(async () => (open as HTMLButtonElement | undefined)?.click());
     expect(page.container.querySelector('[data-testid="home"]')).toBeNull();
     const rail = page.container.querySelector('[data-testid="app-rail"]');
