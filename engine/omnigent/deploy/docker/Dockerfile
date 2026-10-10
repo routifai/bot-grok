@@ -54,6 +54,10 @@
 #                --build-arg PYPI_INDEX_URL=https://pypi-proxy.example.com/simple \
 #                --build-arg NPM_CONFIG_REGISTRY=https://npm-proxy.example.com .
 #
+# A TLS-inspecting proxy's CA goes in as the optional build secret `ca_bundle` (a PEM file):
+#   --secret id=ca_bundle,src=/path/to/ca-bundle.pem
+# NODE_IMAGE / PYTHON_IMAGE point the base images at a mirrored registry.
+#
 # Or just use the bundled compose file (Postgres included):
 #
 #   cd deploy/docker && docker compose up -d
@@ -61,14 +65,9 @@
 # Must satisfy pyproject requires-python (>=3.12); 3.11 fails dependency resolution.
 ARG PYTHON_VERSION=3.12
 ARG NODE_VERSION=22
-# The Python base of the builder, host and server stages. Override it to use a mirrored or
-# company-approved image; it must provide `python` and `pip` on PATH and an apt-based userland.
+# Base images. Override them to use a mirrored or company-approved registry.
+ARG NODE_IMAGE=node:${NODE_VERSION}-slim
 ARG PYTHON_IMAGE=python:${PYTHON_VERSION}-slim
-
-# Optional downstream files (agent bundles, config templates, a start script) baked into the
-# server image at /opt/bundle. Empty by default; fill it with `--build-context bundle=<dir>`
-# (Compose: build.additional_contexts).
-FROM scratch AS bundle
 
 # ── Web UI builder ──────────────────────────────────────
 # Builds the web SPA so `docker build` works from a clean checkout —
@@ -80,9 +79,17 @@ FROM scratch AS bundle
 #
 # Behind a corporate npm proxy, pass it through:
 #   --build-arg NPM_CONFIG_REGISTRY=https://npm-proxy.example.com
-FROM node:${NODE_VERSION}-slim AS web-builder
+FROM ${NODE_IMAGE} AS web-builder
 ARG NPM_CONFIG_REGISTRY=
 ENV NPM_CONFIG_REGISTRY=${NPM_CONFIG_REGISTRY}
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+# Optional company CA (build secret `ca_bundle`, a PEM file): added to the system trust store
+# for the downloads below. Without the secret this is a no-op.
+RUN --mount=type=secret,id=ca_bundle,target=/usr/local/share/ca-certificates/ca_bundle.crt,required=false \
+    if [ -s /usr/local/share/ca-certificates/ca_bundle.crt ]; then update-ca-certificates; fi
+ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 WORKDIR /web
 
 # Workspace manifests + lockfile first so the install layer caches across pure
@@ -112,8 +119,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends build-essential \
+ && apt-get install -y --no-install-recommends build-essential ca-certificates \
  && rm -rf /var/lib/apt/lists/*
+# Optional company CA (build secret `ca_bundle`, a PEM file): added to the system trust store
+# for the downloads below. Without the secret this is a no-op.
+RUN --mount=type=secret,id=ca_bundle,target=/usr/local/share/ca-certificates/ca_bundle.crt,required=false \
+    if [ -s /usr/local/share/ca-certificates/ca_bundle.crt ]; then update-ca-certificates; fi
+ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt \
+    UV_SYSTEM_CERTS=true \
+    UV_NATIVE_TLS=true \
+    PIP_CERT=/etc/ssl/certs/ca-certificates.crt \
+    REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 
 RUN pip install --index-url ${PYPI_INDEX_URL} --no-cache-dir uv
 
@@ -138,7 +154,9 @@ COPY examples/ ./examples/
 # tells uv to install into this venv (not the slim image's system
 # Python) — without it, uv falls back to system Python and the
 # copied /opt/venv lands in the runtime stage empty.
-RUN python -m venv /opt/venv
+# Some bases (Ubuntu's python3) leave out ensurepip, which `python -m venv` needs; uv makes it then.
+RUN python -m venv /opt/venv \
+ || { rm -rf /opt/venv && uv venv --seed --index-url "${PYPI_INDEX_URL}" --python "$(command -v python)" /opt/venv; }
 ENV VIRTUAL_ENV=/opt/venv \
     PATH="/opt/venv/bin:${PATH}"
 
@@ -178,7 +196,7 @@ RUN if [ -n "${OMNIGENT_EXTRAS}" ]; then \
 # ── Node alias stage ─────────────────────────────────────
 # Pure alias so the host stage can COPY node out of a version-pinned
 # image; contributes no layers of its own.
-FROM node:${NODE_VERSION}-slim AS node-runtime
+FROM ${NODE_IMAGE} AS node-runtime
 
 # ── Host runtime (`--target host`) ──────────────────────
 # Prebaked Omnigent host for remote sandboxes: full omnigent install,
@@ -228,6 +246,15 @@ RUN apt-get update \
       git tmux procps lsof bubblewrap curl ca-certificates unzip bzip2 \
       iproute2 nftables \
  && rm -rf /var/lib/apt/lists/*
+# Optional company CA (build secret `ca_bundle`, a PEM file): added to the system trust store
+# for the downloads below. Without the secret this is a no-op.
+RUN --mount=type=secret,id=ca_bundle,target=/usr/local/share/ca-certificates/ca_bundle.crt,required=false \
+    if [ -s /usr/local/share/ca-certificates/ca_bundle.crt ]; then update-ca-certificates; fi
+ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt \
+    UV_SYSTEM_CERTS=true \
+    UV_NATIVE_TLS=true \
+    PIP_CERT=/etc/ssl/certs/ca-certificates.crt \
+    REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 
 # OpenShell-required non-root user (see the header note). UID/GID in the high
 # range per OpenShell's bring-your-own-container guidance, so that without
@@ -264,16 +291,13 @@ RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 # two in sync. Unpinned on purpose: the official image is rebuilt by
 # CI, so it tracks the same "latest" a laptop install would get.
 #
-# BAKED_HARNESSES picks which of the default CLIs the image carries (default: all of them); a
-# deployment that only runs some harnesses leaves the rest out, e.g. BAKED_HARNESSES="claude pi".
-ARG BAKED_HARNESSES="claude codex pi kiro agy"
-RUN set -eu; pkgs=""; \
-    for h in $BAKED_HARNESSES; do case "$h" in \
-      claude) pkgs="$pkgs @anthropic-ai/claude-code" ;; \
-      codex) pkgs="$pkgs @openai/codex" ;; \
-      pi) pkgs="$pkgs @earendil-works/pi-coding-agent" ;; \
-    esac; done; \
-    if [ -n "$pkgs" ]; then npm install -g --no-audit --no-fund $pkgs && npm cache clean --force; fi
+# MINIMAL_HOST=1 bakes only claude and pi: no codex here, and no kiro-cli or agy below.
+ARG MINIMAL_HOST=0
+RUN npm install -g --no-audit --no-fund \
+      @anthropic-ai/claude-code \
+      $(if [ "$MINIMAL_HOST" != "1" ]; then echo @openai/codex; fi) \
+      @earendil-works/pi-coding-agent \
+ && npm cache clean --force
 
 # Kiro CLI is not published as an npm package, and its installer has NO version
 # flag — `curl …/install | bash` always fetches `latest`, so the image was
@@ -294,7 +318,7 @@ ARG KIRO_CLI_VERSION=2.10.0
 ARG KIRO_CLI_SHA256_AMD64=be9d8b6d7c44f93a83ca22466043d98ad058e6ed3c12fffd068f3fb8a60b3b70
 ARG KIRO_CLI_SHA256_ARM64=0afb37399b9e2847c2f2e3f5d9052c8bc52bbf1e30401ea284a602661bce34bc
 RUN set -eu; \
-    case " $BAKED_HARNESSES " in *" kiro "*) ;; *) echo "kiro-cli not baked"; exit 0 ;; esac; \
+    if [ "$MINIMAL_HOST" = "1" ]; then echo "Skipping Kiro CLI for minimal host"; exit 0; fi; \
     case "$(uname -m)" in \
       x86_64)  asset="kirocli-x86_64-linux.zip";  sha="$KIRO_CLI_SHA256_AMD64" ;; \
       aarch64) asset="kirocli-aarch64-linux.zip"; sha="$KIRO_CLI_SHA256_ARM64" ;; \
@@ -344,7 +368,7 @@ ENV AGY_VERSION=${AGY_VERSION} \
     AGY_SHA256_AMD64=${AGY_SHA256_AMD64} \
     AGY_SHA256_ARM64=${AGY_SHA256_ARM64}
 RUN set -eu; \
-    case " $BAKED_HARNESSES " in *" agy "*) ;; *) echo "agy not baked"; exit 0 ;; esac; \
+    if [ "$MINIMAL_HOST" = "1" ]; then echo "Skipping agy for minimal host"; exit 0; fi; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
       amd64) asset="agy_cli_linux_x64.tar.gz"; sha="$AGY_SHA256_AMD64" ;; \
@@ -446,6 +470,15 @@ ENV PYTHONUNBUFFERED=1 \
 RUN apt-get update \
  && apt-get install -y --no-install-recommends curl ca-certificates \
  && rm -rf /var/lib/apt/lists/*
+# Optional company CA (build secret `ca_bundle`, a PEM file): added to the system trust store
+# for the downloads below. Without the secret this is a no-op.
+RUN --mount=type=secret,id=ca_bundle,target=/usr/local/share/ca-certificates/ca_bundle.crt,required=false \
+    if [ -s /usr/local/share/ca-certificates/ca_bundle.crt ]; then update-ca-certificates; fi
+ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt \
+    UV_SYSTEM_CERTS=true \
+    UV_NATIVE_TLS=true \
+    PIP_CERT=/etc/ssl/certs/ca-certificates.crt \
+    REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 
 # Preserve /build/ in the runtime stage — the venv's editable install
 # .pth files reference /build/omnigent and /build/sdks/* by absolute
@@ -453,7 +486,6 @@ RUN apt-get update \
 COPY --from=server-builder /opt/venv /opt/venv
 COPY --from=server-builder /build /build
 COPY deploy/docker/entrypoint.py /app/entrypoint.py
-COPY --from=bundle / /opt/bundle/
 
 WORKDIR /app
 
