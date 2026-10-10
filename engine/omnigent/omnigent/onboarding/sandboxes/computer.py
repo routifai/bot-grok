@@ -244,7 +244,7 @@ class ComputerSandboxLauncher(RecordingMixin, ExecModelHostLauncher):
 
     @property
     def capabilities(self) -> SandboxCapabilities:
-        return SandboxCapabilities(managed_launch=True, screen=True, recording=True)
+        return SandboxCapabilities(managed_launch=True, screen=False, recording=False)
 
     def prepare_for_launch(
         self,
@@ -504,17 +504,6 @@ class ComputerSandboxLauncher(RecordingMixin, ExecModelHostLauncher):
         body = self._screen_mode(sandbox_id, {"interactive": False, "revokeControl": False})
         display = body.get("display")
         return display if isinstance(display, str) and display else _FALLBACK_DISPLAY
-
-    def start_host(self, sandbox_id: str, **kwargs: Any) -> str:
-        """
-        Start the host with ``DISPLAY`` pointing at the Muse's screen.
-
-        The display is forwarded to every runner (and from there to GUI tools) through the
-        standard ``runner_env`` passthrough, so the Muse acts on the screen the person watches.
-        """
-        runner_env = dict(kwargs.pop("runner_env", None) or {})
-        runner_env["DISPLAY"] = self.ensure_display(sandbox_id)
-        return super().start_host(sandbox_id, runner_env=runner_env, **kwargs)
 
     def screen_url(
         self,

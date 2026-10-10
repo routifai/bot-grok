@@ -18,17 +18,12 @@ const here = dirname(fileURLToPath(import.meta.url));
 const AGENTS_DIR = process.env.NOVA_RENDER_AGENTS_DIR || join(here, "agents");
 /** One entry per Muse bundle. The engine's `OMNIGENT_SUPERCHAT_DEFAULT_AGENT` (`nova-claude` |
  * `nova-pi`) picks which one a new Muse runs on (ADR 0009): this script renders BOTH every run
- * from the same templates. The choice is total: every Sub-agent Type (worker, subworker, goal,
- * teacher) of a bundle runs on that bundle's harness, so the Muse, its Helpers and
+ * from the same templates. The choice is total: every Sub-agent Type (worker, subworker) of a bundle runs on that bundle's harness, so the Muse, its Helpers and
  * scheduled/background Helper runs all share one harness. Pi's extra keys keep it from fighting Omnigent: no AGENTS.md/CLAUDE.md
  * auto-discovery, our prompt replaces pi's base prompt, no host skills; they are defined once
  * here and rendered into the Muse and every Sub-agent Type alike. (Compaction is switched off
  * engine-side, in inner/pi_executor.py, for superside-chat.)
- *
- * `backgroundPin`/`backgroundNote` are the model of the background Types (goal, teacher). On
- * claude-sdk they are pinned to Haiku. On pi nothing is pinned: a Claude id would not run
- * there, so they follow the engine's `fast` mapping for the harness
- * (OMNIGENT_HELPER_MODEL_FAST_PI, else the parent's model). */
+ */
 const MUSE_BUNDLES = [
   {
     name: "nova-claude",
@@ -36,9 +31,6 @@ const MUSE_BUNDLES = [
     harnessName: "Claude Agent SDK",
     executorExtra: "",
     skillsFilter: "",
-    backgroundNote:
-      "# Background work: pinned to Haiku (Nova's Muse keeps NOVA_CLAUDE_MODEL). Parity plan Q9.",
-    backgroundPin: "  model: claude-haiku-4-5",
   },
   {
     name: "nova-pi",
@@ -46,17 +38,13 @@ const MUSE_BUNDLES = [
     harnessName: "Pi",
     executorExtra: "    context_files: false\n    system_prompt_mode: replace",
     skillsFilter: "skills: none",
-    backgroundNote:
-      "# Background work: no model pinned; it follows the engine's `fast` mapping for pi, else the\n" +
-      "# parent's model (OMNIGENT_HELPER_MODEL_FAST_PI).",
-    backgroundPin: "",
   },
 ];
 /** Env var naming documented in docs/omnigent-spike.md / docs/super-chat/README.md. */
 const MODEL_ENV = "NOVA_CLAUDE_MODEL";
 /** One directory per Sub-agent Type (CONTEXT.md), each a config.yaml template rendered with the
  * bundle's harness keys. */
-const SUB_AGENT_TYPES = ["worker", "worker/agents/subworker", "goal", "teacher"];
+const SUB_AGENT_TYPES = ["worker", "worker/agents/subworker"];
 /** The deck kit's layout menu (engine/omnigent/omnigent/superchat/decks/kit/menu.md). */
 const DECK_LAYOUTS_PATH = "../../engine/omnigent/omnigent/superchat/decks/kit/menu.md";
 const GENERATED_HEADER =
@@ -129,8 +117,6 @@ function main() {
             HARNESS_NAME: bundle.harnessName,
             EXECUTOR_EXTRA: bundle.executorExtra,
             SKILLS_FILTER: bundle.skillsFilter,
-            BACKGROUND_NOTE: bundle.backgroundNote,
-            BACKGROUND_PIN: bundle.backgroundPin,
           }),
       );
       console.log(`wrote ${subDir}/config.yaml`);

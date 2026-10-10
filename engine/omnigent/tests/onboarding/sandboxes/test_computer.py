@@ -466,10 +466,11 @@ def test_release_control_revokes_interactive_access() -> None:
     assert json.loads(requests[-1].content) == {"interactive": False, "revokeControl": True}
 
 
-def test_start_host_passes_the_screen_display_to_the_runner_env(
+def test_start_host_is_headless_and_never_touches_the_screen(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    launcher = stale_container_launcher([])
+    requests: list[httpx.Request] = []
+    launcher = stale_container_launcher(requests)
     seen: dict[str, object] = {}
 
     def fake_start_host(self: object, sandbox_id: str, **kwargs: object) -> str:
@@ -478,7 +479,8 @@ def test_start_host_passes_the_screen_display_to_the_runner_env(
 
     monkeypatch.setattr(ExecModelHostLauncher, "start_host", fake_start_host)
     assert launcher.start_host(SANDBOX_ID, token="t", runner_env={"A": "1"}) == "/ws"
-    assert seen["runner_env"] == {"A": "1", "DISPLAY": ":3"}
+    assert seen["runner_env"] == {"A": "1"}
+    assert not any(r.url.path.endswith("/screen-mode") for r in requests)
 
 
 def test_ensure_display_falls_back_when_the_supervisor_omits_it() -> None:
@@ -486,8 +488,10 @@ def test_ensure_display_falls_back_when_the_supervisor_omits_it() -> None:
     assert launcher.ensure_display(SANDBOX_ID) == ":1"
 
 
-def test_capabilities_declare_screen() -> None:
-    assert make_launcher(FakeSupervisor()).capabilities.screen is True
+def test_capabilities_are_headless() -> None:
+    caps = make_launcher(FakeSupervisor()).capabilities
+    assert caps.screen is False
+    assert caps.recording is False
 
 
 class _LocalShellLauncher(ComputerSandboxLauncher):

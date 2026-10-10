@@ -44,13 +44,10 @@ tools:
   allow:
     - web_search
     - web_fetch
-    - "browser_*"
     - "sys_os_*"
     - memory_search
     - memory_get
     - session_history
-    - skill_list
-    - skill_run
     - vault_fill
     - artifact_save
     - artifact_list

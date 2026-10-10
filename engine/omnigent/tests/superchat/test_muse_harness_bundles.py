@@ -40,7 +40,7 @@ def test_pi_bundle_differs_from_default_only_in_harness_keys() -> None:
     ]
 
 
-HELPERS = ("worker", "goal", "teacher", "worker/agents/subworker")
+HELPERS = ("worker", "worker/agents/subworker")
 PI_KEYS = ("context_files: false", "system_prompt_mode: replace", "skills: none")
 
 
@@ -61,14 +61,6 @@ def test_the_switch_is_total_every_helper_runs_on_the_bundles_harness(helper: st
     assert "claude-sdk" not in pi
     # The same pi keys as the Muse: one definition, rendered into every Type.
     assert all(key in pi for key in PI_KEYS)
-
-
-@pytest.mark.parametrize("helper", ["goal", "teacher"])
-def test_background_types_pin_haiku_on_claude_and_nothing_on_pi(helper: str) -> None:
-    assert "model: claude-haiku-4-5" in (CLAUDE / "agents" / helper / "config.yaml").read_text()
-    text = (PI / "agents" / helper / "config.yaml").read_text()
-    assert "claude-haiku" not in text
-    assert "\n  model:" not in text
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
@@ -100,13 +92,10 @@ def test_real_loader_loads_both_bundles(
     assert agent is not None
     spec = parse(AGENTS / name)
     assert spec.executor.config["harness"] == harness
-    assert {a.name for a in spec.sub_agents} == {"worker", "goal", "teacher"}
+    assert {a.name for a in spec.sub_agents} == {"worker"}
     worker = next(a for a in spec.sub_agents if a.name == "worker")
     for sub in [*spec.sub_agents, *worker.sub_agents]:
         assert sub.executor.config["harness"] == harness, sub.name
-        assert (sub.executor.model == "claude-haiku-4-5") == (
-            harness == "claude-sdk" and sub.name in {"goal", "teacher"}
-        ), sub.name
     if harness == "pi":
         assert spec.executor.config["context_files"] is False
         assert spec.executor.config["system_prompt_mode"] == "replace"

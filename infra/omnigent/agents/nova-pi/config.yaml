@@ -4,7 +4,7 @@
 # Nova's Super Chat bundle (docs/super-chat/README.md, WIRING.md slice A1): the one agent
 # bundle backing `omnigent.context.mode=superside-chat` Conversations, adapted from
 # engine/omnigent/examples/super-chat/ for Nova. Runs on the Claude Agent SDK harness, with
-# Sub-agent Types worker/goal/teacher under agents/<type>/ — a Muse launches one by its
+# Sub-agent Types worker under agents/<type>/ — a Muse launches one by its
 # declared name, never by naming a model. The prompt (AGENTS.md) carries the Nova/Muse voice;
 # per-turn Memory, Rollover, Side Chats and the Activity Feed all come from Omnigent itself
 # (ADR 0001, engine/omnigent/rollover/adr/0001-omnigent-owns-everything.md) — Nova no longer
@@ -59,7 +59,6 @@ tools:
   allow:
     - web_search
     - web_fetch
-    - "browser_*"
     - "sys_os_*"
     - "memory_*"
     - session_history
@@ -74,9 +73,6 @@ tools:
     - sys_read_inbox
     - sys_cancel_task
     - "sys_scheduled_task_*"
-    - "objective_*"
-    - "suggestion_*"
-    - "skill_*"
     - "vault_*"
     - "artifact_*"
     - "files_*"
@@ -89,5 +85,3 @@ tools:
   # model (CONTEXT.md "Sub-agent Type").
   agents:
     - worker
-    - goal
-    - teacher

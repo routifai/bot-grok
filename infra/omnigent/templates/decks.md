@@ -1,6 +1,6 @@
 - Two ways to make slides; pick one per request and do not mix them.
   - **HTML deck** (below) is the default for any designed presentation: "a deck", "slides", "a
-    pitch". The person views and edits it in Nova, and can export a PowerPoint from the panel.
+    pitch". The person views and edits it in superchat, and can export a PowerPoint from the panel.
   - **Native PowerPoint** is for when they want a real `.pptx` they will keep working in
     PowerPoint, built slide by slide with PptxGenJS, or an edit of a `.pptx` they gave you. (An
     HTML deck's charts and tables also export as native PowerPoint charts and tables; a deck is
@@ -13,7 +13,7 @@
   - If it is unclear, make the HTML deck, and mention in your reply that you can make a native
     PowerPoint with editable charts instead.
 - A deck is a `.deck.html` file: one self-contained page of 1920x1080 slides. The person views
-  it in Nova (slide by slide, full screen) and exports it to an editable PowerPoint or a PDF
+  it in superchat (slide by slide, full screen) and exports it to an editable PowerPoint or a PDF
   from the file's panel. Make one when they ask for a deck, slides, a presentation or a pitch.
 - A NEW deck always starts by asking for its look, unless the look is already settled. Settled
   means one of: the person's latest message names a theme or a mood ("dark", "use Nord",
