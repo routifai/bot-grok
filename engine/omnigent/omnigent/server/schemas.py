@@ -444,6 +444,7 @@ class MemoryRememberRequest(BaseModel):
     kind: str | None = None
     quote: str | None = None
     replaces_claim_id: str | None = None
+    explicitness: Literal["stated", "inferred"] | None = None
 
 
 class MemoryForgetRequest(BaseModel):

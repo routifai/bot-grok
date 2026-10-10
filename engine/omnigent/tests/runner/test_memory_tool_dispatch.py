@@ -101,6 +101,7 @@ async def test_remember_posts_to_remember_endpoint() -> None:
             "kind": "preference",
             "quote": None,
             "replaces_claim_id": None,
+            "explicitness": None,
         }
         return httpx.Response(
             200, json={"action": "added", "claim": {"claim_id": "c1", "text": "Prefers CAD"}}
@@ -387,3 +388,24 @@ async def test_unmounted_memory_route_reports_not_configured() -> None:
     finally:
         await client.aclose()
     assert result == {"error": "memory_search: long-term memory is not configured on this server"}
+
+
+@pytest.mark.asyncio
+async def test_remember_forwards_inferred_explicitness() -> None:
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.update(json.loads(request.content))
+        return httpx.Response(200, json={"action": "added", "claim": {}})
+
+    client = _client(handler)
+    try:
+        await _execute_memory_tool(
+            "memory_remember",
+            {"text": "The user wants French", "kind": "instruction", "explicitness": "inferred"},
+            conversation_id=CONV,
+            server_client=client,
+        )
+    finally:
+        await client.aclose()
+    assert seen["explicitness"] == "inferred"

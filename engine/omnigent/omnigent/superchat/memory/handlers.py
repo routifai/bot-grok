@@ -70,6 +70,7 @@ async def handle_memory_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:
                     "kind": args.get("kind"),
                     "quote": args.get("quote"),
                     "replaces_claim_id": args.get("replaces_claim_id"),
+                    "explicitness": "inferred" if args.get("explicitness") == "inferred" else None,
                 },
                 timeout=30.0,
             )

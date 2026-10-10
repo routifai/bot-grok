@@ -78,8 +78,9 @@ class MemoryRememberTool(Tool):
             "standing instruction, a decision) or asks you to remember it. "
             'Say "I\'ll remember that" only after this call succeeds. Never '
             "store secrets or credentials. A near-duplicate of an existing "
-            "claim is reinforced (not duplicated); a claim that contradicts "
-            "an existing one about the same thing supersedes it."
+            "claim is reinforced (not duplicated). Nothing is replaced "
+            "automatically: when a claim corrects or updates an existing one, "
+            "pass its claim_id as replaces_claim_id."
         )
 
     def get_schema(self) -> dict[str, Any]:

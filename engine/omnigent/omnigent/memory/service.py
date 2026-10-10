@@ -91,6 +91,11 @@ _PROFILE_BLOCK_HEADER = (
 _PROFILE_BLOCK_FOOTER = "[End of standing memory]"
 
 
+def _profile_safe(text: str) -> str:
+    """One line, no square brackets: a claim must not be able to forge the block's delimiters."""
+    return " ".join(text.split()).replace("[", "(").replace("]", ")")
+
+
 def render_profile_block(profile: str) -> str:
     """Wrap a rendered profile in the delimiters prepended to every turn.
 
@@ -572,7 +577,7 @@ class MemoryService:
             section = [header]
             section_chars = len(header) + 1
             for claim in claims:
-                line = f"- {claim.claim_text}"
+                line = f"- {_profile_safe(claim.claim_text)}"
                 if char_count + section_chars + len(line) + 1 > _PROFILE_MAX_CHARS:
                     break
                 section.append(line)
