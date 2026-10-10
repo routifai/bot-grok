@@ -140,6 +140,12 @@ COPY --chmod=755 infra/sandboxes/computer/nova-deck-export /usr/local/bin/nova-d
 COPY --chmod=644 infra/sandboxes/computer/deck-export/deck-capture-page.js /usr/local/share/nova/deck-export/deck-capture-page.js
 COPY --chmod=644 infra/sandboxes/computer/deck-export/vendor/dom-to-pptx/dom-to-pptx.bundle.js.gz /usr/local/share/nova/deck-export/dom-to-pptx.bundle.js.gz
 COPY --chmod=644 infra/sandboxes/computer/deck-export/vendor/dom-to-pptx/LICENSE /usr/local/share/nova/deck-export/dom-to-pptx.LICENSE
+# Dashboards (`nova-dashboard`): computes a spec's numbers from the person's files with pandas and
+# writes one self-contained HTML page. Chart.js is the decks' vendored copy (MIT, LICENSE beside it).
+COPY --chmod=755 infra/sandboxes/computer/nova-dashboard /usr/local/bin/nova-dashboard
+COPY --chmod=644 infra/sandboxes/computer/dashboard/template.html /usr/local/share/nova/dashboard/template.html
+COPY --chmod=644 engine/omnigent/omnigent/superchat/decks/kit/vendor/chart.js/chart.umd.js /usr/local/share/nova/dashboard/chart.umd.js
+COPY --chmod=644 engine/omnigent/omnigent/superchat/decks/kit/vendor/chart.js/LICENSE.md /usr/local/share/nova/dashboard/chart.js.LICENSE.md
 COPY --chmod=755 infra/sandboxes/computer/nova-recorder /usr/local/bin/nova-recorder
 COPY --chmod=644 infra/sandboxes/computer/nova-recorder.js /usr/local/share/nova/nova-recorder.js
 COPY --chmod=644 infra/sandboxes/computer/nova-browser.desktop /usr/share/applications/nova-browser.desktop
@@ -198,11 +204,11 @@ RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 # COPY --chmod=644 also gives the directory it creates mode 644 (no search bit), which left
 # the recorder's page script unreadable to USER 1000.
 RUN ldconfig \
-  && chmod 755 /usr/local/share/nova /usr/local/share/nova/deck-export \
+  && chmod 755 /usr/local/share/nova /usr/local/share/nova/deck-export /usr/local/share/nova/dashboard \
   && chmod -R a+rX /usr/local/share/nova/skills /opt/nova-pptx \
   && gzip -dc /usr/local/share/nova/deck-export/dom-to-pptx.bundle.js.gz > /usr/local/share/nova/deck-export/dom-to-pptx.bundle.js \
   && chmod 644 /usr/local/share/nova/deck-export/dom-to-pptx.bundle.js \
-  && sed -i 's/\r$//' /usr/local/bin/nova-computer /usr/local/bin/nova-computer-control /usr/local/bin/nova-browser /usr/local/bin/nova-page-browser /usr/local/bin/nova-deck-export /usr/local/bin/nova-recorder \
+  && sed -i 's/\r$//' /usr/local/bin/nova-computer /usr/local/bin/nova-computer-control /usr/local/bin/nova-browser /usr/local/bin/nova-page-browser /usr/local/bin/nova-deck-export /usr/local/bin/nova-dashboard /usr/local/bin/nova-recorder \
     /etc/nova/fluxbox/init /etc/nova/fluxbox/apps /etc/nova/fluxbox/menu \
     /etc/profile.d/nova-local-bin.sh
 EXPOSE 7070 6080 6081 6082 6083 6084 6085 6086 6087 6088 6089 6090 6091 6092 6093 6094 6095

@@ -46,6 +46,13 @@ Chart.js chart and writes a native chart through a small patch to the vendored d
 plugin (plugins/community/humanize-ppt/scripts/pptx_qa.py, commit 802708f), MIT, Copyright (c) 2026
 LearnPrompt.
 
+Dashboards. The dashboard page template (infra/sandboxes/computer/dashboard/template.html), which
+nova-dashboard fills from the person's files, is modified from Open Design's data-report skill
+(skills/data-report/example.html, commit 802708f), Apache-2.0, and carries its "Portions modified
+from" header: the report header, the KPI cards with a sparkline and change, the chart grid with its
+fixed-height chart boxes and the data table. It inlines the same vendored Chart.js 4.4.3 (MIT) as
+the decks.
+
 The deck themes (engine/omnigent/omnigent/superchat/decks/kit/templates, 18 of them) are rewritten
 from MIT-licensed Open Design design templates, each keeping its LICENSE file beside the theme and a
 "Design derived from ..." header in its theme.css. From zarazhangrui/beautiful-html-templates
