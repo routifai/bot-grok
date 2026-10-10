@@ -120,3 +120,18 @@ def test_missing_extra_raises_a_clear_error(
     index = MemoryIndex(tmp_path / "idx2")
     with pytest.raises(ImportError, match="omnigent\\[memory\\]"):
         index.search("alice", "anything")
+
+
+def test_without_an_embeddings_key_the_index_is_keyword_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An Anthropic-only deployment has no embeddings provider: claims still save and match."""
+    from omnigent.memory.config import MemoryConfig
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    keyword_only = MemoryIndex(
+        tmp_path / "idx", config=MemoryConfig(embeddings_model="openai/text-embedding-3-small")
+    )
+    keyword_only.upsert(_claim("c1", "u1", "Weekly team sync is on Thursdays at 10:30"))
+    hits = keyword_only.search("u1", "team sync Thursdays")
+    assert [hit["id"] for hit in hits] == ["c1"]

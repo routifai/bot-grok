@@ -12,6 +12,7 @@ merely importing this module) is what requires the optional
 
 from __future__ import annotations
 
+import logging
 import threading
 from collections.abc import Iterable
 from pathlib import Path
@@ -27,6 +28,18 @@ from omnigent.memory.config import MemoryConfig
 # an approximate index.
 _ANN_BACKEND = "numpy"
 
+_logger = logging.getLogger(__name__)
+
+
+def _embeddings_available(model: str) -> bool:
+    """Whether the embeddings *model*'s provider key is set (Anthropic-only setups have none)."""
+    try:
+        import litellm
+
+        return bool(litellm.validate_environment(model=model).get("keys_in_environment"))
+    except Exception:  # noqa: BLE001 - unknown model or provider: let txtai try and report
+        return True
+
 
 def _missing_extra_error() -> ImportError:
     return ImportError(
@@ -38,7 +51,8 @@ def _missing_extra_error() -> ImportError:
 
 class MemoryIndex:
     """
-    One txtai hybrid (BM25 + dense) index of active claims for the server.
+    One txtai index of active claims for the server: hybrid (BM25 + dense) when the
+    embeddings model has a key, keyword-only BM25 otherwise.
 
     :param index_path: Directory the index is persisted under (txtai owns
         the files inside it). The directory need not exist yet.
@@ -68,6 +82,19 @@ class MemoryIndex:
         # way the SQL store serializes writes through a single engine.
         self._lock = threading.Lock()
 
+    def _index_settings(self) -> dict[str, Any]:
+        """Hybrid (BM25 + dense) when embeddings can be computed, else keyword-only BM25."""
+        if self._vectors_override is None and not _embeddings_available(
+            self._config.embeddings_model
+        ):
+            return {"content": True, "keyword": True}
+        return {
+            "content": True,
+            "hybrid": True,
+            "backend": _ANN_BACKEND,
+            **self._vectors_config(),
+        }
+
     def _vectors_config(self) -> dict[str, Any]:
         if self._vectors_override is not None:
             return dict(self._vectors_override)
@@ -86,12 +113,7 @@ class MemoryIndex:
             embeddings = Embeddings()
             embeddings.load(str(self._index_path))
         else:
-            embeddings = Embeddings(
-                content=True,
-                hybrid=True,
-                backend=_ANN_BACKEND,
-                **self._vectors_config(),
-            )
+            embeddings = Embeddings(**self._index_settings())
         self._embeddings = embeddings
         return embeddings
 
@@ -111,18 +133,28 @@ class MemoryIndex:
         )
 
     def upsert(self, claim: MemoryClaim) -> None:
-        """Index (or re-index) one claim. Call for every create/reinforce/supersede."""
+        """Index (or re-index) one claim. Call for every create/reinforce/supersede.
+
+        The table is the source of truth, so an indexing failure is logged, not raised: the
+        claim is saved either way and :meth:`rebuild` restores the index.
+        """
         with self._lock:
-            embeddings = self._embeddings_instance()
-            embeddings.upsert([self._document(claim)])
-            embeddings.save(str(self._index_path))
+            try:
+                embeddings = self._embeddings_instance()
+                embeddings.upsert([self._document(claim)])
+                embeddings.save(str(self._index_path))
+            except Exception:  # noqa: BLE001 - see docstring
+                _logger.warning("memory index: could not index claim %s", claim.id, exc_info=True)
 
     def delete(self, claim_id: str) -> None:
         """Remove one claim from the index (forget, expire, supersede)."""
         with self._lock:
-            embeddings = self._embeddings_instance()
-            embeddings.delete([claim_id])
-            embeddings.save(str(self._index_path))
+            try:
+                embeddings = self._embeddings_instance()
+                embeddings.delete([claim_id])
+                embeddings.save(str(self._index_path))
+            except Exception:  # noqa: BLE001 - the table stays the source of truth
+                _logger.warning("memory index: could not remove claim %s", claim_id, exc_info=True)
 
     def search(
         self,
@@ -172,12 +204,7 @@ class MemoryIndex:
                 # in-memory instance; the next upsert() builds fresh.
                 self._embeddings = None
                 return 0
-            embeddings = Embeddings(
-                content=True,
-                hybrid=True,
-                backend=_ANN_BACKEND,
-                **self._vectors_config(),
-            )
+            embeddings = Embeddings(**self._index_settings())
             embeddings.index(documents)
             self._index_path.mkdir(parents=True, exist_ok=True)
             embeddings.save(str(self._index_path))
