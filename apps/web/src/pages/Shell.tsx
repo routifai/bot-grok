@@ -245,8 +245,6 @@ export function ShellPage() {
 
   const inGroup = Boolean(groupId);
   const active = inGroup ? undefined : (bots.find((b) => b.id === botId) ?? bots[0]);
-  // The home screen shows until a chat, a fork or a first message opens the Conversation.
-  const [home, setHome] = useState(true);
   // The dock place open as a sheet, if any.
   const [dockSheet, setDockSheet] = useState<DockKey | null>(null);
   // The open Side Chat, shown as a full-size session replacing the Conversation
@@ -371,7 +369,6 @@ export function ShellPage() {
       if (chat?.anchorItemId) {
         // A hit in a fork: it opens over its message, like any other way into a fork.
         setActiveChat(null);
-        setHome(false);
         openForkRef.current({
           chat: {
             id: chat.id,
@@ -384,7 +381,6 @@ export function ShellPage() {
         });
       } else if (chat) {
         setActiveChat(chat);
-        setHome(false);
         if (messageId) setChatFocus({ chatId: chat.id, messageId });
       }
       const next = new URLSearchParams(searchParams);
@@ -541,6 +537,10 @@ export function ShellPage() {
       orbFlight.current = flyOrb(() => flushSync(() => setShownStart(false)));
     });
   }, [startPage, shownStart]);
+  // The greeting landing shows only while the Conversation has never had a message.
+  const showHome = Boolean(
+    museMode && active && shownStart && !activeChat && !forks.thread && !forks.ask,
+  );
   const composerDock = useRef<HTMLDivElement>(null);
   // A View Transition already glides the composer (`nova-composer`); the FLIP is the fallback.
   useDockTransition(composerDock, shownStart, () => orbFlight.current === "view-transition");
@@ -755,7 +755,6 @@ export function ShellPage() {
   const startChat = useCallback(
     (input: { send?: string; seed?: string }) => {
       setActiveChat(null);
-      setHome(false);
       if (input.seed) setComposerSeed(input.seed);
       if (input.send) void sendMessage(input.send);
     },
@@ -821,7 +820,6 @@ export function ShellPage() {
       onRemoveAttachment={removeAttachment}
       onRetryAttachment={retryAttachment}
       onSend={(...args: Parameters<typeof sendMessage>) => {
-        setHome(false);
         return sendMessage(...args);
       }}
       seedText={composerSeed}
@@ -875,18 +873,13 @@ export function ShellPage() {
           : "relative flex h-full min-w-0 overflow-hidden bg-background text-foreground/90"
       }
     >
-      {home && museMode && active ? (
+      {showHome && active ? (
         <Home
           personName={bootstrapMe?.name ?? ""}
           dock={<ConnectedDock botId={active.id} active={dockSheet} onSelect={setDockSheet} />}
           composer={composerEl}
           onOpenSettings={() => openSettings("general")}
           recent={<HomeActivity botId={active.id} />}
-          onOpenConversation={() => {
-            forks.reset();
-            setActiveChat(null);
-            setHome(false);
-          }}
         />
       ) : null}
       <ComputerUpdateProgress
@@ -896,6 +889,11 @@ export function ShellPage() {
       />
       {bootstrapMe !== undefined ? (
         <HostComputerPrompt initialMe={bootstrapMe ?? undefined} />
+      ) : null}
+      {museMode && active && !showHome ? (
+        <div className="relative z-10 hidden items-center ps-3 md:flex">
+          <ConnectedDock botId={active.id} active={dockSheet} onSelect={setDockSheet} />
+        </div>
       ) : null}
       {active ? (
         <MuseSidebar
@@ -911,30 +909,22 @@ export function ShellPage() {
             forks.reset();
             setActiveChat(null);
           }}
-          onHome={() => {
-            setActiveChat(null);
-            setHome(true);
-          }}
           onOpenWaiting={() => setDockSheet("inbox")}
           onOpenSettings={() => openSettings("general")}
           onOpenChat={(chat) => {
             setActiveChat(chat);
-            setHome(false);
           }}
           onNewDraft={() => {
             setActiveChat("draft");
-            setHome(false);
           }}
           forks={forks.rows}
           activeForkId={forks.thread?.chat.id ?? null}
           onOpenFork={(row) => {
             setActiveChat(null);
-            setHome(false);
             forks.openRow(row);
           }}
           onShowForks={(filter) => {
             setActiveChat(null);
-            setHome(false);
             forks.showForks(filter);
           }}
           mobileOpen={navOpen}
@@ -1187,7 +1177,7 @@ export function ShellPage() {
                     hidden={forksView || undefined}
                     style={{ viewTransitionName: museMode ? "nova-composer" : undefined }}
                   >
-                    {home && museMode ? null : composerEl}
+                    {showHome ? null : composerEl}
                   </div>
                 ) : null}
                 {shownStart ? (

@@ -155,7 +155,6 @@ export function MuseSidebar({
   activeChatId,
   chatListState,
   onOpenConversation,
-  onHome,
   onOpenWaiting,
   onOpenSettings,
   onOpenChat,
@@ -184,8 +183,6 @@ export function MuseSidebar({
    * create can refresh the same list this sidebar renders. */
   chatListState: ChatListState;
   onOpenConversation: () => void;
-  /** Back to the home screen. */
-  onHome: () => void;
   onOpenWaiting: () => void;
   onOpenSettings: () => void;
   /** Replaces the Conversation with this Side Chat as a full-size session. */
@@ -262,16 +259,10 @@ export function MuseSidebar({
         )}
       >
         {!collapsed ? (
-          <button
-            type="button"
-            onClick={() => go(onHome)}
-            aria-label={t`Home`}
-            title={t`Home`}
-            className="app-no-drag mb-1 flex h-9 items-center gap-2 rounded-lg px-2 text-[17px] font-[650] tracking-[-0.03em] text-foreground hover:bg-selection focus-visible:outline-2 focus-visible:outline-ring"
-          >
+          <div className="app-no-drag mb-1 flex h-9 items-center gap-2 px-2 text-[17px] font-[650] tracking-[-0.03em] text-foreground">
             <SuperchatMark size={24} />
             superchat
-          </button>
+          </div>
         ) : null}
         <NovaIdentity
           name={museName}

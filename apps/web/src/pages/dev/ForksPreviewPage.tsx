@@ -189,7 +189,6 @@ export function ForksPreviewPage() {
         activeChatId={null}
         chatListState={chatList}
         onOpenConversation={noop}
-        onHome={noop}
         onOpenWaiting={noop}
         onOpenSettings={noop}
         onOpenChat={noop}

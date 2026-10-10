@@ -107,7 +107,6 @@ export function SideChatsPreviewPage() {
         activeChatId={activeChat === "draft" ? "draft" : (activeChat?.id ?? null)}
         chatListState={chatListState}
         onOpenConversation={() => setActiveChat(null)}
-        onHome={() => setActiveChat(null)}
         onOpenWaiting={() => undefined}
         onOpenSettings={() => undefined}
         onOpenChat={setActiveChat}

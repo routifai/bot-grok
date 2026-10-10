@@ -300,45 +300,27 @@ async function renderShell(initialBootstrap: ReturnType<typeof bootstrap>) {
   };
 }
 
-it("starts on the home screen: the greeting, the dock and the activity card", async () => {
+it("shows the conversation chrome: the dock, the sidebar and no Goals, Feed or Ideas", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const page = await renderShell(bootstrap({ me: me() }));
   try {
-    const home = page.container.querySelector('[data-testid="home"]');
-    expect(home).toBeTruthy();
-    expect(home?.querySelector("h1")?.textContent).toContain("Person");
-    const dock = home?.querySelector('[data-testid="dock"]');
-    const labels = [...(dock?.querySelectorAll("button") ?? [])].map((el) =>
+    // The greeting landing waits for a loaded, empty Conversation; until then (and whenever
+    // there are messages) the transcript shell shows.
+    expect(page.container.querySelector('[data-testid="home"]')).toBeNull();
+    const dock = page.container.querySelector('[data-testid="dock"]');
+    const dockLabels = [...(dock?.querySelectorAll("button") ?? [])].map((el) =>
       el.getAttribute("aria-label"),
     );
-    expect(labels).toEqual(["Inbox", "Mini Apps", "Automations", "Files"]);
-    expect(home?.querySelector('[data-testid="home-activity"]')).toBeTruthy();
-    expect(page.container.querySelector('[data-testid="bots-sidebar"]')).toBeNull();
-    expect(page.container.querySelector('[data-testid="create-menu-trigger"]')).toBeNull();
-  } finally {
-    await page.cleanup();
-  }
-});
-
-it("opens the Conversation with its sidebar from the home", async () => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  const page = await renderShell(bootstrap({ me: me() }));
-  try {
-    const open = [...(page.container.querySelectorAll('[data-testid="home"] button') ?? [])].find(
-      (el) => el.textContent?.includes("Conversation"),
-    );
-    await act(async () => (open as HTMLButtonElement | undefined)?.click());
-    expect(page.container.querySelector('[data-testid="home"]')).toBeNull();
+    expect(dockLabels).toEqual(["Inbox", "Mini Apps", "Automations", "Files"]);
     const rail = page.container.querySelector('[data-testid="app-rail"]');
     expect(rail).toBeTruthy();
     const labels = [...(rail?.querySelectorAll("button") ?? [])].map(
       (el) => el.getAttribute("aria-label") ?? el.textContent?.trim(),
     );
-    expect(labels).toContain("Home");
     expect(labels).toContain("Conversation");
-    expect(labels).not.toContain("Goals");
-    expect(labels).not.toContain("Feed");
-    expect(labels).not.toContain("Ideas");
+    for (const gone of ["Goals", "Feed", "Ideas", "Home"]) expect(labels).not.toContain(gone);
+    expect(page.container.querySelector('[data-testid="bots-sidebar"]')).toBeNull();
+    expect(page.container.querySelector('[data-testid="create-menu-trigger"]')).toBeNull();
   } finally {
     await page.cleanup();
   }

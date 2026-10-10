@@ -523,9 +523,6 @@ msgstr "Artifacts"
 msgid "Ask"
 msgstr "Ask"
 
-msgid "Ask {activeName}"
-msgstr "Ask {activeName}"
-
 msgid "Ask about this message"
 msgstr "Ask about this message"
 
@@ -2036,9 +2033,6 @@ msgstr "High"
 msgid "Highlights — Northwind expanded to two teams; Acme signed for two years."
 msgstr "Highlights — Northwind expanded to two teams; Acme signed for two years."
 
-msgid "Home"
-msgstr "Home"
-
 msgid "hour"
 msgstr "hour"
 
@@ -2420,6 +2414,9 @@ msgstr "Message event"
 
 msgid "Message from {peer}"
 msgstr "Message from {peer}"
+
+msgid "Message superchat"
+msgstr "Message superchat"
 
 msgid "Message this side chat"
 msgstr "Message this side chat"
@@ -4312,6 +4309,9 @@ msgstr "Welcome back."
 
 msgid "What about its memories?"
 msgstr "What about its memories?"
+
+msgid "What can I help you with?"
+msgstr "What can I help you with?"
 
 msgid "What can superchat <0>build with you?</0>"
 msgstr "What can superchat <0>build with you?</0>"

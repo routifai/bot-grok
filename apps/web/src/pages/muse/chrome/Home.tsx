@@ -1,5 +1,4 @@
 import { Trans } from "@lingui/react/macro";
-import { MessageSquare } from "lucide-react";
 import type { ReactNode } from "react";
 import { SuperchatLogo } from "../../../components/SuperchatLogo";
 import { ContourGround } from "./ContourGround";
@@ -16,14 +15,12 @@ export function Home({
   composer,
   recent,
   onOpenSettings,
-  onOpenConversation,
 }: {
   personName: string;
   dock: ReactNode;
   composer: ReactNode;
   recent: ReactNode;
   onOpenSettings: () => void;
-  onOpenConversation: () => void;
 }) {
   const name = personName.trim().split(/\s+/)[0] ?? "";
   return (
@@ -34,14 +31,6 @@ export function Home({
       <ContourGround />
       <header className="relative flex items-center justify-between gap-3">
         <SuperchatLogo />
-        <button
-          type="button"
-          onClick={onOpenConversation}
-          className="inline-flex min-h-11 items-center gap-2 rounded-xl px-3.5 text-[14px] font-medium text-foreground transition-colors hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-ring"
-        >
-          <MessageSquare size={18} strokeWidth={1.7} aria-hidden="true" />
-          <Trans>Conversation</Trans>
-        </button>
       </header>
       <div className="relative flex flex-1 flex-wrap items-stretch gap-8">
         <div className="flex flex-none items-center self-start md:self-center">{dock}</div>

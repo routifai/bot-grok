@@ -856,12 +856,14 @@ export const Composer = memo(function Composer({
                 ? (placeholder ??
                   (activeName
                     ? museMode
-                      ? t`Ask ${activeName}`
+                      ? t`What can I help you with?`
                       : t`Message ${activeName}`
                     : t`Message…`))
                 : undefined
             }
-            aria-label={activeName ? t`Message ${activeName}` : t`Message`}
+            aria-label={
+              museMode ? t`Message superchat` : activeName ? t`Message ${activeName}` : t`Message`
+            }
             role="combobox"
             aria-autocomplete="list"
             aria-haspopup="listbox"
