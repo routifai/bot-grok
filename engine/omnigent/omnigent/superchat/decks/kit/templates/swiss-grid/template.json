@@ -1,6 +1,7 @@
 {
   "id": "swiss-grid",
   "name": "Swiss Grid",
+  "tagline": "Swiss rules, signal red",
   "description": "International Typographic Style: white, black rules, one signal red.",
   "best_for": "rigorous reports, design and architecture topics, anything that should feel exact",
   "category": "professional",

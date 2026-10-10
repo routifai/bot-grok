@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import stat
 import uuid
 from pathlib import Path
@@ -396,8 +397,25 @@ def test_theme_route_lists_the_gallery(route_client) -> None:
     body = resp.json()
     assert body["default"] == "corporate-clean" and len(body["themes"]) == 18
     first = body["themes"][0]
-    assert {"id", "name", "mood", "category", "mode", "preview"} <= set(first)
+    assert {"id", "name", "tagline", "mood", "category", "mode", "preview"} <= set(first)
+    assert all(len(theme["tagline"].split()) <= 4 for theme in body["themes"])
     assert first["preview"].startswith("data:image/webp;base64,")
+
+
+def test_sample_route_builds_the_preview_deck_in_a_theme(route_client) -> None:
+    from omnigent.superchat.decks import kit
+
+    client, _ = route_client
+    resp = client.get("/v1/decks/themes/tokyo-night/sample", headers=H)
+    assert resp.status_code == 200
+    deck = resp.json()["html"]
+    assert kit.deck_theme_id(deck) == "tokyo-night"
+    labels = re.findall(r'data-screen-label="([^"]+)"', deck)
+    assert labels == [
+        "01 Cover", "02 Agenda", "03 Numbers", "04 Trend", "05 By team", "06 Voice", "07 Decision"
+    ]  # fmt: skip
+    assert "new Chart(" in deck and "<table" in deck
+    assert client.get("/v1/decks/themes/nope/sample", headers=H).status_code == 404
 
 
 def test_theme_route_names_the_decks_current_theme(store, route_client) -> None:

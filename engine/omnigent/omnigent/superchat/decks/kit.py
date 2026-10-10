@@ -48,6 +48,7 @@ class Template:
 
     id: str
     name: str
+    tagline: str
     description: str
     best_for: str
     category: str
@@ -68,6 +69,7 @@ def templates() -> dict[str, Template]:
         found[data["id"]] = Template(
             id=data["id"],
             name=data["name"],
+            tagline=data["tagline"],
             description=data["description"],
             best_for=data["best_for"],
             category=data["category"],
@@ -78,10 +80,11 @@ def templates() -> dict[str, Template]:
 
 
 def theme_dictionary() -> list[dict[str, str]]:
-    """The theme dictionary: ``[{id, name, mood, category, mode, best_for}]``, restrained first.
+    """The theme dictionary: ``[{id, name, tagline, mood, category, mode, best_for}]``.
 
-    ``mood`` is the theme's one-line description. The order is stable: professional themes, then
-    editorial, bold and dark, each by id.
+    ``mood`` is the theme's one-line description and ``tagline`` its 2-4 word gist (what a picker
+    tile shows). The order is stable, restrained first: professional themes, then editorial, bold
+    and dark, each by id.
     """
     order = {"professional": 0, "editorial": 1, "bold": 2, "dark": 3}
     ranked = sorted(templates().values(), key=lambda t: (order.get(t.category, 9), t.id))
@@ -89,6 +92,7 @@ def theme_dictionary() -> list[dict[str, str]]:
         {
             "id": t.id,
             "name": t.name,
+            "tagline": t.tagline,
             "mood": t.description,
             "category": t.category,
             "mode": t.mode,
@@ -107,6 +111,24 @@ def theme_gallery() -> list[dict[str, str]]:
         data = base64.b64encode(path.read_bytes()).decode("ascii") if path.is_file() else ""
         out.append({**entry, "preview": f"data:image/webp;base64,{data}" if data else ""})
     return out
+
+
+#: The sample slides a theme preview shows (``data-nova-id`` of each, in order): the cover, an
+#: agenda, figures, a chart, a table, a quote and the close. All of it is made-up sample content.
+PREVIEW_SLIDES = ("cover", "agenda", "numbers", "trend", "teams", "voice", "decision")
+_SECTION_RE = re.compile(r'\s*<section\b[^>]*\bdata-nova-id="([a-z0-9-]+)".*?</section>', re.S)
+
+
+@cache
+def sample_deck(template_id: str) -> str:
+    """The kit's sample deck in ``template_id``, cut to :data:`PREVIEW_SLIDES`, for a preview."""
+    sample = (KIT_DIR / "sample-slides.html").read_text("utf-8")
+    by_id = {m.group(1): m.group(0) for m in _SECTION_RE.finditer(sample)}
+    slides = []
+    for n, slide_id in enumerate(PREVIEW_SLIDES, 1):
+        slide = re.sub(r'data-screen-label="\d+ ', f'data-screen-label="{n:02d} ', by_id[slide_id])
+        slides.append(re.sub(r'(-foot-page">)\d+<', rf"\g<1>{n:02d}<", slide))
+    return build_deck(template_id, "Quarterly review", "".join(slides))
 
 
 @cache

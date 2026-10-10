@@ -1,4 +1,5 @@
-"""``POST /v1/decks/{artifact_id}/export`` (Export buttons) and ``GET /v1/decks/themes``.
+"""``POST /v1/decks/{artifact_id}/export`` (Export buttons) and ``GET /v1/decks/themes`` (the
+theme dictionary, and each theme's sample deck for its preview).
 
 Wakes the person's Computer the way a message does, then runs the ``deck_export`` tool on its
 runner (``/mcp/execute``) so the Chromium that renders the deck is the one in their Computer.
@@ -90,6 +91,14 @@ def create_decks_router(
         """The theme dictionary with thumbnails, for the deck panel's Theme picker."""
         request_owner(request, auth_provider)
         return {"themes": kit.theme_gallery(), "default": kit.DEFAULT_THEME}
+
+    @router.get("/decks/themes/{theme_id}/sample")
+    async def deck_theme_sample(request: Request, theme_id: str) -> dict[str, Any]:
+        """The kit's sample deck built in one theme (``.deck.html``), for a theme preview."""
+        request_owner(request, auth_provider)
+        if theme_id not in kit.templates():
+            raise OmnigentError("Unknown theme", code=ErrorCode.NOT_FOUND)
+        return {"html": await asyncio.to_thread(kit.sample_deck, theme_id)}
 
     @router.get("/decks/{artifact_id}/theme")
     async def deck_theme(request: Request, artifact_id: str) -> dict[str, Any]:
