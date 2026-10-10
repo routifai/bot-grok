@@ -13,9 +13,28 @@ export interface DbClientOptions {
 const DEFAULT_POOL_MAX = 4;
 const CONNECT_RETRY_ATTEMPTS = 8;
 
+/**
+ * The Postgres schema named in the URL (`?schema=app`), as Prisma's own URLs write it. The pg
+ * driver ignores that parameter, so it is applied here: as the connection's search path (raw
+ * queries) and to the Prisma adapter (its queries). Absent, Postgres' default applies.
+ */
+export function schemaFromUrl(connectionString: string): string | undefined {
+  let schema: string | null = null;
+  try {
+    schema = new URL(connectionString).searchParams.get("schema");
+  } catch {
+    return undefined;
+  }
+  if (!schema) return undefined;
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(schema)) throw new Error(`Invalid schema name: ${schema}`);
+  return schema;
+}
+
 export function createPool(connectionString: string, options: DbClientOptions = {}): Pool {
+  const schema = schemaFromUrl(connectionString);
   const pool = new Pool({
     connectionString,
+    ...(schema ? { options: `-c search_path=${schema}` } : {}),
     max: options.poolMax ?? DEFAULT_POOL_MAX,
     // Fail a checkout instead of queueing forever when Postgres is already at
     // max_connections (53300) or the pool is saturated.
@@ -42,7 +61,8 @@ export function createDb(
   options: DbClientOptions = {},
 ): { prisma: PrismaClient; pool: Pool } {
   const pool = createPool(connectionString, options);
-  const adapter = new PrismaPg(pool);
+  const schema = schemaFromUrl(connectionString);
+  const adapter = new PrismaPg(pool, schema ? { schema } : undefined);
   const prisma = new PrismaClient({ adapter });
   return { prisma, pool };
 }
