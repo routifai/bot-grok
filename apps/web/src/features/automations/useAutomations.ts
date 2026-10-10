@@ -13,16 +13,24 @@ export type AutomationsWire = Pick<
   "list" | "create" | "update" | "run" | "remove"
 >;
 
+/**
+ * The live calls, made once: the RPC client hands out a new `rpc.automations` object on every
+ * read, so using it as a default would change `refresh` each render and reload forever.
+ */
+const LIVE_WIRE: AutomationsWire = {
+  list: (input) => rpc.automations.list(input),
+  create: (input) => rpc.automations.create(input),
+  update: (input) => rpc.automations.update(input),
+  run: (input) => rpc.automations.run(input),
+  remove: (input) => rpc.automations.remove(input),
+};
+
 function message(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong.";
 }
 
 /** The person's automations (the engine's scheduled tasks) and the actions on them. */
-export function useAutomations(
-  botId: string,
-  enabled: boolean,
-  wire: AutomationsWire = rpc.automations,
-) {
+export function useAutomations(botId: string, enabled: boolean, wire: AutomationsWire = LIVE_WIRE) {
   const [state, setState] = useState<AutomationsState>({ status: "loading" });
 
   const refresh = useCallback(async () => {
