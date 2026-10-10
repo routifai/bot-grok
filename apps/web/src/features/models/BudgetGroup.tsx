@@ -12,12 +12,6 @@ type BudgetView = {
   orgLimitUsd?: number | null;
 };
 
-function api(scope: "user" | "org") {
-  return scope === "org"
-    ? { get: rpc.engineAdmin.budget, set: rpc.engineAdmin.setBudget }
-    : { get: rpc.engineModels.budget, set: rpc.engineModels.setBudget };
-}
-
 /** Month-to-date spend against a limit: a quiet bar that turns to the alert tone at the limit. */
 export function SpendBar({ spent, limit }: { spent: number; limit: number }) {
   const ratio = limit > 0 ? Math.min(spent / limit, 1) : 0;
@@ -41,10 +35,10 @@ export function SpendBar({ spent, limit }: { spent: number; limit: number }) {
 
 /**
  * A monthly model budget: the limit (empty is none), what happens at the limit, and the month
- * so far. Personal (`user`) or the organization's (`org`); a person also sees the organization's
- * cap, read-only. The engine owns the meaning of "the limit"; this only states the intent.
+ * so far. The person also sees the organization's cap, read-only. The engine owns the meaning of
+ * "the limit"; this only states the intent.
  */
-export function BudgetGroup({ scope = "user" }: { scope?: "user" | "org" }) {
+export function BudgetGroup() {
   const { t, i18n } = useLingui();
   const limitId = useId();
   const [budget, setBudget] = useState<BudgetView | null>(null);
@@ -58,8 +52,8 @@ export function BudgetGroup({ scope = "user" }: { scope?: "user" | "org" }) {
 
   useEffect(() => {
     let cancelled = false;
-    void api(scope)
-      .get()
+    void rpc.engineModels
+      .budget()
       .then((next) => {
         if (!cancelled) apply(next);
       })
@@ -67,14 +61,14 @@ export function BudgetGroup({ scope = "user" }: { scope?: "user" | "org" }) {
     return () => {
       cancelled = true;
     };
-  }, [scope, apply]);
+  }, [apply]);
 
   if (!budget) return null;
 
   async function save(next: { monthlyLimitUsd: number | null; atLimit: "stop" | "ask" }) {
     setError(null);
     try {
-      apply(await api(scope).set(next));
+      apply(await rpc.engineModels.setBudget(next));
     } catch (err) {
       setError(errorText(err, t`Could not save the budget.`));
       if (budget) setLimit(budget.monthlyLimitUsd === null ? "" : String(budget.monthlyLimitUsd));
@@ -96,9 +90,7 @@ export function BudgetGroup({ scope = "user" }: { scope?: "user" | "org" }) {
   const locale = i18n.locale;
   const spent = formatUsd(budget.spentMonthUsd, locale);
   return (
-    <SettingsGroup
-      title={scope === "org" ? <Trans>Organization budget</Trans> : <Trans>Budget</Trans>}
-    >
+    <SettingsGroup title={<Trans>Budget</Trans>}>
       <label htmlFor={limitId} className="contents">
         <SettingsRow label={<Trans>Monthly limit</Trans>}>
           <span className="flex items-center gap-1 text-[14px] text-foreground">

@@ -4,7 +4,7 @@ import { Id } from "../ids.js";
 import { botId } from "./shared.js";
 
 // The engine's model layer as the web sees it (apps/api/src/features/models/service.ts maps the engine's
-// snake_case). Every rule - what a key may be, what a budget means, who is an admin - is the
+// snake_case). Every rule - what a key may be, what a budget means, which model is Light - is the
 // engine's; these are the shapes the screens render.
 
 /** An upstream the engine has configured: what a key can be for. `operatorKey`: the operator runs
@@ -35,7 +35,6 @@ export const EngineModelsStatusSchema = z.object({
   enabled: z.boolean(),
   /** The harnesses the person's Superchat may run on: one when known, both when not yet. */
   harnesses: z.array(EngineModelHarnessSchema),
-  isAdmin: z.boolean(),
   /** The engine can serve a model for this person (their key or the organization's). */
   ready: z.boolean(),
 });
@@ -47,6 +46,8 @@ export const EngineModelRowSchema = z.object({
   family: z.string().nullable(),
   isDefault: z.boolean(),
   isUserDefault: z.boolean(),
+  /** The model quick Helpers and background work run on for this person. */
+  isLight: z.boolean(),
 });
 export type EngineModelRow = z.infer<typeof EngineModelRowSchema>;
 
@@ -55,6 +56,11 @@ export const EngineModelCatalogSchema = z.object({
   status: z.string(),
   providerLabel: z.string().nullable(),
   defaultModel: z.string().nullable(),
+  /** Light: the person's pick (`lightPick`, `null` = automatic), else `automaticLightModel`, the
+   * cheapest model by price. */
+  lightModel: z.string().nullable(),
+  lightPick: z.string().nullable(),
+  automaticLightModel: z.string().nullable(),
   models: z.array(EngineModelRowSchema),
   error: z.string().nullable(),
 });
@@ -94,6 +100,10 @@ export const engineModelsContract = {
     preferences: oc.output(z.record(z.string(), z.string())),
     setDefault: oc
       .input(z.object({ harness: z.string().min(1), model: z.string().min(1) }))
+      .output(z.record(z.string(), z.string())),
+    /** `model: null` goes back to the automatic choice. */
+    setLight: oc
+      .input(z.object({ harness: z.string().min(1), model: z.string().min(1).nullable() }))
       .output(z.record(z.string(), z.string())),
     budget: oc.output(EngineBudgetSchema),
     setBudget: oc.input(EngineBudgetInputSchema).output(EngineBudgetSchema),

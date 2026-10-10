@@ -11,20 +11,6 @@ import { formatEngineDate, useModelProviders } from "./engine-models";
 const FIELD =
   "min-w-0 flex-1 rounded-lg bg-muted px-2.5 py-1.5 text-[14px] text-foreground outline-none placeholder:text-ink-3 focus-visible:ring-2 focus-visible:ring-ring";
 
-function api(scope: "user" | "org") {
-  return scope === "org"
-    ? {
-        list: rpc.engineAdmin.connections,
-        connect: rpc.engineAdmin.connect,
-        disconnect: rpc.engineAdmin.disconnect,
-      }
-    : {
-        list: rpc.engineModels.connections,
-        connect: rpc.engineModels.connect,
-        disconnect: rpc.engineModels.disconnect,
-      };
-}
-
 /**
  * A key form: one password field. The engine checks the key with the provider before it keeps
  * it, so a rejected key comes back here as the error under the field.
@@ -99,16 +85,13 @@ export function KeyForm({
 }
 
 /**
- * Provider keys, personal (`scope: "user"`) or the organization's (`"org"`, admins). A person
- * with no key of their own who can still use a model is on their organization's: shown as a
- * read-only line (`orgProvides`).
+ * The person's provider keys. A person with no key of their own who can still use a model is on
+ * their organization's: shown as a read-only line (`orgProvides`).
  */
 export function ModelKeys({
-  scope = "user",
   orgProvides = false,
   onChanged,
 }: {
-  scope?: "user" | "org";
   /** The person can run models without a key of their own. */
   orgProvides?: boolean;
   onChanged?: () => void;
@@ -122,11 +105,11 @@ export function ModelKeys({
 
   const load = useCallback(async () => {
     try {
-      setRows(await api(scope).list());
+      setRows(await rpc.engineModels.connections());
     } catch {
       setRows([]);
     }
-  }, [scope]);
+  }, []);
   useEffect(() => {
     void load();
   }, [load]);
@@ -134,7 +117,7 @@ export function ModelKeys({
   if (!rows || !providers) return null;
 
   async function save(provider: string, apiKey: string) {
-    await api(scope).connect({ provider, apiKey });
+    await rpc.engineModels.connect({ provider, apiKey });
     setEditing(null);
     await load();
     onChanged?.();
@@ -144,7 +127,7 @@ export function ModelKeys({
     setError(null);
     setRemoving(provider);
     try {
-      await api(scope).disconnect({ provider });
+      await rpc.engineModels.disconnect({ provider });
       await load();
       onChanged?.();
     } catch (err) {
@@ -156,9 +139,7 @@ export function ModelKeys({
 
   const hasOwn = rows.length > 0;
   return (
-    <SettingsGroup
-      title={scope === "org" ? <Trans>Organization keys</Trans> : <Trans>API keys</Trans>}
-    >
+    <SettingsGroup title={<Trans>API keys</Trans>}>
       {providers.map((provider) => {
         const row = rows.find((candidate) => candidate.provider === provider.provider);
         const checked = row ? formatEngineDate(row.validatedAt, i18n.locale) : "";
@@ -222,7 +203,7 @@ export function ModelKeys({
           </div>
         );
       })}
-      {scope === "user" && !hasOwn && orgProvides ? (
+      {!hasOwn && orgProvides ? (
         <SettingsRow
           label={<Trans>Provided by your organization</Trans>}
           icon={{ tone: "gray", glyph: <KeyRound strokeWidth={2.4} /> }}

@@ -32,7 +32,7 @@ const fromLines = (text: string) =>
  * Who may join and who is waiting (deployment owner only; the server decides). Approving is the
  * first moment a person gets a space, so nothing is spent on them before it.
  */
-export function OrgSignups() {
+export function SignupsPanel() {
   const { t, i18n } = useLingui();
   const [settings, setSettings] = useState<SignupSettings | null>(null);
   const [pending, setPending] = useState<PendingSignup[]>([]);

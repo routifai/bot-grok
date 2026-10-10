@@ -1,5 +1,4 @@
 import { activityRouter } from "./features/activity/router.js";
-import { engineAdminRouter } from "./features/admin/router.js";
 import { approvalsRouter } from "./features/approvals/router.js";
 import { appsRouter } from "./features/apps/router.js";
 import { artifactsRouter } from "./features/artifacts/router.js";
@@ -14,6 +13,7 @@ import { memoryRouter } from "./features/memory/router.js";
 import { engineModelsRouter } from "./features/models/router.js";
 import { sheetsRouter } from "./features/sheets/router.js";
 import { sideChatsRouter } from "./features/side-chats/router.js";
+import { signupsRouter } from "./features/signups/router.js";
 import { skillsRouter } from "./features/skills/router.js";
 import { vaultRouter } from "./features/vault/router.js";
 import { accountRouter } from "./routers/account.js";
@@ -49,7 +49,6 @@ export function createRouter(deps: RouterDeps) {
     ...computerRouter(c),
     ...dailyNotesRouter(c),
     ...decksRouter(c),
-    ...engineAdminRouter(c),
     ...engineModelsRouter(c),
     ...connectionsRouter(c),
     ...filesRouter(c),
@@ -63,6 +62,7 @@ export function createRouter(deps: RouterDeps) {
     ...scheduledRouter(c),
     ...scratchpadRouter(c),
     ...sideChatsRouter(c),
+    ...signupsRouter(c),
     ...sheetsRouter(c),
     ...skillsRouter(c),
     ...threadsRouter(c),

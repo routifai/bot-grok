@@ -12,11 +12,12 @@ import {
   listEngineProviders,
   setEngineBudget,
   setEngineDefaultModel,
+  setEngineLightModel,
   setEngineSessionModel,
 } from "./service.js";
 
 /** `engineModels.*` (the person's keys, models, budget): thin relays to the engine's model layer
- * (./service.ts). The organization's side is `engineAdmin.*` in ../admin/router.ts. */
+ * (./service.ts). */
 export function engineModelsRouter(c: RouterContext) {
   const { authed, deps } = c;
   const engine = (actor: { spaceId: string }) => engineComputerClient(actor);
@@ -45,6 +46,9 @@ export function engineModelsRouter(c: RouterContext) {
       ),
       setDefault: authed.engineModels.setDefault.handler(({ context, input }) =>
         setEngineDefaultModel(deps, engine(context.actor), context.actor, input),
+      ),
+      setLight: authed.engineModels.setLight.handler(({ context, input }) =>
+        setEngineLightModel(deps, engine(context.actor), context.actor, input),
       ),
       budget: authed.engineModels.budget.handler(({ context }) =>
         engineBudget(deps, engine(context.actor), context.actor),

@@ -94,9 +94,8 @@ vi.mock("../features/models", () => ({
   useEngineModelsStatus: () => [engine.status, () => undefined, true],
   ModelsPanel: () => <div data-testid="engine-models-panel" />,
 }));
-vi.mock("../features/admin", () => ({
-  OrganizationPanel: () => <div data-testid="organization-panel" />,
-  OrgSignups: () => <div data-testid="org-signups" />,
+vi.mock("../features/signups", () => ({
+  SignupsPanel: () => <div data-testid="org-signups" />,
 }));
 vi.mock("../features/computer/ComputersUnavailableHint", () => ({
   computersAreUnavailable: () => false,
@@ -245,29 +244,22 @@ const museProps = {
   onMuseBotSave: async () => undefined,
 };
 
-it("muse mode on the engine: Models for everyone, Organization only for admins", async () => {
+it("muse mode on the engine: Models for everyone, and no Organization section", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   try {
-    for (const [isAdmin, expected] of [
-      [false, ["superchat", "general", "models", "voice"]],
-      [true, ["superchat", "general", "models", "voice", "organization"]],
-    ] as const) {
-      engine.status = { enabled: true, harnesses: [], isAdmin, ready: true };
-      const { container, root } = render();
-      try {
-        await act(async () => root.render(<SettingsOverlay {...museProps} />));
-        expect(navIds(container)).toEqual(expected);
-        await act(async () =>
-          container
-            .querySelector<HTMLButtonElement>('[data-testid="settings-nav-models"]')
-            ?.click(),
-        );
-        expect(container.querySelector('[data-testid="engine-models-panel"]')).toBeTruthy();
-        expect(container.querySelector('[data-testid="models-panel"]')).toBeNull();
-      } finally {
-        await act(async () => root.unmount());
-        container.remove();
-      }
+    engine.status = { enabled: true, harnesses: [], ready: true };
+    const { container, root } = render();
+    try {
+      await act(async () => root.render(<SettingsOverlay {...museProps} />));
+      expect(navIds(container)).toEqual(["superchat", "general", "models", "voice"]);
+      await act(async () =>
+        container.querySelector<HTMLButtonElement>('[data-testid="settings-nav-models"]')?.click(),
+      );
+      expect(container.querySelector('[data-testid="engine-models-panel"]')).toBeTruthy();
+      expect(container.querySelector('[data-testid="models-panel"]')).toBeNull();
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
     }
   } finally {
     engine.status = null;
@@ -279,10 +271,10 @@ it("opens at Models when asked to, and falls back to General without the engine"
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const { container, root } = render();
   try {
-    engine.status = { enabled: true, harnesses: [], isAdmin: false, ready: false };
+    engine.status = { enabled: true, harnesses: [], ready: false };
     await act(async () => root.render(<SettingsOverlay {...museProps} initialSection="models" />));
     expect(container.querySelector('[data-testid="engine-models-panel"]')).toBeTruthy();
-    engine.status = { enabled: false, harnesses: [], isAdmin: false, ready: false };
+    engine.status = { enabled: false, harnesses: [], ready: false };
     await act(async () => root.render(<SettingsOverlay {...museProps} initialSection="models" />));
     expect(container.querySelector('[data-testid="engine-models-panel"]')).toBeNull();
     expect(container.querySelector('[data-settings-section="general"]')).toBeTruthy();

@@ -6,7 +6,7 @@ import {
 } from "@superchat/db";
 import type { ORPCError } from "@orpc/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { resetEngineAccount, setEngineAccountSuspended } from "./service.js";
+import { resetEngineAccount, setEngineAccountSuspended } from "./engine-account.js";
 import {
   approveSignup,
   discardSignup,
@@ -26,7 +26,7 @@ vi.mock("@superchat/db", async (importOriginal) => ({
 vi.mock("@superchat/adapters", () => ({
   purgeQuarantinedOrganizations: vi.fn(async () => ["org-1"]),
 }));
-vi.mock("./service.js", () => ({
+vi.mock("./engine-account.js", () => ({
   resetEngineAccount: vi.fn(async () => "done"),
   setEngineAccountSuspended: vi.fn(async () => "done"),
 }));

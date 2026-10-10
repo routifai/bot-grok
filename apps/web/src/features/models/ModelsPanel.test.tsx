@@ -25,6 +25,7 @@ const api = vi.hoisted(() => ({
   disconnect: vi.fn(),
   catalog: vi.fn(),
   setDefault: vi.fn(),
+  setLight: vi.fn(),
   budget: vi.fn(),
   setBudget: vi.fn(),
 }));
@@ -35,7 +36,6 @@ import { ModelsPanel } from "./ModelsPanel";
 const status: EngineModelsStatus = {
   enabled: true,
   harnesses: [{ id: "pi", label: "Pi" }],
-  isAdmin: false,
   ready: true,
 };
 const connection = {
@@ -51,10 +51,27 @@ const catalog = {
   status: "ready",
   providerLabel: "Anthropic",
   defaultModel: "sonnet-5",
+  lightModel: "haiku-4",
+  lightPick: null,
+  automaticLightModel: "haiku-4",
   error: null,
   models: [
-    { id: "sonnet-5", label: "Sonnet 5", family: "sonnet", isDefault: true, isUserDefault: false },
-    { id: "haiku-4", label: "Haiku 4", family: "haiku", isDefault: false, isUserDefault: false },
+    {
+      id: "sonnet-5",
+      label: "Sonnet 5",
+      family: "sonnet",
+      isDefault: true,
+      isUserDefault: false,
+      isLight: false,
+    },
+    {
+      id: "haiku-4",
+      label: "Haiku 4",
+      family: "haiku",
+      isDefault: false,
+      isUserDefault: false,
+      isLight: true,
+    },
   ],
 };
 
@@ -174,6 +191,46 @@ it("saves the default model chosen for the harness", async () => {
     expect(select.textContent).toContain("Default");
     await act(async () => setValue(select, "haiku-4"));
     expect(api.setDefault).toHaveBeenCalledWith({ harness: "pi", model: "haiku-4" });
+  } finally {
+    await view.cleanup();
+  }
+});
+
+it("shows the automatic Light model, saves a pick and goes back to automatic", async () => {
+  seed();
+  api.setLight.mockResolvedValue({});
+  const view = await mount();
+  try {
+    const select = view.container.querySelector(
+      'select[data-testid="light-model-pi"]',
+    ) as HTMLSelectElement;
+    expect(select.getAttribute("aria-label")).toBe("Light model");
+    expect(select.value).toBe("");
+    expect(select.options[0]?.textContent).toBe("Automatic · Haiku 4");
+    await act(async () => setValue(select, "sonnet-5"));
+    expect(api.setLight).toHaveBeenCalledWith({ harness: "pi", model: "sonnet-5" });
+    await act(async () => setValue(select, ""));
+    expect(api.setLight).toHaveBeenLastCalledWith({ harness: "pi", model: null });
+  } finally {
+    await view.cleanup();
+  }
+});
+
+it("shows the person's own Light pick and puts it back when saving fails", async () => {
+  seed();
+  api.catalog.mockResolvedValue({ ...catalog, lightPick: "sonnet-5", lightModel: "sonnet-5" });
+  api.setLight.mockRejectedValueOnce(new Error("This model isn't available — pick another."));
+  const view = await mount();
+  try {
+    const select = view.container.querySelector(
+      'select[data-testid="light-model-pi"]',
+    ) as HTMLSelectElement;
+    expect(select.value).toBe("sonnet-5");
+    await act(async () => setValue(select, "haiku-4"));
+    expect(select.value).toBe("sonnet-5");
+    expect(view.container.querySelector('[role="alert"]')?.textContent).toBe(
+      "This model isn't available — pick another.",
+    );
   } finally {
     await view.cleanup();
   }

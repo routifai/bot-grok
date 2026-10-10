@@ -1,15 +1,13 @@
 // The engine's model layer for the signed-in person (docs/adr: the engine owns models, keys and
 // budgets). Superchat keeps no key, price or budget row here: it asks the engine as the person, maps
 // the answer to the web's shapes and turns the engine's public error codes into typed errors
-// the web renders (`data.code`). Admin calls are gated twice: here (the engine's own idea of an
-// admin, `GET /v1/me`) and by the engine, which refuses anyone else.
+// the web renders (`data.code`).
 
 import { ORPCError } from "@orpc/server";
 import {
   deleteOmnigentModelConnection,
   getOmnigentBudget,
-  getOmnigentIdentity,
-  getOmnigentModelPreferences,
+  getOmnigentModelPicks,
   getOmnigentSessionModel,
   listOmnigentModelConnections,
   listOmnigentModelProviders,
@@ -22,7 +20,7 @@ import {
   omnigentErrorCopy,
   putOmnigentBudget,
   putOmnigentModelConnection,
-  putOmnigentModelPreferences,
+  putOmnigentModelPicks,
   setOmnigentSessionModel,
 } from "@superchat/adapters";
 import type {
@@ -74,7 +72,7 @@ export async function onModels<T>(call: Promise<T>): Promise<T> {
     const message =
       omnigentErrorCopy(error) ??
       (error.code === "invalid_input" ? error.detail : undefined) ??
-      (error.code === "forbidden" ? "Only admins can do that." : "That didn't work.");
+      "That didn't work.";
     throw new ORPCError(status, { message, data: { code: error.code } });
   }
 }
@@ -103,22 +101,6 @@ export async function person(
   });
   if (!user) throw new ORPCError("NOT_FOUND", { message: "Person not found" });
   return { client, email: user.email };
-}
-
-export async function adminActor(
-  deps: EngineModelsDeps,
-  client: OmnigentClientConfig | undefined,
-  actor: Actor,
-): Promise<{ client: OmnigentClientConfig; email: string }> {
-  const target = await person(deps, client, actor);
-  const identity = await onModels(getOmnigentIdentity(target.client, target.email));
-  if (!identity.is_admin) {
-    throw new ORPCError("FORBIDDEN", {
-      message: "Only admins can do that.",
-      data: { code: "forbidden" },
-    });
-  }
-  return target;
 }
 
 /** The harness this person's Superchat runs, from the agent their Muse last reported; both when
@@ -150,12 +132,16 @@ function toCatalog(row: OmnigentModelCatalog): EngineModelCatalog {
     status: row.status,
     providerLabel: row.provider_label,
     defaultModel: row.default_model,
+    lightModel: row.light_model ?? null,
+    lightPick: row.light_pick ?? null,
+    automaticLightModel: row.automatic_light_model ?? null,
     models: row.models.map((model) => ({
       id: model.id,
       label: model.label,
       family: typeof model.family === "string" ? model.family : null,
       isDefault: model.is_default,
       isUserDefault: model.is_user_default,
+      isLight: model.is_light === true,
     })),
     error: row.error ?? null,
   };
@@ -175,21 +161,17 @@ export async function engineModelsStatus(
   client: OmnigentClientConfig | undefined,
   actor: Actor,
 ): Promise<EngineModelsStatus> {
-  if (!client) return { enabled: false, harnesses: [], isAdmin: false, ready: false };
+  if (!client) return { enabled: false, harnesses: [], ready: false };
   const { email } = await person(deps, client, actor);
   const harnesses = await harnessesOf(deps, actor);
-  const [identity, catalogs] = await Promise.all([
-    getOmnigentIdentity(client, email).catch(() => ({ user_id: null, is_admin: false })),
-    Promise.all(
-      harnesses.map((harness) =>
-        listOmnigentModels(client, email, harness.id).catch(() => undefined),
-      ),
+  const catalogs = await Promise.all(
+    harnesses.map((harness) =>
+      listOmnigentModels(client, email, harness.id).catch(() => undefined),
     ),
-  ]);
+  );
   return {
     enabled: true,
     harnesses,
-    isAdmin: identity.is_admin,
     ready: catalogs.some((catalog) => catalog?.status === "ready"),
   };
 }
@@ -214,7 +196,7 @@ export async function listEngineConnections(
   actor: Actor,
 ): Promise<EngineModelConnection[]> {
   const target = await person(deps, client, actor);
-  const rows = await onModels(listOmnigentModelConnections(target.client, target.email, "user"));
+  const rows = await onModels(listOmnigentModelConnections(target.client, target.email));
   return rows.map(toConnection);
 }
 
@@ -223,12 +205,10 @@ export async function connectEngineModel(
   client: OmnigentClientConfig | undefined,
   actor: Actor,
   input: { provider: string; apiKey: string; label?: string },
-  scope: "user" | "org" = "user",
 ): Promise<EngineModelConnection> {
-  const target =
-    scope === "org" ? await adminActor(deps, client, actor) : await person(deps, client, actor);
+  const target = await person(deps, client, actor);
   const row = await onModels(
-    putOmnigentModelConnection(target.client, target.email, scope, input.provider, {
+    putOmnigentModelConnection(target.client, target.email, input.provider, {
       api_key: input.apiKey,
       ...(input.label ? { label: input.label } : {}),
     }),
@@ -241,22 +221,10 @@ export async function disconnectEngineModel(
   client: OmnigentClientConfig | undefined,
   actor: Actor,
   provider: string,
-  scope: "user" | "org" = "user",
 ): Promise<{ ok: true }> {
-  const target =
-    scope === "org" ? await adminActor(deps, client, actor) : await person(deps, client, actor);
-  await onModels(deleteOmnigentModelConnection(target.client, target.email, scope, provider));
+  const target = await person(deps, client, actor);
+  await onModels(deleteOmnigentModelConnection(target.client, target.email, provider));
   return { ok: true as const };
-}
-
-export async function listOrgConnections(
-  deps: EngineModelsDeps,
-  client: OmnigentClientConfig | undefined,
-  actor: Actor,
-): Promise<EngineModelConnection[]> {
-  const target = await adminActor(deps, client, actor);
-  const rows = await onModels(listOmnigentModelConnections(target.client, target.email, "org"));
-  return rows.map(toConnection);
 }
 
 export async function engineModelCatalog(
@@ -275,7 +243,7 @@ export async function engineModelPreferences(
   actor: Actor,
 ): Promise<Record<string, string>> {
   const target = await person(deps, client, actor);
-  return onModels(getOmnigentModelPreferences(target.client, target.email));
+  return (await onModels(getOmnigentModelPicks(target.client, target.email))).defaults;
 }
 
 /** Sets one harness's default and keeps the person's others (the engine replaces the map). */
@@ -286,13 +254,33 @@ export async function setEngineDefaultModel(
   input: { harness: string; model: string },
 ): Promise<Record<string, string>> {
   const target = await person(deps, client, actor);
-  const current = await onModels(getOmnigentModelPreferences(target.client, target.email));
-  return onModels(
-    putOmnigentModelPreferences(target.client, target.email, {
-      ...current,
-      [input.harness]: input.model,
+  const { defaults } = await onModels(getOmnigentModelPicks(target.client, target.email));
+  const saved = await onModels(
+    putOmnigentModelPicks(target.client, target.email, {
+      defaults: { ...defaults, [input.harness]: input.model },
     }),
   );
+  return saved.defaults;
+}
+
+/** Sets one harness's Light model (`null`: back to automatic) and keeps the others. */
+export async function setEngineLightModel(
+  deps: EngineModelsDeps,
+  client: OmnigentClientConfig | undefined,
+  actor: Actor,
+  input: { harness: string; model: string | null },
+): Promise<Record<string, string>> {
+  const target = await person(deps, client, actor);
+  const { light } = await onModels(getOmnigentModelPicks(target.client, target.email));
+  const others = Object.fromEntries(
+    Object.entries(light).filter(([harness]) => harness !== input.harness),
+  );
+  const saved = await onModels(
+    putOmnigentModelPicks(target.client, target.email, {
+      light: input.model ? { ...others, [input.harness]: input.model } : others,
+    }),
+  );
+  return saved.light;
 }
 
 export async function engineBudget(
@@ -301,7 +289,7 @@ export async function engineBudget(
   actor: Actor,
 ): Promise<EngineBudget> {
   const target = await person(deps, client, actor);
-  return toBudget(await onModels(getOmnigentBudget(target.client, target.email, "user")));
+  return toBudget(await onModels(getOmnigentBudget(target.client, target.email)));
 }
 
 export async function setEngineBudget(
@@ -313,7 +301,7 @@ export async function setEngineBudget(
   const target = await person(deps, client, actor);
   return toBudget(
     await onModels(
-      putOmnigentBudget(target.client, target.email, "user", {
+      putOmnigentBudget(target.client, target.email, {
         monthly_limit_usd: input.monthlyLimitUsd,
         at_limit: input.atLimit,
       }),

@@ -7,6 +7,7 @@ import {
   engineSessionModel,
   listEngineProviders,
   setEngineDefaultModel,
+  setEngineLightModel,
 } from "./service.js";
 
 const client = { baseUrl: "http://engine.test", proxySecret: "proxy", secrets: [], tenant: "s1" };
@@ -66,30 +67,22 @@ describe("engine models status", () => {
     expect(await engineModelsStatus(deps(), undefined, actor)).toEqual({
       enabled: false,
       harnesses: [],
-      isAdmin: false,
       ready: false,
     });
   });
 
-  it("names the harness the Muse runs on and reports admin and readiness", async () => {
-    stub((url) =>
-      url.pathname === "/v1/me" ? json({ user_id: "p", is_admin: true }) : json(catalog()),
-    );
+  it("names the harness the Muse runs on and reports readiness", async () => {
+    stub(() => json(catalog()));
     const status = await engineModelsStatus(deps("superchat-pi"), client, actor);
     expect(status).toEqual({
       enabled: true,
       harnesses: [{ id: "pi", label: "Pi" }],
-      isAdmin: true,
       ready: true,
     });
   });
 
   it("offers both harnesses before a Muse exists and is not ready without a key", async () => {
-    stub((url) =>
-      url.pathname === "/v1/me"
-        ? json({ user_id: "p", is_admin: false })
-        : json(catalog("needs_key")),
-    );
+    stub(() => json(catalog("needs_key")));
     const status = await engineModelsStatus(deps(null), client, actor);
     expect(status.harnesses.map((h) => h.id)).toEqual(["claude-sdk", "pi"]);
     expect(status.ready).toBe(false);
@@ -201,6 +194,46 @@ describe("personal model calls", () => {
     expect(JSON.parse(String(put[1].body))).toEqual({
       defaults: { "claude-sdk": "opus", pi: "m" },
     });
+  });
+
+  it("sets one harness's Light model, or sends it back to automatic, keeping the others", async () => {
+    const puts: unknown[] = [];
+    stub((_url, init) => {
+      if (init?.method === "PUT") {
+        const body = JSON.parse(String(init.body)) as { light: Record<string, string> };
+        puts.push(body);
+        return json({ defaults: {}, light: body.light });
+      }
+      return json({ defaults: { pi: "big" }, light: { "claude-sdk": "haiku", pi: "old" } });
+    });
+    expect(
+      await setEngineLightModel(deps(), client, actor, { harness: "pi", model: "small" }),
+    ).toEqual({ "claude-sdk": "haiku", pi: "small" });
+    expect(
+      await setEngineLightModel(deps(), client, actor, { harness: "pi", model: null }),
+    ).toEqual({ "claude-sdk": "haiku" });
+    // Only the Light map is sent: the engine keeps the defaults as they are.
+    expect(puts).toEqual([
+      { light: { "claude-sdk": "haiku", pi: "small" } },
+      { light: { "claude-sdk": "haiku" } },
+    ]);
+  });
+
+  it("maps the Light model the engine resolved onto the catalog", async () => {
+    stub(() =>
+      json({
+        ...catalog(),
+        light_model: "claude-sonnet",
+        light_pick: null,
+        automatic_light_model: "claude-sonnet",
+        models: [{ ...catalog().models[0], is_light: true }],
+      }),
+    );
+    const { catalog: mapped } = await engineSessionModel(deps(null), client, actor, "bot-1");
+    expect(mapped.lightModel).toBe("claude-sonnet");
+    expect(mapped.lightPick).toBeNull();
+    expect(mapped.automaticLightModel).toBe("claude-sonnet");
+    expect(mapped.models[0]?.isLight).toBe(true);
   });
 
   it("reads the Conversation's pinned model with the list for its harness", async () => {

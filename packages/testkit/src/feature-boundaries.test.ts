@@ -34,7 +34,6 @@ const CAPABILITIES: Record<LayerName, readonly string[]> = {
   ],
   api: [
     "activity",
-    "admin",
     "approvals",
     "apps",
     "artifacts",
@@ -48,6 +47,7 @@ const CAPABILITIES: Record<LayerName, readonly string[]> = {
     "models",
     "sheets",
     "side-chats",
+    "signups",
     "skills",
     "vault",
   ],
@@ -69,7 +69,6 @@ const CAPABILITIES: Record<LayerName, readonly string[]> = {
   ],
   contracts: [
     "activity",
-    "admin",
     "approvals",
     "apps",
     "artifacts",
@@ -83,12 +82,12 @@ const CAPABILITIES: Record<LayerName, readonly string[]> = {
     "models",
     "sheets",
     "side-chats",
+    "signups",
     "skills",
     "vault",
   ],
   web: [
     "activity",
-    "admin",
     "approvals",
     "apps",
     "artifacts",
@@ -102,6 +101,7 @@ const CAPABILITIES: Record<LayerName, readonly string[]> = {
     "models",
     "sheets",
     "side-chats",
+    "signups",
     "skills",
     "vault",
   ],
@@ -117,6 +117,8 @@ const BASES: Record<string, readonly string[]> = {
   sheets: ["artifacts"],
   apps: ["artifacts"],
   admin: ["models"],
+  // Pausing or resetting an account in the engine goes through the model layer's error mapping.
+  signups: ["models"],
   skills: ["computer"],
   computer: ["artifacts"],
   // The files it indexes live in the person's Computer workspace (the api resolves the Muse

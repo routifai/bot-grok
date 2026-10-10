@@ -19,7 +19,7 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock("../../lib/rpc", () => ({ rpc: { signups: api } }));
 
-import { OrgSignups } from "./OrgSignups";
+import { SignupsPanel } from "./SignupsPanel";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -58,7 +58,7 @@ async function mount() {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
-  await act(async () => root.render(<OrgSignups />));
+  await act(async () => root.render(<SignupsPanel />));
   await act(async () => {});
   return {
     container,

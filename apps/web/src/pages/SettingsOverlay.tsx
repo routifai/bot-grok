@@ -2,7 +2,6 @@ import { useLingui } from "@lingui/react/macro";
 import type { AvatarStyle, Bot } from "@superchat/contracts";
 import { Button, Dialog, DialogClose, DialogContent, DialogTitle } from "@superchat/ui-web";
 import {
-  Building2,
   CloudDownload,
   Cpu,
   Gauge,
@@ -14,9 +13,9 @@ import {
   XIcon,
 } from "lucide-react";
 import { type ComponentType, useEffect, useRef, useState } from "react";
-import { OrganizationPanel, OrgSignups } from "../features/admin";
 import { computersAreUnavailable } from "../features/computer/ComputersUnavailableHint";
 import { ModelsPanel, useEngineModelsStatus } from "../features/models";
+import { SignupsPanel } from "../features/signups";
 import {
   ComputerSettingsPanel,
   GeneralSettingsPanels,
@@ -36,7 +35,6 @@ export type SettingsSection =
   | "general"
   | "models"
   | "voice"
-  | "organization"
   | "signups"
   | "usage"
   | "computer"
@@ -50,7 +48,6 @@ const SETTINGS_TONE: Partial<Record<SettingsSection, TileTone>> = {
   computer: "blue",
   usage: "green",
   models: "indigo",
-  organization: "orange",
   signups: "orange",
   updates: "teal",
 };
@@ -115,24 +112,19 @@ export function SettingsOverlay({
     }
   }, [section]);
 
-  // On the engine, the Muse person has Models (and admins an Organization); without it
-  // neither exists. The classic app keeps its own Models.
+  // On the engine, the Muse person has Models; without it there is none. The classic app keeps
+  // its own Models.
   const [engineModels, refreshEngineModels, engineSettled] = useEngineModelsStatus(museMode);
   const showEngineModels = museMode && engineModels?.enabled === true;
-  const showOrganization = showEngineModels && engineModels?.isAdmin === true;
 
   // "Updates" only covers the desktop app's own auto-update, which isn't a section a
   // Muse person can land on.
   useEffect(() => {
-    if (!museMode) {
-      if (section === "organization") setSection("general");
-      return;
-    }
+    if (!museMode) return;
     if (section === "updates") setSection("general");
     if (!engineSettled) return;
     if (section === "models" && !showEngineModels) setSection("general");
-    if (section === "organization" && !showOrganization) setSection("general");
-  }, [museMode, section, engineSettled, showEngineModels, showOrganization]);
+  }, [museMode, section, engineSettled, showEngineModels]);
   // Signups belong to the deployment owner and do not depend on the engine being reachable.
   useEffect(() => {
     if (section === "signups" && !isDeploymentOwner) setSection("general");
@@ -148,9 +140,6 @@ export function SettingsOverlay({
       ? []
       : [{ id: "models" as const, label: t`Models`, icon: Cpu }]),
     { id: "voice", label: t`Voice`, icon: Volume2 },
-    ...(showOrganization
-      ? [{ id: "organization" as const, label: t`Organization`, icon: Building2 }]
-      : []),
     ...(isDeploymentOwner ? [{ id: "signups" as const, label: t`Signups`, icon: UserPlus }] : []),
     ...(museMode ? [] : [{ id: "usage" as const, label: t`Usage`, icon: Gauge }]),
     ...(showComputer || showComputerStatus
@@ -331,10 +320,7 @@ export function SettingsOverlay({
               {section === "models" && museMode && engineModels?.enabled ? (
                 <ModelsPanel status={engineModels} onChanged={refreshEngineModels} />
               ) : null}
-              {section === "organization" && showOrganization && engineModels ? (
-                <OrganizationPanel status={engineModels} selfEmail={email} />
-              ) : null}
-              {section === "signups" && isDeploymentOwner ? <OrgSignups /> : null}
+              {section === "signups" && isDeploymentOwner ? <SignupsPanel /> : null}
               {section === "voice" && museMode ? <VoicePanel onBusyChange={setVoiceBusy} /> : null}
               {section === "voice" && !museMode ? (
                 <VoiceSettingsOverlay embedded onClose={requestClose} onBusyChange={setVoiceBusy} />

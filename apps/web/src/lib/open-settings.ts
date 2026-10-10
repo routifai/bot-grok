@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-export type SettingsSection = "models" | "organization";
+export type SettingsSection = "models";
 
 const OPEN_SETTINGS_EVENT = "superchat:open-settings";
 
@@ -14,7 +14,7 @@ export function useOpenSettingsRequests(onOpen: (section: SettingsSection) => vo
   useEffect(() => {
     const listener = (event: Event) => {
       const section = (event as CustomEvent<unknown>).detail;
-      if (section === "models" || section === "organization") onOpen(section);
+      if (section === "models") onOpen(section);
     };
     window.addEventListener(OPEN_SETTINGS_EVENT, listener);
     return () => window.removeEventListener(OPEN_SETTINGS_EVENT, listener);

@@ -1,6 +1,5 @@
 import { accountContract } from "./rpc/account.js";
 import { activityContract } from "./rpc/activity.js";
-import { engineAdminContract, signupsContract } from "./rpc/admin.js";
 import { agentSecretsContract } from "./rpc/agent-secrets.js";
 import { approvalsContract } from "./rpc/approvals.js";
 import { appsContract } from "./rpc/apps.js";
@@ -22,6 +21,7 @@ import { scheduledContract } from "./rpc/scheduled.js";
 import { scratchpadContract } from "./rpc/scratchpad.js";
 import { sheetsContract } from "./rpc/sheets.js";
 import { sideChatsContract } from "./rpc/side-chats.js";
+import { signupsContract } from "./rpc/signups.js";
 import { skillsContract } from "./rpc/skills.js";
 import { threadsContract } from "./rpc/threads.js";
 import { vaultContract } from "./rpc/vault.js";
@@ -39,7 +39,6 @@ export const appContract = {
   ...computerContract,
   ...dailyNotesContract,
   ...decksContract,
-  ...engineAdminContract,
   ...engineModelsContract,
   ...integrationsContract,
   ...knowledgeContract,

@@ -19,7 +19,7 @@ import {
 import { getLogger } from "@superchat/logging";
 import { ORPCError } from "@orpc/server";
 import type { RouterDeps } from "../../routers/context.js";
-import { resetEngineAccount, setEngineAccountSuspended } from "./service.js";
+import { resetEngineAccount, setEngineAccountSuspended } from "./engine-account.js";
 
 type SignupsDeps = Pick<RouterDeps, "prisma" | "identity" | "auth" | "sandbox">;
 

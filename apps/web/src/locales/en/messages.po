@@ -224,9 +224,6 @@ msgstr "Accounts"
 msgid "Action confirmations"
 msgstr "Action confirmations"
 
-msgid "Actions"
-msgstr "Actions"
-
 #. placeholder {0}: bot.name
 msgid "Actions for {0}"
 msgstr "Actions for {0}"
@@ -342,9 +339,6 @@ msgstr "Adding…"
 msgid "Address"
 msgstr "Address"
 
-msgid "Admin"
-msgstr "Admin"
-
 msgid "Advanced"
 msgstr "Advanced"
 
@@ -384,9 +378,6 @@ msgstr "All bots"
 msgid "All forks"
 msgstr "All forks"
 
-msgid "All models"
-msgstr "All models"
-
 msgid "All time"
 msgstr "All time"
 
@@ -413,12 +404,6 @@ msgstr "Allow purchase actions without asking"
 
 msgid "Allowed domains"
 msgstr "Allowed domains"
-
-msgid "Allowed models"
-msgstr "Allowed models"
-
-msgid "Allowed models · {title}"
-msgstr "Allowed models · {title}"
 
 msgid "Allowed once"
 msgstr "Allowed once"
@@ -624,6 +609,9 @@ msgstr "Automated senders"
 msgid "Automated senders will appear after they post here."
 msgstr "Automated senders will appear after they post here."
 
+msgid "Automatic"
+msgstr "Automatic"
+
 msgid "Automations"
 msgstr "Automations"
 
@@ -700,9 +688,6 @@ msgstr "Budget"
 
 msgid "Built-in skills can't be edited."
 msgstr "Built-in skills can't be edited."
-
-msgid "By person"
-msgstr "By person"
 
 msgid "Call"
 msgstr "Call"
@@ -1028,9 +1013,6 @@ msgstr "Could not change password"
 msgid "Could not change the default model"
 msgstr "Could not change the default model"
 
-msgid "Could not change this account."
-msgstr "Could not change this account."
-
 msgid "Could not change this."
 msgstr "Could not change this."
 
@@ -1100,9 +1082,6 @@ msgstr "Could not delete skill"
 msgid "Could not delete space"
 msgstr "Could not delete space"
 
-msgid "Could not delete this account."
-msgstr "Could not delete this account."
-
 msgid "Could not delete this artifact."
 msgstr "Could not delete this artifact."
 
@@ -1170,9 +1149,6 @@ msgstr "Could not load model settings"
 msgid "Could not load models."
 msgstr "Could not load models."
 
-msgid "Could not load people."
-msgstr "Could not load people."
-
 msgid "Could not load signups."
 msgstr "Could not load signups."
 
@@ -1196,9 +1172,6 @@ msgstr "Could not load this service."
 
 msgid "Could not load this."
 msgstr "Could not load this."
-
-msgid "Could not load usage."
-msgstr "Could not load usage."
 
 msgid "Could not load voice settings"
 msgstr "Could not load voice settings"
@@ -1556,9 +1529,6 @@ msgstr "Default · {defaultLabel}"
 msgid "Default ({0})"
 msgstr "Default ({0})"
 
-msgid "Default for everyone"
-msgstr "Default for everyone"
-
 msgid "Default model"
 msgstr "Default model"
 
@@ -1580,9 +1550,6 @@ msgstr "Delete {0}"
 #. placeholder {0}: item.name
 msgid "Delete {0}?"
 msgstr "Delete {0}?"
-
-msgid "Delete {who}?"
-msgstr "Delete {who}?"
 
 msgid "Delete group"
 msgstr "Delete group"
@@ -1736,9 +1703,6 @@ msgstr "Email not verified"
 msgid "Engage when... Ignore..."
 msgstr "Engage when... Ignore..."
 
-msgid "Engine default"
-msgstr "Engine default"
-
 msgid "Enter a whole number from 1 to {MAX_MODEL_CONTEXT_WINDOW} for the context limit."
 msgstr "Enter a whole number from 1 to {MAX_MODEL_CONTEXT_WINDOW} for the context limit."
 
@@ -1847,9 +1811,6 @@ msgstr "Failed to stop"
 #. js-lingui-explicit-id
 msgid "Failed."
 msgstr "Failed."
-
-msgid "Fast model"
-msgstr "Fast model"
 
 msgid "File"
 msgstr "File"
@@ -2220,9 +2181,6 @@ msgstr "Keep memories"
 msgid "key"
 msgstr "key"
 
-msgid "Keys"
-msgstr "Keys"
-
 msgid "Kind"
 msgstr "Kind"
 
@@ -2231,9 +2189,6 @@ msgstr "Knows our conversation"
 
 msgid "Language"
 msgstr "Language"
-
-msgid "Last active"
-msgstr "Last active"
 
 msgid "Last active {last}"
 msgstr "Last active {last}"
@@ -2264,6 +2219,12 @@ msgstr "Library view"
 
 msgid "Light"
 msgstr "Light"
+
+msgid "Light model"
+msgstr "Light model"
+
+msgid "Light model · {label}"
+msgstr "Light model · {label}"
 
 msgid "Line height"
 msgstr "Line height"
@@ -2896,15 +2857,6 @@ msgstr "Or paste an API key"
 msgid "Organic"
 msgstr "Organic"
 
-msgid "Organization"
-msgstr "Organization"
-
-msgid "Organization budget"
-msgstr "Organization budget"
-
-msgid "Organization keys"
-msgstr "Organization keys"
-
 msgid "Organization limit"
 msgstr "Organization limit"
 
@@ -2968,12 +2920,6 @@ msgstr "PDF"
 
 msgid "People"
 msgstr "People"
-
-msgid "Period"
-msgstr "Period"
-
-msgid "Person"
-msgstr "Person"
 
 msgid "Personal credential"
 msgstr "Personal credential"
@@ -3342,9 +3288,6 @@ msgstr "Restoring your workspace"
 msgid "Restyles every slide; your content stays as it is."
 msgstr "Restyles every slide; your content stays as it is."
 
-msgid "Resume"
-msgstr "Resume"
-
 msgid "Retry"
 msgstr "Retry"
 
@@ -3407,9 +3350,6 @@ msgstr "Runs on"
 
 msgid "Runs when this bot receives a verified message from this provider."
 msgstr "Runs when this bot receives a verified message from this provider."
-
-msgid "Same as the chat"
-msgstr "Same as the chat"
 
 msgid "Save"
 msgstr "Save"
@@ -3802,9 +3742,6 @@ msgstr "Stored securely. Never shown here."
 msgid "Stream replies"
 msgstr "Stream replies"
 
-msgid "Strong model"
-msgstr "Strong model"
-
 msgid "Style"
 msgstr "Style"
 
@@ -3850,9 +3787,6 @@ msgstr "Supports images"
 
 msgid "Supports thinking"
 msgstr "Supports thinking"
-
-msgid "Suspend"
-msgstr "Suspend"
 
 msgid "Switch after the current reply."
 msgstr "Switch after the current reply."
@@ -3938,9 +3872,6 @@ msgstr "The model is busy. Try again in a moment."
 
 msgid "The model refused my key."
 msgstr "The model refused my key."
-
-msgid "Their chats, Computer and keys are removed for good. This can't be undone."
-msgstr "Their chats, Computer and keys are removed for good. This can't be undone."
 
 msgid "Theme"
 msgstr "Theme"
@@ -4045,9 +3976,6 @@ msgstr "Tool sources"
 
 msgid "Tools"
 msgstr "Tools"
-
-msgid "Total"
-msgstr "Total"
 
 msgid "Treat like a person"
 msgstr "Treat like a person"

@@ -1,7 +1,7 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import type { EngineModelCatalog, EngineModelRow } from "@superchat/contracts";
 import { NativeSelect, NativeSelectOption } from "@superchat/ui-web";
-import { Cpu } from "lucide-react";
+import { Cpu, Feather } from "lucide-react";
 import { useEffect, useState } from "react";
 import { errorText } from "../../lib/error-text";
 import { rpc } from "../../lib/rpc";
@@ -25,6 +25,12 @@ export function currentDefault(catalog: EngineModelCatalog): string {
   );
 }
 
+/** "Automatic · <model>": what Light is while the person has not picked one. */
+function automaticLabel(catalog: EngineModelCatalog, automatic: string): string {
+  const model = catalog.models.find((row) => row.id === catalog.automaticLightModel);
+  return model ? `${automatic} · ${modelOptionLabel(model)}` : automatic;
+}
+
 function HarnessDefault({
   harness,
   label,
@@ -36,6 +42,8 @@ function HarnessDefault({
   const { t } = useLingui();
   const [catalog, setCatalog] = useState<EngineModelCatalog | null>(null);
   const [value, setValue] = useState("");
+  /** The person's Light pick; `""` is automatic. */
+  const [light, setLight] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -46,6 +54,7 @@ function HarnessDefault({
         if (cancelled) return;
         setCatalog(next);
         setValue(currentDefault(next));
+        setLight(next.lightPick ?? "");
       })
       .catch((err) => {
         if (!cancelled) setError(errorText(err, t`Could not load models.`));
@@ -67,8 +76,21 @@ function HarnessDefault({
     }
   }
 
+  async function chooseLight(model: string) {
+    const before = light;
+    setLight(model);
+    setError(null);
+    try {
+      await rpc.engineModels.setLight({ harness, model: model || null });
+    } catch (err) {
+      setLight(before);
+      setError(errorText(err, t`Could not save.`));
+    }
+  }
+
   const defaultWord = t`Default`;
   const title = label ? t`Default model · ${label}` : t`Default model`;
+  const lightTitle = label ? t`Light model · ${label}` : t`Light model`;
   if (!catalog) {
     return error ? <SettingsRow label={title} sub={error} /> : null;
   }
@@ -94,6 +116,22 @@ function HarnessDefault({
           ))}
         </NativeSelect>
       </SettingsRow>
+      <SettingsRow label={lightTitle} icon={{ tone: "teal", glyph: <Feather strokeWidth={2.4} /> }}>
+        <NativeSelect
+          size="sm"
+          aria-label={lightTitle}
+          data-testid={`light-model-${harness}`}
+          value={light}
+          onChange={(event) => void chooseLight(event.target.value)}
+        >
+          <NativeSelectOption value="">{automaticLabel(catalog, t`Automatic`)}</NativeSelectOption>
+          {catalog.models.map((model) => (
+            <NativeSelectOption key={model.id} value={model.id}>
+              {modelOptionLabel(model)}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+      </SettingsRow>
       {error ? (
         <p role="alert" className="px-3 pb-2 text-[12.5px] text-destructive">
           {error}
@@ -103,7 +141,8 @@ function HarnessDefault({
   );
 }
 
-/** The model new chats start on, for each harness the person's Superchat may run. */
+/** The model new chats start on and the Light one quick work runs on, for each harness the
+ * person's Superchat may run. */
 export function DefaultModel({ harnesses }: { harnesses: { id: string; label: string }[] }) {
   if (harnesses.length === 0) return null;
   return (
