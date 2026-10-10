@@ -12,15 +12,14 @@ export const ActivityKindSchema = z.enum(["turn", "sub_agent"]);
 export type ActivityKind = z.infer<typeof ActivityKindSchema>;
 
 /** Where an Activity came from, for the icon beside it: a Conversation turn, a Side Chat turn,
- * background work the Muse started, a scheduled Helper (standing task, followed topic), or a
- * Goal's cadence. Distinct from `kind`, which says how the engine stores it. */
+ * background work the Muse started, or a scheduled Helper (an automation). Distinct from `kind`,
+ * which says how the engine stores it. */
 export const ActivitySourceSchema = z.enum([
   "turn",
   "side_chat",
   "background",
   "housekeeping",
   "scheduled",
-  "goal",
 ]);
 export type ActivitySource = z.infer<typeof ActivitySourceSchema>;
 

@@ -14,7 +14,6 @@ import {
   getOmnigentSession,
   getOmnigentTranscript,
   listOmnigentDailyNotes,
-  listOmnigentFeed,
   listOmnigentMemoryClaims,
   OmnigentApiError,
   OmnigentSideChatError,
@@ -124,20 +123,6 @@ describe("omnigent client", () => {
       choice: "answer",
       note: "Use the Q3 numbers",
     });
-  });
-
-  it("pages the feed with the engine's cursor", async () => {
-    const fetchMock = vi.fn(async () =>
-      jsonResponse({ data: [], has_more: false, next_cursor: null }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    await listOmnigentFeed(CONFIG, "e@x.test", { limit: 20, before: "100:run_1" });
-
-    const [url] = fetchMock.mock.calls[0] as unknown as [URL];
-    expect(url.pathname).toBe("/v1/me/feed");
-    expect(url.searchParams.get("limit")).toBe("20");
-    expect(url.searchParams.get("before")).toBe("100:run_1");
   });
 
   it("reads and writes proactivity on /v1/me/proactivity", async () => {

@@ -4,7 +4,6 @@ import type {
   JobPublisher,
   SandboxProvider,
 } from "@nova/adapter-kit";
-import { runContinueJob } from "@nova/adapter-kit";
 import type {
   ComposioProvider,
   ConnectorRegistry,
@@ -18,16 +17,12 @@ import type { Auth } from "@nova/auth";
 import type { Actor } from "@nova/contracts";
 import { appContract } from "@nova/contracts";
 import type { PrismaClient, SignupPolicyEnv, ThreadEvents } from "@nova/db";
-import { createGroupRepos, createRepos, IsolationError } from "@nova/db";
-import { getLogger } from "@nova/logging";
+import { createGroupRepos, createRepos } from "@nova/db";
 import { type ImplementerInternalWithMiddlewares, implement, ORPCError } from "@orpc/server";
 import type { EngineArtifactsDeps } from "../features/artifacts/index.js";
 import { withEngineComputer } from "../features/computer/service.js";
-import type { EngineIdeasDeps } from "../features/ideas/service.js";
 import { createAgentSkillsService } from "../features/skills/agent-skills.js";
 import { createTaughtSkillsService } from "../features/skills/taught-skills.js";
-import { assertTeachingSendAllowed } from "../teaching-guard.js";
-import { resolveThreadTarget } from "../thread-target.js";
 
 export interface RouterDeps {
   prisma: PrismaClient;
@@ -106,7 +101,6 @@ export interface RouterContext {
     actor: Actor,
     snapshot: T,
   ): Promise<T>;
-  engineIdeasDeps: EngineIdeasDeps;
 }
 
 export function createRouterContext(deps: RouterDeps): RouterContext {
@@ -127,34 +121,10 @@ export function createRouterContext(deps: RouterDeps): RouterContext {
   const agentSkills = createAgentSkillsService(deps.prisma);
 
   const authed = makeAuthed(os);
-  // Muse is the only edition now; these routes (Goals, Asks, Feed, Ideas, followed
-  // topics, Muse settings) no longer need a mode gate, but the alias documents intent.
+  // Muse is the only edition now; these routes (Asks, followed topics, Muse settings) no longer need a mode gate, but the alias documents intent.
   const museOnly = authed;
   const engineArtifactsDeps: EngineArtifactsDeps = { prisma: deps.prisma };
   const engineFilesDeps = { prisma: deps.prisma };
-  const engineIdeasDeps: EngineIdeasDeps = {
-    prisma: deps.prisma,
-    // "Do it" sends the Idea's message the same way a typed follow-up does.
-    sendMessage: async (actor, botId, text) => {
-      const target = await resolveThreadTarget(deps.prisma, actor, { botId });
-      if (target.kind !== "bot") throw new IsolationError();
-      await assertTeachingSendAllowed(deps.prisma, actor, target.botId);
-      const sent = await deps.events.sendUserMessage({
-        spaceId: actor.spaceId,
-        threadId: target.threadId,
-        botId: target.botId,
-        userId: actor.userId,
-        blocks: [{ kind: "text", text }],
-        prompt: text,
-        trigger: "follow_up",
-      });
-      if (sent.taskId && sent.runId) {
-        await deps.jobs.enqueue(runContinueJob(sent.runId)).catch((error) => {
-          getLogger().error("idea send enqueue", error);
-        });
-      }
-    },
-  };
   return {
     deps,
     os,
@@ -169,6 +139,5 @@ export function createRouterContext(deps: RouterDeps): RouterContext {
     engineArtifactsDeps,
     engineFilesDeps,
     withComputer: (actor, snapshot) => withEngineComputer(deps, actor, snapshot),
-    engineIdeasDeps,
   };
 }

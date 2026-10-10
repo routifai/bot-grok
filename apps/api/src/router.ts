@@ -9,9 +9,6 @@ import { filesRouter } from "./features/computer/files-router.js";
 import { computerRouter } from "./features/computer/router.js";
 import { dailyNotesRouter } from "./features/daily-notes/router.js";
 import { decksRouter } from "./features/decks/router.js";
-import { feedRouter } from "./features/feed/router.js";
-import { goalsRouter } from "./features/goals/router.js";
-import { ideasRouter } from "./features/ideas/router.js";
 import { knowledgeRouter } from "./features/knowledge/router.js";
 import { memoryRouter } from "./features/memory/router.js";
 import { engineModelsRouter } from "./features/models/router.js";
@@ -55,10 +52,7 @@ export function createRouter(deps: RouterDeps) {
     ...engineAdminRouter(c),
     ...engineModelsRouter(c),
     ...connectionsRouter(c),
-    ...feedRouter(c),
     ...filesRouter(c),
-    ...goalsRouter(c),
-    ...ideasRouter(c),
     ...integrationsRouter(c),
     ...knowledgeRouter(c),
     ...mcpRouter(c),

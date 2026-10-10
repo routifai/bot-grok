@@ -20,7 +20,7 @@ export interface OmnigentActivityStep {
 export interface OmnigentActivity {
   id: string;
   kind: "turn" | "sub_agent";
-  source: "turn" | "side_chat" | "background" | "housekeeping" | "scheduled" | "goal";
+  source: "turn" | "side_chat" | "background" | "housekeeping" | "scheduled";
   chat_id: string;
   title: string;
   outcome: string | null;
