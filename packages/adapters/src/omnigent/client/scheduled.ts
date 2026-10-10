@@ -15,6 +15,9 @@ export interface OmnigentScheduledTask {
   created_at?: number;
   last_run_at?: number | null;
   next_run_at?: string | null;
+  /** Product marker the task was created with (e.g. `automation`, `followed_topic`). */
+  kind?: string | null;
+  last_run_status?: string | null;
 }
 
 function scheduledTaskUrl(config: OmnigentClientConfig, id?: string, tail = ""): URL {
@@ -22,14 +25,15 @@ function scheduledTaskUrl(config: OmnigentClientConfig, id?: string, tail = ""):
   return new URL(path, config.baseUrl);
 }
 
-/** `GET /v1/scheduled-tasks?parent_session_id=` — the tasks parented on one Super Chat. */
+/** `GET /v1/scheduled-tasks[?parent_session_id=]` — the owner's tasks, or only those parented on
+ * one Super Chat. */
 export async function listOmnigentScheduledTasks(
   config: OmnigentClientConfig,
   email: string,
-  parentSessionId: string,
+  parentSessionId?: string,
 ): Promise<OmnigentScheduledTask[]> {
   const url = scheduledTaskUrl(config);
-  url.searchParams.set("parent_session_id", parentSessionId);
+  if (parentSessionId) url.searchParams.set("parent_session_id", parentSessionId);
   const response = await fetch(url, { headers: omnigentHeaders(config, email) });
   await throwOnError(response, "list scheduled tasks", config.secrets);
   const body = (await response.json()) as { scheduled_tasks?: OmnigentScheduledTask[] };
@@ -85,7 +89,7 @@ export async function patchOmnigentScheduledTask(
   config: OmnigentClientConfig,
   email: string,
   id: string,
-  patch: { state?: "active" | "paused"; rrule?: string },
+  patch: { state?: "active" | "paused"; rrule?: string; name?: string; prompt?: string },
 ): Promise<OmnigentScheduledTask> {
   const response = await fetch(scheduledTaskUrl(config, id), {
     method: "PATCH",

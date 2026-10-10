@@ -20,6 +20,7 @@ export * from "./rpc/admin.js";
 export * from "./rpc/approvals.js";
 export * from "./rpc/apps.js";
 export * from "./rpc/artifacts.js";
+export * from "./rpc/automations.js";
 export * from "./rpc/charts.js";
 export * from "./rpc/computer.js";
 export * from "./rpc/deck-edit-protocol.js";
