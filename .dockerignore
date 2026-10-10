@@ -34,5 +34,3 @@ apps/mobile/*
 !apps/mobile/package.json
 apps/desktop/*
 !apps/desktop/package.json
-apps/www/*
-!apps/www/package.json

@@ -21,7 +21,6 @@
       "!**/verify-report",
       "!**/data",
       "!**/*.astro",
-      "!**/apps/www",
       "!engine/omnigent",
       "!infra/sandboxes/computer/deck-export/fixtures"
     ]

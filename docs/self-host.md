@@ -573,7 +573,7 @@ Use the same HTTPS origin for the web app, `/api`, and `/rpc`. Preserve the auth
 proxy routes. Choose a [computer provider](#choosing-a-computer-provider) appropriate to the
 service's trust boundary. `SIGNUP_MODE` applies on the API's first start. A non-empty
 `SIGNUP_ALLOWLIST` applies on every API start.
-The optional marketing site in `apps/www` can be hosted separately.
+
 
 ## Connect mobile clients
 

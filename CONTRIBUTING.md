@@ -33,8 +33,8 @@ ICU plural branches intact; do not commit generated `*.js`/`*.mjs` catalog files
 Expo mobile has its own catalog and locale registry. Add the locale to
 `apps/mobile/lib/ui-locale.ts`, add `apps/mobile/lib/locales/<locale>.ts`, and register the
 catalog in `apps/mobile/lib/i18n.ts`. Web PO entries do not translate mobile automatically.
-Update the locale unit tests and a UI E2E scenario for each supported surface. The marketing
-homepage in `apps/www` and the native Electron setup window have separate localization paths;
+Update the locale unit tests and a UI E2E scenario for each supported surface. The native
+Electron setup window has a separate localization path;
 scope and test those changes explicitly instead of assuming the web catalog covers them.
 
 ## Optional live-provider checks

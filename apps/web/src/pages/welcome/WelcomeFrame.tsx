@@ -1,9 +1,7 @@
-import { useRef } from "react";
 import { Link } from "react-router-dom";
-import { SuperchatMark } from "./Brand";
+import { SuperchatLogo } from "../../components/SuperchatLogo";
+import { ContourGround } from "../muse/chrome/ContourGround";
 import { GUTTER } from "./Cta";
-import { Grain } from "./Grain";
-import { Stars } from "./Stars";
 
 /** Shared field/button looks for pages that wear the signed-out welcome surface (night). */
 export const welcomeFieldClass =
@@ -36,22 +34,19 @@ export function WelcomeFrame({
       {children}
     </>
   );
-  const rootRef = useRef<HTMLDivElement>(null);
   const bodyClass = `flex ${width} max-w-full flex-col items-center`;
   return (
     <div
-      ref={rootRef}
-      className="relative isolate flex min-h-full flex-col pt-safe pb-safe bg-welcome-night text-welcome-night-ink antialiased [color-scheme:dark]"
+      className="relative isolate flex min-h-full flex-col pt-safe pb-safe bg-window text-foreground antialiased"
       data-superchat-surface="welcome"
     >
-      <Stars scrollRef={rootRef} />
-      <Grain />
+      <ContourGround />
       <header className={`relative z-1 flex w-full items-center py-[22px] ${GUTTER}`}>
         <Link
           to="/"
           className="rounded-md focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:outline-welcome-night-glow"
         >
-          <SuperchatMark />
+          <SuperchatLogo />
         </Link>
       </header>
       <main className="relative z-1 flex flex-1 items-center justify-center px-4 pb-[12vh]">
