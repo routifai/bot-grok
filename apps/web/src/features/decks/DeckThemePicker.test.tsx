@@ -14,6 +14,7 @@ vi.mock("@lingui/react/macro", () => ({
   }),
 }));
 
+import { setDeckThemeSources } from "../../lib/deck-themes";
 import { DeckThemePicker, resetDeckThemeCache } from "./DeckThemePicker";
 import {
   registerDeckFlush,
@@ -29,6 +30,7 @@ const THEMES: DeckTheme[] = [
   {
     id: "corporate-clean",
     name: "Corporate Clean",
+    tagline: "Sober, board-ready",
     mood: "White and navy.",
     category: "professional",
     mode: "light",
@@ -38,6 +40,7 @@ const THEMES: DeckTheme[] = [
   {
     id: "nord",
     name: "Nord",
+    tagline: "Dark frost blue",
     mood: "Arctic dark slate.",
     category: "dark",
     mode: "dark",
@@ -103,13 +106,13 @@ const key = (el: Element, name: string) =>
     async () => void el.dispatchEvent(new KeyboardEvent("keydown", { key: name, bubbles: true })),
   );
 
-it("shows every theme with its thumbnail and mood, grouped, the current one marked", async () => {
+it("shows every theme with its thumbnail and tagline, grouped, the current one marked", async () => {
   const { container } = await mount();
   expect(container.querySelectorAll('[role="radio"]')).toHaveLength(2);
   expect(container.querySelectorAll('[role="radiogroup"]')).toHaveLength(1);
   expect(card(container, "corporate-clean").getAttribute("aria-checked")).toBe("true");
   expect(card(container, "nord").getAttribute("aria-checked")).toBe("false");
-  expect(card(container, "nord").textContent).toContain("Arctic dark slate.");
+  expect(card(container, "nord").textContent).toContain("Dark frost blue");
   expect(card(container, "nord").querySelector("img")?.getAttribute("src")).toContain("data:image");
   expect(Array.from(container.querySelectorAll("h3")).map((h) => h.textContent)).toEqual([
     "Professional",
@@ -274,4 +277,33 @@ it("closes on Escape and on a click outside, not on a click inside", async () =>
       ?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })),
   );
   expect(open()).toBe("false");
+});
+
+it("previews a theme's sample deck and switches to it from the preview", async () => {
+  setDeckThemeSources({
+    sample: async (id) =>
+      `<!doctype html><html><body><section class="slide" data-screen-label="01 ${id}"></section></body></html>`,
+  });
+  const { container, editSource } = await mount();
+  await act(async () => setDeckThemeOpen(KEY, true));
+  const preview = container.querySelector(
+    '[data-testid="deck-theme-preview-nord"]',
+  ) as HTMLButtonElement;
+  await act(async () => preview.click());
+  await act(async () => {});
+  const dialog = document.querySelector("[data-deck-preview]") as HTMLElement;
+  expect(dialog.textContent).toContain("Nord");
+  expect(dialog.querySelector('[data-testid="deck-viewer"]')).not.toBeNull();
+  // Clicking in the lightbox leaves the gallery open.
+  await act(async () => {
+    dialog.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+  });
+  expect(container.querySelector('[data-testid="open"]')?.textContent).toBe("true");
+  const use = [...dialog.querySelectorAll("button")].find((b) => b.textContent === "Use this look");
+  await act(async () => use?.click());
+  expect(editSource).toHaveBeenCalledExactlyOnceWith({
+    artifactId: "v1",
+    baseVersion: 1,
+    patches: [{ kind: "set-theme", theme: "nord" }],
+  });
 });

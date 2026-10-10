@@ -25,13 +25,14 @@ import {
   Phone,
 } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
-import { useDeckThemes } from "../../lib/deck-themes";
-import { useReplyCardSend } from "./context";
+import { useAskPreviews, useReplyCardSend } from "./context";
 import { hostOf, mailtoHref, safeHttpUrl, telHref } from "./links";
 
 /** The transcript bubble is as wide as its content, so cards state their own width. */
 const CARD_WIDTH = "w-[min(30rem,calc(100vw-3rem))]";
 const WIDE_CARD_WIDTH = "w-[min(42rem,calc(100vw-3rem))]";
+/** A question answered with previews (deck looks) fills the message column: tiles side by side. */
+const PREVIEW_CARD_WIDTH = "w-[min(46rem,calc(100vw-3rem))] max-w-full";
 
 /** Every card kind shares one frame: compact, monochrome, readable at phone width. */
 export function Frame({
@@ -234,66 +235,25 @@ function Ask({
     setPicked(label);
     send?.(label);
   };
-  const themed = data.options.some((o) => o.preview?.kind === "deck-theme");
-  const themes = useDeckThemes(themed);
+  // Options that preview something (deck themes) are drawn by that capability's own tiles.
+  const previewKind = data.options.find((o) => o.preview)?.preview?.kind;
+  const Tiles = useAskPreviews()[previewKind ?? ""];
   return (
-    <Frame title={title}>
+    <Frame title={title} className={Tiles ? PREVIEW_CARD_WIDTH : undefined}>
       <p className="text-[14.5px] leading-snug font-medium" dir="auto">
         {data.question}
       </p>
-      {themed ? (
-        <div className="mt-3 grid grid-cols-3 gap-2" data-testid="ask-previews">
-          {data.options.map((option) => {
-            const isChosen = chosen === option.label;
-            const theme = themes?.find((t) => t.id === option.preview?.id);
-            return (
-              <button
-                key={option.id}
-                type="button"
-                disabled={locked}
-                aria-pressed={locked ? isChosen : undefined}
-                onClick={() => pick(option.label)}
-                className={cn(
-                  "group flex min-w-0 flex-col gap-1.5 rounded-xl text-start outline-none focus-visible:ring-2 focus-visible:ring-ring enabled:cursor-pointer",
-                  locked && !isChosen && "opacity-50",
-                )}
-              >
-                <span
-                  className={cn(
-                    "relative block aspect-video overflow-hidden rounded-lg bg-muted outline -outline-offset-1",
-                    isChosen
-                      ? "outline-2 -outline-offset-2 outline-foreground"
-                      : "outline-1 outline-border group-enabled:group-hover:outline-foreground/40",
-                  )}
-                >
-                  {theme?.preview ? (
-                    <img
-                      src={theme.preview}
-                      alt=""
-                      draggable={false}
-                      className="size-full object-cover"
-                    />
-                  ) : null}
-                  {isChosen ? (
-                    <span className="absolute end-1.5 top-1.5 grid size-5 place-items-center rounded-full bg-foreground text-background shadow">
-                      <Check size={12} aria-hidden="true" />
-                    </span>
-                  ) : null}
-                </span>
-                <span className="px-0.5">
-                  <span className="block truncate text-[12px] font-medium" dir="auto">
-                    {option.label}
-                  </span>
-                  {theme ? (
-                    <span className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">
-                      {theme.mood}
-                    </span>
-                  ) : null}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+      {Tiles ? (
+        <Tiles
+          options={data.options.map((option) => ({
+            id: option.id,
+            label: option.label,
+            previewId: option.preview?.id ?? "",
+          }))}
+          chosen={chosen}
+          locked={locked}
+          onPick={pick}
+        />
       ) : (
         <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           {data.options.map((option) => {

@@ -126,6 +126,11 @@ export function DeckViewer({
     const onKey = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
       if (isTypingTarget(event.target)) return;
+      // A dialog the keyboard is in (a theme preview over this deck) owns the keys, unless it is
+      // this viewer's own (the Theme gallery) or holds this viewer (the preview's deck).
+      const dialog = (event.target as Element | null)?.closest?.('[role="dialog"]');
+      const own = container.current;
+      if (dialog && own && !dialog.contains(own) && !own.contains(dialog)) return;
       const nav: Record<string, DeckNavigation> = {
         ArrowRight: { action: "next" },
         PageDown: { action: "next" },

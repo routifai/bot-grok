@@ -3,7 +3,7 @@ import type { ReplyCardBlock, ThreadMessage } from "@nova/contracts";
 // Fixture data for /dev/clarify and /dev/followups (CardsPreviewPage.tsx): the cards
 // `ask_clarification` and `suggest_follow_ups` produce, on a bank-workplace thread.
 
-export type CardsScenario = "clarify" | "followups";
+export type CardsScenario = "clarify" | "followups" | "looks";
 
 let seq = 0;
 function message(role: "user" | "bot", ...blocks: ThreadMessage["blocks"]): ThreadMessage {
@@ -38,9 +38,38 @@ export function followUpsCard(suggestions: string[]): ReplyCardBlock {
   };
 }
 
+/** The three looks the Muse offers for a new deck: one professional, one editorial, one dark. */
+export const LOOKS = [
+  ["corporate-clean", "Corporate Clean"],
+  ["editorial-serif", "Editorial Serif"],
+  ["tokyo-night", "Tokyo Night"],
+] as const;
+
+function lookCard(): ReplyCardBlock {
+  return {
+    kind: "reply_card",
+    card: "ask",
+    data: {
+      question: "Which look?",
+      options: LOOKS.map(([id, label], i) => ({
+        id: `opt-${i + 1}`,
+        label,
+        preview: { kind: "deck-theme", id },
+      })),
+    },
+    fallback: `Which look?\n\n${LOOKS.map(([, label]) => `- ${label}`).join("\n")}`,
+  };
+}
+
 /** The thread each route opens on. */
 export function seedMessages(scenario: CardsScenario): ThreadMessage[] {
   seq = 0;
+  if (scenario === "looks") {
+    return [
+      message("user", text("Can you build for me a deck for this?")),
+      message("bot", lookCard()),
+    ];
+  }
   if (scenario === "clarify") {
     return [
       message("user", text("Pull the staffing numbers for the review.")),
@@ -75,6 +104,23 @@ export function seedMessages(scenario: CardsScenario): ThreadMessage[] {
 
 /** What the Muse answers after the person's pick or chip, so the flow is visible end to end. */
 export function replyTo(scenario: CardsScenario, said: string): ThreadMessage[] {
+  if (scenario === "looks") {
+    return [
+      message("bot", text(`Here is the deck in ${said}.`)),
+      message("bot", {
+        kind: "reply_card",
+        card: "file",
+        data: {
+          name: "q3-review.deck.html",
+          artifactId: "dev-deck",
+          kind: "html",
+          size: 442_536,
+          version: 1,
+        },
+        fallback: "q3-review.deck.html",
+      }),
+    ];
+  }
   if (scenario === "clarify") {
     return [
       message(

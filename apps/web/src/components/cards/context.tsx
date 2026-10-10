@@ -1,5 +1,5 @@
 import type { ThreadMessage } from "@nova/contracts";
-import { createContext, type ReactNode, useContext, useMemo } from "react";
+import { type ComponentType, createContext, type ReactNode, useContext, useMemo } from "react";
 import { type ResolvedReplyCard, replyCardKey, resolveReplyCards } from "./thread";
 
 /** How a card talks back: the person's next message, through the thread's own send path. */
@@ -103,3 +103,21 @@ export function useResolvedReplyCard(
 ): ResolvedReplyCard | undefined {
   return useContext(ThreadContext)?.get(replyCardKey(messageId, blockIndex));
 }
+
+/** What a capability's answer tiles get for an ask card whose options preview its kind. */
+export interface AskPreviewProps {
+  /** Each answer with the id of what it previews (a deck theme id, for `deck-theme`). */
+  options: readonly { id: string; label: string; previewId: string }[];
+  /** The label the person picked (their reply), or null. */
+  chosen: string | null;
+  locked: boolean;
+  onPick: (label: string) => void;
+}
+
+/** `preview kind -> tiles` (decks: `deck-theme`), filled by the Shell so cards import no
+ * capability. An ask card whose kind has no tiles here keeps its plain buttons. */
+const AskPreviewsContext = createContext<Readonly<Record<string, ComponentType<AskPreviewProps>>>>(
+  {},
+);
+export const AskPreviewsProvider = AskPreviewsContext.Provider;
+export const useAskPreviews = () => useContext(AskPreviewsContext);
