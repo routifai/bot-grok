@@ -70,6 +70,10 @@ msgstr "{0} elements"
 msgid "{0} handling"
 msgstr "{0} handling"
 
+#. placeholder {0}: automation.name
+msgid "{0} is on"
+msgstr "{0} is on"
+
 #. placeholder {0}: format(size / 1024)
 msgid "{0} KB"
 msgstr "{0} KB"
@@ -107,12 +111,6 @@ msgstr "{0}'s computer"
 msgid "{0}'s screen"
 msgstr "{0}'s screen"
 
-msgid "{activeCount} active"
-msgstr "{activeCount} active"
-
-msgid "{activeCount} active · {waiting} need you"
-msgstr "{activeCount} active · {waiting} need you"
-
 msgid "{botName}’s computer"
 msgstr "{botName}’s computer"
 
@@ -121,12 +119,6 @@ msgstr "{count, plural, one {# reply} other {# replies}}"
 
 msgid "{days}d ago"
 msgstr "{days}d ago"
-
-msgid "{done} of {total} done"
-msgstr "{done} of {total} done"
-
-msgid "{done} of {total} Tasks done"
-msgstr "{done} of {total} Tasks done"
 
 msgid "{hours}h ago"
 msgstr "{hours}h ago"
@@ -202,9 +194,6 @@ msgstr "✓ Sent · 9:42 AM"
 msgid "1 cell"
 msgstr "1 cell"
 
-msgid "2 of 5 · Next check-in Friday, 9:00"
-msgstr "2 of 5 · Next check-in Friday, 9:00"
-
 msgid "3 replies"
 msgstr "3 replies"
 
@@ -213,14 +202,6 @@ msgstr "3 WEEKS AGO"
 
 msgid "A bit of everything"
 msgstr "A bit of everything"
-
-#. placeholder {0}: goal.title
-msgid "A new plan for “{0}”"
-msgstr "A new plan for “{0}”"
-
-#. placeholder {0}: goal.title
-msgid "A plan is ready for “{0}”"
-msgstr "A plan is ready for “{0}”"
 
 msgid "A real computer in the cloud. Watch it work, or take over any time."
 msgstr "A real computer in the cloud. Watch it work, or take over any time."
@@ -388,9 +369,6 @@ msgstr "After a month"
 msgid "After a week"
 msgstr "After a week"
 
-msgid "Agent computer"
-msgstr "Agent computer"
-
 msgid "Agent connections"
 msgstr "Agent connections"
 
@@ -515,6 +493,9 @@ msgstr "Approve this server to let your agent use its tools."
 msgid "Approve unverified emails only after confirming the person another way."
 msgstr "Approve unverified emails only after confirming the person another way."
 
+msgid "Apps superchat builds for you will appear here."
+msgstr "Apps superchat builds for you will appear here."
+
 msgid "Archive"
 msgstr "Archive"
 
@@ -585,17 +566,17 @@ msgstr "Ask me first"
 msgid "Ask me first before step {0}"
 msgstr "Ask me first before step {0}"
 
-msgid "Ask Nova"
-msgstr "Ask Nova"
-
-msgid "Ask Nova about {label}"
-msgstr "Ask Nova about {label}"
-
-msgid "Ask Nova instead"
-msgstr "Ask Nova instead"
-
 msgid "Ask once and get on with your day."
 msgstr "Ask once and get on with your day."
+
+msgid "Ask superchat"
+msgstr "Ask superchat"
+
+msgid "Ask superchat about {label}"
+msgstr "Ask superchat about {label}"
+
+msgid "Ask superchat instead"
+msgstr "Ask superchat instead"
 
 msgid "Ask the server owner to configure this provider."
 msgstr "Ask the server owner to configure this provider."
@@ -605,6 +586,9 @@ msgstr "ASKS FIRST"
 
 msgid "Asleep"
 msgstr "Asleep"
+
+msgid "At"
+msgstr "At"
 
 #. placeholder {0}: preset.time
 msgid "at {0}"
@@ -640,6 +624,9 @@ msgstr "Automated senders"
 msgid "Automated senders will appear after they post here."
 msgstr "Automated senders will appear after they post here."
 
+msgid "Automations"
+msgstr "Automations"
+
 msgid "Available after the routine is saved"
 msgstr "Available after the routine is saved"
 
@@ -663,9 +650,6 @@ msgstr "Background"
 
 msgid "Bearer token"
 msgstr "Bearer token"
-
-msgid "Blocked"
-msgstr "Blocked"
 
 msgid "Bold"
 msgstr "Bold"
@@ -735,13 +719,6 @@ msgstr "Can't reach the server."
 msgid "Cancel"
 msgstr "Cancel"
 
-#. placeholder {0}: goal.title
-msgid "Cancel \"{0}\"?"
-msgstr "Cancel \"{0}\"?"
-
-msgid "Cancel Goal"
-msgstr "Cancel Goal"
-
 msgid "Cancel new bot"
 msgstr "Cancel new bot"
 
@@ -754,14 +731,8 @@ msgstr "cancelled"
 msgid "Cancelled"
 msgstr "Cancelled"
 
-msgid "Cancelling…"
-msgstr "Cancelling…"
-
 msgid "Card view"
 msgstr "Card view"
-
-msgid "Central bank holds its rate; lenders trim five-year fixed"
-msgstr "Central bank holds its rate; lenders trim five-year fixed"
 
 msgid "Change password"
 msgstr "Change password"
@@ -796,6 +767,9 @@ msgstr "Chat apps, group channels, and agent connections."
 msgid "Chat Settings"
 msgstr "Chat Settings"
 
+msgid "Chat with this folder"
+msgstr "Chat with this folder"
+
 msgid "Chats"
 msgstr "Chats"
 
@@ -808,18 +782,6 @@ msgstr "Check in."
 msgid "Check your email"
 msgstr "Check your email"
 
-msgid "Check-ins"
-msgstr "Check-ins"
-
-msgid "Checked daily"
-msgstr "Checked daily"
-
-msgid "Checked hourly"
-msgstr "Checked hourly"
-
-msgid "Checked weekly"
-msgstr "Checked weekly"
-
 msgid "Checking…"
 msgstr "Checking…"
 
@@ -829,8 +791,8 @@ msgstr "Choose a bot…"
 msgid "Choose a new password"
 msgstr "Choose a new password"
 
-msgid "Choose which connected model Nova uses."
-msgstr "Choose which connected model Nova uses."
+msgid "Choose which connected model superchat uses."
+msgstr "Choose which connected model superchat uses."
 
 msgid "Clear"
 msgstr "Clear"
@@ -910,9 +872,6 @@ msgstr "Color"
 
 msgid "Coming soon"
 msgstr "Coming soon"
-
-msgid "Coming up"
-msgstr "Coming up"
 
 msgid "Command"
 msgstr "Command"
@@ -1012,9 +971,6 @@ msgstr "Connecting…"
 #. placeholder {0}: item.name
 msgid "Connection to {0} is still pending. You can close this and check again."
 msgstr "Connection to {0} is still pending. You can close this and check again."
-
-msgid "Context"
-msgstr "Context"
 
 msgid "Context limit"
 msgstr "Context limit"
@@ -1195,9 +1151,6 @@ msgstr "Could not load artifacts."
 msgid "Could not load bots. Reload to try again."
 msgstr "Could not load bots. Reload to try again."
 
-msgid "Could not load Goals"
-msgstr "Could not load Goals"
-
 msgid "Could not load integrations"
 msgstr "Could not load integrations"
 
@@ -1224,12 +1177,6 @@ msgstr "Could not load skill"
 
 msgid "Could not load skills."
 msgstr "Could not load skills."
-
-msgid "Could not load the Feed."
-msgstr "Could not load the Feed."
-
-msgid "Could not load the Goal log"
-msgstr "Could not load the Goal log"
 
 msgid "Could not load this artifact."
 msgstr "Could not load this artifact."
@@ -1354,6 +1301,9 @@ msgstr "Could not save that voice."
 msgid "Could not save the budget."
 msgstr "Could not save the budget."
 
+msgid "Could not save this automation."
+msgstr "Could not save this automation."
+
 msgid "Could not save this choice"
 msgstr "Could not save this choice"
 
@@ -1414,6 +1364,9 @@ msgstr "Could not update computer"
 msgid "Could not update reaction"
 msgstr "Could not update reaction"
 
+msgid "Could not upload this."
+msgstr "Could not upload this."
+
 msgid "Couldn't index"
 msgstr "Couldn't index"
 
@@ -1438,8 +1391,8 @@ msgstr "Couldn't prepare PDF"
 msgid "Couldn't prepare PowerPoint"
 msgstr "Couldn't prepare PowerPoint"
 
-msgid "Couldn’t reach Nova’s computer. Retrying…"
-msgstr "Couldn’t reach Nova’s computer. Retrying…"
+msgid "Couldn’t reach superchat’s computer. Retrying…"
+msgstr "Couldn’t reach superchat’s computer. Retrying…"
 
 #. placeholder {0}: attachment.file.name
 msgid "Couldn't read {0}"
@@ -1473,6 +1426,9 @@ msgstr "Create a section and move {0} into it."
 msgid "Create account"
 msgstr "Create account"
 
+msgid "Create automation"
+msgstr "Create automation"
+
 msgid "Create new Bot"
 msgstr "Create new Bot"
 
@@ -1481,6 +1437,9 @@ msgstr "Create new Group"
 
 msgid "Create new Space"
 msgstr "Create new Space"
+
+msgid "Create one and I'll run it on its own, every day, week or month."
+msgstr "Create one and I'll run it on its own, every day, week or month."
 
 msgid "Create Routine"
 msgstr "Create Routine"
@@ -1527,6 +1486,9 @@ msgstr "Custom color"
 msgid "Customer support"
 msgstr "Customer support"
 
+msgid "Daily"
+msgstr "Daily"
+
 msgid "Daily spending limit"
 msgstr "Daily spending limit"
 
@@ -1541,6 +1503,12 @@ msgstr "Dashboard unavailable"
 
 msgid "day"
 msgstr "day"
+
+msgid "Day of the month"
+msgstr "Day of the month"
+
+msgid "Day of the week"
+msgstr "Day of the week"
 
 msgid "Day-to-day work"
 msgstr "Day-to-day work"
@@ -1625,9 +1593,6 @@ msgstr "Deny"
 msgid "Deployment default"
 msgstr "Deployment default"
 
-msgid "Describe a Goal"
-msgstr "Describe a Goal"
-
 msgid "Describe what this bot does"
 msgstr "Describe what this bot does"
 
@@ -1676,9 +1641,6 @@ msgstr "Dismissed. Reconnect anytime from MCP settings."
 msgid "Display name"
 msgstr "Display name"
 
-msgid "Do it"
-msgstr "Do it"
-
 msgid "Do not type passwords into the demo. Use Take control for credentials."
 msgstr "Do not type passwords into the demo. Use Take control for credentials."
 
@@ -1719,13 +1681,6 @@ msgstr "Downloading…"
 
 msgid "Draft"
 msgstr "Draft"
-
-msgid "Draft talking points per client"
-msgstr "Draft talking points per client"
-
-#. placeholder {0}: due.date
-msgid "Due {0}"
-msgstr "Due {0}"
 
 msgid "Duplicate"
 msgstr "Duplicate"
@@ -1815,15 +1770,9 @@ msgstr "Every week"
 msgid "Everything I made for you."
 msgstr "Everything I made for you."
 
-msgid "Example"
-msgstr "Example"
-
 #. placeholder {0}: input.name
 msgid "Example for {0}"
 msgstr "Example for {0}"
-
-msgid "Example: what a morning with me looks like"
-msgstr "Example: what a morning with me looks like"
 
 msgid "Executor token"
 msgstr "Executor token"
@@ -1890,14 +1839,14 @@ msgstr "Failed to stop"
 msgid "Failed."
 msgstr "Failed."
 
-msgid "Feed"
-msgstr "Feed"
-
 msgid "File"
 msgstr "File"
 
 msgid "Files"
 msgstr "Files"
+
+msgid "Files view"
+msgstr "Files view"
 
 msgid "Fill"
 msgstr "Fill"
@@ -1946,23 +1895,8 @@ msgstr "Finishing MCP connection…"
 msgid "First, what should I call you?"
 msgstr "First, what should I call you?"
 
-msgid "First: {firstStep}"
-msgstr "First: {firstStep}"
-
-msgid "Flag drift from each target mix"
-msgstr "Flag drift from each target mix"
-
 msgid "Flag unexpected actions"
 msgstr "Flag unexpected actions"
-
-msgid "Follow"
-msgstr "Follow"
-
-msgid "Follow a topic"
-msgstr "Follow a topic"
-
-msgid "Follow a topic, like OSFI guidance"
-msgstr "Follow a topic, like OSFI guidance"
 
 msgid "Font"
 msgstr "Font"
@@ -1985,12 +1919,6 @@ msgstr "Forks"
 msgid "Free"
 msgstr "Free"
 
-msgid "Fri 9:00"
-msgstr "Fri 9:00"
-
-msgid "From"
-msgstr "From"
-
 #. placeholder {0}: fork.anchorText
 #. placeholder {0}: row.anchorText
 msgid "from “{0}”"
@@ -2002,12 +1930,6 @@ msgstr "From {sourceLabel} · {0}"
 
 msgid "From a fork:"
 msgstr "From a fork:"
-
-msgid "From Q3 portfolio review · 7:40"
-msgstr "From Q3 portfolio review · 7:40"
-
-msgid "From your goal · {when}"
-msgstr "From your goal · {when}"
 
 msgid "Fullscreen"
 msgstr "Fullscreen"
@@ -2030,17 +1952,8 @@ msgstr "Getting ready"
 msgid "Git event"
 msgstr "Git event"
 
-msgid "Give {botName} something bigger than a message. I'll plan it, keep working on it, and check in with you."
-msgstr "Give {botName} something bigger than a message. I'll plan it, keep working on it, and check in with you."
-
 msgid "Give it the first thing on your list."
 msgstr "Give it the first thing on your list."
-
-msgid "Goal options"
-msgstr "Goal options"
-
-msgid "Goals"
-msgstr "Goals"
 
 msgid "Goes to your vault, not the chat."
 msgstr "Goes to your vault, not the chat."
@@ -2096,8 +2009,8 @@ msgstr "Height"
 msgid "Here's a one-page brief for Maya. The two open points from last month are at the top."
 msgstr "Here's a one-page brief for Maya. The two open points from last month are at the top."
 
-msgid "Here's my plan"
-msgstr "Here's my plan"
+msgid "Hi {name}, what can superchat <0>build with you?</0>"
+msgstr "Hi {name}, what can superchat <0>build with you?</0>"
 
 msgid "Hi, I'm Nova — <0>already on it.</0>"
 msgstr "Hi, I'm Nova — <0>already on it.</0>"
@@ -2123,6 +2036,9 @@ msgstr "High"
 msgid "Highlights — Northwind expanded to two teams; Acme signed for two years."
 msgstr "Highlights — Northwind expanded to two teams; Acme signed for two years."
 
+msgid "Home"
+msgstr "Home"
+
 msgid "hour"
 msgstr "hour"
 
@@ -2132,11 +2048,11 @@ msgstr "hours"
 msgid "How I'll know it worked"
 msgstr "How I'll know it worked"
 
-msgid "How Nova works with you"
-msgstr "How Nova works with you"
-
 msgid "How often"
 msgstr "How often"
+
+msgid "How superchat works with you"
+msgstr "How superchat works with you"
 
 #. placeholder {0}: index + 1
 msgid "How to tell step {0} worked"
@@ -2148,12 +2064,6 @@ msgstr "HTML (source)"
 msgid "I ask before doing anything I can't undo."
 msgstr "I ask before doing anything I can't undo."
 
-msgid "I check on your Goals about every hour."
-msgstr "I check on your Goals about every hour."
-
-msgid "I check on your Goals every few hours."
-msgstr "I check on your Goals every few hours."
-
 msgid "I couldn't reach the model provider. Try again."
 msgstr "I couldn't reach the model provider. Try again."
 
@@ -2163,38 +2073,17 @@ msgstr "I couldn't turn that into a skill. Discard it and show me again."
 msgid "I have an account"
 msgstr "I have an account"
 
-msgid "I keep working on your Goals throughout the day."
-msgstr "I keep working on your Goals throughout the day."
-
 msgid "I lost the connection. Try again."
 msgstr "I lost the connection. Try again."
 
 msgid "I need your API key to think."
 msgstr "I need your API key to think."
 
-msgid "I only work when you ask."
-msgstr "I only work when you ask."
-
-msgid "I won't work on Goals or message you during quiet hours."
-msgstr "I won't work on Goals or message you during quiet hours."
-
-msgid "I'd like to change the plan"
-msgstr "I'd like to change the plan"
-
 msgid "I'll plan, research, draft and follow up in the background, and always ask before anything I can't undo."
 msgstr "I'll plan, research, draft and follow up in the background, and always ask before anything I can't undo."
 
-msgid "I'll show ideas here as I learn what's useful to you."
-msgstr "I'll show ideas here as I learn what's useful to you."
-
-msgid "I'm always looking for new ways to help. My favourite ideas show up here."
-msgstr "I'm always looking for new ways to help. My favourite ideas show up here."
-
 msgid "I’m done"
 msgstr "I’m done"
-
-msgid "Ideas"
-msgstr "Ideas"
 
 msgid "If you heard that, voice is ready."
 msgstr "If you heard that, voice is ready."
@@ -2214,15 +2103,17 @@ msgstr "Images"
 msgid "Import OpenAPI JSON"
 msgstr "Import OpenAPI JSON"
 
-#. placeholder {0}: due.weeks
-msgid "in {0} weeks"
-msgstr "in {0} weeks"
-
 msgid "In progress"
 msgstr "In progress"
 
+msgid "Inbox"
+msgstr "Inbox"
+
 msgid "Inbox & email"
 msgstr "Inbox & email"
+
+msgid "Inbox filter"
+msgstr "Inbox filter"
 
 msgid "Indexing…"
 msgstr "Indexing…"
@@ -2263,11 +2154,11 @@ msgstr "Isolated preview"
 msgid "Isolated preview — no access to your account"
 msgstr "Isolated preview — no access to your account"
 
-msgid "It gets its own web address. It runs on its own, separate from Nova, and can't see your conversations or files."
-msgstr "It gets its own web address. It runs on its own, separate from Nova, and can't see your conversations or files."
+msgid "It gets its own web address. It runs on its own, separate from superchat, and can't see your conversations or files."
+msgstr "It gets its own web address. It runs on its own, separate from superchat, and can't see your conversations or files."
 
-msgid "It starts fresh, with only what Nova knows about you."
-msgstr "It starts fresh, with only what Nova knows about you."
+msgid "It starts fresh, with only what superchat knows about you."
+msgstr "It starts fresh, with only what superchat knows about you."
 
 msgid "It starts with a summary of this conversation."
 msgstr "It starts with a summary of this conversation."
@@ -2309,9 +2200,6 @@ msgstr "just now"
 
 msgid "Just you, signed in"
 msgstr "Just you, signed in"
-
-msgid "Keep current"
-msgstr "Keep current"
 
 msgid "Keep it"
 msgstr "Keep it"
@@ -2448,6 +2336,9 @@ msgstr "Low"
 msgid "Made for you"
 msgstr "Made for you"
 
+msgid "Main"
+msgstr "Main"
+
 msgid "Make sure nothing is still running on this computer."
 msgstr "Make sure nothing is still running on this computer."
 
@@ -2493,8 +2384,8 @@ msgstr "MCP servers"
 msgid "Medium"
 msgstr "Medium"
 
-msgid "Meet Nova."
-msgstr "Meet Nova."
+msgid "Meet superchat."
+msgstr "Meet superchat."
 
 msgid "Members ({GROUP_MEMBER_MIN}–{GROUP_MEMBER_MAX})"
 msgstr "Members ({GROUP_MEMBER_MIN}–{GROUP_MEMBER_MAX})"
@@ -2544,6 +2435,9 @@ msgstr "Messaging"
 
 msgid "Microphone failed"
 msgstr "Microphone failed"
+
+msgid "Mini Apps"
+msgstr "Mini Apps"
 
 msgid "Minimal"
 msgstr "Minimal"
@@ -2597,15 +2491,13 @@ msgid "More actions"
 msgstr "More actions"
 
 #. placeholder {0}: artifact.name
+#. placeholder {0}: automation.name
 #. placeholder {0}: data.name
 msgid "More actions for {0}"
 msgstr "More actions for {0}"
 
 msgid "More computer actions"
 msgstr "More computer actions"
-
-msgid "Mortgage rates · 6:15"
-msgstr "Mortgage rates · 6:15"
 
 msgid "Move them to your shared memory."
 msgstr "Move them to your shared memory."
@@ -2653,14 +2545,17 @@ msgstr "Never"
 msgid "New"
 msgstr "New"
 
+msgid "New app"
+msgstr "New app"
+
+msgid "New automation"
+msgstr "New automation"
+
 msgid "New bot"
 msgstr "New bot"
 
 msgid "New fork from this message"
 msgstr "New fork from this message"
-
-msgid "New goal"
-msgstr "New goal"
 
 msgid "New open-work item"
 msgstr "New open-work item"
@@ -2686,6 +2581,9 @@ msgstr "New space"
 msgid "Newer version available, show it"
 msgstr "Newer version available, show it"
 
+msgid "Next"
+msgstr "Next"
+
 msgid "Next look"
 msgstr "Next look"
 
@@ -2695,14 +2593,14 @@ msgstr "Next slide"
 msgid "Next steps — Review pricing with Maya on Thursday; send the deck Friday."
 msgstr "Next steps — Review pricing with Maya on Thursday; send the deck Friday."
 
-msgid "Next:"
-msgstr "Next:"
-
 msgid "No agent connections yet."
 msgstr "No agent connections yet."
 
 msgid "No apps match your search."
 msgstr "No apps match your search."
+
+msgid "No apps yet."
+msgstr "No apps yet."
 
 msgid "No artifacts found."
 msgstr "No artifacts found."
@@ -2712,6 +2610,9 @@ msgstr "no auth"
 
 msgid "No authentication"
 msgstr "No authentication"
+
+msgid "No automations yet"
+msgstr "No automations yet"
 
 msgid "No bots"
 msgstr "No bots"
@@ -2773,9 +2674,6 @@ msgstr "No model catalog is available."
 msgid "No one is waiting."
 msgstr "No one is waiting."
 
-msgid "No plan yet"
-msgstr "No plan yet"
-
 msgid "No providers found."
 msgstr "No providers found."
 
@@ -2797,9 +2695,6 @@ msgstr "No skills yet"
 msgid "No steps recorded"
 msgstr "No steps recorded"
 
-msgid "No tasks yet"
-msgstr "No tasks yet"
-
 msgid "No team conversations yet."
 msgstr "No team conversations yet."
 
@@ -2812,9 +2707,6 @@ msgstr "No trigger"
 msgid "None yet"
 msgstr "None yet"
 
-msgid "Normal"
-msgstr "Normal"
-
 msgid "Not connected"
 msgstr "Not connected"
 
@@ -2823,9 +2715,6 @@ msgstr "Not in the plugin catalog"
 
 msgid "Not now"
 msgstr "Not now"
-
-msgid "Not yet"
-msgstr "Not yet"
 
 msgid "Nothing here yet."
 msgstr "Nothing here yet."
@@ -2845,9 +2734,6 @@ msgstr "Nothing remembered yet."
 msgid "Nothing scheduled yet."
 msgstr "Nothing scheduled yet."
 
-msgid "Nothing to suggest yet"
-msgstr "Nothing to suggest yet"
-
 msgid "Nothing yet"
 msgstr "Nothing yet"
 
@@ -2859,27 +2745,6 @@ msgstr "Noticed, {when}"
 
 msgid "Notifications"
 msgstr "Notifications"
-
-msgid "Nova"
-msgstr "Nova"
-
-msgid "Nova couldn't start. Try again in a moment."
-msgstr "Nova couldn't start. Try again in a moment."
-
-msgid "Nova is working"
-msgstr "Nova is working"
-
-msgid "Nova Report"
-msgstr "Nova Report"
-
-msgid "Nova starts fresh. You can still show earlier messages."
-msgstr "Nova starts fresh. You can still show earlier messages."
-
-msgid "Nova will see this after the current step"
-msgstr "Nova will see this after the current step"
-
-msgid "Nova's computer · Live"
-msgstr "Nova's computer · Live"
 
 msgid "Now"
 msgstr "Now"
@@ -2900,12 +2765,6 @@ msgstr "OAuth connection failed"
 msgid "OAuth expired"
 msgstr "OAuth expired"
 
-msgid "of {total}"
-msgstr "of {total}"
-
-msgid "Off"
-msgstr "Off"
-
 msgid "Offline"
 msgstr "Offline"
 
@@ -2918,15 +2777,18 @@ msgstr "Offset X"
 msgid "Offset Y"
 msgstr "Offset Y"
 
+msgid "On"
+msgstr "On"
+
 msgid "On a schedule"
 msgstr "On a schedule"
+
+msgid "On day"
+msgstr "On day"
 
 #. placeholder {0}: preset.time
 msgid "on the 1st at {0}"
 msgstr "on the 1st at {0}"
-
-msgid "On track"
-msgstr "On track"
 
 msgid "ONE CONVERSATION"
 msgstr "ONE CONVERSATION"
@@ -3088,23 +2950,17 @@ msgstr "Passwords do not match"
 msgid "Paste a replacement key"
 msgstr "Paste a replacement key"
 
-msgid "Paste the OpenAI-compatible address from your server. Nova adds /v1 if needed."
-msgstr "Paste the OpenAI-compatible address from your server. Nova adds /v1 if needed."
+msgid "Paste the OpenAI-compatible address from your server. superchat adds /v1 if needed."
+msgstr "Paste the OpenAI-compatible address from your server. superchat adds /v1 if needed."
 
 msgid "Paste your API key"
 msgstr "Paste your API key"
-
-msgid "Pause"
-msgstr "Pause"
 
 msgid "Paused"
 msgstr "Paused"
 
 msgid "PDF"
 msgstr "PDF"
-
-msgid "Pending"
-msgstr "Pending"
 
 msgid "People"
 msgstr "People"
@@ -3118,23 +2974,14 @@ msgstr "Person"
 msgid "Personal credential"
 msgstr "Personal credential"
 
+msgid "Pick a time and I'll do this for you."
+msgstr "Pick a time and I'll do this for you."
+
 msgid "Pin"
 msgstr "Pin"
 
-msgid "Plan"
-msgstr "Plan"
-
-msgid "Plan it"
-msgstr "Plan it"
-
 msgid "Plan my week"
 msgstr "Plan my week"
-
-msgid "Plan to review"
-msgstr "Plan to review"
-
-msgid "Plan waiting for you"
-msgstr "Plan waiting for you"
 
 msgid "Plan week"
 msgstr "Plan week"
@@ -3144,10 +2991,6 @@ msgstr "Plans"
 
 msgid "Playing…"
 msgstr "Playing…"
-
-#. placeholder {0}: goal.title
-msgid "Please propose a plan for my goal \"{0}\"."
-msgstr "Please propose a plan for my goal \"{0}\"."
 
 msgid "Position and size"
 msgstr "Position and size"
@@ -3202,9 +3045,6 @@ msgstr "Private"
 msgid "Private workspace with its own bots and groups."
 msgstr "Private workspace with its own bots and groups."
 
-msgid "Proactivity"
-msgstr "Proactivity"
-
 msgid "Professional"
 msgstr "Professional"
 
@@ -3216,9 +3056,6 @@ msgstr "Projects & focus"
 
 msgid "Promised"
 msgstr "Promised"
-
-msgid "Propose meeting slots"
-msgstr "Propose meeting slots"
 
 msgid "Provided by your organization"
 msgstr "Provided by your organization"
@@ -3244,29 +3081,14 @@ msgstr "Publish…"
 msgid "Published"
 msgstr "Published"
 
-msgid "Pull holdings and returns for 12 clients"
-msgstr "Pull holdings and returns for 12 clients"
-
 msgid "Pull request"
 msgstr "Pull request"
-
-msgid "Q3 client portfolio review"
-msgstr "Q3 client portfolio review"
 
 msgid "Q3 Client Review"
 msgstr "Q3 Client Review"
 
 msgid "Questions"
 msgstr "Questions"
-
-msgid "Quiet hours"
-msgstr "Quiet hours"
-
-msgid "Quiet hours end"
-msgstr "Quiet hours end"
-
-msgid "Quiet hours start"
-msgstr "Quiet hours start"
 
 msgid "Quote"
 msgstr "Quote"
@@ -3282,9 +3104,6 @@ msgstr "React"
 
 msgid "Reactions"
 msgstr "Reactions"
-
-msgid "Read"
-msgstr "Read"
 
 msgid "Read replies aloud"
 msgstr "Read replies aloud"
@@ -3315,8 +3134,8 @@ msgstr "Reconnect OAuth"
 msgid "Reconnecting"
 msgstr "Reconnecting"
 
-msgid "Recording · you show, Nova watches"
-msgstr "Recording · you show, Nova watches"
+msgid "Recording · you show, superchat watches"
+msgstr "Recording · you show, superchat watches"
 
 msgid "Recording may have started, but the view could not refresh"
 msgstr "Recording may have started, but the view could not refresh"
@@ -3426,9 +3245,6 @@ msgstr "Removed with chat, computer, and memory."
 msgid "Removed, but list refresh failed"
 msgstr "Removed, but list refresh failed"
 
-msgid "Removed: "
-msgstr "Removed: "
-
 msgid "Removing…"
 msgstr "Removing…"
 
@@ -3443,6 +3259,9 @@ msgstr "renewals.csv saved to Files"
 
 msgid "Reopen"
 msgstr "Reopen"
+
+msgid "Repeat"
+msgstr "Repeat"
 
 msgid "Replace"
 msgstr "Replace"
@@ -3545,8 +3364,8 @@ msgstr "Retry now"
 msgid "Retry screen"
 msgstr "Retry screen"
 
-msgid "Return to Nova"
-msgstr "Return to Nova"
+msgid "Return to superchat"
+msgstr "Return to superchat"
 
 msgid "Review"
 msgstr "Review"
@@ -3578,6 +3397,9 @@ msgstr "Run at"
 msgid "Run history"
 msgstr "Run history"
 
+msgid "Run now"
+msgstr "Run now"
+
 msgid "Run time must be in the future."
 msgstr "Run time must be in the future."
 
@@ -3604,9 +3426,6 @@ msgstr "Save"
 
 msgid "Save changes"
 msgstr "Save changes"
-
-msgid "Save check-ins"
-msgstr "Save check-ins"
 
 msgid "Save to Library"
 msgstr "Save to Library"
@@ -3666,6 +3485,9 @@ msgstr "Search {0} forks"
 msgid "Search accounts"
 msgstr "Search accounts"
 
+msgid "Search activity"
+msgstr "Search activity"
+
 msgid "Search apps"
 msgstr "Search apps"
 
@@ -3692,6 +3514,12 @@ msgstr "Search providers"
 
 msgid "Search the account"
 msgstr "Search the account"
+
+msgid "Search your apps"
+msgstr "Search your apps"
+
+msgid "Search your apps…"
+msgstr "Search your apps…"
 
 msgid "Search your Library"
 msgstr "Search your Library"
@@ -3783,9 +3611,6 @@ msgstr "Sheets"
 msgid "Show"
 msgstr "Show"
 
-msgid "Show computer"
-msgstr "Show computer"
-
 msgid "Show context panel"
 msgstr "Show context panel"
 
@@ -3809,9 +3634,6 @@ msgstr "Show password"
 
 msgid "Show replies as they're written"
 msgstr "Show replies as they're written"
-
-msgid "Show settings"
-msgstr "Show settings"
 
 #. placeholder {0}: sheet.rows.length
 msgid "Showing the first {0} rows"
@@ -3866,9 +3688,6 @@ msgstr "Skip"
 msgid "Skip or deploy key"
 msgstr "Skip or deploy key"
 
-msgid "Skipped"
-msgstr "Skipped"
-
 #. placeholder {0}: skipped.join(", ")
 msgid "Skipped {0}"
 msgstr "Skipped {0}"
@@ -3887,6 +3706,9 @@ msgstr "Slide rail"
 
 msgid "Slides"
 msgstr "Slides"
+
+msgid "Small apps I built for you."
+msgstr "Small apps I built for you."
 
 msgid "Something went wrong before it could start."
 msgstr "Something went wrong before it could start."
@@ -3963,21 +3785,12 @@ msgstr "Speaks only"
 msgid "Spent this month"
 msgstr "Spent this month"
 
-msgid "Start a new goal"
-msgstr "Start a new goal"
-
-#. placeholder {0}: botDisplayName ?? "Nova"
+#. placeholder {0}: botDisplayName ?? "superchat"
 msgid "Start it, and {0} works on it in the background."
 msgstr "Start it, and {0} works on it in the background."
 
 msgid "Start recording"
 msgstr "Start recording"
-
-msgid "Start this Goal"
-msgstr "Start this Goal"
-
-msgid "Start this plan"
-msgstr "Start this plan"
 
 msgid "Start with"
 msgstr "Start with"
@@ -4009,10 +3822,6 @@ msgstr "Still working on this."
 
 msgid "Stop"
 msgstr "Stop"
-
-#. placeholder {0}: topic.topic
-msgid "Stop following {0}"
-msgstr "Stop following {0}"
 
 msgid "Stop speaking"
 msgstr "Stop speaking"
@@ -4049,8 +3858,32 @@ msgstr "Suggested follow-ups"
 msgid "Sum {0}"
 msgstr "Sum {0}"
 
+msgid "Summarize what changed in my files this week and tell me what needs attention."
+msgstr "Summarize what changed in my files this week and tell me what needs attention."
+
 msgid "Summary — Revenue up 8% quarter on quarter, led by three renewals."
 msgstr "Summary — Revenue up 8% quarter on quarter, led by three renewals."
+
+msgid "superchat"
+msgstr "superchat"
+
+msgid "superchat couldn't start. Try again in a moment."
+msgstr "superchat couldn't start. Try again in a moment."
+
+msgid "superchat is working"
+msgstr "superchat is working"
+
+msgid "superchat Report"
+msgstr "superchat Report"
+
+msgid "superchat starts fresh. You can still show earlier messages."
+msgstr "superchat starts fresh. You can still show earlier messages."
+
+msgid "superchat will see this after the current step"
+msgstr "superchat will see this after the current step"
+
+msgid "superchat's computer · Live"
+msgstr "superchat's computer · Live"
 
 msgid "Supports images"
 msgstr "Supports images"
@@ -4079,12 +3912,6 @@ msgstr "Take over"
 
 msgid "Take over anytime."
 msgstr "Take over anytime."
-
-msgid "Talking points are ready for 5 of 12 clients. Two drifted more than 8% from target. Want me to propose meeting slots?"
-msgstr "Talking points are ready for 5 of 12 clients. Two drifted more than 8% from target. Want me to propose meeting slots?"
-
-msgid "Talking points are ready for all 12 clients"
-msgstr "Talking points are ready for all 12 clients"
 
 msgid "Taught"
 msgstr "Taught"
@@ -4128,6 +3955,9 @@ msgstr "That change can't be made exactly by hand."
 msgid "That code did not work"
 msgstr "That code did not work"
 
+msgid "That did not work."
+msgstr "That did not work."
+
 msgid "That took too long. Try again."
 msgstr "That took too long. Try again."
 
@@ -4146,9 +3976,6 @@ msgstr "The model is busy. Try again in a moment."
 msgid "The model refused my key."
 msgstr "The model refused my key."
 
-msgid "The Muse stops working on this Goal."
-msgstr "The Muse stops working on this Goal."
-
 msgid "The Q3 report draft is ready. Revenue is up 8%, churn ticked up in August."
 msgstr "The Q3 report draft is ready. Revenue is up 8%, churn ticked up in August."
 
@@ -4157,6 +3984,9 @@ msgstr "Their chats, Computer and keys are removed for good. This can't be undon
 
 msgid "Theme"
 msgstr "Theme"
+
+msgid "Things I do for you on a schedule."
+msgstr "Things I do for you on a schedule."
 
 msgid "Thinking"
 msgstr "Thinking"
@@ -4179,11 +4009,11 @@ msgstr "this computer"
 msgid "This conversation is too long for the model."
 msgstr "This conversation is too long for the model."
 
-msgid "This deck can't be restyled by hand. Ask Nova to restyle it."
-msgstr "This deck can't be restyled by hand. Ask Nova to restyle it."
+msgid "This deck can't be restyled by hand. Ask superchat to restyle it."
+msgstr "This deck can't be restyled by hand. Ask superchat to restyle it."
 
-msgid "This deck isn't on a theme. Ask Nova to restyle it."
-msgstr "This deck isn't on a theme. Ask Nova to restyle it."
+msgid "This deck isn't on a theme. Ask superchat to restyle it."
+msgstr "This deck isn't on a theme. Ask superchat to restyle it."
 
 #. placeholder {0}: pendingDelete.versionCount
 msgid "This deletes all {0} versions of this artifact. This can't be undone."
@@ -4232,15 +4062,8 @@ msgstr "This subscription sign-in is not available in Nova yet. Use a deployment
 msgid "This week"
 msgstr "This week"
 
-msgid "Three of your clients renew this quarter. Fixed looks better than it did last month; I can draft a note for each."
-msgstr "Three of your clients renew this quarter. Fixed looks better than it did last month; I can draft a note for each."
-
 msgid "Time of day"
 msgstr "Time of day"
-
-#. placeholder {0}: friendlyTimezone(timezone)
-msgid "Times use {0}."
-msgstr "Times use {0}."
 
 msgid "Title"
 msgstr "Title"
@@ -4257,12 +4080,6 @@ msgstr "Today"
 msgid "TODAY"
 msgstr "TODAY"
 
-msgid "Today {time}"
-msgstr "Today {time}"
-
-msgid "Tomorrow {time}"
-msgstr "Tomorrow {time}"
-
 msgid "Too large to preview."
 msgstr "Too large to preview."
 
@@ -4271,9 +4088,6 @@ msgstr "Tool sources"
 
 msgid "Tools"
 msgstr "Tools"
-
-msgid "Topics I follow for you"
-msgstr "Topics I follow for you"
 
 msgid "Total"
 msgstr "Total"
@@ -4287,14 +4101,8 @@ msgstr "Treg token"
 msgid "Try again"
 msgstr "Try again"
 
-msgid "Try one"
-msgstr "Try one"
-
 msgid "Two large accounts paused in August. Both renewed in September."
 msgstr "Two large accounts paused in August. Both renewed in September."
-
-msgid "Two portfolios drifted past 8% from target; I put them first and drafted a rebalancing note for each."
-msgstr "Two portfolios drifted past 8% from target; I put them first and drafted a rebalancing note for each."
 
 msgid "Type your answer"
 msgstr "Type your answer"
@@ -4327,9 +4135,6 @@ msgstr "Unread"
 msgid "Unsupported file type: {0}"
 msgstr "Unsupported file type: {0}"
 
-msgid "Until"
-msgstr "Until"
-
 msgid "Up to date"
 msgstr "Up to date"
 
@@ -4347,8 +4152,8 @@ msgid "Updated — v{0}"
 msgstr "Updated — v{0}"
 
 #. placeholder {0}: state.arrived.version
-msgid "Updated by Nova · v{0}"
-msgstr "Updated by Nova · v{0}"
+msgid "Updated by superchat · v{0}"
+msgstr "Updated by superchat · v{0}"
 
 #. placeholder {0}: state.arrived.version
 msgid "Updated by you · v{0}"
@@ -4367,6 +4172,9 @@ msgstr "Updating Team Computer"
 msgid "Updating…"
 msgstr "Updating…"
 
+msgid "Upload"
+msgstr "Upload"
+
 #. placeholder {0}: uploaded + 1
 #. placeholder {1}: attachments.length
 msgid "Uploading {0} of {1}"
@@ -4375,6 +4183,9 @@ msgstr "Uploading {0} of {1}"
 #. placeholder {0}: attachment.file.name
 msgid "Uploading {0}…"
 msgstr "Uploading {0}…"
+
+msgid "Uploading…"
+msgstr "Uploading…"
 
 msgid "Usage"
 msgstr "Usage"
@@ -4394,9 +4205,6 @@ msgstr "Use a password"
 msgid "Use default guidance"
 msgstr "Use default guidance"
 
-msgid "Use the new plan"
-msgstr "Use the new plan"
-
 msgid "Use this look"
 msgstr "Use this look"
 
@@ -4408,9 +4216,6 @@ msgstr "Username"
 
 msgid "Username (optional)"
 msgstr "Username (optional)"
-
-msgid "Uses your time zone, {timezone}."
-msgstr "Uses your time zone, {timezone}."
 
 #. placeholder {0}: entry.version
 msgid "v{0}"
@@ -4449,6 +4254,9 @@ msgstr "View all"
 msgid "View details"
 msgstr "View details"
 
+msgid "Visibility"
+msgstr "Visibility"
+
 msgid "Voice"
 msgstr "Voice"
 
@@ -4456,8 +4264,8 @@ msgstr "Voice"
 msgid "vs. {0}"
 msgstr "vs. {0}"
 
-msgid "Wait for Nova to finish, then clear."
-msgstr "Wait for Nova to finish, then clear."
+msgid "Wait for superchat to finish, then clear."
+msgstr "Wait for superchat to finish, then clear."
 
 msgid "Waiting for approval"
 msgstr "Waiting for approval"
@@ -4487,8 +4295,14 @@ msgstr "Webhook"
 msgid "Weekdays"
 msgstr "Weekdays"
 
+msgid "Weekly"
+msgstr "Weekly"
+
 msgid "Weekly renewal report"
 msgstr "Weekly renewal report"
+
+msgid "Weekly summary"
+msgstr "Weekly summary"
 
 msgid "Weight"
 msgstr "Weight"
@@ -4499,29 +4313,20 @@ msgstr "Welcome back."
 msgid "What about its memories?"
 msgstr "What about its memories?"
 
+msgid "What can superchat <0>build with you?</0>"
+msgstr "What can superchat <0>build with you?</0>"
+
 msgid "What can you do?"
 msgstr "What can you do?"
 
 msgid "What do you want me on first?"
 msgstr "What do you want me on first?"
 
-msgid "What do you want to get done?"
-msgstr "What do you want to get done?"
-
 msgid "What do you want to look at?"
 msgstr "What do you want to look at?"
 
 msgid "What drove it?"
 msgstr "What drove it?"
-
-msgid "What I finished while you were away, and what's new on the topics you follow."
-msgstr "What I finished while you were away, and what's new on the topics you follow."
-
-msgid "What I've done"
-msgstr "What I've done"
-
-msgid "What Nova is"
-msgstr "What Nova is"
 
 msgid "What result will you demonstrate?"
 msgstr "What result will you demonstrate?"
@@ -4533,8 +4338,14 @@ msgstr "What should change in {0}?"
 msgid "What should change?"
 msgstr "What should change?"
 
+msgid "What should superchat do?"
+msgstr "What should superchat do?"
+
 msgid "What should this routine do each time it runs?"
 msgstr "What should this routine do each time it runs?"
+
+msgid "What superchat is"
+msgstr "What superchat is"
 
 msgid "What this bot is for"
 msgstr "What this bot is for"
@@ -4588,23 +4399,17 @@ msgstr "Working in {name}"
 msgid "Working now"
 msgstr "Working now"
 
-msgid "Working on it"
-msgstr "Working on it"
-
-msgid "Working on its own"
-msgstr "Working on its own"
-
 msgid "Working…"
 msgstr "Working…"
+
+msgid "Workspace"
+msgstr "Workspace"
 
 msgid "Writing the draft…"
 msgstr "Writing the draft…"
 
 msgid "Writing…"
 msgstr "Writing…"
-
-msgid "Yes, go ahead"
-msgstr "Yes, go ahead"
 
 msgid "Yesterday"
 msgstr "Yesterday"
@@ -4621,11 +4426,11 @@ msgstr "You can close this window."
 msgid "You can come back later."
 msgstr "You can come back later."
 
-msgid "You changed {changedCount} cells on {sheetName}. Nova sees this before its next reply."
-msgstr "You changed {changedCount} cells on {sheetName}. Nova sees this before its next reply."
+msgid "You changed {changedCount} cells on {sheetName}. superchat sees this before its next reply."
+msgstr "You changed {changedCount} cells on {sheetName}. superchat sees this before its next reply."
 
-msgid "You changed 1 cell on {sheetName}. Nova sees this before its next reply."
-msgstr "You changed 1 cell on {sheetName}. Nova sees this before its next reply."
+msgid "You changed 1 cell on {sheetName}. superchat sees this before its next reply."
+msgstr "You changed 1 cell on {sheetName}. superchat sees this before its next reply."
 
 msgid "You have control"
 msgstr "You have control"
@@ -4635,9 +4440,6 @@ msgstr "You said, {when}"
 
 msgid "You're all caught up"
 msgstr "You're all caught up"
-
-msgid "You're all caught up."
-msgstr "You're all caught up."
 
 msgid "You've reached your monthly model budget."
 msgstr "You've reached your monthly model budget."
@@ -4656,3 +4458,6 @@ msgstr "Your email address"
 
 msgid "Your name"
 msgstr "Your name"
+
+msgid "Your workspace, and what I made for you."
+msgstr "Your workspace, and what I made for you."

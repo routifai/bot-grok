@@ -10,12 +10,11 @@ import { SideChatArchiving } from "../../features/side-chats/SideChatArchiving";
 import { VaultSettings } from "../../features/vault";
 import { authClient } from "../../lib/auth";
 import { resetFirstRun } from "./intro";
-import { ProactivitySettings } from "./ProactivitySettings";
 import { MUSE_INSET_GROUP } from "./ui";
 
 /**
  * What the person tunes about their Muse, gathered in one place (docs/muse/DESIGN.md):
- * its name (Nova is always the orb: no shape, color or upload), and how proactively it works on Goals. Everything here
+ * its name (Nova is always the orb: no shape, color or upload). Everything here
  * saves through the same bot-update path bot-panel uses, so there is one source of truth.
  */
 export function NovaSettingsPanel({
@@ -74,8 +73,6 @@ export function NovaSettingsPanel({
           </p>
         ) : null}
       </div>
-
-      <ProactivitySettings botId={bot.id} />
 
       <SideChatArchiving botId={bot.id} />
 
