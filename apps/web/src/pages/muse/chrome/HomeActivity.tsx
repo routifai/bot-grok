@@ -30,11 +30,14 @@ export function HomeActivity({
   botId,
   className,
   onHide,
+  hideWhenEmpty = false,
 }: {
   botId: string;
   className?: string;
   /** In the Conversation: folds the card back into its pill. */
   onHide?: () => void;
+  /** The home hides the card until something has run; the Conversation always shows it. */
+  hideWhenEmpty?: boolean;
 }) {
   const { t } = useLingui();
   const { state, loadEarlier, loadingEarlier } = useActivities(botId);
@@ -42,7 +45,7 @@ export function HomeActivity({
   const needle = query.trim().toLocaleLowerCase();
   const shown = useMemo(() => narrow(state, needle), [state, needle]);
   // Nothing has run yet (a fresh start): no empty card, the home stays clean.
-  if (state.status !== "ready" || state.activities.length === 0) return null;
+  if (hideWhenEmpty && (state.status !== "ready" || state.activities.length === 0)) return null;
   return (
     <section
       data-testid="home-activity"

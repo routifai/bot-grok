@@ -23,5 +23,8 @@ export function ConversationActivity({ botId }: { botId: string }) {
       </button>
     );
   }
-  return <HomeActivity botId={botId} className="shadow-float" onHide={() => setOpen(false)} />;
+  // Opened, the card sits above the composer row so it never covers what you type.
+  return (
+    <HomeActivity botId={botId} className="mb-24 shadow-float" onHide={() => setOpen(false)} />
+  );
 }

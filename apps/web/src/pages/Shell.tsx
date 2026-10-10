@@ -16,7 +16,12 @@ import {
   latestAnswerableAskMessageId,
   userVisibleMessages,
 } from "@superchat/core";
-import { AvatarStyleProvider, Button, GroupAvatar, type GroupAvatarMember } from "@superchat/ui-web";
+import {
+  AvatarStyleProvider,
+  Button,
+  GroupAvatar,
+  type GroupAvatarMember,
+} from "@superchat/ui-web";
 import { Plus } from "lucide-react";
 import type { ReactNode } from "react";
 import {
@@ -34,10 +39,10 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AppRail } from "../components/AppRail";
 import {
   flyOrb,
-  SuperchatPresenceProvider,
   type OrbFlight,
   OrbHomeProvider,
   orbPlacement,
+  SuperchatPresenceProvider,
   useIsDesktop,
 } from "../components/ai/orb";
 import { ArtifactPanelProvider, AskPreviewsProvider } from "../components/cards/context";
@@ -933,7 +938,7 @@ export function ShellPage() {
           dock={<ConnectedDock botId={active.id} active={dockSheet} onSelect={setDockSheet} />}
           composer={composerEl}
           onOpenSettings={() => openSettings("general")}
-          recent={<HomeActivity botId={active.id} />}
+          recent={<HomeActivity botId={active.id} hideWhenEmpty />}
         />
       ) : null}
       <ComputerUpdateProgress
