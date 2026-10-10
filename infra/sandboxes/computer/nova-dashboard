@@ -900,7 +900,9 @@ def export_pdf(html_path: Path, out: Path) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="nova-dashboard", description=__doc__.split("\n\n")[0]
+        prog="nova-dashboard",
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     sub = parser.add_subparsers(dest="command", required=True)
     b = sub.add_parser(
