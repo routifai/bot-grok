@@ -61,6 +61,14 @@
 # Must satisfy pyproject requires-python (>=3.12); 3.11 fails dependency resolution.
 ARG PYTHON_VERSION=3.12
 ARG NODE_VERSION=22
+# The Python base of the builder, host and server stages. Override it to use a mirrored or
+# company-approved image; it must provide `python` and `pip` on PATH and an apt-based userland.
+ARG PYTHON_IMAGE=python:${PYTHON_VERSION}-slim
+
+# Optional downstream files (agent bundles, config templates, a start script) baked into the
+# server image at /opt/bundle. Empty by default; fill it with `--build-context bundle=<dir>`
+# (Compose: build.additional_contexts).
+FROM scratch AS bundle
 
 # ── Web UI builder ──────────────────────────────────────
 # Builds the web SPA so `docker build` works from a clean checkout —
@@ -96,7 +104,7 @@ RUN pnpm --filter web run build
 # out of the shipped images. Deliberately SPA-free and psycopg-free so
 # the host target can build without node; the server-only additions
 # live in server-builder below.
-FROM python:${PYTHON_VERSION}-slim AS builder
+FROM ${PYTHON_IMAGE} AS builder
 
 ARG PYPI_INDEX_URL=https://pypi.org/simple
 
@@ -198,7 +206,7 @@ FROM node:${NODE_VERSION}-slim AS node-runtime
 #     literally named `sandbox` before running the agent (defense in depth)
 #     and fails closed if it is absent. The other providers run as root and
 #     never reference it.
-FROM python:${PYTHON_VERSION}-slim AS host
+FROM ${PYTHON_IMAGE} AS host
 ARG NPM_CONFIG_REGISTRY=
 ENV NPM_CONFIG_REGISTRY=${NPM_CONFIG_REGISTRY}
 
@@ -419,7 +427,7 @@ WORKDIR /root
 CMD ["sleep", "infinity"]
 
 # ── Server runtime (default target) ─────────────────────
-FROM python:${PYTHON_VERSION}-slim AS runtime
+FROM ${PYTHON_IMAGE} AS runtime
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -437,6 +445,7 @@ RUN apt-get update \
 COPY --from=server-builder /opt/venv /opt/venv
 COPY --from=server-builder /build /build
 COPY deploy/docker/entrypoint.py /app/entrypoint.py
+COPY --from=bundle / /opt/bundle/
 
 WORKDIR /app
 

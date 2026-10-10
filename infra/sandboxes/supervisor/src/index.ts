@@ -924,12 +924,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
 }
 
 export async function ensureComputerImage() {
-  // No auto-build: the image's Dockerfile vendors engine/omnigent from the REPO ROOT (see
-  // infra/sandboxes/computer/Dockerfile's own header comment), and dockerode's `buildImage`
-  // needs an explicit file list for a build context — enumerating the whole vendored tree here
-  // would silently drift from the Dockerfile's real inputs. Operators build it once with the
-  // same command `infra/compose` and `scripts/setup.sh` use; a missing image is a clear,
-  // actionable error instead of a stale, partial build.
+  // No auto-build: the image is Omnigent's host image plus a layer from the repo root (see
+  // infra/sandboxes/computer/Dockerfile), which Compose builds as the `computer` service. A
+  // missing image is a clear, actionable error instead of a stale, partial build.
   if (!imageReady) {
     imageReady = docker
       .getImage(COMPUTER_IMAGE)
@@ -939,7 +936,7 @@ export async function ensureComputerImage() {
         () => {
           throw new Error(
             `Missing ${COMPUTER_IMAGE}. Build it from the repo root with: ` +
-              `docker build -t ${COMPUTER_IMAGE} -f infra/sandboxes/computer/Dockerfile .`,
+              "docker compose --env-file .env -f infra/compose/docker-compose.yml build computer",
           );
         },
       );

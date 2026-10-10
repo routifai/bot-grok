@@ -151,9 +151,12 @@ describe("graphical computer spec", () => {
     const dockerfile = readFileSync(path.join(root, "Dockerfile"), "utf8");
     const start = readFileSync(path.join(root, "start.sh"), "utf8");
     const browser = readFileSync(path.join(root, "superchat-browser"), "utf8");
-    expect(dockerfile).toMatch(/^ARG BASE_IMAGE=ubuntu:24\.04@sha256:[0-9a-f]{64}$/m);
-    expect(dockerfile).toMatch(/playwright@\$\{PLAYWRIGHT_VERSION\}" install --no-shell chromium/);
-    expect(dockerfile).toMatch(/ln -s \/opt\/ms-playwright\/chromium \/usr\/local\/bin\/chromium/);
+    // Omnigent's host image is the base; this file only adds Superchat's layer.
+    expect(dockerfile).toMatch(/^FROM omnigent-host$/m);
+    expect(dockerfile).toMatch(
+      /playwright@\$\{PLAYWRIGHT_VERSION\}" install --with-deps --no-shell chromium/,
+    );
+    expect(dockerfile).toMatch(/\/usr\/local\/bin\/chromium/);
     expect(dockerfile).toMatch(/superchat-page-browser/);
     expect(dockerfile).toMatch(/USER 1000:1000/);
     for (const gone of [
@@ -691,7 +694,11 @@ describe("graphical computer spec", () => {
 });
 
 describe("computer resource limits", () => {
-  const KEYS = ["SUPERCHAT_COMPUTER_MEMORY", "SUPERCHAT_COMPUTER_CPUS", "SUPERCHAT_COMPUTER_PIDS_LIMIT"] as const;
+  const KEYS = [
+    "SUPERCHAT_COMPUTER_MEMORY",
+    "SUPERCHAT_COMPUTER_CPUS",
+    "SUPERCHAT_COMPUTER_PIDS_LIMIT",
+  ] as const;
   const saved = new Map<string, string | undefined>();
 
   beforeEach(() => {

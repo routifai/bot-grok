@@ -26,7 +26,7 @@ from omnigent.superchat.models.proxy import create_model_proxy_router
 from omnigent.superchat.models.store import ModelConnectionStore
 from omnigent.superchat.vault.store import VAULT_KEY_ENV
 
-TEMPLATE = Path(__file__).resolve().parents[4] / "infra/railway/engine.config.byok.yaml.tmpl"
+TEMPLATE = Path(__file__).resolve().parents[4] / "infra/omnigent/engine/config.byok.yaml.tmpl"
 AUTH = "python3 -m omnigent.host.model_credential token"
 
 
@@ -150,9 +150,9 @@ async def test_pi_without_a_key_needs_one() -> None:
 
 
 def test_hosted_engine_ships_both_bundles() -> None:
-    dockerfile = TEMPLATE.with_name("Dockerfile.engine").read_text()
-    assert "/opt/superchat/agents/superchat-pi" in dockerfile
-    assert "/opt/superchat/agents/superchat-claude" in dockerfile
+    start = TEMPLATE.with_name("start.sh").read_text()
+    assert "$bundle/agents/superchat-pi" in start
+    assert "$bundle/agents/superchat-claude" in start
 
 
 @pytest.fixture

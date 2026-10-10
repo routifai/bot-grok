@@ -17,13 +17,26 @@ x-logging: &logging
     max-file: "3"
 
 services:
-  # Builds the Computer desktop image (Chromium, Omnigent runner, Claude Code CLI) once. The
-  # supervisor refuses to start a Computer if this tag is missing. Never runs a command.
+  # Build-only: Omnigent's host image (its Dockerfile's `host` target), the Computer's base.
+  omnigent-host:
+    image: superchat/omnigent-host:local
+    build:
+      context: ../../engine/omnigent
+      dockerfile: deploy/docker/Dockerfile
+      target: host
+    command: ["true"]
+    network_mode: none
+    restart: "no"
+
+  # Builds the Computer image once. The supervisor refuses to start a Computer if this tag is
+  # missing. Never runs a command.
   computer-image:
     image: ${SUPERCHAT_COMPUTER_IMAGE:-superchat/computer:local}
     build:
       context: ../..
       dockerfile: infra/sandboxes/computer/Dockerfile
+      additional_contexts:
+        omnigent-host: service:omnigent-host
     command: ["true"]
     network_mode: none
     restart: "no"

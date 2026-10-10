@@ -13,13 +13,22 @@ services:
       timeout: 5s
       retries: 30
 
+  omnigent-host:
+    image: superchat/omnigent-host:topology
+    build:
+      context: ../../engine/omnigent
+      dockerfile: deploy/docker/Dockerfile
+      target: host
+    command: ["true"]
+    restart: "no"
+
   computer-image:
     image: ${TOPOLOGY_COMPUTER_IMAGE:-superchat/computer:topology}
     build:
-      # Root context (not sandboxes/computer) so the image can vendor engine/omnigent — see
-      # infra/sandboxes/computer/Dockerfile's omnigent-builder stage.
       context: ../..
       dockerfile: infra/sandboxes/computer/Dockerfile
+      additional_contexts:
+        omnigent-host: service:omnigent-host
     command: ["true"]
     restart: "no"
 

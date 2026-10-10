@@ -81,7 +81,7 @@ describe("computer image build", () => {
     expect(await response.json()).toEqual({
       error: expect.stringContaining(
         `Missing ${COMPUTER_IMAGE}. Build it from the repo root with: ` +
-          `docker build -t ${COMPUTER_IMAGE} -f infra/sandboxes/computer/Dockerfile .`,
+          "docker compose --env-file .env -f infra/compose/docker-compose.yml build computer",
       ),
     });
     // No stale, partial auto-build attempt — docker's listContainers is never even reached.

@@ -1,7 +1,7 @@
-# STAGE B (bring-your-own key) Omnigent server config for the Superchat engine on Railway. To switch the
-# hosted deployment to it, COPY this file as the config template in Dockerfile.engine and set
-# OMNIGENT_SUPERCHAT_DEFAULT_AGENT=superchat-pi there.
-# Omnigent server config for the Superchat engine on Railway. NON-SECRET: engine-start.sh renders
+# STAGE B (bring-your-own key) Omnigent server config for the Superchat engine. To switch a
+# deployment to it, set ENGINE_CONFIG_TEMPLATE=/opt/bundle/engine/config.byok.yaml.tmpl and
+# OMNIGENT_SUPERCHAT_DEFAULT_AGENT=superchat-pi.
+# Omnigent server config for the Superchat engine. NON-SECRET: start.sh renders
 # __ENGINE_PUBLIC_URL__ from the ENGINE_PUBLIC_URL variable; ${...} is expanded by the engine.
 #
 # No model is named here. Each person's model picker lists what their saved key serves (or the
@@ -39,7 +39,7 @@ sandbox:
       harnesses:
         claude-sdk:
           provider: byok          # operator-key self-hosting: provider: operator
-        # pi is the hosted default Muse harness (Dockerfile.engine: superchat-pi). With an
+        # pi is the hosted default Muse harness (OMNIGENT_SUPERCHAT_DEFAULT_AGENT=superchat-pi). With an
         # Anthropic key it speaks Anthropic Messages through /v1/model/anthropic; with an
         # OpenRouter key it speaks Chat Completions through /v1/model/openrouter/v1.
         pi:

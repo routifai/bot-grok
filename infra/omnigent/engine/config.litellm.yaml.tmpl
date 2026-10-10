@@ -1,7 +1,6 @@
 # Omnigent server config for a Superchat engine whose model calls all go through an existing
-# LiteLLM proxy (for example a company gateway). Select it with
-# ENGINE_CONFIG_TEMPLATE=/opt/superchat/config.litellm.yaml.tmpl. NON-SECRET: engine-start.sh
-# fills __NAME__ from the environment; ${...} is expanded by the engine.
+# LiteLLM proxy (for example a company gateway). start.sh selects it when LITELLM_BASE_URL is
+# set. NON-SECRET: start.sh fills __NAME__ from the environment; ${...} is expanded by the engine.
 #
 # The engine reads LITELLM_BASE_URL (the proxy's root URL, no /v1) and LITELLM_API_KEY from its
 # own environment. The key never enters a Computer: each harness calls the engine's model proxy
