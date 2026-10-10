@@ -72,6 +72,7 @@ describe("Muse deck theme choice", () => {
     "The card ends your turn",
     "Settle the look BEFORE handing deck work to a Helper",
     "a Helper never picks a look",
+    "never re-offer looks the person already passed over",
     "not a remembered taste or preference (it may only shape which 3 looks you offer and their order)",
     "leaving its current theme out",
     '"kind": "deck-theme"',

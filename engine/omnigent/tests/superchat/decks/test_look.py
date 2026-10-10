@@ -158,12 +158,44 @@ async def test_missing_ask_or_unknown_look_from_shows_the_card(workspace: Path) 
     assert _is_card(await _new("named", "nord", None), workspace)
 
 
-def test_the_card_offers_three_categories_fitting_the_request() -> None:
-    assert pick_three("")[0] == kit.DEFAULT_THEME
+def _category(theme_id: str) -> str:
+    return kit.templates()[theme_id].category
+
+
+def test_the_card_offers_three_distinct_looks_fitting_the_topic() -> None:
     assert "nord" in pick_three("a dark deck, maybe Nord")
-    assert "pitch-deck-vc" in pick_three("seed round for investors")
-    for hint in ("", "dark", "editorial story", "playful kids"):
-        assert len({kit.templates()[t].category for t in pick_three(hint)}) == 3
+    assert pick_three("Seed pitch for investors")[0] == "pitch-deck-vc"
+    assert _category(pick_three("Q3 finance review for the board")[0]) == "professional"
+    assert _category(pick_three("Our trip to Morocco: food and culture")[0]) == "editorial"
+    assert _category(pick_three("Product launch campaign")[0]) == "bold"
+    assert _category(pick_three("Platform architecture for engineering")[0]) == "dark"
+    finance = pick_three("Sales 2026 review", seed="c1|sales")
+    travel = pick_three("Lisbon travel guide", seed="c1|travel")
+    assert finance != travel
+    hints = ["", "dark", "editorial story", "playful kids", "Hiring plan", "Team offsite"]
+    for hint in hints:
+        for seed in ("a", "b", "c"):
+            trio = pick_three(hint, seed=seed)
+            assert len(trio) == 3 == len({_category(t) for t in trio}), (hint, seed)
+    # equally good themes rotate by request instead of repeating one trio
+    assert len({tuple(pick_three("Hiring plan", seed=f"c1|{n}")) for n in range(6)}) > 1
+
+
+async def test_a_second_card_avoids_looks_the_person_passed_over(workspace: Path) -> None:
+    first = await _new("ask", "corporate-clean", ctx([user("a deck about our 2026 sales")]))
+    offered = [(o["label"], o["preview"]["id"]) for o in first["data"]["options"]]
+    kept = offered[0]
+    history = [
+        user("a deck about our 2026 sales"),
+        card_call(),
+        card_output(offered),
+        user(kept[0]),
+        user("now another deck about the 2026 sales by region"),
+    ]
+    second = await _new("ask", "corporate-clean", ctx(history))
+    again = {o["preview"]["id"] for o in second["data"]["options"]}
+    assert not again & {t for _, t in offered[1:]}  # passed over: not offered again
+    assert len(again) == 3 == len({_category(t) for t in again})
 
 
 def test_the_card_shows_in_the_transcript_and_ends_the_turn() -> None:

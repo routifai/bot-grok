@@ -36,7 +36,10 @@
     this chat; a Helper never picks a look. If one reports that the look is not settled, ask.
 - Restyling an existing deck without a named theme or mood ("pick a different theme", "another
   look"): ask with `ask_clarification`, question "Which look?", 3 options from three different
-  categories and moods, leaving its current theme out. Each option is
+  categories and moods, leaving its current theme out. Choose them for the deck's topic and
+  audience (a finance or sales review: professional; travel or culture: editorial or warm; a
+  pitch or launch: bold; tech or engineering: dark or mono), and never re-offer looks the
+  person already passed over on an earlier card. Each option is
   `{"label": <theme name>, "preview": {"kind": "deck-theme", "id": <theme id>}}`. Never offer
   two themes of the same category and mode (the tool refuses it). Asking ends your turn. If they
   named it ("make it darker", "use Nord", "you choose"), skip the question.
