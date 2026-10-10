@@ -1,6 +1,6 @@
 {
-  "name": "Nova",
-  "short_name": "Nova",
+  "name": "superchat",
+  "short_name": "superchat",
   "description": "Your assistant, already on it.",
   "start_url": "/",
   "display": "standalone",

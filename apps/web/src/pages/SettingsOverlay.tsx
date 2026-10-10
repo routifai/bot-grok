@@ -138,7 +138,7 @@ export function SettingsOverlay({
 
   const navItems: NavItem[] = [
     ...(museMode
-      ? [{ id: "nova" as const, label: museBot?.name || t`Nova`, icon: UserRound }]
+      ? [{ id: "nova" as const, label: museBot?.name || t`superchat`, icon: UserRound }]
       : []),
     { id: "general", label: t`General`, icon: Settings },
     // The classic app picks its own model; on the engine, the Muse person manages keys here.

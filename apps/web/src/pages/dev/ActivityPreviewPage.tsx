@@ -94,7 +94,6 @@ export function ActivityPreviewPage() {
         botId={DEV_ACTIVITY_BOT_ID}
         museName={DEV_MUSE_NAME}
         collapsed={false}
-        onNavigate={() => undefined}
         onOpenWaiting={() => undefined}
         activitiesOverride={{ state, wire: activityWire, loadEarlier, loadingEarlier }}
         memoryWire={memoryWire}

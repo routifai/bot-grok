@@ -59,7 +59,7 @@ export function McpOAuthCallbackPage() {
         {error ? <p className="mt-2 max-w-md text-sm text-muted-foreground">{error}</p> : null}
         {showReturn ? (
           <Button type="button" className="mt-5" onClick={() => navigate("/app")}>
-            <Trans>Return to Nova</Trans>
+            <Trans>Return to superchat</Trans>
           </Button>
         ) : (
           <p className="mt-2 text-sm text-muted-foreground">

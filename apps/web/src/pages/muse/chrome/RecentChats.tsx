@@ -23,7 +23,10 @@ const MAX_OPEN_FORKS = 4;
 function UnreadDot({ className }: { className?: string }) {
   return (
     <>
-      <span aria-hidden="true" className={cn("size-[7px] shrink-0 rounded-full bg-tint", className)} />
+      <span
+        aria-hidden="true"
+        className={cn("size-[7px] shrink-0 rounded-full bg-tint", className)}
+      />
       <span className="sr-only">
         <Trans>Unread</Trans>
       </span>
@@ -178,7 +181,10 @@ export function RecentChats({
     <section
       data-testid="recent-chats"
       aria-label={t`Recent chats`}
-      className={cn("sc-glass flex w-full flex-col gap-1.5 rounded-[20px] p-3.5 md:w-[360px]", className)}
+      className={cn(
+        "sc-glass flex w-full flex-col gap-1.5 rounded-[20px] p-3.5 md:w-[360px]",
+        className,
+      )}
     >
       <div className="flex items-center justify-between">
         <span className="ps-1.5 text-[12.5px] font-semibold text-ink-2">
@@ -191,7 +197,11 @@ export function RecentChats({
           onClick={() => setOpen((value) => !value)}
           className="grid size-8 place-items-center rounded-xl text-foreground transition-colors hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-ring"
         >
-          {open ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronUp size={16} aria-hidden="true" />}
+          {open ? (
+            <ChevronDown size={16} aria-hidden="true" />
+          ) : (
+            <ChevronUp size={16} aria-hidden="true" />
+          )}
         </button>
       </div>
       {open ? (

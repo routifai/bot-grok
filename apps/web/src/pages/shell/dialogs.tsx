@@ -293,7 +293,7 @@ export function ClearConversationDialog({
             <Trans>Clear {bot.name}’s conversation?</Trans>
           </AlertDialogTitle>
           <AlertDialogDescription>
-            <Trans>Nova starts fresh. You can still show earlier messages.</Trans>
+            <Trans>superchat starts fresh. You can still show earlier messages.</Trans>
           </AlertDialogDescription>
         </AlertDialogHeader>
         {error ? <p className="text-[13.5px] text-destructive">{error}</p> : null}

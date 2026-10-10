@@ -108,7 +108,6 @@ const TranscriptView = memo(function Transcript({
   voiceReady,
   speakingMessageId,
   onSpeak,
-  onOpenComputer,
   onFork,
   renderUnder,
   aside,
@@ -155,7 +154,6 @@ const TranscriptView = memo(function Transcript({
   voiceReady: boolean;
   speakingMessageId: string | null;
   onSpeak: (message: ThreadMessage) => void;
-  onOpenComputer: (botId?: string) => void;
   /** Fork a message (ADR 0010): offered on the messages the engine can anchor a fork to. */
   onFork?: (message: ThreadMessage) => void;
   /** Rendered under a message (its forks); return null for nothing. */
@@ -581,7 +579,6 @@ const TranscriptView = memo(function Transcript({
                     voiceReady={voiceReady}
                     speaking={speakingMessageId === message.id}
                     onSpeak={() => onSpeak(message)}
-                    onOpenComputer={onOpenComputer}
                   />
                 </div>
               </div>

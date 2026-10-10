@@ -188,7 +188,8 @@ export function DeckThemePicker({
 
   const failure = (cause: unknown): string => {
     const message = cause instanceof Error ? cause.message : "";
-    if (isInexact(message)) return t`This deck can't be restyled by hand. Ask Nova to restyle it.`;
+    if (isInexact(message))
+      return t`This deck can't be restyled by hand. Ask superchat to restyle it.`;
     if (isStale(message)) return t`The deck changed since you opened it. Try again.`;
     return t`Couldn't switch the theme.`;
   };
@@ -279,7 +280,7 @@ export function DeckThemePicker({
             <div className="text-[13px] font-medium">{t`Theme`}</div>
             <div className="truncate text-[11px] text-muted-foreground">
               {current === null
-                ? t`This deck isn't on a theme. Ask Nova to restyle it.`
+                ? t`This deck isn't on a theme. Ask superchat to restyle it.`
                 : t`Restyles every slide; your content stays as it is.`}
             </div>
           </div>

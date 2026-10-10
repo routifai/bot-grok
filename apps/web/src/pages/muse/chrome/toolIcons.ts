@@ -12,7 +12,6 @@ import {
   MessagesSquare,
   NotebookPen,
   Search,
-  Target,
 } from "lucide-react";
 
 // A Step's icon (docs/super-chat/README.md "The Activity panel"; the owner's "always show
@@ -38,5 +37,4 @@ export const ACTIVITY_SOURCE_ICON: Record<ActivitySource, LucideIcon> = {
   background: Bot,
   housekeeping: NotebookPen,
   scheduled: CalendarClock,
-  goal: Target,
 };

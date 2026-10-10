@@ -194,7 +194,7 @@ export function PublishDialog({
         <DialogHeader>
           <DialogTitle>{current ? t`Publish settings` : t`Publish ${name}?`}</DialogTitle>
           <DialogDescription>
-            {t`It gets its own web address. It runs on its own, separate from Nova, and can't see your conversations or files.`}
+            {t`It gets its own web address. It runs on its own, separate from superchat, and can't see your conversations or files.`}
           </DialogDescription>
         </DialogHeader>
         <fieldset className="grid gap-2 border-0 p-0">

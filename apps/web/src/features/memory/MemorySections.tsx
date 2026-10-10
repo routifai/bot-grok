@@ -410,7 +410,7 @@ export function MemorySections({
     projects: t`Projects & focus`,
     questions: t`Open questions`,
     people: t`People`,
-    working: t`How Nova works with you`,
+    working: t`How superchat works with you`,
   };
 
   const needle = query.trim().toLowerCase();

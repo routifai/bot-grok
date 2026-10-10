@@ -39,8 +39,13 @@ const LIST_PAGE_SIZE = 60;
 const MAX_PAGES = 12;
 
 const LIBRARY_SUGGESTIONS = [
-  "Draft a one-pager on the new mortgage product",
-  "Build a client meeting brief template",
+  "Draft a one-pager on our new product",
+  "Build a meeting brief template",
+];
+
+const APP_SUGGESTIONS = [
+  "Build me a simple expense tracker app",
+  "Make a habit tracker I can use every day",
 ];
 
 /**
@@ -54,6 +59,9 @@ export function LibraryScreen({
   botId,
   onSendIdea,
   skills,
+  embedded = false,
+  mode = "all",
+  toolbarAction,
 }: {
   botId: string;
   botName?: string;
@@ -61,13 +69,21 @@ export function LibraryScreen({
   skills?: ReactNode;
   /** Starts a Conversation with a suggestion from the empty state. */
   onSendIdea?: (text: string) => void;
+  /** Inside a dock sheet: no screen chrome or hero, just the toolbar and the grid. */
+  embedded?: boolean;
+  /** "apps" lists only the HTML apps (pages, not decks), each marked Published or Private. */
+  mode?: "all" | "apps";
+  /** A button beside the search, e.g. "New app". */
+  toolbarAction?: ReactNode;
 }) {
   const { t } = useLingui();
   const [items, setItems] = useState<ArtifactSummary[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [view, setView] = useState<"made" | "skills">("made");
   const [query, setQuery] = useState("");
-  const [selectedKind, setSelectedKind] = useState<ArtifactKind | "published" | "all">("all");
+  const [selectedKind, setSelectedKind] = useState<ArtifactKind | "published" | "private" | "all">(
+    "all",
+  );
   const [openArtifactId, setOpenArtifactId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<ArtifactSummary | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -85,7 +101,11 @@ export function LibraryScreen({
       for (let page = 0; page < MAX_PAGES; page += 1) {
         const result = await rpc.artifacts.listSpace({ botId, cursor, limit: LIST_PAGE_SIZE });
         if (cancelled) return;
-        all = all.concat(result.items);
+        all = all.concat(
+          mode === "apps"
+            ? result.items.filter((item) => artifactKind(item.mimeType, item.name) === "page")
+            : result.items,
+        );
         setItems(all);
         if (!result.nextCursor) return;
         cursor = result.nextCursor;
@@ -101,7 +121,7 @@ export function LibraryScreen({
     return () => {
       cancelled = true;
     };
-  }, [botId, t]);
+  }, [botId, mode, t]);
 
   const facetCounts = useMemo(() => {
     const counts = new Map<ArtifactKind, number>();
@@ -120,6 +140,8 @@ export function LibraryScreen({
     return items.filter((item) => {
       if (selectedKind === "published") {
         if (!item.publish) return false;
+      } else if (selectedKind === "private") {
+        if (item.publish) return false;
       } else if (
         selectedKind !== "all" &&
         artifactKind(item.mimeType, item.name) !== selectedKind
@@ -165,6 +187,154 @@ export function LibraryScreen({
 
   const total = items?.length ?? 0;
   const visibleKinds = KIND_ORDER.filter((kind) => (facetCounts.get(kind) ?? 0) > 0);
+
+  const apps = mode === "apps";
+  const content =
+    view === "skills" && skills ? (
+      skills
+    ) : (
+      <>
+        {total > 0 ? (
+          <label className="relative block sm:hidden">
+            <Search
+              size={14}
+              strokeWidth={1.9}
+              aria-hidden="true"
+              className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-ink-3"
+            />
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={t`Search your Library…`}
+              aria-label={t`Search your Library`}
+              className="h-9 w-full rounded-full bg-selection ps-8 pe-3 text-[13px] text-foreground outline-none placeholder:text-ink-3 focus-visible:outline-2 focus-visible:outline-ring"
+            />
+          </label>
+        ) : null}
+
+        {items === null ? (
+          <LibrarySkeletonGrid />
+        ) : items.length === 0 ? (
+          loadError ? (
+            <p className="py-10 text-[14px] text-destructive">{loadError}</p>
+          ) : (
+            <EmptyState
+              illustration="books"
+              headline={apps ? t`No apps yet.` : t`Nothing here yet.`}
+              suggestions={apps ? APP_SUGGESTIONS : LIBRARY_SUGGESTIONS}
+              onSuggestion={onSendIdea}
+            >
+              {apps
+                ? t`Apps superchat builds for you will appear here.`
+                : t`Pages, documents and files your Muse makes will appear here.`}
+            </EmptyState>
+          )
+        ) : filtered && filtered.length === 0 ? (
+          <EmptyState headline={t`Nothing matches your search.`} />
+        ) : (
+          <LibraryGrid
+            items={filtered ?? []}
+            showVisibility={apps}
+            onOpen={(item) => setOpenArtifactId(item.id)}
+            onDownload={(item) => void handleDownload(item)}
+            onDelete={setPendingDelete}
+          />
+        )}
+      </>
+    );
+  const dialogs = (
+    <>
+      {openArtifactId ? (
+        <ArtifactPreviewDialog
+          artifactId={openArtifactId}
+          onOpenChange={(open) => {
+            if (!open) setOpenArtifactId(null);
+          }}
+        />
+      ) : null}
+
+      {pendingDelete ? (
+        <AlertDialog
+          open
+          onOpenChange={(open) => {
+            if (!open && !deleteBusy) setPendingDelete(null);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                <Trans>Delete "{pendingDelete.name}"?</Trans>
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {pendingDelete.versionCount > 1 ? (
+                  <Trans>
+                    This deletes all {pendingDelete.versionCount} versions of this. This can't be
+                    undone.
+                  </Trans>
+                ) : (
+                  <Trans>This can't be undone.</Trans>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            {deleteError ? <p className="text-[13.5px] text-destructive">{deleteError}</p> : null}
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleteBusy}>
+                <Trans>Cancel</Trans>
+              </AlertDialogCancel>
+              <AlertDialogAction
+                variant="destructive"
+                disabled={deleteBusy}
+                onClick={() => void confirmDelete()}
+              >
+                {deleteBusy ? <Trans>Deleting…</Trans> : <Trans>Delete</Trans>}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      ) : null}
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col gap-4" data-testid="library-embedded">
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="relative block min-w-[220px] flex-1">
+            <Search
+              size={16}
+              strokeWidth={1.9}
+              aria-hidden="true"
+              className="pointer-events-none absolute start-3.5 top-1/2 -translate-y-1/2 text-ink-2"
+            />
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={apps ? t`Search your apps…` : t`Search your Library…`}
+              aria-label={apps ? t`Search your apps` : t`Search your Library`}
+              className="min-h-11 w-full rounded-xl border border-glass-line bg-black/20 ps-10 pe-3.5 text-[14px] text-foreground outline-none placeholder:text-ink-2 focus-visible:outline-2 focus-visible:outline-ring"
+            />
+          </label>
+          {apps && total > 0 ? (
+            <SegmentedControl
+              label={t`Visibility`}
+              value={selectedKind}
+              onChange={setSelectedKind}
+              options={[
+                { value: "all" as const, label: t`All` },
+                { value: "published" as const, label: t`Published` },
+                { value: "private" as const, label: t`Private` },
+              ]}
+            />
+          ) : null}
+          {toolbarAction}
+        </div>
+        {content}
+        {dialogs}
+      </div>
+    );
+  }
 
   return (
     <MuseScreen
@@ -259,106 +429,10 @@ export function LibraryScreen({
             ) : undefined
           }
         />
-        {view === "skills" && skills ? (
-          skills
-        ) : (
-          <>
-            {total > 0 ? (
-              <label className="relative block sm:hidden">
-                <Search
-                  size={14}
-                  strokeWidth={1.9}
-                  aria-hidden="true"
-                  className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-ink-3"
-                />
-                <input
-                  type="search"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder={t`Search your Library…`}
-                  aria-label={t`Search your Library`}
-                  className="h-9 w-full rounded-full bg-selection ps-8 pe-3 text-[13px] text-foreground outline-none placeholder:text-ink-3 focus-visible:outline-2 focus-visible:outline-ring"
-                />
-              </label>
-            ) : null}
-
-            {items === null ? (
-              <LibrarySkeletonGrid />
-            ) : items.length === 0 ? (
-              loadError ? (
-                <p className="py-10 text-[14px] text-destructive">{loadError}</p>
-              ) : (
-                <EmptyState
-                  illustration="books"
-                  headline={t`Nothing here yet.`}
-                  suggestions={LIBRARY_SUGGESTIONS}
-                  onSuggestion={onSendIdea}
-                >
-                  {t`Pages, documents and files your Muse makes will appear here.`}
-                </EmptyState>
-              )
-            ) : filtered && filtered.length === 0 ? (
-              <EmptyState headline={t`Nothing matches your search.`} />
-            ) : (
-              <LibraryGrid
-                items={filtered ?? []}
-                onOpen={(item) => setOpenArtifactId(item.id)}
-                onDownload={(item) => void handleDownload(item)}
-                onDelete={setPendingDelete}
-              />
-            )}
-          </>
-        )}
+        {content}
       </MuseWideCenter>
 
-      {openArtifactId ? (
-        <ArtifactPreviewDialog
-          artifactId={openArtifactId}
-          onOpenChange={(open) => {
-            if (!open) setOpenArtifactId(null);
-          }}
-        />
-      ) : null}
-
-      {pendingDelete ? (
-        <AlertDialog
-          open
-          onOpenChange={(open) => {
-            if (!open && !deleteBusy) setPendingDelete(null);
-          }}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                <Trans>Delete "{pendingDelete.name}"?</Trans>
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                {pendingDelete.versionCount > 1 ? (
-                  <Trans>
-                    This deletes all {pendingDelete.versionCount} versions of this. This can't be
-                    undone.
-                  </Trans>
-                ) : (
-                  <Trans>This can't be undone.</Trans>
-                )}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            {deleteError ? <p className="text-[13.5px] text-destructive">{deleteError}</p> : null}
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={deleteBusy}>
-                <Trans>Cancel</Trans>
-              </AlertDialogCancel>
-              <AlertDialogAction
-                variant="destructive"
-                disabled={deleteBusy}
-                onClick={() => void confirmDelete()}
-              >
-                {deleteBusy ? <Trans>Deleting…</Trans> : <Trans>Delete</Trans>}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      ) : null}
+      {dialogs}
     </MuseScreen>
   );
 }

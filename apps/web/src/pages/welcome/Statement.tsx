@@ -24,7 +24,7 @@ export function Statement({ scrollRef }: { scrollRef: RefObject<HTMLElement | nu
 
   return (
     <section
-      aria-label={t`What Nova is`}
+      aria-label={t`What superchat is`}
       className={`relative z-1 mx-auto max-w-[1000px] pt-[22vh] pb-[18vh] text-center ${GUTTER}`}
     >
       <p

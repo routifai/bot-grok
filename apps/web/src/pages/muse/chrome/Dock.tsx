@@ -1,6 +1,7 @@
 import { useLingui } from "@lingui/react/macro";
 import { cn } from "@nova/ui-web";
 import type { ReactNode } from "react";
+import { useAsks } from "../../../features/approvals";
 
 /** The places the dock opens, each as a large sheet over the home. */
 export type DockKey = "inbox" | "apps" | "automations" | "files";
@@ -120,4 +121,18 @@ export function SettingsButton({ onClick }: { onClick: () => void }) {
       {GLYPHS.settings}
     </button>
   );
+}
+
+/** The dock with its Inbox dot wired to the open Asks. */
+export function ConnectedDock({
+  botId,
+  active,
+  onSelect,
+}: {
+  botId: string;
+  active: DockKey | null;
+  onSelect: (key: DockKey) => void;
+}) {
+  const { asks } = useAsks(botId);
+  return <Dock active={active} inboxWaiting={asks.length > 0} onSelect={onSelect} />;
 }

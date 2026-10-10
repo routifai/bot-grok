@@ -184,7 +184,7 @@ export function SendFailureNote({
       className="flex items-center justify-end gap-2 px-1 text-[13px] text-muted-foreground"
     >
       {failure.stage === "retrying" ? (
-        <Trans>Couldn’t reach Nova’s computer. Retrying…</Trans>
+        <Trans>Couldn’t reach superchat’s computer. Retrying…</Trans>
       ) : (
         <>
           <Trans>Didn’t send. Try again</Trans>
@@ -321,7 +321,7 @@ function DraftSideChat({
             {knows ? (
               <Trans>It starts with a summary of this conversation.</Trans>
             ) : (
-              <Trans>It starts fresh, with only what Nova knows about you.</Trans>
+              <Trans>It starts fresh, with only what superchat knows about you.</Trans>
             )}
           </TooltipContent>
         </Tooltip>

@@ -217,7 +217,7 @@ export const EARLIER_ACTIVITIES: Activity[] = [
   {
     id: "act-turn-earliest",
     kind: "turn",
-    source: "goal",
+    source: "scheduled",
     chatId: "conv-1",
     title: "Set up the weekly KPI routine",
     outcome: "Scheduled for Monday mornings.",

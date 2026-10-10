@@ -99,7 +99,7 @@ export function ArtifactPanel({
                 <span data-testid="artifact-arrived" className="shrink-0 text-foreground">
                   {state.arrived.origin === "manual"
                     ? t`Updated by you · v${state.arrived.version}`
-                    : t`Updated by Nova · v${state.arrived.version}`}
+                    : t`Updated by superchat · v${state.arrived.version}`}
                 </span>
               ) : null}
               {state.newer ? (

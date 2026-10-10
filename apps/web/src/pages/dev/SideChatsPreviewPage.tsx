@@ -1,6 +1,5 @@
 import type { ChatSummary, ThreadMessage } from "@nova/contracts";
 import { useMemo, useRef, useState } from "react";
-import type { MuseRailView } from "../../components/AppRail";
 import { ApprovalCards } from "../../features/approvals";
 import {
   SideChatSession,
@@ -34,7 +33,6 @@ function delay<T>(value: T, ms = 450): Promise<T> {
  */
 export function SideChatsPreviewPage() {
   const [chats, setChats] = useState<ChatSummary[]>(INITIAL_SIDE_CHATS);
-  const [museView, setMuseView] = useState<MuseRailView>("conversation");
   // `?chat=<id>` opens a fixture chat straight away (e.g. `?chat=side-cards`).
   const [activeChat, setActiveChat] = useState<ChatSummary | "draft" | null>(
     () =>
@@ -106,13 +104,10 @@ export function SideChatsPreviewPage() {
         runs={[]}
         messages={[]}
         personName={DEV_PERSON_NAME}
-        active={museView}
         activeChatId={activeChat === "draft" ? "draft" : (activeChat?.id ?? null)}
         chatListState={chatListState}
-        onNavigate={(view) => {
-          setActiveChat(null);
-          setMuseView(view);
-        }}
+        onOpenConversation={() => setActiveChat(null)}
+        onHome={() => setActiveChat(null)}
         onOpenWaiting={() => undefined}
         onOpenSettings={() => undefined}
         onOpenChat={setActiveChat}
@@ -121,7 +116,7 @@ export function SideChatsPreviewPage() {
       <main className="flex min-h-0 flex-1 overflow-hidden rounded-2xl border border-border bg-card">
         {activeChat ? (
           <SideChatSession
-            bot={{ id: DEV_BOT_ID, name: "Nova", color: "#6366f1" }}
+            bot={{ id: DEV_BOT_ID, name: "superchat", color: "#6366f1" }}
             view={sideChatViewWithApprovals}
             chat={activeChat}
             wire={wire}

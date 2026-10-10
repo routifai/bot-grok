@@ -690,7 +690,7 @@ export function SheetView({
             disabled={asking}
             onClick={() => void askNova()}
           >
-            {t`Ask Nova about ${label}`}
+            {t`Ask superchat about ${label}`}
           </Button>
           <span className="text-[12px] text-muted-foreground tabular-nums">
             {cells(total)}
@@ -713,8 +713,8 @@ export function SheetView({
             <span aria-hidden className="size-2 rounded-full bg-warning" />
             <span className="min-w-0 flex-1 basis-60 text-[13px]">
               {changedCount === 1
-                ? t`You changed 1 cell on ${sheetName}. Nova sees this before its next reply.`
-                : t`You changed ${changedCount} cells on ${sheetName}. Nova sees this before its next reply.`}
+                ? t`You changed 1 cell on ${sheetName}. superchat sees this before its next reply.`
+                : t`You changed ${changedCount} cells on ${sheetName}. superchat sees this before its next reply.`}
             </span>
             {undoEdits ? (
               <Button variant="outline" size="sm" className="rounded-full" onClick={undo}>

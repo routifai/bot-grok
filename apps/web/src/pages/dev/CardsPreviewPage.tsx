@@ -116,7 +116,6 @@ export function CardsPreviewPage({ scenario }: { scenario: CardsScenario }) {
             voiceReady={false}
             speakingMessageId={null}
             onSpeak={noop}
-            onOpenComputer={noop}
             onSendCard={send}
           />
         </AskPreviewsProvider>

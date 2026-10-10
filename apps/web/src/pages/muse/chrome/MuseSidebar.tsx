@@ -1,6 +1,6 @@
 import { plural } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { ChatSummary, Goal, ThreadMessage } from "@nova/contracts";
+import type { ChatSummary, ThreadMessage } from "@nova/contracts";
 import {
   cn,
   Sheet,
@@ -13,9 +13,9 @@ import {
 } from "@nova/ui-web";
 import { ChevronRight, Plus } from "lucide-react";
 import type { ReactNode } from "react";
-import { Fragment, useEffect, useRef, useState } from "react";
-import type { MuseRailView as MuseView } from "../../../components/AppRail";
+import { Fragment, useState } from "react";
 import { NovaOrb, useIsDesktop, useOrbHome } from "../../../components/ai/orb";
+import { SuperchatMark } from "../../../components/SuperchatLogo";
 import { useNovaWork } from "../../../features/activity/useNovaWork";
 import {
   FORK_TONE_CLASS,
@@ -24,21 +24,15 @@ import {
 } from "../../../features/side-chats/forkModel";
 import { LiveDot } from "../../../features/side-chats/forkParts";
 import type { ChatListState } from "../../../features/side-chats/useChatList";
-import { rpc } from "../../../lib/rpc";
 import {
   ConversationGlyph,
-  FeedGlyph,
   ForkGlyph,
-  GoalsGlyph,
-  IdeasGlyph,
-  LibraryGlyph,
   SettingsGlyph,
   SidebarGlyph,
   WaitingGlyph,
 } from "./NovaGlyphs";
 import { type MuseLiveRun, useMuseLiveState } from "./useMuseLiveState";
 
-const MAX_SIDEBAR_GOALS = 3;
 const COLLAPSED_KEY = "muse:sidebar-collapsed";
 
 // One layout for both states: the width animates and labels fade, so every icon keeps
@@ -50,7 +44,7 @@ const LABEL =
   "min-w-0 flex-1 truncate whitespace-nowrap transition-opacity duration-150 group-data-[collapsed]/rail:pointer-events-none group-data-[collapsed]/rail:opacity-0";
 const FADE =
   "transition-opacity duration-150 group-data-[collapsed]/rail:pointer-events-none group-data-[collapsed]/rail:opacity-0";
-/** A section's header in the sidebar ("Nova", "Side chats", "Open · 2", "Goals"). */
+/** A section's header in the sidebar ("superchat", "Side chats", "Open · 2"). */
 const GROUP_LABEL = "px-2.5 pt-3.5 pb-1 text-[11px] font-bold whitespace-nowrap text-ink-3";
 
 /** Whether the person collapsed the desktop sidebar, remembered across sessions. The shell
@@ -150,19 +144,18 @@ function NovaIdentity({
 
 /**
  * The Muse-mode sidebar (docs/muse/DESIGN.md "Sidebar"): a glass panel with Nova and what
- * it is doing, the Conversation with its side chats and forks, Nova's places, the active
- * Goals, and the person with Settings. Collapses to an icon rail.
+ * it is doing, the Conversation with its side chats and forks, its places, and the person with Settings. Collapses to an icon rail.
  */
 export function MuseSidebar({
   botId,
-  museName = "Nova",
+  museName = "superchat",
   runs,
   messages,
   personName,
-  active,
   activeChatId,
   chatListState,
-  onNavigate,
+  onOpenConversation,
+  onHome,
   onOpenWaiting,
   onOpenSettings,
   onOpenChat,
@@ -185,13 +178,14 @@ export function MuseSidebar({
   runs: readonly MuseLiveRun[];
   messages: readonly ThreadMessage[] | undefined;
   personName?: string;
-  active: MuseView;
   /** The open Side Chat, or "draft" for an unsent one; null while viewing the Conversation. */
   activeChatId?: string | null;
   /** The Chat List wire (`useChatList`), owned by the shell so the open session's own
    * create can refresh the same list this sidebar renders. */
   chatListState: ChatListState;
-  onNavigate: (view: MuseView) => void;
+  onOpenConversation: () => void;
+  /** Back to the home screen. */
+  onHome: () => void;
   onOpenWaiting: () => void;
   onOpenSettings: () => void;
   /** Replaces the Conversation with this Side Chat as a full-size session. */
@@ -212,30 +206,11 @@ export function MuseSidebar({
   const { t } = useLingui();
   const { askCount } = useMuseLiveState({ botId, runs, messages });
   const { count: working } = useNovaWork({ botId, runs, messages });
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const generation = useRef(0);
   const [ownCollapsed, ownToggle] = useSidebarCollapsed();
   const desktopCollapsed = collapsedProp ?? ownCollapsed;
   const toggleCollapsed = onToggleCollapsed ?? ownToggle;
   const orbInSidebar = useOrbHome("sidebar");
   const isDesktop = useIsDesktop();
-
-  useEffect(() => {
-    const current = ++generation.current;
-    const load = () =>
-      void rpc.goals
-        .list({ botId })
-        .then((list) => {
-          if (current === generation.current) setGoals(list);
-        })
-        .catch(() => undefined);
-    load();
-    const timer = window.setInterval(load, 30_000);
-    return () => {
-      generation.current += 1;
-      window.clearInterval(timer);
-    };
-  }, [botId]);
 
   const closeDrawer = () => onMobileOpenChange?.(false);
   const go = <A extends unknown[]>(fn: (...args: A) => void, ...args: A) => {
@@ -251,10 +226,8 @@ export function MuseSidebar({
     window.setTimeout(fn, 220);
   };
 
-  const activeGoals = goals.filter((goal) => goal.status === "active");
-
   const places: Array<{
-    key: MuseView | "waiting";
+    key: "waiting";
     icon: ReactNode;
     /** The glyph's signature color (sig-* tokens). */
     tint: string;
@@ -263,39 +236,6 @@ export function MuseSidebar({
     current?: boolean;
     onClick: () => void;
   }> = [
-    {
-      key: "goals",
-      icon: <GoalsGlyph />,
-      tint: "text-sig-goals",
-      label: t`Goals`,
-      badge: activeGoals.length ? <Badge count={activeGoals.length} /> : undefined,
-      current: active === "goals",
-      onClick: () => go(onNavigate, "goals"),
-    },
-    {
-      key: "feed",
-      icon: <FeedGlyph />,
-      tint: "text-sig-feed",
-      label: t`Feed`,
-      current: active === "feed",
-      onClick: () => go(onNavigate, "feed"),
-    },
-    {
-      key: "ideas",
-      icon: <IdeasGlyph />,
-      tint: "text-sig-ideas",
-      label: t`Ideas`,
-      current: active === "ideas",
-      onClick: () => go(onNavigate, "ideas"),
-    },
-    {
-      key: "library",
-      icon: <LibraryGlyph />,
-      tint: "text-sig-library",
-      label: t`Library`,
-      current: active === "library",
-      onClick: () => go(onNavigate, "library"),
-    },
     {
       key: "waiting",
       icon: <WaitingGlyph />,
@@ -321,6 +261,18 @@ export function MuseSidebar({
           !mobile && (collapsed ? "w-[54px]" : "w-[244px]"),
         )}
       >
+        {!collapsed ? (
+          <button
+            type="button"
+            onClick={() => go(onHome)}
+            aria-label={t`Home`}
+            title={t`Home`}
+            className="app-no-drag mb-1 flex h-9 items-center gap-2 rounded-lg px-2 text-[17px] font-[650] tracking-[-0.03em] text-foreground hover:bg-selection focus-visible:outline-2 focus-visible:outline-ring"
+          >
+            <SuperchatMark size={24} />
+            superchat
+          </button>
+        ) : null}
         <NovaIdentity
           name={museName}
           working={working}
@@ -328,15 +280,15 @@ export function MuseSidebar({
           hasOrb={orbInSidebar && !collapsed && mobile !== isDesktop}
           onToggle={mobile ? undefined : toggleCollapsed}
         />
-        {/* Sections, chats and goals scroll together; the footer stays pinned below them. */}
+        {/* Sections, chats scroll together; the footer stays pinned below them. */}
         <div className="app-no-drag -mx-1 flex min-h-0 flex-1 flex-col overflow-y-auto px-1">
           <RailRow
             collapsed={collapsed}
             icon={<ConversationGlyph />}
             tint="text-tint"
             label={t`Conversation`}
-            current={active === "conversation" && !activeChatId && !activeForkId}
-            onClick={() => go(onNavigate, "conversation")}
+            current={!activeChatId && !activeForkId}
+            onClick={() => go(onOpenConversation)}
           />
           <ChatTree
             state={chatListState}
@@ -351,7 +303,7 @@ export function MuseSidebar({
           />
 
           <div aria-hidden={collapsed || undefined} className={cn(GROUP_LABEL, FADE)}>
-            <Trans>Nova</Trans>
+            <Trans>superchat</Trans>
           </div>
           <div className="flex flex-col gap-px">
             {places.map((row) => (
@@ -368,38 +320,6 @@ export function MuseSidebar({
               </Fragment>
             ))}
           </div>
-
-          {activeGoals.length ? (
-            <div aria-hidden={collapsed || undefined} className={cn("flex min-h-0 flex-col", FADE)}>
-              <div className={GROUP_LABEL}>
-                <Trans>Goals</Trans>
-              </div>
-              {activeGoals.slice(0, MAX_SIDEBAR_GOALS).map((goal) => {
-                const done = goal.tasks.filter((task) => task.status === "done").length;
-                const waiting =
-                  goal.openProposal != null || goal.tasks.some((task) => task.status === "blocked");
-                return (
-                  <button
-                    key={goal.id}
-                    type="button"
-                    tabIndex={collapsed ? -1 : undefined}
-                    onClick={() => onNavigate("goals")}
-                    className={cn(TWIG_ROW, "text-foreground", TWIG_HOVER)}
-                  >
-                    <GoalProgress done={done} total={goal.tasks.length} waiting={waiting} />
-                    <span className="min-w-0 flex-1 truncate" dir="auto">
-                      {goal.title}
-                    </span>
-                    {goal.tasks.length > 0 ? (
-                      <span className="shrink-0 text-[11.5px] tabular-nums text-ink-3">
-                        {done}/{goal.tasks.length}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
         </div>
 
         <div className="app-no-drag flex shrink-0 flex-col gap-px pt-2">
@@ -473,7 +393,7 @@ export function MuseSidebar({
   );
 }
 
-// Rows under the Conversation (side chats, forks) and under Goals: 28px, a small 13px glyph,
+// Rows under the Conversation (side chats, forks) 28px, a small 13px glyph,
 // the same hover and selected fills everywhere.
 const TWIG_ROW =
   "flex h-7 w-full items-center gap-2.5 rounded-lg ps-3 pe-2.5 text-start text-[13px] whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-ring";
@@ -492,43 +412,6 @@ function UnreadDot({ className }: { className?: string }) {
         <Trans>Unread</Trans>
       </span>
     </>
-  );
-}
-
-/** A Goal's progress as a tiny ring (done of total), or a plain dot when it has no plan yet.
- * Waiting on the person, it takes the waiting color. */
-function GoalProgress({ done, total, waiting }: { done: number; total: number; waiting: boolean }) {
-  if (total === 0) {
-    return (
-      <span aria-hidden="true" className="grid size-3.5 shrink-0 place-items-center">
-        <span className={cn("size-1.5 rounded-full", waiting ? "bg-sig-waiting" : "bg-ink-3")} />
-      </span>
-    );
-  }
-  const radius = 5.5;
-  const circumference = 2 * Math.PI * radius;
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 14 14"
-      className={cn(
-        "size-3.5 shrink-0 -rotate-90",
-        waiting ? "text-sig-waiting" : "text-sig-goals",
-      )}
-    >
-      <circle cx="7" cy="7" r={radius} fill="none" strokeWidth="1.75" className="stroke-line" />
-      <circle
-        cx="7"
-        cy="7"
-        r={radius}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeDasharray={`${(done / total) * circumference} ${circumference}`}
-        className={done === 0 ? "opacity-0" : undefined}
-      />
-    </svg>
   );
 }
 

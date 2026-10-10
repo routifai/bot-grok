@@ -184,7 +184,7 @@ export function WorkCard({ active, cardRef }: CardProps) {
         <div className="flex items-center justify-between bg-welcome-night-bar/55 px-3 py-2 text-xs text-welcome-night-ink-2 backdrop-blur-[8px]">
           <span className="flex items-center gap-[7px]">
             <i className="size-[7px] rounded-full bg-welcome-live shadow-[0_0_0_3px] shadow-welcome-live/20" />
-            <Trans>Nova's computer · Live</Trans>
+            <Trans>superchat's computer · Live</Trans>
           </span>
           <span className="rounded-full border border-welcome-paper/20 bg-welcome-paper/12 px-2.5 py-[3px] text-welcome-night-ink">
             <Trans>Take over</Trans>
@@ -286,7 +286,7 @@ export function LearnCard({ active, cardRef }: CardProps) {
           className={`flex items-center gap-2 text-[13px] text-welcome-night-rec-ink ${fx(n > 0)}`}
         >
           <i className="welcome-rec-blink size-[9px] rounded-full bg-welcome-rec-dot shadow-[0_0_0_4px] shadow-welcome-rec-dot/20" />
-          <Trans>Recording · you show, Nova watches</Trans>
+          <Trans>Recording · you show, superchat watches</Trans>
         </div>
         <ol className="m-0 grid list-none gap-2 p-0">
           {steps.map((s, i) => (

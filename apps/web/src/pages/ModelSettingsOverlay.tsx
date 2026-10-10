@@ -380,7 +380,7 @@ export function ModelSettingsOverlay({
   ) : localOwner ? (
     <Trans>Models for the server owner’s default space.</Trans>
   ) : (
-    <Trans>Choose which connected model Nova uses.</Trans>
+    <Trans>Choose which connected model superchat uses.</Trans>
   );
 
   const body = (
@@ -500,7 +500,7 @@ export function ModelSettingsOverlay({
                         <Trans>Setup help</Trans>
                       </summary>
                       <p className="mt-1">
-                        {t`Paste the OpenAI-compatible address from your server. Nova adds /v1 if needed.`}
+                        {t`Paste the OpenAI-compatible address from your server. superchat adds /v1 if needed.`}
                       </p>
                     </details>
                     <div className="mt-3 flex items-center gap-2">

@@ -399,7 +399,7 @@ function StatePill({ status, tone }: { status: ForkStatus; tone: ForkTone }) {
               FORK_TONE_CLASS[tone].bg,
             )}
           />
-          <Trans>Nova is working</Trans>
+          <Trans>superchat is working</Trans>
         </>
       ) : status === "added" ? (
         <>
@@ -498,7 +498,6 @@ function ThreadReply({
               voiceReady={false}
               speaking={false}
               onSpeak={noop}
-              onOpenComputer={noop}
             />
           </div>
         )}

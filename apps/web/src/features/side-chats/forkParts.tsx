@@ -53,7 +53,7 @@ export function LiveDot({ tone, className }: { tone?: ForkTone; className?: stri
         )}
       />
       <span className="sr-only">
-        <Trans>Nova is working</Trans>
+        <Trans>superchat is working</Trans>
       </span>
     </>
   );

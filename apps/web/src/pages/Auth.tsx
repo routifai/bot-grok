@@ -117,7 +117,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
   ) : mode === "in" ? (
     <Trans>Welcome back.</Trans>
   ) : mode === "up" ? (
-    <Trans>Meet Nova.</Trans>
+    <Trans>Meet superchat.</Trans>
   ) : (
     <Trans>Reset your password</Trans>
   );

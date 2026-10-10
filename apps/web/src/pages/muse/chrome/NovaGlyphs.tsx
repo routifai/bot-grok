@@ -33,48 +33,6 @@ export function ConversationGlyph(props: GlyphProps) {
   );
 }
 
-/** Two rings and a center: a target. */
-export function GoalsGlyph(props: GlyphProps) {
-  return (
-    <Glyph {...props}>
-      <circle cx="10" cy="10" r="7.5" fill="none" stroke="currentColor" strokeWidth="2" />
-      <circle cx="10" cy="10" r="4.2" fill="none" stroke="currentColor" strokeWidth="2" />
-      <circle cx="10" cy="10" r="1.7" fill="currentColor" />
-    </Glyph>
-  );
-}
-
-/** A filled page with three text lines cut out. */
-export function FeedGlyph(props: GlyphProps) {
-  return (
-    <Glyph {...props}>
-      <path
-        fill="currentColor"
-        fillRule="evenodd"
-        d={[
-          roundRect(3.2, 3, 13.6, 14, 3.4),
-          roundRect(5.9, 6.45, 8.2, 1.5, 0.75),
-          roundRect(5.9, 9.25, 8.2, 1.5, 0.75),
-          roundRect(5.9, 12.05, 5.4, 1.5, 0.75),
-        ].join("")}
-      />
-    </Glyph>
-  );
-}
-
-/** A light bulb with its base. */
-export function IdeasGlyph(props: GlyphProps) {
-  return (
-    <Glyph {...props}>
-      <path
-        fill="currentColor"
-        d="M10 2.4a5.6 5.6 0 0 0-3.3 10.1c.5.4.7.8.7 1.4v.4h5.2v-.4c0-.6.2-1 .7-1.4A5.6 5.6 0 0 0 10 2.4z"
-      />
-      <rect x="7.5" y="15.3" width="5" height="2.4" rx="1.1" fill="currentColor" />
-    </Glyph>
-  );
-}
-
 /** Three books on a shelf, the last one leaning. */
 export function LibraryGlyph(props: GlyphProps) {
   return (

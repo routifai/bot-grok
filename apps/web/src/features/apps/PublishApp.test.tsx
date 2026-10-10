@@ -109,7 +109,7 @@ it("publishes an app from the panel: dialog, audience, then the Published bar", 
   const dialog = document.querySelector("[data-testid=publish-dialog]") as HTMLElement;
   expect(dialog.textContent).toContain("Publish Todo?");
   expect(dialog.textContent).toContain(
-    "It gets its own web address. It runs on its own, separate from Nova, and can't see your conversations or files.",
+    "It gets its own web address. It runs on its own, separate from superchat, and can't see your conversations or files.",
   );
   for (const label of ["Only me", "My organization", "Anyone with the link"]) {
     expect(dialog.textContent).toContain(label);

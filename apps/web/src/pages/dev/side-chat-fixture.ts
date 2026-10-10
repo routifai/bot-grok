@@ -5,7 +5,7 @@ import type { ChatSummary, ReplyCardBlock, ThreadMessage } from "@nova/contracts
 // real bank.
 
 export const DEV_BOT_ID = "dev-muse";
-export const DEV_MUSE_NAME = "Nova";
+export const DEV_MUSE_NAME = "superchat";
 export const DEV_MUSE_COLOR = "#0090FF";
 export const DEV_PERSON_NAME = "Jordan";
 

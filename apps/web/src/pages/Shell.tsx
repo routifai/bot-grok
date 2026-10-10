@@ -17,7 +17,7 @@ import {
   userVisibleMessages,
 } from "@nova/core";
 import { AvatarStyleProvider, Button, cn, GroupAvatar, type GroupAvatarMember } from "@nova/ui-web";
-import { Menu, Monitor, PanelRightClose, PanelRightOpen, Plus } from "lucide-react";
+import { Menu, PanelRightClose, PanelRightOpen, Plus } from "lucide-react";
 import type { ReactNode } from "react";
 import {
   lazy,
@@ -31,7 +31,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { AppRail, type MuseRailView } from "../components/AppRail";
+import { AppRail } from "../components/AppRail";
 import {
   flyOrb,
   NovaPresenceProvider,
@@ -42,24 +42,17 @@ import {
 } from "../components/ai/orb";
 import { ArtifactPanelProvider, AskPreviewsProvider } from "../components/cards/context";
 import { useNovaWork } from "../features/activity";
-import { ApprovalCards, FeedAsks, useAsks, WaitingSheet } from "../features/approvals";
+import { ApprovalCards } from "../features/approvals";
 import { appsExtension } from "../features/apps";
-import { LibraryScreen } from "../features/artifacts/LibraryScreen";
 import { ArtifactRegistryProvider } from "../features/artifacts/registry";
 import { useChatArtifacts } from "../features/artifacts/useChatArtifacts";
 import { ChartGallery, chartsExtension, isChartMessage } from "../features/charts";
-import { ComputerOverlay } from "../features/computer/ComputerOverlay";
-import { ComputerPreview } from "../features/computer/ComputerPreview";
 import { ComputerUpdateProgress } from "../features/computer/ComputerUpdateProgress";
 import { HostComputerPrompt } from "../features/computer/HostComputerPrompt";
 import { useComputer } from "../features/computer/useComputer";
 import { useComputerScreen } from "../features/computer/useComputerScreen";
 import { useComputerStore } from "../features/computer/useComputerStore";
-import { useComputerView } from "../features/computer/useComputerView";
 import { DeckThemeChoice, decksExtension } from "../features/decks";
-import { FeedScreen } from "../features/feed";
-import { GoalsScreen } from "../features/goals";
-import { IdeasScreen } from "../features/ideas";
 import { knowledgeExtension } from "../features/knowledge";
 import { ConversationModelPicker } from "../features/models";
 import { sheetsExtension } from "../features/sheets";
@@ -76,10 +69,7 @@ import {
 import { sideChatView } from "../features/side-chats/sideChatView";
 import { useChatList } from "../features/side-chats/useChatList";
 import { forkChatSummary, useForkView } from "../features/side-chats/useForkView";
-import { computerTeachSlots } from "../features/skills/computerTeachSlots";
-import { SkillsPanel } from "../features/skills/SkillsPanel";
 import { useAgentSkills } from "../features/skills/useAgentSkills";
-import { useTeaching } from "../features/skills/useTeaching";
 import type { ArtifactTarget } from "../lib/artifact-open";
 import { authClient } from "../lib/auth";
 import { watchFamily } from "../lib/family-stream";
@@ -90,15 +80,18 @@ import { memberName } from "./GroupPanel";
 import { ContextPanel, useContextPanelCollapsed } from "./muse/chrome/ContextPanel";
 import { ConversationHeader, TOOLBAR_BUTTON } from "./muse/chrome/ConversationHeader";
 import { conversationLayout } from "./muse/chrome/conversationLayout";
+import { ConnectedDock, type DockKey } from "./muse/chrome/Dock";
 import {
   EmptyConversationLead,
   EmptyConversationSuggestions,
 } from "./muse/chrome/EmptyConversation";
+import { Home } from "./muse/chrome/Home";
 import { MuseSidebar, useSidebarCollapsed } from "./muse/chrome/MuseSidebar";
 import { museMode } from "./muse/chrome/museMode";
 import { BotSettingsPanel, GroupSettingsPanel } from "./muse/chrome/PanelForms";
 import { type ChatProject, useChatProject } from "./muse/chrome/ProjectChip";
 import type { Panel } from "./muse/chrome/panel";
+import { RecentChats } from "./muse/chrome/RecentChats";
 import { SidePanelHeader } from "./muse/chrome/SidePanelHeader";
 import { useBotRoster } from "./muse/chrome/useBotRoster";
 import { useBrowserNotifications } from "./muse/chrome/useBrowserNotifications";
@@ -120,13 +113,12 @@ import { useDockTransition } from "./muse/conversation/useDockTransition";
 import { useMuseTranscript } from "./muse/conversation/useMuseTranscript";
 import { useThreadState } from "./muse/conversation/useThreadState";
 import { useThreadSync } from "./muse/conversation/useThreadSync";
-import { RoutineList } from "./muse/routines/RoutineList";
 import { RoutinePanel } from "./muse/routines/RoutinePanel";
 import { useRoutineEditor } from "./muse/routines/useRoutineEditor";
 import { IntegrationOverlays } from "./muse/settings/IntegrationOverlays";
 import { SettingsHost } from "./muse/settings/SettingsHost";
 import { useShellSettings } from "./muse/settings/useShellSettings";
-import { useMuseNav } from "./muse/useMuseNav";
+import { DockSheets } from "./muse/sheets/DockSheets";
 import { draftFromRoutine } from "./RoutineEditor";
 import { CreateBotForm } from "./shell/bot-panel";
 import { DeleteItemDialog } from "./shell/dialogs";
@@ -144,25 +136,6 @@ const CallView = lazy(() => import("./CallView").then((module) => ({ default: mo
  * float as glass inside it. */
 /** Every orb brightens while Nova works (useNovaWork). */
 const sideChatViewWithApprovals: SideChatView = { ...sideChatView, Approvals: ApprovalCards };
-
-/** The Feed with the open Asks pinned on top: the feed capability takes them as a slot, the
- * approvals capability supplies them (the same list the Waiting-on-you sheet shows). */
-function FeedWithAsks(props: { botId: string; onSendIdea: (text: string) => void }) {
-  const { asks, answer } = useAsks(props.botId);
-  return (
-    <FeedScreen
-      botId={props.botId}
-      onSendIdea={props.onSendIdea}
-      hasAsks={asks.length > 0}
-      asksSlot={
-        <FeedAsks
-          asks={asks}
-          onAnswer={(ask, value) => answer({ askId: ask.id, runId: ask.runId, answer: value })}
-        />
-      }
-    />
-  );
-}
 
 function NovaPresence({
   botId,
@@ -272,7 +245,10 @@ export function ShellPage() {
 
   const inGroup = Boolean(groupId);
   const active = inGroup ? undefined : (bots.find((b) => b.id === botId) ?? bots[0]);
-  const { view: museView, setView: setMuseView } = useMuseNav();
+  // The home screen shows until a chat, a fork or a first message opens the Conversation.
+  const [home, setHome] = useState(true);
+  // The dock place open as a sheet, if any.
+  const [dockSheet, setDockSheet] = useState<DockKey | null>(null);
   // The open Side Chat, shown as a full-size session replacing the Conversation
   // (agreed behavior #2); "draft" is an unsent one. Cleared by navigating anywhere else.
   const [activeChat, setActiveChat] = useState<ChatSummary | "draft" | null>(null);
@@ -314,22 +290,13 @@ export function ShellPage() {
     }),
     [sideChatWire, refreshChatList],
   );
-  const navigateMuseView = useCallback(
-    (view: MuseRailView) => {
-      setActiveChat(null);
-      setMuseView(view);
-    },
-    [setMuseView],
-  );
   const [contextPanelCollapsed, setContextPanelCollapsed] = useContextPanelCollapsed();
   const chatArtifacts = useChatArtifacts(
     `${active?.id ?? ""}:${activeChat === "draft" ? "draft" : (activeChat?.id ?? "")}`,
   );
-  const [waitingOpen, setWaitingOpen] = useState(false);
   /** Below `md` the Muse sidebar is an off-canvas drawer opened from the main header. */
   const [navOpen, setNavOpen] = useState(false);
   const activeGroup = groups.find((group) => group.id === groupId);
-  const activeRoutines = !inGroup && routinesBotId === active?.id ? routines : [];
   const activeTaughtSkills = taughtSkillsBotId === active?.id ? taughtSkills : [];
   const recordingSkill = activeTaughtSkills.find((skill) => skill.status === "recording") ?? null;
   const activeBotId = useRef<string | undefined>(inGroup ? undefined : active?.id);
@@ -387,7 +354,7 @@ export function ShellPage() {
         setEditingRoutine(routine);
         setPanel("routine");
       } else {
-        setPanel("computer");
+        setPanel(null);
       }
       const next = new URLSearchParams(searchParams);
       next.delete("routine");
@@ -404,7 +371,7 @@ export function ShellPage() {
       if (chat?.anchorItemId) {
         // A hit in a fork: it opens over its message, like any other way into a fork.
         setActiveChat(null);
-        setMuseView("conversation");
+        setHome(false);
         openForkRef.current({
           chat: {
             id: chat.id,
@@ -417,7 +384,7 @@ export function ShellPage() {
         });
       } else if (chat) {
         setActiveChat(chat);
-        setMuseView("conversation");
+        setHome(false);
         if (messageId) setChatFocus({ chatId: chat.id, messageId });
       }
       const next = new URLSearchParams(searchParams);
@@ -466,22 +433,17 @@ export function ShellPage() {
   );
   const transcriptRunning = workingRuns.length > 0;
   const composerRunning = currentRuns.some((run) => isActive(run.status));
-  const [computerView, setComputerView] = useComputerView();
   // Bumps each time a turn finishes, so the Files view follows the Muse's work.
   const [filesRefreshKey, setFilesRefreshKey] = useState(0);
   // The Project folder to show in the Files tab, set by the "Working in" chip.
   const [filesReveal, setFilesReveal] = useState<{ path: string; nonce: number } | null>(null);
-  const openProjectFiles = useCallback(
-    (project: ChatProject) => {
-      setFilesReveal((current) => ({
-        path: `projects/${project.slug}`,
-        nonce: (current?.nonce ?? 0) + 1,
-      }));
-      setComputerView("files");
-      setPanel("computer");
-    },
-    [setComputerView],
-  );
+  const openProjectFiles = useCallback((project: ChatProject) => {
+    setFilesReveal((current) => ({
+      path: `projects/${project.slug}`,
+      nonce: (current?.nonce ?? 0) + 1,
+    }));
+    setDockSheet("files");
+  }, []);
   const conversationProject = useChatProject(
     active ? () => rpc.chats.project({ botId: active.id }) : undefined,
     active?.id ?? "",
@@ -519,8 +481,8 @@ export function ShellPage() {
   // The fork views belong to the Conversation: leaving it (another section, a full-size side
   // chat, another Muse) closes them.
   useEffect(() => {
-    if (museView !== "conversation" || activeChat) resetForks();
-  }, [museView, activeChat, resetForks]);
+    if (activeChat) resetForks();
+  }, [activeChat, resetForks]);
   useEffect(() => {
     resetForks();
   }, [active?.id, resetForks]);
@@ -790,29 +752,21 @@ export function ShellPage() {
       ? t`You`
       : (resolveTranscriptMemberName(activeReplyTarget.botId) ?? active?.name ?? t`Bot`)
     : undefined;
-  const handleSendIdea = useCallback(
-    (text: string) => {
-      setMuseView("conversation");
-      void sendMessage(text);
+  const startChat = useCallback(
+    (input: { send?: string; seed?: string }) => {
+      setActiveChat(null);
+      setHome(false);
+      if (input.seed) setComposerSeed(input.seed);
+      if (input.send) void sendMessage(input.send);
     },
-    [sendMessage, setMuseView],
+    [sendMessage],
   );
-  const computerCtl = useComputer({
+  useComputer({
     target: { active, bots, botsRef, activeBotId, activeGroupId },
     panel,
     computerStore,
     screen,
     thread: { snapshot, refreshThread, refreshThreadRef, refreshGroupThreadRef },
-  });
-  const { onOpenComputer, setComputerOpen } = computerCtl;
-  const { teachBusy, stopTeaching, refreshActiveTeaching } = useTeaching({
-    activeBotId,
-    taughtSkills,
-    taughtSkillsBotId,
-    setTaughtSkills,
-    setTaughtSkillsBotId,
-    refreshThreadRef,
-    setComputerOpen,
   });
   // Transcript and MessageView are memoized; these must stay referentially stable or every
   // Shell state change re-renders the whole transcript.
@@ -846,6 +800,71 @@ export function ShellPage() {
 
   const userName = session.data?.user.name ?? t`You`;
 
+  const composerEl = (
+    <Composer
+      key={inGroup ? `group:${groupId}` : `bot:${active?.id}`}
+      museMode={museMode}
+      activeName={inGroup ? (activeGroup?.name ?? activeSnapshot?.groupName) : active?.name}
+      running={composerRunning}
+      disabled={Boolean(recordingSkill)}
+      pendingAttachments={activePendingAttachments}
+      attachmentNotice={attachmentNotice}
+      uploadStatus={uploadStatus}
+      sendError={sendError}
+      runError={displayedRunError}
+      runErrorId={displayedRunErrorId}
+      onRunErrorPresented={handleRunErrorPresented}
+      onDismissError={dismissComposerError}
+      sending={sending}
+      fileInputRef={fileInputRef}
+      onAttachmentPick={onAttachmentPick}
+      onRemoveAttachment={removeAttachment}
+      onRetryAttachment={retryAttachment}
+      onSend={(...args: Parameters<typeof sendMessage>) => {
+        setHome(false);
+        return sendMessage(...args);
+      }}
+      seedText={composerSeed}
+      onSeedConsumed={() => setComposerSeed(null)}
+      onStop={stopRun}
+      onVoice={
+        !inGroup && active
+          ? () => {
+              if (!voiceStatus?.ready) {
+                openSettings("voice");
+                return;
+              }
+              setCallOpen(true);
+            }
+          : undefined
+      }
+      replyTarget={activeReplyTarget}
+      replyQuote={activeReplyQuote}
+      replyTargetName={replyTargetName}
+      onClearReply={clearReply}
+      mentionTargets={composerMentionTargets}
+      agentSkills={agentSkills}
+      onSlashOpen={refreshAgentSkills}
+      onSlashAction={(action) => {
+        if (action === "chat-settings") {
+          setPanel(inGroup ? "group-settings" : "settings");
+          return;
+        }
+        if (action === "settings-general") {
+          openSettings("general");
+          return;
+        }
+        if (action === "settings-usage") {
+          void rpc.usage
+            .summary()
+            .then(setUsage)
+            .catch(() => undefined);
+          openSettings("usage");
+        }
+      }}
+    />
+  );
+
   const shell = (
     <div
       data-testid="shell-root"
@@ -856,6 +875,46 @@ export function ShellPage() {
           : "relative flex h-full min-w-0 overflow-hidden bg-background text-foreground/90"
       }
     >
+      {home && museMode && active ? (
+        <Home
+          personName={bootstrapMe?.name ?? ""}
+          dock={<ConnectedDock botId={active.id} active={dockSheet} onSelect={setDockSheet} />}
+          composer={composerEl}
+          onOpenSettings={() => openSettings("general")}
+          recent={
+            <RecentChats
+              state={chatList.state}
+              conversationCurrent
+              conversationWorking={composerRunning}
+              activeChatId={null}
+              onOpenConversation={() => {
+                forks.reset();
+                setActiveChat(null);
+                setHome(false);
+              }}
+              onOpenChat={(chat) => {
+                setActiveChat(chat);
+                setHome(false);
+              }}
+              onNewDraft={() => {
+                setActiveChat("draft");
+                setHome(false);
+              }}
+              forks={forks.rows}
+              onOpenFork={(row) => {
+                setActiveChat(null);
+                setHome(false);
+                forks.openRow(row);
+              }}
+              onShowForks={(filter) => {
+                setActiveChat(null);
+                setHome(false);
+                forks.showForks(filter);
+              }}
+            />
+          }
+        />
+      ) : null}
       <ComputerUpdateProgress
         onCompleted={() => {
           if (active) void refreshThread(active.id);
@@ -871,34 +930,37 @@ export function ShellPage() {
           runs={currentRuns}
           messages={activeSnapshot?.messages}
           personName={bootstrapMe?.name}
-          active={museView}
           activeChatId={activeChat === "draft" ? "draft" : (activeChat?.id ?? null)}
           chatListState={chatList.state}
-          onNavigate={(view) => {
+          onOpenConversation={() => {
             // Conversation means the chat itself: it closes an open fork or the forks list.
-            if (view === "conversation") forks.reset();
-            navigateMuseView(view);
+            forks.reset();
+            setActiveChat(null);
           }}
-          onOpenWaiting={() => setWaitingOpen(true)}
+          onHome={() => {
+            setActiveChat(null);
+            setHome(true);
+          }}
+          onOpenWaiting={() => setDockSheet("inbox")}
           onOpenSettings={() => openSettings("general")}
           onOpenChat={(chat) => {
             setActiveChat(chat);
-            setMuseView("conversation");
+            setHome(false);
           }}
           onNewDraft={() => {
             setActiveChat("draft");
-            setMuseView("conversation");
+            setHome(false);
           }}
           forks={forks.rows}
           activeForkId={forks.thread?.chat.id ?? null}
           onOpenFork={(row) => {
             setActiveChat(null);
-            setMuseView("conversation");
+            setHome(false);
             forks.openRow(row);
           }}
           onShowForks={(filter) => {
             setActiveChat(null);
-            setMuseView("conversation");
+            setHome(false);
             forks.showForks(filter);
           }}
           mobileOpen={navOpen}
@@ -917,7 +979,7 @@ export function ShellPage() {
             : "flex min-w-0 flex-1 flex-col bg-background"
         }
       >
-        {museMode && active && (museView !== "conversation" || activeChat) ? (
+        {museMode && active && activeChat ? (
           <div className="flex h-12 shrink-0 items-center gap-2 px-3 md:hidden">
             <button
               type="button"
@@ -930,21 +992,11 @@ export function ShellPage() {
               <Menu size={20} strokeWidth={1.75} />
             </button>
             <span className="min-w-0 truncate text-[15px] font-medium" dir="auto">
-              {activeChat
-                ? t`Side chat`
-                : museView === "goals"
-                  ? t`Goals`
-                  : museView === "feed"
-                    ? t`Feed`
-                    : museView === "ideas"
-                      ? t`Ideas`
-                      : museView === "library"
-                        ? t`Library`
-                        : t`Conversation`}
+              {t`Side chat`}
             </span>
           </div>
         ) : null}
-        {museMode && active && museView === "conversation" && activeChat ? (
+        {museMode && active && activeChat ? (
           <div className="flex min-h-0 flex-1">
             <div className={MUSE_CONTENT_PANE}>
               <SideChatSession
@@ -970,27 +1022,6 @@ export function ShellPage() {
             </div>
             {chatArtifacts.panel}
           </div>
-        ) : museMode && active && museView !== "conversation" ? (
-          <div className={MUSE_CONTENT_PANE}>
-            {museView === "goals" ? (
-              <GoalsScreen botId={active.id} botName={active.name} onSendIdea={handleSendIdea} />
-            ) : museView === "feed" ? (
-              <FeedWithAsks botId={active.id} onSendIdea={handleSendIdea} />
-            ) : museView === "ideas" ? (
-              <IdeasScreen
-                botId={active.id}
-                onSendIdea={handleSendIdea}
-                onOpenConversation={() => setMuseView("conversation")}
-              />
-            ) : (
-              <LibraryScreen
-                botId={active.id}
-                botName={active.name}
-                onSendIdea={handleSendIdea}
-                skills={<SkillsPanel botId={active.id} />}
-              />
-            )}
-          </div>
         ) : (
           <div className={museMode && active ? "flex min-h-0 flex-1" : "contents"}>
             <div className={museMode && active ? MUSE_CONTENT_PANE : "contents"}>
@@ -1007,7 +1038,7 @@ export function ShellPage() {
                     // its identity header isn't visible (collapsed, a side panel open, or
                     // below `xl`), this header's compact identity covers it instead.
                     identityCollapsed={contextPanelCollapsed || panel !== null}
-                    onOpenWaiting={() => setWaitingOpen(true)}
+                    onOpenWaiting={() => setDockSheet("inbox")}
                     isNew={shownStart}
                     onOpenMenu={() => setNavOpen(true)}
                     project={conversationProject}
@@ -1038,23 +1069,6 @@ export function ShellPage() {
                             <PanelRightClose strokeWidth={1.75} />
                           )}
                         </button>
-                        <button
-                          type="button"
-                          title={t`Agent computer`}
-                          aria-label={t`Agent computer`}
-                          onClick={() => {
-                            const next = panel === "computer" ? null : "computer";
-                            setPanel(next);
-                            if (next === "computer") {
-                              // Refresh run/computer so Take control isn't stuck on a stale busyBotName.
-                              void refreshThread(active.id).catch(() => undefined);
-                            }
-                          }}
-                          data-active={panel === "computer" ? "" : undefined}
-                          className={TOOLBAR_BUTTON}
-                        >
-                          <Monitor strokeWidth={1.75} />
-                        </button>
                       </>
                     }
                   />
@@ -1084,26 +1098,6 @@ export function ShellPage() {
                           </span>
                         </span>
                       </button>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {!inGroup && active ? (
-                        <button
-                          type="button"
-                          title={t`Agent computer`}
-                          onClick={() => {
-                            const next = panel === "computer" ? null : "computer";
-                            setPanel(next);
-                            if (next === "computer" && active) {
-                              // Refresh run/computer so Take control isn't stuck on a stale busyBotName.
-                              void refreshThread(active.id).catch(() => undefined);
-                            }
-                          }}
-                          data-active={panel === "computer" ? "" : undefined}
-                          className="app-no-drag grid h-[30px] w-[34px] place-items-center rounded-[9px] hover:bg-accent data-active:bg-accent"
-                        >
-                          <Monitor size={18} strokeWidth={1.6} className="text-foreground/75" />
-                        </button>
-                      ) : null}
                     </div>
                   </div>
                 )}
@@ -1183,7 +1177,6 @@ export function ShellPage() {
                     voiceReady={Boolean(voiceStatus?.ready)}
                     speakingMessageId={speakingMessageId}
                     onSpeak={speakMessage}
-                    onOpenComputer={onOpenComputer}
                     trailing={
                       museMode && active ? (
                         <ApprovalCards botId={active.id} chatId={null} />
@@ -1220,67 +1213,7 @@ export function ShellPage() {
                     hidden={forksView || undefined}
                     style={{ viewTransitionName: museMode ? "nova-composer" : undefined }}
                   >
-                    <Composer
-                      key={inGroup ? `group:${groupId}` : `bot:${active?.id}`}
-                      museMode={museMode}
-                      activeName={
-                        inGroup ? (activeGroup?.name ?? activeSnapshot?.groupName) : active?.name
-                      }
-                      running={composerRunning}
-                      disabled={Boolean(recordingSkill)}
-                      pendingAttachments={activePendingAttachments}
-                      attachmentNotice={attachmentNotice}
-                      uploadStatus={uploadStatus}
-                      sendError={sendError}
-                      runError={displayedRunError}
-                      runErrorId={displayedRunErrorId}
-                      onRunErrorPresented={handleRunErrorPresented}
-                      onDismissError={dismissComposerError}
-                      sending={sending}
-                      fileInputRef={fileInputRef}
-                      onAttachmentPick={onAttachmentPick}
-                      onRemoveAttachment={removeAttachment}
-                      onRetryAttachment={retryAttachment}
-                      onSend={sendMessage}
-                      seedText={composerSeed}
-                      onSeedConsumed={() => setComposerSeed(null)}
-                      onStop={stopRun}
-                      onVoice={
-                        !inGroup && active
-                          ? () => {
-                              if (!voiceStatus?.ready) {
-                                openSettings("voice");
-                                return;
-                              }
-                              setCallOpen(true);
-                            }
-                          : undefined
-                      }
-                      replyTarget={activeReplyTarget}
-                      replyQuote={activeReplyQuote}
-                      replyTargetName={replyTargetName}
-                      onClearReply={clearReply}
-                      mentionTargets={composerMentionTargets}
-                      agentSkills={agentSkills}
-                      onSlashOpen={refreshAgentSkills}
-                      onSlashAction={(action) => {
-                        if (action === "chat-settings") {
-                          setPanel(inGroup ? "group-settings" : "settings");
-                          return;
-                        }
-                        if (action === "settings-general") {
-                          openSettings("general");
-                          return;
-                        }
-                        if (action === "settings-usage") {
-                          void rpc.usage
-                            .summary()
-                            .then(setUsage)
-                            .catch(() => undefined);
-                          openSettings("usage");
-                        }
-                      }}
-                    />
+                    {home && museMode ? null : composerEl}
                   </div>
                 ) : null}
                 {shownStart ? (
@@ -1337,8 +1270,7 @@ export function ShellPage() {
                 // The computer (or settings) side panel takes that column; two side panels
                 // would crush the conversation.
                 collapsed={contextPanelCollapsed || panel !== null || chatArtifacts.isOpen}
-                onNavigate={navigateMuseView}
-                onOpenWaiting={() => setWaitingOpen(true)}
+                onOpenWaiting={() => setDockSheet("inbox")}
               />
             ) : null}
           </div>
@@ -1346,7 +1278,15 @@ export function ShellPage() {
       </main>
 
       {museMode && active ? (
-        <WaitingSheet botId={active.id} open={waitingOpen} onOpenChange={setWaitingOpen} />
+        <DockSheets
+          botId={active.id}
+          botName={active.name}
+          sheet={dockSheet}
+          onClose={() => setDockSheet(null)}
+          filesRefreshKey={filesRefreshKey}
+          filesReveal={filesReveal}
+          onStartChat={startChat}
+        />
       ) : null}
 
       <aside
@@ -1379,32 +1319,7 @@ export function ShellPage() {
                 setPanel={setPanel}
                 active={active}
                 computer={computer}
-                ctl={computerCtl}
-                screen={screen}
-                computerView={computerView}
-                setComputerView={setComputerView}
-                refreshThread={refreshThread}
               />
-            ) : null}
-            {panel === "computer" && active ? (
-              <ComputerPreview
-                active={active}
-                computer={computer}
-                ctl={computerCtl}
-                screen={screen}
-                computerView={computerView}
-                filesRefreshKey={filesRefreshKey}
-                filesReveal={filesReveal}
-                sandboxProvider={bootstrapMe?.sandboxProvider}
-              >
-                <RoutineList
-                  routines={activeRoutines}
-                  run={snapshot?.run}
-                  onCreate={routineEditor.openNew}
-                  onOpen={routineEditor.openRoutine}
-                  onStop={() => void stopRun()}
-                />
-              </ComputerPreview>
             ) : null}
             {panel === "group-settings" && activeGroup ? (
               <GroupSettingsPanel
@@ -1505,21 +1420,6 @@ export function ShellPage() {
           />
         ) : null}
       </Suspense>
-
-      <ComputerOverlay
-        active={active}
-        computer={computer}
-        ctl={computerCtl}
-        screen={screen}
-        teach={computerTeachSlots({
-          recordingSkill,
-          computer,
-          teachBusy,
-          stopTeaching,
-          refreshActiveTeaching,
-        })}
-        run={{ currentRuns, composerRunning, sending, sendError, stopRun }}
-      />
     </div>
   );
 

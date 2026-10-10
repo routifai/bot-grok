@@ -61,7 +61,6 @@ export function SheetPreviewPage() {
             voiceReady={false}
             speaking={false}
             onSpeak={() => undefined}
-            onOpenComputer={() => undefined}
           />
         ))}
         {ask ? <ComposerAttachmentChip kind="sheet" label={ask.label} /> : null}

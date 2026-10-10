@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { useMemo } from "react";
 import { NovaOrb, useOrbHome } from "../../../components/ai/orb";
 import { greetingLead } from "./greeting";
-import { CalendarGlyph, GoalsGlyph, SearchGlyph, SparkGlyph } from "./NovaGlyphs";
+import { CalendarGlyph, SearchGlyph, SparkGlyph } from "./NovaGlyphs";
 import { NovaTile, type TileTone } from "./NovaTile";
 
 /**
@@ -45,7 +45,6 @@ export function EmptyConversationSuggestions({ onSend }: { onSend: (text: string
   const { t } = useLingui();
   const apps: StartApp[] = [
     { label: t`Plan week`, prompt: t`Plan my week`, tone: "red", glyph: <CalendarGlyph /> },
-    { label: t`New goal`, prompt: t`Start a new goal`, tone: "green", glyph: <GoalsGlyph /> },
     {
       label: t`Research`,
       prompt: t`Research something for me`,

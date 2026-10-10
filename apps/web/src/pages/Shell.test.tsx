@@ -169,7 +169,7 @@ vi.mock("../features/skills/teach/TeachRecordingChrome", () => ({
   TeachRecordingChrome: Stub,
   TeachStopButton: Stub,
 }));
-vi.mock("../features/approvals/WaitingSheet", () => ({ WaitingSheet: Stub }));
+vi.mock("./muse/sheets/DockSheets", () => ({ DockSheets: Stub }));
 vi.mock("./GroupPanel", () => ({
   GroupSettings: Stub,
   memberName: () => "",
@@ -300,43 +300,45 @@ async function renderShell(initialBootstrap: ReturnType<typeof bootstrap>) {
   };
 }
 
-it("opens the sidebar as a drawer from the mobile menu button and closes it on navigate", async () => {
+it("starts on the home screen: the greeting, the dock and recent chats", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const page = await renderShell(bootstrap({ me: me() }));
   try {
-    const drawer = () => page.container.querySelector('[data-testid="app-rail-drawer"]');
-    expect(drawer()).toBeNull();
-    await act(async () => {
-      page.container
-        .querySelector<HTMLButtonElement>('[data-testid="mobile-nav-trigger"]')
-        ?.click();
-    });
-    expect(drawer()).toBeTruthy();
-    const goals = [...(drawer()?.querySelectorAll("button") ?? [])].find((el) =>
-      el.textContent?.includes("Goals"),
+    const home = page.container.querySelector('[data-testid="home"]');
+    expect(home).toBeTruthy();
+    expect(home?.querySelector("h1")?.textContent).toContain("Person");
+    const dock = home?.querySelector('[data-testid="dock"]');
+    const labels = [...(dock?.querySelectorAll("button") ?? [])].map((el) =>
+      el.getAttribute("aria-label"),
     );
-    await act(async () => goals?.click());
-    expect(drawer()).toBeNull();
+    expect(labels).toEqual(["Inbox", "Mini Apps", "Automations", "Files"]);
+    expect(home?.querySelector('[data-testid="recent-chats"]')).toBeTruthy();
+    expect(page.container.querySelector('[data-testid="bots-sidebar"]')).toBeNull();
+    expect(page.container.querySelector('[data-testid="create-menu-trigger"]')).toBeNull();
   } finally {
     await page.cleanup();
   }
 });
 
-it("hides the bot list and shows the four Muse rail entries", async () => {
+it("opens the Conversation with its sidebar from the recent chats", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const page = await renderShell(bootstrap({ me: me() }));
   try {
-    expect(page.container.querySelector('[data-testid="bots-sidebar"]')).toBeNull();
-    expect(page.container.querySelector('[data-testid="create-menu-trigger"]')).toBeNull();
+    const open = [
+      ...(page.container.querySelectorAll('[data-testid="recent-chats"] button') ?? []),
+    ].find((el) => el.textContent?.includes("Conversation"));
+    await act(async () => (open as HTMLButtonElement | undefined)?.click());
+    expect(page.container.querySelector('[data-testid="home"]')).toBeNull();
     const rail = page.container.querySelector('[data-testid="app-rail"]');
     expect(rail).toBeTruthy();
     const labels = [...(rail?.querySelectorAll("button") ?? [])].map(
       (el) => el.getAttribute("aria-label") ?? el.textContent?.trim(),
     );
+    expect(labels).toContain("Home");
     expect(labels).toContain("Conversation");
-    expect(labels).toContain("Goals");
-    expect(labels).toContain("Feed");
-    expect(labels).toContain("Library");
+    expect(labels).not.toContain("Goals");
+    expect(labels).not.toContain("Feed");
+    expect(labels).not.toContain("Ideas");
   } finally {
     await page.cleanup();
   }

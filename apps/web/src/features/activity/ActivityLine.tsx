@@ -25,7 +25,6 @@ const SOURCE_TONE: Record<ActivitySource, TileTone> = {
   background: "indigo",
   housekeeping: "yellow",
   scheduled: "orange",
-  goal: "green",
 };
 
 /** The lead of a work row: a small live orb while it works, else a tile for its source (a

@@ -205,7 +205,7 @@ export function EditNoticeBanner({
       {notice.kind === "inexact" && canAsk && targets.length ? (
         <Button size="sm" variant="outline" onClick={() => onAsk({})}>
           <Sparkles />
-          {t`Ask Nova instead`}
+          {t`Ask superchat instead`}
         </Button>
       ) : null}
     </div>
@@ -488,7 +488,7 @@ function AskSection({ targets, canAsk, asked, focusAsk, onAsk }: StylePanelProps
   }, [focusAsk, handled, canAsk, onAsk, notes]);
   if (!canAsk) return null;
   return (
-    <Section title={t`Ask Nova`}>
+    <Section title={t`Ask superchat`}>
       {targets.map((target) => (
         <Textarea
           key={target.id}
@@ -508,7 +508,7 @@ function AskSection({ targets, canAsk, asked, focusAsk, onAsk }: StylePanelProps
       <div className="flex items-center gap-2">
         <Button size="sm" variant="outline" disabled={!first} onClick={() => onAsk(notes)}>
           <Sparkles />
-          {t`Ask Nova`}
+          {t`Ask superchat`}
         </Button>
         {asked ? (
           <span className="text-[11.5px] text-muted-foreground">{t`Added to your message`}</span>

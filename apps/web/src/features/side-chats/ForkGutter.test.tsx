@@ -136,7 +136,7 @@ it("merges close marks into a count capsule whose popover lists the forks and ju
   const popup = document.body.querySelector('[data-slot="popover-content"]');
   expect(popup?.textContent).toContain("Fork a");
   expect(popup?.textContent).toContain("Open");
-  expect(popup?.textContent).toContain("Nova is working");
+  expect(popup?.textContent).toContain("superchat is working");
   expect(popup?.textContent).toContain("Finished");
   const item = [...(popup?.querySelectorAll("button") ?? [])].find((b) =>
     b.textContent?.includes("Fork b"),

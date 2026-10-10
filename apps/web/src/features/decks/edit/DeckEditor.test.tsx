@@ -319,7 +319,7 @@ it("a change by someone else ends the history instead of undoing over it", async
   expect(control("Undo").disabled).toBe(true);
 });
 
-it("a patch the engine won't apply exactly says so and offers Nova", async () => {
+it("a patch the engine won't apply exactly says so and offers superchat", async () => {
   const refuse = async () => {
     throw Object.assign(new Error("Can't apply that edit exactly; ask Nova instead"), {
       code: "CONFLICT",
@@ -350,13 +350,13 @@ it("a patch the engine won't apply exactly says so and offers Nova", async () =>
   const notice = host.querySelector('[data-testid="deck-edit-notice"]');
   expect(notice?.textContent).toContain("can't be made exactly by hand");
   const ask = [...(notice?.querySelectorAll("button") ?? [])].find((b) =>
-    b.textContent?.includes("Ask Nova instead"),
+    b.textContent?.includes("Ask superchat instead"),
   );
   await act(async () => ask?.click());
   expect(probe.current[0]?.block).toContain('<element id="title"');
 });
 
-it("Ask Nova attaches a hard-scope element request with the person's note", async () => {
+it("Ask superchat attaches a hard-scope element request with the person's note", async () => {
   const probe: Probe = { current: [] };
   await mount({ probe });
   await act(async () => setDeckEditing(NAME, true));
@@ -364,7 +364,7 @@ it("Ask Nova attaches a hard-scope element request with the person's note", asyn
   await ready(frame);
   await select(frame);
   await act(async () => typeInto(control("What should change?"), "make it punchier"));
-  const ask = [...host.querySelectorAll("button")].find((b) => b.textContent === "Ask Nova");
+  const ask = [...host.querySelectorAll("button")].find((b) => b.textContent === "Ask superchat");
   await act(async () => ask?.click());
   const attachment = probe.current[0];
   expect(attachment?.kind).toBe("deck");
@@ -377,7 +377,7 @@ it("Ask Nova attaches a hard-scope element request with the person's note", asyn
   expect(attachment?.block).toContain("request: make it punchier");
 });
 
-it("the Ask Nova button on the selection (a bridge message) attaches too", async () => {
+it("the Ask superchat button on the selection (a bridge message) attaches too", async () => {
   const probe: Probe = { current: [] };
   await mount({ probe });
   await act(async () => setDeckEditing(NAME, true));

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { Ask, Goal } from "@nova/contracts";
+import type { Ask } from "@nova/contracts";
 import type * as UiWeb from "@nova/ui-web";
 import { ORPCError } from "@orpc/client";
 import type { ComponentProps, ReactNode } from "react";
@@ -15,7 +15,6 @@ vi.mock("react-dom/client", async (orig) =>
 );
 
 const api = vi.hoisted(() => ({
-  goals: { list: vi.fn() },
   asks: { list: vi.fn(), answer: vi.fn() },
   activities: { list: vi.fn(), get: vi.fn() },
   memory: {
@@ -64,10 +63,6 @@ function activitiesPage(overrides: { activities?: unknown[]; hasMore?: boolean }
   return { activities: overrides.activities ?? [], hasMore: overrides.hasMore ?? false };
 }
 
-function openContextTab(container: HTMLElement) {
-  return container.querySelector<HTMLButtonElement>("[data-testid='context-panel-tab-context']");
-}
-
 function ask(overrides: Partial<Ask> = {}): Ask {
   return {
     id: "ask-1",
@@ -83,50 +78,10 @@ function ask(overrides: Partial<Ask> = {}): Ask {
   };
 }
 
-function goal(overrides: Partial<Goal> = {}): Goal {
-  return {
-    id: "goal-1",
-    botId: "bot-1",
-    title: "Conversational Japanese before Kyoto",
-    description: "",
-    status: "active",
-    due: null,
-    checkInCrons: [],
-    timezone: "UTC",
-    tasks: [
-      {
-        id: "task-1",
-        goalId: "goal-1",
-        idx: 0,
-        title: "Pick a course",
-        status: "done",
-        note: "",
-        updatedAt: "2026-09-20T00:00:00.000Z",
-      },
-      {
-        id: "task-2",
-        goalId: "goal-1",
-        idx: 1,
-        title: "Daily practice streak",
-        status: "in_progress",
-        note: "",
-        updatedAt: "2026-09-21T00:00:00.000Z",
-      },
-    ],
-    openProposal: null,
-    lastWorkedAt: "2026-09-24T00:00:00.000Z",
-    nextWorkAt: null,
-    createdAt: "2026-06-20T00:00:00.000Z",
-    updatedAt: "2026-09-24T00:00:00.000Z",
-    ...overrides,
-  };
-}
-
 async function renderPanel(props: Partial<Parameters<typeof ContextPanel>[0]> = {}) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
-  const onNavigate = vi.fn();
   const onOpenWaiting = vi.fn();
   await act(async () => {
     root.render(
@@ -134,7 +89,6 @@ async function renderPanel(props: Partial<Parameters<typeof ContextPanel>[0]> = 
         botId="bot-1"
         museName="Nova"
         collapsed={false}
-        onNavigate={onNavigate}
         onOpenWaiting={onOpenWaiting}
         {...props}
       />,
@@ -142,7 +96,6 @@ async function renderPanel(props: Partial<Parameters<typeof ContextPanel>[0]> = 
   });
   return {
     container,
-    onNavigate,
     onOpenWaiting,
     async cleanup() {
       await act(async () => root.unmount());
@@ -199,61 +152,17 @@ beforeEach(() => {
   vi.stubGlobal("cancelAnimationFrame", () => undefined);
 });
 
-it("renders Asks, in-progress Goals, and upcoming Check-ins from the data it's given", async () => {
+it("shows open Asks as the Inbox on the Activity tab", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.asks.list.mockResolvedValue([ask({ text: "Which evenings work?" })]);
-  api.goals.list.mockResolvedValue([
-    goal({
-      id: "goal-1",
-      title: "Conversational Japanese before Kyoto",
-      checkInCrons: ["0 9 * * 1-5"],
-    }),
-  ]);
   const page = await renderPanel();
   try {
-    await act(async () => {
-      openContextTab(page.container)?.click();
-    });
     await act(async () => {
       await vi.waitFor(() => {
         expect(page.container.textContent).toContain("Which evenings work?");
       });
     });
-    expect(page.container.querySelector("[data-testid='context-panel-asks']")).toBeTruthy();
-    expect(page.container.querySelector("[data-testid='context-panel-goals']")).toBeTruthy();
-    expect(page.container.textContent).toContain("Conversational Japanese before Kyoto");
-    expect(page.container.textContent).toContain("Daily practice streak");
-    // The ring shows done/total ("1/2": one done Task of two).
-    expect(page.container.textContent).toContain("1/2");
-    await act(async () => {
-      await vi.waitFor(() => {
-        expect(page.container.querySelector("[data-testid='context-panel-checkins']")).toBeTruthy();
-      });
-    });
-
-    const askRow = page.container.querySelector<HTMLButtonElement>(
-      "[data-testid='context-panel-ask-row']",
-    );
-    await act(async () => {
-      askRow?.click();
-    });
-    expect(page.onOpenWaiting).toHaveBeenCalled();
-
-    const goalCard = page.container.querySelector<HTMLElement>(
-      "[data-testid='context-panel-goal-card']",
-    );
-    await act(async () => {
-      goalCard?.click();
-    });
-    expect(page.onNavigate).toHaveBeenCalledWith("goals");
-
-    const checkinRow = page.container.querySelector<HTMLButtonElement>(
-      "[data-testid='context-panel-checkin-row']",
-    );
-    await act(async () => {
-      checkinRow?.click();
-    });
-    expect(page.onNavigate).toHaveBeenCalledWith("goals");
+    expect(page.container.querySelector("[data-testid='context-panel-decisions']")).toBeTruthy();
   } finally {
     await page.cleanup();
     vi.unstubAllGlobals();
@@ -268,26 +177,19 @@ it("shows a 'View all' action once there are more open Asks than fit", async () 
     ask({ id: "ask-3", text: "Three" }),
     ask({ id: "ask-4", text: "Four" }),
   ]);
-  api.goals.list.mockResolvedValue([]);
   const page = await renderPanel();
   try {
     await act(async () => {
-      openContextTab(page.container)?.click();
-    });
-    await act(async () => {
       await vi.waitFor(() => {
-        expect(page.container.querySelector("[data-testid='context-panel-view-all']")).toBeTruthy();
+        expect(page.container.textContent).toContain("View all");
       });
     });
-    // Only 3 rows render even though there are 4 open Asks.
-    expect(page.container.querySelectorAll("[data-testid='context-panel-ask-row']").length).toBe(3);
+    const decisions = page.container.querySelector("[data-testid='context-panel-decisions']");
     // The section's count reflects every open Ask, not just the ones shown.
-    expect(
-      page.container.querySelector("[data-testid='context-panel-asks']")?.textContent,
-    ).toContain("4");
-
-    const viewAll = page.container.querySelector<HTMLButtonElement>(
-      "[data-testid='context-panel-view-all']",
+    expect(decisions?.textContent).toContain("4");
+    expect(decisions?.textContent).not.toContain("Four");
+    const viewAll = Array.from(decisions?.querySelectorAll("button") ?? []).find(
+      (button) => button.textContent === "View all",
     );
     await act(async () => {
       viewAll?.click();
@@ -299,46 +201,13 @@ it("shows a 'View all' action once there are more open Asks than fit", async () 
   }
 });
 
-it("hides a section with nothing in it, and shows one quiet line (no face) when everything is empty", async () => {
+it("shows no Inbox section when nothing waits", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.asks.list.mockResolvedValue([]);
-  api.goals.list.mockResolvedValue([]);
   const page = await renderPanel();
   try {
-    await act(async () => {
-      openContextTab(page.container)?.click();
-    });
-    await act(async () => {
-      await vi.waitFor(() => {
-        expect(page.container.textContent).toContain("You're all caught up.");
-      });
-    });
-    expect(page.container.querySelector("[data-testid='context-panel-asks']")).toBeNull();
-    expect(page.container.querySelector("[data-testid='context-panel-goals']")).toBeNull();
-    expect(page.container.querySelector("[data-testid='context-panel-checkins']")).toBeNull();
-    expect(page.container.querySelector("[data-testid='context-panel-empty-face']")).toBeNull();
-  } finally {
-    await page.cleanup();
-    vi.unstubAllGlobals();
-  }
-});
-
-it("hides only the empty sections when some Goals have no check-ins", async () => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  api.asks.list.mockResolvedValue([]);
-  api.goals.list.mockResolvedValue([goal({ checkInCrons: [] })]);
-  const page = await renderPanel();
-  try {
-    await act(async () => {
-      openContextTab(page.container)?.click();
-    });
-    await act(async () => {
-      await vi.waitFor(() => {
-        expect(page.container.querySelector("[data-testid='context-panel-goals']")).toBeTruthy();
-      });
-    });
-    expect(page.container.querySelector("[data-testid='context-panel-asks']")).toBeNull();
-    expect(page.container.querySelector("[data-testid='context-panel-checkins']")).toBeNull();
+    await act(async () => {});
+    expect(page.container.querySelector("[data-testid='context-panel-decisions']")).toBeNull();
   } finally {
     await page.cleanup();
     vi.unstubAllGlobals();
@@ -348,7 +217,6 @@ it("hides only the empty sections when some Goals have no check-ins", async () =
 it("shows the Muse's name once, in the identity header, and Connected once a poll lands", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.asks.list.mockResolvedValue([]);
-  api.goals.list.mockResolvedValue([]);
   api.activities.list.mockResolvedValue(activitiesPage());
   const page = await renderPanel({ museName: "Nova" });
   try {
@@ -371,7 +239,6 @@ it("shows the Muse's name once, in the identity header, and Connected once a pol
 it("shows the Activity tab by default, grouped by day", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.asks.list.mockResolvedValue([]);
-  api.goals.list.mockResolvedValue([]);
   api.activities.list.mockResolvedValue(
     activitiesPage({
       activities: [
@@ -409,7 +276,6 @@ it("shows the Activity tab by default, grouped by day", async () => {
 it("shows the calm Activity empty state — not an error — when the Muse has no Conversation yet", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.asks.list.mockResolvedValue([]);
-  api.goals.list.mockResolvedValue([]);
   // NOT_FOUND here means "this Muse has no Conversation yet" (a brand new Muse) — the
   // normal state, not a failure.
   api.activities.list.mockRejectedValue(
@@ -433,7 +299,6 @@ it("shows the calm Activity empty state — not an error — when the Muse has n
 it("shows the Memory tab's sections when switched to", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.asks.list.mockResolvedValue([]);
-  api.goals.list.mockResolvedValue([]);
   api.memory.claims.mockResolvedValue({
     claims: [
       {
@@ -469,7 +334,6 @@ it("shows the Memory tab's sections when switched to", async () => {
 it("shows a one-line empty state when nothing is remembered yet", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.asks.list.mockResolvedValue([]);
-  api.goals.list.mockResolvedValue([]);
   api.memory.claims.mockResolvedValue({ claims: [] });
   const page = await renderPanel();
   try {
@@ -493,7 +357,6 @@ it("shows a one-line empty state when nothing is remembered yet", async () => {
 it("shows the calm Memory empty state — not an error — when the Muse has no Conversation yet", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.asks.list.mockResolvedValue([]);
-  api.goals.list.mockResolvedValue([]);
   api.memory.claims.mockRejectedValue(
     new ORPCError("NOT_FOUND", { message: "This Muse has no Conversation yet" }),
   );

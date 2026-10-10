@@ -7,7 +7,7 @@ import {
   isToolActivityBlock,
   parseAttachmentReferences,
 } from "@nova/core";
-import { BotAvatar, Button, cn, resolvePersonaColorDef } from "@nova/ui-web";
+import { BotAvatar, cn, resolvePersonaColorDef } from "@nova/ui-web";
 import { memo, useMemo } from "react";
 import { CollaborationMarker } from "../../../components/ai/CollaborationMarker";
 import { CloudAgentCard } from "../../../components/CloudAgentCard";
@@ -80,7 +80,6 @@ export const MessageView = memo(function MessageView({
   voiceReady,
   speaking,
   onSpeak,
-  onOpenComputer,
 }: {
   museMode?: boolean;
   /** Muse mode: the Muse's own name, for first-run hint copy (`FirstRunHint`). */
@@ -103,7 +102,6 @@ export const MessageView = memo(function MessageView({
   voiceReady: boolean;
   speaking: boolean;
   onSpeak: () => void;
-  onOpenComputer: (botId?: string) => void;
 }) {
   const { t } = useLingui();
   const errorNote = useFailureNoteText();
@@ -508,7 +506,7 @@ export const MessageView = memo(function MessageView({
                   className="text-[12px] leading-4 text-muted-foreground"
                   dir="auto"
                 >
-                  <Trans>Nova will see this after the current step</Trans>
+                  <Trans>superchat will see this after the current step</Trans>
                 </span>
               ) : null}
             </div>
@@ -579,7 +577,7 @@ export const MessageView = memo(function MessageView({
             <FirstRunHint
               key={i}
               hintKey="proposal-card"
-              text={t`Start it, and ${botDisplayName ?? "Nova"} works on it in the background.`}
+              text={t`Start it, and ${botDisplayName ?? "superchat"} works on it in the background.`}
             >
               <AskCard
                 block={block}
@@ -604,41 +602,6 @@ export const MessageView = memo(function MessageView({
           return (
             <div key={i} className="flex justify-start">
               <SkillDraftCard block={block} onRefresh={onRefresh} onAddRoutine={onAddRoutine} />
-            </div>
-          );
-        }
-        if (block.kind === "computer") {
-          return (
-            <div
-              key={i}
-              data-testid="computer-card"
-              className="w-[340px] rounded-[18px] border border-border bg-muted px-[18px] py-4"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[15px] font-medium text-foreground">
-                  <Trans>Computer</Trans>
-                </span>
-                <span
-                  className={
-                    block.state === "Needs you"
-                      ? "rounded-full bg-warning/15 px-[11px] py-1 text-[13px] text-warning"
-                      : "rounded-full bg-success/15 px-[11px] py-1 text-[13px] text-success"
-                  }
-                >
-                  {block.state}
-                </span>
-              </div>
-              <div className="my-2.5 text-[14.5px] leading-[1.5] text-foreground/75">
-                <ChatMarkdown>{block.text}</ChatMarkdown>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                data-testid="computer-card-open"
-                onClick={() => onOpenComputer(message.botId)}
-              >
-                <Trans>Open</Trans>
-              </Button>
             </div>
           );
         }

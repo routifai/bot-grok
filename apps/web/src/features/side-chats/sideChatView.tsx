@@ -80,7 +80,6 @@ export const sideChatView: Omit<SideChatView, "Approvals"> = {
         voiceReady={false}
         speakingMessageId={null}
         onSpeak={noop}
-        onOpenComputer={noop}
       />
     );
   },

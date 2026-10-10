@@ -1,12 +1,11 @@
-import type { IllustrationKey } from "@nova/contracts";
 import { cn } from "@nova/ui-web";
 import type { LucideIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
-import { illustrationUrl } from "../../../lib/illustrations";
+import { type IllustrationKey, illustrationUrl } from "../../../lib/illustrations";
 
 // Shared building blocks for the Muse screens (docs/muse/DESIGN.md). Every Muse screen
 // composes these so spacing, type, and surfaces stay identical across Conversation,
-// Goals, Feed, Ideas, Library, and Waiting on you. Colors come only from the semantic
+// Library, and the Inbox. Colors come only from the semantic
 // tokens; type comes only from the scale below.
 
 /**

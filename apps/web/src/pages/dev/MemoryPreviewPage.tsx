@@ -64,7 +64,6 @@ export function MemoryPreviewPage() {
         botId={DEV_MEMORY_BOT_ID}
         museName={DEV_MUSE_NAME}
         collapsed={false}
-        onNavigate={() => undefined}
         onOpenWaiting={() => undefined}
         activitiesOverride={{
           state: { status: "ready", activities: [], hasMore: false },

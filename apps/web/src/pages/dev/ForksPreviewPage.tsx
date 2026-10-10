@@ -186,10 +186,10 @@ export function ForksPreviewPage() {
         runs={[]}
         messages={[]}
         personName={DEV_PERSON_NAME}
-        active="conversation"
         activeChatId={null}
         chatListState={chatList}
-        onNavigate={noop}
+        onOpenConversation={noop}
+        onHome={noop}
         onOpenWaiting={noop}
         onOpenSettings={noop}
         onOpenChat={noop}
@@ -249,7 +249,6 @@ export function ForksPreviewPage() {
               voiceReady={false}
               speakingMessageId={null}
               onSpeak={noop}
-              onOpenComputer={noop}
               onFork={forks.startAsk}
               renderUnder={forks.renderUnder}
               aside={

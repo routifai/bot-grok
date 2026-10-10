@@ -244,16 +244,16 @@ it("tapping an empty-state suggestion chip calls onSendIdea with its text", asyn
     await act(async () => {
       await vi.waitFor(() => {
         expect(page.container.textContent).toContain(
-          "Draft a one-pager on the new mortgage product",
+          "Draft a one-pager on our new product",
         );
       });
     });
-    const button = findButton(page.container, "Draft a one-pager on the new mortgage product");
+    const button = findButton(page.container, "Draft a one-pager on our new product");
     expect(button).toBeTruthy();
     await act(async () => {
       button?.click();
     });
-    expect(onSendIdea).toHaveBeenCalledWith("Draft a one-pager on the new mortgage product");
+    expect(onSendIdea).toHaveBeenCalledWith("Draft a one-pager on our new product");
   } finally {
     await page.cleanup();
     vi.unstubAllGlobals();

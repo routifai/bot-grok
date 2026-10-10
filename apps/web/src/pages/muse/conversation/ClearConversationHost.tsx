@@ -39,7 +39,7 @@ export function ClearConversationHost({
             await rpc.chats.reset({ botId: clearTarget.chat.id });
           } catch (error) {
             if (error instanceof ORPCError && error.code === "CONFLICT") {
-              throw new Error(t`Wait for Nova to finish, then clear.`);
+              throw new Error(t`Wait for superchat to finish, then clear.`);
             }
             throw error;
           }

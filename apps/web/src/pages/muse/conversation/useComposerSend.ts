@@ -131,7 +131,7 @@ export function useComposerSend({
   const displayedRunError = sendError
     ? null
     : runError && isRawEngineError(runError)
-      ? t`Nova couldn't start. Try again in a moment.`
+      ? t`superchat couldn't start. Try again in a moment.`
       : runError;
   const displayedRunErrorId = displayedRunError ? (activeSnapshot?.run?.id ?? null) : null;
   const handleRunErrorPresented = useCallback((runId: string) => {

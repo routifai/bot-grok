@@ -29,12 +29,11 @@ vi.mock("@nova/chat-ui/web", () => ({
   ChatMarkdown: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
 }));
 vi.mock("@nova/ui-web", () => ({
-  Sheet: ({ open, children }: { open: boolean; children?: ReactNode }) =>
+  Dialog: ({ open, children }: { open: boolean; children?: ReactNode }) =>
     open ? <div>{children}</div> : null,
-  SheetContent: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  SheetHeader: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  SheetTitle: ({ children }: { children?: ReactNode }) => <h2>{children}</h2>,
-  SheetDescription: ({ children }: { children?: ReactNode }) => <p>{children}</p>,
+  DialogContent: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
+  DialogTitle: ({ children }: { children?: ReactNode }) => <h2>{children}</h2>,
+  DialogDescription: ({ children }: { children?: ReactNode }) => <p>{children}</p>,
   BotAvatar: () => <span data-testid="muse-face" />,
   Button: (props: ComponentProps<"button">) => <button {...props} />,
   Input: (props: ComponentProps<"input">) => <input {...props} />,
@@ -107,20 +106,34 @@ it("lists the sample Asks, newest first", async () => {
   }
 });
 
-it("shows where an Ask came from: its Goal, or the Conversation", async () => {
+it("splits the Inbox into Approvals and Questions", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   api.list.mockResolvedValue([
-    ask({ id: "ask-goal", goalId: "goal-1", goalTitle: "Learn Japanese" }),
-    ask({ id: "ask-conv", text: "A conversation ask" }),
+    ask({ id: "ask-approval", kind: "approval", text: "Send the email" }),
+    ask({ id: "ask-question", kind: "question", text: "Which evenings work?" }),
   ]);
   const page = await renderSheet();
   try {
     await act(async () => {
       await vi.waitFor(() => {
-        expect(page.container.textContent).toContain("Learn Japanese");
+        expect(page.container.textContent).toContain("Which evenings work?");
       });
     });
-    expect(page.container.textContent).toContain("Conversation");
+    const tab = (label: string) =>
+      [...page.container.querySelectorAll("button")].find((button) =>
+        button.textContent?.startsWith(label),
+      );
+    await act(async () => {
+      tab("Questions")?.click();
+    });
+    const open = () => page.container.querySelector("[data-testid='waiting-open']")?.textContent;
+    expect(open()).toContain("Which evenings work?");
+    expect(open()).not.toContain("Send the email");
+    await act(async () => {
+      tab("Approvals")?.click();
+    });
+    expect(open()).toContain("Send the email");
+    expect(open()).not.toContain("Which evenings work?");
   } finally {
     await page.cleanup();
     vi.unstubAllGlobals();

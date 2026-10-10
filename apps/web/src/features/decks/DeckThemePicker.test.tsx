@@ -151,7 +151,7 @@ it("returns focus to the header's Theme button when it closes from the keyboard"
 
 it("says upfront that a hand-made deck is on no theme and sends nothing when a card is used", async () => {
   const { container, editSource } = await mount({ current: null });
-  expect(container.textContent).toContain("This deck isn't on a theme. Ask Nova to restyle it.");
+  expect(container.textContent).toContain("This deck isn't on a theme. Ask superchat to restyle it.");
   expect(container.querySelector('[role="radio"][aria-checked="true"]')).toBeNull();
   await act(async () => card(container, "nord").click());
   expect(editSource).not.toHaveBeenCalled();
@@ -249,7 +249,7 @@ it("words a refusal for people, never the engine's text", async () => {
   });
   const b = await mount({ editSource: inexact });
   await act(async () => card(b.container, "nord").click());
-  expect(b.container.querySelector('[role="status"]')?.textContent).toContain("Ask Nova");
+  expect(b.container.querySelector('[role="status"]')?.textContent).toContain("Ask superchat");
   expect(card(b.container, "nord").getAttribute("aria-checked")).toBe("false");
 });
 

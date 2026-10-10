@@ -237,7 +237,7 @@ it("shows nothing Side-Chat related while the chats wire answers NOT_IMPLEMENTED
   expect(host.innerHTML).toBe("");
 });
 
-it("lists Side Chats newest first, with a pulsing dot while Nova is working in one, and folds Archived behind a collapsed count", async () => {
+it("lists Side Chats newest first, with a pulsing dot while superchat is working in one, and folds Archived behind a collapsed count", async () => {
   const onOpenChat = vi.fn();
   const host = await mount(
     <ChatTree
@@ -267,7 +267,7 @@ it("lists Side Chats newest first, with a pulsing dot while Nova is working in o
   expect(text).toContain("1");
   // Nova's pulsing dot (announced via sr-only text) only marks the live chat.
   const liveRow = [...host.querySelectorAll("button")].find((b) =>
-    b.textContent?.includes("Nova is working"),
+    b.textContent?.includes("superchat is working"),
   );
   expect(liveRow?.textContent).toContain("Newer chat");
   expect(text).toContain("New side chat");

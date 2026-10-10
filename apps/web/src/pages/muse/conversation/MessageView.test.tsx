@@ -94,7 +94,6 @@ async function mount(message: ThreadMessage): Promise<HTMLElement> {
         voiceReady={false}
         speaking={false}
         onSpeak={() => undefined}
-        onOpenComputer={() => undefined}
       />,
     );
   });
@@ -264,7 +263,7 @@ describe("a message sent while Nova was working", () => {
   it("says Nova will see it after the current step while it is queued", async () => {
     const host = await mount(userMessage("queued"));
     expect(host.querySelector('[data-testid="message-queued-note"]')?.textContent).toBe(
-      "Nova will see this after the current step",
+      "superchat will see this after the current step",
     );
     expect(host.querySelector('[data-testid="message-user-bubble"]')?.textContent).toBe(
       "just redo the deck again",

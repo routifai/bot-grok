@@ -137,7 +137,7 @@ it("draws one fork as a reply line, with its replies and a live dot while Nova w
   const stub = host.querySelector<HTMLButtonElement>('[data-testid="fork-stub"]');
   expect(stub?.textContent).toContain("Which four banks?");
   expect(stub?.textContent).toContain("1 reply");
-  expect(stub?.textContent).toContain("Nova is working");
+  expect(stub?.textContent).toContain("superchat is working");
   expect(host.querySelector('[data-testid="fork-pill"]')).toBeNull();
   act(() => stub?.click());
   expect(onOpenFork).toHaveBeenCalledWith(

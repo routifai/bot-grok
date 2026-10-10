@@ -125,7 +125,7 @@ export function ForkGutter({
 
   if (!groups.length && unloaded === 0) return null;
   const statusLabel: Record<ForkStatus, string> = {
-    live: t`Nova is working`,
+    live: t`superchat is working`,
     open: t`Open`,
     added: t`Finished`,
     archived: t`Finished`,

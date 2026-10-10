@@ -35,7 +35,10 @@ export type Automation = z.infer<typeof AutomationSchema>;
 
 const botInput = z.object({ botId: Id });
 const automationInput = z.object({ botId: Id, id: Id });
-const text = { name: z.string().trim().min(1).max(120), prompt: z.string().trim().min(1).max(8000) };
+const text = {
+  name: z.string().trim().min(1).max(120),
+  prompt: z.string().trim().min(1).max(8000),
+};
 
 export const automationsContract = {
   automations: {

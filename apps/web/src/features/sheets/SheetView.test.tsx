@@ -245,7 +245,7 @@ it("selects a range with shift-click and puts it in the composer as a chip paylo
 
   await mouse(at(view, 1, 2), "mousedown");
   await mouse(at(view, 2, 2), "mousedown", { shiftKey: true });
-  const ask = button(view, /^Ask Nova about C2:C3$/);
+  const ask = button(view, /^Ask superchat about C2:C3$/);
   expect(ask).toBeTruthy();
   expect(view.textContent).toContain("2 cells · Sum 112,000");
 
