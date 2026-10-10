@@ -51,7 +51,12 @@ export function useAutomations(botId: string, enabled: boolean, wire: Automation
   }, [enabled, refresh]);
 
   const create = useCallback(
-    async (input: { name: string; prompt: string; schedule: AutomationSchedule }) => {
+    async (input: {
+      name: string;
+      prompt: string;
+      schedule: AutomationSchedule;
+      model?: string;
+    }) => {
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       await wire.create({ botId, ...input, timezone });
       await refresh();

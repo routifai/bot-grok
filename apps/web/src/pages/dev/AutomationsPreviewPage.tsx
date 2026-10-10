@@ -29,6 +29,7 @@ export function AutomationsPreviewPage() {
           nextRunAt: new Date(Date.now() + 3_600_000).toISOString(),
           lastRunAt: null,
           lastRunStatus: null,
+          model: input.model ?? null,
           createdAt: new Date().toISOString(),
         };
         rows = [row, ...rows];

@@ -75,6 +75,7 @@ export function toAutomation(task: OmnigentScheduledTask): Automation {
     nextRunAt: enabled ? (task.next_run_at ?? null) : null,
     lastRunAt: iso(task.last_run_at),
     lastRunStatus: task.last_run_status ?? null,
+    model: task.model_override ?? null,
     createdAt: iso(task.created_at) ?? new Date(0).toISOString(),
   };
 }
@@ -116,6 +117,7 @@ export async function engineCreateAutomation(
     prompt: string;
     schedule: AutomationSchedule;
     timezone?: string;
+    model?: string;
   },
 ): Promise<Automation> {
   const target = await needTarget(deps, client, actor, input.botId);
@@ -127,6 +129,7 @@ export async function engineCreateAutomation(
     agentType: AUTOMATION_HELPER,
     kind: AUTOMATION_KIND,
     ...(input.timezone ? { timezone: input.timezone } : {}),
+    ...(input.model ? { modelOverride: input.model } : {}),
   });
   return toAutomation(task);
 }

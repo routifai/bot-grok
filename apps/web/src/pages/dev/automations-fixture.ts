@@ -16,6 +16,7 @@ export const DEV_AUTOMATIONS: Automation[] = [
     nextRunAt: new Date(now + 5 * HOUR).toISOString(),
     lastRunAt: new Date(now - 19 * HOUR).toISOString(),
     lastRunStatus: "succeeded",
+    model: null,
     createdAt: new Date(now - 90 * 24 * HOUR).toISOString(),
   },
   {
@@ -29,6 +30,7 @@ export const DEV_AUTOMATIONS: Automation[] = [
     nextRunAt: new Date(now + 52 * HOUR).toISOString(),
     lastRunAt: new Date(now - 6 * 24 * HOUR).toISOString(),
     lastRunStatus: "failed",
+    model: null,
     createdAt: new Date(now - 60 * 24 * HOUR).toISOString(),
   },
   {
@@ -42,6 +44,7 @@ export const DEV_AUTOMATIONS: Automation[] = [
     nextRunAt: null,
     lastRunAt: null,
     lastRunStatus: null,
+    model: null,
     createdAt: new Date(now - 10 * 24 * HOUR).toISOString(),
   },
 ];

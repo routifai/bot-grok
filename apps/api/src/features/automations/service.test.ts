@@ -100,6 +100,23 @@ describe("engine automations", () => {
     });
   });
 
+  it("passes a chosen model to the task and reads it back", async () => {
+    createTask.mockResolvedValue(task({ model_override: "claude-haiku-4-5" }));
+    const created = await engineCreateAutomation({ prisma: prismaFor("s1") }, client, actor, {
+      botId: "b1",
+      name: "Quick check",
+      prompt: "Anything new?",
+      schedule: { frequency: "daily", time: "08:00" },
+      model: "claude-haiku-4-5",
+    });
+    expect(createTask).toHaveBeenCalledWith(
+      client,
+      "a@example.test",
+      expect.objectContaining({ modelOverride: "claude-haiku-4-5" }),
+    );
+    expect(created.model).toBe("claude-haiku-4-5");
+  });
+
   it("pauses, runs and removes only automations of this Muse", async () => {
     listTasks.mockResolvedValue([task(), task({ id: "other", kind: "followed_topic" })]);
     patchTask.mockResolvedValue(task({ state: "paused" }));

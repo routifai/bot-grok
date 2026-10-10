@@ -18,6 +18,8 @@ export interface OmnigentScheduledTask {
   /** Product marker the task was created with (e.g. `automation`, `followed_topic`). */
   kind?: string | null;
   last_run_status?: string | null;
+  /** The model the task runs with; `null` uses the agent's default. */
+  model_override?: string | null;
 }
 
 function scheduledTaskUrl(config: OmnigentClientConfig, id?: string, tail = ""): URL {
@@ -64,6 +66,8 @@ export async function createOmnigentScheduledTask(
     /** Product marker, e.g. `followed_topic`. */
     kind?: string;
     timezone?: string;
+    /** A model id from the engine catalog; absent uses the agent's default. */
+    modelOverride?: string;
   },
 ): Promise<OmnigentScheduledTask> {
   const response = await fetch(scheduledTaskUrl(config), {
@@ -77,6 +81,7 @@ export async function createOmnigentScheduledTask(
       agent_type: input.agentType,
       ...(input.kind ? { kind: input.kind } : {}),
       ...(input.timezone ? { timezone: input.timezone } : {}),
+      ...(input.modelOverride ? { model_override: input.modelOverride } : {}),
     }),
   });
   await throwOnError(response, "create scheduled task", config.secrets);

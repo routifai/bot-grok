@@ -12,8 +12,9 @@ import {
   Textarea,
 } from "@nova/ui-web";
 import { Ellipsis, Play, Plus } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { formatRelativeTime } from "../../lib/relative-time";
+import { rpc } from "../../lib/rpc";
 import { DockSheet, DockSheetHeader } from "../../pages/muse/chrome/DockSheet";
 import { EmptyState, PRIMARY_BUTTON, QUIET_BUTTON } from "../../pages/muse/ui";
 import { CardSkeletonList } from "../../pages/muse/ui/CardSkeleton";
@@ -44,18 +45,51 @@ function lastRun(automation: Automation): string {
   return automation.lastRunStatus === "failed" ? `Failed ${when}` : `Ran ${when}`;
 }
 
+type ModelChoice = { id: string; label: string };
+
+/** The models this person can run, from the same catalog as the Model button; none hides the field. */
+function useModelChoices(botId: string) {
+  const [choices, setChoices] = useState<{ models: ModelChoice[]; defaultLabel: string | null }>({
+    models: [],
+    defaultLabel: null,
+  });
+  useEffect(() => {
+    let cancelled = false;
+    rpc.engineModels
+      .sessionModel({ botId })
+      .then(({ catalog }) => {
+        if (cancelled || catalog.status !== "ready") return;
+        setChoices({
+          models: catalog.models.map((model) => ({ id: model.id, label: model.label })),
+          defaultLabel:
+            catalog.models.find((model) => model.id === catalog.defaultModel)?.label ?? null,
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [botId]);
+  return choices;
+}
+
 function NewAutomationForm({
+  botId,
   onSubmit,
   onCancel,
 }: {
+  botId: string;
   onSubmit: (input: {
     name: string;
     prompt: string;
     schedule: AutomationSchedule;
+    model?: string;
   }) => Promise<void>;
   onCancel: () => void;
 }) {
   const { t } = useLingui();
+  const choices = useModelChoices(botId);
+  const [model, setModel] = useState("");
   const [name, setName] = useState("");
   const [prompt, setPrompt] = useState("");
   const [frequency, setFrequency] = useState<AutomationSchedule["frequency"]>("daily");
@@ -77,7 +111,12 @@ function NewAutomationForm({
           ? { frequency, time, weekday }
           : { frequency, time, monthDay };
     try {
-      await onSubmit({ name: name.trim(), prompt: prompt.trim(), schedule });
+      await onSubmit({
+        name: name.trim(),
+        prompt: prompt.trim(),
+        schedule,
+        ...(model ? { model } : {}),
+      });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : t`Could not save this automation.`);
       setBusy(false);
@@ -114,6 +153,26 @@ function NewAutomationForm({
           className={`${FIELD} py-3`}
         />
       </div>
+      {choices.models.length ? (
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="auto-model" className={LABEL}>{t`Model`}</label>
+          <NativeSelect
+            id="auto-model"
+            value={model}
+            onChange={(event) => setModel(event.target.value)}
+            aria-label={t`Model`}
+          >
+            <NativeSelectOption value="">
+              {choices.defaultLabel ? t`Default · ${choices.defaultLabel}` : t`Default`}
+            </NativeSelectOption>
+            {choices.models.map((choice) => (
+              <NativeSelectOption key={choice.id} value={choice.id}>
+                {choice.label}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex flex-col gap-1.5">
           <label htmlFor="auto-freq" className={LABEL}>{t`Repeat`}</label>
@@ -305,6 +364,7 @@ export function AutomationsSheet({
       <div className="rk-scroll flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
         {creating ? (
           <NewAutomationForm
+            botId={botId}
             onCancel={() => setCreating(false)}
             onSubmit={async (input) => {
               await create(input);

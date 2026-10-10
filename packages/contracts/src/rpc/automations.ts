@@ -29,6 +29,8 @@ export const AutomationSchema = z.object({
   lastRunAt: z.string().nullable(),
   /** `succeeded`, `failed`, `running`, ...; `null` before the first run. */
   lastRunStatus: z.string().nullable(),
+  /** The model it runs with; `null` is the default model. */
+  model: z.string().nullable(),
   createdAt: z.string(),
 });
 export type Automation = z.infer<typeof AutomationSchema>;
@@ -51,6 +53,8 @@ export const automationsContract = {
           schedule: AutomationScheduleSchema,
           /** IANA timezone of the person's browser; the engine's default when absent. */
           timezone: z.string().min(1).max(64).optional(),
+          /** A model id from the engine catalog; absent runs with the default model. */
+          model: z.string().min(1).max(200).optional(),
         }),
       )
       .output(AutomationSchema),
