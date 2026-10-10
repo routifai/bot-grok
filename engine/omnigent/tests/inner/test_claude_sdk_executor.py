@@ -6171,3 +6171,115 @@ async def test_terminal_error_carries_observed_usage() -> None:
     assert usage["context_tokens"] == 100_000
     # output_tokens is unknown on an incomplete turn — reported as 0.
     assert usage["output_tokens"] == 0
+
+
+def _ends_turn_sdk(messages: list[object], interrupt: AsyncMock) -> type:
+    """A fake ``claude_agent_sdk`` that replays *messages* and records ``interrupt``."""
+    from claude_agent_sdk import types as sdk_types
+
+    class _FakeSDK:
+        AssistantMessage = sdk_types.AssistantMessage
+        UserMessage = sdk_types.UserMessage
+        SystemMessage = sdk_types.SystemMessage
+        ResultMessage = sdk_types.ResultMessage
+        StreamEvent = sdk_types.StreamEvent
+        TextBlock = sdk_types.TextBlock
+        ThinkingBlock = sdk_types.ThinkingBlock
+        ToolUseBlock = sdk_types.ToolUseBlock
+        ToolResultBlock = sdk_types.ToolResultBlock
+        ClaudeAgentOptions = sdk_types.ClaudeAgentOptions
+
+        class ClaudeSDKClient:
+            def __init__(self, options):
+                self.options = options
+                self.interrupt = interrupt
+
+            async def connect(self):
+                return None
+
+            async def query(self, prompt, session_id="default"):
+                return None
+
+            async def receive_response(self):
+                for message in messages:
+                    yield message
+
+            async def disconnect(self):
+                return None
+
+    return _FakeSDK
+
+
+def _ask_turn(result_text: str, *, is_error: bool = False) -> list[object]:
+    """A turn that asks, then (as a model would) keeps going after the tool result."""
+    from claude_agent_sdk import types as t
+
+    ask = t.ToolUseBlock(
+        id="toolu_ask", name="mcp__omnigent__ask_clarification", input={"question": "Which look?"}
+    )
+    after = t.ToolUseBlock(id="toolu_build", name="mcp__omnigent__sys_os_write", input={})
+    return [
+        t.AssistantMessage(content=[t.TextBlock(text="Three looks:"), ask], model="m"),
+        t.UserMessage(
+            content=[
+                t.ToolResultBlock(
+                    tool_use_id="toolu_ask",
+                    content=[{"type": "text", "text": result_text}],
+                    is_error=is_error,
+                )
+            ]
+        ),
+        t.AssistantMessage(content=[t.TextBlock(text="Building it anyway."), after], model="m"),
+        t.ResultMessage(
+            subtype="error_during_execution",
+            session_id="s1",
+            duration_ms=1,
+            duration_api_ms=1,
+            is_error=True,
+            num_turns=2,
+            usage=None,
+        ),
+    ]
+
+
+async def _events_for(messages: list[object], interrupt: AsyncMock) -> list[object]:
+    from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
+
+    executor = ClaudeSDKExecutor()
+    with patch(
+        "omnigent.inner.claude_sdk_executor._ensure_sdk",
+        return_value=_ends_turn_sdk(messages, interrupt),
+    ):
+        return [e async for e in executor.run_turn([{"role": "user", "content": "deck"}], [], "")]
+
+
+@pytest.mark.asyncio
+async def test_ends_turn_tool_result_interrupts_and_ends_the_turn_cleanly() -> None:
+    """An ``ask_clarification`` card ends the turn: nothing the model does after it survives."""
+    from omnigent.superchat.cards.tools import build_clarification
+
+    card = json.dumps(build_clarification({"question": "Which look?", "options": ["A", "B"]}))
+    interrupt = AsyncMock()
+    events = await _events_for(_ask_turn(card), interrupt)
+
+    interrupt.assert_awaited_once_with()
+    assert not [e for e in events if isinstance(e, ExecutorError)]
+    requests = [e.name for e in events if isinstance(e, ToolCallRequest)]
+    assert requests == ["mcp__omnigent__ask_clarification"]
+    text = "".join(e.text for e in events if isinstance(e, TextChunk))
+    assert "Building it anyway" not in text
+    assert isinstance(events[-1], TurnComplete)
+    assert events[-1].response == "Three looks:"
+
+
+@pytest.mark.asyncio
+async def test_failed_ask_does_not_end_the_turn() -> None:
+    """A refused ask (validation error) lets the model retry: no interrupt."""
+    interrupt = AsyncMock()
+    events = await _events_for(
+        _ask_turn(json.dumps({"error": "options needs 2-5 items"}), is_error=True), interrupt
+    )
+
+    interrupt.assert_not_awaited()
+    requests = [e.name for e in events if isinstance(e, ToolCallRequest)]
+    assert requests == ["mcp__omnigent__ask_clarification", "mcp__omnigent__sys_os_write"]

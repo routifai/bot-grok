@@ -98,6 +98,7 @@ from .executor import (
     ToolCallStatus,
     ToolSpec,
     TurnComplete,
+    result_ends_turn,
 )
 
 logger = logging.getLogger(__name__)
@@ -350,6 +351,9 @@ class _ToolServer:
             resolved = await raw if asyncio.iscoroutine(raw) or asyncio.isfuture(raw) else raw
             if not isinstance(resolved, dict):
                 resolved = {"result": resolved}
+            # ``terminate`` is Pi's own stop primitive: no follow-up model call after this tool.
+            if result_ends_turn(resolved):
+                return {"result": resolved, "terminate": True}
             return {"result": resolved}
         except Exception as exc:  # noqa: BLE001 — tool errors are surfaced via the JSON response envelope
             return {"error": str(exc)}
@@ -509,8 +513,10 @@ function callTool(toolName, args, callId) {{
               const text = typeof resp.result === "string"
                 ? resp.result
                 : JSON.stringify(resp.result);
-              const isError = resp.result && (resp.result.error || resp.result.blocked);
-              finish({{ content: [{{ type: "text", text }}], isError: !!isError }});
+              const isError = !!(resp.result && (resp.result.error || resp.result.blocked));
+              // terminate: Pi ends the turn after this tool result (no follow-up model call).
+              const terminate = !isError && resp.terminate === true;
+              finish({{ content: [{{ type: "text", text }}], isError, terminate }});
             }}
           }} catch (e) {{
             client.end();

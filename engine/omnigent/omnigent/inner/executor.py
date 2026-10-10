@@ -636,6 +636,38 @@ def classify_tool_result(
     return ToolResultClassification(status=ToolCallStatus.SUCCESS, error="")
 
 
+#: A tool result object carrying ``"ends_turn": true`` ends the turn right after that result:
+#: the harness makes no further model call, so whatever the tool showed (a question, chips) is
+#: the turn's last word and the person's reply starts the next turn. Each executor maps it to its
+#: own stop primitive (Pi's ``terminate``, the Claude SDK's ``interrupt``).
+ENDS_TURN_KEY = "ends_turn"
+
+
+def result_ends_turn(result: ToolResult) -> bool:
+    """Whether a successful tool *result* asks to end the turn (:data:`ENDS_TURN_KEY`).
+
+    :param result: A tool result in any shape :func:`classify_tool_result` reads: the parsed
+        object, its JSON text, or MCP content blocks ``[{"type": "text", "text": "{...}"}]``.
+    :returns: ``True`` only for a non-error result whose object has ``ends_turn: true``.
+    """
+    if classify_tool_result(result).error:
+        return False
+    if isinstance(result, str):
+        try:
+            result = json.loads(result)
+        except (TypeError, json.JSONDecodeError):
+            return False
+    if isinstance(result, list):
+        return any(
+            isinstance(block, dict) and result_ends_turn(block.get("text", "")) for block in result
+        )
+    if isinstance(result, dict):
+        if result.get(ENDS_TURN_KEY) is True:
+            return True
+        return any(result_ends_turn(result[k]) for k in ("content", "result") if k in result)
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Abstract executor
 # ---------------------------------------------------------------------------

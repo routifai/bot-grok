@@ -1028,6 +1028,35 @@ class TestToolServer(unittest.TestCase):
             )
             return json.loads(stdout.decode("utf-8"))
 
+    def test_ends_turn_result_terminates_the_pi_turn(self):
+        """A card that ends the turn reaches Pi as ``terminate``; a refused one does not."""
+        from omnigent.superchat.cards.tools import build_clarification
+
+        async def _run_with(result: dict) -> dict:
+            server = _ToolServer()
+            await server.start()
+
+            async def executor(name, args, *, call_id=None):
+                return result
+
+            server._tool_executor = executor
+            try:
+                return await self._run_generated_bridge_tool(port=server.port, token=server.token)
+            finally:
+                await server.stop()
+
+        async def _test():
+            card = build_clarification({"question": "Which look?", "options": ["A", "B"]})
+            asked = await _run_with(card)
+            self.assertIs(asked["terminate"], True)
+            self.assertFalse(asked["isError"])
+            refused = await _run_with(build_clarification({"question": "q", "options": ["a"]}))
+            self.assertIs(refused["terminate"], False)
+            plain = await _run_with({"sum": 7})
+            self.assertIs(plain["terminate"], False)
+
+        _run(_test())
+
     def test_start_and_stop(self):
         async def _test():
             server = _ToolServer()

@@ -87,6 +87,7 @@ from .executor import (
     TurnComplete,
     classify_tool_result,
     describe_exception,
+    result_ends_turn,
 )
 from .native_attachments import framework_notices, unresolved_attachment_marker
 from .sandbox import (
@@ -2862,6 +2863,11 @@ class ClaudeSDKExecutor(Executor):
         # avoid double-emitting (the SDK sends both StreamEvents AND
         # the complete AssistantMessage for the same content).
         got_stream_events = False
+        # Set once a tool result asks to end the turn (``ends_turn``): the SDK is interrupted
+        # right after that result, and anything the model starts before the interrupt lands is
+        # dropped, so the tool's card is the turn's last word.
+        end_turn_requested = False
+        end_turn_interrupt: asyncio.Task[None] | None = None
 
         # Per-API-call prompt usage from the most recent ``message_start``
         # stream event. A single user turn can drive MANY internal API
@@ -3065,6 +3071,10 @@ class ClaudeSDKExecutor(Executor):
                         message = next_task.result()
                     except StopAsyncIteration:
                         break
+                    if end_turn_interrupt is not None and isinstance(
+                        message, (_StreamEvent, sdk.AssistantMessage)
+                    ):
+                        continue
                     if isinstance(message, _StreamEvent):
                         got_stream_events = True
                         stream_evt = cast(_StreamEventObj, message)
@@ -3249,6 +3259,10 @@ class ClaudeSDKExecutor(Executor):
                                     if result_block.is_error and not error:
                                         status = ToolCallStatus.ERROR
                                         error = "tool error"
+                                    if status is ToolCallStatus.SUCCESS and result_ends_turn(
+                                        result_block.content
+                                    ):
+                                        end_turn_requested = True
                                     yield ToolCallComplete(
                                         name=tool_name,
                                         status=status,
@@ -3263,11 +3277,19 @@ class ClaudeSDKExecutor(Executor):
                                         # back to its function_call.
                                         metadata={"call_id": result_block.tool_use_id},
                                     )
+                        # Interrupt once the whole tool batch has answered, so a sibling call
+                        # in the same batch still completes.
+                        if end_turn_requested and not pending_tools and end_turn_interrupt is None:
+                            end_turn_interrupt = asyncio.ensure_future(client.interrupt())
 
                     elif isinstance(message, sdk.ResultMessage):
                         result_msg = cast(_ResultMessageObj, message)
                         claude_session_id = getattr(result_msg, "session_id", None)
-                        if getattr(result_msg, "is_error", None):
+                        if end_turn_interrupt is not None:
+                            # Our own interrupt ended the turn: the CLI reports it as an
+                            # ``error_during_execution`` result, which is a clean end here.
+                            pass
+                        elif getattr(result_msg, "is_error", None):
                             # Harness-level failure (e.g. expired login). Surface
                             # as an executor error rather than assistant content.
                             failure_text = result_msg.result or "claude-sdk harness error"
@@ -3462,6 +3484,11 @@ class ClaudeSDKExecutor(Executor):
             return
         finally:
             self._pending_framework_context.pop(session_key, None)
+            if end_turn_interrupt is not None:
+                try:
+                    await asyncio.wait_for(end_turn_interrupt, timeout=5)
+                except Exception as exc:  # noqa: BLE001 — the turn already ended; log only
+                    logger.warning("Claude SDK end-of-turn interrupt failed: %s", exc)
         # A turn can end without ``ResultMessage`` usage — the CLI can close
         # the stream early, fail terminally (auth failure, rejected retries),
         # or be cut short before its final usage is reported. In all of those

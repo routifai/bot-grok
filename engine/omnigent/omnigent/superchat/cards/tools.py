@@ -26,6 +26,7 @@ import unicodedata
 from collections.abc import Callable
 from typing import Any
 
+from omnigent.inner.executor import ENDS_TURN_KEY
 from omnigent.tools.base import Tool, ToolContext
 
 CARD_TOOL_NAME = "render_card"
@@ -432,9 +433,10 @@ def build_clarification(args: dict[str, Any]) -> dict[str, Any]:
     )
     if "error" not in out:
         out["note"] = (
-            "Shown to the person with one button per option. End your turn now with no more "
-            "text; their pick arrives as their next message."
+            "Shown to the person with one button per option. Your turn ends here; their pick "
+            "arrives as their next message."
         )
+        out[ENDS_TURN_KEY] = True
     return out
 
 
@@ -460,10 +462,8 @@ def build_follow_ups(args: dict[str, Any]) -> dict[str, Any]:
         "card": "follow_ups",
         "data": {"suggestions": suggestions},
         "fallback": "\n".join(f"- {s}" for s in suggestions),
-        "note": (
-            "Shown as quiet chips under your answer. End your turn now with no more text; "
-            "do not mention them."
-        ),
+        "note": "Shown as quiet chips under your answer. Your turn ends here.",
+        ENDS_TURN_KEY: True,
     }
 
 
