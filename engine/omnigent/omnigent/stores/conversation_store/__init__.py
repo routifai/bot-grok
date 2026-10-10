@@ -1187,6 +1187,17 @@ class ConversationStore(ABC):
         ...
 
     @abstractmethod
+    def delete_item(self, conversation_id: str, item_id: str) -> bool:
+        """
+        Delete one item, e.g. a message a running turn refused before anyone read it.
+
+        :param conversation_id: The conversation holding the item, e.g. ``"conv_abc123"``.
+        :param item_id: The item to remove, e.g. ``"msg_abc123"``.
+        :returns: ``True`` when the item existed.
+        """
+        ...
+
+    @abstractmethod
     def list_projects(
         self,
         accessible_by: str | None = None,

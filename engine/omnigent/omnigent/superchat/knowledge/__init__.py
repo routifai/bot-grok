@@ -65,6 +65,13 @@ async def _message_prefix(
     return await attachment_context_blocks(runtime_for(server_client).indexer, texts)
 
 
+def _needs_own_turn(text: str) -> bool:
+    """A message attaching a file needs its turn start, where the file's text is put in front."""
+    from omnigent.superchat.knowledge.attachment_context import REFERENCE_LINE
+
+    return bool(REFERENCE_LINE.search(text.replace("\r\n", "\n")))
+
+
 def _install(app: FastAPI, deps: InstallDeps) -> None:
     from omnigent.runtime import get_artifact_store
     from omnigent.superchat.artifacts import SqlAlchemyArtifactStore
@@ -109,5 +116,6 @@ FEATURE = Feature(
     relay_ops=frozenset(_INTERNAL_OPS),
     on_result=_on_result,
     message_prefix=_message_prefix,
+    needs_own_turn=_needs_own_turn,
     install=_install,
 )

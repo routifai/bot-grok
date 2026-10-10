@@ -1345,6 +1345,9 @@ class SessionEventInput(BaseModel):
         tools are fixed at start time.
     :param created_by: Optional internal attribution actor for runner-
         originated events that are triggered by a prior human turn.
+    :param if_running: Only for a ``message``: deliver it into the turn
+        running now. With none running the session refuses it (409
+        ``not_running``) and keeps nothing, instead of starting a turn.
     """
 
     type: str
@@ -1355,6 +1358,8 @@ class SessionEventInput(BaseModel):
     model_override: str | None = None
     tools: list[dict[str, Any]] | None = None
     created_by: str | None = None
+    # Read by the message forward only; never echoed when an event is relayed as is.
+    if_running: bool = Field(default=False, exclude=True)
 
     @field_validator("data")
     @classmethod
@@ -3311,6 +3316,11 @@ class SessionStatusEvent(_SSEEventBase):
         ``None`` whenever the session is not parked. Unrelated to the
         ``waiting`` status above, which means the turn has ended and only
         background work remains.
+    :param turn: The runner's number for the turn this edge belongs to, e.g. ``42``. It
+        rises with every turn the runner starts; ``POST /events`` answers a message with the
+        number of the turn it started or joined, so a sender can tell that turn's ``idle``
+        from an earlier one's. ``idle`` is reported only once no message waits behind the
+        turn. ``None`` from a runner that does not number turns.
 
     Category: **transient** (SSE-only). Status is rederived on
     reconnect from the cached last-relayed turn lifecycle event
@@ -3325,6 +3335,7 @@ class SessionStatusEvent(_SSEEventBase):
     background_task_count: int | None = None
     background_tasks: list[BackgroundTaskInfo] | None = None
     blocked_on: str | None = None
+    turn: int | None = None
 
 
 class SessionUsageEvent(_SSEEventBase):
@@ -3784,6 +3795,32 @@ class SessionInputConsumedEvent(_SSEEventBase):
     data: SessionInputConsumedPayload
 
 
+class SessionInputDeliveryPayload(BaseModel):
+    """
+    Inner payload of a :class:`SessionInputDeliveryEvent`.
+
+    :param item_id: The persisted user message this is about, e.g. ``"msg_abc"``.
+    """
+
+    item_id: str
+
+
+class SessionInputDeliveryEvent(_SSEEventBase):
+    """
+    A message sent while a turn ran started or stopped waiting behind it.
+
+    Wire shape uses the nested envelope: ``{"type": "session.input.delivery", "data":
+    {"item_id"}}``. A refetch ping: the transcript's ``delivered: "queued"`` reads the
+    runner's live queue. A message sent to an idle session simply starts a turn and has none.
+
+    :param type: Always ``"session.input.delivery"``.
+    :param data: See :class:`SessionInputDeliveryPayload`.
+    """
+
+    type: Literal["session.input.delivery"]
+    data: SessionInputDeliveryPayload
+
+
 class SessionInterruptedPayload(BaseModel):
     """
     Inner payload of a :class:`SessionInterruptedEvent`.
@@ -4101,6 +4138,40 @@ class InjectionConsumedEvent(_SSEEventBase):
     """
 
     type: Literal["injection.consumed"]
+    injection_id: str
+
+
+class InjectionRefusedEvent(_SSEEventBase):
+    """
+    Runner-internal marker: a mid-turn injection was refused.
+
+    Emitted by the executor adapter (``_watch_injections``) when the inner executor cannot
+    take a live message into the running turn. The runner keeps the buffered copy, which then
+    runs as the next turn, and tells clients the message is queued. Like
+    :class:`InjectionConsumedEvent` it is **never** relayed to clients.
+
+    :param type: Always ``"injection.refused"``.
+    :param injection_id: The id the runner stamped on the forwarded injection.
+    """
+
+    type: Literal["injection.refused"]
+    injection_id: str
+
+
+class InjectionOfferedEvent(_SSEEventBase):
+    """
+    Runner-internal marker: a mid-turn injection was offered to the running turn.
+
+    Emitted by the executor adapter when the inner executor accepted the message for the
+    turn's next step and will report later whether it was read (``injection.consumed`` or
+    ``injection.refused`` follows). Lets the runner answer a sender waiting on the offer.
+    Never relayed to clients.
+
+    :param type: Always ``"injection.offered"``.
+    :param injection_id: The id the runner stamped on the forwarded injection.
+    """
+
+    type: Literal["injection.offered"]
     injection_id: str
 
 
@@ -4953,6 +5024,7 @@ ServerStreamEvent = Annotated[
     | SessionMcpStartupEvent
     | SessionModelOptionsEvent
     | SessionInputConsumedEvent
+    | SessionInputDeliveryEvent
     | SessionInterruptedEvent
     | SessionCreatedEvent
     | SessionSupersededEvent
@@ -5157,6 +5229,8 @@ class SubagentToolCallEvent(_SSEEventBase):
 HarnessStreamEvent = (
     ServerStreamEvent
     | InjectionConsumedEvent
+    | InjectionRefusedEvent
+    | InjectionOfferedEvent
     | PolicyEvaluationRequestEvent
     | SubagentStartedEvent
     | SubagentCompletedEvent

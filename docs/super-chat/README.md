@@ -195,6 +195,50 @@ returns a chat as **typed blocks**. It works for the Conversation, a Side Chat, 
 - `live` is true while a turn is in flight.
 - Every string is redacted of the secrets the engine knows.
 
+### Messages sent while the Muse works (steering)
+
+A message that arrives while a turn runs is handed to the harness's own steer, so the model reads it
+at its next step; when it cannot be, it runs as the next turn. The runner alone owns the waiting
+messages, so nothing is lost and nothing is answered twice.
+
+| Harness | How a steer reaches the turn | Taken when | When it cannot |
+|---|---|---|---|
+| `claude-sdk` | Written to the live CLI's stdin at priority `next` (`inner/claude_sdk_executor.py`); the CLI attaches it at the next tool boundary, or runs it as its own next turn if it missed this one | The CLI echoes our uuid (`--replay-user-messages`); the stream reads on until it does or ends | Runs as the next turn |
+| `pi` | RPC `steer` while the agent loop runs | Pi emits it as a user `message_start`; at `agent_end`, `clear_queue` takes back what Pi never delivered | Runs as the next turn |
+| native terminals (`claude-native`, `pi-native`) | The terminal's own input queue; Nova does not use them | n/a | n/a |
+
+The runner keeps its copy of a message until the harness says the running turn took it
+(`injection.consumed`); anything refused, or never reported when the turn ends, runs as the next turn.
+Only plain text is steered; a message with an image or an attached file (a reference line) runs whole
+as a turn of its own, one at a time, so the Computer's framed file text (`Feature.message_prefix`) is
+put in front of it like any turn's message. A stop
+or a delete cancels the messages waiting behind the turn. The session reports `idle` only once none
+waits, and its `session.status` edges carry the runner's turn number, which `POST /events` also answers
+(`turn`) for the turn a message started or joined. A `session.input.delivery` ping (`{item_id}`)
+says a message started or stopped waiting; the transcript marks a waiting message
+`delivered: "queued"` from the runner's live queue (`GET /v1/sessions/{id}/buffered` on the runner),
+with nothing stored. Which features need a message to start its own turn is a Feature hook
+(`needs_own_turn`; the knowledge feature answers for attached files).
+
+Nova's worker (`packages/adapters/src/omnigent/gateway.ts`) waits for the stream's ready heartbeat, posts
+the turn, and posts each message the person sends as the thread's own event signal (Postgres
+`LISTEN/NOTIFY`) announces it; once the engine has it, its steering row is deleted (a failed post
+releases it for the continuation). The run ends at an `idle` edge for the latest turn its messages
+started or joined. There is no fixed deadline: after a quiet spell the worker asks the engine's
+snapshot, follows a turn that is running or waiting (on helpers or the person) and renews the run's
+lease, ends on `idle`, and fails with an honest line on `failed` or when the engine cannot be asked. A
+dropped stream is reopened and asked the same way; an engine that does not come back fails the run in
+about half a minute. A stop in Nova interrupts the engine's turn.
+
+Known gap: if the stream drops and the reopened engine reads `idle` before its recovery turn has
+started (the turn the runner starts for a message left unanswered by a restart), the run ends there
+and Working stops early. The recovery turn still answers, and its reply lands in the transcript.
+
+For a Helper that is already working, the Muse uses `message_helper`, which posts with `if_running`: the
+Helper takes it into its running turn, or, if that turn has ended by then, refuses it (409
+`not_running`) and nothing is kept, so a note never starts a second task. The Helper's single result
+still arrives in the inbox.
+
 ### Family SSE stream
 
 `GET /v1/sessions/{id}/family/stream` is **one** stream for a Conversation, its Side Chats, Forks and
@@ -206,6 +250,7 @@ Events carry **ids only**. The client refetches what changed.
 | Event | Payload | Meaning |
 |---|---|---|
 | `message.done` | `chat_id`, `item_id` | An assistant message was stored in a family chat |
+| `message.delivery` | `chat_id`, `item_id` | A message sent during a turn started or stopped waiting behind it |
 | `turn.done` | `chat_id`, `status` | A turn ended (`completed`, `failed`, `incomplete`, `cancelled`) |
 | `chat.reset` | `chat_id`, `item_id` | The chat was cleared |
 | `chats.changed` | `root_id` | A Side Chat or Fork was opened, renamed or archived, or a Helper started |
@@ -845,7 +890,7 @@ Nova's own side of the gateway (`packages/adapters/src/omnigent/env.ts`,
 
 | What | Setting | Default |
 |---|---|---|
-| Turn timeout | `OMNIGENT_TURN_TIMEOUT_MS` | 300000 (5 min) |
+| Quiet check (not a deadline) | `OMNIGENT_TURN_TIMEOUT_MS` | 300000 (5 min) |
 | Run lease duration | `OMNIGENT_LEASE_DURATION_MS` | 300000 (5 min) |
 | `chats.messages` page size | `OMNIGENT_CHATS_PAGE_SIZE` | 50 |
 

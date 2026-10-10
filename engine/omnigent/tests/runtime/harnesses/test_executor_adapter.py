@@ -2031,7 +2031,7 @@ async def test_executor_adapter_forwards_model_override_to_config() -> None:
     assert captured["model"] == "openai/gpt-5.4-mini"
 
 
-class _AcceptingInjectionExecutor:
+class _AcceptingInjectionExecutor(Executor):
     """Inner executor stub whose enqueue_session_message always accepts."""
 
     def __init__(self) -> None:
@@ -2111,7 +2111,7 @@ async def test_watch_injections_emits_consumed_marker_on_accept() -> None:
         CreateResponseRequest(model="m", input="steer me", injection_id="inj_x")
     )
 
-    task = _aio.create_task(adapter._watch_injections(ctx, executor))  # type: ignore[arg-type]
+    task = _aio.create_task(adapter._watch_injections(ctx, executor, set()))  # type: ignore[arg-type]
     try:
         for _ in range(200):
             if ctx.emitted:
@@ -2157,7 +2157,7 @@ async def test_watch_injections_drops_injection_when_turn_cancelled() -> None:
     ctx.cancelled.set()  # turn interrupted before the queued injection drains
 
     # Returns promptly (no enqueue, no block) — fails the wait_for if it hangs.
-    await _aio.wait_for(adapter._watch_injections(ctx, executor), timeout=2.0)  # type: ignore[arg-type]
+    await _aio.wait_for(adapter._watch_injections(ctx, executor, set()), timeout=2.0)  # type: ignore[arg-type]
 
     assert executor.received == [], (
         f"a cancelled turn must not enqueue the injection; got {executor.received!r}"
@@ -2184,7 +2184,7 @@ async def test_watch_injections_no_marker_without_injection_id() -> None:
     adapter = ExecutorAdapter(executor_factory=lambda: executor, session_key="sk")
     ctx = _OneInjectionCtx(CreateResponseRequest(model="m", input="hi"))
 
-    task = _aio.create_task(adapter._watch_injections(ctx, executor))  # type: ignore[arg-type]
+    task = _aio.create_task(adapter._watch_injections(ctx, executor, set()))  # type: ignore[arg-type]
     try:
         # Wait for the injection to be delivered to the executor.
         for _ in range(200):
@@ -2811,3 +2811,187 @@ async def test_subprocess_tracking_uses_validated_session_without_telemetry(
     assert [pr.url for pr in SessionPrRegistry(conv_id).list()] == [
         "https://github.com/example/sdk/pull/42"
     ]
+
+
+class _RefusingInjectionExecutor(Executor):
+    """Inner executor stub that cannot take a message into the running turn."""
+
+    async def enqueue_session_message(self, session_key: str, content: Any) -> bool:
+        """Refuse the injection (a harness without a live message queue)."""
+        return False
+
+
+class _FailingInjectionExecutor(Executor):
+    """Inner executor stub whose enqueue raises."""
+
+    async def enqueue_session_message(self, session_key: str, content: Any) -> bool:
+        """Fail the injection."""
+        raise RuntimeError("stdin closed")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("executor_cls", [_RefusingInjectionExecutor, _FailingInjectionExecutor])
+async def test_watch_injections_emits_refused_marker_when_the_executor_cannot_steer(
+    executor_cls: type,
+) -> None:
+    """A refused injection tells the runner to keep it for the next turn (queued).
+
+    Without the marker the runner could not tell a message the harness will never read
+    from one still on its way, so clients could not show it as waiting.
+    """
+    import asyncio as _aio
+
+    from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
+    from omnigent.server.schemas import CreateResponseRequest, InjectionRefusedEvent
+
+    executor = executor_cls()
+    adapter = ExecutorAdapter(executor_factory=lambda: executor, session_key="sk")
+    ctx = _OneInjectionCtx(
+        CreateResponseRequest(model="m", input="steer me", injection_id="inj_y")
+    )
+
+    task = _aio.create_task(adapter._watch_injections(ctx, executor, set()))  # type: ignore[arg-type]
+    try:
+        for _ in range(200):
+            if ctx.emitted:
+                break
+            await _aio.sleep(0.01)
+    finally:
+        task.cancel()
+        with contextlib.suppress(_aio.CancelledError):
+            await task
+
+    assert len(ctx.emitted) == 1
+    marker = ctx.emitted[0]
+    assert isinstance(marker, InjectionRefusedEvent)
+    assert marker.injection_id == "inj_y"
+
+
+class _SteeringExecutor(Executor):
+    """Executor whose running turn reports each steer later, from its own stream.
+
+    ``run_turn`` waits for the adapter to offer the message, then yields the outcome the
+    test chose (or none, ending the turn with it unreported).
+    """
+
+    def __init__(self, outcome: bool | None) -> None:
+        import asyncio as _aio
+
+        self.outcome = outcome
+        self.offered = _aio.Event()
+        self.steer_ids: list[str] = []
+
+    async def steer_session_message(self, session_key: str, content: Any, *, steer_id: str):
+        self.steer_ids.append(steer_id)
+        self.offered.set()
+        return "pending"
+
+    async def run_turn(self, messages, tools, system_prompt, config=None):
+        from omnigent.inner.executor import SteerOutcome, TurnComplete
+
+        await self.offered.wait()
+        if self.outcome is not None:
+            yield SteerOutcome(steer_id=self.steer_ids[0], taken=self.outcome)
+        yield TurnComplete(response="ok")
+
+
+async def _run_turn_with_one_steer(executor: Executor) -> list[Any]:
+    import asyncio as _aio
+
+    from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
+    from omnigent.runtime.harnesses._scaffold import TurnContext
+    from omnigent.server.schemas import CreateResponseRequest
+
+    adapter = ExecutorAdapter(executor_factory=lambda: executor, session_key="sk")
+    queue: _aio.Queue = _aio.Queue()
+    ctx = TurnContext(response_id="resp_steer", event_queue=queue, cancelled=_aio.Event())
+    ctx._push_injection(CreateResponseRequest(model="m", input="steer me", injection_id="inj_p"))
+    await _aio.wait_for(adapter.run_turn(CreateResponseRequest(model="m", input="go"), ctx), 5)
+    events = []
+    while not queue.empty():
+        events.append(queue.get_nowait())
+    return [e for e in events if getattr(e, "type", "").startswith("injection.")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("taken", "marker"), [(True, "injection.consumed"), (False, "injection.refused")]
+)
+async def test_a_pending_steer_is_reported_when_the_turn_says_so(taken: bool, marker: str) -> None:
+    """A write is not a take-up: the runner hears about the steer only from the executor's
+    own outcome, so it keeps its buffered copy until the running turn really read it."""
+    markers = await _run_turn_with_one_steer(_SteeringExecutor(outcome=taken))
+    # "offered" first: the runner can answer a sender waiting on the offer at once.
+    assert [(m.type, m.injection_id) for m in markers] == [
+        ("injection.offered", "inj_p"),
+        (marker, "inj_p"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_steer_the_turn_never_reported_is_refused_when_the_turn_ends() -> None:
+    """The turn ended without saying it read the steer: refused, so the runner replays it."""
+    markers = await _run_turn_with_one_steer(_SteeringExecutor(outcome=None))
+    assert [(m.type, m.injection_id) for m in markers] == [
+        ("injection.offered", "inj_p"),
+        ("injection.refused", "inj_p"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_steer_write_cancelled_with_the_turn_is_refused() -> None:
+    """The turn ends while the executor is still writing the steer: refused, never lost."""
+    import asyncio as _aio
+
+    from omnigent.inner.executor import TurnComplete
+
+    class _SlowWrite(Executor):
+        def __init__(self) -> None:
+            self.writing = _aio.Event()
+
+        async def steer_session_message(self, session_key, content, *, steer_id):
+            self.writing.set()
+            await _aio.sleep(3600)
+            return "pending"
+
+        async def run_turn(self, messages, tools, system_prompt, config=None):
+            await self.writing.wait()
+            yield TurnComplete(response="ok")
+
+    markers = await _run_turn_with_one_steer(_SlowWrite())
+    assert [(m.type, m.injection_id) for m in markers] == [("injection.refused", "inj_p")]
+
+
+@pytest.mark.asyncio
+async def test_an_injection_that_is_not_plain_text_is_refused_whole() -> None:
+    """An image (or any non-text block) cannot be steered in whole: refused, so the runner
+    runs the full message as a turn instead of the model reading only its text."""
+    import asyncio as _aio
+
+    from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
+    from omnigent.server.schemas import CreateResponseRequest, InjectionRefusedEvent
+
+    executor = _AcceptingInjectionExecutor()
+    adapter = ExecutorAdapter(executor_factory=lambda: executor, session_key="sk")
+    ctx = _OneInjectionCtx(
+        CreateResponseRequest(
+            model="m",
+            input=[
+                {"type": "input_text", "text": "what is this?"},
+                {"type": "input_image", "image_url": "data:image/png;base64,AA=="},
+            ],
+            injection_id="inj_img",
+        )
+    )
+    task = _aio.create_task(adapter._watch_injections(ctx, executor, set()))  # type: ignore[arg-type]
+    try:
+        for _ in range(200):
+            if ctx.emitted:
+                break
+            await _aio.sleep(0.01)
+    finally:
+        task.cancel()
+        with contextlib.suppress(_aio.CancelledError):
+            await task
+    assert executor.received == []
+    assert [type(e) for e in ctx.emitted] == [InjectionRefusedEvent]

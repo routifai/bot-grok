@@ -343,6 +343,8 @@ export async function* watchFamily(
     for await (const frame of streamOmnigentFamily(client, email, superSessionId, signal)) {
       if (frame.type === "message.done") {
         yield { type: "messageDone", chatId: frame.chat_id, itemId: frame.item_id };
+      } else if (frame.type === "message.delivery") {
+        yield { type: "messageDelivery", chatId: frame.chat_id, itemId: frame.item_id };
       } else if (frame.type === "chat.reset") {
         yield { type: "chatReset", chatId: frame.chat_id, itemId: frame.item_id };
       } else if (frame.type === "turn.done") {

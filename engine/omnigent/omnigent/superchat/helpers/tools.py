@@ -8,6 +8,7 @@ from omnigent.superchat.subagents import HELPER_EFFORT_CHOICES, HELPER_MODEL_CHO
 from omnigent.tools.base import Tool
 
 START_HELPER_TOOL_NAME = "start_helper"
+MESSAGE_HELPER_TOOL_NAME = "message_helper"
 
 
 class StartHelperTool(Tool):
@@ -72,6 +73,51 @@ class StartHelperTool(Tool):
                         },
                     },
                     "required": ["task"],
+                    "additionalProperties": False,
+                },
+            },
+        }
+
+
+class MessageHelperTool(Tool):
+    """Pass a message on to a Helper that is already working; dispatched by the runner."""
+
+    @classmethod
+    def name(cls) -> str:
+        """:returns: ``"message_helper"``."""
+        return MESSAGE_HELPER_TOOL_NAME
+
+    @classmethod
+    def description(cls) -> str:
+        """:returns: Human-readable description of the tool."""
+        return (
+            "Pass a message to a Helper that is already working, such as a correction or an "
+            "added detail from the person about that task. The Helper reads it at its next step "
+            "and keeps going on the same task; its result still arrives here when it finishes. "
+            "Use it instead of starting another Helper. `helper_id` is the id `start_helper` "
+            "returned; leave it out when exactly one Helper is running."
+        )
+
+    def get_schema(self) -> dict[str, Any]:
+        """:returns: The OpenAI-format tool schema."""
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name(),
+                "description": self.description(),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "message": {
+                            "type": "string",
+                            "description": "What the Helper should know, in the person's words.",
+                        },
+                        "helper_id": {
+                            "type": "string",
+                            "description": "The Helper to tell, from `start_helper`.",
+                        },
+                    },
+                    "required": ["message"],
                     "additionalProperties": False,
                 },
             },

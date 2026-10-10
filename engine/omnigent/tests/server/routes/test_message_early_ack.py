@@ -79,7 +79,7 @@ class _Harness:
         async def dispatch(*args: Any, **kwargs: Any) -> Any:
             self.order.append("dispatch")
             self.dispatched.append(kwargs.get("persisted_item"))
-            return SimpleNamespace(item_id="x", pending_id=None)
+            return SimpleNamespace(item_id="x", pending_id=None, turn=1)
 
         async def runner(*_: Any, **__: Any) -> Any:
             return MagicMock()

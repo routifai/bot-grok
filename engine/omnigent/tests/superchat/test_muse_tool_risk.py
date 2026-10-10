@@ -51,6 +51,7 @@ RISK: dict[str, str | None] = {
     "skill_list": None,
     "skill_run": None,
     "start_helper": None,
+    "message_helper": None,
     "suggest_follow_ups": None,
     "suggestion_create": None,
     "suggestion_list": None,

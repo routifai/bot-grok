@@ -27,12 +27,15 @@ export function mergeNewestTranscriptPage(
 
 /** The person's messages Nova has accepted that the engine's transcript does not show yet: the
  * send is acknowledged at once, the engine records it a moment later. Anything not newer than
- * the transcript's last message is already in it (the engine stamps whole seconds). */
+ * the transcript's last message *of the person's* is already in it (the engine stamps whole
+ * seconds). The Muse's own work (tool calls, replies) keeps landing meanwhile and must not hide a
+ * message sent during it, so only the person's messages count; a window with none falls back to
+ * the last message of any kind. */
 export function pendingUserMessages(
   accepted: readonly ThreadMessage[],
   transcript: readonly ThreadMessage[],
 ): ThreadMessage[] {
-  const last = transcript.at(-1);
+  const last = transcript.findLast((message) => message.role === "user") ?? transcript.at(-1);
   const lastSeconds = last ? epochSeconds(last.createdAt) : -1;
   return accepted.filter(
     (message) => message.role === "user" && epochSeconds(message.createdAt) > lastSeconds,

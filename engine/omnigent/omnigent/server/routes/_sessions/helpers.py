@@ -4732,6 +4732,7 @@ def _publish_status(
     background_task_count: int | None = None,
     background_tasks: list[BackgroundTaskInfo] | None = None,
     blocked_on: str | None = None,
+    turn: int | None = None,
     persist_live_status: bool = True,
     scheduled_run_outcome: Literal["auto", "failed"] = "auto",
     failure_origin: str | None = None,
@@ -4892,8 +4893,11 @@ def _publish_status(
         background_task_count=background_task_count,
         background_tasks=background_tasks,
         blocked_on=blocked_on,
+        turn=turn,
     )
     payload = event.model_dump()
+    if turn is None:
+        payload.pop("turn", None)
     if response_id is None:
         payload.pop("response_id", None)
     if background_task_count is None:
@@ -7610,10 +7614,13 @@ class _SessionEventDispatchResult:
         ``"pending_a1b2c3"`` — surfaced to the sender so it can adopt
         the id and dedupe against the snapshot. ``None`` for non-native
         events (already persisted, so no separate pending entry).
+    :param turn: The runner's number for the turn the message started or joined (its
+        ``session.status`` edges carry the same number); ``None`` when it did not say.
     """
 
     item_id: str | None
     pending_id: str | None
+    turn: int | None = None
 
 
 def _extract_persistent_item_from_sse(

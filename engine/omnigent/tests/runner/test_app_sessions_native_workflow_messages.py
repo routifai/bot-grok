@@ -812,13 +812,17 @@ async def test_messages_reach_harness_in_submission_order() -> None:
     # is not enough to assert here — both texts are present — only order
     # distinguishes the bug.
     ordered = _ordered_user_texts(hc.posted_bodies[0])
-    assert ordered.index("alpha-first") < ordered.index("bravo-second"), (
+    # "bravo-second" arrives while the first turn runs, so it is steered into that turn or
+    # held for the next one; either way the first turn starts from "alpha-first".
+    assert ordered[:1] == ["alpha-first"], (
         "out-of-order delivery: 'alpha-first' was submitted before "
         "'bravo-second', but the harness sees them in the order "
         f"{ordered}. post_session_events gates turn-vs-buffer AFTER "
         "awaiting content resolution, so a message with slow resolution is "
         "overtaken by a later one."
     )
+    if "bravo-second" in ordered:
+        assert ordered.index("alpha-first") < ordered.index("bravo-second")
 
 
 @pytest.mark.asyncio

@@ -2142,6 +2142,25 @@ async def test_delete_conversation_with_items(
     assert conversation_store.get_conversation(conv.id) is None
 
 
+def _user_item(text: str) -> NewConversationItem:
+    return NewConversationItem(
+        type="message",
+        response_id="resp_d",
+        data=MessageData(role="user", content=[{"type": "input_text", "text": text}]),
+    )
+
+
+def test_delete_item_removes_only_that_item(
+    conversation_store: SqlAlchemyConversationStore,
+) -> None:
+    conv = conversation_store.create_conversation()
+    kept, refused = conversation_store.append(conv.id, [_user_item("keep"), _user_item("drop")])
+
+    assert conversation_store.delete_item(conv.id, refused.id) is True
+    assert [item.id for item in conversation_store.list_items(conv.id).data] == [kept.id]
+    assert conversation_store.delete_item(conv.id, refused.id) is False
+
+
 # ── List conversations pagination ────────────────────
 
 

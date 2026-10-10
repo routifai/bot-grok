@@ -202,3 +202,24 @@ async def test_not_a_super_chat_ends_after_the_opening_event(
     plain = conversation_store.create_conversation(kind="default", title="Plain", labels={})
     stream = watch_family(conversation_store, plain.id, subscribe=_Bus().subscribe)
     assert [e["type"] async for e in stream] == ["chats.changed"]
+
+
+async def test_a_message_sent_mid_turn_is_announced_with_how_it_was_taken(
+    conversation_store: SqlAlchemyConversationStore,
+) -> None:
+    root_id, _ = _family(conversation_store)
+    bus = _Bus()
+    stream = await _open(conversation_store, root_id, bus)
+    bus.publish(
+        root_id,
+        {"type": "session.input.delivery", "data": {"item_id": "msg_9"}},
+    )
+    event = await _next(stream)
+    while event["type"] == "activities.changed":
+        event = await _next(stream)
+    assert event == {
+        "type": "message.delivery",
+        "chat_id": root_id,
+        "item_id": "msg_9",
+    }
+    await stream.aclose()

@@ -197,6 +197,25 @@ describe("omnigent client", () => {
     );
   });
 
+  it("postOmnigentMessage answers with the stored message's id and the turn it joined", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse({ queued: true, item_id: "msg_9", turn: 4 })),
+    );
+    expect(await postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "hi")).toEqual({
+      itemId: "msg_9",
+      turn: 4,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 202 })),
+    );
+    expect(await postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "hi")).toEqual({
+      itemId: undefined,
+      turn: undefined,
+    });
+  });
+
   it("postOmnigentMessage appends images as input_image data URIs after the text", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({}));
     vi.stubGlobal("fetch", fetchMock);
@@ -548,6 +567,7 @@ describe("transcript and family stream", () => {
     const fetchMock = vi.fn(async () =>
       sseResponse([
         'event: message.done\ndata: {"type":"message.done","chat_id":"c1","item_id":"i1"}\n\n',
+        'event: message.delivery\ndata: {"type":"message.delivery","chat_id":"c1","item_id":"i2","delivered":"steer"}\n\n',
         'event: other\ndata: {"type":"other"}\n\n',
         'event: session.heartbeat\ndata: {"type":"session.heartbeat"}\n\n',
       ]),
@@ -561,6 +581,7 @@ describe("transcript and family stream", () => {
 
     expect(events).toEqual([
       { type: "message.done", chat_id: "c1", item_id: "i1" },
+      { type: "message.delivery", chat_id: "c1", item_id: "i2", delivered: "steer" },
       { type: "session.heartbeat" },
     ]);
     const [url] = fetchMock.mock.calls[0] as unknown as [URL];

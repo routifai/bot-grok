@@ -1,10 +1,11 @@
 import type { PrismaClient, ThreadEvents } from "@nova/db";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OmnigentApiError } from "./client.js";
 import {
   COMPUTER_START_FAILED_MESSAGE,
   ENGINE_FAILED_MESSAGE,
   ENGINE_INTERRUPTED_MESSAGE,
+  ENGINE_NO_ANSWER_MESSAGE,
   failRunUnsupportedOnOmnigent,
   publicRunError,
   readTurnImages,
@@ -14,6 +15,8 @@ import {
 const {
   adoptOmnigentMuse,
   getOmnigentMuse,
+  getOmnigentSession,
+  interruptOmnigentSession,
   ingestOmnigentKnowledge,
   postOmnigentMessage,
   putOmnigentTimezone,
@@ -22,6 +25,8 @@ const {
 } = vi.hoisted(() => ({
   adoptOmnigentMuse: vi.fn(),
   getOmnigentMuse: vi.fn(),
+  getOmnigentSession: vi.fn(),
+  interruptOmnigentSession: vi.fn(),
   ingestOmnigentKnowledge: vi.fn(),
   postOmnigentMessage: vi.fn(),
   putOmnigentTimezone: vi.fn(),
@@ -33,6 +38,8 @@ vi.mock("./client.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./client.js")>()),
   adoptOmnigentMuse,
   getOmnigentMuse,
+  getOmnigentSession,
+  interruptOmnigentSession,
   ingestOmnigentKnowledge,
   postOmnigentMessage,
   putOmnigentTimezone,
@@ -52,8 +59,13 @@ const RUN = {
   taskId: "task-1",
 };
 
+/** An engine stream: the ready heartbeat, these events, the session's idle, then open (an engine
+ * never closes it). */
 async function* eventsFrom(events: Array<Record<string, unknown>>) {
+  yield { type: "session.heartbeat" };
   for (const event of events) yield event;
+  yield { type: "session.status", status: "idle" };
+  await new Promise(() => undefined);
 }
 
 function fakePrisma(overrides: Record<string, unknown> = {}): PrismaClient {
@@ -79,10 +91,17 @@ function fakePrisma(overrides: Record<string, unknown> = {}): PrismaClient {
   return { ...base, ...overrides } as unknown as PrismaClient;
 }
 
+/** Thread events that never signal anything (the turn simply has no new messages). */
+async function* quietThread(_threadId: string, _cursor: number, signal?: AbortSignal) {
+  await new Promise((resolve) => signal?.addEventListener("abort", resolve));
+  yield* [];
+}
+
 function fakeEvents(): ThreadEvents {
   return {
     finalizeRun: vi.fn(async () => ({ continuationRunId: null })),
     claimSteering: vi.fn(async () => []),
+    follow: vi.fn(quietThread),
   } as unknown as ThreadEvents;
 }
 
@@ -527,6 +546,372 @@ describe("runTurnOnOmnigent", () => {
   });
 });
 
+/** A session stream the test feeds by hand, so a message can arrive while the turn runs. */
+function liveStream() {
+  const queue: Array<Record<string, unknown>> = [];
+  let waiting: ((result: IteratorResult<Record<string, unknown>>) => void) | undefined;
+  return {
+    push(event: Record<string, unknown>) {
+      if (waiting) {
+        const resolve = waiting;
+        waiting = undefined;
+        resolve({ done: false, value: event });
+      } else queue.push(event);
+    },
+    [Symbol.asyncIterator]() {
+      return this;
+    },
+    next(): Promise<IteratorResult<Record<string, unknown>>> {
+      const event = queue.shift();
+      if (event) return Promise.resolve({ done: false, value: event });
+      return new Promise((resolve) => {
+        waiting = resolve;
+      });
+    },
+    /** The engine went away: the stream ends. */
+    end() {
+      if (waiting) {
+        const resolve = waiting;
+        waiting = undefined;
+        resolve({ done: true, value: undefined });
+      }
+    },
+    async return() {
+      waiting?.({ done: true, value: undefined });
+      return { done: true as const, value: undefined };
+    },
+  };
+}
+
+const status = (value: string, turn?: number) => ({
+  type: "session.status",
+  status: value,
+  ...(turn === undefined ? {} : { turn }),
+});
+
+const userMessage = { type: "thread.message.created", payload: { role: "user" } };
+const posted = (itemId: string, turn = 1) => ({ itemId, turn });
+const flush = () => vi.advanceTimersByTimeAsync(0);
+
+describe("a message the person sends while the turn runs", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    getOmnigentMuse.mockResolvedValue({ session_id: "conv_1", agent: "superchat", created: true });
+    interruptOmnigentSession.mockResolvedValue(undefined);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    // A test that ends before every queued answer was used must not hand it to the next.
+    postOmnigentMessage.mockReset();
+  });
+
+  function setup(
+    steering: Array<Array<{ id: string; text: string }>>,
+    options: {
+      config?: { turnTimeoutMs: number; leaseDurationMs: number; chatsPageSize: number };
+      firstClaim?: Array<{ id: string; text: string }>;
+    } = {},
+  ) {
+    const stream = liveStream();
+    streamOmnigentSession.mockReturnValueOnce(stream);
+    const thread = liveStream(); // the thread's own events (the realtime signal)
+    const batches = [...steering];
+    const steeringMessage = {
+      deleteMany: vi.fn(async () => ({ count: 1 })),
+      updateMany: vi.fn(async () => ({ count: 1 })),
+    };
+    const prisma = fakePrisma({ steeringMessage });
+    const events = fakeEvents();
+    vi.mocked(events.follow).mockReturnValue(thread as never);
+    const rows = (items: Array<{ id: string; text: string }>) =>
+      items.map((item) => ({ ...item, messageId: "m", blocks: [] }));
+    // The first claim is the turn's own; later ones follow the thread's signal.
+    vi.mocked(events.claimSteering)
+      .mockResolvedValueOnce(rows(options.firstClaim ?? []))
+      .mockImplementation(async () => rows(batches.shift() ?? []));
+    postOmnigentMessage.mockResolvedValueOnce(posted("msg_1", 5));
+    const done = runTurnOnOmnigent(
+      { prisma, events, ...DEPS_BASE, ...(options.config ? { config: options.config } : {}) },
+      "run-1",
+      "worker-1",
+    );
+    const start = async () => {
+      stream.push({ type: "session.heartbeat" }); // the engine's ready signal
+      await flush();
+      stream.push(status("running", 5));
+      await flush();
+    };
+    return { stream, thread, prisma, events, steeringMessage, done, start };
+  }
+
+  it("posts nothing before the engine says the stream is live", async () => {
+    const { start } = setup([]);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(postOmnigentMessage).not.toHaveBeenCalled();
+    await start();
+    expect(postOmnigentMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("holds a message sent before the stream is live until the turn itself is posted", async () => {
+    const { stream, thread, done } = setup([[{ id: "s1", text: "and blue" }]]);
+    postOmnigentMessage.mockResolvedValueOnce(posted("msg_2", 5));
+    thread.push(userMessage); // the thread signals first
+    await flush();
+    expect(postOmnigentMessage).not.toHaveBeenCalled();
+
+    stream.push({ type: "session.heartbeat" });
+    await flush();
+    expect(postOmnigentMessage.mock.calls.map((call) => call[3])).toEqual(["hello", "and blue"]);
+    stream.push(status("idle", 5));
+    expect(await done).toBe(true);
+  });
+
+  it("never claims or posts again the messages the turn itself already carries", async () => {
+    const { stream, thread, events, start, done } = setup([[]], {
+      firstClaim: [{ id: "s0", text: "sent while the last run ended" }],
+    });
+    await start();
+    thread.push(userMessage);
+    await flush();
+
+    const claims = vi.mocked(events.claimSteering).mock.calls.map(([input]) => input.seenIds);
+    expect(claims).toEqual([[], ["s0"]]);
+    expect(postOmnigentMessage).toHaveBeenCalledTimes(1);
+    stream.push(status("idle", 5));
+    expect(await done).toBe(true);
+  });
+
+  it("hands a message to the engine once, which owns it from there", async () => {
+    const { stream, thread, events, steeringMessage, done, start } = setup([
+      [{ id: "s1", text: "just redo the deck again" }],
+    ]);
+    await start();
+    postOmnigentMessage.mockResolvedValueOnce(posted("msg_2", 5));
+    thread.push(userMessage);
+    await flush();
+
+    expect(postOmnigentMessage).toHaveBeenLastCalledWith(
+      CLIENT,
+      "person@example.test",
+      "conv_1",
+      "just redo the deck again",
+    );
+    // Persisted by the engine: a continuation must never send it again.
+    expect(steeringMessage.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ["s1"] } } });
+    stream.push(status("idle", 5));
+    expect(await done).toBe(true);
+    expect(events.finalizeRun).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "completed" }),
+    );
+  });
+
+  it("follows the turn a queued message runs as, ignoring an earlier turn's idle", async () => {
+    const { stream, thread, events, done, start } = setup([[{ id: "s1", text: "make it blue" }]]);
+    await start();
+    // The runner will run it right after turn 5: its answer names turn 6 once it starts it.
+    postOmnigentMessage.mockResolvedValueOnce(posted("msg_2", 6));
+    thread.push(userMessage);
+    await flush();
+
+    stream.push(status("idle", 5)); // an older edge
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(events.finalizeRun).not.toHaveBeenCalled();
+
+    stream.push(status("running", 6));
+    stream.push(status("idle", 6));
+    expect(await done).toBe(true);
+    expect(events.finalizeRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a message it could not post for the continuation and goes on with the turn", async () => {
+    const { stream, thread, events, steeringMessage, done, start } = setup([
+      [{ id: "s1", text: "also blue" }],
+    ]);
+    await start();
+    postOmnigentMessage.mockRejectedValueOnce(new Error("fetch failed"));
+    thread.push(userMessage);
+    await flush();
+
+    expect(steeringMessage.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["s1"] } },
+      data: { claimedAt: null },
+    });
+    expect(steeringMessage.deleteMany).not.toHaveBeenCalled();
+    stream.push(status("idle", 5));
+    expect(await done).toBe(true);
+    expect(events.finalizeRun).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "completed" }),
+    );
+  });
+
+  it("goes on when a steering row cannot be updated", async () => {
+    const { stream, thread, steeringMessage, done, start } = setup([[{ id: "s1", text: "x" }]]);
+    await start();
+    postOmnigentMessage.mockResolvedValueOnce(posted("msg_2", 5));
+    steeringMessage.deleteMany.mockRejectedValueOnce(new Error("db down"));
+    thread.push(userMessage);
+    await flush();
+    stream.push(status("idle", 5));
+    expect(await done).toBe(true);
+  });
+
+  it("stops the engine's turn when the run is stopped in Nova", async () => {
+    const { thread, events, done, start } = setup([]);
+    await start();
+    thread.push({ type: "run.cancelled", runId: "run-1", payload: {} });
+    expect(await done).toBe(true);
+    expect(interruptOmnigentSession).toHaveBeenCalledWith(CLIENT, "person@example.test", "conv_1");
+    expect(events.finalizeRun).not.toHaveBeenCalled();
+  });
+
+  it("follows a long quiet turn the engine says is running, renewing the lease", async () => {
+    const config = { turnTimeoutMs: 10_000, leaseDurationMs: 30_000, chatsPageSize: 50 };
+    const { stream, prisma, events, done, start } = setup([], { config });
+    await start();
+    getOmnigentSession.mockResolvedValue({ id: "conv_1", status: "running" });
+    await vi.advanceTimersByTimeAsync(60_000); // a long tool: no events at all
+    expect(events.finalizeRun).not.toHaveBeenCalled();
+    expect(getOmnigentSession).toHaveBeenCalled();
+    expect(prisma.run.updateMany).toHaveBeenCalledWith({
+      where: { id: "run-1", status: "running", leaseOwner: "worker-1", leaseFence: 1 },
+      data: { leaseExpiresAt: expect.any(Date) },
+    });
+
+    stream.push(status("idle", 5));
+    expect(await done).toBe(true);
+    expect(events.finalizeRun).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "completed" }),
+    );
+    getOmnigentSession.mockReset();
+  });
+
+  it("waits, without failing, while the engine says it waits on the person", async () => {
+    const config = { turnTimeoutMs: 10_000, leaseDurationMs: 30_000, chatsPageSize: 50 };
+    const { stream, events, done, start } = setup([], { config });
+    await start();
+    stream.push(status("waiting", 5));
+    getOmnigentSession.mockResolvedValue({ id: "conv_1", status: "waiting" });
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(events.finalizeRun).not.toHaveBeenCalled();
+    stream.push(status("idle", 5));
+    expect(await done).toBe(true);
+    getOmnigentSession.mockReset();
+  });
+
+  it("retries an engine it cannot ask, and fails with an honest line only when it stays gone", async () => {
+    const config = { turnTimeoutMs: 10_000, leaseDurationMs: 30_000, chatsPageSize: 50 };
+    const { events, done, start } = setup([], { config });
+    await start();
+    getOmnigentSession.mockRejectedValue(new Error("engine gone"));
+    streamOmnigentSession.mockImplementation(() => {
+      const gone = liveStream();
+      queueMicrotask(() => gone.end());
+      return gone;
+    });
+    await vi.advanceTimersByTimeAsync(9_000);
+    expect(events.finalizeRun).not.toHaveBeenCalled(); // not at the first failed snapshot
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(await done).toBe(true);
+    expect(events.finalizeRun).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "failed", error: ENGINE_INTERRUPTED_MESSAGE }),
+    );
+    expect(publicRunError(new DOMException("x", "TimeoutError"))).toBe(ENGINE_NO_ANSWER_MESSAGE);
+    getOmnigentSession.mockReset();
+    streamOmnigentSession.mockReset();
+  });
+
+  it("asks the engine on a clock even while heartbeats keep coming, renewing the lease", async () => {
+    const config = { turnTimeoutMs: 10_000, leaseDurationMs: 30_000, chatsPageSize: 50 };
+    const { stream, prisma, events, done, start } = setup([], { config });
+    await start();
+    getOmnigentSession.mockResolvedValue({ id: "conv_1", status: "running" });
+    for (let tick = 0; tick < 12; tick += 1) {
+      stream.push({ type: "session.heartbeat" }); // the stream is never quiet
+      await vi.advanceTimersByTimeAsync(2_500);
+    }
+    expect(getOmnigentSession).toHaveBeenCalled();
+    expect(prisma.run.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { leaseExpiresAt: expect.any(Date) } }),
+    );
+    expect(events.finalizeRun).not.toHaveBeenCalled();
+    stream.push(status("idle", 5));
+    expect(await done).toBe(true);
+    getOmnigentSession.mockReset();
+  });
+
+  it("ignores an unnumbered idle once its message joined a numbered turn", async () => {
+    const { stream, events, done, start } = setup([]);
+    await start();
+    stream.push(status("idle")); // the server's own idle for some refused message
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(events.finalizeRun).not.toHaveBeenCalled();
+    stream.push(status("idle", 5));
+    expect(await done).toBe(true);
+  });
+
+  it("stops before posting anything when the run is stopped before the stream is live", async () => {
+    const { stream, thread, done } = setup([]);
+    thread.push({ type: "run.cancelled", runId: "run-1", payload: {} });
+    await flush();
+    stream.push({ type: "session.heartbeat" });
+    expect(await done).toBe(true);
+    expect(postOmnigentMessage).not.toHaveBeenCalled();
+  });
+
+  it("reopens a dropped stream and follows the turn the engine is still running", async () => {
+    const { stream, events, done, start } = setup([]);
+    await start();
+    const reopened = liveStream();
+    streamOmnigentSession.mockReturnValueOnce(reopened);
+    getOmnigentSession.mockResolvedValueOnce({ id: "conv_1", status: "running" });
+    stream.end(); // the engine restarted
+    await flush();
+    reopened.push({ type: "session.heartbeat" });
+    await flush();
+    expect(events.finalizeRun).not.toHaveBeenCalled();
+
+    reopened.push(status("idle", 5));
+    expect(await done).toBe(true);
+    expect(events.finalizeRun).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "completed" }),
+    );
+  });
+
+  it("ends the run, not at a deadline, when the reopened engine is idle", async () => {
+    const { stream, events, done, start } = setup([]);
+    await start();
+    const reopened = liveStream();
+    streamOmnigentSession.mockReturnValueOnce(reopened);
+    getOmnigentSession.mockResolvedValueOnce({ id: "conv_1", status: "idle" });
+    stream.end();
+    await flush();
+    reopened.push({ type: "session.heartbeat" });
+    expect(await done).toBe(true);
+    expect(events.finalizeRun).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "completed" }),
+    );
+  });
+
+  it("fails fast with a clear error when the engine does not come back", async () => {
+    const { stream, events, done, start } = setup([]);
+    await start();
+    streamOmnigentSession.mockImplementation(() => {
+      const gone = liveStream();
+      queueMicrotask(() => gone.end());
+      return gone;
+    });
+    stream.end();
+    await vi.advanceTimersByTimeAsync(40_000); // the reopen attempts
+
+    expect(await done).toBe(true);
+    expect(events.finalizeRun).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "failed", error: ENGINE_INTERRUPTED_MESSAGE }),
+    );
+    streamOmnigentSession.mockReset();
+  });
+});
+
 describe("publicRunError", () => {
   it("says the turn was interrupted when the engine connection drops", () => {
     expect(publicRunError(new TypeError("terminated"))).toBe(ENGINE_INTERRUPTED_MESSAGE);
@@ -616,7 +1001,8 @@ describe("attached documents", () => {
 
   it("posts the message exactly as the person wrote it: no file text, no ingest hop", async () => {
     getOmnigentMuse.mockResolvedValue({ session_id: "sess-1", agent: "agent", created: false });
-    streamOmnigentSession.mockReturnValue(
+    // A fresh stream per turn: each run opens its own.
+    streamOmnigentSession.mockImplementation(() =>
       eventsFrom([{ type: "response.completed", response: { output: [] } }]),
     );
     const xlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";

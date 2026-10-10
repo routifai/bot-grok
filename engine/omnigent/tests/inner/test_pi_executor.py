@@ -23,6 +23,7 @@ from omnigent.inner.executor import (
     ExecutorConfig,
     ExecutorError,
     ReasoningChunk,
+    SteerOutcome,
     TextChunk,
     ToolCallComplete,
     ToolCallRequest,
@@ -38,6 +39,7 @@ from omnigent.inner.pi_executor import (
     _only_configured_family,
     _pi_provider_for_model,
     _PiRpcSession,
+    _PiSessionState,
     _redact_argv_for_log,
     _safe_dumps,
     _sanitize_schema,
@@ -3220,36 +3222,6 @@ class TestSessionManagement(unittest.TestCase):
 
         _run(_test())
 
-    def test_enqueue_session_message(self):
-        async def _test():
-            with patch("omnigent.inner.pi_executor._find_pi_cli", return_value="/usr/bin/pi"):
-                executor = PiExecutor()
-
-            mock_rpc = MagicMock()
-            mock_rpc.send_command = AsyncMock()
-            from omnigent.inner.pi_executor import _PiSessionState
-
-            executor._session_states["test"] = _PiSessionState(rpc=mock_rpc)
-
-            result = await executor.enqueue_session_message("test", "STOP")
-            self.assertTrue(result)
-            mock_rpc.send_command.assert_called_once()
-            cmd = mock_rpc.send_command.call_args[0][0]
-            self.assertEqual(cmd["type"], "steer")
-            self.assertEqual(cmd["message"], "STOP")
-
-        _run(_test())
-
-    def test_enqueue_session_message_no_session(self):
-        async def _test():
-            with patch("omnigent.inner.pi_executor._find_pi_cli", return_value="/usr/bin/pi"):
-                executor = PiExecutor()
-
-            result = await executor.enqueue_session_message("nonexistent", "STOP")
-            self.assertFalse(result)
-
-        _run(_test())
-
     def test_interrupt_session_aborts_then_drops_session(self):
         """A user interrupt aborts the turn AND drops the session.
 
@@ -5313,3 +5285,232 @@ def test_run_turn_prompt_command_includes_streaming_behavior():
         "residual race against a still-alive Pi process queues instead of "
         f"surfacing the raw protocol error; got {cmd!r}"
     )
+
+
+class _SteerablePi:
+    """A fake Pi RPC session for one turn: lines are pushed while the turn runs, commands are
+    recorded, and ``clear_queue`` is answered with ``cleared`` (``None``: never answered)."""
+
+    def __init__(self, cleared: list[str] | None = None) -> None:
+        self.lines: asyncio.Queue = asyncio.Queue()
+        self.commands: list[dict] = []
+        self.cleared = cleared
+        self.closed = False
+        self.prompt_sent = asyncio.Event()
+        self._stderr_lines: list[str] = []
+
+    def push(self, event: dict) -> None:
+        self.lines.put_nowait(json.dumps(event))
+
+    async def send_command(self, command: dict) -> None:
+        self.commands.append(command)
+        if command["type"] == "prompt":
+            self.prompt_sent.set()
+        if command["type"] == "clear_queue":
+            if self.cleared is None:
+                self.lines.put_nowait(None)  # Pi died
+            else:
+                self.push(
+                    {
+                        "type": "response",
+                        "id": command["id"],
+                        "command": "clear_queue",
+                        "success": True,
+                        "data": {"steering": self.cleared, "followUp": []},
+                    }
+                )
+
+    async def read_line(self, timeout: float = 120.0) -> str | None:
+        del timeout
+        return await self.lines.get()
+
+    async def request(self, command: dict, expected: str, *, timeout: float = 15.0):
+        return await _PiRpcSession.request(self, command, expected, timeout=timeout)
+
+    def stdout_at_eof(self) -> bool:
+        return True
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+class TestPiSteering(unittest.TestCase):
+    """A message offered to Pi's running turn is reported taken or refused from Pi's own
+    stream: the user ``message_start`` that delivers it, or what ``clear_queue`` takes back
+    once the agent ends. Pi's ``steer`` response only says the text was queued."""
+
+    def _executor(self, pi: _SteerablePi) -> PiExecutor:
+        with patch("omnigent.inner.pi_executor._find_pi_cli", return_value="/usr/bin/pi"):
+            executor = PiExecutor()
+
+        async def ensure_rpc(*args, **kwargs):
+            executor._session_states.setdefault("s", _PiSessionState(rpc=pi))
+            return pi
+
+        executor._ensure_rpc = ensure_rpc
+        return executor
+
+    async def _turn(self, executor: PiExecutor, pi: _SteerablePi):
+        events: list = []
+
+        async def consume() -> None:
+            async for event in executor.run_turn(
+                [{"role": "user", "content": "redo the deck", "session_id": "s"}], [], "sys"
+            ):
+                events.append(event)
+
+        task = asyncio.create_task(consume())
+        await asyncio.wait_for(pi.prompt_sent.wait(), 5)
+        await asyncio.sleep(0)
+        return task, events
+
+    @staticmethod
+    def _outcomes(events: list) -> list[tuple[str, bool]]:
+        return [(e.steer_id, e.taken) for e in events if isinstance(e, SteerOutcome)]
+
+    @staticmethod
+    def _user_message(text: str) -> dict:
+        return {
+            "type": "message_start",
+            "message": {"role": "user", "content": [{"type": "text", "text": text}]},
+        }
+
+    def test_a_steer_is_taken_when_pi_delivers_it_into_the_turn(self):
+        async def _test():
+            pi = _SteerablePi(cleared=[])
+            executor = self._executor(pi)
+            task, events = await self._turn(executor, pi)
+
+            offer = await executor.steer_session_message("s", "make it blue", steer_id="inj_1")
+            self.assertEqual(offer, "pending")
+            sent = pi.commands[-1]
+            self.assertEqual((sent["type"], sent["message"]), ("steer", "make it blue"))
+            self.assertTrue(sent["id"].startswith("steer-"))
+
+            # Pi's ack only means "queued": nothing is settled by it.
+            pi.push({"type": "response", "id": sent["id"], "command": "steer", "success": True})
+            pi.push(self._user_message("redo the deck"))  # the prompt itself
+            pi.push(self._user_message("make it blue"))  # delivered after a tool call
+            pi.push({"type": "agent_end", "messages": []})
+            await asyncio.wait_for(task, 5)
+
+            self.assertEqual(self._outcomes(events), [("inj_1", True)])
+            self.assertIsInstance(events[-1], TurnComplete)
+            self.assertNotIn("clear_queue", [c["type"] for c in pi.commands])
+
+        _run(_test())
+
+    def test_a_steer_pi_still_holds_at_agent_end_is_cleared_and_refused(self):
+        async def _test():
+            pi = _SteerablePi(cleared=["make it blue"])
+            executor = self._executor(pi)
+            task, events = await self._turn(executor, pi)
+
+            await executor.steer_session_message("s", "make it blue", steer_id="late")
+            pi.push({"type": "agent_end", "messages": []})
+            await asyncio.wait_for(task, 5)
+
+            self.assertEqual(pi.commands[-1]["type"], "clear_queue")
+            self.assertEqual(self._outcomes(events), [("late", False)])
+            self.assertIsInstance(events[-1], TurnComplete)
+            self.assertFalse(pi.closed)  # its queue is empty again; the process is kept
+
+        _run(_test())
+
+    def test_clear_queue_settles_a_steer_pi_delivered_under_another_text(self):
+        async def _test():
+            # Pi expanded "/fix" before delivering it, so no message_start matched; clear_queue
+            # takes back only the second one, which is therefore the one never delivered.
+            pi = _SteerablePi(cleared=["two"])
+            executor = self._executor(pi)
+            task, events = await self._turn(executor, pi)
+
+            await executor.steer_session_message("s", "/fix", steer_id="one")
+            await executor.steer_session_message("s", "two", steer_id="two")
+            pi.push(self._user_message("Fix the deck as described in the fix skill"))
+            pi.push({"type": "agent_end", "messages": []})
+            await asyncio.wait_for(task, 5)
+
+            self.assertEqual(self._outcomes(events), [("one", True), ("two", False)])
+
+        _run(_test())
+
+    def test_a_refused_steer_command_is_refused_and_does_not_fail_the_turn(self):
+        async def _test():
+            pi = _SteerablePi(cleared=[])
+            executor = self._executor(pi)
+            task, events = await self._turn(executor, pi)
+
+            await executor.steer_session_message("s", "/ext-command", steer_id="x")
+            command_id = pi.commands[-1]["id"]
+            pi.push(
+                {
+                    "type": "response",
+                    "id": command_id,
+                    "command": "steer",
+                    "success": False,
+                    "error": "extension commands cannot be queued",
+                }
+            )
+            pi.push({"type": "agent_end", "messages": []})
+            await asyncio.wait_for(task, 5)
+
+            self.assertEqual(self._outcomes(events), [("x", False)])
+            self.assertIsInstance(events[-1], TurnComplete)
+
+        _run(_test())
+
+    def test_no_steer_is_offered_outside_the_agent_loop(self):
+        async def _test():
+            pi = _SteerablePi(cleared=[])
+            executor = self._executor(pi)
+            self.assertEqual(
+                await executor.steer_session_message("s", "early", steer_id="e"), "refused"
+            )
+            task, _ = await self._turn(executor, pi)
+            pi.push({"type": "agent_end", "messages": []})
+            await asyncio.wait_for(task, 5)
+
+            self.assertEqual(
+                await executor.steer_session_message("s", "late", steer_id="l"), "refused"
+            )
+            self.assertEqual([c["type"] for c in pi.commands], ["prompt"])
+
+        _run(_test())
+
+    def test_a_turn_cut_short_with_steers_pending_drops_pi(self):
+        async def _test():
+            pi = _SteerablePi(cleared=[])
+            executor = self._executor(pi)
+            task, events = await self._turn(executor, pi)
+
+            await executor.steer_session_message("s", "make it blue", steer_id="g")
+            pi.push(
+                {
+                    "type": "message_end",
+                    "message": {"role": "assistant", "stopReason": "aborted"},
+                }
+            )
+            await asyncio.wait_for(task, 5)
+
+            self.assertIsInstance(events[-1], ExecutorError)
+            self.assertEqual(self._outcomes(events), [])  # unreported: the caller refuses it
+            self.assertTrue(pi.closed)  # Pi may still hold it; nothing answers it twice
+            self.assertNotIn("s", executor._session_states)
+
+        _run(_test())
+
+    def test_an_unanswered_clear_queue_refuses_and_drops_pi(self):
+        async def _test():
+            pi = _SteerablePi(cleared=None)
+            executor = self._executor(pi)
+            task, events = await self._turn(executor, pi)
+
+            await executor.steer_session_message("s", "make it blue", steer_id="q")
+            pi.push({"type": "agent_end", "messages": []})
+            await asyncio.wait_for(task, 5)
+
+            self.assertEqual(self._outcomes(events), [("q", False)])
+            self.assertTrue(pi.closed)
+
+        _run(_test())
