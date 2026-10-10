@@ -16,9 +16,7 @@ Safety rules:
 Ask me first how models should be connected:
 
 1. An Anthropic key (`ANTHROPIC_API_KEY`).
-2. Local models or my own gateway through LiteLLM: `LITELLM_BASE_URL` and `LITELLM_API_KEY`, with
-   `infra/compose/docker-compose.litellm.yml` (existing proxy) or
-   `infra/compose/docker-compose.litellm-local.yml` (local proxy on 4000).
+2. My own gateway through LiteLLM: `LITELLM_BASE_URL` and `LITELLM_API_KEY`.
 3. Defer. The stack runs, but there is no model until a key is added.
 
 Do not name or choose a model: an admin picks default, fast and strong in Settings > Models.
@@ -28,14 +26,13 @@ Then:
 1. Check Docker and the Compose plugin are installed and running.
 2. Put the chosen keys in the environment or `.env` (setup.sh copies ANTHROPIC_API_KEY,
    OPENROUTER_API_KEY, TAVILY_API_KEY, LITELLM_BASE_URL and LITELLM_API_KEY from the environment).
-3. Run `./scripts/setup.sh`. For a LiteLLM overlay, then run
-   `docker compose --env-file .env -f infra/compose/docker-compose.yml -f <overlay> up -d --build`.
-4. Behind a firewall, the image base and mirrors are build args in `.env`
-   (see `.env.docker.example`); set only the ones I give you.
+3. Run `./scripts/setup.sh`.
+4. Behind a firewall, `PYTHON_IMAGE`, `PYPI_INDEX_URL` and `NPM_CONFIG_REGISTRY` in `.env`
+   point the image builds at mirrors; set only the ones I give you.
 
 Verify:
 
-- `curl -fsS http://127.0.0.1:3100/health` (use the API port setup.sh printed) returns ok.
+- `curl -fsS http://127.0.0.1:3100/health` returns ok.
 - Open the web address it printed, register a test account with fake data (the first account is
   the owner) and, if a model is connected, send a harmless message.
 

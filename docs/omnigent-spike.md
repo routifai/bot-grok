@@ -172,14 +172,12 @@ Omnigent session (skills, canvas, and browser use share it too), so Omnigent's b
 cleanup must never destroy it — every caller of those already treats "provider can't do that" as
 skippable.
 
-**The image**: `infra/sandboxes/computer/Dockerfile` now vendors `engine/omnigent` (an
-`omnigent-builder` stage installs it with `uv` into `/opt/venv`, symlinked to `/usr/local/bin` so
-it's on the sandbox supervisor's fixed exec `PATH`) plus Node and the `pi` CLI — the only external
-harness CLI `omnigent/inner/pi_executor.py` needs; the other Superchat harnesses (claude/openai/codex)
-run through the omnigent Python package's own SDK dependencies, already installed. This changed
-the image's Docker build **context** from `infra/sandboxes/computer` to the repo root (see
-`infra/compose/docker-compose*.yml`, `scripts/setup.sh`, and the CI validate matrix) so the
-Dockerfile can `COPY engine/omnigent/`.
+**The image**: `infra/sandboxes/computer/Dockerfile` is a thin layer `FROM` Omnigent's own host
+image (`engine/omnigent/deploy/docker/Dockerfile`, target `host`, passed as the `omnigent-host`
+build context): that image already carries `omnigent` in `/opt/venv` (symlinked into
+`/usr/local/bin`, the supervisor's fixed exec `PATH`), Node and the harness CLIs. The layer adds
+Python's data stack, the pptx runtime, headless Chromium, the pinned `pi` CLI and Superchat's
+helpers. Its build context is the repo root.
 
 Environment variables (Omnigent server process):
 

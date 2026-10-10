@@ -24,7 +24,7 @@ This plan is written for implementation agents (Claude Sonnet 5, model id `claud
 
 ```bash
 pnpm db:generate          # after schema changes
-pnpm db:migrate           # needs Postgres up with the postgres-host overlay
+pnpm db:migrate           # needs Postgres on 127.0.0.1:5433 (see .env.example)
 pnpm test                 # vitest, offline
 pnpm check                # typecheck (turbo)
 pnpm lint                 # biome

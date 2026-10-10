@@ -16,9 +16,9 @@ Browser ──►  Railway: superchat-app (web + API + worker, one domain)
 | Piece | Where | Repo files |
 | --- | --- | --- |
 | Web (Vite preview server) | Railway, inside superchat-app | `infra/railway/start-superchat.sh` |
-| API + worker, one service | Railway | `infra/railway/railway.superchat.json`, `Dockerfile.superchat`, `start-superchat.sh` |
+| API + worker, one service | Railway | `infra/railway/railway.superchat.json`, `infra/compose/Dockerfile` (the Compose app image), `start-superchat.sh` |
 | Superchat Postgres | Railway plugin | |
-| Omnigent engine + its Postgres + a volume | Railway | `infra/railway/railway.engine.json`, `Dockerfile.engine`, `engine.config.yaml.tmpl`, `engine-start.sh` |
+| Omnigent engine + its Postgres + a volume | Railway | `infra/railway/railway.engine.json`: the CI-built engine image (Omnigent's Dockerfile + `infra/omnigent`) through Omnigent's `Dockerfile.prebuilt`; `infra/omnigent/engine/start.sh` |
 | Supervisor, Computer image, Caddy | OVH VPS | `infra/compose/docker-compose.computers.yml`, `Caddyfile.computers`, `.env.computers.example` |
 
 Design choices, and why:
@@ -112,7 +112,7 @@ and checks `/health` and the 401 on `/computers`. Without a domain, `COMPUTERS_H
    sudo docker compose --env-file .env.computers -f infra/compose/docker-compose.computers.yml up -d --build
    ```
 
-   The first build takes 10 to 20 minutes (the Computer image contains a desktop and Chromium).
+   The first build takes 10 to 20 minutes (the Computer image is Omnigent's host image plus Chromium and the data stack).
 7. Check: `curl https://computers.<your-domain>/health` returns `{"ok":true,...}`, and
    `curl -i https://computers.<your-domain>/computers` returns **401** (the token is required).
 
@@ -123,18 +123,20 @@ Create a Railway project, then:
 1. **Add two Postgres databases** (New, Database, PostgreSQL). Rename them `superchat-db` and `engine-db`.
 2. **Engine service.** New, GitHub repo, choose this repo. Name it `omnigent-engine`.
    Settings: Root directory `/`; Config-as-code file path `/infra/railway/railway.engine.json`.
-   Add a **Volume** mounted at `/data`. Settings, Networking: Generate Domain (note the URL,
+   Set `OMNIGENT_IMAGE` to the engine image CI publishes (`ghcr.io/<owner>/<repo>/engine:edge`, or a
+   release tag); Railway passes it to the build. Add a **Volume** mounted at `/data`. Settings, Networking: Generate Domain (note the URL,
    `https://<engine>.up.railway.app`). Set the variables in section 4, then deploy.
    First boot runs the database migrations; `/health` turning green means it is up.
 3. **Superchat service.** New, GitHub repo, same repo. Name it `superchat-app`.
-   Config-as-code file path `/infra/railway/railway.superchat.json`. Add a **Volume** at `/data`.
+   Config-as-code file path `/infra/railway/railway.superchat.json`. Add a **Volume** at `/data`
+   and set `RAILWAY_RUN_UID=0` (the image runs as `node`, the volume mounts root-owned).
    Networking: Generate Domain; the target port is the web server on `$PORT` (Railway sets it).
    Set the variables in section 4, then deploy. The start command applies Prisma migrations before
    starting the API and the worker.
 
-The agent bundle (`superchat-claude`) is baked into the engine image from `infra/omnigent/agents`, so
-there is no upload step. If you edit `infra/omnigent/templates`, run
-`node infra/omnigent/render-agents.mjs`, commit, and redeploy the engine.
+The agent bundles are baked into the engine image from `infra/omnigent` (at `/opt/bundle`), so there
+is no upload step. If you edit `infra/omnigent/templates`, run `node infra/omnigent/render-agents.mjs`,
+commit, let CI publish the engine image, and redeploy the engine.
 
 ## 3. Web on Railway (same service as the API)
 
@@ -177,7 +179,6 @@ Names only below; never commit values.
 | `OMNIGENT_VAULT_KEY` | omnigent-engine | `openssl rand -base64 32` |
 | `ANTHROPIC_API_KEY` | omnigent-engine | Your key. This is the engine's model connection and is also passed to every Computer's runner |
 | `TAVILY_API_KEY`, `OPENROUTER_API_KEY` | omnigent-engine | Optional; passed to runners when set |
-| `SUPERCHAT_CLAUDE_MODEL`, `OMNIGENT_HELPER_MODEL_FAST`, `OMNIGENT_HELPER_MODEL_STRONG` | omnigent-engine | Optional; defaults are baked in `Dockerfile.engine` |
 | `OMNIGENT_SUBAGENT_MAX_CONCURRENT` | omnigent-engine | Optional cap on parallel Helpers |
 
 Baked-in engine defaults (no need to set): header auth with the `X-Omnigent-Tenant` header,

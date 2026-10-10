@@ -100,10 +100,8 @@ compose. Credentials come from `.env` (`POSTGRES_PASSWORD` is required). Prefer 
 inside Compose. Official Postgres images set user, password, and database only on first volume
 init, so an existing `pgdata` volume keeps its original identity: keep those values in `.env`, or
 change them in place with `ALTER ROLE` / rename. Recreate the volume only after a backup (or when
-the data is disposable); `docker compose down -v` deletes all Postgres state. For host-side clients
-(`pnpm db:migrate`, GUI tools),
-add `infra/compose/docker-compose.postgres-host.yml` so Postgres is published on loopback
-`127.0.0.1:5433`, or use
+the data is disposable); `docker compose down -v` deletes all Postgres state. For a one-off session
+use
 `docker compose --env-file .env -f infra/compose/docker-compose.yml exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'`.
 Do not publish Postgres on a public interface.
 
@@ -342,13 +340,8 @@ For provider configuration and health checks, see the [provider setup guide](./s
 
 ## Backup
 
-```bash
-./scripts/backup.sh
-```
-
-This dumps Postgres (`pg_dump`) and archives `data/` into `backups/<stamp>/`. A missing
-`data/` produces an empty archive; database or archive errors fail the backup. Discard the
-output directory of any failed run.
+Back up `.env`, `data/`, and the `pgdata` and `enginedata` volumes together. The single-VM
+production layout has a scheduled, verified backup (see below).
 
 ## Public single-VM deployment
 
@@ -446,18 +439,6 @@ checkout's `.env` and production Compose file. If the stack was started with a c
 set the same `COMPOSE_PROJECT_NAME` in that file. For a manual run, export these variables instead.
 When updating an existing backup installation, reinstall both the script and service unit,
 then run `systemctl daemon-reload`.
-
-## Restore
-
-For backups created by `scripts/backup.sh`, use an empty `superchat` database in the development
-Compose stack, with application services stopped. The SQL import runs in one transaction and
-stops on the first error, including conflicts with existing tables. Files are restored and
-application services started only after the import succeeds. This script does not consume the
-production snapshot's custom-format `superchat.dump` or `appdata.tgz`.
-
-```bash
-./scripts/restore.sh backups/<stamp>
-```
 
 ## Upgrade
 
