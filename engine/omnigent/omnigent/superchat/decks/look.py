@@ -7,9 +7,9 @@ each value is checked against something it cannot write itself:
   (:data:`MOODS`) whose themes include it;
 * ``picked``: the card shown just before that message offered deck themes, and the message picks
   exactly this one (the card's button sends the theme's name);
-* ``preference``: an active memory claim the person stated (or wrote) about decks or themes
-  names this theme; an inferred one does not count;
 * ``you_choose``: the message hands the choice over (:data:`YOU_CHOOSE_PHRASES`);
+* ``preference`` is not accepted: memory is not exact enough to stand in for the person's
+  choice (a remembered taste may only order the offered looks), so it gets the card;
 * ``background``: the work is a scheduled or ad-hoc Helper run, or a scheduled fire (server
   labels on the session or its parents), so there is no person to ask.
 
@@ -35,7 +35,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -86,7 +86,6 @@ YOU_CHOOSE_PHRASES = (
 )
 
 #: Words that make a memory claim about deck looks.
-_LOOK_WORDS = ("deck", "slide", "presentation", "theme", "look")
 #: Newest stored items read to find the latest message and the card before it.
 ITEMS_SCANNED = 60
 QUESTION = "Which look?"
@@ -137,14 +136,12 @@ class LookEvidence:
     :param message: The person's latest message, or ``""``.
     :param offered: ``(label, theme id)`` of the deck-theme card shown just before that message,
         or ``None`` when there was none.
-    :param claims: Texts of the person's active memory claims (read only for ``preference``).
     """
 
     is_helper: bool = False
     background: bool = False
     message: str = ""
     offered: tuple[tuple[str, str], ...] | None = None
-    claims: tuple[str, ...] = field(default=())
 
 
 def check_look(look_from: object, theme_id: str, evidence: LookEvidence) -> str | None:
@@ -165,12 +162,6 @@ def check_look(look_from: object, theme_id: str, evidence: LookEvidence) -> str 
         if picks == {theme_id}:
             return None
         return "the person's answer to the card does not pick this theme."
-    if look_from == "preference":
-        for claim in evidence.claims:
-            low = claim.lower()
-            if any(w in low for w in _LOOK_WORDS) and _named(low, theme_id):
-                return None
-        return "no saved preference names this theme."
     if look_from == "you_choose":
         if any(_has(message, p) for p in YOU_CHOOSE_PHRASES):
             return None
@@ -261,14 +252,8 @@ async def _get(client: httpx.AsyncClient, url: str, **params: Any) -> Any:
         return None
 
 
-def _person_said(claim: Mapping[str, Any]) -> bool:
-    """A claim the person stated or wrote. A noticed (inferred) preference does not count: the
-    decks the Muse itself styled would teach it the person "prefers" that look."""
-    return claim.get("explicitness") == "stated" or claim.get("person_authored") is True
-
-
-async def gather_evidence(ctx: HandlerCtx | None, look_from: object) -> LookEvidence | str:
-    """Read the records for *look_from* from the server, or say why they cannot be read."""
+async def gather_evidence(ctx: HandlerCtx | None) -> LookEvidence | str:
+    """Read the records a look is checked against, or say why they cannot be read."""
     if ctx is None or ctx.server_client is None or not ctx.conversation_id:
         return "the look cannot be checked here."
     client, session = ctx.server_client, ctx.conversation_id
@@ -292,17 +277,8 @@ async def gather_evidence(ctx: HandlerCtx | None, look_from: object) -> LookEvid
     if not isinstance(items, list):
         return "the conversation could not be read."
     message, offered = evidence_from_items([i for i in items if isinstance(i, dict)])
-    claims: tuple[str, ...] = ()
-    if look_from == "preference":
-        body = await _get(client, f"/v1/sessions/{session}/memory/claims")
-        rows = body.get("claims") if isinstance(body, dict) else None
-        claims = tuple(
-            str(c.get("text") or "")
-            for c in rows or ()
-            if isinstance(c, dict) and c.get("status") == "active" and _person_said(c)
-        )
     return LookEvidence(
-        is_helper=is_helper, background=background, message=message, offered=offered, claims=claims
+        is_helper=is_helper, background=background, message=message, offered=offered
     )
 
 
@@ -317,7 +293,7 @@ class LookCheck:
 
 async def verify_look(ctx: HandlerCtx | None, look_from: object, theme_id: str) -> LookCheck:
     """Whether a new deck in *theme_id* may be built, read from the chat the person sees."""
-    evidence = await gather_evidence(ctx, look_from)
+    evidence = await gather_evidence(ctx)
     if isinstance(evidence, str):
         return LookCheck(evidence)
     problem = check_look(look_from, theme_id, evidence)

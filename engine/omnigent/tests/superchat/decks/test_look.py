@@ -99,18 +99,13 @@ async def test_picked_needs_the_answered_card_and_that_exact_theme(workspace: Pa
     assert _is_card(await _new("picked", "cartesian", ctx(faked)), workspace)
 
 
-async def test_preference_needs_an_active_claim_naming_the_theme(workspace: Path) -> None:
-    claims = [
-        {"text": "Prefers the Nord theme for decks", "status": "active", "explicitness": "stated"}
-    ]
-    assert _built(await _new("preference", "nord", ctx([user("a deck")], claims=claims)))
-    (workspace / "d.deck.html").unlink()
-    # the live failure: "your usual Corporate Clean look" with no claim about it
-    out = await _new("preference", "corporate-clean", ctx([user("a deck")], claims=claims))
-    assert _is_card(out, workspace) and "preference" in out["note"]
-    assert _is_card(await _new("preference", "nord", ctx([user("a deck")])), workspace)
-    expired = [{"text": "Prefers Nord for decks", "status": "expired", "explicitness": "stated"}]
-    assert _is_card(await _new("preference", "nord", ctx([user("x")], claims=expired)), workspace)
+async def test_preference_never_settles_the_look(workspace: Path) -> None:
+    """Even a stated claim naming the theme: memory never skips the question."""
+    stated = [{"text": "Prefers Nord decks", "status": "active", "explicitness": "stated"}]
+    out = await _new("preference", "nord", ctx([user("a deck")], claims=stated))
+    assert _is_card(out, workspace)
+    out = await _new("preference", "nord", ctx([user("a deck")], claims=stated, helper={}))
+    assert out["error"].startswith(HELPER_REFUSAL)
 
 
 async def test_you_choose_needs_the_person_to_hand_over_the_choice(workspace: Path) -> None:
@@ -187,28 +182,23 @@ def test_the_card_shows_in_the_transcript_and_ends_the_turn() -> None:
     assert all(m["id"] != "a1" for m in messages)  # text after the card is dropped
 
 
-async def test_an_inferred_preference_through_the_runner_dispatch_shows_the_card(
-    workspace: Path,
-) -> None:
-    """The live failure: a noticed "prefers Corporate Clean" claim (learned from decks the Muse
-    styled itself) let deck_new build. Same path as the runner: the decks feature handler."""
-    noticed = {
-        "text": "Prefers the Corporate Clean look for decks",
+async def test_preference_through_the_runner_dispatch_shows_the_card(workspace: Path) -> None:
+    """The live failure, on the runner's path (the decks feature handler): a stated claim that
+    names Corporate Clean let deck_new build. Neither the menu call nor the writing call may."""
+    stated = {
+        "text": "Prefers dashboards and presentations in Corporate Clean",
         "status": "active",
-        "explicitness": "inferred",
-        "person_authored": False,
+        "explicitness": "stated",
+        "person_authored": True,
     }
-    call_ctx = ctx([user("Now make a 5-slide deck from it")], claims=[noticed])
+    call_ctx = ctx([user("Now make a 5-slide deck from it")], claims=[stated])
     args = {
         "path": "your_files/sales-2026.deck.html",
         "template": "corporate-clean",
         "look_from": "preference",
         "title": "Sales 2026",
     }
-    for extra in ({}, {"slides": SAMPLE}):  # the layout-menu call and the writing call
+    for extra in ({}, {"slides": SAMPLE}):
         out = json.loads(await handle_deck_tool(call_ctx, {**args, **extra}))
         assert out["card"] == "ask" and out["written"] is False
     assert not (workspace / "your_files").exists()
-    edited = {**noticed, "person_authored": True}
-    menu = json.loads(await handle_deck_tool(ctx([user("x")], claims=[edited]), args))
-    assert "layouts" in menu
