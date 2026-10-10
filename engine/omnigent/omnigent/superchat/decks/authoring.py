@@ -11,21 +11,17 @@ import asyncio
 import json
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from omnigent.superchat._handler_http import error
 from omnigent.superchat.artifacts import workspace_roots
 from omnigent.superchat.decks import kit
 from omnigent.superchat.decks.handlers import run_helper
+from omnigent.superchat.decks.look import look_card, verify_look
 from omnigent.superchat.decks.names import DECK_SUFFIX, is_deck_name
-from omnigent.superchat.decks.tools import DECK_LOOK_SOURCES
 
-ASK_FIRST = (
-    "The person has not chosen this deck's look. Ask first: call deck_themes, then "
-    'ask_clarification once with the question "Which look?" and 3 themes from different '
-    'categories, each option {"label": <theme name>, "preview": {"kind": "deck-theme", '
-    '"id": <theme id>}}, and end your turn. Build with their pick (look_from: picked).'
-)
+if TYPE_CHECKING:
+    from omnigent.superchat.feature import HandlerCtx
 
 _MAX_LISTED = 25
 _SEVERITY_BUCKET = {"error": "errors", "warning": "warnings", "note": "notes"}
@@ -91,8 +87,12 @@ def _verdict(report: dict[str, Any]) -> dict[str, Any]:
     return report
 
 
-async def handle_deck_new(args: dict[str, Any]) -> str:
-    """Assemble a new deck file from a template and the Muse's slides, then check it."""
+async def handle_deck_new(args: dict[str, Any], ctx: HandlerCtx | None = None) -> str:
+    """Assemble a new deck file from a template and the Muse's slides, then check it.
+
+    Only in a look the person chose (:mod:`~omnigent.superchat.decks.look`): otherwise nothing is
+    built and the "Which look?" card is returned instead, which ends the turn.
+    """
     raw = args.get("path")
     template = args.get("template")
     title = args.get("title")
@@ -103,16 +103,9 @@ async def handle_deck_new(args: dict[str, Any]) -> str:
         return error("deck_new requires a title")
     if not isinstance(template, str) or template not in kit.templates():
         return error(f"deck_new template must be one of: {', '.join(kit.templates())}")
-    look_from = args.get("look_from")
-    if look_from == "ask":
-        return error(ASK_FIRST)
-    if isinstance(slides, str) and slides.strip() and look_from not in DECK_LOOK_SOURCES:
-        return error(
-            "deck_new requires look_from: "
-            + ", ".join(s for s in DECK_LOOK_SOURCES if s != "ask")
-            + ". If none fits, the person has not chosen the look yet. "
-            + ASK_FIRST
-        )
+    problem, message = await verify_look(ctx, args.get("look_from"), template)
+    if problem is not None:
+        return json.dumps(look_card(problem, f"{title} {message}"), ensure_ascii=False)
     if not isinstance(slides, str) or not slides.strip():
         return json.dumps(
             {
@@ -204,11 +197,13 @@ async def handle_deck_theme_set(args: dict[str, Any]) -> str:
     return json.dumps(_verdict(report))
 
 
-async def handle_authoring_tool(tool_name: str, args: dict[str, Any]) -> str:
+async def handle_authoring_tool(
+    tool_name: str, args: dict[str, Any], ctx: HandlerCtx | None = None
+) -> str:
     """Dispatch ``deck_new`` / ``deck_check`` / ``deck_themes`` / ``deck_theme_set``."""
     try:
         if tool_name == "deck_new":
-            return await handle_deck_new(args)
+            return await handle_deck_new(args, ctx)
         if tool_name == "deck_themes":
             return await handle_deck_themes(args)
         if tool_name == "deck_theme_set":

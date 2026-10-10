@@ -76,7 +76,7 @@ async def handle_deck_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:
     if ctx.tool_name in DECK_AUTHORING_TOOL_NAMES:
         from omnigent.superchat.decks.authoring import handle_authoring_tool
 
-        return await handle_authoring_tool(ctx.tool_name, args)
+        return await handle_authoring_tool(ctx.tool_name, args, ctx)
     return await _export(ctx, args)
 
 

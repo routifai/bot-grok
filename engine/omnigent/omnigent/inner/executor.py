@@ -663,9 +663,10 @@ def classify_tool_result(
 #: turn's last word and the person's reply starts the next turn. Each executor maps it to its
 #: own stop primitive (Pi's ``terminate``, the Claude CLI's ``PostToolBatch`` hook).
 ENDS_TURN_KEY = "ends_turn"
-#: The only tools whose result may end the turn: Omnigent's own card tools that opt in. Any
-#: other tool's output (a file, a web page, shell output) is content, never a stop signal.
-ENDS_TURN_TOOLS = frozenset({"ask_clarification", "suggest_follow_ups"})
+#: The only tools whose result may end the turn: Omnigent's own card tools that opt in, and
+#: ``deck_new`` when it returns the "Which look?" card instead of a deck. Any other tool's output
+#: (a file, a web page, shell output) is content, never a stop signal.
+ENDS_TURN_TOOLS = frozenset({"ask_clarification", "suggest_follow_ups", "deck_new"})
 #: The MCP server name Omnigent's own tools are exposed under (``mcp__omnigent__<tool>``).
 _OMNIGENT_MCP_PREFIX = "mcp__omnigent__"
 
