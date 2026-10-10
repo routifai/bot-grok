@@ -275,3 +275,22 @@ describe("a message sent while Superchat was working", () => {
     expect(host.querySelector('[data-testid="message-queued-note"]')).toBeNull();
   });
 });
+
+it("folds a very long message to its first part until Show all is pressed", async () => {
+  const long = `${"word ".repeat(100_000)}END`;
+  const host = await mount(userMessage(long));
+  const bubble = host.querySelector('[data-testid="message-user-bubble"]');
+  const toggle = host.querySelector<HTMLButtonElement>('[data-testid="message-fold-toggle"]');
+  expect(bubble?.textContent?.length).toBeLessThan(1_600);
+  expect(bubble?.textContent).not.toContain("END");
+  expect(toggle?.textContent).toBe(`Show all (${long.length.toLocaleString("en")} characters)`);
+
+  await act(async () => toggle?.click());
+  expect(bubble?.textContent).toContain("END");
+  expect(toggle?.textContent).toBe("Show less");
+});
+
+it("shows a message under the fold whole, with no toggle", async () => {
+  const host = await mount(userMessage("short and sweet"));
+  expect(host.querySelector('[data-testid="message-fold-toggle"]')).toBeNull();
+});

@@ -37,6 +37,7 @@ import {
   useFailureNoteText,
   useInfoNoteText,
 } from "./FailureNote";
+import { FoldedText } from "./FoldedText";
 import { HelperTracker } from "./HelperTracker";
 import { accessibleReplyExcerpt, previewMessageText } from "./messageText";
 import { FALLBACK_BOT_COLOR } from "./shared";
@@ -516,7 +517,7 @@ export const MessageView = memo(function MessageView({
                   )}
                   dir="auto"
                 >
-                  {body}
+                  <FoldedText text={body} />
                 </div>
               ) : null}
               {message.delivered === "queued" ? (

@@ -3282,6 +3282,9 @@ msgstr "Replying to {replyName}"
 msgid "Replying to {replyName}: “{replyQuote}”"
 msgstr "Replying to {replyName}: “{replyQuote}”"
 
+msgid "Report"
+msgstr "Report"
+
 msgid "Research"
 msgstr "Research"
 
@@ -3574,11 +3577,17 @@ msgstr "Sheets"
 msgid "Show"
 msgstr "Show"
 
+msgid "Show all ({count} characters)"
+msgstr "Show all ({count} characters)"
+
 msgid "Show earlier messages"
 msgstr "Show earlier messages"
 
 msgid "Show hidden files"
 msgstr "Show hidden files"
+
+msgid "Show less"
+msgstr "Show less"
 
 msgid "Show list"
 msgstr "Show list"
@@ -3820,9 +3829,6 @@ msgstr "superchat is working"
 
 msgid "superchat reads it where it is; nothing is copied."
 msgstr "superchat reads it where it is; nothing is copied."
-
-msgid "superchat Report"
-msgstr "superchat Report"
 
 msgid "superchat starts fresh. You can still show earlier messages."
 msgstr "superchat starts fresh. You can still show earlier messages."
