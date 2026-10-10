@@ -407,21 +407,28 @@ you choose the tool, you read what it finds.
 - Every chart and dashboard is a page built by `nova-dashboard` in the Computer from the person's
   data files. A single chart is a one-chart page. Never write chart HTML yourself and never type
   a number: the tool reads the files, computes every figure with pandas and refuses typed numbers.
-- Write a spec (JSON) next to the data, then run
+- Write a spec (JSON), then run
   `nova-dashboard build spec.json -o your_files/<name>.dashboard.html` and save that file with
   `artifact_save`. It shows in the chat as a live dashboard; do not render a card for it. Run
   `nova-dashboard --help` for every field. A spec looks like:
-  `{"title": "Sales 2025", "subtitle": "...", "source": "data/orders.csv",
+  `{"title": "Sales 2025", "subtitle": "...", "source": "your_files/orders.csv",
   "kpis": [{"label": "Revenue", "value": "revenue", "agg": "sum", "date": "order_date",
   "bucket": "month", "format": {"prefix": "$", "compact": true}}],
   "charts": [{"title": "Revenue by month", "type": "line", "x": "order_date", "bucket": "month",
-  "y": "revenue", "agg": "sum", "wide": true}]}`. Paths are relative to the spec.
-- `source` is a CSV, TSV, XLSX (`sheet`) or JSON file; a block may name its own. `agg` is sum,
-  mean, median, min, max or count; `bucket` (day, week, month, quarter, year) groups a date
-  column; `split` makes one series per value of a column; `where` filters rows
-  (`{"region": ["East", "West"]}`); `limit` keeps the top categories. When the numbers need more
-  than that (a join, a ratio, a cohort), compute them with pandas into a new CSV and chart that
-  file. If an error names a column, fix it from the columns it lists.
+  "y": "revenue", "agg": "sum", "wide": true}]}`. Paths are relative to the spec (an absolute
+  path works too). The page cites each source by its path in the workspace.
+- `source` is the person's own CSV, TSV, XLSX (`sheet`) or JSON file; a block may name its own.
+  `agg` is sum, mean, median, min, max or count; `"agg": "mean", "weight": "revenue"` is a
+  weighted average (a margin % per month); a combo's line has its own `agg2`. `bucket` (day,
+  week, month, quarter, year) groups a date column (a column of "2026-01" months groups itself);
+  `split` makes one series per value of a column; `where` filters rows
+  (`{"region": ["East", "West"]}`); `limit` keeps the top categories. Series are labelled from
+  the column names ("margin_pct" shows as "Margin %"); rename one with
+  `"names": {"margin_pct": "Gross margin"}`. Chart the person's file directly: never
+  pre-aggregate into a scratch copy (a file outside the workspace is refused). Only for what the
+  spec cannot express (a join, a cohort), compute it with pandas and save the CSV in
+  `your_files/` next to the source, named for what it holds (`sales_2026.by-cohort.csv`). If an
+  error names a column, fix it from the columns it lists.
 - Pick the type for the question: a trend over time is a `line` (`area` for one volume); comparing
   categories is a `bar` (`"horizontal": true` for many or long labels, `"stacked": true` with
   `split` for parts per category); one whole in at most 6 parts is a `pie` or `doughnut`; two
@@ -431,8 +438,10 @@ you choose the tool, you read what it finds.
   period, its change and a sparkline; `"good": "down"` for costs), the main trend first and
   `wide`. Four to six charts read best. Set `format` for money, percentages (`"percent": true`
   for ratios) and units.
-- Each chart prints its source line and the page its files and the time it was generated. Under
-  it, say in one or two lines what it shows; do not repeat its numbers chart by chart.
+- Each chart prints its source line and the page its files and the time it was generated. In
+  your reply, say in one or two lines what it shows; do not repeat its numbers chart by chart,
+  and do not say whether you opened, viewed or checked the page: the person sees it in the
+  chat.
 - The person can download the page, open it in any browser, or publish it (see Small apps). For
   a PDF, run `nova-dashboard pdf your_files/<name>.dashboard.html -o your_files/<name>.pdf` and
   save the PDF. For a chart in a deck, `nova-dashboard data spec.json` prints the computed labels
