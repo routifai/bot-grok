@@ -263,11 +263,17 @@ RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 # (the binary/package map `omnigent setup` installs from) — keep the
 # two in sync. Unpinned on purpose: the official image is rebuilt by
 # CI, so it tracks the same "latest" a laptop install would get.
-RUN npm install -g --no-audit --no-fund \
-      @anthropic-ai/claude-code \
-      @openai/codex \
-      @earendil-works/pi-coding-agent \
- && npm cache clean --force
+#
+# BAKED_HARNESSES picks which of the default CLIs the image carries (default: all of them); a
+# deployment that only runs some harnesses leaves the rest out, e.g. BAKED_HARNESSES="claude pi".
+ARG BAKED_HARNESSES="claude codex pi kiro agy"
+RUN set -eu; pkgs=""; \
+    for h in $BAKED_HARNESSES; do case "$h" in \
+      claude) pkgs="$pkgs @anthropic-ai/claude-code" ;; \
+      codex) pkgs="$pkgs @openai/codex" ;; \
+      pi) pkgs="$pkgs @earendil-works/pi-coding-agent" ;; \
+    esac; done; \
+    if [ -n "$pkgs" ]; then npm install -g --no-audit --no-fund $pkgs && npm cache clean --force; fi
 
 # Kiro CLI is not published as an npm package, and its installer has NO version
 # flag — `curl …/install | bash` always fetches `latest`, so the image was
@@ -288,6 +294,7 @@ ARG KIRO_CLI_VERSION=2.10.0
 ARG KIRO_CLI_SHA256_AMD64=be9d8b6d7c44f93a83ca22466043d98ad058e6ed3c12fffd068f3fb8a60b3b70
 ARG KIRO_CLI_SHA256_ARM64=0afb37399b9e2847c2f2e3f5d9052c8bc52bbf1e30401ea284a602661bce34bc
 RUN set -eu; \
+    case " $BAKED_HARNESSES " in *" kiro "*) ;; *) echo "kiro-cli not baked"; exit 0 ;; esac; \
     case "$(uname -m)" in \
       x86_64)  asset="kirocli-x86_64-linux.zip";  sha="$KIRO_CLI_SHA256_AMD64" ;; \
       aarch64) asset="kirocli-aarch64-linux.zip"; sha="$KIRO_CLI_SHA256_ARM64" ;; \
@@ -337,6 +344,7 @@ ENV AGY_VERSION=${AGY_VERSION} \
     AGY_SHA256_AMD64=${AGY_SHA256_AMD64} \
     AGY_SHA256_ARM64=${AGY_SHA256_ARM64}
 RUN set -eu; \
+    case " $BAKED_HARNESSES " in *" agy "*) ;; *) echo "agy not baked"; exit 0 ;; esac; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
       amd64) asset="agy_cli_linux_x64.tar.gz"; sha="$AGY_SHA256_AMD64" ;; \
