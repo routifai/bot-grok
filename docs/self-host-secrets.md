@@ -1,110 +1,48 @@
 # Self-host secrets checklist
 
-Required and optional credentials for published-images and Compose deploys. For a local
-laptop install, `./scripts/setup.sh` ([docs/SETUP.md](./SETUP.md)) generates all of these for you;
-this page documents what it fills in and how to do it by hand.
+Credentials for the Docker stack. `./scripts/setup.sh` ([SETUP.md](./SETUP.md)) generates the
+required ones; this page documents them for manual setup.
 
-**Never commit `.env`, never paste secret values into issues/PRs, and never
-overwrite an existing `.env` without an explicit backup and operator consent.**
+Never commit `.env`, paste secret values into issues or PRs, or overwrite an existing `.env`
+without a backup.
 
-## Published images: what the installer fills
+## Required (setup.sh fills blanks)
 
-`bash install-images.sh` (without a pre-existing `.env`) copies
-`.env.images.example` and fills empty required keys with `openssl`:
-
-| Key | Installer fill | Role |
+| Key | Generate with | Role |
 | --- | --- | --- |
-| `POSTGRES_PASSWORD` | `openssl rand -hex 16` | Postgres role password inside Compose |
-| `BETTER_AUTH_SECRET` | `openssl rand -hex 32` | Auth/session signing |
-| `ENCRYPTION_KEY` | `openssl rand -hex 32` | Encrypts stored credentials at rest |
-| `SCREEN_PROXY_SECRET` | `openssl rand -hex 32` | Signs short-lived `/novnc/*` screen capabilities |
-| `SANDBOX_SUPERVISOR_TOKEN` | `openssl rand -hex 32` | API ↔ sandbox supervisor auth |
+| `POSTGRES_PASSWORD` | `openssl rand -hex 16` | Postgres role password (keep it URI-safe) |
+| `BETTER_AUTH_SECRET` | `openssl rand -hex 32` | sign-in and session signing |
+| `ENCRYPTION_KEY` | `openssl rand -hex 32` | encrypts stored credentials at rest |
+| `SCREEN_PROXY_SECRET` | `openssl rand -hex 32` | signs short-lived proxy capabilities |
+| `SANDBOX_SUPERVISOR_TOKEN` | `openssl rand -hex 32` | API to supervisor auth |
+| `OMNIGENT_PROXY_SECRET` | `openssl rand -hex 32` | signs API to engine calls |
+| `OMNIGENT_VAULT_KEY` | `openssl rand -base64 32 \| tr '+/' '-_' \| tr -d '='` | seals saved model keys |
 
-Re-runs **preserve** an existing `.env` (they do not rotate secrets). Empty
-required keys still fail closed at Compose validate time
-(`${VAR:?Set … in .env}`).
+Use independent values; never reuse one string across keys. `SUPERCHAT_UPDATER_TOKEN` (only with
+the prod overlay's updater) must also be distinct. Empty required keys fail closed at Compose
+validate time.
 
-Manual generation (same shapes the installer uses):
+Existing `pgdata` volumes keep the user, password and database from first init. Keep those values
+in `.env`, or change them in place with `ALTER ROLE`; recreate the volume only after a backup
+(`docker compose down -v` deletes all Postgres state). Rotating `ENCRYPTION_KEY` or
+`OMNIGENT_VAULT_KEY` after secrets were stored makes them unreadable.
 
-```bash
-openssl rand -hex 16   # POSTGRES_PASSWORD
-openssl rand -hex 32   # BETTER_AUTH_SECRET, ENCRYPTION_KEY, SCREEN_PROXY_SECRET, SANDBOX_SUPERVISOR_TOKEN
-```
-
-Source-checkout `.env.example` also requires `POSTGRES_PASSWORD` (same
-`openssl rand -hex 16` shape) for `infra/compose/docker-compose.yml`. Put the
-same value in host-side `DATABASE_URL` when using the optional
-`docker-compose.postgres-host.yml` overlay. Keep the password URI-safe: Compose
-interpolates it into `DATABASE_URL` the same way the images stack does. Hex from
-`openssl rand` is safe; characters such as `@ : / ? # %` are not.
-
-Existing source-checkout `pgdata` volumes keep the user, password, and database
-from first init (often the former hardcoded `superchat` / `superchat`). Keep those
-values in `.env`, or change them in place with `ALTER ROLE` / rename. Recreate
-the volume only after a backup (or when the data is disposable);
-`docker compose down -v` deletes all Postgres state.
-
-Source-checkout `.env.example` asks for a **64-hex** `ENCRYPTION_KEY` in
-comments; published-images installer uses 32 bytes of hex (64 hex chars) via
-`openssl rand -hex 32`. Prefer long independent random values either way.
-Do not reuse one string across keys.
-
-## Distinctness rules
-
-These must be **independent** random values (do not copy-paste the same
-secret into multiple keys):
-
-- `BETTER_AUTH_SECRET`
-- `ENCRYPTION_KEY`
-- `SCREEN_PROXY_SECRET`
-- `SANDBOX_SUPERVISOR_TOKEN`
-- `SUPERCHAT_UPDATER_TOKEN` (only if the updater profile is enabled; ≥32 chars,
-  also distinct from the four above)
-
-Rotating `ENCRYPTION_KEY` after credentials were stored makes old ciphertext
-unreadable. Keep the original key for an existing deployment unless you
-intentionally wipe encrypted material.
-
-## Optional keys (leave blank if unused)
-
-From `.env.images.example` (images installer). Leave blank if unused:
+## Optional (leave blank if unused)
 
 | Key(s) | When needed |
 | --- | --- |
-| `OPENROUTER_API_KEY` | Deployment-wide OpenRouter models |
-| `TYPESAFE_API_KEY` | Optional TypeSafe Jev Auto Review verifier (`SUPERCHAT_AUTO_REVIEW_PROVIDER=jev`) |
-| `COMPOSIO_API_KEY` | Composio managed catalog |
-| `E2B_API_KEY` / `DAYTONA_API_KEY` / `BOX_API_KEY` | Remote computers when `SANDBOX_PROVIDER` is not `docker` |
-| `SMTP_URL` / `EMAIL_FROM` | Password-recovery email |
-| Messaging tokens (Slack, Telegram, …) | Only if you enable those surfaces |
+| `ANTHROPIC_API_KEY` | models without LiteLLM |
+| `LITELLM_BASE_URL`, `LITELLM_API_KEY` | models through a LiteLLM proxy (overlays) |
+| `OPENROUTER_API_KEY` | OpenRouter models |
+| `TAVILY_API_KEY` | web search |
+| `COMPOSIO_API_KEY` | app-integration catalog |
+| `SMTP_URL` | email delivery for sign-up modes other than `closed` on a hosted deployment |
 
-Blank optional keys are normal for a minimal published-images boot. Pipedream
-Connect keys appear only in source/Compose `.env.example`, not the images
-example.
+## Recovery
 
-## Operator workflow
-
-```bash
-bash install-images.sh --prepare-only   # creates .env + fills empties
-# inspect key NAMES only if debugging; never log values
-bash install-images.sh                  # pull + up; preserves .env
-curl -fsS http://127.0.0.1:3100/health
-```
-
-If `sandbox` in `/health` is `"none"` or the supervisor never becomes healthy,
-check that `SANDBOX_SUPERVISOR_TOKEN` is set and non-empty for the Docker
-computer path. A missing token is a setup failure, not an "optional tighten
-later" item.
-
-## Recovery without reprinting secrets
-
-- Lost UI password: use SMTP recovery if configured; otherwise operator
-  identity recovery is out of band (DB). Prefer not to rotate
-  `BETTER_AUTH_SECRET` casually on a live deploy.
-- Lost `.env`: from backup only. Recreating random secrets on a volume that
-  still holds Postgres data will desynchronize passwords and encryption.
-- Moving hosts: copy `.env` and volumes together; treat `.env` as secret
-  material in transit.
+- Lost `.env`: restore from backup only. New random secrets on a volume that still holds Postgres
+  data desynchronize the password and the encrypted material.
+- Moving hosts: copy `.env` and volumes together and treat `.env` as secret material in transit.
 
 ## Related
 

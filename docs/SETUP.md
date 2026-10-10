@@ -1,164 +1,110 @@
 # Run Superchat locally with Docker
 
-This builds the app stack (Postgres, API, worker, web, sandbox supervisor) from this checkout with
-Docker Compose. **Chat needs the Omnigent engine, which this stack does not start**: run it as
-described in the [README quickstart](../README.md#quickstart-local-development) and
-[RUNNERS.md](super-chat/RUNNERS.md), then set `OMNIGENT_URL` and `OMNIGENT_PROXY_SECRET` in `.env`.
-The `PI_DEFAULT_*` model settings below apply to the app's own model features, not to the Muse's
-model (see the README's Configuration table).
+`./scripts/setup.sh` builds the whole stack from this checkout with Docker Compose. Architecture
+and the overlay table are in the [README](../README.md#run-with-docker); this page is the walkthrough.
 
 ## Prerequisites
 
-- **macOS**: [Docker Desktop](https://www.docker.com/products/docker-desktop/), or
-  [colima](https://github.com/abiosoft/colima) (`brew install colima docker docker-compose`) started with
-  enough resources for a Postgres, four app processes, and at least one bot computer:
+- Docker with the Compose plugin: Docker Desktop, colima
+  (`colima start --cpu 4 --memory 8 --disk 60`) or Docker Engine on Linux.
+- `openssl` and `curl`.
+- About 4 CPUs, 8 GB RAM and 40 GB of Docker disk (the first build needs room for its cache).
 
-  ```bash
-  colima start --cpu 4 --memory 8 --disk 60
-  ```
+Node.js and pnpm are not needed; everything builds in Docker.
 
-- **Linux**: Docker Engine + the Compose plugin (`docker compose version` should work).
-- `openssl` and `curl` (already on macOS and most Linux distributions).
-- About 4 CPUs / 8 GB RAM free, and a Docker disk of at least 40 GB (the first build needs room
-  for its cache; Docker Desktop: Settings → Resources → Disk usage limit).
+## What the stack runs
 
-You do **not** need Node.js or pnpm — everything builds inside Docker.
+One Compose project, `superchat`, from `infra/compose/docker-compose.yml`:
 
-## Quick start
+| Service | Role | Host port |
+|---|---|---|
+| `postgres` | one database, `superchat_db` (app and engine schemas); `db-init` creates the schemas | none |
+| `engine` | Omnigent agent server | `8012` (`SUPERCHAT_ENGINE_PORT`) |
+| `supervisor` | starts and stops each person's Computer | none |
+| `api` | sign-in, accounts, authorization | `3100` (`SUPERCHAT_API_PORT`) |
+| `worker` | background jobs for the API | none |
+| `web` | the interface | `5173` (`SUPERCHAT_WEB_PORT`) |
 
-```bash
-git clone <repository-url> superchat && cd superchat
+The Computer (`superchat/computer:local`) is a headless Ubuntu 24.04 container, one per person. It
+has no desktop or screen. The engine's runner there dials back to `ENGINE_PUBLIC_URL`, which is why
+the engine port is published.
+
+## Setup
+
+```sh
 ./scripts/setup.sh
 ```
 
-That's it. The script:
+The script:
 
 1. Checks Docker is installed and running.
-2. Creates `.env` from `.env.docker.example` (skipped if `.env` already exists).
-3. Fills every required secret with `openssl rand` (Postgres password, auth secret, encryption
-   key, screen-proxy secret, sandbox-supervisor token).
-4. Detects your Docker socket path (Docker Desktop vs. colima) for the sandbox supervisor.
-5. Asks once for an optional OpenRouter API key to connect a model for every account — press
-   Enter to skip and connect one per-account from the UI instead (see below).
-6. Builds the computer image (`superchat/computer:local`) and the api/worker/web/supervisor images
-   from this checkout, then starts the stack and waits for it to become healthy.
+2. Creates `.env` from `.env.docker.example`, or keeps yours and only adds missing keys.
+3. Fills blank secrets with `openssl rand`: `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`,
+   `ENCRYPTION_KEY`, `SCREEN_PROXY_SECRET`, `SANDBOX_SUPERVISOR_TOKEN`, `OMNIGENT_PROXY_SECRET`
+   and `OMNIGENT_VAULT_KEY`.
+4. Moves the web and API ports if `5173` or `3100` are taken, and keeps `BETTER_AUTH_URL`,
+   `WEB_ORIGIN` and `API_URL` in step.
+5. Copies `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `TAVILY_API_KEY`, `LITELLM_BASE_URL` and
+   `LITELLM_API_KEY` from your environment when `.env` lacks them. If neither an Anthropic key nor
+   `LITELLM_BASE_URL` is set, it asks for an Anthropic key (Enter skips; the engine then has no
+   model until you add one to `.env`).
+6. Builds the Computer image and the other images, starts the stack and waits for it to be healthy.
 
-When it finishes, open **http://127.0.0.1:5173**.
+## Models
+
+No model is named in configuration. The engine lists models from its connection, and an admin picks
+the default, fast and strong models in **Settings > Models**.
+
+- **Anthropic**: set `ANTHROPIC_API_KEY` in `.env`.
+- **Local models or your own gateway**: route all model calls through LiteLLM with an overlay.
+  Set `LITELLM_BASE_URL` (root URL, no `/v1`) and `LITELLM_API_KEY` in `.env`, then add one of:
+
+  | Overlay | What |
+  |---|---|
+  | `docker-compose.litellm.yml` | an existing LiteLLM proxy |
+  | `docker-compose.litellm-local.yml` | a local proxy on `4000` (`LITELLM_PORT`), configured in `infra/compose/litellm/config.yaml` |
+
+  ```sh
+  docker compose --env-file .env -f infra/compose/docker-compose.yml \
+    -f infra/compose/docker-compose.litellm.yml up -d --build
+  ```
+
+  Inside Docker, `localhost` is the container; reach a proxy on your machine at
+  `host.docker.internal`. The key stays in the engine and never enters a Computer.
+
+## Restricted networks
+
+Base images and package mirrors are build args set in `.env`: `BASE_IMAGE`, `NODE_IMAGE`,
+`APT_MIRROR`, `NPM_CONFIG_REGISTRY`, `PYPI_INDEX_URL` and `PLAYWRIGHT_DOWNLOAD_HOST`. They are
+commented out by default (public sources); see `.env.docker.example` for what each one replaces.
+See also [self-host-restricted-network.md](./self-host-restricted-network.md).
 
 ## First sign-up
 
-The **first account you register becomes the deployment owner**. There's no separate admin
-setup step — just sign up like any other user.
+The first account you register becomes the deployment owner. There is no separate admin step.
 
-## Choosing the model
+## Data and backups
 
-Set the model once in `.env`. Superchat then uses it for everyone, and nobody is asked to connect a
-model in the app. After editing `.env`, re-run `./scripts/setup.sh`.
+Postgres lives in the `superchat_pgdata` volume, the engine's state in `superchat_enginedata`, and
+Computer homes under `./data`. Back up with `./scripts/backup.sh` (see
+[self-host.md](./self-host.md#backup)).
 
-**OpenRouter or Anthropic**
+## Stop, update, reset
 
-```bash
-PI_DEFAULT_PROVIDER=openrouter      # or anthropic
-OPENROUTER_API_KEY=sk-or-...        # or ANTHROPIC_API_KEY=sk-ant-...
-PI_DEFAULT_MODEL=                   # optional; blank uses Superchat's default for that provider
+```sh
+./scripts/stop.sh     # stop, keep all data
+./scripts/reset.sh    # stop and DELETE all data (asks first)
+git pull && ./scripts/setup.sh   # update; keeps .env and secrets
 ```
-
-**Your own OpenAI-compatible server (LiteLLM, vLLM, Ollama, LM Studio)**
-
-```bash
-PI_DEFAULT_PROVIDER=local
-SUPERCHAT_LOCAL_MODELS_URL=http://host.docker.internal:4000/v1   # LiteLLM on this machine
-SUPERCHAT_LOCAL_MODELS=gpt-4o,claude-sonnet                       # as the server names them; first = default
-SUPERCHAT_LOCAL_MODELS_API_KEY=sk-litellm-...                     # only if the server needs a key
-SUPERCHAT_LOCAL_VISION_MODELS=gpt-4o,claude-sonnet                # the ones that accept images
-```
-
-- Inside Docker, `localhost` is the container itself, so a server on your laptop is
-  `host.docker.internal`. A server elsewhere on your network: use its LAN address or hostname.
-- List the image-capable models in `SUPERCHAT_LOCAL_VISION_MODELS` so Superchat can see its computer's
-  screen.
-
-People can still connect their own model under **Settings → Models** if you leave all of this
-blank.
-
-## What gets created
-
-| Thing | Where |
-| --- | --- |
-| `.env` | Repo root — your secrets and settings. Never commit this. |
-| Postgres data | Docker volume `superchat_pgdata` (internal network only, no host port) |
-| Bot computer / app data | `./data` in this checkout |
-| Images | `superchat/computer:local` (bot computers), `superchat/app:local` (api/worker/web share one build), `superchat-supervisor` (sandbox supervisor) |
-
-Everything runs under the Compose project name `superchat`; containers are named `superchat-<service>-1`.
-
-## Where data lives / backups
-
-Bot computer homes and other application state live under `./data`; Postgres lives in the
-`superchat_pgdata` Docker volume. Back both up with:
-
-```bash
-./scripts/backup.sh
-```
-
-See [self-hosting: Backup](./self-host.md#backup) for what that script does and how to restore.
-
-## Stopping and updating
-
-```bash
-./scripts/stop.sh    # stop containers, keep all data
-./scripts/reset.sh    # stop containers and DELETE all data (asks for confirmation first)
-```
-
-To update to the latest code:
-
-```bash
-git pull
-./scripts/setup.sh
-```
-
-Re-running `setup.sh` is safe: it keeps your existing `.env` and secrets, and only rebuilds and
-restarts the stack.
 
 ## Troubleshooting
 
-**A bot's computer pane is black, or never leaves "starting."**
-The sandbox supervisor mounts the Docker socket to start per-Superchat computers. The mount path is
-resolved inside the Docker VM, where both Docker Desktop and colima use `/var/run/docker.sock`, so
-leave `DOCKER_SOCKET_PATH` blank. Set it only for unusual setups such as rootless Docker on Linux
-(for example `/run/user/1000/docker.sock`). Never use colima's Mac-side
-`~/.colima/default/docker.sock` there: Docker can't mount a path from your Mac.
-
-After changing it, restart: `docker compose -f infra/compose/docker-compose.yml up -d --force-recreate supervisor`.
-
-If the computer still can't be reached after that (common on some Docker Desktop networking
-setups), set `SANDBOX_CONTROL_VIA_LOOPBACK=true` in `.env` and restart the supervisor the same
-way — this publishes the bot's control channel on a token-guarded loopback port instead of
-routing through the container network.
-
-**API fails to start / crashes on boot.**
-Check the logs: `docker compose -f infra/compose/docker-compose.yml logs api`. A missing or
-empty `POSTGRES_PASSWORD`, `SANDBOX_SUPERVISOR_TOKEN`, or `SCREEN_PROXY_SECRET` fails the stack
-closed by design — re-run `./scripts/setup.sh` to fill any that are still blank.
-
-**"Too many database connections" / pool errors under load.**
-Each of `api` and `worker` keeps its own bounded Postgres pool (`api` defaults to 4 connections,
-`worker` to 8). If you also run other tools against the same Postgres, set `DB_POOL_MAX` in
-`.env` to size both processes explicitly (see `.env.example` for details), then restart.
-
-**Port already in use (3100 or 5173).**
-`./scripts/setup.sh` moves to the next free port on its own and prints the address to open. It
-also points the app's own URLs (`BETTER_AUTH_URL`, `WEB_ORIGIN`, `API_URL`) at that port. To choose
-ports yourself, set `SUPERCHAT_WEB_PORT` / `SUPERCHAT_API_PORT` in `.env` and re-run the script; don't
-change only the port, or sign-in and the page's product settings won't match.
-
-**Still stuck?** See the full [self-hosting guide](./self-host.md) for provider setup, SMTP,
-messaging integrations, and the single-VM production deployment path.
-
-## Uninstall
-
-```bash
-./scripts/reset.sh    # stops containers and deletes the database + ./data
-docker image rm superchat/computer:local   # optional: also drop the built computer image
-cd .. && rm -rf superchat                   # remove the checkout itself
-```
+- **A Computer never starts.** The supervisor mounts the Docker socket. Leave `DOCKER_SOCKET_PATH`
+  blank for Docker Desktop and colima (the path resolves inside the Docker VM); set it only for
+  setups such as rootless Docker. Never use colima's Mac-side socket path.
+- **A Computer cannot reach the engine.** Check `ENGINE_PUBLIC_URL`. On native Linux use the Docker
+  bridge address (for example `http://172.17.0.1:8012`) and set `SUPERCHAT_ENGINE_BIND` to it.
+- **A service fails on boot.** `docker compose -f infra/compose/docker-compose.yml logs <service>`.
+  A blank required secret fails closed; re-run `./scripts/setup.sh` to fill it.
+- **Port in use.** Setup picks the next free port. To choose, set `SUPERCHAT_WEB_PORT` or
+  `SUPERCHAT_API_PORT` and re-run it, so the app URLs follow.
