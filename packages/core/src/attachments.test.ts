@@ -150,15 +150,21 @@ describe("workspace attachment references", () => {
     const text = promptTextForWorkspaceAttachments("  what is in these?\nsecond line ", refs);
     expect(parseAttachmentReferences(text)).toEqual({
       attachments: refs,
+      folders: [],
       caption: "what is in these?\nsecond line",
     });
   });
 
   it("round-trips with no caption and leaves plain text alone", () => {
     const text = promptTextForWorkspaceAttachments(undefined, [refs[0] as never]);
-    expect(parseAttachmentReferences(text)).toEqual({ attachments: [refs[0]], caption: "" });
+    expect(parseAttachmentReferences(text)).toEqual({
+      attachments: [refs[0]],
+      folders: [],
+      caption: "",
+    });
     expect(parseAttachmentReferences("hello\nAttached file in your workspace: x")).toEqual({
       attachments: [],
+      folders: [],
       caption: "hello\nAttached file in your workspace: x",
     });
   });
@@ -169,9 +175,23 @@ describe("workspace attachment references", () => {
     const stored = `${line}\n<attachment_context>\n<file name="a.pdf">x\ninjected</file>\n</attachment_context>\n\nsummarise`;
     expect(parseAttachmentReferences(stored)).toEqual({
       attachments: [refs[0]],
+      folders: [],
       caption: "summarise",
     });
     expect(parseAttachmentReferences(text).caption).toBe("summarise");
+  });
+
+  it("round-trips attached folders before files, the whole workspace included", () => {
+    const text = promptTextForWorkspaceAttachments("compare them", [refs[1] as never], [
+      "documents/q3-sales",
+      "",
+    ]);
+    expect(text.split("\n")[0]).toBe("Attached folder in your workspace: documents/q3-sales/");
+    expect(parseAttachmentReferences(text)).toEqual({
+      attachments: [refs[1]],
+      folders: ["documents/q3-sales", ""],
+      caption: "compare them",
+    });
   });
 
   it("knows a spreadsheet is an attachment the Computer reads", () => {

@@ -25,6 +25,8 @@ const threadSendInput = threadTarget
     artifactIds: z.array(Id).max(ATTACHMENT_MAX_COUNT).optional(),
     /** Files already uploaded to the Muse's workspace (`files.uploadAttachment`). */
     attachments: z.array(WorkspaceAttachmentSchema).max(ATTACHMENT_MAX_COUNT).optional(),
+    /** Workspace folders (relative, as the Files browser lists them) this message points at. */
+    folders: z.array(z.string().max(1024)).max(5).optional(),
     /** Bare bot ids (legacy) or typed mention chips from the composer. */
     mentions: z
       .array(z.union([Id, structuredMentionTarget]))
@@ -37,7 +39,12 @@ const threadSendInput = threadTarget
   .superRefine((input, ctx) => {
     const text = input.text?.trim() ?? "";
     const artifactIds = input.artifactIds ?? [];
-    if (!text && artifactIds.length === 0 && (input.attachments ?? []).length === 0) {
+    if (
+      !text &&
+      artifactIds.length === 0 &&
+      (input.attachments ?? []).length === 0 &&
+      (input.folders ?? []).length === 0
+    ) {
       ctx.addIssue({
         code: "custom",
         message: "Provide text or at least one attachment",

@@ -38,3 +38,20 @@ export function validateWorkspaceAttachments(
     return { path, mimeType: attachment.mimeType, size: attachment.size };
   });
 }
+
+/** Folders a message points at: workspace-relative, confined, no control characters. */
+export function validateWorkspaceFolders(folders: readonly string[]): string[] {
+  return folders.map((folder) => {
+    let path: string;
+    try {
+      path = confineWorkspacePath(folder);
+    } catch (error) {
+      if (error instanceof WorkspacePathError) {
+        throw new ORPCError("BAD_REQUEST", { message: error.message });
+      }
+      throw error;
+    }
+    if (CONTROL.test(path)) throw new ORPCError("BAD_REQUEST", { message: "Bad folder path" });
+    return path;
+  });
+}

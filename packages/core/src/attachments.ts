@@ -222,6 +222,16 @@ export function attachmentReferenceLine(ref: WorkspaceAttachmentRef): string {
   return `${REFERENCE_PREFIX}${ref.path} (${ref.mimeType}, ${ref.size} bytes)`;
 }
 
+// A folder attached to one message: a pointer only (its contents are never copied or inlined).
+// The Muse hands the reading to a Helper so the folder's files never fill the Conversation.
+const FOLDER_PREFIX = "Attached folder in your workspace: ";
+const FOLDER_LINE = /^Attached folder in your workspace: (.*)\/$/;
+
+/** The reference line for a workspace folder (workspace-relative, `""` is the whole workspace). */
+export function folderReferenceLine(path: string): string {
+  return `${FOLDER_PREFIX}${path}/`;
+}
+
 /** The attachment types the Computer reads (`files_ingest`): documents into Markdown and an
  * index, spreadsheets into a schema manifest (never row text). Images go to the model as images;
  * the other allowed types stay a path line. */
@@ -247,22 +257,31 @@ const CONTEXT_CLOSE = "</attachment_context>";
  * context at turn start and it is never stored, so a message is only the lines and the caption. */
 export function parseAttachmentReferences(text: string): {
   attachments: WorkspaceAttachmentRef[];
+  folders: string[];
   caption: string;
 } {
   const lines = text.split("\n");
   const attachments: WorkspaceAttachmentRef[] = [];
+  const folders: string[] = [];
   let index = 0;
   for (; index < lines.length; index += 1) {
-    const match = REFERENCE_LINE.exec(lines[index] ?? "");
+    const line = lines[index] ?? "";
+    const folder = FOLDER_LINE.exec(line);
+    if (folder) {
+      folders.push(folder[1] ?? "");
+      continue;
+    }
+    const match = REFERENCE_LINE.exec(line);
     if (!match) break;
     attachments.push({ path: match[1] ?? "", mimeType: match[2] ?? "", size: Number(match[3]) });
   }
-  if (attachments.length === 0) return { attachments, caption: text };
+  if (attachments.length === 0 && folders.length === 0)
+    return { attachments, folders, caption: text };
   if (lines[index] === CONTEXT_OPEN) {
     const close = lines.indexOf(CONTEXT_CLOSE, index);
     if (close !== -1) index = close + 1;
   }
-  return { attachments, caption: lines.slice(index).join("\n").trim() };
+  return { attachments, folders, caption: lines.slice(index).join("\n").trim() };
 }
 
 /** The text a Muse turn carries for workspace attachments: one reference line each, a blank line,
@@ -270,8 +289,12 @@ export function parseAttachmentReferences(text: string): {
 export function promptTextForWorkspaceAttachments(
   text: string | undefined,
   attachments: readonly WorkspaceAttachmentRef[],
+  folders: readonly string[] = [],
 ): string {
   const caption = text?.trim() ?? "";
-  const lines = attachments.map(attachmentReferenceLine).join("\n");
+  const lines = [
+    ...folders.map(folderReferenceLine),
+    ...attachments.map(attachmentReferenceLine),
+  ].join("\n");
   return [lines, caption].filter(Boolean).join("\n\n");
 }

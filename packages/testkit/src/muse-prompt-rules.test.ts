@@ -26,7 +26,8 @@ const rules = [
   "write the `rrule` yourself",
   "`next_fire_times`",
   "Never guess silently",
-  "For a followed topic only, never ask about day",
+  // Attached folders: a Helper reads them, never the Conversation itself.
+  "Never read an attached folder's files yourself",
   // Memory: profile facts always saved, instructions gated, no stored negation.
   "Always save them",
   "never store a negation",

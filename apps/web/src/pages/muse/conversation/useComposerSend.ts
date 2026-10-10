@@ -96,6 +96,8 @@ export function useComposerSend({
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const pendingRef = useRef<PendingAttachment[]>([]);
   pendingRef.current = pendingAttachments;
+  // Workspace folders the next message points at (a pointer, nothing is uploaded), per thread.
+  const [pendingFolders, setPendingFolders] = useState<{ threadKey: string; path: string }[]>([]);
   const [replyTarget, setReplyTarget] = useState<ThreadMessage | null>(null);
   const [replyQuote, setReplyQuote] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -117,6 +119,25 @@ export function useComposerSend({
     () => attachmentsForThread(pendingAttachments, inGroup ? groupId : active?.id),
     [active?.id, groupId, inGroup, pendingAttachments],
   );
+  const activePendingFolders = useMemo(() => {
+    const threadKey = inGroup ? undefined : active?.id;
+    return pendingFolders.filter((folder) => folder.threadKey === threadKey).map((f) => f.path);
+  }, [active?.id, inGroup, pendingFolders]);
+  const attachFolder = useCallback(
+    (path: string) => {
+      const threadKey = active?.id;
+      if (!threadKey || inGroup) return;
+      setPendingFolders((current) =>
+        current.some((folder) => folder.threadKey === threadKey && folder.path === path)
+          ? current
+          : [...current, { threadKey, path }],
+      );
+    },
+    [active?.id, inGroup],
+  );
+  const removeFolder = useCallback((path: string) => {
+    setPendingFolders((current) => current.filter((folder) => folder.path !== path));
+  }, []);
   // Keep the armed reply even when its parent leaves the loaded page: the
   // server resolves a paged-out target and degrades a deleted one to a plain
   // reply instead of failing the send.
@@ -354,12 +375,15 @@ export function useComposerSend({
       setFollowSignal((current) => current + 1);
       const originThreadKey = initialGroupTarget ?? initialBotTarget;
       const attachments = attachmentsForThread(pendingAttachments, originThreadKey);
+      const folders = initialGroupTarget
+        ? []
+        : pendingFolders.filter((f) => f.threadKey === originThreadKey).map((f) => f.path);
       // A file still being read (or one that failed) holds the message back; Send is disabled.
       if (attachmentsBlockSend(attachments)) return false;
       const plan = resolveComposerSendPlan({
         text,
         mentions,
-        hasAttachments: attachments.length > 0,
+        hasAttachments: attachments.length > 0 || folders.length > 0,
       });
       if (plan.isNoOp) return false;
       // The first real message closes the first-run welcome for good (muse/intro),
@@ -485,6 +509,7 @@ export function useComposerSend({
             mentions: plan.mentionPayload.length ? plan.mentionPayload : undefined,
             artifactIds: artifactIds.length ? artifactIds : undefined,
             attachments: workspaceAttachments.length ? workspaceAttachments : undefined,
+            folders: folders.length ? folders : undefined,
           });
           if (activeBotId.current === botTarget) {
             updateSnapshot((current) =>
@@ -507,6 +532,7 @@ export function useComposerSend({
         setPendingAttachments((current) =>
           current.filter((attachment) => attachment.threadKey !== originThreadKey),
         );
+        setPendingFolders((current) => current.filter((f) => f.threadKey !== originThreadKey));
         // Refresh sidebar status even when a bot→group reroute navigates away below.
         void refreshBots().catch(() => undefined);
         if (reroutedToGroup && groupTarget) {
@@ -544,6 +570,7 @@ export function useComposerSend({
       museMode,
       navigate,
       pendingAttachments,
+      pendingFolders,
       sending,
       t,
       userId,
@@ -640,6 +667,9 @@ export function useComposerSend({
   return {
     pendingAttachments,
     activePendingAttachments,
+    activePendingFolders,
+    attachFolder,
+    removeFolder,
     replyTarget,
     setReplyTarget,
     setReplyQuote,

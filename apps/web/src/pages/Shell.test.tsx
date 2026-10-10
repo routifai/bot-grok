@@ -102,6 +102,10 @@ vi.mock("@nova/ui-web", () => {
       <span data-testid="bot-avatar" data-identity={identity} />
     ),
     Button: (props: ComponentProps<"button">) => <button {...props} />,
+    Dialog: ({ children }: { children?: ReactNode }) => <>{children}</>,
+    DialogContent: Passthrough,
+    DialogDescription: Passthrough,
+    DialogTitle: Passthrough,
     cn: (...parts: unknown[]) => parts.filter(Boolean).join(" "),
     DropdownMenu: ({ children }: { children?: ReactNode }) => <>{children}</>,
     DropdownMenuContent: Passthrough,

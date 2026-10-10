@@ -49,6 +49,7 @@ import { ArtifactRegistryProvider } from "../features/artifacts/registry";
 import { useChatArtifacts } from "../features/artifacts/useChatArtifacts";
 import { ChartGallery, chartsExtension, isChartMessage } from "../features/charts";
 import { ComputerUpdateProgress } from "../features/computer/ComputerUpdateProgress";
+import { FolderPicker } from "../features/computer/FolderPicker";
 import { HostComputerPrompt } from "../features/computer/HostComputerPrompt";
 import { useComputer } from "../features/computer/useComputer";
 import { useComputerScreen } from "../features/computer/useComputerScreen";
@@ -248,6 +249,7 @@ export function ShellPage() {
   const active = inGroup ? undefined : (bots.find((b) => b.id === botId) ?? bots[0]);
   // The dock place open as a sheet, if any.
   const [dockSheet, setDockSheet] = useState<DockKey | null>(null);
+  const [folderPickerOpen, setFolderPickerOpen] = useState(false);
   // A new side chat opened from Files works in this folder; any other draft has none.
   const [draftFolder, setDraftFolder] = useState<string | null>(null);
   // The open Side Chat, shown as a full-size session replacing the Conversation
@@ -714,6 +716,9 @@ export function ShellPage() {
   });
   const {
     activePendingAttachments,
+    activePendingFolders,
+    attachFolder,
+    removeFolder,
     setReplyTarget,
     setReplyQuote,
     activeReplyTarget,
@@ -811,6 +816,9 @@ export function ShellPage() {
       running={composerRunning}
       disabled={Boolean(recordingSkill)}
       pendingAttachments={activePendingAttachments}
+      pendingFolders={activePendingFolders}
+      onAttachFolder={museMode && active && !inGroup ? () => setFolderPickerOpen(true) : undefined}
+      onRemoveFolder={removeFolder}
       attachmentNotice={attachmentNotice}
       uploadStatus={uploadStatus}
       sendError={sendError}
@@ -1190,6 +1198,14 @@ export function ShellPage() {
         )}
       </main>
 
+      {museMode && active ? (
+        <FolderPicker
+          botId={active.id}
+          open={folderPickerOpen}
+          onClose={() => setFolderPickerOpen(false)}
+          onPick={attachFolder}
+        />
+      ) : null}
       {museMode && active ? (
         <DockSheets
           botId={active.id}

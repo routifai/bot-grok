@@ -11,17 +11,26 @@ import {
   serializeComposerPrompt,
   truncateSlashDescription,
 } from "@nova/core";
-import { Button, cn } from "@nova/ui-web";
+import {
+  Button,
+  cn,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@nova/ui-web";
 import {
   AlertCircle,
   ArrowUp,
   Box,
+  Folder,
   Loader2,
   Mic,
   Paperclip,
   Plus,
   Settings,
   Square,
+  Upload,
   X,
 } from "lucide-react";
 import {
@@ -56,12 +65,17 @@ import {
 } from "./shared";
 import { slashActionLabel } from "./slashActionLabel";
 
+const NO_FOLDERS: readonly string[] = [];
+
 export const Composer = memo(function Composer({
   museMode,
   activeName,
   running,
   disabled,
   pendingAttachments = NO_ATTACHMENTS,
+  pendingFolders = NO_FOLDERS,
+  onAttachFolder,
+  onRemoveFolder,
   attachmentNotice,
   uploadStatus,
   sendError,
@@ -94,6 +108,11 @@ export const Composer = memo(function Composer({
   running: boolean;
   disabled?: boolean;
   pendingAttachments?: PendingAttachment[];
+  /** Workspace folders the next message points at. */
+  pendingFolders?: readonly string[];
+  /** Opens the folder picker; the + then offers "Attach a folder" beside uploads. */
+  onAttachFolder?: () => void;
+  onRemoveFolder?: (path: string) => void;
   attachmentNotice?: string | null;
   /** Progress while attachments are written to the Computer ("Uploading 2 of 3"). */
   uploadStatus?: string | null;
@@ -159,7 +178,8 @@ export const Composer = memo(function Composer({
     draft.trim().length > 0 ||
     selectedSkill !== null ||
     selectedMentions.length > 0 ||
-    pendingAttachments.length > 0;
+    pendingAttachments.length > 0 ||
+    pendingFolders.length > 0;
   // A file still being read, or one that failed, holds Send until it is ready, removed or retried.
   const attachmentsPending = attachmentsBlockSend(pendingAttachments);
 
@@ -564,6 +584,32 @@ export const Composer = memo(function Composer({
           {uploadStatus}
         </div>
       ) : null}
+      {pendingFolders.length ? (
+        <div className="mb-3 flex flex-wrap gap-2">
+          {pendingFolders.map((folder) => (
+            <div
+              key={folder}
+              data-testid="composer-folder"
+              className="flex items-center gap-2 rounded-full border border-tint-ink/40 bg-tint-ink/10 px-3 py-1.5 text-[13px] text-foreground"
+            >
+              <Folder size={14} strokeWidth={1.8} aria-hidden="true" className="text-tint-ink" />
+              <span className="max-w-[240px] truncate" dir="auto">
+                {folder ? folder.split("/").pop() : t`Whole workspace`}
+              </span>
+              {onRemoveFolder ? (
+                <button
+                  type="button"
+                  aria-label={t`Remove folder ${folder || t`Whole workspace`}`}
+                  onClick={() => onRemoveFolder(folder)}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <X size={12} strokeWidth={2} />
+                </button>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
       {pendingAttachments.length ? (
         <div className="mb-3 flex flex-wrap gap-2">
           {pendingAttachments.map((attachment) => (
@@ -736,21 +782,43 @@ export const Composer = memo(function Composer({
               className="hidden"
               onChange={(event) => void onAttachmentPick(event.target.files)}
             />
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label={t`Attach file`}
-              disabled={disabled}
-              onClick={() => fileInputRef?.current?.click()}
-              className={cn(
-                "size-8 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
-                museMode
-                  ? "size-[34px] border-0 bg-transparent text-ink-3"
-                  : "border border-border bg-muted",
-              )}
-            >
-              <Plus size={16} strokeWidth={2} />
-            </Button>
+            {onAttachFolder ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  aria-label={t`Attach`}
+                  disabled={disabled}
+                  className="grid size-[34px] shrink-0 place-items-center rounded-full text-ink-3 transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                >
+                  <Plus size={16} strokeWidth={2} />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" side="top" className="min-w-60">
+                  <DropdownMenuItem onClick={() => fileInputRef?.current?.click()}>
+                    <Upload size={15} aria-hidden="true" />
+                    {t`Upload from this device`}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={onAttachFolder}>
+                    <Folder size={15} aria-hidden="true" />
+                    {t`Attach a folder from the Computer`}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t`Attach file`}
+                disabled={disabled}
+                onClick={() => fileInputRef?.current?.click()}
+                className={cn(
+                  "size-8 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+                  museMode
+                    ? "size-[34px] border-0 bg-transparent text-ink-3"
+                    : "border border-border bg-muted",
+                )}
+              >
+                <Plus size={16} strokeWidth={2} />
+              </Button>
+            )}
           </>
         ) : null}
         <div

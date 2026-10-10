@@ -8,6 +8,7 @@ import {
   parseAttachmentReferences,
 } from "@nova/core";
 import { BotAvatar, cn, resolvePersonaColorDef } from "@nova/ui-web";
+import { Folder } from "lucide-react";
 import { memo, useMemo } from "react";
 import { CollaborationMarker } from "../../../components/ai/CollaborationMarker";
 import { CloudAgentCard } from "../../../components/CloudAgentCard";
@@ -465,11 +466,29 @@ export const MessageView = memo(function MessageView({
         if (block.kind === "text" && message.role === "user") {
           const files = parseAttachmentReferences(block.text);
           const ask = splitComposerAttachments(files.caption);
-          const hasChips = ask.chips.length > 0 || files.attachments.length > 0;
+          const hasChips =
+            ask.chips.length > 0 || files.attachments.length > 0 || files.folders.length > 0;
           const body = hasChips ? ask.rest : block.text;
           const fileBotId = "botId" in artifactTarget ? artifactTarget.botId : message.botId;
           return (
             <div key={i} className="flex w-fit max-w-full flex-col items-end gap-1.5">
+              {files.folders.map((folder) => (
+                <span
+                  key={`folder:${folder}`}
+                  data-testid="message-folder"
+                  className="inline-flex max-w-full items-center gap-2 rounded-full border border-tint-ink/40 bg-tint-ink/10 px-3 py-1.5 text-[13px] text-foreground"
+                >
+                  <Folder
+                    size={14}
+                    strokeWidth={1.8}
+                    aria-hidden="true"
+                    className="shrink-0 text-tint-ink"
+                  />
+                  <span className="truncate" dir="auto">
+                    {folder || t`Whole workspace`}
+                  </span>
+                </span>
+              ))}
               {files.attachments.map((attachment) => (
                 <WorkspaceAttachmentChip
                   key={attachment.path}

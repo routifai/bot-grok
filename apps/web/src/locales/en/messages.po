@@ -603,6 +603,18 @@ msgstr "at {timeSelect}"
 msgid "At the limit"
 msgstr "At the limit"
 
+msgid "Attach"
+msgstr "Attach"
+
+msgid "Attach {name}"
+msgstr "Attach {name}"
+
+msgid "Attach a folder"
+msgstr "Attach a folder"
+
+msgid "Attach a folder from the Computer"
+msgstr "Attach a folder from the Computer"
+
 msgid "Attach file"
 msgstr "Attach file"
 
@@ -2994,6 +3006,9 @@ msgstr "Person"
 msgid "Personal credential"
 msgstr "Personal credential"
 
+msgid "Pick a folder"
+msgstr "Pick a folder"
+
 msgid "Pick a time and I'll do this for you."
 msgstr "Pick a time and I'll do this for you."
 
@@ -3231,6 +3246,10 @@ msgstr "Remove"
 #. placeholder {0}: attachment.file.name
 msgid "Remove {0}"
 msgstr "Remove {0}"
+
+#. placeholder {0}: folder || t`Whole workspace`
+msgid "Remove folder {0}"
+msgstr "Remove folder {0}"
 
 msgid "Remove Git event"
 msgstr "Remove Git event"
@@ -3890,6 +3909,9 @@ msgstr "superchat couldn't start. Try again in a moment."
 msgid "superchat is working"
 msgstr "superchat is working"
 
+msgid "superchat reads it where it is; nothing is copied."
+msgstr "superchat reads it where it is; nothing is copied."
+
 msgid "superchat Report"
 msgstr "superchat Report"
 
@@ -4192,6 +4214,9 @@ msgstr "Updating…"
 msgid "Upload"
 msgstr "Upload"
 
+msgid "Upload from this device"
+msgstr "Upload from this device"
+
 #. placeholder {0}: uploaded + 1
 #. placeholder {1}: attachments.length
 msgid "Uploading {0} of {1}"
@@ -4393,6 +4418,9 @@ msgstr "Who can join"
 
 msgid "Who can open it"
 msgstr "Who can open it"
+
+msgid "Whole workspace"
+msgstr "Whole workspace"
 
 msgid "Why did churn rise in August?"
 msgstr "Why did churn rise in August?"
