@@ -11,7 +11,7 @@ vi.mock("react-dom/client", async (orig) =>
   ),
 );
 
-const api = vi.hoisted(() => ({ getById: vi.fn() }));
+const api = vi.hoisted(() => ({ getById: vi.fn(), listVersions: vi.fn() }));
 vi.mock("../../../lib/rpc", () => ({ rpc: { artifacts: api } }));
 vi.mock("@nova/chat-ui/web", () => ({
   ChatMarkdown: ({ children }: { children?: ReactNode }) => <div data-testid="md">{children}</div>,
@@ -103,4 +103,24 @@ it("shows a cover for office documents", async () => {
   const c = await render({ artifactId: "a5", name: "deck.pptx" });
   expect(c.textContent).toContain("deck.pptx");
   expect(c.querySelector("iframe")).toBeNull();
+});
+
+it("follows a deck that was still being saved when the card first rendered", async () => {
+  vi.useFakeTimers();
+  api.getById.mockResolvedValueOnce({ mimeType: "text/html", contentBase64: b64("") });
+  api.getById.mockResolvedValue({
+    mimeType: "text/html",
+    contentBase64: b64('<section class="slide">hi</section>'),
+  });
+  api.listVersions.mockResolvedValue([{ id: "v2" }]);
+  const c = await render({ artifactId: "d1", name: "x.deck.html" });
+  const preview = () => c.querySelector("[data-testid=artifact-preview]");
+  expect(preview()?.getAttribute("data-preview")).toBe("cover");
+  expect(c.querySelector("[data-testid=html]")).toBeNull();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(3100);
+  });
+  expect(preview()?.getAttribute("data-preview")).toBe("html");
+  expect(c.querySelector("[data-testid=html]")).not.toBeNull();
+  vi.useRealTimers();
 });
