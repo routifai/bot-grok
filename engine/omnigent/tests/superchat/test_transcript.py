@@ -101,6 +101,35 @@ def test_a_turn_shows_only_its_last_text_and_keeps_cards_and_chips() -> None:
     assert out[2]["blocks"][1]["card"]["card"] == "passages"
 
 
+def test_a_short_working_note_before_more_work_is_never_a_message() -> None:
+    check = {"slides": 5, "errors": ["Slide 2: runs past the edge"]}
+    running = [
+        _msg("u1", "user", "Academic Paper"),
+        _call("c1", "deck_check", "k1"),
+        _out("o1", "k1", check),
+        _msg("a1", "assistant", "Likely the long label/value wraps; shorten."),
+        _call("c2", "sys_os_edit", "k2"),
+        _out("o2", "k2", {"replacements": 1}),
+    ]
+    # mid-turn: the note is the newest text, yet the turn has no reply to show yet
+    assert [m["id"] for m in project_items(running)] == ["u1"]
+    done = [*running, _msg("a2", "assistant", "Your 5-slide deck is ready.")]
+    assert [m["id"] for m in project_items(done)] == ["u1", "a2"]
+    # a short answer before a card, a file or a Helper is the answer, not a note
+    card = {"type": "card", "card": "follow_ups", "data": {"suggestions": ["x"]}}
+    answered = [
+        _msg("u1", "user", "hi"),
+        _msg("a1", "assistant", "Done, it is saved."),
+        _call("c1", "suggest_follow_ups", "k1"),
+        _out("o1", "k1", card),
+    ]
+    assert [m["id"] for m in project_items(answered)][:2] == ["u1", "a1"]
+    # a longer text before more work stays the turn's text until a later one replaces it
+    long = "I am reading the spreadsheet first, then I will build the five slides from it."
+    reading = [_msg("u1", "user", "deck"), _msg("a1", "assistant", long), _call("c1", "x", "k")]
+    assert [m["id"] for m in project_items(reading)] == ["u1", "a1"]
+
+
 def test_system_notice_and_hidden_context_are_dropped() -> None:
     items = [
         _msg("n1", "user", "timer fired", is_system_notice=True),

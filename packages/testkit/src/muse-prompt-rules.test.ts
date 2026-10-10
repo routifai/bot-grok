@@ -31,6 +31,9 @@ const rules = [
   "Always save them",
   "never store a negation",
   '`explicitness: "inferred"`',
+  // Between tool calls: no status lines and no notes to itself; they reach the person.
+  "no notes to yourself",
+  "between\n  calls write nothing",
 ];
 
 describe("Muse prompt rules", () => {
