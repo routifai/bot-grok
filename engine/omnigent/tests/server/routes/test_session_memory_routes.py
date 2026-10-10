@@ -145,6 +145,20 @@ async def test_remember_then_search_round_trips(client: httpx.AsyncClient, db_ur
     assert results[0]["kind"] == "preference"
 
 
+async def test_remember_stores_inferred_explicitness(
+    client: httpx.AsyncClient, db_uri: str
+) -> None:
+    session_id = await _make_session(db_uri)
+    resp = await client.post(
+        f"/v1/sessions/{session_id}/memory/remember",
+        json={"text": "The user likes Corporate Clean", "kind": "preference",
+              "explicitness": "inferred"},
+        headers=_headers(),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["claim"]["explicitness"] == "inferred"
+
+
 async def test_search_is_isolated_per_owner(client: httpx.AsyncClient, db_uri: str) -> None:
     alice_session = await _make_session(db_uri, owner="alice@example.com")
     bob_session = await _make_session(db_uri, owner="bob@example.com")

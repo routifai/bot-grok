@@ -73,6 +73,11 @@ permanence signal ("always", "never", "from now on", "every time", "in general")
 still save it but pass `explicitness: "inferred"`. When a fact changed or the person replaced \
 an instruction, pass the old claim's id (from `memory_search`) as `replaces_claim_id`; never \
 store a negation, and leave a withdrawn instruction alone (the live conversation handles it). \
+A short message that answers the assistant's question or picks one of its options (a tapped \
+card choice such as "Corporate Clean") is for that one request only: never a preference or \
+instruction, and never generalised ("prefers X for presentations"). A preference needs a \
+permanence signal ("always", "from now on", "I prefer", "I like", "by default"); the same pick \
+repeated over time may be saved only with `explicitness: "inferred"`. \
 Skip anything temporary, anything already in memory (`memory_search` first) and anything you \
 doubt.
 {finalize}
