@@ -21,18 +21,9 @@ function currentTheme(): "light" | "dark" {
   return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
 }
 
-/**
- * A chart's Library thumbnail: the server-rendered PNG (`charts.thumbnail`), fetched once the
- * card is on screen, in the theme the app is in. The chart icon stands in until it arrives, and
- * stays (with a quiet tooltip) when the server could not draw it.
- */
-export function ChartThumbnail({ artifactId, version }: { artifactId: string; version?: number }) {
-  const { t } = useLingui();
+/** The theme the app is in (its `data-theme`), kept current when the person switches it. */
+export function useAppTheme(): "light" | "dark" {
   const [theme, setTheme] = useState(currentTheme);
-  const key = `${artifactId}:${version ?? ""}:${theme}`;
-  const [src, setSrc] = useState<string | null>(() => images.get(key) ?? null);
-  const [failed, setFailed] = useState(false);
-
   useEffect(() => {
     const observer = new MutationObserver(() => setTheme(currentTheme()));
     observer.observe(document.documentElement, {
@@ -41,6 +32,20 @@ export function ChartThumbnail({ artifactId, version }: { artifactId: string; ve
     });
     return () => observer.disconnect();
   }, []);
+  return theme;
+}
+
+/**
+ * A chart's Library thumbnail: the server-rendered PNG (`charts.thumbnail`), fetched once the
+ * card is on screen, in the theme the app is in. The chart icon stands in until it arrives, and
+ * stays (with a quiet tooltip) when the server could not draw it.
+ */
+export function ChartThumbnail({ artifactId, version }: { artifactId: string; version?: number }) {
+  const { t } = useLingui();
+  const theme = useAppTheme();
+  const key = `${artifactId}:${version ?? ""}:${theme}`;
+  const [src, setSrc] = useState<string | null>(() => images.get(key) ?? null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     const cached = images.get(key);

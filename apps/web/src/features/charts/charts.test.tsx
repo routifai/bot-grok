@@ -310,3 +310,48 @@ it("claims dashboards: the chat card, the panel and the Library", () => {
     chartsExtension.thumbnail?.({ id: "d", name: "d.dashboard.json", version: 1 } as never),
   ).not.toBeNull();
 });
+
+it("shows a dashboard page live at full width, as tall as the page says, with Open", async () => {
+  const page = "<!doctype html><title>Sales</title><h1>Sales 2025</h1>";
+  api.getById.mockResolvedValue({ contentBase64: btoa(page) });
+  const open = vi.fn();
+  render(
+    <ArtifactPanelProvider value={{ open } as never}>
+      {chartsExtension.result?.({
+        artifactId: "d1",
+        name: "sales.dashboard.html",
+        version: 7,
+        data: {},
+      })}
+    </ArtifactPanelProvider>,
+  );
+  await act(async () => {});
+  const card = host.querySelector("[data-dashboard-page]") as HTMLElement;
+  expect(card.className).toContain("w-[48rem]");
+  const frame = card.querySelector("iframe") as HTMLIFrameElement;
+  expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
+  expect(frame.getAttribute("srcdoc")).toContain("Sales 2025");
+
+  const box = frame.parentElement as HTMLElement;
+  act(() => {
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "nova:dashboard-height", height: 910 },
+        source: frame.contentWindow,
+      }),
+    );
+  });
+  expect(box.style.height).toBe("910px");
+  // Another window cannot resize it.
+  act(() => {
+    window.dispatchEvent(
+      new MessageEvent("message", { data: { type: "nova:dashboard-height", height: 20 } }),
+    );
+  });
+  expect(box.style.height).toBe("910px");
+
+  act(() => (card.querySelector("button[aria-label^='Open']") as HTMLButtonElement).click());
+  expect(open).toHaveBeenCalledWith("d1");
+  expect(chartsExtension.card({ name: "sales.dashboard.html" } as never)?.meta).toBe("Dashboard");
+  expect(chartsExtension.result?.({ artifactId: "x", name: "page.html", data: {} })).toBeNull();
+});

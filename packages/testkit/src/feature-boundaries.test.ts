@@ -21,7 +21,6 @@ const CAPABILITIES: Record<LayerName, readonly string[]> = {
     "approvals",
     "apps",
     "artifacts",
-    "charts",
     "computer",
     "daily-notes",
     "decks",
@@ -124,8 +123,8 @@ const CAPABILITIES: Record<LayerName, readonly string[]> = {
 const BASES: Record<string, readonly string[]> = {
   // A deck is a saved HTML artifact (`*.deck.html`); exports are saved back as artifacts.
   decks: ["artifacts"],
-  // A chart is a saved JSON artifact (`*.chart.json`): its tool saves through artifacts, the
-  // web viewer opens in the artifact panel, the api renders its thumbnail from the artifact bytes.
+  // A chart or dashboard is a saved artifact (`*.dashboard.html`, older `*.chart.json`): the web
+  // viewer opens in the artifact panel, the api renders an older chart's thumbnail from its bytes.
   charts: ["artifacts"],
   sheets: ["artifacts"],
   apps: ["artifacts"],

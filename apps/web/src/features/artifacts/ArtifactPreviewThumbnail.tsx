@@ -1,3 +1,4 @@
+import { isDashboardPageName } from "@nova/contracts";
 import type { ReactNode, RefObject } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { SandboxedHtmlViewer } from "../../components/SandboxedHtmlViewer";
@@ -10,6 +11,8 @@ import { useArtifactExtensions } from "./registry";
 // A real preview is only cheap for images and small pages, so cap both the mime
 // types and the byte size that get one; everything else keeps its type icon.
 const HTML_PREVIEW_MAX_BYTES = 200_000;
+/** A dashboard page carries Chart.js inline (about 200 KB) on top of its data. */
+const DASHBOARD_PREVIEW_MAX_BYTES = 1_500_000;
 const IMAGE_PREVIEW_MAX_BYTES = 3_000_000;
 
 // A realistic desktop viewport, scaled down to cover the (16:10) thumbnail frame
@@ -31,11 +34,17 @@ export type PreviewableArtifact = {
 
 /** Whether this artifact gets a real rendered thumbnail (a small image or page), rather than
  * its type icon. */
-export function hasLivePreview(artifact: Pick<PreviewableArtifact, "mimeType" | "size">): boolean {
+export function hasLivePreview(
+  artifact: Pick<PreviewableArtifact, "mimeType" | "size"> & { name?: string },
+): boolean {
   const kind = artifactKind(artifact.mimeType);
+  const pageLimit =
+    artifact.name && isDashboardPageName(artifact.name)
+      ? DASHBOARD_PREVIEW_MAX_BYTES
+      : HTML_PREVIEW_MAX_BYTES;
   return (
     (kind === "image" && artifact.size <= IMAGE_PREVIEW_MAX_BYTES) ||
-    (kind === "page" && artifact.size <= HTML_PREVIEW_MAX_BYTES)
+    (kind === "page" && artifact.size <= pageLimit)
   );
 }
 
