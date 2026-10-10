@@ -210,7 +210,7 @@ def _builtin_contribution() -> SandboxProviderContribution:
                 name="computer",
                 launcher_class="omnigent.onboarding.sandboxes.computer:ComputerSandboxLauncher",
                 managed_token_ttl_s=7 * 24 * 3600,
-                # The Computer's home is a per-owner directory on the supervisor's disk.
+                # The Computer's home is a per-person Docker volume; it outlives the container.
                 workspace_survives_recreate=True,
             ),
         },

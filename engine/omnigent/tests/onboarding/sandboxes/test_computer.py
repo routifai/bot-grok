@@ -1,518 +1,298 @@
-"""Tests for :mod:`omnigent.onboarding.sandboxes.computer`.
+"""Tests for the "computer" sandbox launcher: a person's runner container on plain Docker.
 
-Fully offline: every HTTP call goes through ``httpx.MockTransport`` against a fake supervisor
-handler — no real Superchat supervisor, network, or Docker daemon involved.
+Fully offline: every Docker Engine call goes through ``httpx.MockTransport`` against a fake.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import struct
 from pathlib import Path
 
 import click
 import httpx
 import pytest
 
-from omnigent.onboarding.sandboxes import computer as computer_module
-from omnigent.onboarding.sandboxes.base import (
-    ExecModelHostLauncher,
-    RemoteCommandResult,
-    supervise_host_command,
-)
+from omnigent.onboarding.sandboxes.base import RemoteCommandResult, supervise_host_command
 from omnigent.onboarding.sandboxes.computer import (
-    HOME_ROOT_ENV_VAR,
-    SUPERVISOR_TOKEN_ENV_VAR,
-    SUPERVISOR_URL_ENV_VAR,
     ComputerSandboxLauncher,
-    _ensure_home,
+    _demux,
     _parse_sandbox_id,
+    container_name,
+    home_volume_name,
 )
 
-BOT_ID = "bot_abc123"
-SPACE_ID = "space_xyz789"
-CONTAINER_ID = "c0ffee1234567890"
-SANDBOX_ID = f"{BOT_ID}:{SPACE_ID}:{CONTAINER_ID}"
+KEY = "bot_abc123"
+TENANT = "space_xyz789"
+IMAGE = "superchat/computer:test"
+IMAGE_ID = "sha256:image-1"
+SANDBOX_ID = f"{KEY}:{TENANT}:c0ffee"
 
 
-@pytest.fixture(autouse=True)
-def _no_home_on_disk(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Launchers here use made-up home roots; only the home tests create real folders."""
-    if not request.node.name.startswith("test_ensure_home"):
-        monkeypatch.setattr(computer_module, "_ensure_home", lambda _path: None)
+def _frame(kind: int, data: bytes) -> bytes:
+    return bytes([kind, 0, 0, 0]) + struct.pack(">I", len(data)) + data
 
 
-def test_ensure_home_creates_the_missing_home(tmp_path: Path) -> None:
-    home = tmp_path / "homes" / BOT_ID
-    _ensure_home(str(home))
-    assert home.is_dir()
-    _ensure_home(str(home))  # an existing home is left as it is
-    assert home.is_dir()
+class FakeDocker:
+    """A Docker Engine API with one image and the containers a test creates."""
 
-
-class FakeSupervisor:
-    """Records every request and answers like Superchat's real sandbox supervisor would.
-
-    :param computers_status: HTTP status ``POST /computers`` returns.
-    :param computers_body: JSON body ``POST /computers`` returns on success.
-    :param exec_status: HTTP status the exec endpoint returns.
-    :param exec_body: JSON body the exec endpoint returns on success.
-    """
-
-    def __init__(
-        self,
-        *,
-        computers_status: int = 200,
-        computers_body: dict[str, object] | None = None,
-        exec_status: int = 200,
-        exec_body: dict[str, object] | None = None,
-        running: bool = True,
-    ) -> None:
+    def __init__(self, *, image_present: bool = True, exit_code: int = 0) -> None:
+        self.image_id: str | None = IMAGE_ID if image_present else None
+        self.containers: dict[str, dict[str, object]] = {}
         self.requests: list[httpx.Request] = []
-        self.computers_status = computers_status
-        self.computers_body = computers_body or {
-            "id": CONTAINER_ID,
-            "image": "superchat-computer:latest",
-            "resumed": True,
-        }
-        self.exec_status = exec_status
-        self.exec_body = exec_body or {"stdout": "ok\n", "stderr": "", "code": 0}
-        self.running = running
-
-    def handler(self, request: httpx.Request) -> httpx.Response:
-        self.requests.append(request)
-        if request.url.path == "/computers" and request.method == "POST":
-            return httpx.Response(self.computers_status, json=self.computers_body)
-        if request.url.path.endswith("/exec") and request.method == "POST":
-            return httpx.Response(self.exec_status, json=self.exec_body)
-        if request.method == "GET" and request.url.path.startswith("/computers/"):
-            return httpx.Response(200, json={"id": CONTAINER_ID, "running": self.running})
-        return httpx.Response(404, json={"error": "not found"})
+        self.exec_output = _frame(1, b"out\n") + _frame(2, b"err\n")
+        self.exit_code = exit_code
+        self.execs: list[dict[str, object]] = []
+        self._next = 0
 
     def client(self) -> httpx.Client:
-        return httpx.Client(
-            transport=httpx.MockTransport(self.handler), base_url="http://supervisor.test"
-        )
+        return httpx.Client(transport=httpx.MockTransport(self.handle), base_url="http://docker")
+
+    def _by_ref(self, ref: str) -> dict[str, object] | None:
+        for c in self.containers.values():
+            if ref in (c["Id"], c["Name"]):
+                return c
+        return None
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        path, method = request.url.path, request.method
+        if path.startswith("/images/") and path.endswith("/json"):
+            if self.image_id is None:
+                return httpx.Response(404, json={"message": "No such image"})
+            return httpx.Response(200, json={"Id": self.image_id})
+        if path == "/containers/create":
+            name = request.url.params["name"]
+            if self._by_ref(name):
+                return httpx.Response(409, json={"message": "Conflict"})
+            self._next += 1
+            cid = f"c{self._next}"
+            self.containers[cid] = {
+                "Id": cid,
+                "Name": name,
+                "Image": self.image_id,
+                "State": {"Running": False},
+                "Body": json.loads(request.content),
+            }
+            return httpx.Response(201, json={"Id": cid})
+        if method == "DELETE" and path.startswith("/containers/"):
+            self.containers.pop(path.split("/")[2], None)
+            return httpx.Response(204)
+        if path.startswith("/containers/"):
+            parts = path.split("/")
+            c = self._by_ref(parts[2])
+            if c is None:
+                return httpx.Response(404, json={"message": "No such container"})
+            action = parts[3]
+            if action == "json":
+                return httpx.Response(200, json=c)
+            if action == "start":
+                c["State"] = {"Running": True}
+                return httpx.Response(204)
+            if action == "exec":
+                self.execs.append(json.loads(request.content))
+                return httpx.Response(201, json={"Id": f"e{len(self.execs)}"})
+        if path.startswith("/exec/") and path.endswith("/start"):
+            return httpx.Response(200, content=self.exec_output)
+        if path.startswith("/exec/") and path.endswith("/json"):
+            return httpx.Response(200, json={"ExitCode": self.exit_code})
+        return httpx.Response(500, json={"message": f"unhandled {method} {path}"})
 
 
-def make_launcher(supervisor: FakeSupervisor, **kwargs: object) -> ComputerSandboxLauncher:
-    return ComputerSandboxLauncher(
-        supervisor_url="http://supervisor.test",
-        supervisor_token="shared-secret",
-        client=supervisor.client(),
-        **kwargs,
-    )
+def make_launcher(docker: FakeDocker) -> ComputerSandboxLauncher:
+    launcher = ComputerSandboxLauncher(image=IMAGE, client=docker.client())
+    launcher.prepare_for_launch(labels={"omnigent.computer.key": KEY, "omnigent.tenant": TENANT})
+    return launcher
 
 
 def test_parse_sandbox_id_round_trips() -> None:
-    assert _parse_sandbox_id(SANDBOX_ID) == (BOT_ID, SPACE_ID, CONTAINER_ID)
+    assert _parse_sandbox_id(SANDBOX_ID) == (KEY, TENANT, "c0ffee")
 
 
-@pytest.mark.parametrize("malformed", ["", "bot_only", "bot:space", "bot::", ":space:container"])
+@pytest.mark.parametrize("malformed", ["", "a", "a:b", "a::c", ":b:c"])
 def test_parse_sandbox_id_rejects_malformed_ids(malformed: str) -> None:
     with pytest.raises(click.ClickException):
         _parse_sandbox_id(malformed)
 
 
-def test_prepare_for_launch_resolves_identity_from_labels() -> None:
-    supervisor = FakeSupervisor()
-    launcher = make_launcher(supervisor)
-    launcher.prepare_for_launch(labels={"superchat.bot": BOT_ID, "superchat.space": SPACE_ID})
-    launcher.prepare()  # Does not raise: identity resolved.
-
-
-def test_prepare_for_launch_targets_superchats_computer_key_when_given() -> None:
-    """Team mode shares one computer per space: the runner must land on that same machine."""
-    launcher = make_launcher(FakeSupervisor())
+def test_identity_comes_from_the_key_label_then_the_owner_label() -> None:
+    launcher = ComputerSandboxLauncher(image=IMAGE, client=FakeDocker().client())
     launcher.prepare_for_launch(
-        labels={
-            "superchat.bot": BOT_ID,
-            "superchat.space": SPACE_ID,
-            "superchat.computer": "team-space_1",
-        }
+        labels={"omnigent.computer.owner": "owner-1", "omnigent.tenant": "tenant-1"}
     )
-    assert (launcher._bot_id, launcher._space_id) == ("team-space_1", SPACE_ID)
-
-
-def test_prepare_for_launch_reads_generic_labels() -> None:
-    launcher = make_launcher(FakeSupervisor())
+    assert (launcher._key, launcher._tenant) == ("owner-1", "tenant-1")
     launcher.prepare_for_launch(
         labels={
             "omnigent.computer.key": "team-1",
             "omnigent.computer.owner": "owner-1",
             "omnigent.tenant": "tenant-1",
-            "superchat.bot": "ignored",
-            "superchat.space": "ignored",
         }
     )
-    assert (launcher._bot_id, launcher._space_id) == ("team-1", "tenant-1")
+    assert (launcher._key, launcher._tenant) == ("team-1", "tenant-1")
 
 
-def test_prepare_for_launch_owner_label_is_the_key_when_no_key_label() -> None:
-    launcher = make_launcher(FakeSupervisor())
-    launcher.prepare_for_launch(
-        labels={"omnigent.computer.owner": "owner-1", "omnigent.tenant": "tenant-1"}
-    )
-    assert (launcher._bot_id, launcher._space_id) == ("owner-1", "tenant-1")
+def test_deprecated_labels_still_resolve_identity() -> None:
+    launcher = ComputerSandboxLauncher(image=IMAGE, client=FakeDocker().client())
+    launcher.prepare_for_launch(labels={"superchat.bot": KEY, "superchat.space": TENANT})
+    assert (launcher._key, launcher._tenant) == (KEY, TENANT)
 
 
-def test_deprecated_env_names_still_configure_the_launcher(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv(SUPERVISOR_URL_ENV_VAR, raising=False)
-    monkeypatch.delenv("OMNIGENT_COMPUTER_SUPERVISOR_TOKEN", raising=False)
-    monkeypatch.setenv("OMNIGENT_SUPERCHAT_SUPERVISOR_URL", "http://old.test/")
-    monkeypatch.setenv("OMNIGENT_SUPERCHAT_SUPERVISOR_TOKEN", "old-token")
-    launcher = ComputerSandboxLauncher()
-    assert launcher._supervisor_url == "http://old.test"
-    assert launcher._supervisor_token == "old-token"
-    monkeypatch.setenv(SUPERVISOR_URL_ENV_VAR, "http://new.test")
-    assert ComputerSandboxLauncher()._supervisor_url == "http://new.test"
-
-
-def test_prepare_for_launch_recovers_identity_from_previous_sandbox_id_on_relaunch() -> None:
-    """A relaunch has no session labels handy; it passes back this launcher's own earlier
-    provision() return value instead, and identity must still resolve from that alone."""
-    supervisor = FakeSupervisor()
-    launcher = make_launcher(supervisor)
+def test_relaunch_recovers_identity_from_the_previous_sandbox_id() -> None:
+    launcher = ComputerSandboxLauncher(image=IMAGE, client=FakeDocker().client())
     launcher.prepare_for_launch(labels=None, previous_sandbox_id=SANDBOX_ID)
     launcher.prepare()
+    assert (launcher._key, launcher._tenant) == (KEY, TENANT)
 
 
-def test_prepare_for_launch_prefers_labels_over_previous_sandbox_id() -> None:
-    supervisor = FakeSupervisor()
-    launcher = make_launcher(supervisor)
-    launcher.prepare_for_launch(
-        labels={"superchat.bot": "bot_fresh", "superchat.space": "space_fresh"},
-        previous_sandbox_id=SANDBOX_ID,
-    )
-    sandbox_id = launcher.provision("ignored")
-    assert sandbox_id.startswith("bot_fresh:space_fresh:")
-
-
-def test_prepare_fails_loud_without_supervisor_url(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(SUPERVISOR_URL_ENV_VAR, raising=False)
-    monkeypatch.delenv(SUPERVISOR_TOKEN_ENV_VAR, raising=False)
-    launcher = ComputerSandboxLauncher(supervisor_token="secret")
-    launcher.prepare_for_launch(labels={"superchat.bot": BOT_ID, "superchat.space": SPACE_ID})
-    with pytest.raises(click.ClickException, match=SUPERVISOR_URL_ENV_VAR):
-        launcher.prepare()
-
-
-def test_prepare_fails_loud_without_supervisor_token(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(SUPERVISOR_TOKEN_ENV_VAR, raising=False)
-    launcher = ComputerSandboxLauncher(supervisor_url="http://supervisor.test")
-    launcher.prepare_for_launch(labels={"superchat.bot": BOT_ID, "superchat.space": SPACE_ID})
-    with pytest.raises(click.ClickException, match=SUPERVISOR_TOKEN_ENV_VAR):
-        launcher.prepare()
-
-
-def test_prepare_fails_loud_without_resolved_identity() -> None:
-    supervisor = FakeSupervisor()
-    launcher = make_launcher(supervisor)
-    # No prepare_for_launch call at all — the identity-resolution step never ran.
+def test_prepare_fails_without_identity() -> None:
+    launcher = ComputerSandboxLauncher(image=IMAGE, client=FakeDocker().client())
     with pytest.raises(click.ClickException, match="identity"):
         launcher.prepare()
 
 
-def test_launcher_reads_config_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(SUPERVISOR_URL_ENV_VAR, "http://from-env.test")
-    monkeypatch.setenv(SUPERVISOR_TOKEN_ENV_VAR, "env-token")
-    monkeypatch.setenv(HOME_ROOT_ENV_VAR, "/data/superchat")
-    launcher = ComputerSandboxLauncher()
-    assert launcher._supervisor_url == "http://from-env.test"
-    assert launcher._supervisor_token == "env-token"
-    assert launcher._home_root == "/data/superchat"
+def test_prepare_fails_without_a_docker_socket(tmp_path: Path) -> None:
+    launcher = ComputerSandboxLauncher(image=IMAGE, socket_path=str(tmp_path / "none.sock"))
+    launcher.prepare_for_launch(labels={"omnigent.computer.key": KEY, "omnigent.tenant": TENANT})
+    with pytest.raises(click.ClickException, match="Docker socket"):
+        launcher.prepare()
 
 
-def test_provision_ensures_the_computer_and_returns_an_encoded_sandbox_id() -> None:
-    supervisor = FakeSupervisor()
-    launcher = make_launcher(supervisor, home_root="/data/superchat")
-    launcher.prepare_for_launch(labels={"superchat.bot": BOT_ID, "superchat.space": SPACE_ID})
-    launcher.prepare()
+def test_provision_creates_and_starts_a_hardened_container_with_a_home_volume() -> None:
+    docker = FakeDocker()
+    sandbox_id = make_launcher(docker).provision("ignored")
 
-    sandbox_id = launcher.provision("managed-abc12345")
-
-    assert sandbox_id == SANDBOX_ID
-    assert len(supervisor.requests) == 1
-    request = supervisor.requests[0]
-    assert request.method == "POST"
-    assert request.url.path == "/computers"
-    assert request.headers["authorization"] == "Bearer shared-secret"
-    assert request.headers["x-superchat-bot-id"] == BOT_ID
-    assert request.headers["x-superchat-space-id"] == SPACE_ID
-    import json
-
-    body = json.loads(request.content)
-    assert body == {
-        "botId": BOT_ID,
-        "homePath": "/data/superchat/homes/bot_abc123",
-        "spaceId": SPACE_ID,
-    }
-
-
-def test_provision_is_idempotent_across_repeated_calls_like_ensure_semantics() -> None:
-    """Superchat's supervisor POST /computers is itself an ensure-or-create; repeated launches for
-    the same Muse reuse the running container without this launcher tracking anything."""
-    supervisor = FakeSupervisor(computers_body={"id": CONTAINER_ID, "resumed": True})
-    launcher = make_launcher(supervisor)
-    launcher.prepare_for_launch(labels={"superchat.bot": BOT_ID, "superchat.space": SPACE_ID})
-    launcher.prepare()
-
-    first = launcher.provision("name-1")
-    second = launcher.provision("name-2")
-
-    assert first == second == SANDBOX_ID
-    assert len(supervisor.requests) == 2
+    assert sandbox_id == f"{KEY}:{TENANT}:c1"
+    container = docker.containers["c1"]
+    assert container["Name"] == container_name(KEY)
+    assert container["State"] == {"Running": True}
+    body = container["Body"]
+    assert isinstance(body, dict)
+    assert body["Image"] == IMAGE
+    assert body["User"] == "1000:1000"
+    host = body["HostConfig"]
+    assert host["Mounts"] == [
+        {"Type": "volume", "Source": home_volume_name(KEY), "Target": "/home/superchat"}
+    ]
+    assert host["CapDrop"] == ["ALL"]
+    assert host["SecurityOpt"] == ["no-new-privileges:true"]
+    assert host["Memory"] == 2 * 1024**3
+    assert host["NanoCpus"] == 2_000_000_000
+    assert host["PidsLimit"] == 2048
+    # The Docker socket never reaches the runner.
+    assert "docker.sock" not in json.dumps(body)
 
 
-def test_provision_raises_clearly_on_supervisor_error() -> None:
-    supervisor = FakeSupervisor(computers_status=500, computers_body={"error": "docker is down"})
-    launcher = make_launcher(supervisor)
-    launcher.prepare_for_launch(labels={"superchat.bot": BOT_ID, "superchat.space": SPACE_ID})
-    launcher.prepare()
-
-    with pytest.raises(click.ClickException, match="docker is down"):
-        launcher.provision("managed-abc")
-
-
-def test_run_execs_the_command_through_the_supervisor() -> None:
-    supervisor = FakeSupervisor(exec_body={"stdout": "hello\n", "stderr": "", "code": 0})
-    launcher = make_launcher(supervisor)
-
-    result = launcher.run(SANDBOX_ID, "echo hello")
-
-    assert result.returncode == 0
-    assert result.stdout == "hello\n"
-    request = supervisor.requests[-1]
-    assert request.url.path == f"/computers/{CONTAINER_ID}/exec"
-    assert request.headers["x-superchat-bot-id"] == BOT_ID
-    assert request.headers["x-superchat-space-id"] == SPACE_ID
-    import json
-
-    body = json.loads(request.content)
-    assert body["argv"] == ["sh", "-c", "echo hello"]
+def test_provision_reuses_the_container_and_starts_it_when_stopped() -> None:
+    docker = FakeDocker()
+    launcher = make_launcher(docker)
+    first = launcher.provision("a")
+    docker.containers["c1"]["State"] = {"Running": False}
+    assert launcher.provision("b") == first
+    assert docker.containers["c1"]["State"] == {"Running": True}
+    assert len(docker.containers) == 1
 
 
-def test_run_raises_on_nonzero_exit_when_check_is_true() -> None:
-    supervisor = FakeSupervisor(exec_body={"stdout": "", "stderr": "boom", "code": 1})
-    launcher = make_launcher(supervisor)
-
-    with pytest.raises(click.ClickException, match="boom"):
-        launcher.run(SANDBOX_ID, "false")
-
-
-def test_run_does_not_raise_on_nonzero_exit_when_check_is_false() -> None:
-    supervisor = FakeSupervisor(exec_body={"stdout": "", "stderr": "boom", "code": 1})
-    launcher = make_launcher(supervisor)
-
-    result = launcher.run(SANDBOX_ID, "false", check=False)
-
-    assert result.returncode == 1
+def test_provision_recreates_the_container_when_the_runner_image_changed() -> None:
+    docker = FakeDocker()
+    launcher = make_launcher(docker)
+    launcher.provision("a")
+    docker.image_id = "sha256:image-2"
+    assert launcher.provision("b") == f"{KEY}:{TENANT}:c2"
+    assert list(docker.containers) == ["c2"]
 
 
-def test_run_sends_env_as_a_separate_exec_field_not_in_argv() -> None:
-    """``env`` must ride the exec request's own ``env`` field — never interpolated into the
-    shell command — so a secret value never appears in argv/``ps`` or in the request body's
-    command string."""
-    supervisor = FakeSupervisor(exec_body={"stdout": "ok\n", "stderr": "", "code": 0})
-    launcher = make_launcher(supervisor)
-
-    launcher.run(SANDBOX_ID, "echo hello", env={"ANTHROPIC_API_KEY": "sk-secret"})
-
-    request = supervisor.requests[-1]
-    import json
-
-    body = json.loads(request.content)
-    assert body["env"] == {"ANTHROPIC_API_KEY": "sk-secret"}
-    assert "sk-secret" not in json.dumps(body["argv"])
+def test_provision_explains_a_missing_runner_image() -> None:
+    with pytest.raises(click.ClickException, match="is not on this Docker host"):
+        make_launcher(FakeDocker(image_present=False)).provision("a")
 
 
-def test_run_omits_the_env_field_when_none_is_given() -> None:
-    supervisor = FakeSupervisor(exec_body={"stdout": "ok\n", "stderr": "", "code": 0})
-    launcher = make_launcher(supervisor)
+def test_resource_limits_come_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OMNIGENT_COMPUTER_MEMORY", "512m")
+    monkeypatch.setenv("OMNIGENT_COMPUTER_CPUS", "1.5")
+    monkeypatch.setenv("OMNIGENT_COMPUTER_PIDS_LIMIT", "100")
+    docker = FakeDocker()
+    make_launcher(docker).provision("a")
+    body = docker.containers["c1"]["Body"]
+    assert isinstance(body, dict)
+    host = body["HostConfig"]
+    assert (host["Memory"], host["NanoCpus"], host["PidsLimit"]) == (
+        512 * 1024**2,
+        1_500_000_000,
+        100,
+    )
 
-    launcher.run(SANDBOX_ID, "echo hello")
 
-    request = supervisor.requests[-1]
-    import json
+def test_run_execs_the_command_and_splits_the_output() -> None:
+    docker = FakeDocker()
+    launcher = make_launcher(docker)
+    sandbox_id = launcher.provision("a")
+    result = launcher.run(sandbox_id, "echo hi", env={"TOKEN": "secret"})
+    assert (result.returncode, result.stdout, result.stderr) == (0, "out\n", "err\n")
+    exec_body = docker.execs[-1]
+    assert exec_body["Cmd"] == ["sh", "-c", "echo hi"]
+    # Env travels as exec environment, never inside the command.
+    assert exec_body["Env"] == ["TOKEN=secret"]
+    assert "secret" not in json.dumps(exec_body["Cmd"])
 
-    body = json.loads(request.content)
-    assert "env" not in body
+
+def test_run_raises_on_nonzero_exit_only_when_checking() -> None:
+    docker = FakeDocker(exit_code=3)
+    launcher = make_launcher(docker)
+    sandbox_id = launcher.provision("a")
+    with pytest.raises(click.ClickException, match="exit 3"):
+        launcher.run(sandbox_id, "false")
+    assert launcher.run(sandbox_id, "false", check=False).returncode == 3
+
+
+def test_run_follows_a_recreated_container() -> None:
+    docker = FakeDocker()
+    launcher = make_launcher(docker)
+    stale = launcher.provision("a")
+    docker.containers.clear()
+    launcher.run(stale, "true")
+    assert [c["Name"] for c in docker.containers.values()] == [container_name(KEY)]
 
 
 def test_run_background_wraps_the_command_and_returns_immediately() -> None:
-    """The inherited default run_background() backgrounds the omnigent host process inside the
-    container via setsid/nohup — this launcher needs no override for that to work, as long as
-    run() itself behaves like a synchronous shell exec (which the supervisor's /exec does)."""
-    supervisor = FakeSupervisor(exec_body={"stdout": "launched\n", "stderr": "", "code": 0})
-    launcher = make_launcher(supervisor)
-
-    result = launcher.run_background(
-        SANDBOX_ID, "OMNIGENT_HOST_TOKEN=tok omnigent host --server https://example.test"
-    )
-
-    assert result.stdout == "launched\n"
-    request = supervisor.requests[-1]
-    import json
-
-    body = json.loads(request.content)
-    assert body["argv"][0] == "sh"
-    assert body["argv"][1] == "-c"
-    # Backgrounded via setsid/nohup and detached from the exec's own process group, matching
-    # every other exec-model provider's run_background wrapper.
-    assert "setsid nohup sh -c" in body["argv"][2]
-    assert "omnigent host --server" in body["argv"][2]
+    docker = FakeDocker()
+    launcher = make_launcher(docker)
+    sandbox_id = launcher.provision("a")
+    launcher.run_background(sandbox_id, "omnigent host --server https://example.test")
+    cmd = docker.execs[-1]["Cmd"]
+    assert isinstance(cmd, list)
+    assert "setsid nohup sh -c" in cmd[2]
+    assert "omnigent host --server" in cmd[2]
 
 
-def test_is_running_reports_true_when_the_supervisor_says_so() -> None:
-    supervisor = FakeSupervisor(running=True)
-    launcher = make_launcher(supervisor)
-    assert launcher.is_running(SANDBOX_ID) is True
-
-
-def test_is_running_reports_false_when_the_supervisor_says_so() -> None:
-    supervisor = FakeSupervisor(running=False)
-    launcher = make_launcher(supervisor)
-    assert launcher.is_running(SANDBOX_ID) is False
-
-
-def test_is_running_returns_none_on_a_malformed_sandbox_id() -> None:
-    supervisor = FakeSupervisor()
-    launcher = make_launcher(supervisor)
-    assert launcher.is_running("not-a-valid-id") is None
+def test_is_running_reports_the_container_state() -> None:
+    docker = FakeDocker()
+    launcher = make_launcher(docker)
+    sandbox_id = launcher.provision("a")
+    assert launcher.is_running(sandbox_id) is True
+    docker.containers["c1"]["State"] = {"Running": False}
+    assert launcher.is_running(sandbox_id) is False
+    assert launcher.is_running(f"{KEY}:{TENANT}:gone") is False
+    assert launcher.is_running("malformed") is None
 
 
 def test_terminate_is_not_supported_since_the_computer_outlives_the_session() -> None:
-    """The computer is Superchat's, not this launch's, to destroy — Omnigent's best-effort cleanup
-    (session deleted mid-provision, the managed-sandbox reaper) must never tear it down."""
-    supervisor = FakeSupervisor()
-    launcher = make_launcher(supervisor)
+    docker = FakeDocker()
     with pytest.raises(click.ClickException):
-        launcher.terminate(SANDBOX_ID)
-    assert supervisor.requests == []
+        make_launcher(docker).terminate(SANDBOX_ID)
+    assert docker.requests == []
 
 
-def test_capabilities_declare_managed_launch_only() -> None:
-    supervisor = FakeSupervisor()
-    launcher = make_launcher(supervisor)
-    caps = launcher.capabilities
+def test_capabilities_are_headless_managed_launch_only() -> None:
+    caps = make_launcher(FakeDocker()).capabilities
     assert caps.managed_launch is True
-    assert caps.cli_bootstrap is False
-    assert caps.resume_stopped is False
-    assert caps.programmatic_terminate is False
-
-
-# ── stale container id, screen, DISPLAY ──────────────────────────────────────────────────
-
-NEW_CONTAINER_ID = "beefbeefbeef"
-
-
-def stale_container_launcher(
-    requests: list[httpx.Request], *, screen_body: dict[str, object] | None = None
-) -> ComputerSandboxLauncher:
-    """Fake supervisor whose container was recreated: the old id 404s, POST /computers
-    returns the new id, and calls on the new id succeed."""
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        requests.append(request)
-        path = request.url.path
-        if path == "/computers":
-            return httpx.Response(200, json={"id": NEW_CONTAINER_ID})
-        if f"/{CONTAINER_ID}" in path:
-            return httpx.Response(404, json={"error": "No such container"})
-        if path.endswith("/screen-mode"):
-            return httpx.Response(
-                200, json=screen_body or {"screenUrl": "http://v/?t=1", "display": ":3"}
-            )
-        if path.endswith("/exec"):
-            return httpx.Response(200, json={"stdout": "ok", "stderr": "", "code": 0})
-        return httpx.Response(200, json={"running": True})
-
-    return ComputerSandboxLauncher(
-        supervisor_url="http://supervisor.test",
-        supervisor_token="shared-secret",
-        client=httpx.Client(
-            transport=httpx.MockTransport(handler), base_url="http://supervisor.test"
-        ),
-    )
-
-
-def test_run_re_resolves_a_stale_container_id_and_retries() -> None:
-    requests: list[httpx.Request] = []
-    launcher = stale_container_launcher(requests)
-    assert launcher.run(SANDBOX_ID, "echo ok").stdout == "ok"
-    assert [r.url.path for r in requests] == [
-        f"/computers/{CONTAINER_ID}/exec",
-        "/computers",
-        f"/computers/{NEW_CONTAINER_ID}/exec",
-    ]
-    ensure = requests[1]
-    assert ensure.headers["x-superchat-bot-id"] == BOT_ID
-    assert ensure.headers["x-superchat-space-id"] == SPACE_ID
-
-
-def test_is_running_re_resolves_a_stale_container_id() -> None:
-    launcher = stale_container_launcher([])
-    assert launcher.is_running(SANDBOX_ID) is True
-
-
-def test_screen_url_sends_the_stable_screen_id_and_view_mode() -> None:
-    requests: list[httpx.Request] = []
-    launcher = stale_container_launcher(requests)
-    assert launcher.screen_url(SANDBOX_ID, interactive=False) == "http://v/?t=1"
-    screen = requests[-1]
-    assert screen.url.path == f"/computers/{NEW_CONTAINER_ID}/screen-mode"
-    assert screen.headers["x-superchat-screen-id"] == BOT_ID
-    assert json.loads(screen.content) == {"interactive": False, "revokeControl": False}
-
-
-def test_screen_url_interactive_passes_the_control_token() -> None:
-    requests: list[httpx.Request] = []
-    launcher = stale_container_launcher(requests)
-    launcher.screen_url(SANDBOX_ID, interactive=True, control_token="tok_1")
-    assert json.loads(requests[-1].content) == {"interactive": True, "controlToken": "tok_1"}
-
-
-def test_screen_url_interactive_requires_a_token() -> None:
-    launcher = stale_container_launcher([])
-    with pytest.raises(click.ClickException):
-        launcher.screen_url(SANDBOX_ID, interactive=True)
-
-
-def test_release_control_revokes_interactive_access() -> None:
-    requests: list[httpx.Request] = []
-    launcher = stale_container_launcher(requests)
-    launcher.release_control(SANDBOX_ID)
-    assert json.loads(requests[-1].content) == {"interactive": False, "revokeControl": True}
-
-
-def test_start_host_is_headless_and_never_touches_the_screen(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    requests: list[httpx.Request] = []
-    launcher = stale_container_launcher(requests)
-    seen: dict[str, object] = {}
-
-    def fake_start_host(self: object, sandbox_id: str, **kwargs: object) -> str:
-        seen.update(kwargs)
-        return "/ws"
-
-    monkeypatch.setattr(ExecModelHostLauncher, "start_host", fake_start_host)
-    assert launcher.start_host(SANDBOX_ID, token="t", runner_env={"A": "1"}) == "/ws"
-    assert seen["runner_env"] == {"A": "1"}
-    assert not any(r.url.path.endswith("/screen-mode") for r in requests)
-
-
-def test_ensure_display_falls_back_when_the_supervisor_omits_it() -> None:
-    launcher = stale_container_launcher([], screen_body={"screenUrl": "http://v/"})
-    assert launcher.ensure_display(SANDBOX_ID) == ":1"
-
-
-def test_capabilities_are_headless() -> None:
-    caps = make_launcher(FakeSupervisor()).capabilities
     assert caps.screen is False
     assert caps.recording is False
+
+
+def test_demux_splits_stdout_and_stderr_frames() -> None:
+    stream = _frame(1, b"a") + _frame(2, b"b") + _frame(1, b"c")
+    assert _demux(stream) == ("ac", "b")
 
 
 class _LocalShellLauncher(ComputerSandboxLauncher):
@@ -533,11 +313,7 @@ class _LocalShellLauncher(ComputerSandboxLauncher):
 
 
 def _local_launcher(home: str) -> _LocalShellLauncher:
-    launcher = _LocalShellLauncher(
-        supervisor_url="http://supervisor.test",
-        supervisor_token="t",
-        client=FakeSupervisor().client(),
-    )
+    launcher = _LocalShellLauncher(image=IMAGE, client=FakeDocker().client())
     launcher.home = home
     return launcher
 
@@ -545,16 +321,14 @@ def _local_launcher(home: str) -> _LocalShellLauncher:
 def test_supervisor_check_rejects_a_stale_pidfile_pointing_at_another_process(
     tmp_path: Path,
 ) -> None:
-    """A persistent $HOME keeps the pidfile across a container recreate; the pid is then reused
-    by an unrelated live process and must not count as the supervise loop."""
-    import os
+    """The home volume keeps the pidfile across a container recreate; a pid then reused by an
+    unrelated live process must not count as the supervise loop."""
     import subprocess
 
     (tmp_path / ".omnigent" / "hosts").mkdir(parents=True)
     other = subprocess.Popen(["sleep", "30"])
     try:
         (tmp_path / ".omnigent" / "hosts" / "abc123.pid").write_text(f"{other.pid}\n")
-        assert os.path.exists(f"/proc/{other.pid}/cmdline") or os.uname().sysname != "Linux"
         assert (
             _local_launcher(str(tmp_path)).is_host_supervisor_running(SANDBOX_ID, "abc123")
             is False
@@ -566,6 +340,7 @@ def test_supervisor_check_rejects_a_stale_pidfile_pointing_at_another_process(
 
 def test_supervisor_check_accepts_the_real_supervise_loop(tmp_path: Path) -> None:
     import subprocess
+    import time
 
     if not os.path.isdir("/proc/self"):
         pytest.skip("needs /proc")
@@ -574,8 +349,6 @@ def test_supervisor_check_accepts_the_real_supervise_loop(tmp_path: Path) -> Non
         ["sh", "-c", script], env={"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"}
     )
     try:
-        import time
-
         for _ in range(50):
             if (tmp_path / ".omnigent" / "hosts" / "abc123.pid").exists():
                 break
