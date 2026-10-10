@@ -21,6 +21,11 @@ def user(text: str, **extra: Any) -> dict[str, Any]:
     } | extra
 
 
+def card_call(tool: str = "mcp__omnigent__ask_clarification") -> dict[str, Any]:
+    """The stored call of *tool* that :func:`card_output` answers."""
+    return {"type": "function_call", "name": tool, "call_id": "c1", "arguments": "{}"}
+
+
 def card_output(themes: list[tuple[str, str]]) -> dict[str, Any]:
     """A stored ``ask`` card output offering ``(label, theme id)`` deck themes."""
     options = [

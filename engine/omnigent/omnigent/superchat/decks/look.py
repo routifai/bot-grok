@@ -80,6 +80,9 @@ _LOOK_WORDS = ("deck", "slide", "presentation", "theme", "look")
 ITEMS_SCANNED = 60
 QUESTION = "Which look?"
 _SUB_AGENT = "sub_agent"
+#: The tools whose stored output may be the "Which look?" card the person answered.
+_CARD_TOOLS = frozenset({"deck_new", "ask_clarification"})
+_MCP_PREFIX = "mcp__omnigent__"
 
 
 def _has(text: str, phrase: str) -> bool:
@@ -193,7 +196,16 @@ def _text(item: Mapping[str, Any]) -> str:
 
 
 def evidence_from_items(items: Sequence[Mapping[str, Any]]) -> tuple[str, tuple | None]:
-    """The person's latest message and the deck-theme card just before it (items newest first)."""
+    """The person's latest message and the deck-theme card just before it (items newest first).
+
+    Only a card from :data:`_CARD_TOOLS` counts: another tool's output (shell, a file) is text
+    the model controls and could imitate a card.
+    """
+    callers = {
+        str(i.get("call_id")): str(i.get("name") or "")
+        for i in items
+        if i.get("type") == "function_call"
+    }
     message: str | None = None
     for item in items:
         kind = item.get("type")
@@ -204,7 +216,11 @@ def evidence_from_items(items: Sequence[Mapping[str, Any]]) -> tuple[str, tuple 
             if message is not None:
                 break  # the person's message before: no card in between
             message = text
-        elif kind == "function_call_output" and message is not None:
+        elif (
+            kind == "function_call_output"
+            and message is not None
+            and callers.get(str(item.get("call_id")), "").removeprefix(_MCP_PREFIX) in _CARD_TOOLS
+        ):
             offered = _card_offer(item.get("output"))
             if offered:
                 return message, offered

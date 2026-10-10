@@ -105,6 +105,7 @@ describe("Muse dashboard rules", () => {
     "do not say whether you opened, viewed or checked the page",
     "Pass the spec (JSON) on stdin, so no spec file is left to clean up",
     "Never write a spec or other scratch file into `your_files/`",
+    "never delete your own temp files",
   ];
   it.each(["templates/AGENTS.md", "agents/nova-claude/AGENTS.md", "agents/nova-pi/AGENTS.md"])(
     "%s keeps dashboards citing the person's files",

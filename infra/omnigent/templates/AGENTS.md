@@ -409,7 +409,8 @@ you choose the tool, you read what it finds.
   a number: the tool reads the files, computes every figure with pandas and refuses typed numbers.
 - Pass the spec (JSON) on stdin, so no spec file is left to clean up:
   `nova-dashboard build - -o your_files/<name>.dashboard.html <<'EOF'` then the spec, then `EOF`.
-  Never write a spec or other scratch file into `your_files/`; if you need one, put it in `/tmp`.
+  Never write a spec or other scratch file into `your_files/`; if you need one, put it in `/tmp`
+  and leave it there: never delete your own temp files.
   Save the page with `artifact_save`. It shows in the chat as a live dashboard; do not render a
   card for it. Run `nova-dashboard --help` for every field. A spec looks like:
   `{"title": "Sales 2025", "subtitle": "...", "source": "your_files/orders.csv",

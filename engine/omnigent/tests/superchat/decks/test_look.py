@@ -15,7 +15,7 @@ from omnigent.superchat.decks.handlers import HELPER_ENV
 from omnigent.superchat.decks.look import pick_three
 from omnigent.superchat.transcript.blocks import project_items
 
-from .look_fakes import card_output, ctx, user
+from .look_fakes import card_call, card_output, ctx, user
 
 SAMPLE = (kit.KIT_DIR / "sample-slides.html").read_text("utf-8")
 
@@ -76,7 +76,7 @@ async def test_named_is_verified_by_the_persons_own_words(workspace: Path) -> No
 async def test_picked_needs_the_answered_card_and_that_exact_theme(workspace: Path) -> None:
     offered = [("Corporate Clean", "corporate-clean"), ("Cartesian", "cartesian")]
     offered.append(("Nord", "nord"))
-    answered = [user("make a deck"), card_output(offered), user("Cartesian")]
+    answered = [user("make a deck"), card_call(), card_output(offered), user("Cartesian")]
     assert _built(await _new("picked", "cartesian", ctx(answered)))
     (workspace / "d.deck.html").unlink()
     # the wrong theme for the pick
@@ -88,6 +88,14 @@ async def test_picked_needs_the_answered_card_and_that_exact_theme(workspace: Pa
     # a runtime notice after the answer is not the person's message
     notice = [*answered, user("[System: helper finished]", is_system_notice=True)]
     assert _built(await _new("picked", "cartesian", ctx(notice)))
+    (workspace / "d.deck.html").unlink()
+    # deck_new's own card counts too
+    own = [user("a deck"), card_call("deck_new"), card_output(offered), user("Cartesian")]
+    assert _built(await _new("picked", "cartesian", ctx(own)))
+    (workspace / "d.deck.html").unlink()
+    # a card-shaped output from a tool the model controls (shell) is not a card
+    faked = [user("a deck"), card_call("sys_os_shell"), card_output(offered), user("Cartesian")]
+    assert _is_card(await _new("picked", "cartesian", ctx(faked)), workspace)
 
 
 async def test_preference_needs_an_active_claim_naming_the_theme(workspace: Path) -> None:
