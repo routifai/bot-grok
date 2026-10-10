@@ -70,7 +70,6 @@ SOURCE_TURN = "turn"
 SOURCE_SIDE_CHAT = "side_chat"
 SOURCE_BACKGROUND = "background"
 SOURCE_SCHEDULED = "scheduled"
-SOURCE_GOAL = "goal"
 #: Quiet upkeep (daily note, Dreaming, People): grouped into one row per local day.
 SOURCE_HOUSEKEEPING = "housekeeping"
 HOUSEKEEPING_PREFIX = "housekeeping"
@@ -78,7 +77,6 @@ HOUSEKEEPING_TITLE = "Kept your notes up to date"
 #: A conversation turn is shown only when it did real work beyond a quick answer.
 _MIN_TURN_STEPS = 3
 _MIN_TURN_SECONDS = 60
-_GOAL_AGENT_TYPE = "goal"
 
 #: Env var overriding the per-chat Activity Feed items-scan limit below.
 ITEMS_SCAN_LIMIT_ENV = "OMNIGENT_ACTIVITY_ITEMS_SCAN_LIMIT"
@@ -151,7 +149,7 @@ class Activity:
         sub-agent Activity).
     :param source: Where the work came from: :data:`SOURCE_TURN`,
         :data:`SOURCE_SIDE_CHAT`, :data:`SOURCE_BACKGROUND`,
-        :data:`SOURCE_SCHEDULED` or :data:`SOURCE_GOAL`.
+        :data:`SOURCE_SCHEDULED`.
     :param title: Short task title: model-written once generated, else the
         request tidied (see :mod:`omnigent.superchat.activity.titles`).
     :param outcome: One-line outcome, or ``None`` when nothing to report yet.
@@ -459,12 +457,12 @@ def _split_sub_agent_title(conversation: Conversation) -> tuple[str, str]:
 
 
 def _sub_agent_source(conversation: Conversation) -> str:
-    """Where a Helper came from: a scheduled run (standing task, topic, Goal) or background."""
+    """Where a Helper came from: a scheduled run (an automation) or background."""
     if ADHOC_HELPER_LABEL_KEY in conversation.labels:
         return SOURCE_HOUSEKEEPING
     if SCHEDULED_HELPER_LABEL_KEY not in conversation.labels:
         return SOURCE_BACKGROUND
-    return SOURCE_GOAL if conversation.sub_agent_name == _GOAL_AGENT_TYPE else SOURCE_SCHEDULED
+    return SOURCE_SCHEDULED
 
 
 def _sub_agent_title(
@@ -627,7 +625,7 @@ def _did_real_work(activity: Activity) -> bool:
     """Whether a conversation turn is worth a row: it did work, not just answered in chat."""
     if len(activity.steps) >= _MIN_TURN_STEPS:
         return True
-    # One search, page read, file or browser step is still work the person may want to trace.
+    # One search, page read, or file step is still work the person may want to trace.
     if any(step.tool and is_work_tool(step.tool) for step in activity.steps):
         return True
     end = activity.finished_at if activity.finished_at is not None else activity.started_at

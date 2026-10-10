@@ -1,0 +1,123 @@
+import { useLingui } from "@lingui/react/macro";
+import { cn } from "@nova/ui-web";
+import type { ReactNode } from "react";
+
+/** The places the dock opens, each as a large sheet over the home. */
+export type DockKey = "inbox" | "apps" | "automations" | "files";
+
+const ICON = {
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.7,
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+  width: 24,
+  height: 24,
+  viewBox: "0 0 24 24",
+  "aria-hidden": true,
+} as const;
+
+const GLYPHS: Record<DockKey | "settings", ReactNode> = {
+  inbox: (
+    <svg {...ICON}>
+      <path d="M3 13h5l1.5 3h5l1.5-3h5" />
+      <path d="M5.5 5h13L21 13v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5z" />
+    </svg>
+  ),
+  apps: (
+    <svg {...ICON}>
+      <rect x="4" y="4" width="6.5" height="6.5" rx="1.6" />
+      <rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6" />
+      <rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6" />
+      <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6" />
+    </svg>
+  ),
+  automations: (
+    <svg {...ICON}>
+      <rect x="3.5" y="5" width="17" height="15" rx="2.5" />
+      <path d="M3.5 10h17M8 3v4M16 3v4" />
+      <path d="M8 14h2M12 14h2M16 14h0.5M8 17h2M12 17h2" />
+    </svg>
+  ),
+  files: (
+    <svg {...ICON}>
+      <path d="M3.5 7a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z" />
+    </svg>
+  ),
+  settings: (
+    <svg {...ICON} width={22} height={22} strokeWidth={1.6}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+    </svg>
+  ),
+};
+
+/**
+ * The floating glass dock: Inbox, Mini Apps, Automations and Files. Inbox carries a dot while
+ * something waits on the person.
+ */
+export function Dock({
+  active,
+  inboxWaiting,
+  onSelect,
+}: {
+  active: DockKey | null;
+  inboxWaiting: boolean;
+  onSelect: (key: DockKey) => void;
+}) {
+  const { t } = useLingui();
+  const items: { key: DockKey; label: string }[] = [
+    { key: "inbox", label: t`Inbox` },
+    { key: "apps", label: t`Mini Apps` },
+    { key: "automations", label: t`Automations` },
+    { key: "files", label: t`Files` },
+  ];
+  return (
+    <nav
+      data-testid="dock"
+      aria-label={t`Main`}
+      className="sc-glass flex flex-row gap-2.5 rounded-3xl p-3 md:flex-col"
+    >
+      {items.map((item) => (
+        <button
+          key={item.key}
+          type="button"
+          aria-label={item.label}
+          title={item.label}
+          aria-pressed={active === item.key}
+          onClick={() => onSelect(item.key)}
+          className={cn(
+            "relative grid size-[52px] place-items-center rounded-2xl text-foreground transition-colors hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-ring",
+            active === item.key && "bg-foreground/15",
+          )}
+        >
+          {GLYPHS[item.key]}
+          {item.key === "inbox" && inboxWaiting ? (
+            <span
+              data-testid="dock-inbox-dot"
+              className="absolute top-[9px] right-[9px] size-[9px] rounded-full border-2 border-popover bg-warning"
+            >
+              <span className="sr-only">{t`Waiting on you`}</span>
+            </span>
+          ) : null}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+/** The gear at the bottom-left that opens Settings. */
+export function SettingsButton({ onClick }: { onClick: () => void }) {
+  const { t } = useLingui();
+  return (
+    <button
+      type="button"
+      aria-label={t`Settings`}
+      title={t`Settings`}
+      onClick={onClick}
+      className="grid size-11 place-items-center rounded-xl text-foreground transition-colors hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-ring"
+    >
+      {GLYPHS.settings}
+    </button>
+  );
+}

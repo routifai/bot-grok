@@ -594,30 +594,19 @@ def test_scheduled_helper_shows_its_task_name_without_the_collision_suffix() -> 
     [activity] = _activities_for_conversation(
         _FakeItemsStore(items), conv, include_step_detail=False, super_chat_id="conv_super"
     )
-    assert activity.title == "Studied your recent work"
+    assert activity.title == "Study"
     assert activity.source == "scheduled"
     assert activity.title_prompt is not None
     assert activity.title_prompt.endswith("Result:\nNothing new.")
 
 
-def test_goal_helper_and_followed_topic_titles() -> None:
+def test_followed_topic_titles() -> None:
     labels = {"omnigent.subagent.scheduled_task_id": "task_1"}
     topic = _conv("conv_a", kind="sub_agent", title="researcher:AI agent launches", labels=labels)
-    goal = _conv(
-        "conv_b",
-        kind="sub_agent",
-        title="goal:Run a half marathon",
-        labels=labels,
-        sub_agent_name="goal",
-    )
     [topic_activity] = _activities_for_conversation(
         _FakeItemsStore([]), topic, include_step_detail=False, super_chat_id="conv_super"
     )
-    [goal_activity] = _activities_for_conversation(
-        _FakeItemsStore([]), goal, include_step_detail=False, super_chat_id="conv_super"
-    )
     assert (topic_activity.title, topic_activity.source) == ("AI agent launches", "scheduled")
-    assert (goal_activity.title, goal_activity.source) == ("Run a half marathon", "goal")
 
 
 def test_task_summary_names_a_background_helper() -> None:
@@ -715,16 +704,14 @@ def test_feed_omits_quick_turns_and_keeps_real_work() -> None:
         [
             _row("quick"),
             _row("steps", tools=("a", "b", "c")),
-            _row("browser", tools=("browser_navigate",)),
             _row("one_search", tools=("web_search",)),
             _row("memory_only", tools=("memory_search",)),
             _row("slow", finished_at=1_061),
             _row("helper", kind="sub_agent", source="background", tools=()),
-            _row("goal", kind="sub_agent", source="goal", tools=()),
         ],
         None,
     )
-    assert {r.id for r in rows} == {"steps", "browser", "one_search", "slow", "helper", "goal"}
+    assert {r.id for r in rows} == {"steps", "one_search", "slow", "helper"}
 
 
 def test_housekeeping_is_one_row_per_local_day() -> None:

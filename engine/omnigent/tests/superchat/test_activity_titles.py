@@ -72,8 +72,6 @@ def test_clean_generated_title(raw: str, expected: str | None) -> None:
 @pytest.mark.parametrize(
     ("name", "expected"),
     [
-        ("Study", "Studied your recent work"),
-        ("Check-in (Oct 03 07:00 UTC)", "Checked in on your goals"),
         ("AI agent launches (Oct 03 07:00 UTC) 1a2b3c4d", "AI agent launches"),
         ("tesla news", "Tesla news"),
         ("analyst-3", None),

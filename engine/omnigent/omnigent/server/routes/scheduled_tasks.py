@@ -72,7 +72,7 @@ class CreateScheduledTaskRequest(BaseModel):
     # wakes the parent. ``agent_type`` is the sub-agent Type to run.
     parent_session_id: str | None = Field(default=None, min_length=1)
     agent_type: str | None = Field(default=None, min_length=1)
-    # Explicit product marker, e.g. ``followed_topic`` (see omnigent.superchat.feed).
+    # Explicit product marker, e.g. ``followed_topic``.
     kind: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]{0,63}$")
     # ``None`` = the owner's preference timezone (``/v1/me/proactivity``), else UTC.
     timezone: str | None = None

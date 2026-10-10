@@ -35,10 +35,7 @@ def _load() -> list[Feature]:
     from omnigent.superchat.daily_notes import FEATURE as daily_notes
     from omnigent.superchat.decks import FEATURE as decks
     from omnigent.superchat.family import FEATURE as family
-    from omnigent.superchat.feed import FEATURE as feed
-    from omnigent.superchat.goals import FEATURE as goals
     from omnigent.superchat.helpers import FEATURE as helpers
-    from omnigent.superchat.ideas import FEATURE as ideas
     from omnigent.superchat.knowledge import FEATURE as knowledge
     from omnigent.superchat.memory import FEATURE as memory
     from omnigent.superchat.models import FEATURE as models
@@ -55,8 +52,6 @@ def _load() -> list[Feature]:
         vault,
         models,
         admin,
-        ideas,
-        goals,
         skills,
         daily_notes,
         cards,
@@ -72,7 +67,6 @@ def _load() -> list[Feature]:
         step_limit,
         transcript,
         family,
-        feed,
     ]
 
 

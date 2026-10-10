@@ -20,7 +20,6 @@ import re
 import time
 from datetime import UTC, datetime
 
-from omnigent.superchat.proactive.provisioner import CHECKIN_NAME, STUDY_NAME
 from omnigent.superchat.titles import (  # noqa: F401  (tidy_request_title etc. are re-exported)
     SUMMARY_MAX_CHARS,
     SUMMARY_MAX_WORDS,
@@ -64,11 +63,6 @@ _FIRE_SUFFIX = re.compile(r"\s*\([A-Z][a-z]{2} \d{1,2} \d{2}:\d{2} UTC\)(?:\s+[0
 _GENERIC_TITLE = re.compile(
     r"^(?=\S*\d)(?:[a-z_]+[-_ ]?\d+|[a-z_-]*[0-9a-f]{6,}[0-9a-f_-]*)$", re.IGNORECASE
 )
-
-_STANDING_TASK_TITLES = {
-    STUDY_NAME.lower(): "Studied your recent work",
-    CHECKIN_NAME.lower(): "Checked in on your goals",
-}
 
 
 def clean_generated_title(raw: str | None) -> str | None:
@@ -157,4 +151,4 @@ def scheduled_display_title(task_name: str) -> str | None:
     name = scrub_internal_words(_FIRE_SUFFIX.sub("", task_name.strip()))
     if is_generic_title(name):
         return None
-    return _STANDING_TASK_TITLES.get(name.lower()) or clip(sentence_case(name), TITLE_MAX_CHARS)
+    return clip(sentence_case(name), TITLE_MAX_CHARS)

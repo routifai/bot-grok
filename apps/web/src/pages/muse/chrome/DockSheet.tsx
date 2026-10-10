@@ -1,0 +1,70 @@
+import { useLingui } from "@lingui/react/macro";
+import { cn, Dialog, DialogContent, DialogDescription, DialogTitle } from "@nova/ui-web";
+import { X } from "lucide-react";
+import type { ReactNode } from "react";
+
+/**
+ * A dock place as a large centered glass sheet over the dimmed home, with a close button.
+ * The body brings its own heading (`DockSheetHeader`) and content.
+ */
+export function DockSheet({
+  open,
+  title,
+  onClose,
+  className,
+  children,
+}: {
+  open: boolean;
+  /** The sheet's accessible name; the body shows its own heading. */
+  title: string;
+  onClose: () => void;
+  className?: string;
+  children: ReactNode;
+}) {
+  const { t } = useLingui();
+  return (
+    <Dialog open={open} onOpenChange={(next) => (next ? undefined : onClose())}>
+      <DialogContent
+        showCloseButton={false}
+        data-testid="dock-sheet"
+        className={cn(
+          "sc-sheet fixed top-1/2 left-1/2 flex h-[min(720px,calc(100%-3rem))] w-[min(1180px,calc(100%-1.5rem))] max-w-none -translate-x-1/2 -translate-y-1/2 flex-col gap-5 overflow-auto rounded-3xl bg-popover/95 p-5 text-foreground shadow-float ring-1 ring-glass-line sm:max-w-none md:left-[calc(50%+44px)] md:w-[min(1180px,calc(100%-9rem))] md:p-7",
+          className,
+        )}
+      >
+        <DialogTitle className="sr-only">{title}</DialogTitle>
+        <DialogDescription className="sr-only">{title}</DialogDescription>
+        <button
+          type="button"
+          aria-label={t`Close`}
+          onClick={onClose}
+          className="absolute top-3.5 right-3.5 z-10 grid size-11 place-items-center rounded-xl text-foreground transition-colors hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-ring"
+        >
+          <X size={20} strokeWidth={2.2} aria-hidden="true" />
+        </button>
+        {children}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** A sheet's heading row: the title and a quiet line under it, with controls on the right. */
+export function DockSheetHeader({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-end justify-between gap-4 pe-12">
+      <div className="flex min-w-0 flex-col gap-1">
+        <h2 className="text-[26px] leading-tight font-[650] tracking-[-0.02em]">{title}</h2>
+        {subtitle ? <p className="text-[14px] text-ink-2">{subtitle}</p> : null}
+      </div>
+      {children}
+    </div>
+  );
+}

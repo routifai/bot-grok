@@ -273,7 +273,6 @@ from omnigent.stores.host_store import host_is_live
 from omnigent.stores.permission_store import PermissionStore
 from omnigent.superchat.lineage import is_super_chat_helper
 from omnigent.superchat.models.org import refuse_if_suspended
-from omnigent.superchat.proactive.hook import schedule_proactive_provisioning
 from omnigent.telemetry import emit as _tel_emit
 from omnigent.telemetry.anon import anon_user_id as _tel_anon_user_id
 from omnigent.telemetry.events import SessionDeletedEvent as _TelSessionDeletedEvent
@@ -901,15 +900,6 @@ def register_events_routes(
                 maybe_unarchive_on_user_message, conversation_store, session_id
             ):
                 await notify_session_changed(conversation_store, session_id)
-        # Standing proactive runs (Study) are provisioned lazily on
-        # the Super Chat's next user message, so existing chats get them too.
-        if (
-            body.type == "message"
-            and body.data.get("role", "user") == "user"
-            and isinstance(request, Request)
-            and persisted_item is None
-        ):
-            schedule_proactive_provisioning(request, conv, session_id)
         # Validate event type at the route boundary. Anything not in
         # ``_ALLOWED_EVENT_TYPES`` is a client mistake — failing here
         # is far better than silently persisting an item the agent
