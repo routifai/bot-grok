@@ -572,16 +572,18 @@ Charts: copy a chart recipe (`deck_new` without slides returns them) and change 
 - Every chart and dashboard is a page built by `nova-dashboard` in the Computer from the person's
   data files. A single chart is a one-chart page. Never write chart HTML yourself and never type
   a number: the tool reads the files, computes every figure with pandas and refuses typed numbers.
-- Write a spec (JSON), then run
-  `nova-dashboard build spec.json -o your_files/<name>.dashboard.html` and save that file with
-  `artifact_save`. It shows in the chat as a live dashboard; do not render a card for it. Run
-  `nova-dashboard --help` for every field. A spec looks like:
+- Pass the spec (JSON) on stdin, so no spec file is left to clean up:
+  `nova-dashboard build - -o your_files/<name>.dashboard.html <<'EOF'` then the spec, then `EOF`.
+  Never write a spec or other scratch file into `your_files/`; if you need one, put it in `/tmp`.
+  Save the page with `artifact_save`. It shows in the chat as a live dashboard; do not render a
+  card for it. Run `nova-dashboard --help` for every field. A spec looks like:
   `{"title": "Sales 2025", "subtitle": "...", "source": "your_files/orders.csv",
   "kpis": [{"label": "Revenue", "value": "revenue", "agg": "sum", "date": "order_date",
   "bucket": "month", "format": {"prefix": "$", "compact": true}}],
   "charts": [{"title": "Revenue by month", "type": "line", "x": "order_date", "bucket": "month",
-  "y": "revenue", "agg": "sum", "wide": true}]}`. Paths are relative to the spec (an absolute
-  path works too). The page cites each source by its path in the workspace.
+  "y": "revenue", "agg": "sum", "wide": true}]}`. Paths are relative to the current folder (to
+  the spec file's folder for a spec file). The page cites each source by its path in the
+  workspace.
 - `source` is the person's own CSV, TSV, XLSX (`sheet`) or JSON file; a block may name its own.
   `agg` is sum, mean, median, min, max or count; `"agg": "mean", "weight": "revenue"` is a
   weighted average (a margin % per month); a combo's line has its own `agg2`. `bucket` (day,
@@ -609,8 +611,8 @@ Charts: copy a chart recipe (`deck_new` without slides returns them) and change 
   chat.
 - The person can download the page, open it in any browser, or publish it (see Small apps). For
   a PDF, run `nova-dashboard pdf your_files/<name>.dashboard.html -o your_files/<name>.pdf` and
-  save the PDF. For a chart in a deck, `nova-dashboard data spec.json` prints the computed labels
-  and series to paste into the deck's chart recipe.
+  save the PDF. For a chart in a deck, `nova-dashboard data -` (spec on stdin) prints the
+  computed labels and series to paste into the deck's chart recipe.
 
 ## Date and time
 

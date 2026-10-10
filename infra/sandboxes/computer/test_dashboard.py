@@ -2,6 +2,7 @@
 
 import importlib.machinery
 import importlib.util
+import io
 import json
 import re
 import tempfile
@@ -76,6 +77,17 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual(chart["datasets"][0]["data"], [1130, 70])
         self.assertIn("Source: sales.csv, revenue summed by region", page)
         self.assertIn("Generated ", page)
+
+    def test_a_spec_on_stdin_leaves_no_file_and_reads_paths_from_here(self) -> None:
+        spec = {"source": "sales.csv", "charts": [{"title": "T", "x": "region", "y": "revenue"}]}
+        with (
+            mock.patch("sys.stdin", io.StringIO(json.dumps(spec))),
+            mock.patch("pathlib.Path.cwd", return_value=self.dir),
+        ):
+            result = dashboard.build(dashboard.STDIN, str(self.dir / "out.html"))
+        self.assertEqual(result["sources"], ["sales.csv"])
+        left = sorted(p.name for p in self.dir.iterdir())
+        self.assertEqual(left, ["out.dashboard.html", "sales.csv"])
 
     def test_date_buckets_mean_and_split(self) -> None:
         _, page = self.build(
