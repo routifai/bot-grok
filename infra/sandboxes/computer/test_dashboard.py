@@ -7,6 +7,7 @@ import re
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 loader = importlib.machinery.SourceFileLoader(
@@ -40,8 +41,15 @@ def embedded(page: str) -> dict:
 class DashboardTest(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
-        self.dir = Path(self.tmp.name)
+        self.dir = Path(self.tmp.name).resolve()
         (self.dir / "sales.csv").write_text(CSV, "utf-8")
+        # The temp folder plays the person's workspace (~/workspace in the Computer).
+        self.workspace(self.dir)
+
+    def workspace(self, root: Path) -> None:
+        patcher = mock.patch.dict("os.environ", {"OMNIGENT_RUNNER_WORKSPACE": str(root)})
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def tearDown(self) -> None:
         self.tmp.cleanup()
@@ -94,9 +102,9 @@ class DashboardTest(unittest.TestCase):
             }
         )
         mean, split = embedded(page)["charts"]
-        self.assertEqual(mean["labels"], ["Jan 2026", "Feb 2026", "Mar 2026"])
+        self.assertEqual(mean["labels"], ["Jan", "Feb", "Mar"])
         self.assertEqual(mean["datasets"][0]["data"], [1.5, 3.5, 5])
-        self.assertEqual(split["labels"], ["Q1 2026"])
+        self.assertEqual(split["labels"], ["Q1"])
         self.assertEqual(
             {d["label"]: d["data"] for d in split["datasets"]},
             {"East": [1130], "West": [70]},
@@ -118,8 +126,8 @@ class DashboardTest(unittest.TestCase):
             }
         )
         self.assertIn("$1,000", page)
-        self.assertIn("Mar 2026", page)
-        self.assertIn("vs Feb 2026", page)
+        self.assertIn("· Mar</span>", page)
+        self.assertIn("vs Feb", page)
         self.assertEqual(embedded(page)["kpis"][0]["values"], [150, 50, 1000])
 
     def test_limit_folds_the_rest_into_other(self) -> None:
@@ -221,8 +229,142 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual(dashboard.format_value(None, {}), "–")
 
     def test_the_sales_fixture_builds(self) -> None:
+        self.workspace(FIXTURE.parent)
         result = dashboard.build(FIXTURE, str(self.dir / "sales.dashboard.html"))
         self.assertEqual((result["kpis"], result["charts"]), (4, 5))
+
+    # -- What the page shows: provenance, labels and periods read like a person wrote them --
+
+    def test_sources_are_cited_by_their_workspace_path_never_absolute(self) -> None:
+        files = self.dir / "your_files"
+        files.mkdir()
+        (files / "sales_2026.csv").write_text(CSV, "utf-8")
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        spec = Path(scratch.name) / "spec.json"  # a spec in /tmp, an absolute source path
+        spec.write_text(
+            json.dumps(
+                {
+                    "source": str(files / "sales_2026.csv"),
+                    "kpis": [{"label": "Revenue", "value": "revenue"}],
+                    "charts": [{"title": "T", "x": "region", "y": "revenue"}],
+                }
+            ),
+            "utf-8",
+        )
+        result = dashboard.build(spec, str(self.dir / "out.html"))
+        page = Path(result["path"]).read_text("utf-8")
+        self.assertEqual(result["sources"], ["your_files/sales_2026.csv"])
+        self.assertIn("Source: your_files/sales_2026.csv, revenue summed by region", page)
+        footer = page[page.index('<footer class="foot">') :]
+        self.assertIn("from your_files/sales_2026.csv (5 rows", footer)
+        self.assertNotIn(str(self.dir), page)
+        self.assertNotIn(scratch.name, page)
+
+    def test_a_source_outside_the_workspace_is_refused(self) -> None:
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        monthly = Path(scratch.name) / "monthly.csv"  # the Muse's pre-aggregated /tmp copy
+        monthly.write_text("month,revenue\n2026-01,1\n", "utf-8")
+        with self.assertRaises(dashboard.SpecError) as caught:
+            self.build(
+                {"source": str(monthly), "charts": [{"title": "T", "x": "month", "y": "revenue"}]}
+            )
+        self.assertIn("outside the workspace", str(caught.exception))
+        self.assertIn('"weight"', str(caught.exception))
+
+    def test_weighted_mean_and_agg2_cover_a_ratio_without_a_scratch_file(self) -> None:
+        (self.dir / "s.csv").write_text(
+            "month,region,revenue,margin_pct\n"
+            "2026-01,NA,300,20\n2026-01,EU,100,40\n"
+            "2026-02,NA,100,10\n2026-02,EU,100,30\n",
+            "utf-8",
+        )
+        _, page = self.build(
+            {
+                "source": "s.csv",
+                "kpis": [
+                    {"label": "Margin", "value": "margin_pct", "agg": "mean", "weight": "revenue"}
+                ],
+                "charts": [
+                    {
+                        "title": "Revenue vs margin",
+                        "type": "combo",
+                        "x": "month",
+                        "y": "revenue",
+                        "y2": "margin_pct",
+                        "agg2": "mean",
+                        "weight": "revenue",
+                    }
+                ],
+            }
+        )
+        [chart] = embedded(page)["charts"]
+        bars, line = chart["datasets"]
+        self.assertEqual(bars["data"], [400, 200])  # summed
+        self.assertEqual(line["data"], [25, 20])  # (300*20+100*40)/400, (100*10+100*30)/200
+        self.assertEqual(line["axis"], "y2")
+        self.assertIn(
+            "revenue summed and margin_pct averaged (weighted by revenue) by month", page
+        )
+        self.assertIn(">23.3<", page)  # KPI: (6000+4000+1000+3000)/600
+        with self.assertRaises(dashboard.SpecError):
+            self.build(
+                {"source": "s.csv", "charts": [{"x": "month", "y": "revenue", "weight": "revenue"}]}
+            )
+
+    def test_series_are_labelled_for_people(self) -> None:
+        self.assertEqual(dashboard.humanise("revenue"), "Revenue")
+        self.assertEqual(dashboard.humanise("margin_pct"), "Margin %")
+        self.assertEqual(dashboard.humanise("orderCount"), "Order count")
+        self.assertEqual(dashboard.humanise("customer_id"), "Customer ID")
+        self.assertEqual(dashboard.humanise("Revenue (USD)"), "Revenue (USD)")
+        _, page = self.build(
+            {
+                "source": "sales.csv",
+                "kpis": [{"value": "revenue"}],
+                "charts": [
+                    {"title": "A", "type": "line", "x": "region", "y": ["revenue", "units"],
+                     "names": {"units": "Units sold"}},
+                    {"title": "B", "x": "date", "bucket": "month", "y": "revenue",
+                     "split": "region"},
+                ],
+            }
+        )
+        both, split = embedded(page)["charts"]
+        self.assertEqual([d["label"] for d in both["datasets"]], ["Revenue", "Units sold"])
+        self.assertEqual({d["label"] for d in split["datasets"]}, {"East", "West"})
+        self.assertIn('<p class="label">Revenue', page)
+
+    def test_period_labels_read_as_months_and_quarters(self) -> None:
+        (self.dir / "m.csv").write_text(
+            "month,v\n2026-02,2\n2026-01,1\n2026-03,3\n", "utf-8"
+        )
+        (self.dir / "y.csv").write_text(
+            "day,v\n2025-11-03,1\n2025-12-03,2\n2026-01-03,3\n", "utf-8"
+        )
+        (self.dir / "q.csv").write_text("quarter,v\n2026-Q2,2\n2026-Q1,1\n", "utf-8")
+        _, page = self.build(
+            {
+                "charts": [
+                    # a text column of months is bucketed by itself and sorted in time
+                    {"title": "M", "type": "line", "source": "m.csv", "x": "month", "y": "v"},
+                    {"title": "Y", "type": "line", "source": "y.csv", "x": "day",
+                     "bucket": "month", "y": "v"},
+                    {"title": "Q", "type": "line", "source": "y.csv", "x": "day",
+                     "bucket": "quarter", "y": "v"},
+                    {"title": "Q text", "type": "bar", "source": "q.csv", "x": "quarter",
+                     "y": "v"},
+                ]
+            }
+        )
+        months, spanning, quarters, quarter_text = embedded(page)["charts"]
+        self.assertEqual(months["labels"], ["Jan", "Feb", "Mar"])
+        self.assertEqual(months["datasets"][0]["data"], [1, 2, 3])
+        self.assertIn("Source: m.csv, v summed by month<", page)
+        self.assertEqual(spanning["labels"], ["Nov 2025", "Dec 2025", "Jan 2026"])
+        self.assertEqual(quarters["labels"], ["Q4 2025", "Q1 2026"])
+        self.assertEqual(quarter_text["labels"], ["Q1", "Q2"])
 
 
 if __name__ == "__main__":
