@@ -11,9 +11,15 @@ export function isDeckArtifactName(name: string): boolean {
   return name.length > DECK_NAME_SUFFIX.length && name.toLowerCase().endsWith(DECK_NAME_SUFFIX);
 }
 
-/** How many slides a deck's HTML holds (its `<section class="slide …">` elements). */
+/** Comments, `<style>` and `<script>` bodies: text that mentions a slide tag without being one. */
+const NOT_MARKUP = /<!--[\s\S]*?-->|<(style|script)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
+
+/**
+ * How many slides a deck's HTML holds (its `<section class="slide …">` elements). The kit's
+ * framework CSS names `<section class="slide">` in a comment, so only real markup is counted.
+ */
 export function deckSlideCount(html: string): number {
-  return html.match(/<section\b[^>]*\bclass="[^"]*\bslide\b/g)?.length ?? 0;
+  return html.replace(NOT_MARKUP, "").match(/<section\b[^>]*\bclass="[^"]*\bslide\b/g)?.length ?? 0;
 }
 
 export const DECK_EXPORT_FORMATS = ["pptx", "pdf"] as const;
