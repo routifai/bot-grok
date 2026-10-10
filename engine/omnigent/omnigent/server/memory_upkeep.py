@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Callable
 from contextlib import suppress
 
@@ -61,6 +62,11 @@ class MemoryUpkeepCoordinator:
         self._slots = asyncio.Semaphore(resolved_max_concurrency)
         self._pending: set[asyncio.Task[None]] = set()
         self._scheduled_user_ids: set[str] = set()
+
+    @property
+    def upkeep_store(self) -> MemoryUpkeepStore:
+        """The run store (read by the read-only System jobs view)."""
+        return self._upkeep_store
 
     def schedule(self, user_id: str) -> None:
         """Enqueue a run for *user_id* unless one is already pending here."""
@@ -132,6 +138,12 @@ class MemoryUpkeepScheduler:
         )
         self._scan_limit = scan_limit
         self._task: asyncio.Task[None] | None = None
+        self.last_sweep_at: int | None = None
+
+    @property
+    def sweep_interval_s(self) -> int:
+        """Seconds between sweeps."""
+        return self._sweep_interval_s
 
     async def start(self) -> None:
         """Start this server process's hourly sweep loop."""
@@ -174,6 +186,7 @@ class MemoryUpkeepScheduler:
         while True:
             try:
                 enqueued = await self.sweep_once()
+                self.last_sweep_at = int(time.time())
                 if enqueued:
                     _logger.info("Memory upkeep sweep enqueued %s user(s)", enqueued)
             except asyncio.CancelledError:

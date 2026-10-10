@@ -346,6 +346,17 @@ class SideChatArchiveSweeper:
             sweep_interval_s if sweep_interval_s is not None else resolve_sweep_interval_seconds()
         )
         self._task: asyncio.Task[None] | None = None
+        self.last_sweep_at: int | None = None
+
+    @property
+    def interval_s(self) -> float:
+        """Seconds between sweeps."""
+        return self._interval
+
+    def enabled_for(self, key: str) -> bool:
+        """Whether the person with this Super Chat key has auto-archiving on (not ``never``)."""
+        setting = self._prefs.get(key) if self._prefs is not None else DEFAULT
+        return age_seconds(setting) is not None
 
     async def sweep_once(self, now: int | None = None) -> int:
         """One pass; returns the number of Side Chats archived."""
@@ -369,6 +380,7 @@ class SideChatArchiveSweeper:
         while True:
             try:
                 count = await self.sweep_once()
+                self.last_sweep_at = int(time.time())
                 if count:
                     _logger.info("Auto-archived %s side chat(s)", count)
             except asyncio.CancelledError:
