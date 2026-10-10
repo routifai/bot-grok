@@ -51,11 +51,9 @@ function message(error: unknown, fallback: string) {
 /** Settings > Computer: where the Conversation runs (the runner) and the harness it runs on. */
 export function ComputerStatusPanel({
   botId,
-  sandboxProvider,
   wire = LIVE_WIRE,
 }: {
   botId: string;
-  sandboxProvider?: string | null;
   wire?: ComputerStatusWire;
 }) {
   const { t } = useLingui();
@@ -133,7 +131,6 @@ export function ComputerStatusPanel({
   const modelLabel = model
     ? model.model || (model.defaultModel ? t`Default · ${model.defaultModel}` : t`Default`)
     : null;
-  const provider = sandboxProvider || status?.kind || null;
   const agents = runtime?.agents ?? [];
   const canPickAgent = agents.length > 1 && runtime?.agent != null;
   const hosts = runtime?.runners.filter((r) => r.kind === "host") ?? [];
@@ -153,7 +150,6 @@ export function ComputerStatusPanel({
       >
         <SettingsRow label={t`Status`} value={stateLabel} />
         {!runtime && host?.hostId ? <SettingsRow label={t`Host`} value={host.hostId} /> : null}
-        {provider ? <SettingsRow label={t`Provider`} value={provider} /> : null}
       </SettingsGroup>
 
       {runtime && runtime.runners.length > 0 ? (

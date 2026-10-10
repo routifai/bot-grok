@@ -158,10 +158,6 @@ vi.mock("../components/CloudAgentCard", () => ({ CloudAgentCard: Stub }));
 vi.mock("../features/computer/ComputerMaintenanceActions", () => ({
   ComputerMaintenanceActions: Stub,
 }));
-vi.mock("../features/computer/ComputersUnavailableHint", () => ({
-  ComputersUnavailableHint: Stub,
-  computersAreUnavailable: () => false,
-}));
 vi.mock("../features/computer/ComputerUpdateProgress", () => ({ ComputerUpdateProgress: Stub }));
 vi.mock("../components/MessageHoverMetadata", () => ({ MessageHoverMetadata: Stub }));
 vi.mock("../features/skills/teach/SkillDraftCard", () => ({ SkillDraftCard: Stub }));

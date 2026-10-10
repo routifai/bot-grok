@@ -13,11 +13,9 @@ import {
   XIcon,
 } from "lucide-react";
 import { type ComponentType, useEffect, useRef, useState } from "react";
-import { computersAreUnavailable } from "../features/computer/ComputersUnavailableHint";
 import { ModelsPanel, useEngineModelsStatus } from "../features/models";
 import { SignupsPanel } from "../features/signups";
 import {
-  ComputerSettingsPanel,
   GeneralSettingsPanels,
   UpdatesSettingsPanel,
   UsageSettingsPanel,
@@ -66,7 +64,6 @@ export function SettingsOverlay({
   avatarStyle,
   onAvatarStyleChange,
   isDeploymentOwner = false,
-  sandboxProvider,
   messagingEnabled = false,
   onOpenMessaging,
   onClose,
@@ -82,7 +79,6 @@ export function SettingsOverlay({
   avatarStyle: AvatarStyle;
   onAvatarStyleChange: (style: AvatarStyle) => Promise<void>;
   isDeploymentOwner?: boolean;
-  sandboxProvider?: string | null;
   messagingEnabled?: boolean;
   onOpenMessaging?: () => void;
   onClose: () => void;
@@ -98,7 +94,6 @@ export function SettingsOverlay({
   const usageRef = useRef<HTMLDivElement>(null);
   const [section, setSection] = useState<SettingsSection>(initialSection);
   const [voiceBusy, setVoiceBusy] = useState(false);
-  const showComputer = isDeploymentOwner && computersAreUnavailable(sandboxProvider);
   const showComputerStatus = museMode && Boolean(museBot);
   const panelBusy = voiceBusy;
 
@@ -142,9 +137,7 @@ export function SettingsOverlay({
     { id: "voice", label: t`Voice`, icon: Volume2 },
     ...(isDeploymentOwner ? [{ id: "signups" as const, label: t`Signups`, icon: UserPlus }] : []),
     ...(museMode ? [] : [{ id: "usage" as const, label: t`Usage`, icon: Gauge }]),
-    ...(showComputer || showComputerStatus
-      ? [{ id: "computer" as const, label: t`Computer`, icon: Monitor }]
-      : []),
+    ...(showComputerStatus ? [{ id: "computer" as const, label: t`Computer`, icon: Monitor }] : []),
     ...(museMode ? [] : [{ id: "updates" as const, label: t`Updates`, icon: CloudDownload }]),
   ];
 
@@ -306,12 +299,8 @@ export function SettingsOverlay({
               ) : null}
               {section === "computer" && showComputerStatus && museBot ? (
                 <div className="space-y-5">
-                  <ComputerStatusPanel botId={museBot.id} sandboxProvider={sandboxProvider} />
-                  {showComputer ? <ComputerSettingsPanel /> : null}
+                  <ComputerStatusPanel botId={museBot.id} />
                 </div>
-              ) : null}
-              {section === "computer" && !showComputerStatus && showComputer ? (
-                <ComputerSettingsPanel />
               ) : null}
               {section === "updates" && !museMode ? <UpdatesSettingsPanel /> : null}
               {section === "models" && !museMode ? (

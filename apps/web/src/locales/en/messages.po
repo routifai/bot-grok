@@ -104,10 +104,6 @@ msgstr "{0} will still respond to direct mentions."
 msgid "{0}'s computer"
 msgstr "{0}'s computer"
 
-#. placeholder {0}: active.name
-msgid "{0}'s screen"
-msgstr "{0}'s screen"
-
 msgid "{botName}’s computer"
 msgstr "{botName}’s computer"
 
@@ -662,9 +658,6 @@ msgstr "Bot"
 msgid "Bot screen"
 msgstr "Bot screen"
 
-msgid "Bot screen preview"
-msgstr "Bot screen preview"
-
 msgid "Bot to link"
 msgstr "Bot to link"
 
@@ -885,12 +878,6 @@ msgstr "Computer is stopped"
 
 msgid "Computer view"
 msgstr "Computer view"
-
-msgid "Computers"
-msgstr "Computers"
-
-msgid "Computers are off. Set SANDBOX_PROVIDER=docker with SANDBOX_SUPERVISOR_TOKEN, or set SANDBOX_PROVIDER to e2b, daytona, or box with its API key. Recreate the stack after changing .env."
-msgstr "Computers are off. Set SANDBOX_PROVIDER=docker with SANDBOX_SUPERVISOR_TOKEN, or set SANDBOX_PROVIDER to e2b, daytona, or box with its API key. Recreate the stack after changing .env."
 
 msgid "Configure a plugin catalog on the server to connect apps."
 msgstr "Configure a plugin catalog on the server to connect apps."
@@ -2809,9 +2796,6 @@ msgstr "Open as side chat"
 msgid "Open full screen"
 msgstr "Open full screen"
 
-msgid "Open in full window"
-msgstr "Open in full window"
-
 msgid "Open in new tab"
 msgstr "Open in new tab"
 
@@ -3804,9 +3788,6 @@ msgstr "Switching…"
 msgid "System"
 msgstr "System"
 
-msgid "Take over anytime."
-msgstr "Take over anytime."
-
 msgid "Taught"
 msgstr "Taught"
 
@@ -4166,10 +4147,6 @@ msgstr "Waiting on you"
 
 msgid "Waiting…"
 msgstr "Waiting…"
-
-#. placeholder {0}: active.name
-msgid "Watch {0} work"
-msgstr "Watch {0} work"
 
 msgid "Watching you work…"
 msgstr "Watching you work…"

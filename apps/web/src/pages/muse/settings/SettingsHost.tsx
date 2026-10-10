@@ -58,7 +58,6 @@ export function SettingsHost({
       initialSection={settingsSection}
       avatarStyle={bootstrapMe?.avatarStyle ?? "robot"}
       isDeploymentOwner={bootstrapMe?.isDeploymentOwner === true}
-      sandboxProvider={bootstrapMe?.sandboxProvider}
       messagingEnabled={messagingSurfaceEnabled}
       onOpenMessaging={() => {
         setSettingsOpen(false);

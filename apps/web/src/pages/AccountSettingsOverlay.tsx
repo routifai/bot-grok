@@ -1,6 +1,15 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import type { AvatarStyle } from "@superchat/contracts";
-import { BotAvatar, Button, Field, FieldLabel, Input, Label, Switch, Toggle } from "@superchat/ui-web";
+import {
+  BotAvatar,
+  Button,
+  Field,
+  FieldLabel,
+  Input,
+  Label,
+  Switch,
+  Toggle,
+} from "@superchat/ui-web";
 import { ChevronDown } from "lucide-react";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
@@ -14,7 +23,6 @@ import { Link } from "react-router-dom";
 import { SuccessPop } from "../components/ai/primitives";
 import { DesktopUpdateSection } from "../components/DesktopUpdates";
 import { ApprovalRulesSettings } from "../features/approvals";
-import { ComputersUnavailableHint } from "../features/computer/ComputersUnavailableHint";
 import { authClient } from "../lib/auth";
 import { getActiveUiLocale, setUiLocale } from "../lib/i18n";
 import {
@@ -252,20 +260,6 @@ export function UsageSettingsPanel({
       <p className={`text-[12.5px] text-muted-foreground/80 ${usage ? "mt-2" : "mt-3"}`}>
         <Trans>Model spend uses your provider keys.</Trans>
       </p>
-    </div>
-  );
-}
-
-export function ComputerSettingsPanel() {
-  return (
-    <div
-      data-testid="computers-setup-settings"
-      className="rounded-xl border border-border px-4 py-4"
-    >
-      <h3 className="text-[15px] font-medium text-foreground">
-        <Trans>Computers</Trans>
-      </h3>
-      <ComputersUnavailableHint className="mt-3 text-[13px] leading-relaxed text-muted-foreground" />
     </div>
   );
 }

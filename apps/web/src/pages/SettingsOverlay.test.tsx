@@ -57,7 +57,6 @@ vi.mock("./AccountSettingsOverlay", () => ({
     <div data-testid="general-panel" data-muse-mode={String(Boolean(museMode))} />
   ),
   UsageSettingsPanel: () => <div data-testid="usage-panel" />,
-  ComputerSettingsPanel: () => <div data-testid="computer-panel" />,
   UpdatesSettingsPanel: () => <div data-testid="updates-panel" />,
 }));
 vi.mock("./ModelSettingsOverlay", () => ({
@@ -96,9 +95,6 @@ vi.mock("../features/models", () => ({
 }));
 vi.mock("../features/signups", () => ({
   SignupsPanel: () => <div data-testid="org-signups" />,
-}));
-vi.mock("../features/computer/ComputersUnavailableHint", () => ({
-  computersAreUnavailable: () => false,
 }));
 
 import { SettingsOverlay } from "./SettingsOverlay";
