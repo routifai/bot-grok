@@ -151,6 +151,10 @@ _MAX_TENANT_CHARS = 256
 # happens to know the identity header's name.
 _PROXY_SECRET_HEADER = "X-Omnigent-Proxy-Secret"
 
+# Sent by the trusted proxy (alongside the secret) for a user the app has made an
+# organization owner/admin; "1" means admin. Read only after the secret matched.
+_ADMIN_HEADER = "X-Omnigent-Admin"
+
 # Audience of header-mode runner bearers, so no other HS256 token validates
 # as one (and a runner bearer never validates as anything else).
 _HEADER_RUNNER_TOKEN_AUDIENCE = "omnigent-runner"
@@ -596,6 +600,31 @@ class UnifiedAuthProvider(AuthProvider):
         # Accounts JWTs validate generation and revocation on every request.
         # OIDC and machine principals retain their independent lifecycle.
         self._account_check: Callable[[str, str], bool] | None = None
+        # Header mode: mirrors the proxy's admin signal into ``users.is_admin``.
+        self._header_admin_sync: Callable[[str, bool], None] | None = None
+        self._header_admin_seen: dict[str, bool] = {}
+
+    def set_header_admin_sync(self, sync: Callable[[str, bool], None]) -> None:
+        """Wire the writer that sets a header-auth user's admin flag.
+
+        Called with ``(user_id, is_admin)`` only when the value changed since the
+        last call for that user in this process, and only for requests that carried
+        the proxy secret.
+        """
+        self._header_admin_sync = sync
+
+    def _sync_header_admin(self, request: HTTPConnection, user_id: str) -> None:
+        if self._header_admin_sync is None or self._header_secret is None:
+            return
+        wanted = (request.headers.get(_ADMIN_HEADER) or "").strip() == "1"
+        if self._header_admin_seen.get(user_id) == wanted:
+            return
+        try:
+            self._header_admin_sync(user_id, wanted)
+        except Exception:  # noqa: BLE001 - auth must not fail on a flag write
+            logger.warning("Could not sync admin flag for %s", user_id, exc_info=True)
+            return
+        self._header_admin_seen[user_id] = wanted
 
     def set_grant_revocation_check(self, check: Callable[[str], bool]) -> None:
         """Wire the device-grant revocation lookup.
@@ -984,7 +1013,10 @@ class UnifiedAuthProvider(AuthProvider):
         if email and self._header_secret is not None and not self._proxy_secret_ok(request):
             email = None
         if email:
-            return self._honored_header_identity(request)
+            identity = self._honored_header_identity(request)
+            if identity is not None:
+                self._sync_header_admin(request, identity)
+            return identity
         runner_owner = self._check_runner_bearer(request)
         if runner_owner is not None:
             return runner_owner

@@ -22,7 +22,11 @@ export interface VaultDeps {
 async function resolve(deps: VaultDeps, actor: Actor, botId: string, env: NodeJS.ProcessEnv) {
   const connection = omnigentClientConfigFromEnv(env);
   if (!connection) throw new ORPCError("BAD_REQUEST", { message: "The vault is not available." });
-  const client: OmnigentClientConfig = omnigentClientFor(connection, actor.spaceId);
+  const client: OmnigentClientConfig = omnigentClientFor(
+    connection,
+    actor.spaceId,
+    actor.isOrgAdmin === true,
+  );
   const [bot, user] = await Promise.all([
     deps.prisma.bot.findFirst({
       where: { id: botId, spaceId: actor.spaceId, userId: actor.userId },

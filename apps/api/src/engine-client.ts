@@ -20,11 +20,13 @@ export interface EngineComputer {
 /** The engine client for this actor's space (the tenant every engine call carries); `undefined`
  * when no engine is configured. Capability routes pass it through `requireEngine`. */
 export function engineComputerClient(
-  actor: Pick<Actor, "spaceId">,
+  actor: Pick<Actor, "spaceId" | "isOrgAdmin">,
   env: NodeJS.ProcessEnv = process.env,
 ): OmnigentClientConfig | undefined {
   const connection = omnigentClientConfigFromEnv(env);
-  return connection ? omnigentClientFor(connection, actor.spaceId) : undefined;
+  return connection
+    ? omnigentClientFor(connection, actor.spaceId, actor.isOrgAdmin === true)
+    : undefined;
 }
 
 /** The engine client, or a clear "not configured" error: Superchat runs on the engine, so a route has

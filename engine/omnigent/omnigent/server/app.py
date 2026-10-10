@@ -3930,6 +3930,25 @@ def create_app(
 
         if (
             isinstance(auth_provider, UnifiedAuthProvider)
+            and auth_provider._source == "header"
+            and permission_store is not None
+        ):
+            _admin_store = permission_store
+
+            def _sync_header_admin(user_id: str, wanted: bool) -> None:
+                # The app's organization role is the source of truth for header-auth
+                # users; the admin-list file stays additive, so a listed user is never
+                # demoted.
+                if not wanted and admin_list.is_admin(user_id):
+                    return
+                _admin_store.ensure_user(user_id)
+                if _admin_store.is_admin(user_id) != wanted:
+                    _admin_store.set_admin(user_id, wanted)
+
+            auth_provider.set_header_admin_sync(_sync_header_admin)
+
+        if (
+            isinstance(auth_provider, UnifiedAuthProvider)
             and auth_provider._source == "accounts"
             and account_store is not None
         ):

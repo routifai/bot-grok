@@ -404,7 +404,7 @@ export async function engineSearch(
 ): Promise<{ client: OmnigentClientConfig; email: string } | undefined> {
   const connection = omnigentClientConfigFromEnv(env);
   if (!connection) return undefined;
-  const client = omnigentClientFor(connection, actor.spaceId);
+  const client = omnigentClientFor(connection, actor.spaceId, actor.isOrgAdmin === true);
   const user = await prisma.user.findUnique({
     where: { id: actor.userId },
     select: { email: true },

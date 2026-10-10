@@ -8,6 +8,9 @@ export const ActorSchema = z.object({
   spaceId: Id,
   email: z.string().email(),
   isDeploymentOwner: z.boolean(),
+  /** The organization role is owner or admin: the engine treats this person as an admin
+   * (`X-Omnigent-Admin`). Absent means no. */
+  isOrgAdmin: z.boolean().optional(),
 });
 export type Actor = z.infer<typeof ActorSchema>;
 

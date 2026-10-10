@@ -45,6 +45,7 @@ export async function requireMembership(
     spaceId: membership.spaceId,
     email: membership.member.user.email,
     isDeploymentOwner: settings?.ownerUserId === membership.userId,
+    isOrgAdmin: membership.member.role === "owner" || membership.member.role === "admin",
   };
 }
 

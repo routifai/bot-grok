@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from "./client.js";
 import { IsolationError, requireMembership } from "./scope.js";
 
-function prismaForMembership(found: boolean, status = "active") {
+function prismaForMembership(found: boolean, status = "active", role = "owner") {
   return {
     spaceMember: {
       findFirst: vi.fn(async ({ where }: { where: { userId: string; spaceId?: string } }) =>
@@ -10,7 +10,7 @@ function prismaForMembership(found: boolean, status = "active") {
           ? {
               userId: where.userId,
               spaceId: where.spaceId ?? "space-default",
-              member: { user: { email: "owner@example.test", status } },
+              member: { role, user: { email: "owner@example.test", status } },
             }
           : null,
       ),
@@ -30,12 +30,23 @@ describe("requireMembership", () => {
       spaceId: "space-support",
       email: "owner@example.test",
       isDeploymentOwner: true,
+      isOrgAdmin: true,
     });
     expect(prisma.spaceMember.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { userId: "user-1", spaceId: "space-support" },
       }),
     );
+  });
+
+  it("marks only organization owners and admins as isOrgAdmin", async () => {
+    const roles = ["owner", "admin", "member"];
+    const flags = [];
+    for (const role of roles) {
+      const actor = await requireMembership(prismaForMembership(true, "active", role), "user-1");
+      flags.push(actor.isOrgAdmin);
+    }
+    expect(flags).toEqual([true, true, false]);
   });
 
   it("rejects a requested space the user does not belong to", async () => {

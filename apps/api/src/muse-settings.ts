@@ -59,7 +59,10 @@ async function engineOf(
     select: { email: true },
   });
   if (!user) throw new IsolationError();
-  return { client: omnigentClientFor(connection, actor.spaceId), email: user.email };
+  return {
+    client: omnigentClientFor(connection, actor.spaceId, actor.isOrgAdmin === true),
+    email: user.email,
+  };
 }
 
 function fromEngine(prefs: OmnigentProactivity): MuseSettings {
