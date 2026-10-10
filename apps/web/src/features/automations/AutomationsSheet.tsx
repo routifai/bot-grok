@@ -23,6 +23,9 @@ import { type AutomationsWire, useAutomations } from "./useAutomations";
 
 const FIELD =
   "min-h-11 w-full rounded-xl border border-glass-line bg-black/20 px-3.5 text-[14px] text-foreground placeholder:text-ink-2";
+/** The shadcn select at the same height and fill as the inputs. */
+const SELECT =
+  "w-full [&_select]:h-11 [&_select]:rounded-xl [&_select]:border-glass-line [&_select]:bg-black/20 [&_select]:ps-3.5 [&_select]:text-[14px] [&_select]:text-foreground";
 const LABEL = "text-[13px] font-medium text-ink-2";
 
 function nextRun(automation: Automation, locale: string | undefined): string {
@@ -127,7 +130,7 @@ function NewAutomationForm({
     <form
       onSubmit={(event) => void submit(event)}
       data-testid="automation-form"
-      className="flex max-w-[640px] flex-col gap-4"
+      className="flex w-full flex-col gap-5"
     >
       <div className="flex flex-col gap-1.5">
         <label htmlFor="auto-name" className={LABEL}>{t`Name`}</label>
@@ -148,9 +151,9 @@ function NewAutomationForm({
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
           placeholder={t`Summarize what changed in my files this week and tell me what needs attention.`}
-          rows={4}
+          rows={5}
           maxLength={8000}
-          className={`${FIELD} py-3`}
+          className={`${FIELD} min-h-[120px] resize-none py-3 leading-relaxed`}
         />
       </div>
       {choices.models.length ? (
@@ -161,6 +164,7 @@ function NewAutomationForm({
             value={model}
             onChange={(event) => setModel(event.target.value)}
             aria-label={t`Model`}
+            className={SELECT}
           >
             <NativeSelectOption value="">
               {choices.defaultLabel ? t`Default · ${choices.defaultLabel}` : t`Default`}
@@ -173,7 +177,7 @@ function NewAutomationForm({
           </NativeSelect>
         </div>
       ) : null}
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] items-start gap-3">
         <div className="flex flex-col gap-1.5">
           <label htmlFor="auto-freq" className={LABEL}>{t`Repeat`}</label>
           <NativeSelect
@@ -181,6 +185,7 @@ function NewAutomationForm({
             value={frequency}
             onChange={(event) => setFrequency(event.target.value as typeof frequency)}
             aria-label={t`Repeat`}
+            className={SELECT}
           >
             <NativeSelectOption value="daily">{t`Daily`}</NativeSelectOption>
             <NativeSelectOption value="weekly">{t`Weekly`}</NativeSelectOption>
@@ -195,6 +200,7 @@ function NewAutomationForm({
               value={weekday}
               onChange={(event) => setWeekday(Number(event.target.value))}
               aria-label={t`Day of the week`}
+              className={SELECT}
             >
               {WEEKDAYS.map((day, index) => (
                 <NativeSelectOption key={day} value={index}>
@@ -212,6 +218,7 @@ function NewAutomationForm({
               value={monthDay}
               onChange={(event) => setMonthDay(Number(event.target.value))}
               aria-label={t`Day of the month`}
+              className={SELECT}
             >
               {Array.from({ length: 28 }, (_, index) => index + 1).map((day) => (
                 <NativeSelectOption key={day} value={day}>
@@ -228,22 +235,27 @@ function NewAutomationForm({
             type="time"
             value={time}
             onChange={(event) => setTime(event.target.value)}
-            className={`${FIELD} w-[130px]`}
+            className={FIELD}
             required
           />
         </div>
       </div>
       {error ? <p className="text-[13.5px] text-destructive">{error}</p> : null}
-      <div className="flex gap-2">
+      <div className="flex justify-end gap-2 pt-1">
+        <button
+          type="button"
+          className={`${QUIET_BUTTON} h-11 px-4`}
+          onClick={onCancel}
+          disabled={busy}
+        >
+          <Trans>Cancel</Trans>
+        </button>
         <button
           type="submit"
-          className={PRIMARY_BUTTON}
+          className={`${PRIMARY_BUTTON} h-11 px-5`}
           disabled={busy || !name.trim() || !prompt.trim()}
         >
           {busy ? t`Saving…` : t`Create automation`}
-        </button>
-        <button type="button" className={QUIET_BUTTON} onClick={onCancel} disabled={busy}>
-          <Trans>Cancel</Trans>
         </button>
       </div>
     </form>
@@ -341,6 +353,12 @@ export function AutomationsSheet({
     <DockSheet
       open={open}
       title={t`Automations`}
+      // The form is short: the sheet shrinks to it instead of floating in a big empty panel.
+      className={
+        creating
+          ? "h-auto w-[min(620px,calc(100%-1.5rem))] md:w-[min(620px,calc(100%-9rem))]"
+          : undefined
+      }
       onClose={() => {
         setCreating(false);
         onClose();
