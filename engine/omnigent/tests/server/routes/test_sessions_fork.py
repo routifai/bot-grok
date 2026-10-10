@@ -34,6 +34,10 @@ from omnigent.server.managed_hosts import (
     resolve_managed_agent_label,
 )
 from omnigent.server.routes import _session_create_validation as create_validation
+from omnigent.server.routes._sessions.orchestration import (
+    MANAGED_OWNER_LABEL_KEY,
+    MANAGED_PROVIDER_LABEL_KEY,
+)
 from omnigent.server.routes.sessions import create_sessions_router, routes_core
 from omnigent.stores.conversation_store import _FORK_ONLY_DROPPED_LABEL_KEYS
 
@@ -1974,6 +1978,17 @@ def _arm_managed_app(
     return launches
 
 
+def _repo_label_writes(conv_store: Any) -> list[tuple[str, dict[str, str]]]:
+    """
+    Label writes other than the managed create's provider/owner record.
+
+    :param conv_store: The recording conversation store.
+    :returns: The writes that re-stamp repository labels.
+    """
+    managed = {MANAGED_PROVIDER_LABEL_KEY, MANAGED_OWNER_LABEL_KEY}
+    return [(cid, labels) for cid, labels in conv_store.label_writes if set(labels) != managed]
+
+
 @pytest.mark.asyncio
 async def test_fork_managed_schedules_sandbox_launch(
     monkeypatch: pytest.MonkeyPatch,
@@ -2003,7 +2018,7 @@ async def test_fork_managed_schedules_sandbox_launch(
     assert launch["provider"] == "modal"
     # No repository on either side, so the clone gets an empty sandbox.
     assert launch["repos"] == []
-    assert conv_store.label_writes == []
+    assert _repo_label_writes(conv_store) == []
 
 
 @pytest.mark.asyncio
@@ -2142,7 +2157,7 @@ async def test_fork_managed_inherits_source_repository(
     # Recorded on the FORK too (one label per repo, plus the bare compat key),
     # so its own sandbox relaunch re-clones it. The source here uses the legacy
     # single-value label, exercising the read fallback.
-    assert conv_store.label_writes == [
+    assert _repo_label_writes(conv_store) == [
         (
             resp.json()["id"],
             {
@@ -2189,7 +2204,7 @@ async def test_fork_managed_inherits_all_source_repositories(
     ]
     # The fork re-stamps its own per-repo labels (plus the bare compat key) for
     # relaunch.
-    assert conv_store.label_writes == [
+    assert _repo_label_writes(conv_store) == [
         (
             resp.json()["id"],
             {
@@ -2268,7 +2283,7 @@ async def test_fork_never_inherits_source_sandbox_repo_label(
         fork = conv_store.get_conversation(response.json()["id"])
         assert fork is not None
         assert MANAGED_REPO_LABEL_KEY not in fork.labels
-    assert conv_store.label_writes == [], "no workspace resolved, so nothing to re-stamp"
+    assert _repo_label_writes(conv_store) == [], "no workspace resolved, so nothing to re-stamp"
 
 
 @pytest.mark.asyncio
