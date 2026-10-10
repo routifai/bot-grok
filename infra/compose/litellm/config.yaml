@@ -1,0 +1,15 @@
+# Sample config for the local LiteLLM proxy (docker-compose.litellm-local.yml). model_name is the
+# id Superchat sees: keep SUPERCHAT_CLAUDE_MODEL and OMNIGENT_HELPER_MODEL_FAST in .env among them.
+# Add any provider LiteLLM supports the same way: https://docs.litellm.ai/docs/proxy/configs
+model_list:
+  - model_name: claude-sonnet-5-5
+    litellm_params:
+      model: anthropic/claude-sonnet-5-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+  - model_name: claude-haiku-4-5
+    litellm_params:
+      model: anthropic/claude-haiku-4-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

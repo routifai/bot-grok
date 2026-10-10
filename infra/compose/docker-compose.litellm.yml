@@ -1,0 +1,17 @@
+# Overlay: every model call (the Muse on claude-sdk or pi, sub-agents, titles and summaries) goes
+# through an existing LiteLLM proxy, such as a company gateway.
+#
+#   docker compose --env-file .env -f infra/compose/docker-compose.yml \
+#     -f infra/compose/docker-compose.litellm.yml up -d --build
+#
+# .env: LITELLM_BASE_URL (the proxy's root URL, no /v1), LITELLM_API_KEY, and the proxy's model
+# names in SUPERCHAT_CLAUDE_MODEL / OMNIGENT_HELPER_MODEL_FAST. The URL must be reachable from the
+# engine and from each Computer (a host address, not a compose service name).
+# Engine config: infra/railway/engine.config.litellm.yaml.tmpl.
+
+services:
+  engine:
+    environment:
+      ENGINE_CONFIG_TEMPLATE: /opt/superchat/config.litellm.yaml.tmpl
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL:?Set LITELLM_BASE_URL in .env (the proxy root URL)}
+      LITELLM_API_KEY: ${LITELLM_API_KEY:?Set LITELLM_API_KEY in .env}

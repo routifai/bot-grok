@@ -8,13 +8,14 @@ compose=(docker compose -f "$ROOT/infra/compose/docker-compose.yml")
 # from the environment, so its absence is not an error).
 if [[ -f "$ROOT/.env" ]]; then compose=(docker compose --env-file "$ROOT/.env" -f "$ROOT/infra/compose/docker-compose.yml"); fi
 "${compose[@]}" up -d postgres
-until "${compose[@]}" exec -T postgres pg_isready -U superchat >/dev/null 2>&1; do
+until "${compose[@]}" exec -T postgres sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null 2>&1; do
   sleep 1
 done
 # Stop on SQL errors and roll back the dump before restoring files or starting
 # the application. -f is required for psql's single-transaction mode.
-"${compose[@]}" exec -T postgres psql -X -U superchat -d superchat \
-  --set=ON_ERROR_STOP=on --single-transaction --file=- < "$SRC/superchat.sql"
+"${compose[@]}" exec -T postgres sh -c \
+  'psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" --set=ON_ERROR_STOP=on --single-transaction --file=-' \
+  < "$SRC/superchat.sql"
 if [[ -f "$SRC/homes.tgz" ]]; then
   tar -xzf "$SRC/homes.tgz" -C "$ROOT"
 fi

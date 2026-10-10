@@ -41,6 +41,38 @@ flowchart LR
 3. Results stream back to the web app as events: the reply, cards, artifacts and Activity.
 4. Anything that acts in the person's name waits in the Inbox for approval.
 
+## Run with Docker
+
+One Compose project: Postgres, the engine (published on `8012`), the supervisor, the API, the
+worker and the web app (`5173`). `./scripts/setup.sh` writes `.env` from `.env.docker.example`
+and fills in its secrets; then:
+
+```sh
+docker compose --env-file .env -f infra/compose/docker-compose.yml up -d --build
+```
+
+Add overlays with more `-f` files:
+
+| Overlay | What |
+|---|---|
+| `docker-compose.litellm.yml` | all model calls through an existing LiteLLM proxy |
+| `docker-compose.litellm-local.yml` | a local LiteLLM proxy on `4000` instead (sample models in `litellm/config.yaml`) |
+| `docker-compose.postgres-host.yml` | Postgres on `127.0.0.1:5433` for host tools |
+
+`.env` keys beyond the app's own: `OMNIGENT_PROXY_SECRET` and `OMNIGENT_VAULT_KEY` (engine
+secrets), `ANTHROPIC_API_KEY` (models without LiteLLM), `LITELLM_BASE_URL` and `LITELLM_API_KEY`
+(LiteLLM), optionally `SUPERCHAT_CLAUDE_MODEL` and `OMNIGENT_HELPER_MODEL_FAST` (model ids as the
+provider or proxy names them), `TAVILY_API_KEY`, and `ENGINE_PUBLIC_URL` (where each Computer
+reaches the engine; default `http://host.docker.internal:8012`).
+
+With LiteLLM, claude-sdk calls the proxy's Anthropic Messages endpoint (`/v1/messages`) and Pi
+calls its Chat Completions (`/v1/chat/completions`, or `/v1/messages` for Claude models); the
+model pickers list the proxy's `/v1/models`.
+
+A shared runner host container (`omnigent host`) is not offered: the engine trusts identity only
+from the API's signed headers, and `omnigent host` has no way to present them or to sign in, so it
+cannot register a host for a person. Each person's Computer is their runner host.
+
 ## Layout
 
 | Path | What |

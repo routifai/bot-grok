@@ -52,6 +52,7 @@ COPY engine/omnigent/deploy/docker/entrypoint.py /app/entrypoint.py
 # Superchat additions: the agent bundle(s), the config template and the start wrapper.
 COPY infra/omnigent/agents /opt/superchat/agents
 COPY infra/railway/engine.config.yaml.tmpl /opt/superchat/config.yaml.tmpl
+COPY infra/railway/engine.config.litellm.yaml.tmpl /opt/superchat/config.litellm.yaml.tmpl
 COPY --chmod=755 infra/railway/engine-start.sh /opt/superchat/engine-start.sh
 WORKDIR /app
 RUN mkdir -p /data/artifacts

@@ -9,14 +9,30 @@ services:
       # (or when the volume is disposable); down -v deletes all DB state.
       POSTGRES_USER: ${POSTGRES_USER:-superchat}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-      POSTGRES_DB: ${POSTGRES_DB:-superchat}
+      POSTGRES_DB: ${POSTGRES_DB:-superchat_db}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-superchat} -d ${POSTGRES_DB:-superchat}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-superchat} -d ${POSTGRES_DB:-superchat_db}"]
       interval: 3s
       timeout: 5s
       retries: 20
+
+  # One database, two schemas: `app` (API, Prisma) and `engine` (Omnigent). Runs on every `up`.
+  db-init:
+    image: ${POSTGRES_IMAGE:-postgres:16}
+    command: ["psql", "-v", "ON_ERROR_STOP=1", "-f", "/init/schemas.sql"]
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-superchat}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      PGDATABASE: ${POSTGRES_DB:-superchat_db}
+    volumes:
+      - ./postgres/schemas.sql:/init/schemas.sql:ro
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   supervisor:
     build:
@@ -77,6 +93,52 @@ services:
     volumes:
       - ../../data:/data
 
+  # The Omnigent engine: runs every chat turn. Same image as the hosted engine. Each Computer's
+  # runner dials it back at ENGINE_PUBLIC_URL, so it is also published on the host.
+  engine:
+    image: superchat/engine:local
+    build:
+      context: ../..
+      dockerfile: infra/railway/Dockerfile.engine
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-superchat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-superchat_db}?options=-csearch_path%3Dengine
+      ENGINE_PUBLIC_URL: ${ENGINE_PUBLIC_URL:-http://host.docker.internal:${SUPERCHAT_ENGINE_PORT:-8012}}
+      # The API signs every call with this; the engine trusts the identity headers only with it.
+      OMNIGENT_AUTH_HEADER_SECRET: ${OMNIGENT_PROXY_SECRET:?Set OMNIGENT_PROXY_SECRET in .env}
+      OMNIGENT_VAULT_KEY: ${OMNIGENT_VAULT_KEY:?Set OMNIGENT_VAULT_KEY in .env}
+      OMNIGENT_COMPUTER_SUPERVISOR_URL: http://supervisor:7091
+      OMNIGENT_COMPUTER_SUPERVISOR_TOKEN: ${SANDBOX_SUPERVISOR_TOKEN:?Set SANDBOX_SUPERVISOR_TOKEN in .env}
+      # Must equal the supervisor's DATA_DIR: Computer homes are <root>/homes/<id> there.
+      OMNIGENT_COMPUTER_HOME_ROOT: /data
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      # Passed through only when set (in .env or the shell); otherwise the image's defaults hold.
+      SUPERCHAT_CLAUDE_MODEL:
+      OMNIGENT_HELPER_MODEL_FAST:
+      OMNIGENT_HELPER_MODEL_STRONG:
+      HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
+      HTTPS_PROXY: ${HTTPS_PROXY:-${https_proxy:-}}
+      NO_PROXY: ${NO_PROXY:-${no_proxy:-}}
+    extra_hosts:
+      # Docker Desktop and colima resolve this already; native Linux needs it.
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${SUPERCHAT_ENGINE_BIND:-127.0.0.1}:${SUPERCHAT_ENGINE_PORT:-8012}:8000"
+    volumes:
+      - enginedata:/data
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      supervisor:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
   # api, worker, and web build the exact same image (one Dockerfile, one context) and only differ
   # in their command. Sharing one image tag across all three means Compose builds it once instead
   # of three near-identical multi-hundred-MB images.
@@ -89,15 +151,15 @@ services:
     env_file:
       - ../../.env
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-superchat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-superchat}
+      DATABASE_URL: postgres://${POSTGRES_USER:-superchat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-superchat_db}?schema=app
       API_HOST: "0.0.0.0"
       DATA_DIR: /data
       SANDBOX_SUPERVISOR_URL: http://supervisor:7091
       WAKEUP_DRIVER: graphile
       SANDBOX_PROVIDER: docker
-      # Omnigent chat engine connection; both set = chat runs on it (empty = built-in executor).
-      OMNIGENT_URL: ${OMNIGENT_URL:-}
-      OMNIGENT_PROXY_SECRET: ${OMNIGENT_PROXY_SECRET:-}
+      # The Omnigent chat engine (the engine service unless OMNIGENT_URL points elsewhere).
+      OMNIGENT_URL: ${OMNIGENT_URL:-http://engine:8000}
+      OMNIGENT_PROXY_SECRET: ${OMNIGENT_PROXY_SECRET:?Set OMNIGENT_PROXY_SECRET in .env}
       # Optional egress proxy (Mainland / corporate). Empty = unset; either case works.
       HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
       HTTPS_PROXY: ${HTTPS_PROXY:-${https_proxy:-}}
@@ -110,11 +172,13 @@ services:
     volumes:
       - ../../data:/data
     depends_on:
-      postgres:
-        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
       data-init:
         condition: service_completed_successfully
       supervisor:
+        condition: service_healthy
+      engine:
         condition: service_healthy
     healthcheck:
       test:
@@ -137,14 +201,14 @@ services:
       - ../../.env
     environment:
       BETTER_AUTH_SECRET: ""
-      DATABASE_URL: postgres://${POSTGRES_USER:-superchat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-superchat}
+      DATABASE_URL: postgres://${POSTGRES_USER:-superchat}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-superchat_db}?schema=app
       DATA_DIR: /data
       SANDBOX_SUPERVISOR_URL: http://supervisor:7091
       WAKEUP_DRIVER: graphile
       SANDBOX_PROVIDER: docker
-      # Omnigent chat engine connection; both set = chat runs on it (empty = built-in executor).
-      OMNIGENT_URL: ${OMNIGENT_URL:-}
-      OMNIGENT_PROXY_SECRET: ${OMNIGENT_PROXY_SECRET:-}
+      # The Omnigent chat engine (the engine service unless OMNIGENT_URL points elsewhere).
+      OMNIGENT_URL: ${OMNIGENT_URL:-http://engine:8000}
+      OMNIGENT_PROXY_SECRET: ${OMNIGENT_PROXY_SECRET:?Set OMNIGENT_PROXY_SECRET in .env}
       SCREEN_PROXY_SECRET: ""
       # Optional egress proxy (Mainland / corporate). Empty = unset; either case works.
       HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
@@ -156,8 +220,8 @@ services:
     volumes:
       - ../../data:/data
     depends_on:
-      postgres:
-        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
       data-init:
         condition: service_completed_successfully
       supervisor:
@@ -183,3 +247,4 @@ services:
 
 volumes:
   pgdata:
+  enginedata:

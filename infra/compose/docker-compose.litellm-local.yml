@@ -1,0 +1,43 @@
+# Overlay: a local LiteLLM proxy on port 4000, for development without a company endpoint. Use it
+# instead of docker-compose.litellm.yml; it routes the engine through this proxy the same way.
+#
+#   docker compose --env-file .env -f infra/compose/docker-compose.yml \
+#     -f infra/compose/docker-compose.litellm-local.yml up -d --build
+#
+# .env: LITELLM_API_KEY (the proxy's master key; must start with "sk-") and ANTHROPIC_API_KEY
+# (the sample config's upstream). Models: infra/compose/litellm/config.yaml.
+
+services:
+  litellm:
+    image: ${LITELLM_IMAGE:-ghcr.io/berriai/litellm:v1.104.2@sha256:3d88bd757134a00e8c00237b85a021ab1f6d54abb9c1df750f411dbe7256a500}
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_API_KEY:?Set LITELLM_API_KEY in .env (starts with sk-)}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
+      HTTPS_PROXY: ${HTTPS_PROXY:-${https_proxy:-}}
+      NO_PROXY: ${NO_PROXY:-${no_proxy:-}}
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+    # Published on the host: each Computer reaches it at host.docker.internal, like the engine.
+    ports:
+      - "${LITELLM_BIND:-127.0.0.1}:${LITELLM_PORT:-4000}:4000"
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness', timeout=4)
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  engine:
+    environment:
+      ENGINE_CONFIG_TEMPLATE: /opt/superchat/config.litellm.yaml.tmpl
+      LITELLM_BASE_URL: http://host.docker.internal:${LITELLM_PORT:-4000}
+      LITELLM_API_KEY: ${LITELLM_API_KEY:?Set LITELLM_API_KEY in .env (starts with sk-)}
+    depends_on:
+      litellm:
+        condition: service_healthy

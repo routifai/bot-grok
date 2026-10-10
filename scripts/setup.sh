@@ -68,6 +68,9 @@ fill_if_blank BETTER_AUTH_SECRET "openssl rand -hex 32"
 fill_if_blank ENCRYPTION_KEY "openssl rand -hex 32"
 fill_if_blank SCREEN_PROXY_SECRET "openssl rand -hex 32"
 fill_if_blank SANDBOX_SUPERVISOR_TOKEN "openssl rand -hex 32"
+fill_if_blank OMNIGENT_PROXY_SECRET "openssl rand -hex 32"
+vault_key() { openssl rand -base64 32 | tr '+/' '-_' | tr -d '='; }
+fill_if_blank OMNIGENT_VAULT_KEY vault_key
 
 # --- 3b. Free ports, and URLs that match them ------------------------------------------------
 # If 5173/3100 are taken by something else (another dev server), move to the next free port. The
@@ -140,6 +143,9 @@ if [[ -z "$(env_get OPENROUTER_API_KEY)" && -z "$(env_get ANTHROPIC_API_KEY)" &&
   fi
 else
   log "Model key already configured in .env."
+fi
+if [[ -z "$(env_get ANTHROPIC_API_KEY)" ]]; then
+  warn "The engine needs ANTHROPIC_API_KEY in .env, or LITELLM_BASE_URL + LITELLM_API_KEY with infra/compose/docker-compose.litellm.yml (see README, Run with Docker)."
 fi
 
 # --- 6. Build the computer image -------------------------------------------------------------
