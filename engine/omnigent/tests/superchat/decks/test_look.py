@@ -11,7 +11,7 @@ import pytest
 from omnigent.inner.executor import result_ends_turn
 from omnigent.superchat.decks import kit
 from omnigent.superchat.decks.authoring import handle_authoring_tool
-from omnigent.superchat.decks.handlers import HELPER_ENV
+from omnigent.superchat.decks.handlers import HELPER_ENV, handle_deck_tool
 from omnigent.superchat.decks.look import pick_three
 from omnigent.superchat.transcript.blocks import project_items
 
@@ -99,14 +99,16 @@ async def test_picked_needs_the_answered_card_and_that_exact_theme(workspace: Pa
 
 
 async def test_preference_needs_an_active_claim_naming_the_theme(workspace: Path) -> None:
-    claims = [{"text": "Prefers the Nord theme for decks", "status": "active"}]
+    claims = [
+        {"text": "Prefers the Nord theme for decks", "status": "active", "explicitness": "stated"}
+    ]
     assert _built(await _new("preference", "nord", ctx([user("a deck")], claims=claims)))
     (workspace / "d.deck.html").unlink()
     # the live failure: "your usual Corporate Clean look" with no claim about it
     out = await _new("preference", "corporate-clean", ctx([user("a deck")], claims=claims))
     assert _is_card(out, workspace) and "preference" in out["note"]
     assert _is_card(await _new("preference", "nord", ctx([user("a deck")])), workspace)
-    expired = [{"text": "Prefers Nord for decks", "status": "expired"}]
+    expired = [{"text": "Prefers Nord for decks", "status": "expired", "explicitness": "stated"}]
     assert _is_card(await _new("preference", "nord", ctx([user("x")], claims=expired)), workspace)
 
 
@@ -161,3 +163,30 @@ def test_the_card_shows_in_the_transcript_and_ends_the_turn() -> None:
     messages = project_items(items)
     assert messages[1]["blocks"][0]["card"]["card"] == "ask"
     assert all(m["id"] != "a1" for m in messages)  # text after the card is dropped
+
+
+async def test_an_inferred_preference_through_the_runner_dispatch_shows_the_card(
+    workspace: Path,
+) -> None:
+    """The live failure: a noticed "prefers Corporate Clean" claim (learned from decks the Muse
+    styled itself) let deck_new build. Same path as the runner: the decks feature handler."""
+    noticed = {
+        "text": "Prefers the Corporate Clean look for decks",
+        "status": "active",
+        "explicitness": "inferred",
+        "person_authored": False,
+    }
+    call_ctx = ctx([user("Now make a 5-slide deck from it")], claims=[noticed])
+    args = {
+        "path": "your_files/sales-2026.deck.html",
+        "template": "corporate-clean",
+        "look_from": "preference",
+        "title": "Sales 2026",
+    }
+    for extra in ({}, {"slides": SAMPLE}):  # the layout-menu call and the writing call
+        out = json.loads(await handle_deck_tool(call_ctx, {**args, **extra}))
+        assert out["card"] == "ask" and out["written"] is False
+    assert not (workspace / "your_files").exists()
+    edited = {**noticed, "person_authored": True}
+    menu = json.loads(await handle_deck_tool(ctx([user("x")], claims=[edited]), args))
+    assert "layouts" in menu
