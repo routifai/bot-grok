@@ -300,7 +300,7 @@ async function renderShell(initialBootstrap: ReturnType<typeof bootstrap>) {
   };
 }
 
-it("shows the conversation chrome: the dock, the sidebar and no Goals, Feed or Ideas", async () => {
+it("shows the conversation chrome: the dock, Chats instead of a sidebar, no Goals, Feed or Ideas", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const page = await renderShell(bootstrap({ me: me() }));
   try {
@@ -312,13 +312,10 @@ it("shows the conversation chrome: the dock, the sidebar and no Goals, Feed or I
       el.getAttribute("aria-label"),
     );
     expect(dockLabels).toEqual(["Inbox", "Mini Apps", "Automations", "Files"]);
-    const rail = page.container.querySelector('[data-testid="app-rail"]');
-    expect(rail).toBeTruthy();
-    const labels = [...(rail?.querySelectorAll("button") ?? [])].map(
-      (el) => el.getAttribute("aria-label") ?? el.textContent?.trim(),
-    );
-    expect(labels).toContain("Conversation");
-    for (const gone of ["Goals", "Feed", "Ideas", "Home"]) expect(labels).not.toContain(gone);
+    expect(page.container.querySelector('[data-testid="chats-trigger"]')).toBeTruthy();
+    expect(page.container.querySelector('[data-testid="app-rail"]')).toBeNull();
+    const text = page.container.textContent ?? "";
+    for (const gone of ["Goals", "Feed", "Ideas", "Nova"]) expect(text).not.toContain(gone);
     expect(page.container.querySelector('[data-testid="bots-sidebar"]')).toBeNull();
     expect(page.container.querySelector('[data-testid="create-menu-trigger"]')).toBeNull();
   } finally {

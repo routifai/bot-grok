@@ -2018,8 +2018,8 @@ msgstr "Hi, this is how I'll sound when I read replies out loud."
 msgid "Hide"
 msgstr "Hide"
 
-msgid "Hide context panel"
-msgstr "Hide context panel"
+msgid "Hide activity"
+msgstr "Hide activity"
 
 msgid "Hide hidden files"
 msgstr "Hide hidden files"
@@ -3607,9 +3607,6 @@ msgstr "Sheets"
 
 msgid "Show"
 msgstr "Show"
-
-msgid "Show context panel"
-msgstr "Show context panel"
 
 msgid "Show earlier messages"
 msgstr "Show earlier messages"

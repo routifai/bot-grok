@@ -16,8 +16,8 @@ import {
   latestAnswerableAskMessageId,
   userVisibleMessages,
 } from "@nova/core";
-import { AvatarStyleProvider, Button, cn, GroupAvatar, type GroupAvatarMember } from "@nova/ui-web";
-import { Menu, PanelRightClose, PanelRightOpen, Plus } from "lucide-react";
+import { AvatarStyleProvider, Button, GroupAvatar, type GroupAvatarMember } from "@nova/ui-web";
+import { Menu, Plus } from "lucide-react";
 import type { ReactNode } from "react";
 import {
   lazy,
@@ -41,6 +41,7 @@ import {
   useIsDesktop,
 } from "../components/ai/orb";
 import { ArtifactPanelProvider, AskPreviewsProvider } from "../components/cards/context";
+import { SuperchatLogo } from "../components/SuperchatLogo";
 import { useNovaWork } from "../features/activity";
 import { ApprovalCards } from "../features/approvals";
 import { appsExtension } from "../features/apps";
@@ -77,20 +78,20 @@ import { markAfterPaint, markOnce } from "../lib/performance";
 import { rpc } from "../lib/rpc";
 import { activeThreadRuns } from "../lib/thread-events";
 import { memberName } from "./GroupPanel";
-import { ContextPanel, useContextPanelCollapsed } from "./muse/chrome/ContextPanel";
-import { ConversationHeader, TOOLBAR_BUTTON } from "./muse/chrome/ConversationHeader";
+import { ChatsPopover } from "./muse/chrome/ChatsPopover";
+import { ContourGround } from "./muse/chrome/ContourGround";
+import { ConversationActivity } from "./muse/chrome/ConversationActivity";
 import { conversationLayout } from "./muse/chrome/conversationLayout";
-import { ConnectedDock, type DockKey } from "./muse/chrome/Dock";
+import { ConnectedDock, type DockKey, SettingsButton } from "./muse/chrome/Dock";
 import {
   EmptyConversationLead,
   EmptyConversationSuggestions,
 } from "./muse/chrome/EmptyConversation";
 import { Home } from "./muse/chrome/Home";
 import { HomeActivity } from "./muse/chrome/HomeActivity";
-import { MuseSidebar, useSidebarCollapsed } from "./muse/chrome/MuseSidebar";
 import { museMode } from "./muse/chrome/museMode";
 import { BotSettingsPanel, GroupSettingsPanel } from "./muse/chrome/PanelForms";
-import { type ChatProject, useChatProject } from "./muse/chrome/ProjectChip";
+import { type ChatProject, ProjectChip, useChatProject } from "./muse/chrome/ProjectChip";
 import type { Panel } from "./muse/chrome/panel";
 import { SidePanelHeader } from "./muse/chrome/SidePanelHeader";
 import { useBotRoster } from "./muse/chrome/useBotRoster";
@@ -288,12 +289,11 @@ export function ShellPage() {
     }),
     [sideChatWire, refreshChatList],
   );
-  const [contextPanelCollapsed, setContextPanelCollapsed] = useContextPanelCollapsed();
   const chatArtifacts = useChatArtifacts(
     `${active?.id ?? ""}:${activeChat === "draft" ? "draft" : (activeChat?.id ?? "")}`,
   );
   /** Below `md` the Muse sidebar is an off-canvas drawer opened from the main header. */
-  const [navOpen, setNavOpen] = useState(false);
+  const [_navOpen, setNavOpen] = useState(false);
   const activeGroup = groups.find((group) => group.id === groupId);
   const activeTaughtSkills = taughtSkillsBotId === active?.id ? taughtSkills : [];
   const recordingSkill = activeTaughtSkills.find((skill) => skill.status === "recording") ?? null;
@@ -544,11 +544,10 @@ export function ShellPage() {
   const composerDock = useRef<HTMLDivElement>(null);
   // A View Transition already glides the composer (`nova-composer`); the FLIP is the fallback.
   useDockTransition(composerDock, shownStart, () => orbFlight.current === "view-transition");
-  const [sidebarCollapsed, toggleSidebarCollapsed] = useSidebarCollapsed();
-  const isDesktop = useIsDesktop();
+  const _isDesktop = useIsDesktop();
   const orbHome = orbPlacement({
     startPage: shownStart,
-    sidebarVisible: isDesktop ? !sidebarCollapsed : navOpen,
+    sidebarVisible: false,
   });
   const conversationSnapshot = useMemo(
     () => (activeSnapshot ? { ...activeSnapshot, messages: conversationMessages } : null),
@@ -890,51 +889,18 @@ export function ShellPage() {
       {bootstrapMe !== undefined ? (
         <HostComputerPrompt initialMe={bootstrapMe ?? undefined} />
       ) : null}
+      {museMode && active && !showHome ? <ContourGround /> : null}
       {museMode && active && !showHome ? (
-        <div className="relative z-10 hidden items-center ps-3 md:flex">
+        <SuperchatLogo className="absolute start-8 top-7 z-20 hidden md:inline-flex" />
+      ) : null}
+      {museMode && active && !showHome ? (
+        <div className="relative z-10 hidden w-[96px] shrink-0 flex-col items-center justify-between pt-24 pb-6 md:flex">
+          <span />
           <ConnectedDock botId={active.id} active={dockSheet} onSelect={setDockSheet} />
+          <SettingsButton onClick={() => openSettings("general")} />
         </div>
       ) : null}
-      {active ? (
-        <MuseSidebar
-          botId={active.id}
-          museName={active.name}
-          runs={currentRuns}
-          messages={activeSnapshot?.messages}
-          personName={bootstrapMe?.name}
-          activeChatId={activeChat === "draft" ? "draft" : (activeChat?.id ?? null)}
-          chatListState={chatList.state}
-          onOpenConversation={() => {
-            // Conversation means the chat itself: it closes an open fork or the forks list.
-            forks.reset();
-            setActiveChat(null);
-          }}
-          onOpenWaiting={() => setDockSheet("inbox")}
-          onOpenSettings={() => openSettings("general")}
-          onOpenChat={(chat) => {
-            setActiveChat(chat);
-          }}
-          onNewDraft={() => {
-            setActiveChat("draft");
-          }}
-          forks={forks.rows}
-          activeForkId={forks.thread?.chat.id ?? null}
-          onOpenFork={(row) => {
-            setActiveChat(null);
-            forks.openRow(row);
-          }}
-          onShowForks={(filter) => {
-            setActiveChat(null);
-            forks.showForks(filter);
-          }}
-          mobileOpen={navOpen}
-          collapsed={sidebarCollapsed}
-          onToggleCollapsed={toggleSidebarCollapsed}
-          onMobileOpenChange={setNavOpen}
-        />
-      ) : (
-        <AppRail active="bots" />
-      )}
+      {active ? null : <AppRail active="bots" />}
 
       <main
         className={
@@ -992,50 +958,42 @@ export function ShellPage() {
               {/* Behind a fork's thread view or "lift and ask", the Conversation is out of reach. */}
               <div className="contents" inert={forkOverlayOpen || undefined}>
                 {museMode && active ? (
-                  <ConversationHeader
-                    botId={active.id}
-                    museName={active.name}
-                    color={active.color}
-                    runs={currentRuns}
-                    messages={activeSnapshot?.messages}
-                    // Same condition as the context panel's own `collapsed` below: whenever
-                    // its identity header isn't visible (collapsed, a side panel open, or
-                    // below `xl`), this header's compact identity covers it instead.
-                    identityCollapsed={contextPanelCollapsed || panel !== null}
-                    onOpenWaiting={() => setDockSheet("inbox")}
-                    isNew={shownStart}
-                    onOpenMenu={() => setNavOpen(true)}
-                    project={conversationProject}
-                    onOpenProject={openProjectFiles}
-                    leading={
-                      forks.rows.length || forksView ? (
+                  <div className="app-drag relative z-10 flex h-[84px] min-w-0 shrink-0 items-center gap-3 ps-4 pe-4 md:ps-0 md:pe-6">
+                    <SuperchatLogo className="md:hidden" />
+                    {conversationProject ? (
+                      <span className="app-no-drag hidden md:inline-flex">
+                        <ProjectChip project={conversationProject} onOpen={openProjectFiles} />
+                      </span>
+                    ) : null}
+                    <span className="min-w-0 flex-1" />
+                    <div className="app-no-drag flex shrink-0 items-center gap-2">
+                      {forks.rows.length || forksView ? (
                         <ForkViewSwitch view={forks.view} onChange={forks.setView} />
-                      ) : undefined
-                    }
-                    actions={
-                      <>
-                        <ConversationModelPicker botId={active.id} />
-                        <button
-                          type="button"
-                          title={
-                            contextPanelCollapsed ? t`Show context panel` : t`Hide context panel`
-                          }
-                          aria-label={
-                            contextPanelCollapsed ? t`Show context panel` : t`Hide context panel`
-                          }
-                          aria-pressed={!contextPanelCollapsed}
-                          onClick={() => setContextPanelCollapsed(!contextPanelCollapsed)}
-                          className={cn(TOOLBAR_BUTTON, "hidden xl:grid")}
-                        >
-                          {contextPanelCollapsed ? (
-                            <PanelRightOpen strokeWidth={1.75} />
-                          ) : (
-                            <PanelRightClose strokeWidth={1.75} />
-                          )}
-                        </button>
-                      </>
-                    }
-                  />
+                      ) : null}
+                      <ConversationModelPicker botId={active.id} />
+                      <ChatsPopover
+                        current={!activeChat && !forks.thread}
+                        onOpenConversation={() => {
+                          forks.reset();
+                          setActiveChat(null);
+                        }}
+                        state={chatList.state}
+                        activeChatId={null}
+                        onOpenChat={setActiveChat}
+                        onNewDraft={() => setActiveChat("draft")}
+                        forks={forks.rows}
+                        activeForkId={forks.thread?.chat.id ?? null}
+                        onOpenFork={(row) => {
+                          setActiveChat(null);
+                          forks.openRow(row);
+                        }}
+                        onShowForks={(filter) => {
+                          setActiveChat(null);
+                          forks.showForks(filter);
+                        }}
+                      />
+                    </div>
+                  </div>
                 ) : (
                   <div className="app-drag flex items-center justify-between border-b border-sidebar-border px-3 py-[17px] md:px-[22px]">
                     <div className="flex min-w-0 items-center gap-2">
@@ -1226,16 +1184,10 @@ export function ShellPage() {
               ) : null}
             </div>
             {museMode && active ? chatArtifacts.panel : null}
-            {museMode && active ? (
-              <ContextPanel
-                botId={active.id}
-                museName={active.name}
-                chatListState={chatList.state}
-                // The computer (or settings) side panel takes that column; two side panels
-                // would crush the conversation.
-                collapsed={contextPanelCollapsed || panel !== null || chatArtifacts.isOpen}
-                onOpenWaiting={() => setDockSheet("inbox")}
-              />
+            {museMode && active && !chatArtifacts.isOpen ? (
+              <div className="pointer-events-none absolute end-5 bottom-24 z-20 hidden md:block xl:bottom-6 [&>*]:pointer-events-auto">
+                <ConversationActivity botId={active.id} />
+              </div>
             ) : null}
           </div>
         )}
