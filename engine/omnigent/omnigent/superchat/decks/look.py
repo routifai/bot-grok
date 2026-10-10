@@ -7,7 +7,8 @@ each value is checked against something it cannot write itself:
   (:data:`MOODS`) whose themes include it;
 * ``picked``: the card shown just before that message offered deck themes, and the message picks
   exactly this one (the card's button sends the theme's name);
-* ``preference``: an active memory claim about decks or themes names this theme;
+* ``preference``: an active memory claim the person stated (or wrote) about decks or themes
+  names this theme; an inferred one does not count;
 * ``you_choose``: the message hands the choice over (:data:`YOU_CHOOSE_PHRASES`);
 * ``background``: the session is a Helper (session kind on the server; no person to ask). A
   Helper passes whatever it says: there is never anyone to show a card to.
@@ -240,6 +241,12 @@ async def _get(client: httpx.AsyncClient, url: str, **params: Any) -> Any:
         return None
 
 
+def _person_said(claim: Mapping[str, Any]) -> bool:
+    """A claim the person stated or wrote. A noticed (inferred) preference does not count: the
+    decks the Muse itself styled would teach it the person "prefers" that look."""
+    return claim.get("explicitness") == "stated" or claim.get("person_authored") is True
+
+
 async def gather_evidence(ctx: HandlerCtx | None, look_from: object) -> LookEvidence | str:
     """Read the records for *look_from* from the server, or say why they cannot be read."""
     if ctx is None or ctx.server_client is None or not ctx.conversation_id:
@@ -262,7 +269,7 @@ async def gather_evidence(ctx: HandlerCtx | None, look_from: object) -> LookEvid
         claims = tuple(
             str(c.get("text") or "")
             for c in rows or ()
-            if isinstance(c, dict) and c.get("status") == "active"
+            if isinstance(c, dict) and c.get("status") == "active" and _person_said(c)
         )
     return LookEvidence(message=message, offered=offered, claims=claims)
 

@@ -111,7 +111,7 @@ class DeckNewTool(Tool):
                             "description": (
                                 "Where this look came from: named (their latest message names "
                                 "the theme or a mood), picked (their answer to the 'Which "
-                                "look?' card), preference (a saved preference names it), "
+                                "look?' card), preference (a preference they stated names it), "
                                 "you_choose (they said you choose / just do it), background "
                                 "(Helper work, no person). Checked against the conversation; "
                                 "ask, or a claim it does not back, shows the person the "
