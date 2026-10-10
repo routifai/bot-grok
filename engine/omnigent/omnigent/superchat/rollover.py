@@ -216,6 +216,27 @@ def _compaction_event_body(
     return body
 
 
+def summarizer_model(model: str, connection: Mapping[str, str] | None) -> str:
+    """
+    The model string the summarizer is called with: provider-prefixed.
+
+    A harness reports its model bare (``claude-sonnet-5-5``), and the LLM router reads a bare
+    name as OpenAI's, so a Claude model would be sent as an OpenAI Responses call to Anthropic's
+    host (a 404, and no checkpoint). A bare Claude model, or any bare model on an Anthropic base
+    URL, is routed to the Anthropic adapter; anything already prefixed is left as it is.
+
+    :param model: The turn's reported model.
+    :param connection: The summarizer's connection overrides, if any.
+    :returns: ``provider/model``.
+    """
+    if "/" in model:
+        return model
+    base_url = (connection or {}).get("base_url", "")
+    if model.startswith("claude") or "anthropic.com" in base_url:
+        return f"anthropic/{model}"
+    return model
+
+
 async def roll_over_session(
     conversation_id: str,
     *,
@@ -270,7 +291,7 @@ async def roll_over_session(
                 items_since,
                 previous_summary=previous_summary,
                 keep_tokens=resolve_keep_tokens(labels),
-                model=model,
+                model=summarizer_model(model, connection),
                 llm_client=llm_client,
                 connection=connection,
                 conversation_id=conversation_id,

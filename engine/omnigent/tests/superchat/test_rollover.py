@@ -431,3 +431,19 @@ async def test_turn_during_rollover_is_not_covered_by_the_checkpoint() -> None:
     ids = [m.get("id") for m in posted_data["compacted_messages"] if m.get("id")]
     assert "u2" in ids and "a2" in ids
     assert "u1" not in ids
+
+
+def test_summarizer_model_routes_a_bare_claude_model_to_anthropic() -> None:
+    """A harness reports its model bare; the summarizer must not send it as an OpenAI call."""
+    from omnigent.superchat.rollover import summarizer_model
+
+    anthropic = {"base_url": "https://api.anthropic.com"}
+    assert summarizer_model("claude-sonnet-5-5", anthropic) == "anthropic/claude-sonnet-5-5"
+    assert summarizer_model("claude-haiku-4-5", None) == "anthropic/claude-haiku-4-5"
+    assert summarizer_model("some-model", {"base_url": "https://api.anthropic.com/v1"}) == (
+        "anthropic/some-model"
+    )
+    assert summarizer_model("gpt-5", None) == "gpt-5"
+    assert summarizer_model("openrouter/anthropic/claude-sonnet-5-5", anthropic) == (
+        "openrouter/anthropic/claude-sonnet-5-5"
+    )
