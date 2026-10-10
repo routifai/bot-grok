@@ -37,7 +37,7 @@ export function activityFeedFor(botId: string): ActivityFeed {
 
 /**
  * The Activity feed's data (docs/super-chat/WIRING.md "Activity panel"): live while mounted
- * (see ActivityFeed — event-driven, polled only as a safety net, paused while the tab is hidden).
+ * (see ActivityFeed — event-driven, polled only as a safety net, live even while the tab is hidden).
  */
 export function useActivities(botId: string): {
   state: ActivitiesState;

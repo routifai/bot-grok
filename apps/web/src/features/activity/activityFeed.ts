@@ -51,10 +51,16 @@ function epochSeconds(iso: string): number {
 
 /**
  * One Muse's Activity Feed, shared by everything that shows it (the Activity panel, the Helper
- * rows in the chat) so they can never disagree. While anyone is subscribed and the tab is
- * visible it re-reads when the engine says the feed changed (`watch`: a Helper started, took a
- * step, settled), with a poll only as the safety net under that signal — tight while something
- * is running, slow otherwise, and the whole cadence if the signal is unavailable.
+ * rows in the chat) so they can never disagree. While anyone is subscribed it re-reads when the
+ * engine says the feed changed (`watch`: a Helper started, took a step, settled), with a poll
+ * only as the safety net under that signal — tight while something is running, slow otherwise,
+ * and the whole cadence if the signal is unavailable.
+ *
+ * It stays live while the tab is hidden: browsers report a page "hidden" whenever its window is
+ * covered or in the background (often the window the person glances back at, or one driven by
+ * automation), and pausing there left a Helper "Working now" long after it had finished. The
+ * signal is one idle connection and the browser throttles hidden timers itself; coming back into
+ * view only adds an immediate re-read.
  */
 export class ActivityFeed {
   private snapshot: ActivityFeedSnapshot = { state: { status: "loading" }, loadingEarlier: false };
@@ -122,7 +128,7 @@ export class ActivityFeed {
   };
 
   private active(): boolean {
-    return this.listeners.size > 0 && document.visibilityState === "visible";
+    return this.listeners.size > 0;
   }
 
   private set(next: ActivityFeedSnapshot): void {
@@ -130,9 +136,9 @@ export class ActivityFeed {
     for (const listener of [...this.listeners]) listener();
   }
 
+  /** Back in view: whatever the throttled background timers missed is read at once. */
   private readonly onVisibilityChange = (): void => {
-    if (document.visibilityState === "visible") this.activate();
-    else this.deactivate();
+    if (document.visibilityState === "visible") this.refresh();
   };
 
   private start(): void {
@@ -141,23 +147,12 @@ export class ActivityFeed {
     if (this.snapshot.state.status !== "ready" && this.snapshot.state.status !== "loading") {
       this.set({ ...this.snapshot, state: { status: "loading" } });
     }
-    if (document.visibilityState === "visible") this.activate();
-    // First subscribed while the tab is hidden (a background tab, a headless page): read once
-    // anyway, so the panel shows its feed (or an error) rather than "Loading…" until shown.
-    else if (this.snapshot.state.status === "loading") void this.load(true);
-  }
-
-  private stop(): void {
-    document.removeEventListener("visibilitychange", this.onVisibilityChange);
-    this.deactivate();
-  }
-
-  private activate(): void {
     void this.load();
     this.ensureWatch();
   }
 
-  private deactivate(): void {
+  private stop(): void {
+    document.removeEventListener("visibilitychange", this.onVisibilityChange);
     clearTimeout(this.pollTimer);
     clearTimeout(this.throttleTimer);
     this.throttleTimer = undefined;
@@ -166,10 +161,9 @@ export class ActivityFeed {
     this.watching = false;
   }
 
-  /** Reads the newest page. `force`: the single first read of a hidden tab (no polling follows). */
-  private async load(force = false): Promise<void> {
-    if (!force && !this.active()) return;
-    if (this.listeners.size === 0) return;
+  /** Reads the newest page, then schedules the next safety-net read. */
+  private async load(): Promise<void> {
+    if (!this.active()) return;
     if (this.loading) {
       this.reloadQueued = true;
       return;

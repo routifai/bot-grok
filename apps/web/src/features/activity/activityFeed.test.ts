@@ -147,28 +147,48 @@ it("reconnects the signal after it drops and reads again", async () => {
   expect(list.mock.calls.length).toBeGreaterThanOrEqual(2);
 });
 
-it("stops reading while the tab is hidden and reads at once when it returns", async () => {
+it("stays live in a tab first opened hidden: the Helper settles without the tab coming back", async () => {
+  // The live run: a covered window reports "hidden" from the start; the feed read once, never
+  // opened the signal and never polled, so a finished Helper stayed "Working now" for minutes.
+  visibility = "hidden";
+  const running = helper("h1", { status: "in_progress", finishedAt: null });
+  const done = helper("h1", { status: "done" });
+  const second = helper("h2", { status: "in_progress", finishedAt: null });
+  const { feed, list, watch } = setup([page(running), page(done, second)]);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(list).toHaveBeenCalledTimes(1);
+  expect(watch.watch).toHaveBeenCalledTimes(1);
+
+  watch.push({ type: "changed" });
+  await vi.advanceTimersByTimeAsync(200);
+  const rows = ready(feed).map((a) => [a.chatId, a.status]);
+  expect(rows.sort()).toEqual([
+    ["h1", "done"],
+    ["h2", "in_progress"],
+  ]);
+});
+
+it("keeps the safety-net poll tight in a hidden tab while something is running", async () => {
+  visibility = "hidden";
+  const running = helper("h1", { status: "in_progress", finishedAt: null });
+  const { list } = setup([page(running)]);
+  await vi.advanceTimersByTimeAsync(0);
+  await vi.advanceTimersByTimeAsync(ACTIVITY_POLL_ACTIVE_MS * 2 + 10);
+  expect(list).toHaveBeenCalledTimes(3);
+});
+
+it("reads at once when a hidden tab comes back into view", async () => {
   const { list } = setup([page()]);
   await vi.advanceTimersByTimeAsync(0);
   visibility = "hidden";
   document.dispatchEvent(new Event("visibilitychange"));
-  await vi.advanceTimersByTimeAsync(ACTIVITY_POLL_IDLE_MS * 3);
+  await vi.advanceTimersByTimeAsync(0);
   expect(list).toHaveBeenCalledTimes(1);
 
   visibility = "visible";
   document.dispatchEvent(new Event("visibilitychange"));
-  await vi.advanceTimersByTimeAsync(0);
+  await vi.advanceTimersByTimeAsync(200);
   expect(list).toHaveBeenCalledTimes(2);
-});
-
-it("reads once even when first opened in a hidden tab, instead of staying on Loading", async () => {
-  visibility = "hidden";
-  const { feed, list } = setup([page(activity({ id: "a1" }))]);
-  await vi.advanceTimersByTimeAsync(0);
-  expect(list).toHaveBeenCalledTimes(1);
-  expect(ready(feed)).toHaveLength(1);
-  await vi.advanceTimersByTimeAsync(ACTIVITY_POLL_IDLE_MS * 3);
-  expect(list).toHaveBeenCalledTimes(1);
 });
 
 it("turns a read that never answers into an error, not an endless loading state", async () => {
