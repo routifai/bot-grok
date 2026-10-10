@@ -262,7 +262,8 @@ class ModelEmbeddings:
         )
         if connection is None:
             raise EmbeddingUnavailable(
-                REASON_NO_CONNECTION, "Add an OpenRouter key in Settings to search file contents."
+                REASON_NO_CONNECTION,
+                "Add an OpenRouter or LiteLLM key in Settings to search file contents.",
             )
         return connection
 
@@ -273,8 +274,9 @@ class ModelEmbeddings:
         """
         self._check(owner_id)
         connection = self._connection(owner_id)
-        route = UPSTREAMS[connection.provider].embeddings
-        assert route is not None
+        upstream = UPSTREAMS[connection.provider]
+        route, api_base = upstream.embeddings, upstream.embeddings_api_base
+        assert route is not None and api_base is not None
         setting = self._settings.get()
         litellm = _load_litellm()
         vectors: list[list[float]] = []
@@ -286,7 +288,7 @@ class ModelEmbeddings:
                 "model": f"{route.model_prefix}{setting.model}",
                 "input": batch,
                 "api_key": connection.plaintext,
-                "api_base": route.api_base,
+                "api_base": api_base,
             }
             if setting.dimensions:
                 kwargs["dimensions"] = setting.dimensions

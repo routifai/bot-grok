@@ -8,6 +8,7 @@ vendors a harness can reach through an upstream, and over which wire protocol).
 
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -23,12 +24,13 @@ AuthStyle = Literal["x-api-key", "bearer"]
 class EmbeddingRoute:
     """How an upstream serves embeddings (an OpenAI-compatible ``/embeddings`` endpoint).
 
-    :param api_base: Base URL litellm calls (the ``/embeddings`` path is appended by litellm).
+    :param api_base: Base URL litellm calls (the ``/embeddings`` path is appended by litellm);
+        ``None`` means the upstream's own ``<origin>/v1`` (an upstream whose origin is configured).
     :param model_prefix: Prefix that makes litellm treat the model as OpenAI-compatible
         (``openai/``); the rest of the id is what the upstream receives.
     """
 
-    api_base: str
+    api_base: str | None = None
     model_prefix: str = "openai/"
 
 
@@ -38,7 +40,8 @@ class Upstream:
 
     :param name: Registry key, also the ``{provider}`` segment of the proxy route.
     :param label: Display name used in messages.
-    :param base_url: Origin (plus any fixed prefix) the proxy forwards ``/v1/...`` paths onto.
+    :param base_url: Origin (plus any fixed prefix) the proxy forwards ``/v1/...`` paths onto;
+        empty for an upstream whose origin is the deployment's own (``base_url_env``).
     :param auth: How the key is sent: an ``x-api-key`` header or ``Authorization: Bearer``.
     :param wire_apis: Wire protocols served: ``messages`` (Anthropic), ``chat`` (OpenAI Chat
         Completions), later ``responses``.
@@ -49,6 +52,11 @@ class Upstream:
         proxy applies it before forwarding); ``None`` when ids pass through unchanged.
     :param embeddings: How this upstream serves embeddings, or ``None`` when it does not (a
         connection to it cannot embed files).
+    :param base_url_env: Environment variable naming the origin, for an upstream the operator
+        runs (a LiteLLM proxy); unset means the upstream is not offered on this deployment.
+    :param lists_models: Whether a connection's model catalog is read from the upstream's
+        OpenAI-compatible ``/v1/models`` (with the owner's key) instead of the harness's static
+        list: the upstream's model ids are the deployment's own names.
     """
 
     name: str
@@ -61,6 +69,29 @@ class Upstream:
     extra_headers: tuple[tuple[str, str], ...] = ()
     id_mapper: Callable[[str], str] | None = None
     embeddings: EmbeddingRoute | None = None
+    base_url_env: str | None = None
+    lists_models: bool = False
+
+    @property
+    def origin(self) -> str:
+        """:returns: Where calls go: ``base_url``, or the configured origin (a trailing ``/v1``
+        dropped, since the routes add it), or ``""`` when an operator-run upstream is unset."""
+        if self.base_url_env is None:
+            return self.base_url
+        configured = os.environ.get(self.base_url_env, "").strip().rstrip("/")
+        return configured.removesuffix("/v1").rstrip("/")
+
+    @property
+    def configured(self) -> bool:
+        """:returns: Whether this deployment can call the upstream (it has an origin)."""
+        return bool(self.origin)
+
+    @property
+    def embeddings_api_base(self) -> str | None:
+        """:returns: The base URL embedding calls go to, or ``None`` when it cannot embed."""
+        if self.embeddings is None:
+            return None
+        return self.embeddings.api_base or f"{self.origin}/v1"
 
     def serves_model(self, model: str) -> bool:
         """:returns: Whether this upstream can serve *model* (a claude-only one serves Claude)."""
@@ -83,7 +114,7 @@ class Upstream:
     @property
     def probe_url(self) -> str:
         """:returns: The full URL of the key probe."""
-        return f"{self.base_url}{self.probe_path}"
+        return f"{self.origin}{self.probe_path}"
 
 
 # Bare dated suffix ("-20250514") and a trailing "<major>-<minor>" or leading "<major>-<minor>-".
@@ -135,6 +166,21 @@ UPSTREAMS: dict[str, Upstream] = {
         id_mapper=openrouter_model_id,
         embeddings=EmbeddingRoute(api_base="https://openrouter.ai/api/v1"),
     ),
+    # The operator's own LiteLLM proxy (a company gateway): OpenAI-compatible, plus the Anthropic
+    # Messages passthrough LiteLLM serves at /v1/messages. Model ids are the proxy's own names,
+    # so the model list comes from it. Offered only when LITELLM_BASE_URL is set.
+    "litellm": Upstream(
+        name="litellm",
+        label="LiteLLM",
+        base_url="",
+        base_url_env="LITELLM_BASE_URL",
+        auth="bearer",
+        wire_apis=frozenset({"messages", "chat"}),
+        vendors_served="any",
+        probe_path="/v1/models",
+        lists_models=True,
+        embeddings=EmbeddingRoute(),
+    ),
     # OpenAI is deliberately not wired yet (needs the "responses" wire API):
     # "openai": Upstream("openai", "OpenAI", "https://api.openai.com", "bearer",
     #                    frozenset({"responses", "chat"}), "any", "/v1/models"),
@@ -153,7 +199,7 @@ def harness_family(harness: str) -> str:
 
 
 # Providers per family, best first; a later slice may order claude and multi differently.
-_PREFERENCE = ("anthropic", "openrouter")
+_PREFERENCE = ("anthropic", "openrouter", "litellm")
 
 
 def preferred_providers(family: str) -> tuple[str, ...]:

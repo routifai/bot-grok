@@ -40,10 +40,11 @@ def test_family_comes_from_harness_capabilities() -> None:
 
 
 def test_providers_that_cannot_serve_the_family_are_excluded() -> None:
-    assert preferred_providers(harness_family("claude-sdk")) == ("anthropic", "openrouter")
-    assert preferred_providers(harness_family("pi")) == ("anthropic", "openrouter")
+    every = ("anthropic", "openrouter", "litellm")
+    assert preferred_providers(harness_family("claude-sdk")) == every
+    assert preferred_providers(harness_family("pi")) == every
     # A Claude-only upstream cannot serve a GPT-family harness.
-    assert preferred_providers(harness_family("codex")) == ("openrouter",)
+    assert preferred_providers(harness_family("codex")) == ("openrouter", "litellm")
 
 
 def _config(harness: str, **binding) -> dict:

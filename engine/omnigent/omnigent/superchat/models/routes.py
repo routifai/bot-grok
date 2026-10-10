@@ -36,7 +36,7 @@ from omnigent.superchat.models.store import (
     ConnectionMeta,
     ModelConnectionStore,
 )
-from omnigent.superchat.models.upstreams import PROVIDERS
+from omnigent.superchat.models.upstreams import PROVIDERS, UPSTREAMS
 from omnigent.superchat.sealing import VaultUnavailableError
 
 
@@ -108,9 +108,10 @@ def create_model_connection_router(
         ) -> dict[str, Any]:
             """Probe the key with its provider, then store it sealed (replacing the old one)."""
             scope, owner_id = await owner(request)
-            if provider not in PROVIDERS:
+            offered = [name for name in PROVIDERS if UPSTREAMS[name].configured]
+            if provider not in offered:
                 raise OmnigentError(
-                    f"provider must be one of: {', '.join(PROVIDERS)}",
+                    f"provider must be one of: {', '.join(offered)}",
                     code=ErrorCode.INVALID_INPUT,
                 )
             api_key = body.api_key.strip()

@@ -259,7 +259,7 @@ def test_resolution_order_and_preference(uri: str) -> None:
     assert only is not None and only.provider == "openrouter" and only.scope == "org"
     assert resolve_model_connection(store, owner_id="u1", preferred=("nope",)) is None
     assert "sk-ant" not in repr(first)
-    assert preferred_providers("claude") == preferred_providers("multi") == BOTH
+    assert preferred_providers("claude") == preferred_providers("multi") == (*BOTH, "litellm")
 
 
 @pytest.mark.asyncio

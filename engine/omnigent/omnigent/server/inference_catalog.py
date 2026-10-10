@@ -41,7 +41,7 @@ from omnigent.server.databricks_identity import resolve_databricks_token
 from omnigent.superchat.models.org import apply_overlay
 from omnigent.superchat.models.proxy import KEY_REQUIRED_MESSAGE
 from omnigent.superchat.models.store import resolve_model_connection
-from omnigent.superchat.models.upstreams import harness_family, preferred_providers
+from omnigent.superchat.models.upstreams import UPSTREAMS, harness_family, preferred_providers
 
 MODEL_PROXY_AUTH_COMMAND = "python3 -m omnigent.host.model_credential token"
 
@@ -330,16 +330,25 @@ class SandboxInferenceService:
                     raise OmnigentError(KEY_REQUIRED_MESSAGE, code=ErrorCode.MODEL_KEY_REQUIRED)
             else:
                 proxy_url = _endpoint(f"{target.server_url.rstrip('/')}/v1/model/{saved.provider}")
+                upstream = UPSTREAMS[saved.provider]
                 # Anthropic Messages at the proxy root serves claude-sdk (and pi's Claude ids).
-                # OpenRouter also serves any other model on Chat Completions, which pi uses at
-                # ``<proxy>/v1`` (pi appends ``/chat/completions``): the openai family.
+                # An upstream that also speaks Chat Completions (OpenRouter, LiteLLM) serves any
+                # other model there, which pi uses at ``<proxy>/v1`` (pi appends
+                # ``/chat/completions``): the openai family.
                 for name in model_names:
                     model_providers[name] = saved.provider
                     entry_raw = raw["providers"][name]
                     keep = {"models", "pricing", "context_window", "max_output_tokens"}
                     families = {"anthropic": {"base_url": proxy_url}}
-                    if saved.provider == "openrouter":
+                    if "chat" in upstream.wire_apis:
                         families["openai"] = {"base_url": f"{proxy_url}/v1", "wire_api": "chat"}
+                    # Its model ids are the deployment's own names: list them from the upstream
+                    # with the owner's key at catalog time (the key never enters the snapshot).
+                    if upstream.lists_models and name not in discovery:
+                        discovery[name] = {
+                            "connection": MODEL_CONNECTION,
+                            "upstream": upstream.name,
+                        }
                     runtime["providers"][name] = {
                         "kind": "gateway",
                         "default": entry_raw.get("default", False),
@@ -459,6 +468,35 @@ class SandboxInferenceService:
             saved_binding["default_model"] = preview["default_model"]
         return copy.deepcopy(snapshot)
 
+    def _connection_models(
+        self, snapshot: dict[str, Any], discovery: dict[str, Any]
+    ) -> tuple[ModelEntry, ...]:
+        """List the models a ``connection: model`` upstream serves, with the owner's saved key."""
+        upstream = UPSTREAMS.get(str(discovery.get("upstream")))
+        store = getattr(self._state, "model_connection_store", None)
+        if upstream is None or not upstream.lists_models or not upstream.configured:
+            raise _invalid("This model connection's provider is not configured on this server.")
+        saved = (
+            resolve_model_connection(
+                store, owner_id=snapshot["owner_id"], preferred=(upstream.name,)
+            )
+            if store is not None
+            else None
+        )
+        if saved is None:
+            raise OmnigentError(KEY_REQUIRED_MESSAGE, code=ErrorCode.MODEL_KEY_REQUIRED)
+        descriptor = ResolvedModelProvider(
+            kind="gateway",
+            family="openai",
+            base_url=f"{upstream.origin}/v1",
+            api_key=saved.plaintext,
+            detail=f"connection:{upstream.name}:{snapshot['owner_id']}",
+        )
+        listing = model_catalog._listing_for_provider(descriptor, transport=self._transport)
+        if not listing.verified:
+            raise _invalid(f"Could not list models from {upstream.label}. Check the connection.")
+        return listing.models
+
     def _gateway_models(
         self, snapshot: dict[str, Any], provider: ProviderEntry
     ) -> tuple[ModelEntry, ...]:
@@ -468,6 +506,8 @@ class SandboxInferenceService:
                 f"Configure sandbox.model_discovery.{provider.name} "
                 "for server-side model discovery."
             )
+        if discovery.get("connection") == MODEL_CONNECTION:
+            return self._connection_models(snapshot, discovery)
         base_url = _endpoint(discovery.get("base_url"))
         secret_ref = discovery.get("api_key_ref")
         family = discovery.get("family", "openai")

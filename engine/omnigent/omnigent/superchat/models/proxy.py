@@ -214,7 +214,13 @@ def create_model_proxy_router(
             raise HTTPException(status_code=401, detail="unauthenticated")
         upstream_cfg = UPSTREAMS.get(provider)
         segments = path.split("/")
-        if upstream_cfg is None or segments[0] != "v1" or ".." in segments or "" in segments:
+        if (
+            upstream_cfg is None
+            or not upstream_cfg.configured
+            or segments[0] != "v1"
+            or ".." in segments
+            or "" in segments
+        ):
             raise HTTPException(status_code=404, detail="unknown model route")
         suspensions = get_suspensions()
         if suspensions is not None and await asyncio.to_thread(
@@ -249,7 +255,7 @@ def create_model_proxy_router(
         client = httpx.AsyncClient(transport=transport, timeout=_TIMEOUT, follow_redirects=False)
         upstream_request = client.build_request(
             request.method,
-            f"{upstream_cfg.base_url}/{path}",
+            f"{upstream_cfg.origin}/{path}",
             params=request.query_params,
             headers=headers,
             content=content,
