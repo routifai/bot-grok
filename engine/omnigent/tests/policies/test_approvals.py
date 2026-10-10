@@ -64,6 +64,26 @@ def test_ordinary_shell_commands_pass(command: str) -> None:
     assert approvals.classify_tool_call("sys_os_shell", {"command": command}) is None
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "rm your_files/sales_spec_tmp.json",
+        "echo -n >> your_files/a.csv; rm your_files/a.csv",
+        "echo x | tee -a your_files/a.csv && rm your_files/a.csv",
+        "cd /tmp; cd; rm notes.txt",
+        "pushd /tmp && rm report.pdf",
+        "TMPDIR=~/Documents; rm -rf $TMPDIR/old",
+        "find /tmp ~/Documents -delete",
+        "find /tmp -exec rm -rf ~/Documents ;",
+        "cat <<EOF | sh\nrm -rf ~/Documents\nEOF",
+        "rm /tmp/../home/me/report.pdf",
+    ],
+)
+def test_deletes_outside_scratch_always_ask(command: str) -> None:
+    risk = approvals.classify_tool_call("sys_os_shell", {"command": command})
+    assert risk is not None and risk.category == "delete"
+
+
 def test_browser_click_is_named_by_the_clicked_element() -> None:
     snapshot = {
         "tree": '- button "Place order $12.50" [ref=3]\n- link "Home" [ref=4]',

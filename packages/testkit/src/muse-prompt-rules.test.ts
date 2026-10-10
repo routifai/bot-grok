@@ -67,7 +67,9 @@ describe("Muse deck theme choice", () => {
     '"Make a deck from it", "now a 5-slide deck", "turn this into slides" are NEW decks',
     "Only redoing, fixing or extending the SAME deck file keeps its theme",
     "`deck_new` takes `look_from`",
-    "It refuses `ask`",
+    "It checks this against the conversation and memory",
+    'call `deck_new` with `look_from: "ask"`',
+    "The card ends your turn",
     "leaving its current theme out",
     '"kind": "deck-theme"',
     "do not ask again",
@@ -101,6 +103,9 @@ describe("Muse dashboard rules", () => {
     '`"names": {"margin_pct": "Gross margin"}`',
     "The page cites each source by its path in the workspace",
     "do not say whether you opened, viewed or checked the page",
+    "Pass the spec (JSON) on stdin, so no spec file is left to clean up",
+    "Never write a spec or other scratch file into `your_files/`",
+    "never delete your own temp files",
   ];
   it.each(["templates/AGENTS.md", "agents/nova-claude/AGENTS.md", "agents/nova-pi/AGENTS.md"])(
     "%s keeps dashboards citing the person's files",

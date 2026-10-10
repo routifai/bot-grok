@@ -7,7 +7,8 @@ out. The rules a client would otherwise copy:
 * ``render_card`` / ``ask_clarification`` / ``suggest_follow_ups`` / ``vault_request_secret`` /
   ``artifact_save`` / ``deck_export`` / ``display_chart`` calls become
   ``card`` / ``secure_entry`` / ``file`` messages of their own (a call whose output says it
-  failed shows nothing; a card still running is ``pending``);
+  failed shows nothing; a card still running is ``pending``), as does a ``deck_new`` that
+  answered with its "Which look?" card;
 * a delivered file (a ``resource_event`` whose ``resource_type`` is ``artifact``: something the
   person did, such as exporting a deck from the panel) becomes a ``file`` message marked
   ``"by": "user"``; it is not a tool call, and the Muse's history never replays it;
@@ -32,13 +33,10 @@ from typing import Any
 
 from omnigent.context.attachments import strip_legacy_attachment_context
 from omnigent.entities.conversation import is_system_notice_text
+from omnigent.inner.executor import ENDS_TURN_TOOLS
 from omnigent.runtime.public_error_codes import public_error_code
 from omnigent.superchat.artifact_kinds import KIND_MIME
-from omnigent.superchat.cards.tools import (
-    CARD_TOOL_NAME,
-    CLARIFICATION_TOOL_NAME,
-    FOLLOW_UPS_TOOL_NAME,
-)
+from omnigent.superchat.cards.tools import CARD_TOOL_NAME
 from omnigent.superchat.helpers.tools import START_HELPER_TOOL_NAME
 
 VAULT_REQUEST_TOOL_NAME = "vault_request_secret"
@@ -289,13 +287,15 @@ def _message(item: Item, role: str, blocks: list[dict[str, Any]]) -> dict[str, A
     }
 
 
-_TURN_ENDING_CARD_TOOLS = (CLARIFICATION_TOOL_NAME, FOLLOW_UPS_TOOL_NAME)
+#: Tools whose card result ends the turn (``deck_new`` shows its "Which look?" card this way).
+_TURN_ENDING_CARD_TOOLS = tuple(sorted(ENDS_TURN_TOOLS))
 
 
 def _final_text_ids(items: list[Item], outputs: Mapping[str, str]) -> set[str]:
     """Ids of the assistant text items that end their turn (a user message starts a turn).
 
-    A turn that shows an ``ask_clarification`` or ``suggest_follow_ups`` card ends there: the
+    A turn that shows an ``ask_clarification`` or ``suggest_follow_ups`` card (or any other
+    :data:`ENDS_TURN_TOOLS` card) ends there: the
     card belongs to the answer written before it, so text the model adds after the card is
     dropped instead of replacing the answer (and pushing the chips off the last message).
     """
@@ -359,7 +359,7 @@ def project_items(
                 continue
             if _is_call(item, CARD_TOOL_NAME):
                 block = _card_block(item, output)
-            elif _is_call(item, CLARIFICATION_TOOL_NAME) or _is_call(item, FOLLOW_UPS_TOOL_NAME):
+            elif any(_is_call(item, name) for name in _TURN_ENDING_CARD_TOOLS):
                 # Instant tools: the card appears with its result, never as a skeleton.
                 block = _card_block(item, output) if output is not None else None
             elif _is_call(item, VAULT_REQUEST_TOOL_NAME):

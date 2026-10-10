@@ -207,7 +207,8 @@ def _shell_segment_risk(tokens: list[str], text: str) -> Risk | None:
     # delete
     if prog in {"rm", "rmdir", "unlink", "shred", "trash", "srm"}:
         paths = [a for a in args if not a.startswith("-")]
-        if paths and all(p.startswith(_SAFE_DELETE_ROOTS) for p in paths):
+        # Normalised first: ``/tmp/../home/x`` is not under /tmp.
+        if paths and all(os.path.normpath(p).startswith(_SAFE_DELETE_ROOTS) for p in paths):
             return None
         return Risk(
             "delete", tuple(paths[:3]) or (prog,), f"Delete {', '.join(paths[:3]) or 'files'}"

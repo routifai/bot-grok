@@ -13,8 +13,8 @@ from omnigent.tools.base import Tool
 DECK_TOOL_NAMES = ("deck_export", "deck_new", "deck_check", "deck_themes", "deck_theme_set")
 DECK_AUTHORING_TOOL_NAMES = ("deck_new", "deck_check", "deck_themes", "deck_theme_set")
 DECK_EXPORT_FORMATS = ("pptx", "pdf")
-# Where a new deck's look came from (``deck_new``'s ``look_from``). ``ask`` is refused: the
-# person has not chosen yet, so the Muse asks "Which look?" first.
+# Where a new deck's look came from (``deck_new``'s ``look_from``), checked by ``decks.look``.
+# ``ask`` (or a claim the records do not back) returns the "Which look?" card instead of a deck.
 DECK_LOOK_SOURCES = ("named", "picked", "preference", "you_choose", "background", "ask")
 
 
@@ -109,12 +109,13 @@ class DeckNewTool(Tool):
                             "type": "string",
                             "enum": list(DECK_LOOK_SOURCES),
                             "description": (
-                                "Where this look came from: named (the person named the theme "
-                                "or a mood in this request), picked (from your 'Which look?' "
-                                "card), preference (their standing preference), you_choose "
-                                "(they said you choose / just do it), background (no person "
-                                "to ask). ask = none of these: refused, ask 'Which look?' "
-                                "first. An earlier deck's theme does not count."
+                                "Where this look came from: named (their latest message names "
+                                "the theme or a mood), picked (their answer to the 'Which "
+                                "look?' card), preference (a saved preference names it), "
+                                "you_choose (they said you choose / just do it), background "
+                                "(Helper work, no person). Checked against the conversation; "
+                                "ask, or a claim it does not back, shows the person the "
+                                "'Which look?' card instead and ends your turn."
                             ),
                         },
                         "title": {"type": "string", "description": "The deck's title."},

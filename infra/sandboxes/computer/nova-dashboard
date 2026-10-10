@@ -2,6 +2,9 @@
 """Build a Nova dashboard: one self-contained HTML page of KPIs and Chart.js charts.
 
 Usage: nova-dashboard build SPEC.json -o NAME.dashboard.html
+       nova-dashboard build - -o NAME.dashboard.html <<'EOF'   (the spec on stdin; paths are
+       {...}                                                    relative to the current folder)
+       EOF
        nova-dashboard data SPEC.json            (the computed numbers as JSON, e.g. for a deck chart)
        nova-dashboard pdf NAME.dashboard.html -o NAME.pdf
 
@@ -64,6 +67,8 @@ CHARTJS_IN_REPO = (
 )
 
 SUFFIX = ".dashboard.html"
+#: The spec argument that means "read the spec from stdin".
+STDIN = Path("-")
 CHART_TYPES = ("bar", "line", "area", "pie", "doughnut", "scatter", "radar", "combo")
 AGGS = {
     "sum": "summed",
@@ -941,7 +946,7 @@ def output_path(out: str) -> Path:
 
 def build(spec_path: Path, out: str) -> dict[str, Any]:
     spec = load_spec(spec_path)
-    kpis, charts, sources = compute(spec, spec_path.parent)
+    kpis, charts, sources = compute(spec, spec_base(spec_path))
     page = render(spec, kpis, charts, sources)
     path = output_path(out)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -956,8 +961,15 @@ def build(spec_path: Path, out: str) -> dict[str, Any]:
     }
 
 
+def spec_base(spec_path: Path) -> Path:
+    """Where the spec's paths start: its folder, or the current one for a spec on stdin."""
+    return Path.cwd() if spec_path == STDIN else spec_path.parent
+
+
 def load_spec(spec_path: Path) -> dict[str, Any]:
     try:
+        if spec_path == STDIN:
+            return json.loads(sys.stdin.read())
         return json.loads(spec_path.read_text("utf-8"))
     except FileNotFoundError as exc:
         raise SpecError(f"spec not found: {spec_path}") from exc
@@ -967,7 +979,7 @@ def load_spec(spec_path: Path) -> dict[str, Any]:
 
 def data_only(spec_path: Path) -> dict[str, Any]:
     spec = load_spec(spec_path)
-    kpis, charts, _ = compute(spec, spec_path.parent)
+    kpis, charts, _ = compute(spec, spec_base(spec_path))
     return {
         "ok": True,
         "kpis": [{k: v for k, v in kpi.items() if k != "format"} for kpi in kpis],
@@ -1046,10 +1058,10 @@ def main(argv: list[str] | None = None) -> int:
     b = sub.add_parser(
         "build", help="compute the spec's numbers and write the dashboard page"
     )
-    b.add_argument("spec")
+    b.add_argument("spec", help="the spec file, or - to read it from stdin")
     b.add_argument("-o", "--out", required=True, help="the page, NAME.dashboard.html")
     d = sub.add_parser("data", help="print the computed numbers as JSON")
-    d.add_argument("spec")
+    d.add_argument("spec", help="the spec file, or - to read it from stdin")
     p = sub.add_parser("pdf", help="print a dashboard page to PDF")
     p.add_argument("html")
     p.add_argument("-o", "--out", required=True)
