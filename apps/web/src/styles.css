@@ -198,7 +198,9 @@ body,
   margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font-family: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Geist Variable", ui-sans-serif,
+    system-ui, sans-serif;
 }
 
 /* Nothing pans sideways on a phone, whatever a stray child measures. */
@@ -397,6 +399,19 @@ body {
   }
   .sc-activity .nova-row {
     border-radius: 14px;
+  }
+  /* superchat: the person's messages sit in a soft slate panel, not a colored pill. */
+  .sc-user-bubble {
+    background-color: color-mix(in oklab, var(--tint-ink) 16%, var(--glass));
+    box-shadow: inset 0 0 0 1px var(--glass-line);
+  }
+  /* superchat: the composer, a two-row glass box (text on top, controls below). */
+  .sc-composer {
+    background-color: var(--glass);
+    box-shadow: inset 0 0 0 1px var(--glass-line);
+  }
+  .sc-composer:focus-within {
+    box-shadow: inset 0 0 0 1px var(--ring);
   }
   /* The dim behind a dock sheet. */
   [data-slot="dialog-overlay"]:has(+ .sc-sheet) {

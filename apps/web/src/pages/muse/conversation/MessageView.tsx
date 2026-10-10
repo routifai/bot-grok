@@ -492,7 +492,7 @@ export const MessageView = memo(function MessageView({
                   className={cn(
                     "max-w-full whitespace-pre-wrap wrap-anywhere",
                     museMode
-                      ? "rounded-[18px] bg-tint px-3.5 py-2 text-[15px] leading-[1.47] tracking-[-0.24px] text-white"
+                      ? "sc-user-bubble rounded-2xl px-4 py-3 text-[15px] leading-[1.6] text-foreground"
                       : "rounded-[20px] bg-chat-user px-[18px] py-3 text-[15.5px] leading-[1.45] text-chat-user-foreground",
                   )}
                   dir="auto"

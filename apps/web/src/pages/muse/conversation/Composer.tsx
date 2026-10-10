@@ -722,7 +722,7 @@ export const Composer = memo(function Composer({
         className={cn(
           "flex gap-3.5 border border-border bg-background py-[9px] pe-2.5 ps-3 transition-[border-color,box-shadow] duration-150 focus-within:border-ring",
           museMode
-            ? "nova-ask min-h-12 items-end gap-2 rounded-[24px] border-0 bg-group py-[6px] ps-2 pe-1.5"
+            ? "sc-composer min-h-[108px] flex-wrap content-between items-end gap-x-1.5 gap-y-2 rounded-[20px] px-3 pt-3.5 pb-2.5"
             : "items-center rounded-full",
         )}
       >
@@ -756,7 +756,7 @@ export const Composer = memo(function Composer({
         <div
           className={cn(
             "flex min-w-0 flex-1 flex-wrap items-end gap-1.5",
-            museMode && "self-center py-1",
+            museMode && "order-first basis-full px-1.5",
           )}
         >
           {selectedSkill ? (
@@ -877,7 +877,7 @@ export const Composer = memo(function Composer({
             className={cn(
               "min-h-[24px] min-w-[8rem] flex-1 resize-none overflow-y-auto bg-transparent py-0.5 leading-6 text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-40",
               museMode
-                ? "max-h-[168px] text-[15px] placeholder:text-ink-3"
+                ? "max-h-[200px] min-h-[44px] text-[15px] placeholder:text-ink-3"
                 : "max-h-32 text-[15.5px]",
             )}
           />
@@ -893,7 +893,7 @@ export const Composer = memo(function Composer({
             className={cn(
               "size-8 shrink-0 rounded-full",
               museMode
-                ? "size-[34px] text-ink-3 hover:bg-selection hover:text-foreground"
+                ? "ms-auto size-[34px] text-ink-3 hover:bg-selection hover:text-foreground"
                 : "text-foreground/75",
             )}
           >
@@ -901,7 +901,9 @@ export const Composer = memo(function Composer({
           </Button>
         ) : null}
         {running ? (
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div
+            className={cn("flex shrink-0 items-center gap-1.5", museMode && !onVoice && "ms-auto")}
+          >
             <Button
               size="icon"
               aria-label={t`Send`}
@@ -935,6 +937,7 @@ export const Composer = memo(function Composer({
             onClick={send}
             className={cn(
               "size-8 shrink-0 rounded-full shadow-sm transition-transform active:scale-95",
+              museMode && !onVoice && "ms-auto",
               museMode
                 ? "size-[34px] bg-tint text-white shadow-none hover:bg-tint hover:brightness-110 disabled:bg-selection disabled:text-ink-3 disabled:opacity-100"
                 : "bg-white text-black hover:bg-white/90 disabled:bg-white/10 disabled:text-muted-foreground/30 disabled:shadow-none",
