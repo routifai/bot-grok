@@ -26,7 +26,7 @@ export function LibraryCard({
   onDelete: () => void;
 }) {
   const { t } = useLingui();
-  const kind = artifactKind(artifact.mimeType);
+  const kind = artifactKind(artifact.mimeType, artifact.name);
   const extra = useArtifactCardParts(artifact);
   const badges = extra.filter((part) => part.badge);
   const meta = [

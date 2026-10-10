@@ -164,6 +164,9 @@ msgstr "{remaining} left · bot is watching, not acting"
 msgid "{size} B"
 msgstr "{size} B"
 
+msgid "{slides, plural, one {# slide} other {# slides}}"
+msgstr "{slides, plural, one {# slide} other {# slides}}"
+
 #. placeholder {0}: formatUsd(budget.monthlyLimitUsd, locale)
 msgid "{spent} of {0}"
 msgstr "{spent} of {0}"
@@ -1423,6 +1426,9 @@ msgstr "Couldn't load messaging settings"
 msgid "Couldn't load the themes. Try again in a moment."
 msgstr "Couldn't load the themes. Try again in a moment."
 
+msgid "Couldn't load this look. Try again in a moment."
+msgstr "Couldn't load this look. Try again in a moment."
+
 msgid "Couldn't open this sheet."
 msgstr "Couldn't open this sheet."
 
@@ -1505,6 +1511,9 @@ msgstr "Cron"
 
 msgid "Cron expression"
 msgstr "Cron expression"
+
+msgid "Current look"
+msgstr "Current look"
 
 msgid "Current password"
 msgstr "Current password"
@@ -2677,6 +2686,9 @@ msgstr "New space"
 msgid "Newer version available, show it"
 msgstr "Newer version available, show it"
 
+msgid "Next look"
+msgstr "Next look"
+
 msgid "Next slide"
 msgstr "Next slide"
 
@@ -3152,7 +3164,11 @@ msgstr "Preparing PowerPoint…"
 msgid "Present"
 msgstr "Present"
 
+msgid "Preview"
+msgstr "Preview"
+
 #. placeholder {0}: props.name
+#. placeholder {0}: theme.name
 msgid "Preview {0}"
 msgstr "Preview {0}"
 
@@ -3164,6 +3180,9 @@ msgstr "Preview isn't available for this file type."
 
 msgid "Preview unavailable"
 msgstr "Preview unavailable"
+
+msgid "Previous look"
+msgstr "Previous look"
 
 msgid "Previous slide"
 msgstr "Previous slide"
@@ -3857,9 +3876,6 @@ msgstr "Slack not enabled"
 msgid "Slide"
 msgstr "Slide"
 
-msgid "Slide deck"
-msgstr "Slide deck"
-
 msgid "Slide rail"
 msgstr "Slide rail"
 
@@ -4374,6 +4390,9 @@ msgstr "Use default guidance"
 
 msgid "Use the new plan"
 msgstr "Use the new plan"
+
+msgid "Use this look"
+msgstr "Use this look"
 
 msgid "Use this model"
 msgstr "Use this model"

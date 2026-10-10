@@ -113,7 +113,7 @@ it("views and badges only decks", () => {
   expect(decksExtension.view?.({ artifact: file("page.html"), bytes, fallback })).toBeNull();
   expect(decksExtension.view?.({ artifact: deck, bytes, fallback })).not.toBeNull();
   expect(decksExtension.card(file("page.html"))).toBeNull();
-  expect(decksExtension.card(deck)).toEqual({ meta: "Slide deck" });
+  expect(decksExtension.card(deck)).toBeNull();
 });
 
 it("asks the panel for the room while a deck is in edit mode and gives it back after", async () => {

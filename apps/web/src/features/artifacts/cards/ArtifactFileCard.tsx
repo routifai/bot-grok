@@ -1,5 +1,6 @@
+import { plural } from "@lingui/core/macro";
 import { useLingui } from "@lingui/react/macro";
-import type { ReplyCardDataOf } from "@nova/contracts";
+import { deckSlideCount, isDeckArtifactName, type ReplyCardDataOf } from "@nova/contracts";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -7,11 +8,11 @@ import {
   DropdownMenuTrigger,
 } from "@nova/ui-web";
 import { Download, ExternalLink, MoreHorizontal } from "lucide-react";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useCallback, useState } from "react";
 import { catalog, formatSize } from "../../../components/cards/catalog";
 import { useArtifactPanel, useLatestSavedFile } from "../../../components/cards/context";
 import { MEDIA_ACTION, MediaFrame, MediaTile } from "../../../components/MediaTile";
-import type { ArtifactKind } from "../../../lib/artifact-kind";
+import { type ArtifactKind, kindLabel } from "../../../lib/artifact-kind";
 import { decodeArtifactBase64, downloadArtifactBytes } from "../../../lib/artifact-open";
 import { rpc } from "../../../lib/rpc";
 import { readableFileName } from "../ArtifactFileCard";
@@ -63,6 +64,10 @@ function SavedFileCard({ title, data }: { title?: string; data: ReplyCardDataOf<
   const [failed, setFailed] = useState(false);
   // Without a title from Nova, the card reads the document's own heading once it loads.
   const [documentTitle, setDocumentTitle] = useState<string | null>(null);
+  const isDeck = isDeckArtifactName(data.name);
+  // A deck reads as a deck: "Deck · 7 slides" once its file is here.
+  const [slides, setSlides] = useState<number | null>(null);
+  const countSlides = useCallback((text: string) => setSlides(deckSlideCount(text) || null), []);
   const panel = useArtifactPanel();
   const newest = useLatestSavedFile(data.name);
   if (!artifactId) return null;
@@ -76,9 +81,15 @@ function SavedFileCard({ title, data }: { title?: string; data: ReplyCardDataOf<
     if (panel) panel.open(artifactId, title);
     else setOpen(true);
   }
+  const tileKind = isDeck ? "deck" : data.kind ? kindFromLabel(data.kind) : "file";
+  const kindText = isDeck ? kindLabel("deck") : data.kind?.toUpperCase();
   const meta = [
-    data.kind?.toUpperCase(),
-    data.size !== undefined ? formatSize(data.size) : null,
+    kindText,
+    isDeck && slides
+      ? plural(slides, { one: "# slide", other: "# slides" })
+      : data.size !== undefined
+        ? formatSize(data.size)
+        : null,
     data.byYou ? t`Exported by you` : null,
   ]
     .filter(Boolean)
@@ -118,12 +129,11 @@ function SavedFileCard({ title, data }: { title?: string; data: ReplyCardDataOf<
 
   // The result tile (docs/muse/DESIGN.md "Results"): the live preview framed on the right,
   // Open as the white pill, Download and Open in new tab in the menu.
-  const tileKind = data.kind ? kindFromLabel(data.kind) : "file";
   return (
     <div>
       <MediaTile
         kind={tileKind}
-        brand={tileKind === "document" ? t`Nova Report` : (data.kind?.toUpperCase() ?? t`File`)}
+        brand={tileKind === "document" ? t`Nova Report` : (kindText ?? t`File`)}
         title={heading}
         badge={
           superseded ? (
@@ -153,6 +163,7 @@ function SavedFileCard({ title, data }: { title?: string; data: ReplyCardDataOf<
               size={data.size}
               version={data.version}
               onHeading={setDocumentTitle}
+              onText={isDeck ? countSlides : undefined}
               className="h-full rounded-none border-0 sm:h-full"
             />
           </MediaFrame>

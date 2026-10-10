@@ -55,7 +55,7 @@ export function ArtifactFileCard(props: ArtifactFileCardProps) {
   // The card's big title: the document's own heading once its preview has loaded.
   const [heading, setHeading] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
-  const kind = artifactKind(props.mimeType);
+  const kind = artifactKind(props.mimeType, props.name);
 
   async function startDownload() {
     setDownloadError(null);
@@ -373,7 +373,8 @@ function formatBytes(size: number) {
  * (`plateau_cafes_montreal.md` → `Plateau cafes montreal`). */
 export function readableFileName(name: string): string {
   const base = name
-    .replace(/\.[A-Za-z0-9]{1,5}$/, "")
+    // A compound kind marker (`q3.deck.html`, `sales.chart.json`) goes with the extension.
+    .replace(/(\.(deck|chart|dashboard))?\.[A-Za-z0-9]{1,5}$/i, "")
     .replace(/[_-]+/g, " ")
     .trim();
   return base ? base.charAt(0).toUpperCase() + base.slice(1) : name;

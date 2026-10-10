@@ -55,10 +55,13 @@ export function ArtifactInlinePreview({
   version,
   onFailed,
   onHeading,
+  onText,
   className,
 }: {
   /** The document's own title, once its bytes are here (see `documentHeading`). */
   onHeading?: (heading: string) => void;
+  /** The file's text, once its bytes are here (a deck card counts its slides). */
+  onText?: (text: string) => void;
   /** Overrides the box (the result tile frames it smaller). */
   className?: string;
   artifactId: string;
@@ -113,10 +116,13 @@ export function ArtifactInlinePreview({
   }, [near, key, artifactId, size, custom]);
 
   useEffect(() => {
-    if (state.status !== "ready" || !onHeading || state.mimeType.startsWith("image/")) return;
-    const heading = documentHeading(new TextDecoder("utf-8").decode(state.bytes));
-    if (heading) onHeading(heading);
-  }, [state, onHeading]);
+    if (state.status !== "ready" || state.mimeType.startsWith("image/")) return;
+    if (!onHeading && !onText) return;
+    const text = new TextDecoder("utf-8").decode(state.bytes);
+    onText?.(text);
+    const heading = onHeading ? documentHeading(text) : null;
+    if (heading) onHeading?.(heading);
+  }, [state, onHeading, onText]);
 
   const mimeType = state.status === "ready" ? state.mimeType : "";
   return (

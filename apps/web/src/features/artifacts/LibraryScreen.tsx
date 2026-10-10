@@ -106,7 +106,7 @@ export function LibraryScreen({
   const facetCounts = useMemo(() => {
     const counts = new Map<ArtifactKind, number>();
     for (const item of items ?? []) {
-      const kind = artifactKind(item.mimeType);
+      const kind = artifactKind(item.mimeType, item.name);
       counts.set(kind, (counts.get(kind) ?? 0) + 1);
     }
     return counts;
@@ -120,7 +120,10 @@ export function LibraryScreen({
     return items.filter((item) => {
       if (selectedKind === "published") {
         if (!item.publish) return false;
-      } else if (selectedKind !== "all" && artifactKind(item.mimeType) !== selectedKind) {
+      } else if (
+        selectedKind !== "all" &&
+        artifactKind(item.mimeType, item.name) !== selectedKind
+      ) {
         return false;
       }
       if (!needle) return true;

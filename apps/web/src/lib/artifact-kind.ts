@@ -1,9 +1,10 @@
 import { t } from "@lingui/core/macro";
-import { isAttachmentImageMimeType } from "@nova/contracts";
+import { isAttachmentImageMimeType, isDeckArtifactName } from "@nova/contracts";
 import type { LucideIcon } from "lucide-react";
 import { File, FileText, Image as ImageIcon, LayoutTemplate, Presentation } from "lucide-react";
 
-/** How the Library (and any other artifact card) groups and labels an artifact, derived from its mime type. */
+/** How the Library (and any other artifact card) groups and labels an artifact, derived from its
+ * mime type and, for decks, its name. */
 export type ArtifactKind = "page" | "document" | "deck" | "image" | "file";
 
 const DECK_MIME_TYPES = new Set([
@@ -13,7 +14,9 @@ const DECK_MIME_TYPES = new Set([
   "application/vnd.apple.keynote",
 ]);
 
-export function artifactKind(mimeType: string): ArtifactKind {
+/** A slide deck is an HTML file named `*.deck.html`: the name says deck before the mime says page. */
+export function artifactKind(mimeType: string, name?: string): ArtifactKind {
+  if (name && isDeckArtifactName(name)) return "deck";
   if (mimeType === "text/html") return "page";
   if (mimeType === "application/pdf") return "document";
   if (DECK_MIME_TYPES.has(mimeType)) return "deck";
