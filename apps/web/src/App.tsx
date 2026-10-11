@@ -19,10 +19,6 @@ import { SheetPreviewPage } from "./pages/dev/SheetPreviewPage";
 import { SideChatsPreviewPage } from "./pages/dev/SideChatsPreviewPage";
 import { ShellPage } from "./pages/Shell";
 
-const ArtifactsPage = lazy(() =>
-  import("./features/artifacts/Artifacts").then((module) => ({ default: module.ArtifactsPage })),
-);
-
 export function App() {
   // Dev-only fixture route: no session needed, so screenshots and eyeballing don't
   // require a signed-in account or a live agent run.
@@ -125,8 +121,6 @@ function SessionApp() {
         <Routes>
           <Route path="/" element={<Navigate to="/app" replace />} />
           <Route path="/app" element={<ShellPage />} />
-          <Route path="/app/artifacts" element={<ArtifactsPage />} />
-          <Route path="/app/artifacts/:artifactId" element={<ArtifactsPage />} />
           <Route path="/app/:botId" element={<ShellPage />} />
         </Routes>
       </Suspense>

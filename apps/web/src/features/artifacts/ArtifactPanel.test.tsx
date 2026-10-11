@@ -11,7 +11,7 @@ const api = vi.hoisted(() => ({
   listVersions: vi.fn(),
 }));
 vi.mock("../../lib/rpc", () => ({ rpc: { artifacts: api } }));
-vi.mock("./Artifacts", () => ({
+vi.mock("./ArtifactPreview", () => ({
   ArtifactPreview: ({ bytes }: { bytes: Uint8Array }) => (
     <div data-testid="body">{new TextDecoder().decode(bytes)}</div>
   ),

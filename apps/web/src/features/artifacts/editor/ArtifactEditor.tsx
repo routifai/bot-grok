@@ -24,7 +24,7 @@ import { downloadArtifactBytes, opensInNewTab } from "../../../lib/artifact-open
 import { rpc } from "../../../lib/rpc";
 import { useObjectUrl } from "../../../lib/use-object-url";
 import { readableFileName } from "../ArtifactFileCard";
-import { ArtifactPreview } from "../Artifacts";
+import { ArtifactPreview } from "../ArtifactPreview";
 import { AskBox } from "../ask/AskBox";
 import { useArtifactAsk } from "../ask/useArtifactAsk";
 import type { useArtifactContent } from "../library/useArtifactContent";

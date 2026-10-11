@@ -189,14 +189,8 @@ msgstr "Align right"
 msgid "All"
 msgstr "All"
 
-msgid "All bots"
-msgstr "All bots"
-
 msgid "All forks"
 msgstr "All forks"
-
-msgid "All time"
-msgstr "All time"
 
 msgid "Allow once"
 msgstr "Allow once"
@@ -264,9 +258,6 @@ msgstr "Archived"
 
 msgid "Artifact"
 msgstr "Artifact"
-
-msgid "Artifacts"
-msgstr "Artifacts"
 
 msgid "Ask about this message"
 msgstr "Ask about this message"
@@ -353,9 +344,6 @@ msgstr "Bot"
 msgid "Bot"
 msgstr "Bot"
 
-msgid "Bots"
-msgstr "Bots"
-
 msgid "Box"
 msgstr "Box"
 
@@ -382,9 +370,6 @@ msgstr "cancelled"
 
 msgid "Cancelled"
 msgstr "Cancelled"
-
-msgid "Card view"
-msgstr "Card view"
 
 msgid "Chart"
 msgstr "Chart"
@@ -502,9 +487,6 @@ msgstr "Could not clear conversation"
 msgid "Could not delete"
 msgstr "Could not delete"
 
-msgid "Could not delete this artifact."
-msgstr "Could not delete this artifact."
-
 msgid "Could not delete this."
 msgstr "Could not delete this."
 
@@ -521,17 +503,11 @@ msgstr "Could not download this."
 msgid "Could not load Activity"
 msgstr "Could not load Activity"
 
-msgid "Could not load artifacts."
-msgstr "Could not load artifacts."
-
 msgid "Could not load Memory"
 msgstr "Could not load Memory"
 
 msgid "Could not load models."
 msgstr "Could not load models."
-
-msgid "Could not load this artifact."
-msgstr "Could not load this artifact."
 
 msgid "Could not load this file."
 msgstr "Could not load this file."
@@ -719,10 +695,6 @@ msgstr "Delete"
 msgid "Delete \"{0}\"?"
 msgstr "Delete \"{0}\"?"
 
-#. placeholder {0}: artifact.name
-msgid "Delete {0}"
-msgstr "Delete {0}"
-
 msgid "Deleting…"
 msgstr "Deleting…"
 
@@ -864,17 +836,11 @@ msgstr "Fill"
 msgid "Fill color"
 msgstr "Fill color"
 
-msgid "Filter by date"
-msgstr "Filter by date"
-
 msgid "Filter files"
 msgstr "Filter files"
 
 msgid "Filter forks"
 msgstr "Filter forks"
-
-msgid "Filters"
-msgstr "Filters"
 
 msgid "Find a memory"
 msgstr "Find a memory"
@@ -1067,17 +1033,11 @@ msgstr "Link"
 msgid "Link address"
 msgstr "Link address"
 
-msgid "List view"
-msgstr "List view"
-
 msgid "Load earlier"
 msgstr "Load earlier"
 
 msgid "Load earlier messages"
 msgstr "Load earlier messages"
-
-msgid "Load more"
-msgstr "Load more"
 
 msgid "Loading preview…"
 msgstr "Loading preview…"
@@ -1090,9 +1050,6 @@ msgstr "Main"
 
 msgid "Mark done: {title}"
 msgstr "Mark done: {title}"
-
-msgid "Maximize"
-msgstr "Maximize"
 
 msgid "Memory"
 msgstr "Memory"
@@ -1193,9 +1150,6 @@ msgstr "Next look"
 msgid "Next slide"
 msgstr "Next slide"
 
-msgid "No artifacts found."
-msgstr "No artifacts found."
-
 msgid "No automations yet"
 msgstr "No automations yet"
 
@@ -1222,9 +1176,6 @@ msgstr "No matches"
 
 msgid "No matches."
 msgstr "No matches."
-
-msgid "No matching artifacts on this page."
-msgstr "No matching artifacts on this page."
 
 msgid "No sign-in needed"
 msgstr "No sign-in needed"
@@ -1626,9 +1577,6 @@ msgstr "Search {0} forks"
 msgid "Search activity"
 msgstr "Search activity"
 
-msgid "Search artifacts…"
-msgstr "Search artifacts…"
-
 msgid "Search folders"
 msgstr "Search folders"
 
@@ -1694,9 +1642,6 @@ msgstr "Show layers"
 
 msgid "Show less"
 msgstr "Show less"
-
-msgid "Show list"
-msgstr "Show list"
 
 msgid "Show slides"
 msgstr "Show slides"
@@ -1888,10 +1833,6 @@ msgid "This deck isn't on a theme. Ask superchat to restyle it."
 msgstr "This deck isn't on a theme. Ask superchat to restyle it."
 
 #. placeholder {0}: pendingDelete.versionCount
-msgid "This deletes all {0} versions of this artifact. This can't be undone."
-msgstr "This deletes all {0} versions of this artifact. This can't be undone."
-
-#. placeholder {0}: pendingDelete.versionCount
 msgid "This deletes all {0} versions of this. This can't be undone."
 msgstr "This deletes all {0} versions of this. This can't be undone."
 
@@ -1906,9 +1847,6 @@ msgstr "This message can’t be forked. Pick another message, or ask in a side c
 
 msgid "This model isn't available — pick another."
 msgstr "This model isn't available — pick another."
-
-msgid "This month"
-msgstr "This month"
 
 msgid "This part of the page has no stable name in the file, so it can't be changed by hand."
 msgstr "This part of the page has no stable name in the file, so it can't be changed by hand."
@@ -1998,9 +1936,6 @@ msgstr "Username (optional)"
 
 msgid "Vault"
 msgstr "Vault"
-
-msgid "Version"
-msgstr "Version"
 
 #. placeholder {0}: entry.version
 msgid "Version {0}"

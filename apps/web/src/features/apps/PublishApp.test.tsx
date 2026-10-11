@@ -18,7 +18,7 @@ vi.mock("../../lib/rpc", () => ({
     apps: { publish: api.publish, unpublish: api.unpublish },
   },
 }));
-vi.mock("../artifacts/Artifacts", () => ({
+vi.mock("../artifacts/ArtifactPreview", () => ({
   ArtifactPreview: ({ bytes }: { bytes: Uint8Array }) => (
     <div data-testid="body">{new TextDecoder().decode(bytes)}</div>
   ),

@@ -20,7 +20,7 @@ const chats = vi.hoisted(() => ({
 }));
 vi.mock("../../../lib/rpc", () => ({ rpc: { artifacts: api, chats } }));
 vi.mock("../../../lib/family-stream", () => ({ watchFamily: () => () => {} }));
-vi.mock("../Artifacts", () => ({
+vi.mock("../ArtifactPreview", () => ({
   ArtifactPreview: ({ bytes }: { bytes: Uint8Array }) => (
     <div data-testid="body">{new TextDecoder().decode(bytes)}</div>
   ),
