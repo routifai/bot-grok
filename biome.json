@@ -13,8 +13,6 @@
       "!**/build",
       "!**/coverage",
       "!**/design",
-      "!**/packages/db/src/generated",
-      "!**/apps/mobile/.expo",
       "!**/playwright-report",
       "!**/test-results",
       "!**/test-report",
@@ -79,27 +77,11 @@
       }
     },
     {
-      "includes": [
-        "apps/api/**",
-        "apps/worker/**",
-        "packages/adapters/**",
-        "packages/db/**",
-        "packages/logging/**"
-      ],
+      "includes": ["packages/adapters/**"],
       "linter": {
         "rules": {
           "suspicious": {
             "noConsole": "error"
-          }
-        }
-      }
-    },
-    {
-      "includes": ["packages/logging/src/console-sink.ts", "packages/logging/src/sink-guard.ts"],
-      "linter": {
-        "rules": {
-          "suspicious": {
-            "noConsole": "off"
           }
         }
       }

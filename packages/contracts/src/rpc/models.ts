@@ -3,8 +3,7 @@ import * as z from "zod";
 import { Id } from "../ids.js";
 import { botId } from "./shared.js";
 
-// The engine's model layer as the web sees it (apps/api/src/features/models/service.ts maps the engine's
-// snake_case). Every rule - what a key may be, what a budget means, which model is Light - is the
+// The engine's model layer as the web sees it (the engine's snake_case, mapped by the client). Every rule - what a key may be, what a budget means, which model is Light - is the
 // engine's; these are the shapes the screens render.
 
 /** An upstream the engine has configured: what a key can be for. `operatorKey`: the operator runs

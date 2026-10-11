@@ -230,7 +230,7 @@ async function setOmnigentSessionArchived(
 }
 
 // Mapping between Omnigent's related_chats/side_chats shapes and Superchat's ChatSummary contract (the
-// transcript is ./transcript.ts), plus the ownership rule that lets apps/api resolve a bare chatId
+// transcript is ./transcript.ts), plus the ownership rule that lets a client resolve a bare chatId
 // to the Super Chat (bot) it belongs to before ever trusting it (docs/super-chat/WIRING.md "chats.*").
 
 const SIDE_CHAT_TITLE_MAX_CHARS = 40;

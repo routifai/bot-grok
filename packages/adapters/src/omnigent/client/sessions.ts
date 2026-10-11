@@ -164,7 +164,7 @@ export interface OmnigentPaginatedList<T> {
 /**
  * `GET /v1/sessions/{id}/stream` — live SSE tail. Yields each parsed `data:` frame (skipping
  * the `[DONE]` sentinel and unparsable keepalive lines) until the response body ends or
- * `signal` aborts. Buffering/parsing mirrors apps/mobile/lib/api.ts's `subscribeThread`.
+ * `signal` aborts.
  */
 export function streamOmnigentSession(
   config: OmnigentClientConfig,

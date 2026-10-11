@@ -14,25 +14,10 @@
       "development": "./src/message-quote.ts",
       "default": "./src/message-quote.ts"
     },
-    "./node/load-root-env": {
-      "types": "./src/node/load-root-env.ts",
-      "development": "./src/node/load-root-env.ts",
-      "default": "./src/node/load-root-env.ts"
-    },
-    "./node/approval-effect-key": {
-      "types": "./src/approval-effect-key.ts",
-      "development": "./src/approval-effect-key.ts",
-      "default": "./src/approval-effect-key.ts"
-    },
     "./plot": {
       "types": "./src/plot/plot-spec.ts",
       "development": "./src/plot/plot-spec.ts",
       "default": "./src/plot/plot-spec.ts"
-    },
-    "./node/desktop-runtime": {
-      "types": "./src/node/desktop-runtime.ts",
-      "development": "./src/node/desktop-runtime.ts",
-      "default": "./src/node/desktop-runtime.ts"
     }
   },
   "scripts": {
@@ -44,7 +29,6 @@
     "@superchat/contracts": "workspace:*",
     "croner": "10.0.1",
     "d3-dsv": "3.0.1",
-    "dotenv": "17.4.2",
     "hast-util-to-text": "4.0.2",
     "mdast-util-to-hast": "13.2.1",
     "remark-gfm": "4.0.1",

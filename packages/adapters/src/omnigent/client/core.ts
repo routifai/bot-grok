@@ -2,7 +2,7 @@
 // engine/omnigent/openapi.json), used by ./gateway.ts to run a Superchat turn on Omnigent
 // (docs/omnigent-spike.md). Every call carries the identity/proxy
 // headers Omnigent's header auth mode expects — no SDK dependency, just fetch and a tiny
-// SSE line parser mirroring apps/mobile/lib/api.ts's `subscribeThread`.
+// SSE line parser.
 import { MODEL_ERROR_COPY, redactSecrets } from "@superchat/core";
 
 /** How to reach the engine (env `OMNIGENT_URL` / `OMNIGENT_PROXY_SECRET`), before a caller's

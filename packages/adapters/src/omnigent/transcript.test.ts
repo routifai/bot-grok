@@ -235,7 +235,12 @@ describe("mapTranscriptPage", () => {
           card_id: null,
           card: {
             card: "file",
-            data: { name: "superchat.html", kind: "html", artifactId, ...(version ? { version } : {}) },
+            data: {
+              name: "superchat.html",
+              kind: "html",
+              artifactId,
+              ...(version ? { version } : {}),
+            },
             fallback: "f",
           },
         },

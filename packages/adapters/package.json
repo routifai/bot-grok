@@ -4,7 +4,6 @@
   "license": "Apache-2.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
     "./omnigent/browser": "./src/omnigent/browser.ts"
   },
   "scripts": {
@@ -12,36 +11,10 @@
     "test": "vitest run --root ../.. packages/adapters/src"
   },
   "dependencies": {
-    "@asciidev/box-sdk": "0.0.34",
-    "@chat-adapter/slack": "4.40.0",
-    "@chat-adapter/state-memory": "4.40.0",
-    "@chat-adapter/telegram": "4.40.0",
-    "@chat-adapter/whatsapp": "4.40.0",
-    "@composio/core": "0.18.1",
-    "@daytona/sdk": "0.211.2",
-    "@e2b/desktop": "2.4.0",
-    "@earendil-works/pi-ai": "0.87.1",
-    "@modelcontextprotocol/sdk": "1.30.0",
-    "@superchat/adapter-kit": "workspace:*",
     "@superchat/contracts": "workspace:*",
-    "@superchat/core": "workspace:*",
-    "@superchat/db": "workspace:*",
-    "@superchat/logging": "workspace:*",
-    "chat": "4.40.0",
-    "chat-adapter-lark": "0.3.1",
-    "chat-adapter-sendblue": "0.2.0",
-    "graphile-worker": "0.17.3",
-    "koffi": "3.2.1",
-    "nodemailer": "10.0.3",
-    "pg": "8.23.0",
-    "sendblue": "3.16.1",
-    "undici": "8.10.2",
-    "zod": "4.6.2"
+    "@superchat/core": "workspace:*"
   },
   "devDependencies": {
-    "@chat-adapter/tests": "4.40.0",
-    "@types/nodemailer": "8.0.1",
-    "@types/pg": "8.23.1",
     "typescript": "7.0.2",
     "vitest": "4.1.11"
   }

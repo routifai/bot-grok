@@ -4,7 +4,6 @@
   "license": "Apache-2.0",
   "type": "module",
   "exports": {
-    "./native": "./src/markdown.native.tsx",
     "./web": "./src/markdown.web.tsx"
   },
   "scripts": {
@@ -15,29 +14,18 @@
     "@superchat/contracts": "workspace:*",
     "@superchat/ui-tokens": "workspace:*",
     "@superchat/ui-web": "workspace:*",
-    "@ronradtke/react-native-markdown-display": "9.0.3",
     "react-markdown": "10.1.0",
     "remark-gfm": "4.0.1"
   },
   "peerDependencies": {
     "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "react-native": ">=0.79"
-  },
-  "peerDependenciesMeta": {
-    "react-dom": {
-      "optional": true
-    },
-    "react-native": {
-      "optional": true
-    }
+    "react-dom": "19.2.3"
   },
   "devDependencies": {
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.7",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "react-native": "0.86.3",
     "typescript": "7.0.2",
     "vitest": "4.1.11"
   }

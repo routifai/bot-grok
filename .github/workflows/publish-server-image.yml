@@ -45,14 +45,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: app
-            dockerfile: infra/compose/Dockerfile
-            context: .
-            build-args: GIT_SHA=${{ github.sha }}
-          # FROM Omnigent's server image + infra/omnigent (Railway pulls this image).
+          # FROM Omnigent's server image + infra/omnigent and the built web (Railway pulls this image).
           - name: engine
             dockerfile: infra/omnigent/Dockerfile
-            context: infra/omnigent
+            context: .
             base: omnigent-server
             base-target: runtime
             base-args: OMNIGENT_EXTRAS=memory,postgres
@@ -126,18 +122,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: [app, engine, computer]
+        name: [engine, computer]
         arch: [amd64, arm64]
         include:
-          # The supervisor is not a separate published image: it runs from `app` on the internal network.
-          - name: app
-            dockerfile: infra/compose/Dockerfile
-            context: .
-            build-args: GIT_SHA=${{ github.sha }}
-          # FROM Omnigent's server image + infra/omnigent (Railway pulls this image).
+          # FROM Omnigent's server image + infra/omnigent and the built web (Railway pulls this image).
           - name: engine
             dockerfile: infra/omnigent/Dockerfile
-            context: infra/omnigent
+            context: .
             base: omnigent-server
             base-target: runtime
             base-args: OMNIGENT_EXTRAS=memory,postgres
@@ -240,7 +231,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: app
           - name: engine
           - name: computer
     steps:

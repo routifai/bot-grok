@@ -11,7 +11,7 @@ import {
   type Proactivity,
 } from "@superchat/contracts";
 
-/** The Bot columns `MuseSettings` is stored in (apps/api/src/muse-settings.ts, B7). */
+/** The Bot columns `MuseSettings` is stored in. */
 export interface MuseSettingsRow {
   museProactivity: string | null;
   museQuietHours: string | null;

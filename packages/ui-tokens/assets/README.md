@@ -1,5 +1,7 @@
 # App icon source
 
+> **Note.** The API, worker, mobile and desktop apps named below were removed ([ADR 0015](../../../docs/adr/0015-no-app-server-the-web-talks-to-the-engine.md)); the web now talks to the engine directly. Those paths are kept as history and exist in git history only.
+
 `Superchat.icon` is the shared editable source for macOS and iOS. Open it in Apple's
 Icon Composer with Xcode 26 or newer. The orange foreground keeps its original
 lighting, sits 90 points below center, and uses the system dark background.

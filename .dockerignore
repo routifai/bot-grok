@@ -28,9 +28,3 @@ verify-report
 .claude
 .codegraph
 docs
-# The server image builds only api, worker and web. Keep the other workspaces' manifests so the
-# lockfile still matches the workspace, but leave their sources out of the build context.
-apps/mobile/*
-!apps/mobile/package.json
-apps/desktop/*
-!apps/desktop/package.json

@@ -1,6 +1,6 @@
 // The engine's model layer (engine/omnigent/omnigent/superchat/models/*): a person's provider
 // keys, the models their connection serves, their Default and Light per harness and their budget.
-// Shapes are the engine's; apps/api maps them.
+// Shapes are the engine's.
 import type { OmnigentClientConfig } from "./client/core.js";
 import { omnigentHeaders, throwOnError } from "./client/core.js";
 
