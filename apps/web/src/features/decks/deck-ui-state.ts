@@ -2,8 +2,8 @@ import { useSyncExternalStore } from "react";
 import { resetEditorState } from "../artifacts/editor/editor-state";
 
 // Deck UI state shared between the deck's header controls (Theme, Present, rendered in the editor
-// shell's actions slot) and the deck's stage. Keyed by the deck's file name so a new version of
-// the same deck keeps its state. Edit mode itself is the shell's (`artifacts/editor/editor-state`).
+// shell's actions slot) and the deck's stage. Keyed by `artifactKey` so a new version of the same
+// deck keeps its state. Edit mode itself is the shell's (`artifacts/editor/editor-state`).
 
 type DeckUi = { presentRequest: number; themeOpen: boolean };
 const NONE: DeckUi = { presentRequest: 0, themeOpen: false };

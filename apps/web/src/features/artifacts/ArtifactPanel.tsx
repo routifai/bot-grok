@@ -3,7 +3,7 @@ import { Button, cn } from "@superchat/ui-web";
 import { ChevronLeft } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ArtifactEditor } from "./editor/ArtifactEditor";
-import { useArtifactEditing } from "./editor/editor-state";
+import { artifactKey, useArtifactEditing } from "./editor/editor-state";
 import { useArtifactContent } from "./library/useArtifactContent";
 import { artifactPanelLayout, useParentWidth } from "./panel-layout";
 import { useArtifactEditorKind, useArtifactPanelParts } from "./registry";
@@ -39,7 +39,7 @@ export function ArtifactPanel({
   const panel = useArtifactPanelParts({ artifact: ready?.artifact, title, bytes: ready?.bytes });
   // Any kind with an editor takes the room it can while it is being edited.
   const editable = !!useArtifactEditorKind(ready?.artifact);
-  const editing = useArtifactEditing(ready?.artifact.name ?? "") && editable;
+  const editing = useArtifactEditing(ready ? artifactKey(ready.artifact) : "") && editable;
   const room = { wide: panel.wide || editable, expanded: editing };
   const layout = rowWidth === null ? null : artifactPanelLayout(rowWidth, room);
   const overlay = layout?.mode === "overlay";

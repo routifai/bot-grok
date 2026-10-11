@@ -42,11 +42,15 @@ import {
   type ArtifactExtension,
   ArtifactRegistryProvider,
 } from "../registry";
-import { resetEditorState, setArtifactEditing } from "./editor-state";
+import { artifactKey, resetEditorState, setArtifactEditing } from "./editor-state";
 
 i18n.loadAndActivate({ locale: "en", messages: {} });
 
 const undo = vi.fn(async () => {});
+const calls: string[] = [];
+const flush = vi.fn(async () => {
+  calls.push("flush");
+});
 const fakeKind: ArtifactEditorKind = {
   id: "fake",
   useEditor: ({ editing }) => ({
@@ -60,7 +64,7 @@ const fakeKind: ArtifactEditorKind = {
       saving: false,
       undo,
       redo: async () => {},
-      flush: async () => {},
+      flush,
       expectAsk: () => {},
       headVersion: () => 0,
     },
@@ -99,7 +103,8 @@ const roots: Root[] = [];
 afterEach(async () => {
   for (const root of roots.splice(0)) await act(async () => root.unmount());
   vi.unstubAllGlobals();
-  for (const fn of [...Object.values(api), ...Object.values(chats), undo]) fn.mockClear();
+  for (const fn of [...Object.values(api), ...Object.values(chats), undo, flush]) fn.mockClear();
+  calls.length = 0;
   api.getById.mockReset();
   api.listVersions.mockReset();
   api.restore.mockReset();
@@ -190,6 +195,29 @@ it("shows the file's title, and the version menu says who made each version and 
   );
 });
 
+it("restoring saves what is staged by hand first, then restores", async () => {
+  api.listVersions.mockResolvedValue([
+    { id: "v2", version: 2, name: "tracker.html", createdAt: "", origin: "manual" },
+    { id: "v1", version: 1, name: "tracker.html", createdAt: "", origin: "ai" },
+  ]);
+  api.getById.mockImplementation(async ({ artifactId }: { artifactId: string }) =>
+    file(artifactId, "tracker.html", "text/html", `<p>${artifactId}</p>`),
+  );
+  api.restore.mockImplementation(async () => {
+    calls.push("restore");
+    return file("v3", "tracker.html", "text/html", "<p>v1</p>");
+  });
+  const view = await mount(<ArtifactPanel artifactId="v2" onClose={() => {}} />);
+  await openMenu(view, '[data-testid="version-menu"]');
+  await act(async () => menuItems("version-item")[1]?.click());
+  await tick();
+  await openMenu(view, '[data-testid="version-menu"]');
+  await act(async () => menuItems("version-restore")[0]?.click());
+  await tick();
+  expect(api.restore).toHaveBeenCalledWith({ artifactId: "v1" });
+  expect(calls).toEqual(["flush", "restore"]);
+});
+
 it("Edit turns on the toolbar and the inspector; Done turns them off; one undo for both", async () => {
   api.listVersions.mockResolvedValue([]);
   api.getById.mockResolvedValue(file("v1", "tracker.html", "text/html", "<p>x</p>"));
@@ -215,7 +243,9 @@ it("Edit turns on the toolbar and the inspector; Done turns them off; one undo f
   await act(async () => button(view, "Done")?.click());
   expect(view.querySelector('[data-testid="editor-toolbar"]')).toBeNull();
   expect(view.querySelector('[data-testid="stage"]')?.textContent).toBe("viewing");
-  await act(async () => setArtifactEditing("tracker.html", true));
+  await act(async () =>
+    setArtifactEditing(artifactKey({ botId: "bot-1", name: "tracker.html" }), true),
+  );
   expect(view.querySelector('[data-testid="stage"]')?.textContent).toBe("editing");
 });
 

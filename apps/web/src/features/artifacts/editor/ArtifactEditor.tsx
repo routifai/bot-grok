@@ -37,7 +37,7 @@ import {
   useArtifactEditorKind,
   type useArtifactPanelParts,
 } from "../registry";
-import { setArtifactEditing, useArtifactEditing } from "./editor-state";
+import { artifactKey, setArtifactEditing, useArtifactEditing } from "./editor-state";
 import { buildFileAsk } from "./html-ask";
 import { VersionMenu } from "./VersionMenu";
 
@@ -168,13 +168,11 @@ export function ArtifactEditorView({
 
 function KindEditor({ kind, ...props }: LoadedProps & { kind: ArtifactEditorKind }) {
   const { artifact } = props;
-  const editing = useArtifactEditing(artifact.name);
+  const fileKey = artifactKey(artifact);
+  const editing = useArtifactEditing(fileKey);
   const [askClicks, setAskClicks] = useState(0);
   const focusAsk = useCallback(() => setAskClicks((n) => n + 1), []);
-  const setEditing = useCallback(
-    (on: boolean) => setArtifactEditing(artifact.name, on),
-    [artifact.name],
-  );
+  const setEditing = useCallback((on: boolean) => setArtifactEditing(fileKey, on), [fileKey]);
   const useEditor = kind.useEditor;
   const parts = useEditor({
     artifact,
@@ -313,9 +311,10 @@ function LoadedEditor({
 
   const restore = useCallback(async () => {
     if (!content.versionId) return;
+    await history?.flush(); // what is staged by hand is saved first, so the restore comes after it
     const created = await rpc.artifacts.restore({ artifactId: content.versionId });
     content.adoptVersion(created.id);
-  }, [content]);
+  }, [content, history]);
 
   const actions = (
     <>
@@ -386,7 +385,7 @@ function LoadedEditor({
           data-testid="artifact-arrived"
           className="shrink-0 truncate text-[12px] text-foreground"
         >
-          {content.arrived.origin === "manual"
+          {content.arrived.origin === "manual" || content.arrived.origin === "restore"
             ? t`Updated by you · v${content.arrived.version}`
             : t`Updated by superchat · v${content.arrived.version}`}
         </span>

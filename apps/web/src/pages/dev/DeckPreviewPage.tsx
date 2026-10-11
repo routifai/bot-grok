@@ -1,7 +1,7 @@
 import { cn } from "@superchat/ui-web";
 import { useEffect, useState } from "react";
 import { artifactPanelWidth } from "../../features/artifacts/ArtifactPanel";
-import { useArtifactEditing } from "../../features/artifacts/editor/editor-state";
+import { artifactKey, useArtifactEditing } from "../../features/artifacts/editor/editor-state";
 import sample from "../../features/artifacts/editor/html/sample-deck.txt?raw";
 import { DeckViewer } from "../../features/decks/DeckViewer";
 import { setDeckThemeSources } from "../../lib/deck-themes";
@@ -30,7 +30,7 @@ type DevWindow = Window & {
  * and a restyle function (`window.__deckSetHtml`, `__deckThemes`, `__deckRestyle`).
  */
 export function DeckPreviewPage() {
-  const editing = useArtifactEditing(NAME);
+  const editing = useArtifactEditing(artifactKey({ botId: null, name: NAME }));
   const [version, setVersion] = useState(1);
   const [html, setHtml] = useState(sample);
   // Read at call time: a run exposes the function after the page has loaded.

@@ -55,6 +55,7 @@ vi.mock("@superchat/ui-web", async (importOriginal) => {
 });
 
 import type { ArtifactEditorKind } from "../artifacts";
+import { artifactKey } from "../artifacts/editor/editor-state";
 import { FIXTURE_DECK } from "./deck-fixture";
 import { requestDeckPresent, resetDeckUi } from "./deck-ui-state";
 import { decksExtension } from "./extension";
@@ -181,7 +182,7 @@ it("Present asks the viewer to present", async () => {
   const seen: number[] = [];
   const { useDeckPresentRequest } = await import("./deck-ui-state");
   function Spy() {
-    seen.push(useDeckPresentRequest(deck.name));
+    seen.push(useDeckPresentRequest(artifactKey(deck)));
     return null;
   }
   const holder = document.createElement("div");

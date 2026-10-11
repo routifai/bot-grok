@@ -13,6 +13,7 @@ vi.mock("@lingui/react/macro", () => ({
   }),
 }));
 
+import { artifactKey } from "../artifacts/editor/editor-state";
 import { DeckViewer } from "./DeckViewer";
 import { FIXTURE_DECK } from "./deck-fixture";
 import { readDeckThemeOpen, setDeckThemeOpen } from "./deck-ui-state";
@@ -206,8 +207,9 @@ it("closes the Theme gallery's open state when the deck leaves the screen", asyn
       </I18nProvider>,
     ),
   );
-  await act(async () => setDeckThemeOpen("gone.deck.html", true));
-  expect(readDeckThemeOpen("gone.deck.html")).toBe(true);
+  const key = artifactKey({ botId: null, name: "gone.deck.html" });
+  await act(async () => setDeckThemeOpen(key, true));
+  expect(readDeckThemeOpen(key)).toBe(true);
   await act(async () => root.unmount());
-  expect(readDeckThemeOpen("gone.deck.html")).toBe(false);
+  expect(readDeckThemeOpen(key)).toBe(false);
 });

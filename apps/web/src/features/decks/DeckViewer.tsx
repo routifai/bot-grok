@@ -14,6 +14,7 @@ import {
 import { SandboxedHtmlViewer } from "../../components/SandboxedHtmlViewer";
 import type { ArtifactEditorArgs, ArtifactEditorKind, ArtifactEditorParts } from "../artifacts";
 import { ArtifactEditorView } from "../artifacts/editor/ArtifactEditor";
+import { artifactKey } from "../artifacts/editor/editor-state";
 import { EditStage } from "../artifacts/editor/html/EditStage";
 import { targetLabel } from "../artifacts/editor/html/edit-model";
 import { EditNoticeBanner, StylePanel } from "../artifacts/editor/html/StylePanel";
@@ -68,6 +69,7 @@ function useDeckEditor({
   const { t } = useLingui();
   const sources = useContext(DeckSourcesContext);
   const title = artifact.name;
+  const key = artifactKey(artifact);
   const html = useMemo(() => new TextDecoder("utf-8").decode(bytes), [bytes]);
   const slides = useMemo(() => parseDeckSlides(html), [html]);
   const frame = useRef<HTMLIFrameElement | null>(null);
@@ -79,21 +81,21 @@ function useDeckEditor({
   const [presenting, setPresenting] = useState(false);
   const [barVisible, setBarVisible] = useState(true);
   const barTimer = useRef<number | undefined>(undefined);
-  const themeOpen = useDeckThemeOpen(title);
+  const themeOpen = useDeckThemeOpen(key);
   const exporter = useDeckExport(artifact.id);
   // The gallery is a hidden state while presenting and must not outlive the deck on screen.
   useEffect(() => {
-    if (presenting) setDeckThemeOpen(title, false);
-  }, [presenting, title]);
-  useEffect(() => () => setDeckThemeOpen(title, false), [title]);
-  const presentRequest = useDeckPresentRequest(title);
+    if (presenting) setDeckThemeOpen(key, false);
+  }, [presenting, key]);
+  useEffect(() => () => setDeckThemeOpen(key, false), [key]);
+  const presentRequest = useDeckPresentRequest(key);
   const handledPresent = useRef(presentRequest);
 
   const postRef = useRef<PostToFrame>(() => {});
   const post = useCallback<PostToFrame>((message) => postRef.current(message), []);
   const editMode = editing && !presenting;
   const editor = useHtmlEditor({
-    fileKey: title,
+    fileKey: key,
     active: editMode,
     artifactId: artifact.id,
     version: artifact.version,
@@ -314,7 +316,7 @@ function useDeckEditor({
       {bar}
       {themeOpen && !presenting ? (
         <DeckThemePicker
-          deckKey={title}
+          deckKey={key}
           frameRef={frame}
           artifact={{ id: artifact.id, version: artifact.version }}
           onEdited={onEdited}
@@ -362,7 +364,7 @@ function useDeckEditor({
       ) : null,
     actions: (
       <DeckHeaderActions
-        deckKey={title}
+        deckKey={key}
         state={exporter.state}
         onExport={exporter.run}
         onCancel={exporter.cancel}

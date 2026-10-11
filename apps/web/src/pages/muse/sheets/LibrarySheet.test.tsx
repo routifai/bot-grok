@@ -23,7 +23,7 @@ const api = vi.hoisted(() => ({
 vi.mock("../../../lib/rpc", () => ({ rpc: { artifacts: api, decks: {}, chats: {} } }));
 vi.mock("../../../lib/family-stream", () => ({ watchFamily: () => () => {} }));
 
-import { setArtifactEditing } from "../../../features/artifacts/editor/editor-state";
+import { artifactKey, setArtifactEditing } from "../../../features/artifacts/editor/editor-state";
 import { ArtifactRegistryProvider } from "../../../features/artifacts/registry";
 import { decksExtension } from "../../../features/decks";
 import { FIXTURE_DECK } from "../../../features/decks/deck-fixture";
@@ -147,7 +147,7 @@ it("Escape goes back to the grid first, then closes the sheet", async () => {
 
 it("edits a deck in the sheet: the selection reaches the inspector and the ask box", async () => {
   await openFromLibrary();
-  await act(async () => setArtifactEditing(NAME, true));
+  await act(async () => setArtifactEditing(artifactKey({ botId: "bot-1", name: NAME }), true));
 
   const frame = document.querySelector(
     '[data-testid="deck-edit-frame"] iframe',

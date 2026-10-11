@@ -1,5 +1,6 @@
 import { type Artifact, isDeckArtifactName } from "@superchat/contracts";
 import type { ArtifactExtension, ArtifactPanelArgs, ArtifactPanelParts } from "../artifacts";
+import { artifactKey } from "../artifacts/editor/editor-state";
 import { DeckCover } from "./DeckCover";
 import { DeckPreview, deckEditorKind } from "./DeckViewer";
 import { useDeckThemeOpen } from "./deck-ui-state";
@@ -10,7 +11,7 @@ import { isPptxArtifact } from "./pptx-normalize";
 function useDecksPanel({ artifact }: ArtifactPanelArgs): ArtifactPanelParts {
   const deck: Artifact | undefined =
     artifact && isDeckArtifactName(artifact.name) ? artifact : undefined;
-  const themeOpen = useDeckThemeOpen(deck?.name ?? "");
+  const themeOpen = useDeckThemeOpen(deck ? artifactKey(deck) : "");
   if (!deck) return { wide: !!artifact && isPptxArtifact(artifact) };
   return { wide: true, holdsEscape: themeOpen };
 }

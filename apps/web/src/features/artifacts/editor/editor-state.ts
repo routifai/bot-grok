@@ -1,9 +1,15 @@
+import type { Artifact } from "@superchat/contracts";
 import { useSyncExternalStore } from "react";
 
 // Editor state shared between the parts of one open artifact that do not sit in one React tree
 // branch: the shell's Edit toggle, the panel that widens while editing, and a kind's own controls
-// (a deck's Theme gallery) that save versions the editor's history should own. Keyed by the
-// artifact's file name, so a new version of the same file keeps its mode.
+// (a deck's Theme gallery) that save versions the editor's history should own. Keyed by
+// `artifactKey`, so a new version of the same file keeps its mode.
+
+/** Where one file's editor state lives: its name under its Muse. A version has its own id and the
+ * web has no family id, so the name is what every version shares. */
+export const artifactKey = (artifact: Pick<Artifact, "botId" | "name">): string =>
+  `${artifact.botId ?? ""}:${artifact.name}`;
 
 const editing = new Map<string, boolean>();
 const listeners = new Set<() => void>();

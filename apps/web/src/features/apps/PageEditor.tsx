@@ -5,6 +5,7 @@ import { Lock, Play, RotateCcw } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { SandboxedHtmlViewer } from "../../components/SandboxedHtmlViewer";
 import type { ArtifactEditorArgs, ArtifactEditorKind, ArtifactEditorParts } from "../artifacts";
+import { artifactKey } from "../artifacts/editor/editor-state";
 import { EditStage } from "../artifacts/editor/html/EditStage";
 import { isPathId, targetLabel } from "../artifacts/editor/html/edit-model";
 import { EditNoticeBanner, StylePanel } from "../artifacts/editor/html/StylePanel";
@@ -84,7 +85,7 @@ function usePageEditor({
   const post = useCallback<PostToFrame>((message) => postRef.current(message), []);
   const [runKey, setRunKey] = useState(0);
   const editor = useHtmlEditor({
-    fileKey: title,
+    fileKey: artifactKey(artifact),
     active: editing,
     artifactId: artifact.id,
     version: artifact.version,
