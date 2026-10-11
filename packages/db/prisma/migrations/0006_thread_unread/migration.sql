@@ -1,1 +1,0 @@
-ALTER TABLE "threads" ADD COLUMN "unread" BOOLEAN NOT NULL DEFAULT false;

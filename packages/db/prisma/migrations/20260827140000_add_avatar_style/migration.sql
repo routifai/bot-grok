@@ -1,1 +1,0 @@
-ALTER TABLE "user" ADD COLUMN "avatarStyle" TEXT NOT NULL DEFAULT 'robot';

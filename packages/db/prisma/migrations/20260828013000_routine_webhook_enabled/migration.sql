@@ -1,1 +1,0 @@
-ALTER TABLE "routines" ADD COLUMN IF NOT EXISTS "webhookEnabled" BOOLEAN NOT NULL DEFAULT false;

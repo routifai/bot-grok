@@ -1,1 +1,0 @@
-ALTER TABLE "routines" ADD COLUMN IF NOT EXISTS "githubEnabled" BOOLEAN NOT NULL DEFAULT false;
