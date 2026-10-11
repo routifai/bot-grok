@@ -241,7 +241,7 @@ it("shows the conversation chrome: the dock, Chats instead of a sidebar, no Goal
     const dockLabels = [...(dock?.querySelectorAll("button") ?? [])].map((el) =>
       el.getAttribute("aria-label"),
     );
-    expect(dockLabels).toEqual(["Inbox", "Mini Apps", "Automations", "Files"]);
+    expect(dockLabels).toEqual(["Inbox", "Library", "Automations", "Files"]);
     expect(page.container.querySelector('[data-testid="chats-trigger"]')).toBeTruthy();
     expect(page.container.querySelector('[data-testid="app-rail"]')).toBeNull();
     const text = page.container.textContent ?? "";

@@ -7,14 +7,11 @@ export function LibraryGrid({
   onOpen,
   onDownload,
   onDelete,
-  showVisibility = false,
 }: {
   items: ArtifactSummary[];
   onOpen: (item: ArtifactSummary) => void;
   onDownload: (item: ArtifactSummary) => void;
   onDelete: (item: ArtifactSummary) => void;
-  /** Marks each card Published or Private (the Mini Apps grid). */
-  showVisibility?: boolean;
 }) {
   return (
     <div
@@ -28,7 +25,6 @@ export function LibraryGrid({
           onOpen={() => onOpen(item)}
           onDownload={() => onDownload(item)}
           onDelete={() => onDelete(item)}
-          showVisibility={showVisibility}
         />
       ))}
     </div>

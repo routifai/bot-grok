@@ -54,7 +54,7 @@ const GLYPHS: Record<DockKey | "settings", ReactNode> = {
 };
 
 /**
- * The floating glass dock: Inbox, Mini Apps, Automations and Files. Inbox carries a dot while
+ * The floating glass dock: Inbox, Library, Automations and Files. Inbox carries a dot while
  * something waits on the person.
  */
 export function Dock({
@@ -69,7 +69,7 @@ export function Dock({
   const { t } = useLingui();
   const items: { key: DockKey; label: string }[] = [
     { key: "inbox", label: t`Inbox` },
-    { key: "apps", label: t`Mini Apps` },
+    { key: "apps", label: t`Library` },
     { key: "automations", label: t`Automations` },
     { key: "files", label: t`Files` },
   ];

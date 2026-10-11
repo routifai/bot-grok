@@ -39,17 +39,12 @@ const LIST_PAGE_SIZE = 60;
 const MAX_PAGES = 12;
 
 const LIBRARY_SUGGESTIONS = [
-  "Draft a one-pager on our new product",
-  "Build a meeting brief template",
-];
-
-const APP_SUGGESTIONS = [
   "Build me a simple expense tracker app",
-  "Make a habit tracker I can use every day",
+  "Make a short deck about our new product",
 ];
 
 /**
- * F7 · Library. Everything the Muse has made — pages, documents, files — from the
+ * F7 · Library. Everything the Muse has made — apps, decks, documents, files — from the
  * Conversation and every Goal log, searchable in one grid. `artifacts.listSpace` is
  * space-scoped with an optional bot filter, not thread-scoped, and Goal-log turns
  * create artifacts under the same bot id as the Conversation, so they all show up
@@ -59,7 +54,6 @@ export function LibraryScreen({
   botId,
   onSendIdea,
   embedded = false,
-  mode = "all",
   toolbarAction,
 }: {
   botId: string;
@@ -68,8 +62,6 @@ export function LibraryScreen({
   onSendIdea?: (text: string) => void;
   /** Inside a dock sheet: no screen chrome or hero, just the toolbar and the grid. */
   embedded?: boolean;
-  /** "apps" lists only the HTML apps (pages, not decks), each marked Published or Private. */
-  mode?: "all" | "apps";
   /** A button beside the search, e.g. "New app". */
   toolbarAction?: ReactNode;
 }) {
@@ -97,11 +89,7 @@ export function LibraryScreen({
       for (let page = 0; page < MAX_PAGES; page += 1) {
         const result = await rpc.artifacts.listSpace({ botId, cursor, limit: LIST_PAGE_SIZE });
         if (cancelled) return;
-        all = all.concat(
-          mode === "apps"
-            ? result.items.filter((item) => artifactKind(item.mimeType, item.name) === "page")
-            : result.items,
-        );
+        all = all.concat(result.items);
         setItems(all);
         if (!result.nextCursor) return;
         cursor = result.nextCursor;
@@ -117,7 +105,7 @@ export function LibraryScreen({
     return () => {
       cancelled = true;
     };
-  }, [botId, mode, t]);
+  }, [botId, t]);
 
   const facetCounts = useMemo(() => {
     const counts = new Map<ArtifactKind, number>();
@@ -184,7 +172,44 @@ export function LibraryScreen({
   const total = items?.length ?? 0;
   const visibleKinds = KIND_ORDER.filter((kind) => (facetCounts.get(kind) ?? 0) > 0);
 
-  const apps = mode === "apps";
+  const kindControl = (
+    <SegmentedControl
+      label={t`Kind`}
+      value={selectedKind}
+      onChange={setSelectedKind}
+      className="max-w-full"
+      options={[
+        {
+          value: "all" as const,
+          label: (
+            <>
+              {t`All`} <Count n={total} />
+            </>
+          ),
+        },
+        ...visibleKinds.map((kind) => ({
+          value: kind,
+          label: (
+            <>
+              {kindFacetLabel(kind)} <Count n={facetCounts.get(kind) ?? 0} />
+            </>
+          ),
+        })),
+        ...(publishedCount > 0
+          ? [
+              {
+                value: "published" as const,
+                label: (
+                  <>
+                    {t`Published`} <Count n={publishedCount} />
+                  </>
+                ),
+              },
+            ]
+          : []),
+      ]}
+    />
+  );
   const content = (
     <>
       {total > 0 ? (
@@ -214,13 +239,11 @@ export function LibraryScreen({
         ) : (
           <EmptyState
             illustration="books"
-            headline={apps ? t`No apps yet.` : t`Nothing here yet.`}
-            suggestions={apps ? APP_SUGGESTIONS : LIBRARY_SUGGESTIONS}
+            headline={t`Nothing here yet.`}
+            suggestions={LIBRARY_SUGGESTIONS}
             onSuggestion={onSendIdea}
           >
-            {apps
-              ? t`Apps superchat builds for you will appear here.`
-              : t`Pages, documents and files your Muse makes will appear here.`}
+            {t`Apps, decks, documents and files your Muse makes will appear here.`}
           </EmptyState>
         )
       ) : filtered && filtered.length === 0 ? (
@@ -228,7 +251,6 @@ export function LibraryScreen({
       ) : (
         <LibraryGrid
           items={filtered ?? []}
-          showVisibility={apps}
           onOpen={(item) => setOpenArtifactId(item.id)}
           onDownload={(item) => void handleDownload(item)}
           onDelete={setPendingDelete}
@@ -304,26 +326,14 @@ export function LibraryScreen({
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder={apps ? t`Search your apps…` : t`Search your Library…`}
-              aria-label={apps ? t`Search your apps` : t`Search your Library`}
+              placeholder={t`Search your Library…`}
+              aria-label={t`Search your Library`}
               className="min-h-11 w-full rounded-xl border border-glass-line bg-black/20 ps-10 pe-3.5 text-[14px] text-foreground outline-none placeholder:text-ink-2 focus-visible:outline-2 focus-visible:outline-ring"
             />
           </label>
-          {apps && total > 0 ? (
-            <SegmentedControl
-              label={t`Visibility`}
-              className="shrink-0 [&>button]:flex-none"
-              value={selectedKind}
-              onChange={setSelectedKind}
-              options={[
-                { value: "all" as const, label: t`All` },
-                { value: "published" as const, label: t`Published` },
-                { value: "private" as const, label: t`Private` },
-              ]}
-            />
-          ) : null}
           {toolbarAction}
         </div>
+        {total > 0 ? kindControl : null}
         {content}
         {dialogs}
       </div>
@@ -370,46 +380,7 @@ export function LibraryScreen({
           }
           title={<Trans>Library</Trans>}
           subtitle={<Trans>Everything I made for you.</Trans>}
-          action={
-            total > 0 ? (
-              <SegmentedControl
-                label={t`Kind`}
-                value={selectedKind}
-                onChange={setSelectedKind}
-                className="max-w-full"
-                options={[
-                  {
-                    value: "all" as const,
-                    label: (
-                      <>
-                        {t`All`} <Count n={total} />
-                      </>
-                    ),
-                  },
-                  ...visibleKinds.map((kind) => ({
-                    value: kind,
-                    label: (
-                      <>
-                        {kindFacetLabel(kind)} <Count n={facetCounts.get(kind) ?? 0} />
-                      </>
-                    ),
-                  })),
-                  ...(publishedCount > 0
-                    ? [
-                        {
-                          value: "published" as const,
-                          label: (
-                            <>
-                              {t`Published`} <Count n={publishedCount} />
-                            </>
-                          ),
-                        },
-                      ]
-                    : []),
-                ]}
-              />
-            ) : undefined
-          }
+          action={total > 0 ? kindControl : undefined}
         />
         {content}
       </MuseWideCenter>

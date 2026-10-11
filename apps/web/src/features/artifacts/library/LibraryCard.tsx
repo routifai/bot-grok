@@ -19,13 +19,11 @@ export function LibraryCard({
   onOpen,
   onDownload,
   onDelete,
-  showVisibility = false,
 }: {
   artifact: ArtifactSummary;
   onOpen: () => void;
   onDownload: () => void;
   onDelete: () => void;
-  showVisibility?: boolean;
 }) {
   const { t } = useLingui();
   const kind = artifactKind(artifact.mimeType, artifact.name);
@@ -47,7 +45,7 @@ export function LibraryCard({
       badge={
         badges.length ? (
           badges.map((part, index) => <Fragment key={index}>{part.badge}</Fragment>)
-        ) : showVisibility && !artifact.publish ? (
+        ) : kind === "page" && !artifact.publish ? (
           <span
             data-testid="private-pill"
             className="inline-flex shrink-0 items-center rounded-full bg-popover/85 px-2 py-0.5 text-[11px] font-medium text-foreground backdrop-blur-sm"
