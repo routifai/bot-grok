@@ -1504,7 +1504,6 @@ msgstr "Decline"
 msgid "Default"
 msgstr "Default"
 
-#. placeholder {0}: choices.defaultLabel
 #. placeholder {0}: model.defaultModel
 msgid "Default · {0}"
 msgstr "Default · {0}"
@@ -1573,6 +1572,9 @@ msgstr "Desktop app"
 
 msgid "Desktop update"
 msgstr "Desktop update"
+
+msgid "Details"
+msgstr "Details"
 
 msgid "Didn't finish"
 msgstr "Didn't finish"
@@ -2206,6 +2208,10 @@ msgstr "Library view"
 
 msgid "Light"
 msgstr "Light"
+
+#. placeholder {0}: choices.defaultLabel
+msgid "Light · {0}"
+msgstr "Light · {0}"
 
 msgid "Light model"
 msgstr "Light model"

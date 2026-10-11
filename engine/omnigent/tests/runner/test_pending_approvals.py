@@ -470,3 +470,31 @@ async def test_cancel_session_ends_only_that_sessions_parks() -> None:
 
     assert pending_approvals.resolve("elicit_b", approved=True)
     assert (await other).unanswered is None
+
+
+@pytest.mark.asyncio
+async def test_parked_ids_lists_only_parks_still_waiting() -> None:
+    """The server checks its stored approvals against this list, so answered parks drop out."""
+
+    def park(eid: str) -> asyncio.Task[pending_approvals.Verdict]:
+        return asyncio.create_task(
+            pending_approvals.wait_for_user_verdict(
+                elicitation_id=eid,
+                conversation_id="conv_a",
+                publish_event=lambda _sid, _event: None,
+                timeout_seconds=60,
+            )
+        )
+
+    first, second = park("elicit_1"), park("elicit_2")
+    await asyncio.sleep(0)
+    assert sorted(pending_approvals.parked_ids("conv_a")) == ["elicit_1", "elicit_2"]
+    assert pending_approvals.parked_ids("conv_other") == []
+
+    assert pending_approvals.resolve("elicit_1", approved=True)
+    await first
+    assert pending_approvals.parked_ids("conv_a") == ["elicit_2"]
+
+    pending_approvals.cancel_session("conv_a", "turn_ended")
+    await second
+    assert pending_approvals.parked_ids("conv_a") == []

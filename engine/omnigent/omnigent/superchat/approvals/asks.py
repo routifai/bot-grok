@@ -21,6 +21,7 @@ Choice ids (``style`` is ``primary`` / ``secondary`` / ``danger``):
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from omnigent.entities import Objective
@@ -62,9 +63,11 @@ def proposal_accepts(choice: str) -> bool | None:
     return _PROPOSAL_CHOICES.get(choice)
 
 
-def approval_ask(pending: PendingApproval, cap_usd: float) -> dict[str, Any]:
-    """An approval waiting on the person."""
-    row = pending_to_response(pending, cap_usd)
+def approval_ask(
+    pending: PendingApproval, cap_usd: float, names: Mapping[str, str] | None = None
+) -> dict[str, Any]:
+    """An approval waiting on the person (*names*: its targets' ``target_names``)."""
+    row = pending_to_response(pending, cap_usd, names)
     choices = [{"id": "approve_once", "style": "primary"}]
     if row["can_always"]:
         choices.append({"id": "approve_always", "style": "secondary"})

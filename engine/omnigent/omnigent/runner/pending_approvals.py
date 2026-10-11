@@ -141,6 +141,23 @@ def cancel_session(conversation_id: str, reason: str) -> int:
     return ended
 
 
+def parked_ids(conversation_id: str) -> list[str]:
+    """
+    The elicitation ids *conversation_id* is waiting on right now.
+
+    The server's list of waiting approvals outlives this process and the turns that parked
+    them; it checks itself against this one, which only holds parks still waiting.
+
+    :param conversation_id: Session/conversation id, e.g. ``"conv_abc123"``.
+    :returns: Ids of parks with no verdict yet.
+    """
+    return [
+        elicitation_id
+        for elicitation_id in _session_parks.get(conversation_id, ())
+        if (fut := _pending.get(elicitation_id)) is not None and not fut.done()
+    ]
+
+
 def has_pending(conversation_id: str) -> bool:
     """
     Whether *conversation_id* currently has an outstanding ASK verdict.

@@ -3,7 +3,7 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { ChatMarkdown } from "@superchat/chat-ui/web";
 import type { Ask } from "@superchat/contracts";
 import { cn, Input } from "@superchat/ui-web";
-import { BookmarkPlus, HelpCircle, ShieldCheck, Sparkles } from "lucide-react";
+import { BookmarkPlus, ChevronRight, HelpCircle, ShieldCheck, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { formatRelativeTime } from "../../lib/relative-time";
 import { SuperchatTile } from "../../pages/muse/chrome/SuperchatTile";
@@ -141,9 +141,18 @@ export function AskItem({
       ) : null}
 
       {ask.approval?.arguments ? (
-        <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-muted px-3.5 py-3 font-mono text-[12.5px] leading-[1.7] text-muted-foreground">
-          {ask.approval.arguments}
-        </pre>
+        <details className="group text-[12.5px] text-ink-3">
+          <summary className="flex w-fit cursor-pointer list-none items-center gap-1 transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
+            <Trans>Details</Trans>
+            <ChevronRight
+              size={12}
+              className="shrink-0 transition-transform group-open:rotate-90"
+            />
+          </summary>
+          <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-muted px-3.5 py-3 font-mono text-[12.5px] leading-[1.7] text-muted-foreground">
+            {ask.approval.arguments}
+          </pre>
+        </details>
       ) : null}
 
       {structuredDetail ? (

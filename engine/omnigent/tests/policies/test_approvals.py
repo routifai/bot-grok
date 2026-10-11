@@ -278,6 +278,21 @@ async def _raise(result: Any, *, session: str, tool: str, args: dict[str, Any]) 
     )
 
 
+def test_targets_keyed_by_id_are_named_for_the_person(monkeypatch) -> None:
+    from omnigent.superchat import risk
+
+    monkeypatch.setattr(risk, "_target_namers", {})
+    titles = {("a1", "me"): "Hello world"}
+    risk.register_target_namer("artifact", lambda ident, owner: titles.get((ident, owner)))
+
+    assert risk.target_name("artifact:a1", "me") == "“Hello world”"
+    assert risk.target_name("artifact:a1", "someone else") == "something that no longer exists"
+    assert risk.target_name("bob@acme.test", "me") == "bob@acme.test"
+    assert approvals.rule_label("post", risk.target_name("artifact:a1", "me")) == (
+        "Post to “Hello world”"
+    )
+
+
 async def test_engine_composed_muse_approval_reaches_the_inbox(
     store: SqlAlchemyApprovalStore, db_uri: str
 ) -> None:

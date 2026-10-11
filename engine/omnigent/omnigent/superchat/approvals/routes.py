@@ -13,6 +13,7 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import Mapping
 from typing import Any, Literal
 
 from fastapi import APIRouter, Request
@@ -26,6 +27,7 @@ from omnigent.server.routes._auth_helpers import require_access_and_level, requi
 from omnigent.server.routes._sessions.helpers import _apply_pending_policy_ask_writes
 from omnigent.server.routes._sessions.orchestration import _resolve_elicitation
 from omnigent.stores import AgentStore, ConversationStore, PermissionStore
+from omnigent.superchat.approvals.held import drop_unparked
 from omnigent.superchat.approvals.policy import (
     CATEGORIES,
     POLICY_NAME,
@@ -38,6 +40,7 @@ from omnigent.superchat.approvals.store import (
     PendingApproval,
     SqlAlchemyApprovalStore,
 )
+from omnigent.superchat.risk import target_name
 
 _MAX_CAP_USD = 1_000_000.0
 _logger = logging.getLogger(__name__)
@@ -98,10 +101,25 @@ def _decoded(pending: PendingApproval) -> dict[str, Any]:
     return approval if isinstance(approval, dict) else {}
 
 
-def pending_to_response(pending: PendingApproval, cap_usd: float) -> dict[str, Any]:
-    """Serialize a pending approval for the card."""
+def _targets(pending: PendingApproval) -> list[str]:
+    return [t for t in _decoded(pending).get("t", []) if isinstance(t, str)]
+
+
+def target_names(pending: PendingApproval) -> dict[str, str]:
+    """The person-facing name of each target (reads stores: call off the event loop)."""
+    return {t: target_name(t, pending.user_id) for t in _targets(pending)}
+
+
+def pending_to_response(
+    pending: PendingApproval, cap_usd: float, names: Mapping[str, str] | None = None
+) -> dict[str, Any]:
+    """Serialize a pending approval for the card.
+
+    :param names: :func:`target_names` of *pending*; targets show as stored without it.
+    """
     info = _decoded(pending)
-    targets = [t for t in info.get("t", []) if isinstance(t, str)]
+    targets = _targets(pending)
+    names = names or {}
     category = pending.category
     return {
         "id": pending.elicitation_id,
@@ -111,7 +129,7 @@ def pending_to_response(pending: PendingApproval, cap_usd: float) -> dict[str, A
         "summary": pending.summary,
         "amount_usd": pending.amount_usd,
         "can_always": bool(targets) and (category != "spend" or cap_usd > 0),
-        "always_label": ", ".join(rule_label(category, t) for t in targets),
+        "always_label": ", ".join(rule_label(category, names.get(t, t)) for t in targets),
         "created_at": pending.created_at,
         "arguments": str(info.get("args") or "") or None,
         "also_asks": [str(a) for a in info.get("also", []) if isinstance(a, str)],
@@ -149,9 +167,9 @@ async def answer_approval(
     )
     if conv is None:
         raise OmnigentError("Approval not found", code=ErrorCode.NOT_FOUND)
-    info = _decoded(pending)
-    targets = [t for t in info.get("t", []) if isinstance(t, str)]
+    targets = _targets(pending)
     if decision == "always":
+        names = await asyncio.to_thread(target_names, pending)
         cap = await asyncio.to_thread(store.get_cap, owner)
         if not targets or (pending.category == "spend" and cap <= 0):
             raise OmnigentError("This can't be allowed every time", code=ErrorCode.INVALID_INPUT)
@@ -161,7 +179,7 @@ async def answer_approval(
                 owner,
                 category=pending.category,
                 target=target,
-                label=rule_label(pending.category, target),
+                label=rule_label(pending.category, names[target]),
             )
     data: dict[str, object] = {
         "elicitation_id": elicitation_id,
@@ -206,8 +224,12 @@ def create_approvals_router(
         """The caller's approvals still waiting, oldest first."""
         owner = _owner(request)
         rows = await asyncio.to_thread(store.list_pending, user_id=owner)
+        rows = await drop_unparked(store, rows, runner_router)
         cap = await asyncio.to_thread(store.get_cap, owner)
-        return {"approvals": [pending_to_response(r, cap) for r in rows]}
+        names = await asyncio.to_thread(lambda: [target_names(r) for r in rows])
+        return {
+            "approvals": [pending_to_response(r, cap, n) for r, n in zip(rows, names, strict=True)]
+        }
 
     @router.post("/me/approvals/{elicitation_id}/answer")
     async def answer(request: Request, elicitation_id: str, body: AnswerBody) -> dict[str, bool]:

@@ -32,7 +32,8 @@ from omnigent.superchat.approvals.asks import (
     parse_ask_id,
     proposal_accepts,
 )
-from omnigent.superchat.approvals.routes import answer_approval, owner_of
+from omnigent.superchat.approvals.held import drop_unparked
+from omnigent.superchat.approvals.routes import answer_approval, owner_of, target_names
 
 _NOTE_MAX = 2000
 
@@ -86,8 +87,10 @@ def create_asks_router(
         if approvals is not None:
             owner = owner_of(user_id)
             rows = await asyncio.to_thread(approvals.list_pending, user_id=owner)
+            rows = await drop_unparked(approvals, rows, runner_router)
             cap = await asyncio.to_thread(approvals.get_cap, owner)
-            asks += [approval_ask(row, cap) for row in rows]
+            names = await asyncio.to_thread(lambda: [target_names(r) for r in rows])
+            asks += [approval_ask(r, cap, n) for r, n in zip(rows, names, strict=True)]
         if objective_store is not None:
             owner_id = _objective_owner(user_id)
             objectives = await asyncio.to_thread(

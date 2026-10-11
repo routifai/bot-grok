@@ -5387,6 +5387,11 @@ def create_runner_app(
             },
         )
 
+    @app.get("/v1/sessions/{session_id}/pending-approvals")
+    async def get_pending_approvals(session_id: str) -> dict[str, list[str]]:
+        """The approvals this runner is still waiting on for *session_id*."""
+        return {"elicitation_ids": pending_approvals.parked_ids(session_id)}
+
     @app.get("/v1/sessions/{session_id}/buffered")
     async def get_buffered_messages(session_id: str) -> JSONResponse:
         """The messages waiting behind the running turn (live state; nothing is persisted).

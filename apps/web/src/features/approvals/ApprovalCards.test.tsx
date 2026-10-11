@@ -120,7 +120,7 @@ it("renders nothing when no approval is waiting here", async () => {
   }
 });
 
-it("quotes the call's arguments and lists the other asks one Allow covers", async () => {
+it("keeps the call's arguments behind Details and lists the other asks one Allow covers", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const args = '{"command": "rm notes.txt # Rename notes.txt"}';
   api.list.mockResolvedValue([
@@ -134,7 +134,9 @@ it("quotes the call's arguments and lists the other asks one Allow covers", asyn
   expect(view.container.querySelector("h3")?.textContent).toBe(
     "Over budget. Continue? (sys_os_shell)",
   );
-  expect(view.container.querySelector("pre")?.textContent).toBe(args);
+  expect(view.container.querySelector("details")?.open).toBe(false);
+  expect(view.container.querySelector("summary")?.textContent).toBe("Details");
+  expect(view.container.querySelector("details pre")?.textContent).toBe(args);
   expect(view.container.querySelector("li")?.textContent).toBe("Pushes need a look.");
   await view.cleanup();
 });

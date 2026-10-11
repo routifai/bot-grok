@@ -10,7 +10,7 @@ from omnigent.superchat.artifacts.handlers import handle_artifact_tool
 from omnigent.superchat.artifacts.tools import ARTIFACT_TOOL_NAMES
 from omnigent.superchat.artifacts.writeback import deliver_manual_edits
 from omnigent.superchat.feature import Feature, InstallDeps, ToolManagerCtx
-from omnigent.superchat.risk import Risk, register_classifier
+from omnigent.superchat.risk import Risk, register_classifier, register_target_namer
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -50,11 +50,16 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
 
     if deps.scheduled_task_store is None:
         return
+    store = SqlAlchemyArtifactStore(deps.scheduled_task_store.storage_location, get_artifact_store)
+
+    def _name(artifact_id: str, owner: str | None) -> str | None:
+        item = store.get(artifact_id, user_id=owner)
+        return (item.title or item.name) if item is not None else None
+
+    register_target_namer("artifact", _name)
     app.include_router(
         create_artifacts_router(
-            SqlAlchemyArtifactStore(
-                deps.scheduled_task_store.storage_location, get_artifact_store
-            ),
+            store,
             conversation_store=deps.conversation_store,
             permission_store=deps.permission_store,
             auth_provider=deps.auth_provider,
