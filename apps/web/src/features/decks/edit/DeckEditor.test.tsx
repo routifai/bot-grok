@@ -185,7 +185,11 @@ it("only trusts messages from its frame that carry its nonce and fit the protoco
     );
   });
   expect(panel()).not.toContain("Heading");
-  await fromFrame(frame, { type: "superchat:edit-selection", nonce: "f".repeat(32), targets: [title] });
+  await fromFrame(frame, {
+    type: "superchat:edit-selection",
+    nonce: "f".repeat(32),
+    targets: [title],
+  });
   await fromFrame(frame, { type: "superchat:edit-selection", v: 2, targets: [title] });
   await fromFrame(frame, { type: "superchat:edit-selection", targets: [{ id: 3 }] });
   expect(panel()).not.toContain("Heading");
@@ -276,7 +280,12 @@ it("undo and redo save the earlier source back as new versions", async () => {
   const frame = editFrame();
   await ready(frame);
   await select(frame);
-  await fromFrame(frame, { type: "superchat:edit-text-commit", id: "title", text: "B", before: "A" });
+  await fromFrame(frame, {
+    type: "superchat:edit-text-commit",
+    id: "title",
+    text: "B",
+    before: "A",
+  });
   await act(async () => {
     await vi.advanceTimersByTimeAsync(10);
   });
@@ -309,7 +318,12 @@ it("a change by someone else ends the history instead of undoing over it", async
   const frame = editFrame();
   await ready(frame);
   await select(frame);
-  await fromFrame(frame, { type: "superchat:edit-text-commit", id: "title", text: "B", before: "A" });
+  await fromFrame(frame, {
+    type: "superchat:edit-text-commit",
+    id: "title",
+    text: "B",
+    before: "A",
+  });
   await act(async () => {
     await vi.advanceTimersByTimeAsync(10);
   });
@@ -343,7 +357,12 @@ it("a patch the engine won't apply exactly says so and offers superchat", async 
   const frame = editFrame();
   await ready(frame);
   await select(frame);
-  await fromFrame(frame, { type: "superchat:edit-text-commit", id: "title", text: "B", before: "A" });
+  await fromFrame(frame, {
+    type: "superchat:edit-text-commit",
+    id: "title",
+    text: "B",
+    before: "A",
+  });
   await act(async () => {
     await vi.advanceTimersByTimeAsync(10);
   });
@@ -414,4 +433,26 @@ it("a new version keeps the selection by selecting the same ids in the new frame
     "*",
   );
   expect(host.querySelector('[data-testid="deck-edit-frame-next"]')).toBeNull();
+});
+
+it("the floating toolbar asks about the selection and Done leaves edit mode", async () => {
+  const probe: Probe = { current: [] };
+  await mount({ probe });
+  await act(async () => setDeckEditing(NAME, true));
+  const toolbar = host.querySelector('[data-testid="deck-edit-toolbar"]') as HTMLElement;
+  expect(toolbar.getAttribute("role")).toBe("toolbar");
+  const button = (text: string) =>
+    [...toolbar.querySelectorAll("button")].find((b) => b.textContent === text);
+  expect(button("Ask superchat")?.disabled).toBe(true);
+
+  const frame = editFrame();
+  await ready(frame);
+  await select(frame);
+  expect(button("Ask superchat")?.disabled).toBe(false);
+  await act(async () => typeInto(control("What should change?"), "shorter"));
+  await act(async () => button("Ask superchat")?.click());
+  expect(probe.current[0]?.block).toContain("request: shorter");
+
+  await act(async () => button("Done")?.click());
+  expect(host.querySelector('[data-testid="deck-edit-toolbar"]')).toBeNull();
 });

@@ -3,13 +3,15 @@ import { useEffect, useRef, useState } from "react";
 import { SandboxedHtmlViewer } from "../../components/SandboxedHtmlViewer";
 import { postDeckNavigation, readDeckEvent } from "./deck-model";
 
-/** The deck's own fit() leaves a 32px margin, so a 1952x1112 frame lays the stage out at 1:1. */
+/** The deck's own fit() leaves a 16px margin on each side, so a 1952x1112 frame lays the
+ * 1920x1080 slide out at 1:1, 16px in from the frame's corner. */
 const FRAME_W = 1952;
 const FRAME_H = 1112;
-export const THUMB_W = 116;
-/** The slim rail's thumbnail: the same live frame, scaled down further. */
-export const MINI_THUMB_W = 44;
-const heightFor = (width: number) => Math.round((FRAME_H * width) / FRAME_W);
+const MARGIN = 16;
+const SLIDE_W = 1920;
+/** Every thumbnail is this wide and exactly 16:9, the slide edge to edge. */
+export const THUMB_W = 120;
+const THUMB_H = Math.round((THUMB_W * 9) / 16);
 /** Without IntersectionObserver (tests) only the first few thumbnails mount. */
 const FALLBACK_MOUNT = 6;
 
@@ -34,25 +36,22 @@ function useNearViewport(index: number) {
   return { ref, near };
 }
 
-/** One slide of the same sandboxed deck, live (not a screenshot), parked on its slide. */
+/** One slide of the same sandboxed deck, live (not a screenshot), parked on its slide, with its
+ * number beside it. */
 export function DeckThumb({
   html,
   index,
   label,
   active,
   onSelect,
-  compact = false,
 }: {
   html: string;
   index: number;
   label: string;
   active: boolean;
   onSelect: (index: number) => void;
-  /** A slim-rail thumbnail: smaller, with just its number under it. */
-  compact?: boolean;
 }) {
-  const width = compact ? MINI_THUMB_W : THUMB_W;
-  const scale = width / FRAME_W;
+  const scale = THUMB_W / SLIDE_W;
   const { ref, near } = useNearViewport(index);
   const frame = useRef<HTMLIFrameElement>(null);
 
@@ -80,46 +79,41 @@ export function DeckThumb({
         aria-selected={active}
         aria-current={active ? "true" : undefined}
         aria-label={label || String(index + 1)}
+        title={label.replace(/^\d+\s*/, "") || undefined}
         onClick={() => onSelect(index)}
-        className={cn(
-          "group block w-full text-start outline-none",
-          "focus-visible:ring-2 focus-visible:ring-ring rounded-md",
-        )}
+        className="group flex w-full items-start gap-2 rounded-lg px-1.5 py-1.5 text-start outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <span
           className={cn(
-            "relative block overflow-hidden rounded-[5px] bg-muted outline -outline-offset-1",
-            active
-              ? "outline-2 -outline-offset-2 outline-foreground"
-              : "outline-1 outline-border group-hover:outline-foreground/40",
+            "w-4 shrink-0 pt-0.5 text-end text-[11.5px] tabular-nums",
+            active ? "font-semibold text-foreground" : "text-muted-foreground",
           )}
-          style={{ width, height: heightFor(width) }}
+        >
+          {index + 1}
+        </span>
+        <span
+          className={cn(
+            "relative block shrink-0 overflow-hidden rounded-[5px] bg-muted outline motion-safe:transition-[outline-color]",
+            active
+              ? "outline-2 outline-offset-2 outline-foreground"
+              : "outline-1 -outline-offset-1 outline-border group-hover:outline-foreground/40",
+          )}
+          style={{ width: THUMB_W, height: THUMB_H }}
         >
           {near ? (
             <span
               aria-hidden="true"
               className="pointer-events-none absolute start-0 top-0 block origin-top-left"
-              style={{ width: FRAME_W, height: FRAME_H, transform: `scale(${scale})` }}
+              style={{
+                width: FRAME_W,
+                height: FRAME_H,
+                transform: `scale(${scale}) translate(-${MARGIN}px, -${MARGIN}px)`,
+              }}
             >
               <SandboxedHtmlViewer html={html} title={label} relay decorative frameRef={frame} />
             </span>
           ) : null}
         </span>
-        {compact ? (
-          <span
-            className={cn(
-              "mt-0.5 block text-center text-[10px] tabular-nums",
-              active ? "font-semibold text-foreground" : "text-muted-foreground",
-            )}
-          >
-            {index + 1}
-          </span>
-        ) : (
-          <span className="mt-1 flex items-baseline gap-1.5 text-[11px] text-muted-foreground">
-            <span className="tabular-nums">{index + 1}</span>
-            <span className="truncate">{label.replace(/^\d+\s*/, "")}</span>
-          </span>
-        )}
       </button>
     </div>
   );

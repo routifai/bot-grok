@@ -5,115 +5,105 @@ import { useState } from "react";
 import { DeckThumb } from "./DeckThumb";
 import type { DeckSlide } from "./deck-model";
 
-/** The slim strip and the opened drawer, in px (the drawer opens over the stage). */
-export const RAIL_SLIM_W = 60;
-export const RAIL_OPEN_W = 148;
+/** Whether the person folded the rail away; kept for the session so it survives switching
+ * between viewing and editing, and opening another deck. */
+let collapsedForSession = false;
 
 /**
- * The slide rail. In view mode it is a plain column of thumbnails. In edit mode it is a slim strip
- * of small thumbnails that takes almost no room; hovering it, focusing into it or pressing the
- * toggle opens the full rail over the stage (it floats, so the slide never moves).
+ * The slide rail beside the stage: a column of same-size 16:9 live thumbnails, each with its
+ * number, the current one outlined. The toggle folds it to a slim strip of slide numbers so the
+ * stage gets the room; it never floats over the slide.
  */
 export function DeckRail({
   html,
   slides,
   active,
   onSelect,
-  slim,
 }: {
   html: string;
   slides: readonly DeckSlide[];
   active: number;
   onSelect: (index: number) => void;
-  slim: boolean;
 }) {
   const { t } = useLingui();
-  const [hover, setHover] = useState(false);
-  const [focus, setFocus] = useState(false);
-  const [pinned, setPinned] = useState(false);
-  const open = slim && (hover || focus || pinned);
-  const compact = slim && !open;
+  const [collapsed, setCollapsed] = useState(collapsedForSession);
+  const toggle = () => {
+    collapsedForSession = !collapsed;
+    setCollapsed(!collapsed);
+  };
 
   return (
+    // biome-ignore lint/a11y/useSemanticElements: a fieldset would be a form group
     <div
+      role="group"
+      aria-label={t`Slide rail`}
+      data-testid="deck-rail"
+      data-collapsed={collapsed ? "true" : undefined}
       className={cn(
-        "relative shrink-0 motion-safe:transition-[width] motion-safe:duration-300 motion-safe:ease-out",
-        slim ? "z-20 w-[60px]" : "w-[148px]",
+        "flex shrink-0 flex-col overflow-hidden border-e border-border",
+        "motion-safe:transition-[width] motion-safe:duration-200 motion-safe:ease-out",
+        collapsed ? "w-12" : "w-[164px]",
       )}
     >
-      {/* Hover only widens the rail; keyboard and touch use the focus and the toggle button. */}
-      {/* biome-ignore lint/a11y/useSemanticElements: a fieldset would be a form group */}
+      <div className={cn("flex shrink-0 px-2 pt-2", collapsed ? "justify-center" : "justify-end")}>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="text-muted-foreground"
+          aria-label={collapsed ? t`Show slides` : t`Hide slides`}
+          title={collapsed ? t`Show slides` : t`Hide slides`}
+          aria-expanded={!collapsed}
+          onClick={toggle}
+        >
+          {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+        </Button>
+      </div>
       <div
-        role="group"
-        aria-label={t`Slide rail`}
-        data-testid="deck-rail"
-        data-slim={slim ? "true" : undefined}
-        data-open={open ? "true" : undefined}
-        onMouseEnter={slim ? () => setHover(true) : undefined}
-        onMouseLeave={slim ? () => setHover(false) : undefined}
-        onFocus={slim ? () => setFocus(true) : undefined}
-        onBlur={
-          slim
-            ? (event) => {
-                if (!event.currentTarget.contains(event.relatedTarget)) setFocus(false);
-              }
-            : undefined
-        }
+        role="listbox"
+        aria-label={t`Slides`}
+        aria-orientation="vertical"
         className={cn(
-          "absolute inset-y-0 start-0 flex flex-col overflow-hidden border-e border-border bg-background",
-          "motion-safe:transition-[width,background-color,box-shadow] motion-safe:duration-200 motion-safe:ease-out",
-          slim ? (open ? "w-[148px]" : "w-[60px]") : "w-[148px]",
-          open &&
-            "rounded-e-2xl border-transparent bg-popover shadow-[0_8px_32px_rgb(0_0_0/0.14)] ring-1 ring-border",
+          "flex min-h-0 flex-1 flex-col overflow-y-auto",
+          collapsed ? "items-center gap-1 px-1.5 py-2" : "gap-1 px-1.5 pt-1 pb-3",
         )}
       >
-        {slim ? (
-          <div
-            className={cn("flex shrink-0 px-2 pt-2 pb-1", open ? "justify-end" : "justify-center")}
-          >
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="text-muted-foreground"
-              aria-label={pinned ? t`Collapse slides` : t`Expand slides`}
-              aria-expanded={open}
-              onClick={(event) => {
-                // Collapsing closes the rail even under the pointer; hovering again reopens it.
-                if (open && pinned) {
-                  setHover(false);
-                  setFocus(false);
-                  event.currentTarget.blur();
-                }
-                setPinned((value) => !value);
-              }}
+        {slides.map((slide) =>
+          collapsed ? (
+            <button
+              key={slide.index}
+              type="button"
+              role="option"
+              aria-selected={slide.index === active}
+              aria-current={slide.index === active ? "true" : undefined}
+              aria-label={slide.label || String(slide.index + 1)}
+              title={slide.label.replace(/^\d+\s*/, "") || undefined}
+              onClick={() => onSelect(slide.index)}
+              className={cn(
+                "grid size-8 shrink-0 place-items-center rounded-lg text-[12px] tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                slide.index === active
+                  ? "bg-foreground font-semibold text-background"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
+              )}
             >
-              {pinned ? <PanelLeftClose /> : <PanelLeftOpen />}
-            </Button>
-          </div>
-        ) : null}
-        <div
-          role="listbox"
-          aria-label={t`Slides`}
-          aria-orientation="vertical"
-          className={cn(
-            "flex min-h-0 flex-1 flex-col overflow-y-auto",
-            compact ? "items-center gap-2 px-2 pt-1 pb-3" : "gap-3 px-4 py-3",
-            slim && !compact && "pt-1",
-          )}
-        >
-          {slides.map((slide) => (
+              {slide.index + 1}
+            </button>
+          ) : (
             <DeckThumb
               key={slide.index}
               html={html}
               index={slide.index}
               label={slide.label}
               active={slide.index === active}
-              compact={compact}
               onSelect={onSelect}
             />
-          ))}
-        </div>
+          ),
+        )}
       </div>
     </div>
   );
 }
+
+/** Test helper. */
+export const resetDeckRail = (): void => {
+  collapsedForSession = false;
+};

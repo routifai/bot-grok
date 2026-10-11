@@ -1,6 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
 import { Button, cn } from "@superchat/ui-web";
-import { Redo2, Undo2 } from "lucide-react";
+import { Check, Redo2, Sparkles, Undo2 } from "lucide-react";
 import {
   type MutableRefObject,
   type ReactNode,
@@ -13,8 +13,8 @@ import {
   setComposerAttachment,
   useComposerAttachAvailable,
 } from "../../../lib/composer-attachments";
-import { RAIL_OPEN_W, RAIL_SLIM_W } from "../DeckRail";
 import { buildDeckAsk, DECK_ASK_KIND } from "../deck-ask";
+import { setDeckEditing } from "../deck-ui-state";
 import { EditStage } from "./EditStage";
 import { targetLabel } from "./edit-model";
 import { EditNoticeBanner, StylePanel } from "./StylePanel";
@@ -26,7 +26,8 @@ function isTypingTarget(target: EventTarget | null): boolean {
 }
 
 /**
- * Edit mode of a deck: the stage with the edit bridge and the style panel. `bar` is the viewer's
+ * Edit mode of a deck: a floating toolbar over the stage (undo, redo, ask Superchat about the
+ * selection, done), the stage with the edit bridge and the style panel. `bar` is the viewer's
  * slide navigation, kept under the stage. The deck's own source is never touched here; every
  * change goes through `useDeckEditor` as patches the engine applies.
  */
@@ -63,6 +64,8 @@ export function DeckEditor({
   });
   const canAsk = useComposerAttachAvailable();
   const [asked, setAsked] = useState(false);
+  // The toolbar's Ask asks the way the selection chrome's own button does (with what is typed).
+  const [askClicks, setAskClicks] = useState(0);
 
   // Undo / redo from the keyboard while focus is outside the frame (the bridge covers inside).
   const { undo, redo } = editor;
@@ -121,9 +124,65 @@ export function DeckEditor({
   useEffect(() => () => setComposerAttachment(DECK_ASK_KIND, null), []);
 
   const selected = editor.targets.length > 0;
+  const toolButton = "rounded-full";
   return (
     <div className="@container relative flex min-w-0 flex-1">
       <div className="relative flex min-w-0 flex-1 flex-col">
+        <div className="flex shrink-0 justify-center px-3 pt-2.5 pb-1">
+          <div
+            role="toolbar"
+            aria-label={t`Editing`}
+            data-testid="deck-edit-toolbar"
+            className="superchat-glass-pill flex items-center gap-0.5 rounded-full p-1"
+          >
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className={toolButton}
+              aria-label={t`Undo`}
+              title={t`Undo (⌘Z)`}
+              disabled={!editor.canUndo || editor.saving}
+              onClick={() => void editor.undo()}
+            >
+              <Undo2 />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className={toolButton}
+              aria-label={t`Redo`}
+              title={t`Redo (⇧⌘Z)`}
+              disabled={!editor.canRedo || editor.saving}
+              onClick={() => void editor.redo()}
+            >
+              <Redo2 />
+            </Button>
+            {canAsk ? (
+              <>
+                <span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={toolButton}
+                  disabled={!selected}
+                  title={selected ? undefined : t`Select something on the slide first`}
+                  onClick={() => setAskClicks((n) => n + 1)}
+                >
+                  <Sparkles />
+                  {t`Ask superchat`}
+                </Button>
+              </>
+            ) : null}
+            <Button
+              size="sm"
+              className={cn(toolButton, "ms-1")}
+              onClick={() => setDeckEditing(title, false)}
+            >
+              <Check />
+              {t`Done`}
+            </Button>
+          </div>
+        </div>
         <div className="relative min-h-0 flex-1">
           <EditStage
             html={html}
@@ -131,7 +190,6 @@ export function DeckEditor({
             reloadKey={editor.reloadKey}
             active={active}
             selectedIds={editor.selectedIds}
-            chipInset={RAIL_OPEN_W - RAIL_SLIM_W + 8}
             frameRef={frameRef}
             postRef={postRef}
             onMessage={editor.onFrameMessage}
@@ -152,33 +210,6 @@ export function DeckEditor({
             </div>
           ) : null}
           {bar}
-          <div
-            data-testid="deck-edit-toolbar"
-            className="absolute inset-y-0 start-3 flex items-center gap-0.5"
-          >
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="text-muted-foreground"
-              aria-label={t`Undo`}
-              title={t`Undo`}
-              disabled={!editor.canUndo || editor.saving}
-              onClick={() => void editor.undo()}
-            >
-              <Undo2 />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="text-muted-foreground"
-              aria-label={t`Redo`}
-              title={t`Redo`}
-              disabled={!editor.canRedo || editor.saving}
-              onClick={() => void editor.redo()}
-            >
-              <Redo2 />
-            </Button>
-          </div>
         </div>
       </div>
       {/* From about 900px wide the inspector column is reserved for the whole edit session (empty
@@ -199,7 +230,7 @@ export function DeckEditor({
             slideCount={editor.theme?.slideCount ?? 0}
             canAsk={canAsk}
             asked={asked}
-            focusAsk={editor.askRequest}
+            focusAsk={editor.askRequest + askClicks}
             onStyle={(changes, mode) => editor.applyStyle(changes, mode)}
             onAttributes={editor.setAttributes}
             onCommit={() => {

@@ -237,9 +237,7 @@ export function DeckViewer({
       onMouseMove={presenting ? revealBar : undefined}
       className={cn("relative flex h-full min-h-0 bg-background", presenting && "bg-black")}
     >
-      {presenting ? null : (
-        <DeckRail html={html} slides={slides} active={active} onSelect={goTo} slim={!!editor} />
-      )}
+      {presenting ? null : <DeckRail html={html} slides={slides} active={active} onSelect={goTo} />}
       {editor ? (
         editor
       ) : (

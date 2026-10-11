@@ -74,11 +74,11 @@ it("renders the deck in the sandboxed frame with the relay and a slide rail", as
   expect(container.querySelector('[data-testid="deck-counter"]')?.textContent).toBe("1 / 3");
 });
 
-it("keeps the full rail in view mode", async () => {
+it("opens with the full rail of thumbnails", async () => {
   const container = await mount();
   const rail = container.querySelector('[data-testid="deck-rail"]');
-  expect(rail?.getAttribute("data-slim")).toBeNull();
-  expect(container.querySelector('button[aria-label="Expand slides"]')).toBeNull();
+  expect(rail?.getAttribute("data-collapsed")).toBeNull();
+  expect(container.querySelector('button[aria-label="Hide slides"]')).not.toBeNull();
 });
 
 it("mirrors the deck's state and only trusts its own frame", async () => {
@@ -116,7 +116,10 @@ it("drives the deck from the buttons, the keys and the rail", async () => {
     await act(async () => {
       window.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
     });
-    expect(post).toHaveBeenLastCalledWith({ type: "superchat:slide", protocolVersion: 1, action }, "*");
+    expect(post).toHaveBeenLastCalledWith(
+      { type: "superchat:slide", protocolVersion: 1, action },
+      "*",
+    );
   }
   await act(async () =>
     (container.querySelectorAll('[role="option"]')[2] as HTMLButtonElement).click(),

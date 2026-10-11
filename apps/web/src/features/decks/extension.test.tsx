@@ -146,13 +146,13 @@ it("leaves non-deck headers alone", async () => {
   expect(c.querySelector('[data-testid="hide"]')?.textContent).toBe("false");
 });
 
-it("has Theme, Edit, Present and exactly one Download menu with the three formats", async () => {
+it("has Edit, Theme, Present and exactly one Download menu with the three formats", async () => {
   const c = await mount(deck);
   expect(c.querySelector('[data-testid="hide"]')?.textContent).toBe("true");
   expect(downloads(c)).toHaveLength(1);
   expect(buttons(c).map((b) => b.textContent)).toEqual([
-    "Theme",
     "Edit",
+    "Theme",
     "Present",
     "Download",
     "PowerPoint (.pptx)",

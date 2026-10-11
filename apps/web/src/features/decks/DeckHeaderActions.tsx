@@ -27,7 +27,8 @@ import {
   useDeckThemeOpen,
 } from "./deck-ui-state";
 
-/** The deck panel's right-hand header controls: Theme, Edit, Present and one Download menu. Progress,
+/** The deck panel's right-hand header controls: Edit (first, the one
+ * to find), Theme, Present and one Download menu. Progress,
  * failure and the "added to your Library" note all show on the Download button itself. */
 export function DeckHeaderActions({
   deckKey,
@@ -65,6 +66,15 @@ export function DeckHeaderActions({
   return (
     <>
       <Button
+        variant={editing ? "default" : "secondary"}
+        size="sm"
+        aria-pressed={editing}
+        onClick={() => setDeckEditing(deckKey, !editing)}
+      >
+        <Pencil size={13} />
+        {t`Edit`}
+      </Button>
+      <Button
         variant={themeOpen ? "default" : "secondary"}
         size="sm"
         aria-pressed={themeOpen}
@@ -74,15 +84,6 @@ export function DeckHeaderActions({
       >
         <Palette size={13} />
         {t`Theme`}
-      </Button>
-      <Button
-        variant={editing ? "default" : "secondary"}
-        size="sm"
-        aria-pressed={editing}
-        onClick={() => setDeckEditing(deckKey, !editing)}
-      >
-        <Pencil size={13} />
-        {t`Edit`}
       </Button>
       <Button variant="secondary" size="sm" onClick={() => requestDeckPresent(deckKey)}>
         <Presentation size={13} />
