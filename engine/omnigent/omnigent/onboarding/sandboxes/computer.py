@@ -13,9 +13,10 @@ Implements :class:`~omnigent.onboarding.sandboxes.base.SandboxHostLauncher` (via
 
 Identity: the Computer is keyed by the session's person, not by the launch-chosen ``name``. The
 gateway stamps every session with ``omnigent.computer.key`` / ``omnigent.computer.owner`` /
-``omnigent.tenant`` labels (the older ``superchat.*`` labels are still read, deprecated, removal
-in 0.19); :meth:`prepare_for_launch` reads them, or on a relaunch recovers them from the previous
-sandbox id ``"<key>:<tenant>:<container_id>"``.
+``omnigent.tenant`` labels (a session with no tenant uses :data:`DEFAULT_TENANT`; the older
+``superchat.*`` labels are still read, deprecated, removal in 0.19); :meth:`prepare_for_launch`
+reads them, or on a relaunch recovers them from the previous sandbox id
+``"<key>:<tenant>:<container_id>"``.
 
 Idempotent: :meth:`provision` reuses the person's container (starting it if stopped) and only
 recreates it when the runner image changed; the home volume survives a recreate. ``start_host``
@@ -81,6 +82,10 @@ LABEL_TENANT: str = "omnigent.tenant"
 _DEPRECATED_LABEL_COMPUTER_KEY: str = "superchat.computer"
 _DEPRECATED_LABEL_COMPUTER_OWNER: str = "superchat.bot"
 _DEPRECATED_LABEL_TENANT: str = "superchat.space"
+
+#: The tenant of a session with none: an engine without tenants (one organization, or the
+#: single local person) still places each person's computer.
+DEFAULT_TENANT: str = "default"
 
 _DEFAULT_IMAGE: str = "superchat/computer:local"
 _DEFAULT_SOCKET: str = "/var/run/docker.sock"
@@ -245,8 +250,8 @@ class ComputerSandboxLauncher(ExecModelHostLauncher):
             or found.get(_DEPRECATED_LABEL_COMPUTER_KEY)
             or found.get(_DEPRECATED_LABEL_COMPUTER_OWNER)
         )
-        tenant = tenant_from_labels(found)
-        if key and tenant:
+        tenant = tenant_from_labels(found) or DEFAULT_TENANT
+        if key:
             self._key, self._tenant = key, tenant
             return
         if previous_sandbox_id:
@@ -261,8 +266,8 @@ class ComputerSandboxLauncher(ExecModelHostLauncher):
         if not self._key or not self._tenant:
             raise click.ClickException(
                 "the 'computer' sandbox provider could not resolve this computer's identity — the "
-                f"launching session must carry '{LABEL_COMPUTER_KEY}' "
-                f"(or '{LABEL_COMPUTER_OWNER}') and '{LABEL_TENANT}' labels"
+                f"launching session must carry a '{LABEL_COMPUTER_KEY}' "
+                f"(or '{LABEL_COMPUTER_OWNER}') label"
             )
 
     def _client(self) -> httpx.Client:

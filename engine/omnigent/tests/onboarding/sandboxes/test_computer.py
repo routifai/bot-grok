@@ -16,6 +16,7 @@ import pytest
 
 from omnigent.onboarding.sandboxes.base import RemoteCommandResult, supervise_host_command
 from omnigent.onboarding.sandboxes.computer import (
+    DEFAULT_TENANT,
     ComputerSandboxLauncher,
     _demux,
     _parse_sandbox_id,
@@ -136,6 +137,13 @@ def test_deprecated_labels_still_resolve_identity() -> None:
     launcher = ComputerSandboxLauncher(image=IMAGE, client=FakeDocker().client())
     launcher.prepare_for_launch(labels={"superchat.bot": KEY, "superchat.space": TENANT})
     assert (launcher._key, launcher._tenant) == (KEY, TENANT)
+
+
+def test_a_session_without_a_tenant_uses_the_default_tenant() -> None:
+    launcher = ComputerSandboxLauncher(image=IMAGE, client=FakeDocker().client())
+    launcher.prepare_for_launch(labels={"omnigent.computer.owner": KEY})
+    launcher.prepare()
+    assert (launcher._key, launcher._tenant) == (KEY, DEFAULT_TENANT)
 
 
 def test_relaunch_recovers_identity_from_the_previous_sandbox_id() -> None:
