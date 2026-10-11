@@ -1,4 +1,4 @@
-"""The single local user saves artifacts and reads pending edits in its own sessions."""
+"""The single local user saves, restores and reads pending edits in its own sessions."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from omnigent.server.auth import RESERVED_USER_LOCAL
 from omnigent.stores.artifact_store.local import LocalArtifactStore
 from omnigent.superchat.artifacts import routes as artifact_routes
 from omnigent.superchat.artifacts.routes import create_artifacts_router
-from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore
+from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore, VersionConflictError
 
 _SESSION = uuid.uuid4().hex
 
@@ -60,11 +60,11 @@ def env(db_uri: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         ),
         prefix="/v1",
     )
-    return checked, TestClient(app)
+    return checked, TestClient(app), store
 
 
 def test_local_user_saves_an_artifact_and_reads_pending_edits(env) -> None:
-    checked, client = env
+    checked, client, _store = env
     saved = client.post(
         f"/v1/artifacts?parent_session_id={_SESSION}&name=tea.deck.html",
         content=b"<html><body>tea</body></html>",
@@ -75,3 +75,39 @@ def test_local_user_saves_an_artifact_and_reads_pending_edits(env) -> None:
     assert pending.status_code == 200, pending.text
     assert pending.json() == {"edits": []}
     assert checked == [RESERVED_USER_LOCAL, RESERVED_USER_LOCAL]
+
+
+def _save_two_versions(client: TestClient) -> list[dict[str, Any]]:
+    url = f"/v1/artifacts?parent_session_id={_SESSION}&name=tea.html"
+    saved = [
+        client.post(url, content=body, headers={"content-type": "text/html"})
+        for body in (b"<p>one</p>", b"<p>two</p>")
+    ]
+    assert [r.status_code for r in saved] == [201, 201], saved[-1].text
+    return [r.json() for r in saved]
+
+
+def test_local_user_restores_an_earlier_version(env) -> None:
+    _checked, client, store = env
+    v1, _v2 = _save_two_versions(client)
+    restored = client.post(f"/v1/artifacts/{v1['id']}/restore")
+    assert restored.status_code == 200, restored.text
+    body = restored.json()
+    assert (body["version"], body["origin"]) == (3, "restore")
+    item = store.get(body["id"], user_id=None)
+    assert item is not None and item.user_id is None and store.read(item) == b"<p>one</p>"
+
+
+def test_restore_over_a_version_that_arrived_meanwhile_is_a_409(
+    env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _checked, client, store = env
+    v1, _v2 = _save_two_versions(client)
+
+    def _raced(**_kwargs: Any) -> None:
+        raise VersionConflictError(3)
+
+    monkeypatch.setattr(store, "create", _raced)
+    resp = client.post(f"/v1/artifacts/{v1['id']}/restore")
+    assert resp.status_code == 409
+    assert "newer version arrived" in resp.json()["error"]
