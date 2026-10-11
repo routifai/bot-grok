@@ -14,21 +14,15 @@ name: superchat
 # engine/omnigent/deploy/docker, so the repo root is ../../../.. here.
 #
 # Omnigent's file brings `postgres` and `omnigent`. This file turns `omnigent` into Superchat's
-# engine (Omnigent's server image + infra/omnigent) and adds the Computers (Omnigent's host image +
-# Superchat's additions, started one per person by the engine's computer provider over the Docker
-# socket) and the app (api, worker, web: one image).
+# engine (Omnigent's server image + infra/omnigent), which also serves the web, and adds the
+# Computers (Omnigent's host image + Superchat's additions, started one per person by the engine's
+# computer provider over the Docker socket). There is no other service: the web talks to the engine.
 
 # Optional build inputs, all unset by default (see .env.docker.example).
 x-build-args: &build-args
   - NODE_IMAGE
   - PYPI_INDEX_URL
   - NPM_CONFIG_REGISTRY
-
-# api, worker and web share this one image and differ only in their command.
-x-app-build: &app-build
-  context: ../../../..
-  dockerfile: infra/compose/Dockerfile
-  args: *build-args
 
 x-proxy-env: &proxy-env
   HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
@@ -39,8 +33,8 @@ x-proxy-env: &proxy-env
   no_proxy: ${no_proxy:-${NO_PROXY:-}}
 
 services:
-  # Omnigent's Postgres, as is: one database, two schemas, `app` (API, Prisma) and `engine`
-  # (Omnigent), created on first init.
+  # Omnigent's Postgres, as is: one database with an `engine` schema (Omnigent), created on first
+  # init.
   postgres:
     volumes:
       - ../../../../infra/compose/postgres/schemas.sql:/docker-entrypoint-initdb.d/schemas.sql:ro
@@ -152,8 +146,8 @@ services:
       - "host.docker.internal:host-gateway"
     ports: !override
       - "${SUPERCHAT_ENGINE_BIND:-127.0.0.1}:${SUPERCHAT_ENGINE_PORT:-8012}:8000"
-      # The web, served by the engine: a temporary separate port, so it runs beside the app (5173).
-      - "127.0.0.1:${SUPERCHAT_WEB_PORT_ENGINE:-5180}:8000"
+      # The web, served by the engine.
+      - "127.0.0.1:${SUPERCHAT_WEB_PORT:-5173}:8000"
     volumes:
       # The engine starts each person's Computer. The socket is the Docker VM's for Docker Desktop
       # and colima alike; DOCKER_SOCKET_PATH overrides it (e.g. rootless Docker). Never mounted
@@ -165,41 +159,3 @@ services:
       timeout: 5s
       retries: 30
       start_period: 60s
-
-  # The app: API, background worker and web server in one container (infra/app/start.sh).
-  app:
-    image: superchat/app:local
-    build: *app-build
-    env_file:
-      - ../../../../.env
-    environment:
-      <<: *proxy-env
-      DATABASE_URL: postgres://${POSTGRES_USER:-omnigent}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-omnigent}?schema=app
-      DATA_DIR: /data
-      WAKEUP_DRIVER: graphile
-      # The app's own run sandbox is unused: every chat goes through the engine.
-      SANDBOX_PROVIDER: none
-      # The Omnigent chat engine (the omnigent service unless OMNIGENT_URL points elsewhere).
-      OMNIGENT_URL: ${OMNIGENT_URL:-http://omnigent:8000}
-      OMNIGENT_PROXY_SECRET: ${OMNIGENT_PROXY_SECRET:?Set OMNIGENT_PROXY_SECRET in .env}
-      SUPERCHAT_HOST: ${SUPERCHAT_HOST:-localhost}
-      PORT: "5173"
-    ports:
-      - "127.0.0.1:${SUPERCHAT_WEB_PORT:-5173}:5173"
-    volumes:
-      - artifact-data:/data
-    depends_on:
-      postgres:
-        condition: service_healthy
-      omnigent:
-        condition: service_healthy
-    healthcheck:
-      test:
-        - CMD
-        - node
-        - -e
-        - fetch('http://127.0.0.1:3100/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
-      interval: 5s
-      timeout: 5s
-      retries: 30
-      start_period: 30s
