@@ -39,3 +39,21 @@ export async function downloadArtifact(
   const bytes = await fetchArtifactBytes(target, artifactId);
   downloadArtifactBytes(name, mimeType, bytes);
 }
+
+/**
+ * Types a browser shows without running script. A `blob:` URL opened in its own tab runs at the
+ * app's origin, so HTML (a page, a deck), SVG and anything else that can script never opens there.
+ */
+const INERT_IN_A_TAB = new Set([
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "image/avif",
+  "text/plain",
+]);
+
+export function opensInNewTab(mimeType: string): boolean {
+  return INERT_IN_A_TAB.has((mimeType.split(";")[0] ?? "").trim().toLowerCase());
+}

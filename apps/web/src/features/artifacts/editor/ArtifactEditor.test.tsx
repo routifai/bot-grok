@@ -5,7 +5,7 @@
 import { i18n } from "@lingui/core";
 import { I18nProvider } from "@lingui/react";
 import { act, type ReactNode } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({
@@ -95,7 +95,9 @@ beforeEach(() => {
     Object.assign(URL, { createObjectURL: () => "blob:x", revokeObjectURL: () => {} }),
   );
 });
-afterEach(() => {
+const roots: Root[] = [];
+afterEach(async () => {
+  for (const root of roots.splice(0)) await act(async () => root.unmount());
   vi.unstubAllGlobals();
   for (const fn of [...Object.values(api), ...Object.values(chats), undo]) fn.mockClear();
   api.getById.mockReset();
@@ -110,8 +112,10 @@ const tick = () => act(async () => {});
 async function mount(node: ReactNode) {
   const container = document.createElement("div");
   document.body.append(container);
+  const root = createRoot(container);
+  roots.push(root);
   await act(async () =>
-    createRoot(container).render(
+    root.render(
       <I18nProvider i18n={i18n}>
         <ArtifactRegistryProvider value={[pages]}>{node}</ArtifactRegistryProvider>
       </I18nProvider>,
@@ -236,4 +240,21 @@ it("a file without an editor opens read-only, with the ask box about the whole f
   const text = chats.send.mock.calls[0]?.[0].text ?? "";
   expect(text).toContain('file="report.pdf" artifact="p1" version="1" chip="Whole file"');
   expect(text.endsWith("\n\nMake it one page")).toBe(true);
+});
+
+it.each([
+  ["tracker.html", "text/html", false],
+  ["deck.slides.html", "text/html", false],
+  ["logo.svg", "image/svg+xml", false],
+  ["report.pdf", "application/pdf", true],
+  ["photo.png", "image/png", true],
+])("%s opens in a new tab: %s", async (name, mimeType, opens) => {
+  // A blob: URL in its own tab runs at the app's origin, so nothing that can script goes there.
+  api.listVersions.mockResolvedValue([]);
+  api.getById.mockResolvedValue(file("v1", name, mimeType, "x"));
+  const view = await mount(<ArtifactPanel artifactId="v1" onClose={() => {}} />);
+  await openMenu(view, '[data-testid="panel-overflow"]');
+  const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+  expect(items.length).toBeGreaterThan(0);
+  expect(items.some((item) => item.textContent?.trim() === "Open in new tab")).toBe(opens);
 });

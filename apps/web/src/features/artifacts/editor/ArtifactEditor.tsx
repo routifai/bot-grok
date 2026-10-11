@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { artifactKind, kindLabel } from "../../../lib/artifact-kind";
-import { downloadArtifactBytes } from "../../../lib/artifact-open";
+import { downloadArtifactBytes, opensInNewTab } from "../../../lib/artifact-open";
 import { rpc } from "../../../lib/rpc";
 import { useObjectUrl } from "../../../lib/use-object-url";
 import { readableFileName } from "../ArtifactFileCard";
@@ -353,7 +353,7 @@ function LoadedEditor({
         </DropdownMenuGroup>
         {panel.overflow}
         {parts.overflow}
-        {url ? (
+        {url && opensInNewTab(artifact.mimeType) ? (
           <DropdownMenuItem render={<a href={url} target="_blank" rel="noreferrer noopener" />}>
             <ExternalLink />
             {t`Open in new tab`}

@@ -13,7 +13,11 @@ import { catalog, formatSize } from "../../../components/cards/catalog";
 import { useArtifactPanel, useLatestSavedFile } from "../../../components/cards/context";
 import { MEDIA_ACTION, MediaFrame, MediaTile } from "../../../components/MediaTile";
 import { type ArtifactKind, kindLabel } from "../../../lib/artifact-kind";
-import { decodeArtifactBase64, downloadArtifactBytes } from "../../../lib/artifact-open";
+import {
+  decodeArtifactBase64,
+  downloadArtifactBytes,
+  opensInNewTab,
+} from "../../../lib/artifact-open";
 import { rpc } from "../../../lib/rpc";
 import { readableFileName } from "../ArtifactFileCard";
 import { useArtifactExtensions } from "../registry";
@@ -116,8 +120,10 @@ function SavedFileCard({ title, data }: { title?: string; data: ReplyCardDataOf<
     // Opened synchronously so the popup isn't blocked; pointed at the bytes once they arrive.
     const tab = window.open("", "_blank");
     const file = await fetchFile();
-    if (!file) {
+    if (!file || !opensInNewTab(file.artifact.mimeType)) {
+      // A page or a deck would run at the app's origin there; it opens in the editor instead.
       tab?.close();
+      if (file) expand();
       return;
     }
     const url = URL.createObjectURL(

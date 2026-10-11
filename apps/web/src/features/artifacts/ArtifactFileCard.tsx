@@ -24,6 +24,7 @@ import {
   downloadArtifact,
   downloadArtifactBytes,
   fetchArtifactBytes,
+  opensInNewTab,
 } from "../../lib/artifact-open";
 import { useObjectUrl } from "../../lib/use-object-url";
 import {
@@ -261,7 +262,7 @@ function FilePreview({
         <DialogTitle className="min-w-0 flex-1 truncate text-[14px] leading-5 font-medium text-foreground">
           {name}
         </DialogTitle>
-        {museMode && state.status === "ready" && objectUrl ? (
+        {museMode && state.status === "ready" && objectUrl && opensInNewTab(mimeType) ? (
           <a
             href={objectUrl}
             target="_blank"
