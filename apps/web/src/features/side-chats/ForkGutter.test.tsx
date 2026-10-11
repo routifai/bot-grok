@@ -103,7 +103,6 @@ function mount(
         messages={messages}
         forks={props.forks ?? []}
         onJump={onJump}
-        onLoadEarlier={props.onLoadEarlier}
       />,
     );
   });
@@ -146,15 +145,13 @@ it("merges close marks into a count capsule whose popover lists the forks and ju
   expect(document.body.querySelector('[data-slot="popover-content"]')).toBeNull();
 });
 
-it("shows ↑ N for forks anchored in unloaded history, loads earlier on click, hides at 0", async () => {
-  const onLoadEarlier = vi.fn(async () => undefined);
+it("shows ↑ N for forks anchored in unloaded history, jumps to the newest of them, hides at 0", async () => {
   const forks = [rowFor("old-1"), rowFor("old-2", "added"), rowFor("old-3", "archived")];
-  const { el } = mount({ tops: { m1: 100 }, forks, onLoadEarlier }, [message("m1", [fork("a")])]);
+  const { el, onJump } = mount({ tops: { m1: 100 }, forks }, [message("m1", [fork("a")])]);
   const more = container.querySelector<HTMLButtonElement>('[data-testid="fork-gutter-more"]');
   expect(more?.textContent).toBe("↑ 2");
   await act(async () => more?.click());
-  expect(onLoadEarlier).toHaveBeenCalled();
-  expect(el.scrollTo).toHaveBeenCalledWith({ top: 0 });
+  expect(onJump).toHaveBeenCalledWith("old-1");
 
   act(() => {
     root.render(

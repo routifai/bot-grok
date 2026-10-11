@@ -33,15 +33,12 @@ export function ForkGutter({
   messages,
   forks,
   onJump,
-  onLoadEarlier,
 }: {
   scrollRef: RefObject<HTMLElement | null>;
   messages: readonly ThreadMessage[];
   /** Every fork of the Conversation (loaded or not), to count those in unloaded history. */
   forks: readonly ForkRow[];
   onJump: (messageId: string) => void;
-  /** Loads older history; the rail then scrolls to the top. */
-  onLoadEarlier?: () => void | Promise<void>;
 }) {
   const { t } = useLingui();
   const forksById = useMemo(() => {
@@ -52,9 +49,12 @@ export function ForkGutter({
     }
     return map;
   }, [messages]);
-  const unloaded = useMemo(
-    () => unloadedForkCount(forks, new Set(messages.map((message) => message.id))),
-    [forks, messages],
+  const loadedIds = useMemo(() => new Set(messages.map((message) => message.id)), [messages]);
+  const unloaded = useMemo(() => unloadedForkCount(forks, loadedIds), [forks, loadedIds]);
+  // ↑ N jumps to the most recent of those forks (rows are newest first); `onJump` pages back to it.
+  const nearestUnloaded = useMemo(
+    () => forks.find((row) => row.status !== "archived" && !loadedIds.has(row.anchorItemId)),
+    [forks, loadedIds],
   );
   const [groups, setGroups] = useState<GutterGroup[]>([]);
   const [view, setView] = useState<View>({ top: 0, height: 1 });
@@ -145,9 +145,7 @@ export function ForkGutter({
             other: "# forks in earlier history",
           })}
           onClick={() => {
-            void Promise.resolve(onLoadEarlier?.()).then(() =>
-              scrollRef.current?.scrollTo({ top: 0 }),
-            );
+            if (nearestUnloaded) onJump(nearestUnloaded.anchorItemId);
           }}
           className="absolute start-1/2 top-0.5 z-10 -translate-x-1/2 whitespace-nowrap rounded-full border border-line bg-card px-1.5 text-[10px] tabular-nums text-ink-2 hover:bg-selection focus-visible:outline-2 focus-visible:outline-ring rtl:translate-x-1/2"
         >
