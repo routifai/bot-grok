@@ -87,6 +87,9 @@ function SavedFileCard({ title, data }: { title?: string; data: ReplyCardDataOf<
   }
   const tileKind = isDeck ? "deck" : data.kind ? kindFromLabel(data.kind) : "file";
   const kindText = isDeck ? kindLabel("deck") : data.kind?.toUpperCase();
+  // A page, a deck or an SVG would run at the app's origin in a tab; those open in the editor.
+  const canOpenInNewTab =
+    tileKind !== "page" && tileKind !== "deck" && data.kind?.toLowerCase() !== "svg";
   const meta = [
     kindText,
     isDeck && slides
@@ -121,9 +124,7 @@ function SavedFileCard({ title, data }: { title?: string; data: ReplyCardDataOf<
     const tab = window.open("", "_blank");
     const file = await fetchFile();
     if (!file || !opensInNewTab(file.artifact.mimeType)) {
-      // A page or a deck would run at the app's origin there; it opens in the editor instead.
       tab?.close();
-      if (file) expand();
       return;
     }
     const url = URL.createObjectURL(
@@ -191,10 +192,12 @@ function SavedFileCard({ title, data }: { title?: string; data: ReplyCardDataOf<
                 <Download />
                 {t`Download`}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void openInNewTab()}>
-                <ExternalLink />
-                {t`Open in new tab`}
-              </DropdownMenuItem>
+              {canOpenInNewTab ? (
+                <DropdownMenuItem onClick={() => void openInNewTab()}>
+                  <ExternalLink />
+                  {t`Open in new tab`}
+                </DropdownMenuItem>
+              ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
         }
