@@ -1,6 +1,7 @@
 import { useLingui } from "@lingui/react/macro";
 import type { MuseState, Run, ThreadMessage } from "@superchat/contracts";
-import { useAsks } from "../../../features/approvals";
+import { useEffect } from "react";
+import { notifyAsksChanged, useAsks } from "../../../features/approvals";
 import { useComputerLaunch } from "../../../features/computer/useComputerLaunch";
 import { currentToolName, deriveMuseState, museActivityLabel } from "./museState";
 
@@ -31,6 +32,21 @@ export function runStartMs(run: MuseLiveRun | undefined): number | undefined {
   return undefined;
 }
 
+/** What the open Asks depend on in the live data: runs waiting on the person and the open
+ * ask blocks. It changes when an approval is raised, re-raised after a restart, or closed. */
+export function waitingKey(
+  runs: readonly MuseLiveRun[],
+  messages: readonly ThreadMessage[] | undefined,
+): string {
+  const waiting = runs.filter((run) => run.status === "waiting_input").map((run) => run.id);
+  const open = (messages ?? []).flatMap((message) =>
+    message.blocks.flatMap((block, index) =>
+      block.kind === "ask" && block.status !== "answered" ? [`${message.id}#${index}`] : [],
+    ),
+  );
+  return [...waiting, ...open].join(",");
+}
+
 function activeRunFor(runs: readonly MuseLiveRun[]): MuseLiveRun | undefined {
   return (
     runs.find((run) => run.status === "running") ??
@@ -56,6 +72,11 @@ export function useMuseLiveState({
 }): MuseLiveState {
   const { t } = useLingui();
   const { count: askCount } = useAsks(botId);
+  const waiting = waitingKey(runs, messages);
+  // The open Asks live on the server; refetch them when the live data says they changed.
+  useEffect(() => {
+    if (botId) notifyAsksChanged(botId);
+  }, [botId, waiting]);
   const state = deriveMuseState(runs, askCount);
   const busy = state === "thinking" || state === "working";
   const launch = useComputerLaunch(botId, busy);

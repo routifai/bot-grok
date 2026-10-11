@@ -3,7 +3,12 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { type MuseLiveRun, type MuseLiveState, useMuseLiveState } from "./useMuseLiveState";
+import {
+  type MuseLiveRun,
+  type MuseLiveState,
+  useMuseLiveState,
+  waitingKey,
+} from "./useMuseLiveState";
 
 vi.mock("react-dom/client", async (orig) =>
   (await import("../../../test/i18n")).withI18nRoot(
@@ -13,7 +18,11 @@ vi.mock("react-dom/client", async (orig) =>
 
 const api = vi.hoisted(() => ({ computer: { status: vi.fn() } }));
 vi.mock("../../../lib/rpc", () => ({ rpc: api }));
-vi.mock("../../../features/approvals", () => ({ useAsks: () => ({ count: 0 }) }));
+const notifyAsksChanged = vi.hoisted(() => vi.fn());
+vi.mock("../../../features/approvals", () => ({
+  useAsks: () => ({ count: 0 }),
+  notifyAsksChanged,
+}));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let root: Root;
@@ -75,4 +84,21 @@ it("returns the active run's real start from startedAt, falling back to createdA
   ).toBe(Date.parse("2026-01-01T00:01:00Z"));
   expect(runStartMs({ id: "r", status: "running" })).toBeUndefined();
   expect(runStartMs(undefined)).toBeUndefined();
+});
+
+it("refetches the open Asks when a run starts waiting on the person", async () => {
+  api.computer.status.mockResolvedValue({});
+  await mount("running");
+  notifyAsksChanged.mockClear();
+  await mount("running");
+  expect(notifyAsksChanged).not.toHaveBeenCalled();
+  await mount("waiting_input");
+  expect(notifyAsksChanged).toHaveBeenCalledWith("bot-1");
+});
+
+it("keys the waiting set by waiting runs and open ask blocks", () => {
+  const ask = (status: string) =>
+    ({ id: "m1", blocks: [{ kind: "text" }, { kind: "ask", status }] }) as never;
+  expect(waitingKey([{ id: "r1", status: "running" }], [ask("answered")])).toBe("");
+  expect(waitingKey([{ id: "r1", status: "waiting_input" }], [ask("pending")])).toBe("r1,m1#1");
 });
