@@ -210,6 +210,9 @@ export function useHtmlEditor({
   );
 
   const flush = useCallback(() => committer.commit(), [committer]);
+  const setExpectAsk = useCallback((on: boolean) => {
+    expectAsk.current = on;
+  }, []);
 
   const setAttributes = useCallback(
     (attributes: { href?: string | null; alt?: string | null }) => {
@@ -321,9 +324,7 @@ export function useHtmlEditor({
     duplicate: duplicateSelected,
     onFrameMessage,
     /** Whether the next outside version is superchat's answer to an ask from this editor. */
-    expectAsk: (on: boolean) => {
-      expectAsk.current = on;
-    },
+    expectAsk: setExpectAsk,
     finishText: () => postRef.current({ type: "superchat:edit-text-finish", commit: true }),
     /** Select these elements (a layer picked in the navigator); kept for a frame not yet up. */
     select: (ids: string[]) => {

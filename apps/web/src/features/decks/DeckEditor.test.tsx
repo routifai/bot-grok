@@ -544,6 +544,28 @@ it("a turn that ends without a new version shows superchat's reply", async () =>
   );
 });
 
+it("an ask answered without a version does not adopt a later unrelated version into undo", async () => {
+  const view = await mount();
+  await act(async () => setArtifactEditing(NAME, true));
+  artifactsApi.listVersions.mockResolvedValueOnce([{ version: 1 }]);
+  chats.transcript.mockResolvedValueOnce({
+    messages: [{ role: "bot", blocks: [{ kind: "text", text: "Nothing to change." }] }],
+  });
+  await act(async () => typeInto(askInput(), "shorter"));
+  await act(async () => press(askInput(), "Enter"));
+  await act(async () => {
+    for (const listener of family.listeners)
+      listener({ type: "turnDone", chatId: "bot-1", status: "completed" });
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(6000);
+  });
+  expect(host.querySelector('[data-testid="ask-status"]')?.textContent).toBe("Nothing to change.");
+
+  await view.rerender(2, FIXTURE_DECK.replace("Launch", "Other")); // someone else's version
+  expect(control("Undo").disabled).toBe(true);
+});
+
 it("Stop interrupts the Muse", async () => {
   await mount();
   await act(async () => setArtifactEditing(NAME, true));

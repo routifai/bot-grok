@@ -285,10 +285,12 @@ function LoadedEditor({
     },
     [history, ask.send],
   );
-  const stopAsk = useCallback(() => {
-    history?.expectAsk(false);
-    void ask.stop();
-  }, [history, ask.stop]);
+  // The ask settled (answered, failed, stopped): a version after this is not its answer.
+  const expectAsk = history?.expectAsk;
+  const askSettled = ask.status.kind !== "sending" && ask.status.kind !== "editing";
+  useEffect(() => {
+    if (askSettled) expectAsk?.(false);
+  }, [askSettled, expectAsk]);
 
   // Undo / redo from the keyboard while focus is outside the frame (the bridge covers inside).
   const undo = history?.undo;
@@ -475,7 +477,7 @@ function LoadedEditor({
                 focusRequest={askClicks + (parts.ask.focusRequest ?? 0)}
                 status={ask.status}
                 onSend={sendAsk}
-                onStop={stopAsk}
+                onStop={() => void ask.stop()}
                 onUndo={
                   history
                     ? () => {
