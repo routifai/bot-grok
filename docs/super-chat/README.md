@@ -818,7 +818,8 @@ appear there. The old stored code `managed_sandbox_workspace_reset` maps to it.
 Route errors use the engine's `ErrorCode` values (`engine/omnigent/omnigent/errors.py`). The ones
 in this guide: `superchat_not_configured` (503), `not_a_super_chat` (422), `muse_already_set` (409),
 `muse_tenant_mismatch` (409), `fork_anchor_invalid` (422), `fork_too_deep` (422), `not_a_fork` (422),
-`invalid_input` (400/422), `forbidden` (403), `not_found` (404), `conflict` (409).
+`invalid_input` (400/422), `forbidden` (403), `not_found` (404), `conflict` (409),
+`artifact_stale` (409).
 
 ## 10. API quick reference
 
