@@ -143,7 +143,7 @@ def create_daily_notes_router(
         except InvalidUuidError as exc:
             raise OmnigentError("invalid parent_session_id", code=ErrorCode.INVALID_INPUT) from exc
         await require_access(
-            None if owner == RESERVED_USER_LOCAL else owner,
+            owner,
             body.parent_session_id,
             LEVEL_OWNER,
             permission_store,

@@ -143,6 +143,11 @@ def create_artifacts_router(
     def _owner(request: Request) -> str | None:
         return request_owner(request, auth_provider)
 
+    def _caller(request: Request) -> str | None:
+        # Access is checked as the real caller: the single local user owns its sessions, even
+        # though its artifact rows are stored unowned (``_owner`` is ``None`` for it).
+        return require_user(request, auth_provider)
+
     async def _load(request: Request, artifact_id: str) -> Artifact:
         return await load_artifact(store, _owner(request), artifact_id)
 
@@ -158,7 +163,7 @@ def create_artifacts_router(
         owner = _owner(request)
         check_id(parent_session_id, "parent_session_id")
         await require_access(
-            owner, parent_session_id, LEVEL_OWNER, permission_store, conversation_store
+            _caller(request), parent_session_id, LEVEL_OWNER, permission_store, conversation_store
         )
         kind = kind_for_name(name)
         if kind is None:
@@ -227,7 +232,7 @@ def create_artifacts_router(
         owner = _owner(request)
         check_id(parent_session_id, "parent_session_id")
         await require_access(
-            owner, parent_session_id, LEVEL_OWNER, permission_store, conversation_store
+            _caller(request), parent_session_id, LEVEL_OWNER, permission_store, conversation_store
         )
         rows = await asyncio.to_thread(
             store.pending_manual, user_id=owner, parent_session_id=parent_session_id
