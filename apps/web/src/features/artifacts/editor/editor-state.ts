@@ -11,6 +11,10 @@ import { useSyncExternalStore } from "react";
 export const artifactKey = (artifact: Pick<Artifact, "botId" | "name">): string =>
   `${artifact.botId ?? ""}:${artifact.name}`;
 
+/** A version the person made by hand: an edit, or restoring an older one. */
+export const isHandOrigin = (origin: string | undefined): boolean =>
+  origin === "manual" || origin === "restore";
+
 const editing = new Map<string, boolean>();
 const listeners = new Set<() => void>();
 const notify = () => {

@@ -36,7 +36,7 @@ import {
   useArtifactEditorKind,
   type useArtifactPanelParts,
 } from "../registry";
-import { artifactKey, setArtifactEditing, useArtifactEditing } from "./editor-state";
+import { artifactKey, isHandOrigin, setArtifactEditing, useArtifactEditing } from "./editor-state";
 import { buildFileAsk } from "./html-ask";
 import { VersionMenu } from "./VersionMenu";
 
@@ -385,7 +385,7 @@ function LoadedEditor({
           data-testid="artifact-arrived"
           className="shrink-0 truncate text-[12px] text-foreground"
         >
-          {content.arrived.origin === "manual" || content.arrived.origin === "restore"
+          {isHandOrigin(content.arrived.origin)
             ? t`Updated by you · v${content.arrived.version}`
             : t`Updated by superchat · v${content.arrived.version}`}
         </span>

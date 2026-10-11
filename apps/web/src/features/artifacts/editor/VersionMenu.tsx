@@ -12,6 +12,7 @@ import {
 import { Check, ChevronDown, History } from "lucide-react";
 import { useState } from "react";
 import { formatRelativeTime } from "../../../lib/relative-time";
+import { isHandOrigin } from "./editor-state";
 
 /**
  * "<Kind> · version N ▾" beside the title: every version with who made it and when; picking one
@@ -51,11 +52,11 @@ export function VersionMenu({
   const latest = versions[0];
   const older = !!shown && !!latest && shown.id !== latest.id;
   const origin = (entry: ArtifactVersion) =>
-    entry.origin === "manual"
-      ? t`by you`
+    !isHandOrigin(entry.origin)
+      ? t`by superchat`
       : entry.origin === "restore"
         ? t`restored`
-        : t`by superchat`;
+        : t`by you`;
 
   return (
     <DropdownMenu>
