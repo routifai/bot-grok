@@ -299,7 +299,7 @@ class SqlAlchemyArtifactStore:
         return group[0] if group else None
 
     def pending_manual(self, *, user_id: str | None, parent_session_id: str) -> list[Artifact]:
-        """Manual versions in the session not yet written back / announced, oldest first."""
+        """Hand-made (manual, restore) versions not yet written back / announced, oldest first."""
         with self._session("list_pending_manual_artifacts") as session:
             stmt = (
                 select(SqlArtifact)
@@ -307,7 +307,7 @@ class SqlAlchemyArtifactStore:
                     SqlArtifact.workspace_id == current_workspace_id(),
                     _owner_clause(user_id),
                     SqlArtifact.parent_session_id == parent_session_id,
-                    SqlArtifact.origin == "manual",
+                    SqlArtifact.origin.in_(("manual", "restore")),
                     SqlArtifact.delivered_at.is_(None),
                 )
                 .order_by(SqlArtifact.created_at, SqlArtifact.version)

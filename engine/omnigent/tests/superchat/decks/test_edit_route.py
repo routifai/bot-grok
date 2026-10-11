@@ -138,9 +138,79 @@ def test_bad_patch_is_a_400_and_non_deck_is_refused(env) -> None:
         client, v1.id, patches=[{"kind": "set-style", "id": "title", "style": {"color": "url(x)"}}]
     )
     assert bad.status_code == 400
-    page = _save(store, name="page.html")
-    assert _edit(client, page.id).status_code == 400
+    notes = _save(store, name="notes.md", data=b"# A")
+    assert _edit(client, notes.id).status_code == 400
     assert _edit(client, v1.id, patches=[{"kind": "nope"}]).status_code == 422
+
+
+PAGE = (
+    '<!doctype html><html><body><main data-superchat-id="main">\n'
+    '<button data-superchat-id="add-button">Add</button>\n</main>'
+    "<script>document.title = 'x'</script></body></html>"
+)
+
+
+def test_a_page_is_edited_with_the_same_patches(env) -> None:
+    store, client = env
+    v1 = _save(store, name="tracker.html", data=PAGE.encode())
+    resp = _edit(client, v1.id, patches=[{"kind": "set-text", "id": "add-button", "text": "Save"}])
+    assert resp.status_code == 200 and resp.json()["version"] == 2
+    saved = store.get(resp.json()["id"], user_id="alice")
+    assert saved.origin == "manual"
+    assert store.read(saved) == PAGE.replace(">Add<", ">Save<").encode()
+    # Undo restores the source with its script (no script is added, so it is allowed).
+    undo = _edit(client, saved.id, base=2, patches=[{"kind": "set-full-source", "source": PAGE}])
+    assert (
+        undo.status_code == 200
+        and store.read(store.get(undo.json()["id"], user_id="alice")) == PAGE.encode()
+    )
+
+
+def test_a_page_has_no_theme_and_its_stale_message_says_page(env) -> None:
+    store, client = env
+    v1 = _save(store, name="tracker.html", data=PAGE.encode())
+    theme = _edit(client, v1.id, patches=[{"kind": "set-theme", "theme": "x"}])
+    assert theme.status_code == 400
+    assert (
+        _edit(
+            client, v1.id, patches=[{"kind": "set-text", "id": "add-button", "text": "B"}]
+        ).status_code
+        == 200
+    )
+    stale = _edit(client, v1.id, base=1, patches=[{"kind": "set-text", "id": "main", "text": "C"}])
+    assert stale.status_code == 409 and stale.json()["error"].startswith("The page changed since")
+
+
+def test_an_id_the_bridge_made_up_is_refused(env) -> None:
+    """Elements without a data-superchat-id get a ``~`` path id in the editor; never applied."""
+    store, client = env
+    v1 = _save(store, name="tracker.html", data=PAGE.encode())
+    resp = _edit(client, v1.id, patches=[{"kind": "set-text", "id": "~0.1", "text": "B"}])
+    assert resp.status_code == 400
+    assert len(store.versions(v1)) == 1
+
+
+def test_restore_makes_an_earlier_version_newest_and_is_written_back(env) -> None:
+    store, client = env
+    v1 = _save(store)
+    v2 = _edit(client, v1.id).json()
+    restored = client.post(f"/v1/artifacts/{v1.id}/restore", headers=H)
+    assert restored.status_code == 200
+    body = restored.json()
+    assert body["version"] == 3 and body["origin"] == "restore"
+    assert body["parent_version_id"] == v2["id"] and body["edit_summary"] == "restored version 1"
+    assert store.read(store.get(body["id"], user_id="alice")) == DECK.encode()
+    pending = [
+        row.version for row in store.pending_manual(user_id="alice", parent_session_id=_SESSION)
+    ]
+    assert 3 in pending
+    # Restoring the newest version is a no-op.
+    again = client.post(f"/v1/artifacts/{body['id']}/restore", headers=H)
+    assert again.status_code == 200 and again.json()["version"] == 3
+    assert (
+        client.post(f"/v1/artifacts/{v1.id}/restore", headers={"x-user": "mallory"}).status_code
+        == 404
+    )
 
 
 def test_other_owners_edit_is_not_found(env) -> None:

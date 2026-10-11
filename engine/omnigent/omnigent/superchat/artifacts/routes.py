@@ -25,6 +25,7 @@ from omnigent.superchat.artifacts.store import (
     Artifact,
     Publication,
     SqlAlchemyArtifactStore,
+    VersionConflictError,
     ViewStats,
 )
 
@@ -79,6 +80,10 @@ def artifact_to_response(
     }
 
 
+#: Versions the person made (by hand, or by restoring an earlier one) that the Muse is told about.
+HAND_ORIGINS = ("manual", "restore")
+
+
 def check_id(value: str, what: str) -> None:
     try:
         uuid_to_bytes(value)
@@ -122,7 +127,7 @@ def _refuse_unseen_manual_edit(
     """
     group = store.versions_of(user_id=owner, parent_session_id=session_id, name=name)
     head = group[0] if group else None
-    if head is not None and head.origin == "manual" and head.delivered_at is None:
+    if head is not None and head.origin in HAND_ORIGINS and head.delivered_at is None:
         raise OmnigentError(
             f"The person edited {name} by hand (v{head.version}); read the workspace file "
             "again and apply your change on top of their edits before saving.",
@@ -260,6 +265,42 @@ def create_artifacts_router(
         item = await _load(request, artifact_id)
         ok = await asyncio.to_thread(store.mark_delivered, item.id, user_id=item.user_id)
         return {"delivered": ok}
+
+    @router.post("/artifacts/{artifact_id}/restore")
+    async def restore_artifact(request: Request, artifact_id: str) -> dict[str, Any]:
+        """Make this earlier version the newest again: a NEW ``restore`` version with its bytes.
+
+        Nothing is rewritten in place, so the versions in between stay in the history (and a
+        restore can itself be restored over). Like a hand edit it is written back to the
+        Computer and announced to the Muse at the start of its next turn.
+        """
+        item = await _load(request, artifact_id)
+        head = await asyncio.to_thread(store.newest, item)
+        if head is None or head.id == item.id:
+            return artifact_to_response(item, versions=item.version)
+        data = await asyncio.to_thread(store.read, item)
+        try:
+            created = await asyncio.to_thread(
+                store.create,
+                user_id=item.user_id,
+                parent_session_id=item.parent_session_id,
+                name=item.name,
+                title=head.title,
+                kind=item.kind,
+                mime=item.mime,
+                data=data,
+                origin="restore",
+                parent_version_id=head.id,
+                source_path=head.source_path,
+                edit_summary=f"restored version {item.version}",
+                base_version=head.version,
+            )
+        except VersionConflictError as exc:
+            raise OmnigentError(
+                "A newer version arrived meanwhile; pick the version again to restore it.",
+                code=ErrorCode.CONFLICT,
+            ) from exc
+        return artifact_to_response(created, versions=created.version)
 
     @router.get("/artifacts/{artifact_id}")
     async def get_artifact(request: Request, artifact_id: str) -> dict[str, Any]:

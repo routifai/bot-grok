@@ -605,12 +605,12 @@ def _apply_full_source(doc: _Doc, patch: SetFullSource) -> tuple[str, str]:
         raise InvalidPatch("The file is too large")
     for rx, what in ((_RISKY_RE, "scripts or embeds"), (_EXTERNAL_RE, "web addresses")):
         if len(rx.findall(new)) > len(rx.findall(doc.source)):
-            raise InvalidPatch(f"That version adds {what} the deck doesn't allow")
+            raise InvalidPatch(f"That version adds {what} the file doesn't allow")
     ids = [a.value for n in _parse(new).walk() if (a := n.attr("data-superchat-id"))]
     dup = sorted({i for i in ids if ids.count(i) > 1})
     if dup:
         raise _ambiguous(f'"{dup[0]}" would be used more than once')
-    return new, "restored an earlier state of the deck"
+    return new, "restored an earlier state of the file"
 
 
 _APPLY = {

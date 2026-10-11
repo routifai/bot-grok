@@ -58,7 +58,10 @@ class ArtifactSaveTool(ArtifactTool):
         "Save a finished file from your workspace (html, md, pdf, docx, xlsx, csv, pptx, png, "
         "jpg, txt, json; 25 MB max) so the person can open, preview and download it in the "
         "app. The same file name in the same chat becomes a new version. The person sees the "
-        "file card automatically; do not render one yourself."
+        "file card automatically; do not render one yourself. In an HTML page or app, give "
+        "each section and each element the person may want to change by hand (headings, "
+        "buttons, labels, key text) a unique data-superchat-id (lower-case words joined by "
+        'hyphens, e.g. data-superchat-id="add-button") so they can edit it in place.'
     )
     _PROPERTIES = {
         "path": {
