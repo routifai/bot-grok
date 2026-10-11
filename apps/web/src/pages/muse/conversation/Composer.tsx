@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import type { AgentSkillCatalogEntry, ThreadMessage } from "@superchat/contracts";
+import type { ThreadMessage } from "@superchat/contracts";
 import {
   type ComposerMention,
   clampMentionHighlightIndex,
@@ -8,7 +8,6 @@ import {
   SLASH_ACTIONS,
   type SlashActionId,
   serializeComposerPrompt,
-  truncateSlashDescription,
 } from "@superchat/core";
 import {
   Button,
@@ -21,10 +20,8 @@ import {
 import {
   AlertCircle,
   ArrowUp,
-  Box,
   Folder,
   Loader2,
-  Mic,
   Paperclip,
   Plus,
   Settings,
@@ -86,15 +83,12 @@ export const Composer = memo(function Composer({
   onRetryAttachment,
   onSend,
   onStop,
-  onVoice,
   placeholder,
   replyTarget,
   replyQuote,
   replyTargetName,
   onClearReply,
   mentionTargets,
-  agentSkills,
-  onSlashOpen,
   onSlashAction,
   seedText,
   onSeedConsumed,
@@ -124,17 +118,13 @@ export const Composer = memo(function Composer({
   /** Resolves `false` when nothing was sent, so the composer gives the person's words back. */
   onSend: (text: string, mentions?: ComposerMention[]) => Promise<boolean | undefined | void>;
   onStop?: () => Promise<void>;
-  onVoice?: () => void;
   /** Overrides the "Message {name}" placeholder. */
   placeholder?: string;
-  /** Shown before the voice button, e.g. the engine picker. */
   replyTarget?: ThreadMessage | null;
   replyQuote?: string | null;
   replyTargetName?: string;
   onClearReply?: () => void;
   mentionTargets?: ComposerMention[];
-  agentSkills?: AgentSkillCatalogEntry[];
-  onSlashOpen?: () => void;
   onSlashAction?: (action: SlashActionId) => void;
   /** First-run "Try it" chips (muse/intro): fills the draft and focuses it, fill-then-send. */
   seedText?: string | null;
@@ -147,7 +137,6 @@ export const Composer = memo(function Composer({
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionHighlightIndex, setMentionHighlightIndex] = useState(0);
   const [slashQuery, setSlashQuery] = useState<string | null>(null);
-  const [selectedSkill, setSelectedSkill] = useState<AgentSkillCatalogEntry | null>(null);
   const [selectedMentions, setSelectedMentions] = useState<ComposerMention[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [replyAnnouncement, setReplyAnnouncement] = useState("");
@@ -165,7 +154,6 @@ export const Composer = memo(function Composer({
   const fix = failure ? failureAction(failure.code) : null;
   const canSend =
     draft.trim().length > 0 ||
-    selectedSkill !== null ||
     selectedMentions.length > 0 ||
     pendingAttachments.length > 0 ||
     pendingFolders.length > 0;
@@ -201,11 +189,9 @@ export const Composer = memo(function Composer({
     setDraft(value);
     const mentionMatch = /(?:^|\s)@([\w-]*)$/.exec(value);
     setMentionQuery(mentionMatch ? (mentionMatch[1] ?? "") : null);
-    // `/` only at the start of the draft so forced skills expand (`Use skill:` / `/Name` prefix).
-    const slashMatch = selectedSkill === null ? /^\/([^\n]*)$/.exec(value) : null;
-    const nextSlash = slashMatch ? (slashMatch[1] ?? "") : null;
-    if (nextSlash !== null && slashQuery === null) onSlashOpen?.();
-    setSlashQuery(nextSlash);
+    // `/` only at the start of the draft.
+    const slashMatch = /^\/([^\n]*)$/.exec(value);
+    setSlashQuery(slashMatch ? (slashMatch[1] ?? "") : null);
   }
 
   function focusComposer() {
@@ -234,12 +220,6 @@ export const Composer = memo(function Composer({
     focusComposer();
   }
 
-  function insertSkill(skill: AgentSkillCatalogEntry) {
-    setSelectedSkill(skill);
-    setDraft("");
-    setSlashQuery(null);
-  }
-
   function runSlashAction(action: SlashActionId) {
     setDraft("");
     setSlashQuery(null);
@@ -247,11 +227,7 @@ export const Composer = memo(function Composer({
   }
 
   function removeLastChip() {
-    if (selectedMentions.length > 0) {
-      setSelectedMentions((current) => current.slice(0, -1));
-      return;
-    }
-    if (selectedSkill) setSelectedSkill(null);
+    setSelectedMentions((current) => current.slice(0, -1));
   }
 
   const mentionOptions = useMemo(() => {
@@ -275,21 +251,6 @@ export const Composer = memo(function Composer({
     ? `${mentionListboxId}-option-${activeMentionIndex}`
     : undefined;
 
-  const slashSkillOptions = useMemo(() => {
-    if (slashQuery === null) return [];
-    const query = slashQuery.trim().toLowerCase();
-    const skills = agentSkills ?? [];
-    return skills
-      .filter((skill) => {
-        if (!query) return true;
-        return (
-          skill.name.toLowerCase().includes(query) ||
-          skill.description.toLowerCase().includes(query)
-        );
-      })
-      .slice(0, 8);
-  }, [agentSkills, slashQuery]);
-
   const slashActionOptions = useMemo(() => {
     if (slashQuery === null) return [];
     const query = slashQuery.trim().toLowerCase();
@@ -297,19 +258,16 @@ export const Composer = memo(function Composer({
   }, [slashQuery]);
 
   const showSlashPicker =
-    slashQuery !== null &&
-    mentionQuery === null &&
-    (slashSkillOptions.length > 0 || slashActionOptions.length > 0);
+    slashQuery !== null && mentionQuery === null && slashActionOptions.length > 0;
 
   function send() {
     if (!canSend || sending || attachmentsPending) return;
-    const text = serializeComposerPrompt(draft, selectedSkill, selectedMentions);
-    const kept = { draft, skill: selectedSkill, mentions: selectedMentions, attachments };
+    const text = serializeComposerPrompt(draft, null, selectedMentions);
+    const kept = { draft, mentions: selectedMentions, attachments };
     setDraft("");
     setMentionQuery(null);
     setMentionHighlightIndex(0);
     setSlashQuery(null);
-    setSelectedSkill(null);
     const mentions = selectedMentions;
     setSelectedMentions([]);
     clearComposerAttachments();
@@ -317,7 +275,6 @@ export const Composer = memo(function Composer({
       if (sent !== false) return;
       // The send failed (the Computer never started, say): nothing is lost.
       setDraft((current) => (current ? current : kept.draft));
-      setSelectedSkill((current) => current ?? kept.skill);
       setSelectedMentions((current) => (current.length ? current : kept.mentions));
       for (const item of kept.attachments) setComposerAttachment(item.kind, item);
     });
@@ -372,8 +329,7 @@ export const Composer = memo(function Composer({
     });
   }
 
-  const showComposerPlaceholder =
-    draft.length === 0 && selectedSkill === null && selectedMentions.length === 0;
+  const showComposerPlaceholder = draft.length === 0 && selectedMentions.length === 0;
   const replyName = replyTarget ? (replyTargetName ?? previewMessageText(replyTarget)) : "";
   const replyNameRef = useRef(replyName);
   replyNameRef.current = replyName;
@@ -666,25 +622,6 @@ export const Composer = memo(function Composer({
           data-testid="slash-picker"
           className="mb-2 overflow-hidden rounded-[14px] border border-border bg-muted"
         >
-          {slashSkillOptions.map((skill) => (
-            <button
-              key={skill.id}
-              type="button"
-              aria-label={t`Skill ${skill.name}`}
-              onClick={() => insertSkill(skill)}
-              className="flex w-full items-start gap-3 px-4 py-2.5 text-start hover:bg-accent"
-            >
-              <Box size={16} strokeWidth={1.7} className="mt-0.5 shrink-0 text-muted-foreground" />
-              <span className="min-w-0">
-                <span dir="auto" className="block text-[14px] text-foreground">
-                  {skill.name}
-                </span>
-                <span dir="auto" className="block truncate text-[12.5px] text-muted-foreground">
-                  {truncateSlashDescription(skill.description)}
-                </span>
-              </span>
-            </button>
-          ))}
           {slashActionOptions.map((action) => {
             const label = slashActionLabel(action.id);
             return (
@@ -764,25 +701,6 @@ export const Composer = memo(function Composer({
             museMode && "order-first basis-full px-1.5",
           )}
         >
-          {selectedSkill ? (
-            <span
-              data-testid="skill-chip"
-              className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-accent px-2.5 py-1 text-[13px] text-foreground"
-            >
-              <Box size={13} strokeWidth={1.7} className="shrink-0 text-muted-foreground/70" />
-              <span dir="auto" className="truncate">
-                {selectedSkill.name}
-              </span>
-              <button
-                type="button"
-                aria-label={t`Remove skill ${selectedSkill.name}`}
-                onClick={() => setSelectedSkill(null)}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <X size={12} strokeWidth={2} />
-              </button>
-            </span>
-          ) : null}
           {selectedMentions.map((mention) => (
             <span
               key={mentionChipKey(mention)}
@@ -816,11 +734,7 @@ export const Composer = memo(function Composer({
             onChange={(event) => updateDraft(event.target.value)}
             onPaste={handlePaste}
             onKeyDown={(event) => {
-              if (
-                event.key === "Backspace" &&
-                draft.length === 0 &&
-                (selectedSkill !== null || selectedMentions.length > 0)
-              ) {
+              if (event.key === "Backspace" && draft.length === 0 && selectedMentions.length > 0) {
                 event.preventDefault();
                 removeLastChip();
                 return;
@@ -886,27 +800,8 @@ export const Composer = memo(function Composer({
             )}
           />
         </div>
-        {onVoice ? (
-          <Button
-            variant={museMode ? "ghost" : "outline"}
-            size="icon"
-            aria-label={t`Voice`}
-            title={t`Voice`}
-            onClick={onVoice}
-            className={cn(
-              "size-8 shrink-0 rounded-full",
-              museMode
-                ? "ms-auto size-[34px] text-ink-3 hover:bg-selection hover:text-foreground"
-                : "text-foreground/75",
-            )}
-          >
-            <Mic size={16} strokeWidth={1.8} />
-          </Button>
-        ) : null}
         {running ? (
-          <div
-            className={cn("flex shrink-0 items-center gap-1.5", museMode && !onVoice && "ms-auto")}
-          >
+          <div className={cn("flex shrink-0 items-center gap-1.5", museMode && "ms-auto")}>
             <Button
               size="icon"
               aria-label={t`Send`}
@@ -940,7 +835,7 @@ export const Composer = memo(function Composer({
             onClick={send}
             className={cn(
               "size-8 shrink-0 rounded-full shadow-sm transition-transform active:scale-95",
-              museMode && !onVoice && "ms-auto",
+              museMode && "ms-auto",
               museMode
                 ? "size-[34px] bg-tint text-white shadow-none hover:bg-tint hover:brightness-110 disabled:bg-selection disabled:text-ink-3 disabled:opacity-100"
                 : "bg-white text-black hover:bg-white/90 disabled:bg-white/10 disabled:text-muted-foreground/30 disabled:shadow-none",

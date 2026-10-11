@@ -1,5 +1,6 @@
 import type { OmnigentClientConfig } from "./client/core.js";
 import { omnigentHeaders, throwOnError } from "./client/core.js";
+import { base64ToBytes, bytesToBase64 } from "./base64.js";
 
 export interface OmnigentComputerState {
   /** The session's runner is connected (Files and tools can reach it). */
@@ -141,7 +142,7 @@ export async function readOmnigentFile(
   const content = body.content ?? "";
   const bytes =
     body.encoding === "base64"
-      ? new Uint8Array(Buffer.from(content, "base64"))
+      ? base64ToBytes(content)
       : new TextEncoder().encode(content);
   return {
     path: body.path ?? clean,
@@ -167,7 +168,7 @@ export async function writeOmnigentFile(
     method: "PUT",
     headers: { ...omnigentHeaders(config, email), "content-type": "application/json" },
     body: JSON.stringify({
-      content: Buffer.from(bytes).toString("base64"),
+      content: bytesToBase64(bytes),
       encoding: "base64",
       create_parents: true,
       // An exclusive create fails (`already_exists`) rather than replace a file of that name.

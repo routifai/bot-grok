@@ -9,7 +9,6 @@
 // `ThreadEvents.finalizeRun` so the thread, task, and run rows land in the same state a normal
 // turn would.
 
-import { parseAttachmentReferences, WORKSPACE_UPLOADS_PREFIX } from "@superchat/core";
 import type { PrismaClient, ThreadEvents } from "@superchat/db";
 import { STEERING_CONTINUATION_PROMPT } from "@superchat/db";
 import { getLogger } from "@superchat/logging";
@@ -26,10 +25,9 @@ import {
   omnigentErrorCopy,
   postOmnigentMessage,
   putOmnigentTimezone,
-  readOmnigentFile,
   streamOmnigentSession,
-  WORKSPACE_FILE_MAX_BYTES,
 } from "./client.js";
+import { readTurnImages } from "./turn-images.js";
 import { DEFAULT_OMNIGENT_SUPERCHAT_CONFIG, type OmnigentSuperChatConfig } from "./env.js";
 
 /** What a person sees when a turn cannot run for an engine-side reason (details go to the log). */
@@ -383,46 +381,6 @@ async function adoptExistingConversation(
     getLogger().error("omnigent gateway: adopting the existing Conversation failed", error);
     throw error;
   }
-}
-
-/**
- * The images a turn refers to, read back from the Computer so the model sees them: every
- * `image/*` attachment line under `your_files/uploads/` (<= 5 MiB each). Best effort: a file
- * that cannot be read stays a path line in the text.
- */
-export async function readTurnImages(
-  client: OmnigentClientConfig,
-  email: string,
-  sessionId: string,
-  turnInput: string,
-): Promise<Array<{ mimeType: string; dataBase64: string }>> {
-  const images: Array<{ mimeType: string; dataBase64: string }> = [];
-  const seen = new Set<string>();
-  for (const line of turnInput.split("\n")) {
-    const { attachments } = parseAttachmentReferences(line);
-    for (const ref of attachments) {
-      if (!ref.mimeType.startsWith("image/") || ref.size > WORKSPACE_FILE_MAX_BYTES) continue;
-      if (!ref.path.startsWith(WORKSPACE_UPLOADS_PREFIX) || seen.has(ref.path)) continue;
-      seen.add(ref.path);
-      try {
-        const file = await readOmnigentFile(client, email, sessionId, ref.path);
-        if (
-          file.truncated ||
-          file.bytes.length === 0 ||
-          file.bytes.length > WORKSPACE_FILE_MAX_BYTES
-        ) {
-          continue;
-        }
-        images.push({
-          mimeType: ref.mimeType,
-          dataBase64: Buffer.from(file.bytes).toString("base64"),
-        });
-      } catch (error) {
-        getLogger().error("omnigent gateway: could not read an attached image back", error);
-      }
-    }
-  }
-  return images;
 }
 
 /** What `sendTurnAndAwaitCompletion` needs to hand the engine messages sent during the turn. */

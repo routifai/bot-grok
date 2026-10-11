@@ -57,9 +57,7 @@ export function forkTarget(fork: MessageFork, anchor: ThreadMessage | null): For
   };
 }
 
-const noop = () => undefined;
 const noopAsync = async () => undefined;
-const NOT_LIVE_BOT = () => undefined;
 /** Within this distance of the end, new replies keep the view following. */
 const FOLLOW_SLACK_PX = 120;
 
@@ -486,12 +484,7 @@ function ThreadReply({
               artifactTarget={artifactTarget}
               message={message}
               canAnswer={false}
-              onOpenPeerMessages={noop}
               onAnswer={noopAsync}
-              peerBot={NOT_LIVE_BOT}
-              voiceReady={false}
-              speaking={false}
-              onSpeak={noop}
             />
           </div>
         )}

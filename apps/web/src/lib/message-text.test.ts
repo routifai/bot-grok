@@ -18,43 +18,6 @@ describe("copyableMessageText", () => {
       ),
     ).toBe("first\nworking\nquestion?");
   });
-
-  it("includes channel messages with their chat attribution", () => {
-    expect(
-      copyableMessageText(
-        message([
-          {
-            kind: "channel_message",
-            provider: "sendblue",
-            transport: "RCS",
-            channelId: "ch-1",
-            fromAddress: "+15551234567",
-            fromLabel: "Alice",
-            text: "dinner at 7?",
-            hop: 0,
-          },
-        ]),
-      ),
-    ).toBe("RCS · Alice: dinner at 7?");
-  });
-
-  it("falls back to the provider label for unknown transport values", () => {
-    expect(
-      copyableMessageText(
-        message([
-          {
-            kind: "channel_message",
-            provider: "sendblue",
-            transport: "email",
-            channelId: "ch-1",
-            fromAddress: "+15551234567",
-            fromLabel: "Alice",
-            text: "hello",
-          },
-        ]),
-      ),
-    ).toBe("iMessage · Alice: hello");
-  });
 });
 
 describe("what a person's own message shows outside the Conversation view", () => {

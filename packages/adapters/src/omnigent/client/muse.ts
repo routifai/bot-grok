@@ -51,3 +51,25 @@ export async function adoptOmnigentMuse(
   await throwOnError(response, "adopt muse", config.secrets);
   return (await response.json()) as OmnigentMuse;
 }
+
+/** Who the engine says the caller is (`GET /v1/me`). */
+export interface OmnigentIdentity {
+  userId: string;
+  isAdmin: boolean;
+}
+
+/** `GET /v1/me` — the caller's identity, or `null` when the engine has none for the request (a
+ * 401: not signed in). */
+export async function getOmnigentIdentity(
+  config: OmnigentClientConfig,
+  email: string,
+): Promise<OmnigentIdentity | null> {
+  const response = await fetch(new URL("/v1/me", config.baseUrl), {
+    headers: omnigentHeaders(config, email),
+  });
+  if (response.status === 401) return null;
+  await throwOnError(response, "get me", config.secrets);
+  const body = (await response.json()) as { user_id: string | null; is_admin?: boolean };
+  if (!body.user_id) return null;
+  return { userId: body.user_id, isAdmin: body.is_admin === true };
+}

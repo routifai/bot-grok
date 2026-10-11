@@ -41,10 +41,6 @@ describe("truncateSlashDescription", () => {
 
 describe("SLASH_ACTIONS", () => {
   it("exposes chat and account destinations", () => {
-    expect(SLASH_ACTIONS.map((action) => action.id)).toEqual([
-      "chat-settings",
-      "settings-general",
-      "settings-usage",
-    ]);
+    expect(SLASH_ACTIONS.map((action) => action.id)).toEqual(["chat-settings", "settings-general"]);
   });
 });

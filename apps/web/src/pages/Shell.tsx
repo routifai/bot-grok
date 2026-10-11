@@ -1,18 +1,9 @@
-import { Trans, useLingui } from "@lingui/react/macro";
-import type {
-  Bot,
-  ChatSummary,
-  Connection,
-  ConnectionCatalogItem,
-  Routine,
-  ThreadMessage,
-} from "@superchat/contracts";
-import { buildComposerMentionOptions, userVisibleMessages } from "@superchat/core";
-import { AvatarStyleProvider, Button } from "@superchat/ui-web";
-import { Plus } from "lucide-react";
+import { useLingui } from "@lingui/react/macro";
+import type { Bot, ChatSummary, ThreadMessage } from "@superchat/contracts";
+import { userVisibleMessages } from "@superchat/core";
+import { AvatarStyleProvider } from "@superchat/ui-web";
 import type { ReactNode } from "react";
 import {
-  lazy,
   Suspense,
   useCallback,
   useEffect,
@@ -39,9 +30,7 @@ import { appsExtension } from "../features/apps";
 import { ArtifactRegistryProvider } from "../features/artifacts/registry";
 import { useChatArtifacts } from "../features/artifacts/useChatArtifacts";
 import { ChartGallery, chartsExtension, isChartMessage } from "../features/charts";
-import { ComputerUpdateProgress } from "../features/computer/ComputerUpdateProgress";
 import { FolderPicker } from "../features/computer/FolderPicker";
-import { HostComputerPrompt } from "../features/computer/HostComputerPrompt";
 import { DeckThemeChoice, decksExtension } from "../features/decks";
 import { knowledgeExtension } from "../features/knowledge";
 import { ConversationModelPicker } from "../features/models";
@@ -59,13 +48,10 @@ import {
 import { sideChatView } from "../features/side-chats/sideChatView";
 import { useChatList } from "../features/side-chats/useChatList";
 import { forkChatSummary, useForkView } from "../features/side-chats/useForkView";
-import { useAgentSkills } from "../features/skills/useAgentSkills";
 import type { ArtifactTarget } from "../lib/artifact-open";
-import { authClient } from "../lib/auth";
 import { watchFamily } from "../lib/family-stream";
 import { markAfterPaint, markOnce } from "../lib/performance";
 import { rpc } from "../lib/rpc";
-import type { CallConversation } from "./CallView";
 import { ChatsPopover } from "./muse/chrome/ChatsPopover";
 import { ContourGround } from "./muse/chrome/ContourGround";
 import { ConversationActivity } from "./muse/chrome/ConversationActivity";
@@ -84,13 +70,10 @@ import type { Panel } from "./muse/chrome/panel";
 import { SidePanelHeader } from "./muse/chrome/SidePanelHeader";
 import { useBotRoster } from "./muse/chrome/useBotRoster";
 import { useBrowserNotifications } from "./muse/chrome/useBrowserNotifications";
-import { useCreateBot } from "./muse/chrome/useCreateBot";
 import { type MuseLiveRun, useTurnRuns } from "./muse/chrome/useMuseLiveState";
 import { useReplyAlerts } from "./muse/chrome/useReplyAlerts";
-import { useVoice } from "./muse/chrome/useVoice";
 import { ClearConversationHost } from "./muse/conversation/ClearConversationHost";
 import { Composer } from "./muse/conversation/Composer";
-import { FALLBACK_BOT_COLOR } from "./muse/conversation/shared";
 import { Transcript } from "./muse/conversation/Transcript";
 import {
   type TranscriptGroup,
@@ -100,23 +83,9 @@ import { useComposerSend } from "./muse/conversation/useComposerSend";
 import { useDockTransition } from "./muse/conversation/useDockTransition";
 import { useMuseTranscript } from "./muse/conversation/useMuseTranscript";
 import { useTranscriptScroll } from "./muse/conversation/useTranscriptScroll";
-import { RoutinePanel } from "./muse/routines/RoutinePanel";
-import { useRoutineEditor } from "./muse/routines/useRoutineEditor";
-import { IntegrationOverlays } from "./muse/settings/IntegrationOverlays";
 import { SettingsHost } from "./muse/settings/SettingsHost";
 import { useShellSettings } from "./muse/settings/useShellSettings";
 import { DockSheets } from "./muse/sheets/DockSheets";
-import { draftFromRoutine } from "./RoutineEditor";
-import { CreateBotForm } from "./shell/bot-panel";
-import { DeleteItemDialog } from "./shell/dialogs";
-
-const PeerMessagesOverlay = lazy(() =>
-  import("./PeerMessagesOverlay").then((module) => ({ default: module.PeerMessagesOverlay })),
-);
-const SkillsSection = lazy(() =>
-  import("../features/skills/SkillsSection").then((module) => ({ default: module.SkillsSection })),
-);
-const CallView = lazy(() => import("./CallView").then((module) => ({ default: module.CallView })));
 
 /** Superchat's Mac window (docs/muse/DESIGN.md "Window"): the Conversation and the other screens
  * sit flat on the rounded content window; only the sidebar, the inspector and side panels
@@ -164,32 +133,16 @@ export function ShellPage() {
   const { botId } = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const session = authClient.useSession();
-  const userId = session.data?.user.id;
 
   const [panel, setPanel] = useState<Panel>(null);
-  const [peerConversation, setPeerConversation] = useState<{
-    peerBotId: string;
-    peerBotName: string;
-  } | null>(null);
-  const [routines, setRoutines] = useState<Routine[]>([]);
-  const [routinesBotId, setRoutinesBotId] = useState<string | null>(null);
-  const { agentSkills, setAgentSkills, refreshAgentSkills } = useAgentSkills();
-  const [mentionRoutines, setMentionRoutines] = useState<Array<Routine & { botName?: string }>>([]);
-  const [mentionConnectors, setMentionConnectors] = useState<
-    Array<{
-      id: string;
-      name: string;
-      authStatus: "connected" | "needs_auth";
-      connectionId?: string;
-    }>
-  >([]);
-  const { bots, setBots, botsRef, initialBotsLoaded, bootstrapMe, setBootstrapMe, refreshBots } =
-    useBotRoster({ botId, navigate });
+  const { bots, botsRef, initialBotsLoaded, bootstrapMe } = useBotRoster({
+    botId,
+    navigate,
+  });
+  const userId = bootstrapMe?.userId;
 
-  const settings = useShellSettings(session.data?.user);
-  const { messagingProviders, openSettings, setUsage } = settings;
-  const [callOpen, setCallOpen] = useState(false);
+  const settings = useShellSettings();
+  const { openSettings } = settings;
 
   const [clearTarget, setClearTarget] = useState<Bot | null>(null);
 
@@ -254,34 +207,10 @@ export function ShellPage() {
     useBrowserNotifications(botsRef);
   const { messageScroll, scrollRequest, clearScrollRequest, scrollToMessage } =
     useTranscriptScroll();
-  const refreshRoutines = useCallback(async (id: string) => {
-    const rows = await rpc.routines.list({ botId: id });
-    if (activeBotId.current !== id) return;
-    setRoutines(rows);
-    setRoutinesBotId(id);
-  }, []);
-  useEffect(() => {
-    if (active?.id) void refreshRoutines(active.id).catch(() => undefined);
-  }, [active?.id, refreshRoutines]);
 
   useEffect(() => {
     const messageId = searchParams.get("m");
-    const routineId = searchParams.get("routine");
     if (!active) return;
-    if (routineId && routinesBotId === active.id) {
-      const routine = routines.find((item) => item.id === routineId);
-      if (routine) {
-        setRoutineDraft(draftFromRoutine(routine));
-        setRoutineWebhookSecret(null);
-        setEditingRoutine(routine);
-        setPanel("routine");
-      } else {
-        setPanel(null);
-      }
-      const next = new URLSearchParams(searchParams);
-      next.delete("routine");
-      setSearchParams(next, { replace: true });
-    }
     const chatParam = searchParams.get("chat");
     if (chatParam) {
       // A hit in a side chat: open it (waiting for the list), then drop the jump URL.
@@ -326,7 +255,7 @@ export function ShellPage() {
           setSearchParams(next, { replace: true });
         });
     }
-  }, [active?.id, routines, routinesBotId, searchParams, setSearchParams, chatList.state]);
+  }, [active?.id, searchParams, setSearchParams, chatList.state]);
   const revealMessageRef = useRef<(messageId: string) => Promise<boolean>>(async () => false);
   const openForkRef = useRef<(target: ForkThreadTarget) => void>(() => undefined);
   // Bumps each time a turn finishes, so the Files view follows the Muse's work.
@@ -386,7 +315,6 @@ export function ShellPage() {
         museTranscript.pendingMessage
           ? [...(museTranscript.messages ?? []), museTranscript.pendingMessage]
           : (museTranscript.messages ?? []),
-        { includePeerReceipts: true },
       ),
     [museTranscript.messages, museTranscript.pendingMessage],
   );
@@ -434,116 +362,12 @@ export function ShellPage() {
     startPage: shownStart,
     sidebarVisible: false,
   });
-  const { voiceStatus, setVoiceStatus, speakingMessageId, speakMessage } = useVoice({
-    active,
-    messages: museTranscript.messages,
-    running,
-    callOpen,
-    activeBotId,
-  });
-  const callConversation = useMemo<CallConversation>(
-    () => ({ messages: museTranscript.messages ?? [], running }),
-    [museTranscript.messages, running],
-  );
   const transcriptArtifactTarget = useMemo<ArtifactTarget>(
     () => ({ botId: active?.id ?? "" }),
     [active?.id],
   );
-  const resolveTranscriptBot = useCallback(
-    (botId: string) => bots.find((candidate) => candidate.id === botId),
-    [bots],
-  );
-  const composerMentionTargets = useMemo(
-    () =>
-      buildComposerMentionOptions({
-        query: "",
-        bots: [],
-        groups: [],
-        routines: mentionRoutines.map((routine) => ({
-          id: routine.id,
-          name: routine.name,
-          crons: routine.crons,
-          botId: routine.botId,
-          botName: routine.botName,
-        })),
-        connectors: mentionConnectors,
-      }),
-    [mentionConnectors, mentionRoutines],
-  );
   const shellReady =
     initialBotsLoaded && (bots.length === 0 || Boolean(active && museTranscript.messages));
-
-  const mentionBotsKey = useMemo(
-    () => bots.map((bot) => `${bot.id}:${bot.name}`).join(","),
-    [bots],
-  );
-  const botsForMentionsRef = useRef(bots);
-  botsForMentionsRef.current = bots;
-
-  useEffect(() => {
-    const bots = botsForMentionsRef.current;
-    if (!initialBotsLoaded || bots.length === 0) {
-      setMentionRoutines([]);
-      setMentionConnectors([]);
-      return;
-    }
-    let cancelled = false;
-    const botNameById = new Map(bots.map((bot) => [bot.id, bot.name]));
-    void Promise.all(
-      bots.map((bot) =>
-        rpc.routines
-          .list({ botId: bot.id })
-          .then((rows) =>
-            rows.map((routine) => ({
-              ...routine,
-              botName: botNameById.get(bot.id) ?? bot.name,
-            })),
-          )
-          .catch(() => [] as Array<Routine & { botName?: string }>),
-      ),
-    ).then((lists) => {
-      if (!cancelled) setMentionRoutines(lists.flat());
-    });
-    void Promise.all([
-      rpc.connections.list().catch(() => [] as Connection[]),
-      rpc.connections.catalog({}).catch(() => [] as ConnectionCatalogItem[]),
-    ]).then(([connections, catalog]) => {
-      if (cancelled) return;
-      const connected = connections.filter((row) => row.status === "connected");
-      const options: Array<{
-        id: string;
-        name: string;
-        authStatus: "connected" | "needs_auth";
-        connectionId?: string;
-      }> = connected.map((row) => ({
-        id: row.id,
-        name: row.displayName,
-        authStatus: "connected" as const,
-        connectionId: row.id,
-      }));
-      for (const item of catalog) {
-        if (item.connected || item.noAuth) continue;
-        if (
-          connected.some(
-            (row) =>
-              row.provider.toLowerCase() === item.slug.toLowerCase() ||
-              row.displayName.toLowerCase() === item.name.toLowerCase(),
-          )
-        ) {
-          continue;
-        }
-        options.push({
-          id: `catalog:${item.connectorId}:${item.slug}`,
-          name: item.name,
-          authStatus: "needs_auth",
-        });
-      }
-      setMentionConnectors(options);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [initialBotsLoaded, mentionBotsKey]);
 
   useLayoutEffect(() => {
     if (initialBotsLoaded) {
@@ -560,7 +384,6 @@ export function ShellPage() {
     }
   }, [active, initialBotsLoaded, shellReady, museTranscript.messages]);
 
-  const { createBot } = useCreateBot({ setBots, navigate, setPanel, refreshBots });
   const {
     activePendingAttachments,
     activePendingFolders,
@@ -610,24 +433,7 @@ export function ShellPage() {
     },
     [sendMessage],
   );
-  const routineEditor = useRoutineEditor({
-    active,
-    activeBotId,
-    panel,
-    setPanel,
-    setBots,
-    refreshRoutines,
-  });
-  const {
-    setRoutineDraft,
-    setRoutineWebhookSecret,
-    setEditingRoutine,
-    deleteRoutineTarget,
-    setDeleteRoutineTarget,
-    confirmDeleteRoutine,
-  } = routineEditor;
-
-  const userName = session.data?.user.name ?? t`You`;
+  const userName = bootstrapMe?.name ?? t`You`;
 
   const composerEl = (
     <Composer
@@ -655,24 +461,10 @@ export function ShellPage() {
       seedText={composerSeed}
       onSeedConsumed={() => setComposerSeed(null)}
       onStop={stopRun}
-      onVoice={
-        active
-          ? () => {
-              if (!voiceStatus?.ready) {
-                openSettings("voice");
-                return;
-              }
-              setCallOpen(true);
-            }
-          : undefined
-      }
       replyTarget={replyTarget}
       replyQuote={replyQuote}
       replyTargetName={replyTargetName}
       onClearReply={clearReply}
-      mentionTargets={composerMentionTargets}
-      agentSkills={agentSkills}
-      onSlashOpen={refreshAgentSkills}
       onSlashAction={(action) => {
         if (action === "chat-settings") {
           setPanel("settings");
@@ -681,13 +473,6 @@ export function ShellPage() {
         if (action === "settings-general") {
           openSettings("general");
           return;
-        }
-        if (action === "settings-usage") {
-          void rpc.usage
-            .summary()
-            .then(setUsage)
-            .catch(() => undefined);
-          openSettings("usage");
         }
       }}
     />
@@ -749,10 +534,6 @@ export function ShellPage() {
           recent={<HomeActivity botId={active.id} hideWhenEmpty />}
         />
       ) : null}
-      <ComputerUpdateProgress onCompleted={readTranscript} />
-      {bootstrapMe !== undefined ? (
-        <HostComputerPrompt initialMe={bootstrapMe ?? undefined} />
-      ) : null}
       {active && !showHome ? <ContourGround /> : null}
       {active && !showHome ? (
         <SuperchatLogo className="absolute start-8 top-7 z-20 hidden md:inline-flex" />
@@ -800,14 +581,7 @@ export function ShellPage() {
               {/* Behind a fork's thread view or "lift and ask", the Conversation is out of reach. */}
               <div className="contents" inert={forkOverlayOpen || undefined}>
                 {superchatTopBar}
-                {!active && initialBotsLoaded ? (
-                  <div className="grid flex-1 place-items-center">
-                    <Button onClick={() => setPanel("create")}>
-                      <Plus size={16} aria-hidden="true" />
-                      <Trans>Create new Bot</Trans>
-                    </Button>
-                  </div>
-                ) : forksView ? (
+                {forksView ? (
                   <AllForks
                     rows={forks.rows}
                     filter={forks.filter}
@@ -854,13 +628,6 @@ export function ShellPage() {
                       setReplyTarget(message);
                       setReplyQuote(quote);
                     }}
-                    onOpenPeerMessages={(peer) => {
-                      setPeerConversation(peer);
-                    }}
-                    peerBot={resolveTranscriptBot}
-                    voiceReady={Boolean(voiceStatus?.ready)}
-                    speakingMessageId={speakingMessageId}
-                    onSpeak={speakMessage}
                     trailing={<ApprovalCards botId={active.id} chatId={null} />}
                     onFork={forks.startAsk}
                     renderUnder={forks.renderUnder}
@@ -973,38 +740,17 @@ export function ShellPage() {
         data-testid="side-panel"
         data-panel={panel ?? "closed"}
         className={`superchat-glass absolute inset-y-0 end-0 z-20 flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-150 ease-out md:relative ${
-          panel && (active || panel === "create")
+          panel && active
             ? // An inset panel like <main>.
               "w-full max-w-[400px] md:m-2 md:w-[400px] md:max-w-none"
             : "pointer-events-none w-0"
         }`}
       >
-        {panel && (active || panel === "create") ? (
+        {panel && active ? (
           <div className="rk-scroll h-full w-full overflow-y-auto px-5 py-[17px] md:w-[400px]">
-            {panel !== "routine" && panel !== "create" ? (
-              <SidePanelHeader panel={panel} setPanel={setPanel} active={active} />
-            ) : null}
-            {panel === "create" ? (
-              <CreateBotForm
-                onCancel={() => setPanel(null)}
-                onCreate={(input) => createBot(input)}
-              />
-            ) : null}
+            <SidePanelHeader panel={panel} setPanel={setPanel} active={active} />
             {panel === "settings" && active ? (
-              <BotSettingsPanel
-                active={active}
-                skillsSection={<SkillsSection onSkillsChange={setAgentSkills} />}
-                refreshBots={refreshBots}
-                onClear={() => setClearTarget(active)}
-              />
-            ) : null}
-            {panel === "routine" && active ? (
-              <RoutinePanel
-                editor={routineEditor}
-                active={active}
-                messagingProviders={messagingProviders}
-                setPanel={setPanel}
-              />
+              <BotSettingsPanel onClear={() => setClearTarget(active)} />
             ) : null}
           </div>
         ) : null}
@@ -1018,54 +764,15 @@ export function ShellPage() {
             onCleared={readTranscript}
           />
         ) : null}
-
-        {deleteRoutineTarget ? (
-          <DeleteItemDialog
-            item={deleteRoutineTarget}
-            noun="routine"
-            onCancel={() => setDeleteRoutineTarget(null)}
-            onConfirm={() => confirmDeleteRoutine(deleteRoutineTarget)}
-          />
-        ) : null}
-
-        <IntegrationOverlays settings={settings} activeBotId={activeBotId.current} />
       </Suspense>
 
       <Suspense fallback={null}>
         <SettingsHost
           settings={settings}
           userName={userName}
-          email={session.data?.user.email}
-          bootstrapMe={bootstrapMe}
-          setBootstrapMe={setBootstrapMe}
-          setVoiceStatus={setVoiceStatus}
+          email={bootstrapMe?.userId}
           active={active}
-          refreshBots={refreshBots}
         />
-        {peerConversation && active ? (
-          <PeerMessagesOverlay
-            botId={active.id}
-            botName={active.name}
-            botColor={active.color}
-            peerBotId={peerConversation.peerBotId}
-            peerBotName={peerConversation.peerBotName}
-            peerBotColor={
-              resolveTranscriptBot(peerConversation.peerBotId)?.color ?? FALLBACK_BOT_COLOR
-            }
-            onClose={() => setPeerConversation(null)}
-          />
-        ) : null}
-        {callOpen && active ? (
-          <CallView
-            botId={active.id}
-            botName={active.name}
-            transcribe={Boolean(voiceStatus?.transcribe)}
-            conversation={callConversation}
-            onSend={sendMessage}
-            onAnswer={answerMessage}
-            onClose={() => setCallOpen(false)}
-          />
-        ) : null}
       </Suspense>
     </div>
   );

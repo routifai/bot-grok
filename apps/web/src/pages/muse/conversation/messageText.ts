@@ -6,7 +6,6 @@ import { splitComposerAttachments } from "../../../lib/composer-attachments";
 export function previewMessageText(message: ThreadMessage): string {
   const text = message.blocks
     .map((block) => {
-      if (block.kind === "channel_message") return block.text;
       if (block.kind === "text") {
         // Bot text is Markdown; user text is already plain.
         if (message.role === "bot") return plainTextFromMarkdown(block.text);

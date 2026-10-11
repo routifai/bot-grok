@@ -85,7 +85,7 @@ const transcript = {
 /** The real hook wired to the real Composer, the way Shell does it. */
 function Wired() {
   latest = useComposerSend({
-    active: { id: BOT, notifyOnFinish: false } as Bot,
+    active: { id: BOT } as Bot,
     activeBotId: botRef,
     userId: "u1",
     messages: [],

@@ -32,12 +32,11 @@ export function isDashboardPageName(name: string): boolean {
   );
 }
 
-export const CHART_THUMBNAIL_FORMATS = ["png", "svg"] as const;
 export const CHART_THUMBNAIL_THEMES = ["light", "dark"] as const;
 
 export const ChartThumbnailSchema = z.object({
-  mimeType: z.enum(["image/png", "image/svg+xml"]),
-  /** The image bytes, base64. */
+  mimeType: z.literal("image/svg+xml"),
+  /** The SVG text as UTF-8, base64. */
   contentBase64: z.string(),
   width: z.number().int(),
   height: z.number().int(),
@@ -47,12 +46,11 @@ export type ChartThumbnail = z.infer<typeof ChartThumbnailSchema>;
 export const chartsContract = {
   charts: {
     /** A saved chart (a `*.chart.json` artifact, or a dashboard's first chart) drawn
-     * server-side as a PNG or SVG. */
+     * in the page as an SVG. */
     thumbnail: oc
       .input(
         z.object({
           artifactId: Id,
-          format: z.enum(CHART_THUMBNAIL_FORMATS).default("png"),
           theme: z.enum(CHART_THUMBNAIL_THEMES).default("light"),
           width: z.number().int().min(160).max(800).default(640),
           height: z.number().int().min(100).max(500).default(400),

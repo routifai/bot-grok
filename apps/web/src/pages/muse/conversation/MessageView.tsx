@@ -10,7 +10,6 @@ import {
 import { cn } from "@superchat/ui-web";
 import { Folder } from "lucide-react";
 import { memo } from "react";
-import { CollaborationMarker } from "../../../components/ai/CollaborationMarker";
 import { CloudAgentCard } from "../../../components/CloudAgentCard";
 import { ComposerAttachmentChip } from "../../../components/ComposerAttachmentChip";
 import { ReplyCardBlockView } from "../../../components/cards/ReplyCard";
@@ -19,13 +18,7 @@ import { AskCard } from "../../../features/approvals";
 import { ArtifactFileCard } from "../../../features/artifacts";
 import type { ArtifactTarget } from "../../../lib/artifact-open";
 import { splitComposerAttachments } from "../../../lib/composer-attachments";
-import { messageProviderLabel } from "../../../lib/messaging";
-import {
-  ArtifactImage,
-  CanvasBlockView,
-  ChartBlockView,
-  McpApprovalCard,
-} from "../../shell/message-cards";
+import { ArtifactImage, CanvasBlockView, ChartBlockView } from "../../shell/message-cards";
 import { FirstRunHint } from "../intro";
 import {
   FailureNote,
@@ -36,7 +29,6 @@ import {
 } from "./FailureNote";
 import { FoldedText } from "./FoldedText";
 import { HelperTracker } from "./HelperTracker";
-import { FALLBACK_BOT_COLOR } from "./shared";
 
 /** Muse mode only: one quiet line for a tool-activity block (docs/muse/DESIGN.md "Conversation"). */
 function ToolActivityStep({ block }: { block: ThreadMessage["blocks"][number] }) {
@@ -64,11 +56,6 @@ export const MessageView = memo(function MessageView({
   canAnswer,
   message,
   onAnswer,
-  onOpenPeerMessages,
-  peerBot,
-  voiceReady,
-  speaking,
-  onSpeak,
 }: {
   museMode?: boolean;
   /** Muse mode: the Muse's own name, for first-run hint copy (`FirstRunHint`). */
@@ -77,11 +64,6 @@ export const MessageView = memo(function MessageView({
   canAnswer: boolean;
   message: ThreadMessage;
   onAnswer: (message: ThreadMessage, text: string, username?: string) => Promise<void>;
-  onOpenPeerMessages: (peer: { peerBotId: string; peerBotName: string }) => void;
-  peerBot: (botId: string) => { color: string; status?: string } | undefined;
-  voiceReady: boolean;
-  speaking: boolean;
-  onSpeak: () => void;
 }) {
   const { t } = useLingui();
   const errorNote = useFailureNoteText();
@@ -98,7 +80,6 @@ export const MessageView = memo(function MessageView({
         // An added fork's summary is drawn under the message (forks/ForkUnderMessage.tsx).
         block.kind === "fork_summary",
     );
-  const isLive = message.id.startsWith("progress:");
   const quoteMessageId = message.id.includes(":") ? undefined : message.id;
   const visibleNarrationBlocks = message.blocks.filter(
     (block) => museMode || !isToolActivityBlock(block),
@@ -133,16 +114,6 @@ export const MessageView = memo(function MessageView({
             }
             return null;
           })}
-          {!isLive && voiceReady && message.blocks.some((block) => block.kind === "text") ? (
-            <button
-              type="button"
-              aria-label={speaking ? t`Stop speaking` : t`Speak this reply`}
-              onClick={onSpeak}
-              className="text-[12px] text-muted-foreground hover:text-foreground"
-            >
-              {speaking ? <Trans>Stop</Trans> : <Trans>Speak</Trans>}
-            </button>
-          ) : null}
         </div>
       </div>
     );
@@ -152,35 +123,6 @@ export const MessageView = memo(function MessageView({
       {message.blocks.map((block, i) => {
         if (isToolActivityBlock(block)) {
           return museMode ? <ToolActivityStep key={i} block={block} /> : null;
-        }
-        if (block.kind === "bot_message_sent" || block.kind === "bot_message_received") {
-          const sent = block.kind === "bot_message_sent";
-          const peer = sent ? block.toBotName : block.fromBotName;
-          const peerBotId = sent ? block.toBotId : block.fromBotId;
-          const label = sent ? t`Messaged ${peer}` : t`Message from ${peer}`;
-          return (
-            <CollaborationMarker
-              key={i}
-              ariaLabel={label}
-              color={peerBot(peerBotId)?.color ?? FALLBACK_BOT_COLOR}
-              identity={peerBotId}
-              label={label}
-              onClick={() => onOpenPeerMessages({ peerBotId, peerBotName: peer })}
-            />
-          );
-        }
-        if (block.kind === "channel_message") {
-          return (
-            <div
-              key={i}
-              className="flex items-center justify-center gap-2 py-1 text-[13.5px] text-muted-foreground"
-            >
-              <span>
-                {messageProviderLabel(block.provider, block.transport)} · {block.fromLabel}:{" "}
-                {block.text}
-              </span>
-            </div>
-          );
         }
         if (block.kind === "meta") {
           return (
@@ -267,20 +209,6 @@ export const MessageView = memo(function MessageView({
             </div>
           );
         }
-        if (block.kind === "mcp_approval") {
-          return (
-            <div key={i} className="flex justify-start">
-              <McpApprovalCard
-                botId={"botId" in artifactTarget ? artifactTarget.botId : message.botId}
-                name={block.name}
-                serverId={block.serverId}
-                transport={block.transport}
-                endpoint={block.endpoint}
-                needsOAuth={block.needsOAuth}
-              />
-            </div>
-          );
-        }
         if (block.kind === "image") {
           return (
             <div
@@ -291,6 +219,7 @@ export const MessageView = memo(function MessageView({
                 target={artifactTarget}
                 artifactId={block.artifactId}
                 name={block.name}
+                mimeType={block.mimeType}
               />
             </div>
           );
@@ -410,16 +339,6 @@ export const MessageView = memo(function MessageView({
                 <div data-quote-message-id={quoteMessageId}>
                   <ChatMarkdown>{block.text}</ChatMarkdown>
                 </div>
-                {voiceReady ? (
-                  <button
-                    type="button"
-                    aria-label={speaking ? t`Stop speaking` : t`Speak this reply`}
-                    onClick={onSpeak}
-                    className="mt-2 text-[12px] text-muted-foreground hover:text-foreground"
-                  >
-                    {speaking ? <Trans>Stop</Trans> : <Trans>Speak</Trans>}
-                  </button>
-                ) : null}
               </div>
             </div>
           );

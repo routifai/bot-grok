@@ -1,21 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { initialBootstrapTarget } from "./bootstrap-target";
+import { isBootstrapRoute } from "./bootstrap-target";
 
-describe("initial bootstrap target", () => {
+describe("bootstrap route", () => {
   it("primes the Electron root before its client-side redirect", () => {
-    expect(initialBootstrapTarget("/", true)).toEqual({ botId: undefined });
-    expect(initialBootstrapTarget("/", false)).toBeNull();
+    expect(isBootstrapRoute("/", true)).toBe(true);
+    expect(isBootstrapRoute("/", false)).toBe(false);
   });
 
-  it("primes browser app routes and decodes their selected bot", () => {
-    expect(initialBootstrapTarget("/app", false)).toEqual({ botId: undefined });
-    expect(initialBootstrapTarget("/app/research%20bot", false)).toEqual({
-      botId: "research bot",
-    });
+  it("primes browser app routes", () => {
+    expect(isBootstrapRoute("/app", false)).toBe(true);
+    expect(isBootstrapRoute("/app/some-muse", false)).toBe(true);
+    expect(isBootstrapRoute("/app/artifacts/abc", false)).toBe(true);
   });
 
   it("does not prime unrelated routes", () => {
-    expect(initialBootstrapTarget("/sign-in", true)).toBeNull();
-    expect(initialBootstrapTarget("/onboarding", false)).toBeNull();
+    expect(isBootstrapRoute("/application", false)).toBe(false);
   });
 });

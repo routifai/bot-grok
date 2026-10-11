@@ -46,18 +46,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const bootstrapApi = vi.hoisted(() => ({ takeInitialBootstrap: vi.fn() }));
+const bootstrapApi = vi.hoisted(() => ({ takeInitialBootstrap: vi.fn(), loadMe: vi.fn() }));
 vi.mock("../lib/bootstrap", () => bootstrapApi);
-
-vi.mock("../lib/auth", () => ({
-  authClient: {
-    useSession: () => ({
-      data: { user: { id: "user-1" } },
-      isPending: false,
-      refetch: async () => undefined,
-    }),
-  },
-}));
 
 /** What the engine's Conversation answers; the other calls never resolve. */
 const engine = vi.hoisted(() => ({
@@ -76,10 +66,6 @@ vi.mock("../lib/rpc", () => {
   });
   return {
     rpc: new Proxy({}, { get: (_target, key) => (key === "chats" ? chats : pendingRpc()) }),
-    selectedSpaceId: () => null,
-    selectSpace: () => true,
-    clearSpaceSelection: () => undefined,
-    withSpaceHeaders: (headers: Record<string, string>) => headers,
   };
 });
 
@@ -159,35 +145,12 @@ function Stub() {
 
 vi.mock("../features/artifacts/ArtifactFileCard", () => ({ ArtifactFileCard: Stub }));
 vi.mock("../features/approvals/AskCard", () => ({ AskCard: Stub }));
-vi.mock("../components/ai/CollaborationMarker", () => ({
-  CollaborationMarker: Stub,
-  ActiveBotGlyph: Stub,
-}));
 vi.mock("../components/CloudAgentCard", () => ({ CloudAgentCard: Stub }));
-vi.mock("../features/computer/ComputerMaintenanceActions", () => ({
-  ComputerMaintenanceActions: Stub,
-}));
-vi.mock("../features/computer/ComputerUpdateProgress", () => ({ ComputerUpdateProgress: Stub }));
 vi.mock("../components/MessageHoverMetadata", () => ({ MessageHoverMetadata: Stub }));
 vi.mock("./muse/sheets/DockSheets", () => ({ DockSheets: Stub }));
-vi.mock("../features/computer/HostComputerPrompt", () => ({ HostComputerPrompt: Stub }));
-vi.mock("./RoutineEditor", () => ({
-  RoutineEditor: Stub,
-  RoutineListHeader: Stub,
-  RoutineListRow: Stub,
-  routineNeedsOneShotArm: () => false,
-  draftFromRoutine: () => ({}),
-  emptyRoutineDraft: () => ({}),
-  routineTriggerSummary: () => "",
-}));
 vi.mock("./SettingsOverlay", () => ({ SettingsOverlay: Stub }));
-vi.mock("./shell/bot-panel", () => ({ BotSettings: Stub, CreateBotForm: Stub }));
-vi.mock("./shell/dialogs", () => ({
-  ClearConversationDialog: Stub,
-  DeleteItemDialog: Stub,
-}));
+vi.mock("./shell/dialogs", () => ({ ClearConversationDialog: Stub }));
 vi.mock("./shell/message-cards", () => ({
-  McpApprovalCard: Stub,
   ChartBlockView: Stub,
   ArtifactImage: Stub,
 }));
@@ -197,33 +160,15 @@ import { ShellPage } from "./Shell";
 function bot(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: "bot-1",
-    spaceId: "space-1",
     name: "My Muse",
     title: "My Muse",
     description: "",
-    instructions: "",
     color: "#0090FF",
-    notifyOnFinish: false,
-    pinned: false,
-    sectionId: null,
-    archivedAt: null,
     unread: false,
-    parentBotId: null,
-    threadId: "thread-1",
     preview: "",
     status: "idle",
-    computerMode: "docker",
     updatedAt: new Date().toISOString(),
     createdAt: new Date().toISOString(),
-    voiceId: null,
-    autoSpeak: false,
-    modelProvider: null,
-    modelId: null,
-    thinkingLevel: null,
-    teamChatAmbientEnabled: false,
-    teamChatRules: "",
-    webhookConfigured: false,
-    spawnKey: null,
     ...overrides,
   };
 }
@@ -231,38 +176,24 @@ function bot(overrides: Partial<Record<string, unknown>> = {}) {
 function me(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     userId: "user-1",
-    email: "person@example.com",
     name: "Person",
-    spaceId: "space-1",
-    isDeploymentOwner: true,
+    isAdmin: false,
     needsModel: false,
     defaultProvider: null,
     defaultModel: null,
-    computerHost: null,
-    canChooseHostComputer: false,
-    sandboxProvider: "docker",
     avatarStyle: "robot",
+    timezone: "UTC",
     ...overrides,
   };
 }
 
 function bootstrap(overrides: Partial<Record<string, unknown>> = {}) {
-  return {
-    me: me(),
-    bots: [bot()],
-    groups: [],
-    botSections: [],
-    archivedBots: [],
-    archivedGroups: [],
-    thread: null,
-    routines: [],
-    spaces: [],
-    ...overrides,
-  };
+  return { me: me(), bots: [bot()], ...overrides };
 }
 
 async function renderShell(initialBootstrap: ReturnType<typeof bootstrap>) {
   bootstrapApi.takeInitialBootstrap.mockResolvedValue(initialBootstrap);
+  bootstrapApi.loadMe.mockResolvedValue(initialBootstrap.me);
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -316,7 +247,6 @@ it("shows the conversation chrome: the dock, Chats instead of a sidebar, no Goal
     const text = page.container.textContent ?? "";
     for (const gone of ["Goals", "Feed", "Ideas", "Superchat"]) expect(text).not.toContain(gone);
     expect(page.container.querySelector('[data-testid="bots-sidebar"]')).toBeNull();
-    expect(page.container.querySelector('[data-testid="create-menu-trigger"]')).toBeNull();
   } finally {
     await page.cleanup();
   }

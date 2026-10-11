@@ -36,9 +36,9 @@ export function useAppTheme(): "light" | "dark" {
 }
 
 /**
- * A chart's Library thumbnail: the server-rendered PNG (`charts.thumbnail`), fetched once the
+ * A chart's Library thumbnail: the chart drawn as an SVG (`charts.thumbnail`), fetched once the
  * card is on screen, in the theme the app is in. The chart icon stands in until it arrives, and
- * stays (with a quiet tooltip) when the server could not draw it.
+ * stays (with a quiet tooltip) when it could not be drawn.
  */
 export function ChartThumbnail({ artifactId, version }: { artifactId: string; version?: number }) {
   const { t } = useLingui();
@@ -54,7 +54,7 @@ export function ChartThumbnail({ artifactId, version }: { artifactId: string; ve
     setSrc(null);
     let cancelled = false;
     rpc.charts
-      .thumbnail({ artifactId, format: "png", theme, width: 640, height: 400 })
+      .thumbnail({ artifactId, theme, width: 640, height: 400 })
       .then((image) => {
         const url = `data:${image.mimeType};base64,${image.contentBase64}`;
         remember(key, url);

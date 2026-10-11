@@ -103,11 +103,6 @@ export function CardsPreviewPage({ scenario }: { scenario: CardsScenario }) {
             running={running}
             onLoadOlder={noop}
             onAnswer={noopAsync}
-            onOpenPeerMessages={noop}
-            peerBot={() => undefined}
-            voiceReady={false}
-            speakingMessageId={null}
-            onSpeak={noop}
             onSendCard={send}
           />
         </AskPreviewsProvider>

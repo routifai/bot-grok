@@ -58,15 +58,12 @@ const APP_SUGGESTIONS = [
 export function LibraryScreen({
   botId,
   onSendIdea,
-  skills,
   embedded = false,
   mode = "all",
   toolbarAction,
 }: {
   botId: string;
   botName?: string;
-  /** The Skills tab's content, filled by the shell (skills is its own capability); no tab without it. */
-  skills?: ReactNode;
   /** Starts a Conversation with a suggestion from the empty state. */
   onSendIdea?: (text: string) => void;
   /** Inside a dock sheet: no screen chrome or hero, just the toolbar and the grid. */
@@ -79,7 +76,6 @@ export function LibraryScreen({
   const { t } = useLingui();
   const [items, setItems] = useState<ArtifactSummary[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [view, setView] = useState<"made" | "skills">("made");
   const [query, setQuery] = useState("");
   const [selectedKind, setSelectedKind] = useState<ArtifactKind | "published" | "private" | "all">(
     "all",
@@ -189,60 +185,57 @@ export function LibraryScreen({
   const visibleKinds = KIND_ORDER.filter((kind) => (facetCounts.get(kind) ?? 0) > 0);
 
   const apps = mode === "apps";
-  const content =
-    view === "skills" && skills ? (
-      skills
-    ) : (
-      <>
-        {total > 0 ? (
-          <label className="relative block sm:hidden">
-            <Search
-              size={14}
-              strokeWidth={1.9}
-              aria-hidden="true"
-              className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-ink-3"
-            />
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={t`Search your Library…`}
-              aria-label={t`Search your Library`}
-              className="h-9 w-full rounded-full bg-selection ps-8 pe-3 text-[13px] text-foreground outline-none placeholder:text-ink-3 focus-visible:outline-2 focus-visible:outline-ring"
-            />
-          </label>
-        ) : null}
-
-        {items === null ? (
-          <LibrarySkeletonGrid />
-        ) : items.length === 0 ? (
-          loadError ? (
-            <p className="py-10 text-[14px] text-destructive">{loadError}</p>
-          ) : (
-            <EmptyState
-              illustration="books"
-              headline={apps ? t`No apps yet.` : t`Nothing here yet.`}
-              suggestions={apps ? APP_SUGGESTIONS : LIBRARY_SUGGESTIONS}
-              onSuggestion={onSendIdea}
-            >
-              {apps
-                ? t`Apps superchat builds for you will appear here.`
-                : t`Pages, documents and files your Muse makes will appear here.`}
-            </EmptyState>
-          )
-        ) : filtered && filtered.length === 0 ? (
-          <EmptyState headline={t`Nothing matches your search.`} />
-        ) : (
-          <LibraryGrid
-            items={filtered ?? []}
-            showVisibility={apps}
-            onOpen={(item) => setOpenArtifactId(item.id)}
-            onDownload={(item) => void handleDownload(item)}
-            onDelete={setPendingDelete}
+  const content = (
+    <>
+      {total > 0 ? (
+        <label className="relative block sm:hidden">
+          <Search
+            size={14}
+            strokeWidth={1.9}
+            aria-hidden="true"
+            className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-ink-3"
           />
-        )}
-      </>
-    );
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={t`Search your Library…`}
+            aria-label={t`Search your Library`}
+            className="h-9 w-full rounded-full bg-selection ps-8 pe-3 text-[13px] text-foreground outline-none placeholder:text-ink-3 focus-visible:outline-2 focus-visible:outline-ring"
+          />
+        </label>
+      ) : null}
+
+      {items === null ? (
+        <LibrarySkeletonGrid />
+      ) : items.length === 0 ? (
+        loadError ? (
+          <p className="py-10 text-[14px] text-destructive">{loadError}</p>
+        ) : (
+          <EmptyState
+            illustration="books"
+            headline={apps ? t`No apps yet.` : t`Nothing here yet.`}
+            suggestions={apps ? APP_SUGGESTIONS : LIBRARY_SUGGESTIONS}
+            onSuggestion={onSendIdea}
+          >
+            {apps
+              ? t`Apps superchat builds for you will appear here.`
+              : t`Pages, documents and files your Muse makes will appear here.`}
+          </EmptyState>
+        )
+      ) : filtered && filtered.length === 0 ? (
+        <EmptyState headline={t`Nothing matches your search.`} />
+      ) : (
+        <LibraryGrid
+          items={filtered ?? []}
+          showVisibility={apps}
+          onOpen={(item) => setOpenArtifactId(item.id)}
+          onDownload={(item) => void handleDownload(item)}
+          onDelete={setPendingDelete}
+        />
+      )}
+    </>
+  );
   const dialogs = (
     <>
       {openArtifactId ? (
@@ -345,7 +338,7 @@ export function LibraryScreen({
           dragRegion
           actions={
             <>
-              {view === "made" && total > 0 ? (
+              {total > 0 ? (
                 <label className="relative hidden sm:block">
                   <Search
                     size={14}
@@ -363,18 +356,6 @@ export function LibraryScreen({
                   />
                 </label>
               ) : null}
-              {skills ? (
-                <SegmentedControl
-                  label={t`Library view`}
-                  value={view}
-                  onChange={setView}
-                  className="w-[200px]"
-                  options={[
-                    { value: "made", label: t`Made for you` },
-                    { value: "skills", label: t`Skills` },
-                  ]}
-                />
-              ) : null}
             </>
           }
         />
@@ -388,9 +369,9 @@ export function LibraryScreen({
             </SuperchatTile>
           }
           title={<Trans>Library</Trans>}
-          subtitle={view === "made" ? <Trans>Everything I made for you.</Trans> : undefined}
+          subtitle={<Trans>Everything I made for you.</Trans>}
           action={
-            view === "made" && total > 0 ? (
+            total > 0 ? (
               <SegmentedControl
                 label={t`Kind`}
                 value={selectedKind}

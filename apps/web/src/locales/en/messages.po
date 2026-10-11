@@ -23,10 +23,6 @@ msgstr "{0, plural, one {# failed attempt} other {# failed attempts}}"
 msgid "{0, plural, one {# fork} other {# forks}}"
 msgstr "{0, plural, one {# fork} other {# forks}}"
 
-#. placeholder {0}: group.entries.length
-msgid "{0, plural, one {# model} other {# models}}"
-msgstr "{0, plural, one {# model} other {# models}}"
-
 #. placeholder {0}: stats.opensTotal
 msgid "{0, plural, one {# open} other {# opens}}"
 msgstr "{0, plural, one {# open} other {# opens}}"
@@ -47,21 +43,9 @@ msgstr "{0} (max {ATTACHMENT_MAX_COUNT} attachments)"
 msgid "{0} (over 10 MiB)"
 msgstr "{0} (over 10 MiB)"
 
-#. placeholder {0}: preset.n
-msgid "{0} {unitLabel}"
-msgstr "{0} {unitLabel}"
-
-#. placeholder {0}: bot.name
-msgid "{0} default"
-msgstr "{0} default"
-
 #. placeholder {0}: targets.length
 msgid "{0} elements"
 msgstr "{0} elements"
-
-#. placeholder {0}: sender.name
-msgid "{0} handling"
-msgstr "{0} handling"
 
 #. placeholder {0}: automation.name
 msgid "{0} is on"
@@ -83,19 +67,6 @@ msgstr "{0} more open"
 msgid "{0} open"
 msgstr "{0} open"
 
-#. placeholder {0}: sender.name
-msgid "{0} rollup hours"
-msgstr "{0} rollup hours"
-
-#. placeholder {0}: usage.runs
-#. placeholder {1}: usage.inputTokens + usage.outputTokens
-msgid "{0} runs · {1} tokens"
-msgstr "{0} runs · {1} tokens"
-
-#. placeholder {0}: bot.name
-msgid "{0} will still respond to direct mentions."
-msgstr "{0} will still respond to direct mentions."
-
 msgid "{count, plural, one {# reply} other {# replies}}"
 msgstr "{count, plural, one {# reply} other {# replies}}"
 
@@ -107,9 +78,6 @@ msgstr "{hours}h ago"
 
 msgid "{minutes}m ago"
 msgstr "{minutes}m ago"
-
-msgid "{muses} Muses"
-msgstr "{muses} Muses"
 
 msgid "{n} cells"
 msgstr "{n} cells"
@@ -145,9 +113,6 @@ msgstr "{spent} of {0}"
 msgid "{steps, plural, one {# step} other {# steps}}"
 msgstr "{steps, plural, one {# step} other {# steps}}"
 
-msgid "{toolCount, plural, one {# tool} other {# tools}}"
-msgstr "{toolCount, plural, one {# tool} other {# tools}}"
-
 msgid "{unloaded, plural, one {# fork in earlier history} other {# forks in earlier history}}"
 msgstr "{unloaded, plural, one {# fork in earlier history} other {# forks in earlier history}}"
 
@@ -167,54 +132,14 @@ msgstr "••••{hint} · Needs attention"
 msgid "1 cell"
 msgstr "1 cell"
 
-msgid "A Conversation on the Superchat Computer stays there."
-msgstr "A Conversation on the Superchat Computer stays there."
-
-msgid "About groups"
-msgstr "About groups"
-
-msgid "About spaces"
-msgstr "About spaces"
-
 msgid "About you"
 msgstr "About you"
-
-msgid "Access token"
-msgstr "Access token"
-
-msgid "Access token (optional)"
-msgstr "Access token (optional)"
 
 msgid "Account"
 msgstr "Account"
 
-msgid "Account default"
-msgstr "Account default"
-
-msgid "Account label"
-msgstr "Account label"
-
-msgid "Accounts"
-msgstr "Accounts"
-
-msgid "Action confirmations"
-msgstr "Action confirmations"
-
-#. placeholder {0}: bot.name
-msgid "Actions for {0}"
-msgstr "Actions for {0}"
-
-msgid "Active"
-msgstr "Active"
-
-msgid "Active model"
-msgstr "Active model"
-
 msgid "Activity"
 msgstr "Activity"
-
-msgid "Add"
-msgstr "Add"
 
 msgid "Add a key in Settings to choose a model."
 msgstr "Add a key in Settings to choose a model."
@@ -222,71 +147,11 @@ msgstr "Add a key in Settings to choose a model."
 msgid "Add a key to choose a model."
 msgstr "Add a key to choose a model."
 
-msgid "Add a model in Settings to use this."
-msgstr "Add a model in Settings to use this."
-
-msgid "Add a run time for this one-shot."
-msgstr "Add a run time for this one-shot."
-
-msgid "Add a schedule, webhook, GitHub, or message trigger"
-msgstr "Add a schedule, webhook, GitHub, or message trigger"
-
-msgid "Add a schedule, webhook, GitHub, or message trigger to run this routine."
-msgstr "Add a schedule, webhook, GitHub, or message trigger to run this routine."
-
-msgid "Add a server name."
-msgstr "Add a server name."
-
-msgid "Add a stdio command."
-msgstr "Add a stdio command."
-
-msgid "Add an HTTPS server URL."
-msgstr "Add an HTTPS server URL."
-
-msgid "Add another"
-msgstr "Add another"
-
-msgid "Add Executor"
-msgstr "Add Executor"
-
-msgid "Add GraphQL"
-msgstr "Add GraphQL"
-
-msgid "Add GraphQL endpoint"
-msgstr "Add GraphQL endpoint"
-
-msgid "Add item"
-msgstr "Add item"
-
 msgid "Add key"
 msgstr "Add key"
 
-msgid "Add MCP server"
-msgstr "Add MCP server"
-
-msgid "Add OpenAPI"
-msgstr "Add OpenAPI"
-
-msgid "Add remote MCP server"
-msgstr "Add remote MCP server"
-
-msgid "Add server"
-msgstr "Add server"
-
-msgid "Add server URL"
-msgstr "Add server URL"
-
-msgid "Add this computer"
-msgstr "Add this computer"
-
 msgid "Add to Conversation"
 msgstr "Add to Conversation"
-
-msgid "Add Treg"
-msgstr "Add Treg"
-
-msgid "Add trigger"
-msgstr "Add trigger"
 
 msgid "Add your API key"
 msgstr "Add your API key"
@@ -303,17 +168,8 @@ msgstr "Added to your Library"
 msgid "Added to your message"
 msgstr "Added to your message"
 
-msgid "Adding…"
-msgstr "Adding…"
-
 msgid "Address"
 msgstr "Address"
-
-msgid "Advanced"
-msgstr "Advanced"
-
-msgid "Advanced..."
-msgstr "Advanced..."
 
 msgid "After a day"
 msgstr "After a day"
@@ -323,12 +179,6 @@ msgstr "After a month"
 
 msgid "After a week"
 msgstr "After a week"
-
-msgid "Agent connections"
-msgstr "Agent connections"
-
-msgid "Agents:"
-msgstr "Agents:"
 
 msgid "Align center"
 msgstr "Align center"
@@ -351,47 +201,17 @@ msgstr "All forks"
 msgid "All time"
 msgstr "All time"
 
-#. placeholder {0}: rule.matchValue
-msgid "Allow {0} actions without asking"
-msgstr "Allow {0} actions without asking"
-
-#. placeholder {0}: rule.matchValue
-msgid "Allow {0} connector without asking"
-msgstr "Allow {0} connector without asking"
-
-#. placeholder {0}: rule.matchValue
-msgid "Allow {0} without asking"
-msgstr "Allow {0} without asking"
-
-msgid "Allow email actions without asking"
-msgstr "Allow email actions without asking"
-
 msgid "Allow once"
 msgstr "Allow once"
 
-msgid "Allow purchase actions without asking"
-msgstr "Allow purchase actions without asking"
-
-msgid "Allowed domains"
-msgstr "Allowed domains"
-
 msgid "Allowed once"
 msgstr "Allowed once"
-
-msgid "Already have an account?"
-msgstr "Already have an account?"
-
-msgid "Always act"
-msgstr "Always act"
 
 msgid "Always allow this tool"
 msgstr "Always allow this tool"
 
 msgid "Always allowed"
 msgstr "Always allowed"
-
-msgid "And what would you like to call me?"
-msgstr "And what would you like to call me?"
 
 msgid "Answer"
 msgstr "Answer"
@@ -415,35 +235,14 @@ msgstr "Anyone with the link"
 msgid "API key"
 msgstr "API key"
 
-msgid "API key header"
-msgstr "API key header"
-
 msgid "API keys"
 msgstr "API keys"
 
 msgid "Appearance"
 msgstr "Appearance"
 
-msgid "Applies from your next message."
-msgstr "Applies from your next message."
-
-msgid "Approval"
-msgstr "Approval"
-
 msgid "Approvals"
 msgstr "Approvals"
-
-msgid "Approvals choose which actions wait for your OK."
-msgstr "Approvals choose which actions wait for your OK."
-
-msgid "Approve"
-msgstr "Approve"
-
-msgid "Approve this server to let your agent use its tools."
-msgstr "Approve this server to let your agent use its tools."
-
-msgid "Approve unverified emails only after confirming the person another way."
-msgstr "Approve unverified emails only after confirming the person another way."
 
 msgid "Apps superchat builds for you will appear here."
 msgstr "Apps superchat builds for you will appear here."
@@ -460,9 +259,6 @@ msgstr "Archive side chats"
 msgid "Archived"
 msgstr "Archived"
 
-msgid "Arguments"
-msgstr "Arguments"
-
 msgid "Artifact"
 msgstr "Artifact"
 
@@ -471,30 +267,6 @@ msgstr "Artifacts"
 
 msgid "Ask about this message"
 msgstr "Ask about this message"
-
-#. placeholder {0}: rule.matchValue
-msgid "Ask before {0}"
-msgstr "Ask before {0}"
-
-#. placeholder {0}: rule.matchValue
-msgid "Ask before {0} actions"
-msgstr "Ask before {0} actions"
-
-#. placeholder {0}: rule.matchValue
-msgid "Ask before {0} connector"
-msgstr "Ask before {0} connector"
-
-msgid "Ask before email actions"
-msgstr "Ask before email actions"
-
-msgid "Ask before purchase actions"
-msgstr "Ask before purchase actions"
-
-msgid "Ask before purchases"
-msgstr "Ask before purchases"
-
-msgid "Ask before sending external email"
-msgstr "Ask before sending external email"
 
 msgid "Ask me"
 msgstr "Ask me"
@@ -511,18 +283,8 @@ msgstr "Ask superchat about {label}"
 msgid "Ask superchat instead"
 msgstr "Ask superchat instead"
 
-msgid "Ask the server owner to configure this provider."
-msgstr "Ask the server owner to configure this provider."
-
 msgid "At"
 msgstr "At"
-
-#. placeholder {0}: preset.time
-msgid "at {0}"
-msgstr "at {0}"
-
-msgid "at {timeSelect}"
-msgstr "at {timeSelect}"
 
 msgid "At the limit"
 msgstr "At the limit"
@@ -545,38 +307,11 @@ msgstr "Attach file"
 msgid "Attachment"
 msgstr "Attachment"
 
-msgid "Authorization code or callback URL"
-msgstr "Authorization code or callback URL"
-
-msgid "Authorize"
-msgstr "Authorize"
-
-msgid "Authorize this server so agents can use its tools. A popup opens."
-msgstr "Authorize this server so agents can use its tools. A popup opens."
-
-msgid "Automated senders"
-msgstr "Automated senders"
-
-msgid "Automated senders will appear after they post here."
-msgstr "Automated senders will appear after they post here."
-
 msgid "Automatic"
 msgstr "Automatic"
 
 msgid "Automations"
 msgstr "Automations"
-
-msgid "Available after the routine is saved"
-msgstr "Available after the routine is saved"
-
-msgid "Avatars"
-msgstr "Avatars"
-
-msgid "Back"
-msgstr "Back"
-
-msgid "Back to sign in"
-msgstr "Back to sign in"
 
 msgid "Back to steps"
 msgstr "Back to steps"
@@ -586,9 +321,6 @@ msgstr "Back to the conversation"
 
 msgid "Background"
 msgstr "Background"
-
-msgid "Bearer token"
-msgstr "Bearer token"
 
 msgid "Bold"
 msgstr "Bold"
@@ -600,38 +332,20 @@ msgstr "Bot"
 msgid "Bot"
 msgstr "Bot"
 
-msgid "Bot to link"
-msgstr "Bot to link"
-
 msgid "Bots"
 msgstr "Bots"
-
-msgid "Bots act without asking by default. Add an exception only when you want to review a type of action first."
-msgstr "Bots act without asking by default. Add an exception only when you want to review a type of action first."
 
 msgid "Box"
 msgstr "Box"
 
-msgid "Browse MCP servers"
-msgstr "Browse MCP servers"
-
 msgid "Budget"
 msgstr "Budget"
-
-msgid "Built-in skills can't be edited."
-msgstr "Built-in skills can't be edited."
-
-msgid "Call"
-msgstr "Call"
 
 msgid "Can't reach the server."
 msgstr "Can't reach the server."
 
 msgid "Cancel"
 msgstr "Cancel"
-
-msgid "Cancel new bot"
-msgstr "Cancel new bot"
 
 msgid "Cancel reply"
 msgstr "Cancel reply"
@@ -645,15 +359,6 @@ msgstr "Cancelled"
 msgid "Card view"
 msgstr "Card view"
 
-msgid "Change password"
-msgstr "Change password"
-
-msgid "Changing…"
-msgstr "Changing…"
-
-msgid "Channels"
-msgstr "Channels"
-
 msgid "Chart"
 msgstr "Chart"
 
@@ -665,12 +370,6 @@ msgstr "Chart unavailable"
 
 msgid "Chat"
 msgstr "Chat"
-
-msgid "Chat apps"
-msgstr "Chat apps"
-
-msgid "Chat apps, group channels, and agent connections."
-msgstr "Chat apps, group channels, and agent connections."
 
 msgid "Chat Settings"
 msgstr "Chat Settings"
@@ -688,23 +387,8 @@ msgstr "Chats"
 msgid "Check for updates"
 msgstr "Check for updates"
 
-msgid "Check in."
-msgstr "Check in."
-
-msgid "Check your email"
-msgstr "Check your email"
-
 msgid "Checking…"
 msgstr "Checking…"
-
-msgid "Choose a bot…"
-msgstr "Choose a bot…"
-
-msgid "Choose a new password"
-msgstr "Choose a new password"
-
-msgid "Choose which connected model superchat uses."
-msgstr "Choose which connected model superchat uses."
 
 msgid "Clear"
 msgstr "Clear"
@@ -722,12 +406,6 @@ msgstr "Clearing…"
 msgid "Click an element to edit it."
 msgstr "Click an element to edit it."
 
-msgid "Client ID"
-msgstr "Client ID"
-
-msgid "Client secret"
-msgstr "Client secret"
-
 msgid "Close"
 msgstr "Close"
 
@@ -739,15 +417,6 @@ msgstr "Close dashboard"
 
 msgid "Close image preview"
 msgstr "Close image preview"
-
-msgid "Close integrations"
-msgstr "Close integrations"
-
-msgid "Close MCP servers"
-msgstr "Close MCP servers"
-
-msgid "Close messaging settings"
-msgstr "Close messaging settings"
 
 msgid "Close model settings"
 msgstr "Close model settings"
@@ -761,12 +430,6 @@ msgstr "Close preview"
 msgid "Close user settings"
 msgstr "Close user settings"
 
-msgid "Close voice settings"
-msgstr "Close voice settings"
-
-msgid "Closed"
-msgstr "Closed"
-
 msgid "Code"
 msgstr "Code"
 
@@ -779,102 +442,17 @@ msgstr "Collapse slides"
 msgid "Color"
 msgstr "Color"
 
-msgid "Coming soon"
-msgstr "Coming soon"
-
-msgid "Command"
-msgstr "Command"
-
 msgid "Commitments"
 msgstr "Commitments"
-
-msgid "Complete"
-msgstr "Complete"
 
 msgid "Computer"
 msgstr "Computer"
 
-msgid "Configure a plugin catalog on the server to connect apps."
-msgstr "Configure a plugin catalog on the server to connect apps."
-
-msgid "Configured by deployment"
-msgstr "Configured by deployment"
-
-msgid "Configured servers"
-msgstr "Configured servers"
-
-msgid "Confirm delete"
-msgstr "Confirm delete"
-
-msgid "Confirm password"
-msgstr "Confirm password"
-
-msgid "Connect"
-msgstr "Connect"
-
-#. placeholder {0}: selected.name
-msgid "Connect {0}"
-msgstr "Connect {0}"
-
-msgid "Connect API key"
-msgstr "Connect API key"
-
-msgid "Connect Executor"
-msgstr "Connect Executor"
-
-msgid "Connect MCP server “{name}”"
-msgstr "Connect MCP server “{name}”"
-
-msgid "Connect OAuth"
-msgstr "Connect OAuth"
-
-msgid "Connect this provider to use it as your personal model."
-msgstr "Connect this provider to use it as your personal model."
-
-msgid "Connect Treg"
-msgstr "Connect Treg"
-
 msgid "Connected"
 msgstr "Connected"
 
-#. placeholder {0}: credential.label
-msgid "Connected · {0}"
-msgstr "Connected · {0}"
-
-#. placeholder {0}: selected.name
-msgid "Connected {0}."
-msgstr "Connected {0}."
-
-#. placeholder {0}: selected.label
-#. placeholder {0}: selectedLabelRef.current ?? "this model"
-msgid "Connected and using {0}."
-msgstr "Connected and using {0}."
-
-msgid "Connected. Its tools are available from your next message."
-msgstr "Connected. Its tools are available from your next message."
-
 msgid "Connecting…"
 msgstr "Connecting…"
-
-#. placeholder {0}: item.name
-msgid "Connection to {0} is still pending. You can close this and check again."
-msgstr "Connection to {0} is still pending. You can close this and check again."
-
-msgid "Context limit"
-msgstr "Context limit"
-
-msgid "Continue"
-msgstr "Continue"
-
-msgid "Continue in Background"
-msgstr "Continue in Background"
-
-#. placeholder {0}: caps.sso.name
-msgid "Continue with {0}"
-msgstr "Continue with {0}"
-
-msgid "Continue with email"
-msgstr "Continue with email"
 
 msgid "Conversation"
 msgstr "Conversation"
@@ -894,107 +472,20 @@ msgstr "Copy message"
 msgid "Corner radius"
 msgstr "Corner radius"
 
-msgid "Could not add"
-msgstr "Could not add"
-
-msgid "Could not add MCP server"
-msgstr "Could not add MCP server"
-
-msgid "Could not approve this person."
-msgstr "Could not approve this person."
-
-msgid "Could not approve this server"
-msgstr "Could not approve this server"
-
-msgid "Could not change password"
-msgstr "Could not change password"
-
-msgid "Could not change the default model"
-msgstr "Could not change the default model"
-
-msgid "Could not change this."
-msgstr "Could not change this."
-
 msgid "Could not clear conversation"
 msgstr "Could not clear conversation"
-
-msgid "Could not complete action"
-msgstr "Could not complete action"
-
-msgid "Could not complete OAuth"
-msgstr "Could not complete OAuth"
 
 msgid "Could not complete the update. Try again."
 msgstr "Could not complete the update. Try again."
 
-msgid "Could not connect"
-msgstr "Could not connect"
-
-msgid "Could not connect this provider"
-msgstr "Could not connect this provider"
-
-msgid "Could not connect this service."
-msgstr "Could not connect this service."
-
-msgid "Could not connect this voice provider"
-msgstr "Could not connect this voice provider"
-
-msgid "Could not continue"
-msgstr "Could not continue"
-
-msgid "Could not create bot"
-msgstr "Could not create bot"
-
-msgid "Could not create section"
-msgstr "Could not create section"
-
-msgid "Could not create space"
-msgstr "Could not create space"
-
-msgid "Could not create your bot"
-msgstr "Could not create your bot"
-
 msgid "Could not delete"
 msgstr "Could not delete"
-
-msgid "Could not delete bot"
-msgstr "Could not delete bot"
-
-msgid "Could not delete group"
-msgstr "Could not delete group"
-
-msgid "Could not delete MCP server"
-msgstr "Could not delete MCP server"
-
-msgid "Could not delete routine"
-msgstr "Could not delete routine"
-
-msgid "Could not delete skill"
-msgstr "Could not delete skill"
-
-msgid "Could not delete space"
-msgstr "Could not delete space"
 
 msgid "Could not delete this artifact."
 msgstr "Could not delete this artifact."
 
 msgid "Could not delete this."
 msgstr "Could not delete this."
-
-msgid "Could not delete."
-msgstr "Could not delete."
-
-msgid "Could not discard the previous space."
-msgstr "Could not discard the previous space."
-
-msgid "Could not disconnect OAuth"
-msgstr "Could not disconnect OAuth"
-
-msgid "Could not disconnect this voice provider"
-msgstr "Could not disconnect this voice provider"
-
-msgid "Could not disconnect."
-msgstr "Could not disconnect."
 
 #. placeholder {0}: props.name
 msgid "Could not download {0}. Try again."
@@ -1006,158 +497,44 @@ msgstr "Could not download {name}. Try again."
 msgid "Could not download this."
 msgstr "Could not download this."
 
-msgid "Could not install connector"
-msgstr "Could not install connector"
-
-msgid "Could not load"
-msgstr "Could not load"
-
 msgid "Could not load Activity"
 msgstr "Could not load Activity"
-
-msgid "Could not load approval rules"
-msgstr "Could not load approval rules"
 
 msgid "Could not load artifacts."
 msgstr "Could not load artifacts."
 
-msgid "Could not load bots. Reload to try again."
-msgstr "Could not load bots. Reload to try again."
-
-msgid "Could not load integrations"
-msgstr "Could not load integrations"
-
-msgid "Could not load MCP servers"
-msgstr "Could not load MCP servers"
-
 msgid "Could not load Memory"
 msgstr "Could not load Memory"
-
-msgid "Could not load model settings"
-msgstr "Could not load model settings"
 
 msgid "Could not load models."
 msgstr "Could not load models."
 
-msgid "Could not load signups."
-msgstr "Could not load signups."
-
-msgid "Could not load skill"
-msgstr "Could not load skill"
-
-msgid "Could not load skills."
-msgstr "Could not load skills."
-
 msgid "Could not load this artifact."
 msgstr "Could not load this artifact."
-
-msgid "Could not load this chat."
-msgstr "Could not load this chat."
 
 msgid "Could not load this file."
 msgstr "Could not load this file."
 
-msgid "Could not load this service."
-msgstr "Could not load this service."
-
 msgid "Could not load this."
 msgstr "Could not load this."
-
-msgid "Could not load voice settings"
-msgstr "Could not load voice settings"
-
-msgid "Could not load voice settings."
-msgstr "Could not load voice settings."
 
 msgid "Could not load your Library."
 msgstr "Could not load your Library."
 
-msgid "Could not open local settings. Start the local server and create its owner account, then try again."
-msgstr "Could not open local settings. Start the local server and create its owner account, then try again."
-
-msgid "Could not open this skill."
-msgstr "Could not open this skill."
-
-msgid "Could not play a sample."
-msgstr "Could not play a sample."
-
-msgid "Could not play a test clip"
-msgstr "Could not play a test clip"
-
 msgid "Could not publish this."
 msgstr "Could not publish this."
-
-msgid "Could not reach the server"
-msgstr "Could not reach the server"
-
-msgid "Could not reach this model server"
-msgstr "Could not reach this model server"
-
-msgid "Could not reject this person."
-msgstr "Could not reject this person."
-
-msgid "Could not remove"
-msgstr "Could not remove"
-
-msgid "Could not remove connector"
-msgstr "Could not remove connector"
-
-msgid "Could not remove rule"
-msgstr "Could not remove rule"
 
 msgid "Could not remove this key."
 msgstr "Could not remove this key."
 
-msgid "Could not rename connection"
-msgstr "Could not rename connection"
-
-msgid "Could not rename section"
-msgstr "Could not rename section"
-
 msgid "Could not render chart"
 msgstr "Could not render chart"
-
-msgid "Could not reset password"
-msgstr "Could not reset password"
-
-msgid "Could not restore the previous space."
-msgstr "Could not restore the previous space."
 
 msgid "Could not revoke"
 msgstr "Could not revoke"
 
-msgid "Could not revoke connection"
-msgstr "Could not revoke connection"
-
-msgid "Could not run routine"
-msgstr "Could not run routine"
-
 msgid "Could not save"
 msgstr "Could not save"
-
-msgid "Could not save Auto Review"
-msgstr "Could not save Auto Review"
-
-msgid "Could not save model"
-msgstr "Could not save model"
-
-msgid "Could not save routine"
-msgstr "Could not save routine"
-
-msgid "Could not save rule"
-msgstr "Could not save rule"
-
-msgid "Could not save skill"
-msgstr "Could not save skill"
-
-msgid "Could not save that choice"
-msgstr "Could not save that choice"
-
-msgid "Could not save that voice"
-msgstr "Could not save that voice"
-
-msgid "Could not save that voice."
-msgstr "Could not save that voice."
 
 msgid "Could not save the budget."
 msgstr "Could not save the budget."
@@ -1174,44 +551,17 @@ msgstr "Could not save this key."
 msgid "Could not save this."
 msgstr "Could not save this."
 
-msgid "Could not save your name"
-msgstr "Could not save your name"
-
 msgid "Could not save."
 msgstr "Could not save."
 
 msgid "Could not save. Try again."
 msgstr "Could not save. Try again."
 
-msgid "Could not search catalog"
-msgstr "Could not search catalog"
-
-msgid "Could not send a code"
-msgstr "Could not send a code"
-
-msgid "Could not send reset email"
-msgstr "Could not send reset email"
-
-msgid "Could not send that"
-msgstr "Could not send that"
-
-msgid "Could not start OAuth"
-msgstr "Could not start OAuth"
-
 msgid "Could not submit this answer"
 msgstr "Could not submit this answer"
 
 msgid "Could not switch model."
 msgstr "Could not switch model."
-
-msgid "Could not update"
-msgstr "Could not update"
-
-msgid "Could not update agent access"
-msgstr "Could not update agent access"
-
-msgid "Could not update computer"
-msgstr "Could not update computer"
 
 msgid "Could not upload this."
 msgstr "Could not upload this."
@@ -1222,17 +572,11 @@ msgstr "Couldn't index"
 msgid "Couldn't load"
 msgstr "Couldn't load"
 
-msgid "Couldn't load messaging settings"
-msgstr "Couldn't load messaging settings"
-
 msgid "Couldn't load the themes. Try again in a moment."
 msgstr "Couldn't load the themes. Try again in a moment."
 
 msgid "Couldn't load this look. Try again in a moment."
 msgstr "Couldn't load this look. Try again in a moment."
-
-msgid "Couldn't move there."
-msgstr "Couldn't move there."
 
 msgid "Couldn't open this sheet."
 msgstr "Couldn't open this sheet."
@@ -1259,45 +603,14 @@ msgstr "Couldn't run"
 msgid "Couldn't save that change."
 msgstr "Couldn't save that change."
 
-msgid "Couldn't switch the harness."
-msgstr "Couldn't switch the harness."
-
 msgid "Couldn't switch the theme."
 msgstr "Couldn't switch the theme."
-
-msgid "Couldn't update avatars"
-msgstr "Couldn't update avatars"
-
-msgid "Couldn't update messaging settings"
-msgstr "Couldn't update messaging settings"
-
-msgid "Create"
-msgstr "Create"
-
-#. placeholder {0}: bot.name
-msgid "Create a section and move {0} into it."
-msgstr "Create a section and move {0} into it."
-
-msgid "Create account"
-msgstr "Create account"
 
 msgid "Create automation"
 msgstr "Create automation"
 
-msgid "Create new Bot"
-msgstr "Create new Bot"
-
-msgid "Create new Group"
-msgstr "Create new Group"
-
-msgid "Create new Space"
-msgstr "Create new Space"
-
 msgid "Create one and I'll run it on its own, every day, week or month."
 msgstr "Create one and I'll run it on its own, every day, week or month."
-
-msgid "Create Routine"
-msgstr "Create Routine"
 
 msgid "Create space"
 msgstr "Create space"
@@ -1305,41 +618,14 @@ msgstr "Create space"
 msgid "Created"
 msgstr "Created"
 
-msgid "Created {created}"
-msgstr "Created {created}"
-
-msgid "Creating…"
-msgstr "Creating…"
-
-msgid "Credential"
-msgstr "Credential"
-
-msgid "credential saved"
-msgstr "credential saved"
-
-msgid "Credentials are encrypted and never sent to the model."
-msgstr "Credentials are encrypted and never sent to the model."
-
-msgid "Cron"
-msgstr "Cron"
-
-msgid "Cron expression"
-msgstr "Cron expression"
-
 msgid "Current look"
 msgstr "Current look"
-
-msgid "Current password"
-msgstr "Current password"
 
 msgid "Custom"
 msgstr "Custom"
 
 msgid "Custom color"
 msgstr "Custom color"
-
-msgid "Customer support"
-msgstr "Customer support"
 
 msgid "Daily"
 msgstr "Daily"
@@ -1356,17 +642,11 @@ msgstr "Dashboard"
 msgid "Dashboard unavailable"
 msgstr "Dashboard unavailable"
 
-msgid "day"
-msgstr "day"
-
 msgid "Day of the month"
 msgstr "Day of the month"
 
 msgid "Day of the week"
 msgstr "Day of the week"
-
-msgid "days"
-msgstr "days"
 
 msgid "Days"
 msgstr "Days"
@@ -1380,9 +660,6 @@ msgstr "Decisions"
 msgid "Decks"
 msgstr "Decks"
 
-msgid "Decline"
-msgstr "Decline"
-
 msgid "Default"
 msgstr "Default"
 
@@ -1392,10 +669,6 @@ msgstr "Default · {0}"
 
 msgid "Default · {defaultLabel}"
 msgstr "Default · {defaultLabel}"
-
-#. placeholder {0}: thinkingLevelLabel(defaultThinkingLevel)
-msgid "Default ({0})"
-msgstr "Default ({0})"
 
 msgid "Default model"
 msgstr "Default model"
@@ -1414,17 +687,6 @@ msgstr "Delete \"{0}\"?"
 msgid "Delete {0}"
 msgstr "Delete {0}"
 
-#. placeholder {0}: bot.name
-#. placeholder {0}: item.name
-msgid "Delete {0}?"
-msgstr "Delete {0}?"
-
-msgid "Delete memories too"
-msgstr "Delete memories too"
-
-msgid "Delete this skill?"
-msgstr "Delete this skill?"
-
 msgid "Deleting…"
 msgstr "Deleting…"
 
@@ -1433,12 +695,6 @@ msgstr "Denied"
 
 msgid "Deny"
 msgstr "Deny"
-
-msgid "Deployment default"
-msgstr "Deployment default"
-
-msgid "Describe what this bot does"
-msgstr "Describe what this bot does"
 
 msgid "Description"
 msgstr "Description"
@@ -1458,47 +714,14 @@ msgstr "Didn't finish"
 msgid "Didn’t send. Try again"
 msgstr "Didn’t send. Try again"
 
-msgid "Direct MCP"
-msgstr "Direct MCP"
-
-msgid "Discard"
-msgstr "Discard"
-
-msgid "Discard the previous space?"
-msgstr "Discard the previous space?"
-
-msgid "Disconnect"
-msgstr "Disconnect"
-
-msgid "Disconnecting…"
-msgstr "Disconnecting…"
-
 msgid "Dismiss"
 msgstr "Dismiss"
 
 msgid "Dismiss error"
 msgstr "Dismiss error"
 
-msgid "Dismissed. Reconnect anytime from MCP settings."
-msgstr "Dismissed. Reconnect anytime from MCP settings."
-
-msgid "Display name"
-msgstr "Display name"
-
-msgid "Docker"
-msgstr "Docker"
-
-msgid "Docker limits access to your computer for added security. Using {hostLabel} lets bots work with your local files and tools."
-msgstr "Docker limits access to your computer for added security. Using {hostLabel} lets bots work with your local files and tools."
-
 msgid "Documents"
 msgstr "Documents"
-
-msgid "Domain"
-msgstr "Domain"
-
-msgid "Don’t have an account?"
-msgstr "Don’t have an account?"
 
 msgid "Done"
 msgstr "Done"
@@ -1514,17 +737,11 @@ msgstr "Download {0}"
 msgid "Download {name}"
 msgstr "Download {name}"
 
-msgid "Download Executor"
-msgstr "Download Executor"
-
 msgid "Downloading…"
 msgstr "Downloading…"
 
 msgid "Duplicate"
 msgstr "Duplicate"
-
-msgid "e.g. Hivenet Agent, Presales, Timesheets bot"
-msgstr "e.g. Hivenet Agent, Presales, Timesheets bot"
 
 msgid "Earlier"
 msgstr "Earlier"
@@ -1538,9 +755,6 @@ msgstr "Edit first"
 msgid "Edit memory"
 msgstr "Edit memory"
 
-msgid "Edit Profile"
-msgstr "Edit Profile"
-
 msgid "Edited by you"
 msgstr "Edited by you"
 
@@ -1550,57 +764,11 @@ msgstr "Editorial"
 msgid "Email"
 msgstr "Email"
 
-msgid "Email me a code"
-msgstr "Email me a code"
-
-msgid "Email not verified"
-msgstr "Email not verified"
-
-msgid "Engage when... Ignore..."
-msgstr "Engage when... Ignore..."
-
-msgid "Enter a whole number from 1 to {MAX_MODEL_CONTEXT_WINDOW} for the context limit."
-msgstr "Enter a whole number from 1 to {MAX_MODEL_CONTEXT_WINDOW} for the context limit."
-
-msgid "Enter a whole number from 1 to {MAX_MODEL_MAX_TOKENS} for maximum output tokens."
-msgstr "Enter a whole number from 1 to {MAX_MODEL_MAX_TOKENS} for maximum output tokens."
-
-msgid "Enter a whole number from 1 to 1000 for the image limit."
-msgstr "Enter a whole number from 1 to 1000 for the image limit."
-
-#. placeholder {0}: oauth.verificationUri.replace(/^https:\/\//, "")
-msgid "Enter this code at <0>{0}</0>"
-msgstr "Enter this code at <0>{0}</0>"
-
 msgid "Enter to save · Esc to cancel"
 msgstr "Enter to save · Esc to cancel"
 
-msgid "Every"
-msgstr "Every"
-
-msgid "every {intervalAmountSelect} {intervalUnitSelect}"
-msgstr "every {intervalAmountSelect} {intervalUnitSelect}"
-
-msgid "Every day"
-msgstr "Every day"
-
-msgid "Every hour"
-msgstr "Every hour"
-
-msgid "Every Monday"
-msgstr "Every Monday"
-
-msgid "Every month"
-msgstr "Every month"
-
-msgid "Every week"
-msgstr "Every week"
-
 msgid "Everything I made for you."
 msgstr "Everything I made for you."
-
-msgid "Executor token"
-msgstr "Executor token"
 
 msgid "Exit full screen"
 msgstr "Exit full screen"
@@ -1630,17 +798,8 @@ msgstr "Expired"
 msgid "Explore"
 msgstr "Explore"
 
-msgid "Export"
-msgstr "Export"
-
 msgid "Exported by you"
 msgstr "Exported by you"
-
-msgid "External conversation"
-msgstr "External conversation"
-
-msgid "Extra high"
-msgstr "Extra high"
 
 msgid "failed"
 msgstr "failed"
@@ -1691,16 +850,6 @@ msgstr "Filters"
 msgid "Find a memory"
 msgstr "Find a memory"
 
-msgid "Find models"
-msgstr "Find models"
-
-msgid "Finding…"
-msgstr "Finding…"
-
-#. placeholder {0}: new URL(oauth.verificationUri).hostname
-msgid "Finish signing in at <0>{0}</0>. The final page may not load; paste its URL or code here."
-msgstr "Finish signing in at <0>{0}</0>. The final page may not load; paste its URL or code here."
-
 msgid "finished"
 msgstr "finished"
 
@@ -1711,19 +860,6 @@ msgstr "Finished"
 msgid "Finished."
 msgstr "Finished."
 
-msgid "Finishing MCP connection…"
-msgstr "Finishing MCP connection…"
-
-msgid "First, what should I call you?"
-msgstr "First, what should I call you?"
-
-msgid "Flag unexpected actions"
-msgstr "Flag unexpected actions"
-
-#. placeholder {0}: runner.name
-msgid "Folder on {0}"
-msgstr "Folder on {0}"
-
 msgid "Font"
 msgstr "Font"
 
@@ -1733,9 +869,6 @@ msgstr "Font size"
 msgid "Forget"
 msgstr "Forget"
 
-msgid "Forgot password?"
-msgstr "Forgot password?"
-
 msgid "Fork"
 msgstr "Fork"
 
@@ -1744,9 +877,6 @@ msgstr "Fork any message to explore it on the side."
 
 msgid "Forks"
 msgstr "Forks"
-
-msgid "Free"
-msgstr "Free"
 
 #. placeholder {0}: fork.anchorText
 #. placeholder {0}: row.anchorText
@@ -1766,74 +896,23 @@ msgstr "Fullscreen"
 msgid "General"
 msgstr "General"
 
-msgid "Get credentials"
-msgstr "Get credentials"
-
-msgid "Get notified when this Bot finishes or needs input"
-msgstr "Get notified when this Bot finishes or needs input"
-
-msgid "Get started"
-msgstr "Get started"
-
-msgid "Getting ready"
-msgstr "Getting ready"
-
-msgid "Git event"
-msgstr "Git event"
-
 msgid "Goes to your vault, not the chat."
 msgstr "Goes to your vault, not the chat."
 
 msgid "Got it"
 msgstr "Got it"
 
-msgid "Group"
-msgstr "Group"
-
-msgid "Group updates"
-msgstr "Group updates"
-
-msgid "Groups"
-msgstr "Groups"
-
-msgid "Hang up"
-msgstr "Hang up"
-
-msgid "Hang up first, then enter the code on screen."
-msgstr "Hang up first, then enter the code on screen."
-
-msgid "Hang up, then enter the code on screen."
-msgstr "Hang up, then enter the code on screen."
-
 msgid "Harness"
 msgstr "Harness"
 
-msgid "header"
-msgstr "header"
-
-msgid "Header name"
-msgstr "Header name"
-
-msgid "Header value"
-msgstr "Header value"
-
 msgid "Heading"
 msgstr "Heading"
-
-msgid "Hear a sample"
-msgstr "Hear a sample"
 
 msgid "Height"
 msgstr "Height"
 
 msgid "Hi {name}, what can superchat <0>build with you?</0>"
 msgstr "Hi {name}, what can superchat <0>build with you?</0>"
-
-msgid "Hi, I'm Superchat — <0>already on it.</0>"
-msgstr "Hi, I'm Superchat — <0>already on it.</0>"
-
-msgid "Hi, this is how I'll sound when I read replies out loud."
-msgstr "Hi, this is how I'll sound when I read replies out loud."
 
 msgid "Hide"
 msgstr "Hide"
@@ -1843,27 +922,6 @@ msgstr "Hide activity"
 
 msgid "Hide hidden files"
 msgstr "Hide hidden files"
-
-msgid "Hide password"
-msgstr "Hide password"
-
-msgid "High"
-msgstr "High"
-
-msgid "Home folder"
-msgstr "Home folder"
-
-msgid "Host"
-msgstr "Host"
-
-msgid "hour"
-msgstr "hour"
-
-msgid "hours"
-msgstr "hours"
-
-msgid "How often"
-msgstr "How often"
 
 msgid "How superchat works with you"
 msgstr "How superchat works with you"
@@ -1877,23 +935,11 @@ msgstr "I ask before doing anything I can't undo."
 msgid "I couldn't reach the model provider. Try again."
 msgstr "I couldn't reach the model provider. Try again."
 
-msgid "I have an account"
-msgstr "I have an account"
-
 msgid "I lost the connection. Try again."
 msgstr "I lost the connection. Try again."
 
 msgid "I need your API key to think."
 msgstr "I need your API key to think."
-
-msgid "I'll plan, research, draft and follow up in the background, and always ask before anything I can't undo."
-msgstr "I'll plan, research, draft and follow up in the background, and always ask before anything I can't undo."
-
-msgid "If you heard that, voice is ready."
-msgstr "If you heard that, voice is ready."
-
-msgid "Ignore"
-msgstr "Ignore"
 
 msgid "Image"
 msgstr "Image"
@@ -1903,9 +949,6 @@ msgstr "Image description"
 
 msgid "Images"
 msgstr "Images"
-
-msgid "Import OpenAPI JSON"
-msgstr "Import OpenAPI JSON"
 
 msgid "In progress"
 msgstr "In progress"
@@ -1918,36 +961,6 @@ msgstr "Inbox filter"
 
 msgid "Indexing…"
 msgstr "Indexing…"
-
-msgid "Instruction"
-msgstr "Instruction"
-
-msgid "Integration domain"
-msgstr "Integration domain"
-
-msgid "Integration options"
-msgstr "Integration options"
-
-msgid "Integrations"
-msgstr "Integrations"
-
-msgid "Interrupt"
-msgstr "Interrupt"
-
-msgid "Interval"
-msgstr "Interval"
-
-msgid "Interval amount"
-msgstr "Interval amount"
-
-msgid "Interval unit"
-msgstr "Interval unit"
-
-msgid "Invite"
-msgstr "Invite"
-
-msgid "Invited emails"
-msgstr "Invited emails"
 
 msgid "Isolated preview"
 msgstr "Isolated preview"
@@ -1964,20 +977,11 @@ msgstr "It starts fresh, with only what superchat knows about you."
 msgid "It starts with a summary of this conversation."
 msgstr "It starts with a summary of this conversation."
 
-msgid "It won't be used anymore. This can't be undone."
-msgstr "It won't be used anymore. This can't be undone."
-
 msgid "Italic"
 msgstr "Italic"
 
 msgid "Its address stops working right away. You can publish it again later."
 msgstr "Its address stops working right away. You can publish it again later."
-
-msgid "Its conversation, files, and routines will be permanently deleted. Bots it created stay in your list."
-msgstr "Its conversation, files, and routines will be permanently deleted. Bots it created stay in your list."
-
-msgid "Its Muses, memory and Computer are removed for good."
-msgstr "Its Muses, memory and Computer are removed for good."
 
 msgid "Jump to latest"
 msgstr "Jump to latest"
@@ -1988,50 +992,20 @@ msgstr "just now"
 msgid "Just you, signed in"
 msgstr "Just you, signed in"
 
-msgid "Keep it"
-msgstr "Keep it"
-
-msgid "Keep memories"
-msgstr "Keep memories"
-
-msgid "key"
-msgstr "key"
-
 msgid "Kind"
 msgstr "Kind"
 
 msgid "Knows our conversation"
 msgstr "Knows our conversation"
 
-msgid "Language"
-msgstr "Language"
-
-msgid "Last active {last}"
-msgstr "Last active {last}"
-
-msgid "Last thing — connect the brain I'll think with."
-msgstr "Last thing — connect the brain I'll think with."
-
 msgid "Later"
 msgstr "Later"
-
-msgid "Learned"
-msgstr "Learned"
-
-msgid "Leave"
-msgstr "Leave"
-
-msgid "Let's get started"
-msgstr "Let's get started"
 
 msgid "Letter spacing"
 msgstr "Letter spacing"
 
 msgid "Library"
 msgstr "Library"
-
-msgid "Library view"
-msgstr "Library view"
 
 msgid "Light"
 msgstr "Light"
@@ -2049,29 +1023,14 @@ msgstr "Light model · {label}"
 msgid "Line height"
 msgstr "Line height"
 
-msgid "Linear issue"
-msgstr "Linear issue"
-
 msgid "Link"
 msgstr "Link"
-
-msgid "Link a chat app"
-msgstr "Link a chat app"
 
 msgid "Link address"
 msgstr "Link address"
 
 msgid "List view"
 msgstr "List view"
-
-msgid "Listen"
-msgstr "Listen"
-
-msgid "Listening"
-msgstr "Listening"
-
-msgid "Listening…"
-msgstr "Listening…"
 
 msgid "Load earlier"
 msgstr "Load earlier"
@@ -2082,41 +1041,11 @@ msgstr "Load earlier messages"
 msgid "Load more"
 msgstr "Load more"
 
-msgid "Loading integrations…"
-msgstr "Loading integrations…"
-
-msgid "Loading model catalog…"
-msgstr "Loading model catalog…"
-
 msgid "Loading preview…"
 msgstr "Loading preview…"
 
-msgid "Loading rules…"
-msgstr "Loading rules…"
-
-msgid "Loading tools…"
-msgstr "Loading tools…"
-
-msgid "Loading voice providers…"
-msgstr "Loading voice providers…"
-
 msgid "Loading…"
 msgstr "Loading…"
-
-msgid "Local access lets bots run commands without asking. Avoid it on shared or public servers."
-msgstr "Local access lets bots run commands without asking. Avoid it on shared or public servers."
-
-msgid "Local Server Settings"
-msgstr "Local Server Settings"
-
-msgid "Log out"
-msgstr "Log out"
-
-msgid "Logging out…"
-msgstr "Logging out…"
-
-msgid "Low"
-msgstr "Low"
 
 msgid "Made for you"
 msgstr "Made for you"
@@ -2124,59 +1053,17 @@ msgstr "Made for you"
 msgid "Main"
 msgstr "Main"
 
-msgid "Make sure nothing is still running on this computer."
-msgstr "Make sure nothing is still running on this computer."
-
-msgid "Manage MCP servers"
-msgstr "Manage MCP servers"
-
-msgid "Manage messaging settings"
-msgstr "Manage messaging settings"
-
-msgid "Manual"
-msgstr "Manual"
-
-msgid "Manual setup required"
-msgstr "Manual setup required"
-
-msgid "Mark as Read"
-msgstr "Mark as Read"
-
-msgid "Mark as Unread"
-msgstr "Mark as Unread"
-
 msgid "Mark done: {title}"
 msgstr "Mark done: {title}"
 
-msgid "Max"
-msgstr "Max"
-
 msgid "Maximize"
 msgstr "Maximize"
-
-msgid "Maximum images per request"
-msgstr "Maximum images per request"
-
-msgid "Maximum output tokens"
-msgstr "Maximum output tokens"
-
-msgid "MCP servers"
-msgstr "MCP servers"
-
-msgid "Medium"
-msgstr "Medium"
-
-msgid "Meet superchat."
-msgstr "Meet superchat."
 
 msgid "Memory"
 msgstr "Memory"
 
 msgid "Mentions"
 msgstr "Mentions"
-
-msgid "Mentions only"
-msgstr "Mentions only"
 
 msgid "Menu"
 msgstr "Menu"
@@ -2194,12 +1081,6 @@ msgstr "Message {activeName}"
 msgid "Message composer"
 msgstr "Message composer"
 
-msgid "Message event"
-msgstr "Message event"
-
-msgid "Message from {peer}"
-msgstr "Message from {peer}"
-
 msgid "Message superchat"
 msgstr "Message superchat"
 
@@ -2209,29 +1090,11 @@ msgstr "Message this side chat"
 msgid "Message…"
 msgstr "Message…"
 
-msgid "Messaged {peer}"
-msgstr "Messaged {peer}"
-
-msgid "Messaging"
-msgstr "Messaging"
-
-msgid "Microphone failed"
-msgstr "Microphone failed"
-
 msgid "Mini Apps"
 msgstr "Mini Apps"
 
-msgid "Minimal"
-msgstr "Minimal"
-
 msgid "Minimize"
 msgstr "Minimize"
-
-msgid "minute"
-msgstr "minute"
-
-msgid "minutes"
-msgstr "minutes"
 
 msgid "Model"
 msgstr "Model"
@@ -2239,26 +1102,8 @@ msgstr "Model"
 msgid "Model for this chat"
 msgstr "Model for this chat"
 
-msgid "Model id"
-msgstr "Model id"
-
-msgid "Model options"
-msgstr "Model options"
-
-msgid "Model spend uses your provider keys."
-msgstr "Model spend uses your provider keys."
-
-msgid "Model updated."
-msgstr "Model updated."
-
 msgid "Models"
 msgstr "Models"
-
-msgid "Models for the server owner’s default space."
-msgstr "Models for the server owner’s default space."
-
-msgid "Models from server"
-msgstr "Models from server"
 
 msgid "Monthly"
 msgstr "Monthly"
@@ -2278,21 +1123,6 @@ msgstr "More actions"
 msgid "More actions for {0}"
 msgstr "More actions for {0}"
 
-msgid "More computer actions"
-msgstr "More computer actions"
-
-msgid "Move here"
-msgstr "Move here"
-
-msgid "Move them to your shared memory."
-msgstr "Move them to your shared memory."
-
-msgid "Move to"
-msgstr "Move to"
-
-msgid "Muse name"
-msgstr "Muse name"
-
 msgid "My computer restarted. Try again."
 msgstr "My computer restarted. Try again."
 
@@ -2305,17 +1135,8 @@ msgstr "My organization"
 msgid "Name"
 msgstr "Name"
 
-msgid "Name this bot"
-msgstr "Name this bot"
-
-msgid "Name this routine"
-msgstr "Name this routine"
-
 msgid "Navigate"
 msgstr "Navigate"
-
-msgid "Needs attention"
-msgstr "Needs attention"
 
 msgid "Never"
 msgstr "Never"
@@ -2329,29 +1150,11 @@ msgstr "New app"
 msgid "New automation"
 msgstr "New automation"
 
-msgid "New bot"
-msgstr "New bot"
-
 msgid "New fork from this message"
 msgstr "New fork from this message"
 
-msgid "New open-work item"
-msgstr "New open-work item"
-
-msgid "New password"
-msgstr "New password"
-
-msgid "New section"
-msgstr "New section"
-
 msgid "New side chat"
 msgstr "New side chat"
-
-msgid "New skill"
-msgstr "New skill"
-
-msgid "New space"
-msgstr "New space"
 
 msgid "Newer version available, show it"
 msgstr "Newer version available, show it"
@@ -2365,38 +1168,17 @@ msgstr "Next look"
 msgid "Next slide"
 msgstr "Next slide"
 
-msgid "No agent connections yet."
-msgstr "No agent connections yet."
-
-msgid "No apps match your search."
-msgstr "No apps match your search."
-
 msgid "No apps yet."
 msgstr "No apps yet."
 
 msgid "No artifacts found."
 msgstr "No artifacts found."
 
-msgid "no auth"
-msgstr "no auth"
-
-msgid "No authentication"
-msgstr "No authentication"
-
 msgid "No automations yet"
 msgstr "No automations yet"
 
 msgid "No bots"
 msgstr "No bots"
-
-msgid "No bots match"
-msgstr "No bots match"
-
-msgid "No chat apps linked yet."
-msgstr "No chat apps linked yet."
-
-msgid "No exceptions. Actions run automatically."
-msgstr "No exceptions. Actions run automatically."
 
 msgid "No files yet."
 msgstr "No files yet."
@@ -2407,17 +1189,11 @@ msgstr "No fill"
 msgid "No forks match."
 msgstr "No forks match."
 
-msgid "No group chats yet."
-msgstr "No group chats yet."
-
 msgid "No limit"
 msgstr "No limit"
 
 msgid "No longer active"
 msgstr "No longer active"
-
-msgid "No managed app catalog is configured on this deployment."
-msgstr "No managed app catalog is configured on this deployment."
 
 msgid "No matches"
 msgstr "No matches"
@@ -2428,62 +1204,14 @@ msgstr "No matches."
 msgid "No matching artifacts on this page."
 msgstr "No matching artifacts on this page."
 
-msgid "No matching models"
-msgstr "No matching models"
-
-msgid "No MCP or API tool sources installed yet."
-msgstr "No MCP or API tool sources installed yet."
-
-msgid "No MCP servers yet."
-msgstr "No MCP servers yet."
-
-msgid "No messages with {peerBotName} yet."
-msgstr "No messages with {peerBotName} yet."
-
-msgid "No model catalog is available."
-msgstr "No model catalog is available."
-
-msgid "No one is waiting."
-msgstr "No one is waiting."
-
-msgid "No providers found."
-msgstr "No providers found."
-
-msgid "No remote MCP servers found"
-msgstr "No remote MCP servers found"
-
-msgid "No results"
-msgstr "No results"
-
-msgid "No runs yet"
-msgstr "No runs yet"
-
 msgid "No sign-in needed"
 msgstr "No sign-in needed"
-
-msgid "No skills yet"
-msgstr "No skills yet"
 
 msgid "No steps recorded"
 msgstr "No steps recorded"
 
-msgid "No team conversations yet."
-msgstr "No team conversations yet."
-
-msgid "No tools available."
-msgstr "No tools available."
-
-msgid "No trigger"
-msgstr "No trigger"
-
-msgid "None yet"
-msgstr "None yet"
-
 msgid "Not connected"
 msgstr "Not connected"
-
-msgid "Not in the plugin catalog"
-msgstr "Not in the plugin catalog"
 
 msgid "Not now"
 msgstr "Not now"
@@ -2500,9 +1228,6 @@ msgstr "Nothing archived."
 msgid "Nothing here yet."
 msgstr "Nothing here yet."
 
-msgid "Nothing is still running"
-msgstr "Nothing is still running"
-
 msgid "Nothing matches your search."
 msgstr "Nothing matches your search."
 
@@ -2511,9 +1236,6 @@ msgstr "Nothing noted yet."
 
 msgid "Nothing remembered yet."
 msgstr "Nothing remembered yet."
-
-msgid "Nothing scheduled yet."
-msgstr "Nothing scheduled yet."
 
 msgid "Nothing yet"
 msgstr "Nothing yet"
@@ -2524,30 +1246,8 @@ msgstr "Nothing yet — once I do something, it shows up here."
 msgid "Noticed, {when}"
 msgstr "Noticed, {when}"
 
-msgid "Notifications"
-msgstr "Notifications"
-
 msgid "Now"
 msgstr "Now"
-
-#. placeholder {0}: selected.label
-msgid "Now using {0}."
-msgstr "Now using {0}."
-
-msgid "OAuth authorization was cancelled."
-msgstr "OAuth authorization was cancelled."
-
-msgid "OAuth connected"
-msgstr "OAuth connected"
-
-msgid "OAuth connection failed"
-msgstr "OAuth connection failed"
-
-msgid "OAuth expired"
-msgstr "OAuth expired"
-
-msgid "Offline"
-msgstr "Offline"
 
 msgid "Offset"
 msgstr "Offset"
@@ -2561,21 +1261,11 @@ msgstr "Offset Y"
 msgid "On"
 msgstr "On"
 
-msgid "On a schedule"
-msgstr "On a schedule"
-
 msgid "On day"
 msgstr "On day"
 
-#. placeholder {0}: preset.time
-msgid "on the 1st at {0}"
-msgstr "on the 1st at {0}"
-
 msgid "One yes before I send this"
 msgstr "One yes before I send this"
-
-msgid "Online"
-msgstr "Online"
 
 msgid "Only me"
 msgstr "Only me"
@@ -2625,41 +1315,11 @@ msgstr "Open questions"
 msgid "Open what's waiting on you"
 msgstr "Open what's waiting on you"
 
-msgid "Open work"
-msgstr "Open work"
-
-msgid "OpenAI-compatible server URL"
-msgstr "OpenAI-compatible server URL"
-
-msgid "Opening chat…"
-msgstr "Opening chat…"
-
-msgid "Opening your Space…"
-msgstr "Opening your Space…"
-
-msgid "Optional"
-msgstr "Optional"
-
-msgid "Optional controls most people never need"
-msgstr "Optional controls most people never need"
-
-msgid "Optional header value"
-msgstr "Optional header value"
-
-msgid "Or connect an API key"
-msgstr "Or connect an API key"
-
-msgid "Or paste an API key"
-msgstr "Or paste an API key"
-
-msgid "Organic"
-msgstr "Organic"
+msgid "Opening superchat…"
+msgstr "Opening superchat…"
 
 msgid "Organization limit"
 msgstr "Organization limit"
-
-msgid "Other model…"
-msgstr "Other model…"
 
 msgid "Outcome"
 msgstr "Outcome"
@@ -2670,9 +1330,6 @@ msgstr "p. {0}"
 
 msgid "Padding"
 msgstr "Padding"
-
-msgid "PagerDuty incident"
-msgstr "PagerDuty incident"
 
 msgid "Pages"
 msgstr "Pages"
@@ -2686,32 +1343,8 @@ msgstr "Palette"
 msgid "Panel sections"
 msgstr "Panel sections"
 
-msgid "Park"
-msgstr "Park"
-
 msgid "Password"
 msgstr "Password"
-
-msgid "Password recovery is not configured for this server"
-msgstr "Password recovery is not configured for this server"
-
-msgid "Password updated"
-msgstr "Password updated"
-
-msgid "Passwords do not match"
-msgstr "Passwords do not match"
-
-msgid "Paste a replacement key"
-msgstr "Paste a replacement key"
-
-msgid "Paste the OpenAI-compatible address from your server. superchat adds /v1 if needed."
-msgstr "Paste the OpenAI-compatible address from your server. superchat adds /v1 if needed."
-
-msgid "Paste your API key"
-msgstr "Paste your API key"
-
-msgid "Paused"
-msgstr "Paused"
 
 msgid "PDF"
 msgstr "PDF"
@@ -2719,17 +1352,11 @@ msgstr "PDF"
 msgid "People"
 msgstr "People"
 
-msgid "Personal credential"
-msgstr "Personal credential"
-
 msgid "Pick a folder"
 msgstr "Pick a folder"
 
 msgid "Pick a time and I'll do this for you."
 msgstr "Pick a time and I'll do this for you."
-
-msgid "Pin"
-msgstr "Pin"
 
 msgid "Plan my week"
 msgstr "Plan my week"
@@ -2740,14 +1367,8 @@ msgstr "Plan week"
 msgid "Plans"
 msgstr "Plans"
 
-msgid "Playing…"
-msgstr "Playing…"
-
 msgid "Position and size"
 msgstr "Position and size"
-
-msgid "POST to"
-msgstr "POST to"
 
 msgid "PowerPoint (.pptx)"
 msgstr "PowerPoint (.pptx)"
@@ -2784,20 +1405,11 @@ msgstr "Previous look"
 msgid "Previous slide"
 msgstr "Previous slide"
 
-msgid "Previous space kept: confirm it's the same person"
-msgstr "Previous space kept: confirm it's the same person"
-
 msgid "Private"
 msgstr "Private"
 
-msgid "Private workspace with its own bots and groups."
-msgstr "Private workspace with its own bots and groups."
-
 msgid "Professional"
 msgstr "Professional"
-
-msgid "Project ID"
-msgstr "Project ID"
 
 msgid "Projects & focus"
 msgstr "Projects & focus"
@@ -2807,12 +1419,6 @@ msgstr "Promised"
 
 msgid "Provided by your organization"
 msgstr "Provided by your organization"
-
-msgid "Provider"
-msgstr "Provider"
-
-msgid "Providers"
-msgstr "Providers"
 
 msgid "Publish"
 msgstr "Publish"
@@ -2847,12 +1453,6 @@ msgstr "Raise budget"
 msgid "Ran"
 msgstr "Ran"
 
-msgid "Read replies aloud"
-msgstr "Read replies aloud"
-
-msgid "read-only"
-msgstr "read-only"
-
 #. placeholder {0}: attachment.file.name
 msgid "Reading {0} is taking too long. Try again in a moment."
 msgstr "Reading {0} is taking too long. Try again in a moment."
@@ -2864,39 +1464,8 @@ msgstr "Reading {0}…"
 msgid "Ready"
 msgstr "Ready"
 
-msgid "Reasoning effort"
-msgstr "Reasoning effort"
-
-msgid "Reconnect OAuth"
-msgstr "Reconnect OAuth"
-
 msgid "Reconnecting"
 msgstr "Reconnecting"
-
-msgid "Recover computer"
-msgstr "Recover computer"
-
-#. placeholder {0}: update.name
-msgid "Recovering {0}’s Computer"
-msgstr "Recovering {0}’s Computer"
-
-msgid "Recovering Team Computer"
-msgstr "Recovering Team Computer"
-
-msgid "Recovering…"
-msgstr "Recovering…"
-
-msgid "Recovery failed"
-msgstr "Recovery failed"
-
-msgid "Recovery is unavailable until the previous operation has stopped."
-msgstr "Recovery is unavailable until the previous operation has stopped."
-
-msgid "Recovery restores the last saved workspace. Unsaved work may be lost."
-msgstr "Recovery restores the last saved workspace. Unsaved work may be lost."
-
-msgid "Recreating the computer"
-msgstr "Recreating the computer"
 
 msgid "Redo"
 msgstr "Redo"
@@ -2906,15 +1475,6 @@ msgstr "Reflection"
 
 msgid "Refresh files"
 msgstr "Refresh files"
-
-msgid "Reject"
-msgstr "Reject"
-
-msgid "Release computer"
-msgstr "Release computer"
-
-msgid "Release interrupted computer?"
-msgstr "Release interrupted computer?"
 
 msgid "Remove"
 msgstr "Remove"
@@ -2927,52 +1487,18 @@ msgstr "Remove {0}"
 msgid "Remove folder {0}"
 msgstr "Remove folder {0}"
 
-msgid "Remove Git event"
-msgstr "Remove Git event"
-
 #. placeholder {0}: mention.name
 msgid "Remove mention {0}"
 msgstr "Remove mention {0}"
 
-msgid "Remove message trigger"
-msgstr "Remove message trigger"
-
-msgid "Remove schedule"
-msgstr "Remove schedule"
-
 msgid "Remove selection"
 msgstr "Remove selection"
-
-#. placeholder {0}: selectedSkill.name
-msgid "Remove skill {0}"
-msgstr "Remove skill {0}"
-
-msgid "Remove webhook"
-msgstr "Remove webhook"
-
-msgid "Removed, but list refresh failed"
-msgstr "Removed, but list refresh failed"
-
-msgid "Removing…"
-msgstr "Removing…"
-
-msgid "Rename section"
-msgstr "Rename section"
-
-msgid "Reopen"
-msgstr "Reopen"
 
 msgid "Repeat"
 msgstr "Repeat"
 
 msgid "Replace"
 msgstr "Replace"
-
-msgid "Replace API key"
-msgstr "Replace API key"
-
-msgid "Replace key"
-msgstr "Replace key"
 
 msgid "Replay the intro"
 msgstr "Replay the intro"
@@ -3006,30 +1532,6 @@ msgstr "Research"
 msgid "Research something for me"
 msgstr "Research something for me"
 
-msgid "Resend code"
-msgstr "Resend code"
-
-msgid "Resend in {cooldown}s"
-msgstr "Resend in {cooldown}s"
-
-msgid "Reset"
-msgstr "Reset"
-
-msgid "Reset computer"
-msgstr "Reset computer"
-
-msgid "Reset computer?"
-msgstr "Reset computer?"
-
-msgid "Reset password"
-msgstr "Reset password"
-
-msgid "Reset your password"
-msgstr "Reset your password"
-
-msgid "Resetting…"
-msgstr "Resetting…"
-
 msgid "Restart to update"
 msgstr "Restart to update"
 
@@ -3038,15 +1540,6 @@ msgstr "Restore"
 
 msgid "Restore {title}"
 msgstr "Restore {title}"
-
-msgid "Restore previous space"
-msgstr "Restore previous space"
-
-msgid "Restore the last saved workspace. Unsaved work on the computer is lost."
-msgstr "Restore the last saved workspace. Unsaved work on the computer is lost."
-
-msgid "Restoring your workspace"
-msgstr "Restoring your workspace"
 
 msgid "Restyles every slide; your content stays as it is."
 msgstr "Restyles every slide; your content stays as it is."
@@ -3057,38 +1550,11 @@ msgstr "Retry"
 msgid "Retry now"
 msgstr "Retry now"
 
-msgid "Return to superchat"
-msgstr "Return to superchat"
-
 msgid "Revoke"
 msgstr "Revoke"
 
-msgid "Robot"
-msgstr "Robot"
-
-msgid "Room guidance"
-msgstr "Room guidance"
-
-msgid "Rotate key"
-msgstr "Rotate key"
-
-msgid "Routine"
-msgstr "Routine"
-
-msgid "Routines"
-msgstr "Routines"
-
-msgid "Run at"
-msgstr "Run at"
-
-msgid "Run history"
-msgstr "Run history"
-
 msgid "Run now"
 msgstr "Run now"
-
-msgid "Run time must be in the future."
-msgstr "Run time must be in the future."
 
 msgid "running"
 msgstr "running"
@@ -3096,23 +1562,8 @@ msgstr "running"
 msgid "Running"
 msgstr "Running"
 
-msgid "Running · Stop"
-msgstr "Running · Stop"
-
-msgid "Running…"
-msgstr "Running…"
-
-msgid "Runs on"
-msgstr "Runs on"
-
-msgid "Runs when this bot receives a verified message from this provider."
-msgstr "Runs when this bot receives a verified message from this provider."
-
 msgid "Save"
 msgstr "Save"
-
-msgid "Save changes"
-msgstr "Save changes"
 
 msgid "Save to Library"
 msgstr "Save to Library"
@@ -3132,29 +1583,8 @@ msgstr "Saved {0} · used {1}"
 msgid "Saved to Library"
 msgstr "Saved to Library"
 
-msgid "Saved, but list refresh failed"
-msgstr "Saved, but list refresh failed"
-
-msgid "Saved."
-msgstr "Saved."
-
-msgid "Saved. Rotate to reveal."
-msgstr "Saved. Rotate to reveal."
-
-msgid "Saving your workspace"
-msgstr "Saving your workspace"
-
-msgid "Saving..."
-msgstr "Saving..."
-
 msgid "Saving…"
 msgstr "Saving…"
-
-msgid "Say something. Silence sends it."
-msgstr "Say something. Silence sends it."
-
-msgid "Say yes or no, or answer in a sentence."
-msgstr "Say yes or no, or answer in a sentence."
 
 msgid "Search"
 msgstr "Search"
@@ -3166,29 +1596,14 @@ msgstr "Search {0} forks"
 msgid "Search activity"
 msgstr "Search activity"
 
-msgid "Search apps"
-msgstr "Search apps"
-
 msgid "Search artifacts…"
 msgstr "Search artifacts…"
 
 msgid "Search bots and switch conversations"
 msgstr "Search bots and switch conversations"
 
-msgid "Search by domain"
-msgstr "Search by domain"
-
 msgid "Search forks"
 msgstr "Search forks"
-
-msgid "Search integrations.sh"
-msgstr "Search integrations.sh"
-
-msgid "Search models"
-msgstr "Search models"
-
-msgid "Search providers"
-msgstr "Search providers"
 
 msgid "Search your apps"
 msgstr "Search your apps"
@@ -3205,9 +1620,6 @@ msgstr "Search your Library…"
 msgid "Searchable"
 msgstr "Searchable"
 
-msgid "Searching…"
-msgstr "Searching…"
-
 msgid "Sections"
 msgstr "Sections"
 
@@ -3217,56 +1629,20 @@ msgstr "See summary"
 msgid "Send"
 msgstr "Send"
 
-msgid "Send <0>{linkCode}</0> to the line from your chat app within 10 minutes. You'll get a confirmation reply once linked."
-msgstr "Send <0>{linkCode}</0> to the line from your chat app within 10 minutes. You'll get a confirmation reply once linked."
-
 msgid "Send answer"
 msgstr "Send answer"
 
 msgid "Send it"
 msgstr "Send it"
 
-msgid "Send reset link"
-msgstr "Send reset link"
-
 msgid "Sending…"
 msgstr "Sending…"
-
-msgid "Sentry alert"
-msgstr "Sentry alert"
-
-msgid "Server"
-msgstr "Server"
-
-msgid "Server integrations"
-msgstr "Server integrations"
-
-msgid "Server name"
-msgstr "Server name"
-
-msgid "Server URL"
-msgstr "Server URL"
-
-msgid "Service"
-msgstr "Service"
 
 msgid "Settings"
 msgstr "Settings"
 
 msgid "Settings: General"
 msgstr "Settings: General"
-
-msgid "Settings: Usage"
-msgstr "Settings: Usage"
-
-msgid "Setup help"
-msgstr "Setup help"
-
-msgid "Setup token"
-msgstr "Setup token"
-
-msgid "Shared chat with 2-6 bots. They all reply in the same thread."
-msgstr "Shared chat with 2-6 bots. They all reply in the same thread."
 
 msgid "Sheets"
 msgstr "Sheets"
@@ -3289,15 +1665,6 @@ msgstr "Show less"
 msgid "Show list"
 msgstr "Show list"
 
-msgid "Show more"
-msgstr "Show more"
-
-msgid "Show password"
-msgstr "Show password"
-
-msgid "Show replies as they're written"
-msgstr "Show replies as they're written"
-
 #. placeholder {0}: sheet.rows.length
 msgid "Showing the first {0} rows"
 msgstr "Showing the first {0} rows"
@@ -3305,55 +1672,15 @@ msgstr "Showing the first {0} rows"
 msgid "Side chats"
 msgstr "Side chats"
 
-msgid "Sign in"
-msgstr "Sign in"
-
-msgid "Sign out"
-msgstr "Sign out"
-
-msgid "Sign up"
-msgstr "Sign up"
-
 msgid "Sign-in for {host}"
 msgstr "Sign-in for {host}"
-
-msgid "Signups"
-msgstr "Signups"
 
 msgid "Size"
 msgstr "Size"
 
-msgid "Skill"
-msgstr "Skill"
-
-#. placeholder {0}: skill.name
-msgid "Skill {0}"
-msgstr "Skill {0}"
-
-msgid "Skill instructions"
-msgstr "Skill instructions"
-
-msgid "Skills"
-msgstr "Skills"
-
-msgid "Skip"
-msgstr "Skip"
-
-msgid "Skip or deploy key"
-msgstr "Skip or deploy key"
-
 #. placeholder {0}: skipped.join(", ")
 msgid "Skipped {0}"
 msgstr "Skipped {0}"
-
-msgid "Slack message"
-msgstr "Slack message"
-
-msgid "Slack not enabled"
-msgstr "Slack not enabled"
-
-msgid "Sleeping"
-msgstr "Sleeping"
 
 msgid "Slide"
 msgstr "Slide"
@@ -3400,38 +1727,8 @@ msgstr "Source: {0} (long file, only its start was read)"
 msgid "Sources"
 msgstr "Sources"
 
-msgid "Space default"
-msgstr "Space default"
-
-msgid "Space interrupts · Esc hangs up"
-msgstr "Space interrupts · Esc hangs up"
-
-msgid "Spaces"
-msgstr "Spaces"
-
 msgid "Spacing"
 msgstr "Spacing"
-
-msgid "Speak"
-msgstr "Speak"
-
-msgid "Speak + transcribe"
-msgstr "Speak + transcribe"
-
-msgid "Speak only"
-msgstr "Speak only"
-
-msgid "Speak this reply"
-msgstr "Speak this reply"
-
-msgid "Speaking…"
-msgstr "Speaking…"
-
-msgid "Speaks and listens"
-msgstr "Speaks and listens"
-
-msgid "Speaks only"
-msgstr "Speaks only"
 
 msgid "Spent this month"
 msgstr "Spent this month"
@@ -3452,9 +1749,6 @@ msgstr "Starting the Computer…"
 msgid "Starting your Computer…"
 msgstr "Starting your Computer…"
 
-msgid "Starting…"
-msgstr "Starting…"
-
 msgid "Status"
 msgstr "Status"
 
@@ -3467,30 +1761,15 @@ msgstr "Still working on this."
 msgid "Stop"
 msgstr "Stop"
 
-msgid "Stop speaking"
-msgstr "Stop speaking"
-
 #. js-lingui-explicit-id
 msgid "Stopped."
 msgstr "Stopped."
-
-msgid "Stored encrypted"
-msgstr "Stored encrypted"
-
-msgid "Stored securely. Never shown here."
-msgstr "Stored securely. Never shown here."
-
-msgid "Stream replies"
-msgstr "Stream replies"
 
 msgid "Style"
 msgstr "Style"
 
 msgid "subagent"
 msgstr "subagent"
-
-msgid "Submit"
-msgstr "Submit"
 
 msgid "Suggested follow-ups"
 msgstr "Suggested follow-ups"
@@ -3505,9 +1784,6 @@ msgstr "Summarize what changed in my files this week and tell me what needs atte
 msgid "superchat"
 msgstr "superchat"
 
-msgid "Superchat Computer"
-msgstr "Superchat Computer"
-
 msgid "superchat is working"
 msgstr "superchat is working"
 
@@ -3520,15 +1796,6 @@ msgstr "superchat starts fresh. You can still show earlier messages."
 msgid "superchat will see this after the current step"
 msgstr "superchat will see this after the current step"
 
-msgid "Supports images"
-msgstr "Supports images"
-
-msgid "Supports thinking"
-msgstr "Supports thinking"
-
-msgid "Switch after the current reply."
-msgstr "Switch after the current reply."
-
 msgid "Switch bot"
 msgstr "Switch bot"
 
@@ -3536,26 +1803,8 @@ msgstr "Switch bot"
 msgid "Switched to {0}"
 msgstr "Switched to {0}"
 
-msgid "Switching…"
-msgstr "Switching…"
-
 msgid "System"
 msgstr "System"
-
-msgid "Team"
-msgstr "Team"
-
-msgid "Team conversations"
-msgstr "Team conversations"
-
-msgid "Teams message"
-msgstr "Teams message"
-
-msgid "Teams not enabled"
-msgstr "Teams not enabled"
-
-msgid "Test run"
-msgstr "Test run"
 
 msgid "Text"
 msgstr "Text"
@@ -3566,9 +1815,6 @@ msgstr "Text color"
 msgid "That change can't be made exactly by hand."
 msgstr "That change can't be made exactly by hand."
 
-msgid "That code did not work"
-msgstr "That code did not work"
-
 msgid "That did not work."
 msgstr "That did not work."
 
@@ -3577,9 +1823,6 @@ msgstr "That took too long. Try again."
 
 msgid "The deck changed since you opened it. Try again."
 msgstr "The deck changed since you opened it. Try again."
-
-msgid "The key is stored encrypted and only used for voice."
-msgstr "The key is stored encrypted and only used for voice."
 
 msgid "The machine your Conversation runs on. It starts when it is needed."
 msgstr "The machine your Conversation runs on. It starts when it is needed."
@@ -3599,20 +1842,8 @@ msgstr "Theme"
 msgid "Things I do for you on a schedule."
 msgstr "Things I do for you on a schedule."
 
-msgid "Thinking"
-msgstr "Thinking"
-
 msgid "This can't be undone."
 msgstr "This can't be undone."
-
-msgid "This cannot be undone."
-msgstr "This cannot be undone."
-
-msgid "This chat is view-only"
-msgstr "This chat is view-only"
-
-msgid "this computer"
-msgstr "this computer"
 
 msgid "This conversation is too long for the model."
 msgstr "This conversation is too long for the model."
@@ -3637,9 +1868,6 @@ msgstr "This file is not valid UTF-8 text."
 msgid "This isn't the latest version of the deck. Open the latest to edit it."
 msgstr "This isn't the latest version of the deck. Open the latest to edit it."
 
-msgid "this Mac"
-msgstr "this Mac"
-
 msgid "This message can’t be forked. Pick another message, or ask in a side chat."
 msgstr "This message can’t be forked. Pick another message, or ask in a side chat."
 
@@ -3649,35 +1877,11 @@ msgstr "This model isn't available — pick another."
 msgid "This month"
 msgstr "This month"
 
-msgid "This reset link is invalid or expired"
-msgstr "This reset link is invalid or expired"
-
-msgid "This server cannot be assigned without a bot."
-msgstr "This server cannot be assigned without a bot."
-
-msgid "This server did not request browser authorization."
-msgstr "This server did not request browser authorization."
-
-msgid "This server is already connected. Disconnect it first to authorize again."
-msgstr "This server is already connected. Disconnect it first to authorize again."
-
-msgid "This subscription sign-in is not available in Superchat yet. Use a deployment credential or choose another provider."
-msgstr "This subscription sign-in is not available in Superchat yet. Use a deployment credential or choose another provider."
-
 msgid "This week"
 msgstr "This week"
 
-msgid "Time of day"
-msgstr "Time of day"
-
-msgid "Title"
-msgstr "Title"
-
 msgid "To do"
 msgstr "To do"
-
-msgid "To:"
-msgstr "To:"
 
 msgid "Today"
 msgstr "Today"
@@ -3685,41 +1889,17 @@ msgstr "Today"
 msgid "Too large to preview."
 msgstr "Too large to preview."
 
-msgid "Tool sources"
-msgstr "Tool sources"
-
-msgid "Tools"
-msgstr "Tools"
-
-msgid "Treat like a person"
-msgstr "Treat like a person"
-
-msgid "Treg token"
-msgstr "Treg token"
-
 msgid "Try again"
 msgstr "Try again"
 
 msgid "Type your answer"
 msgstr "Type your answer"
 
-msgid "Unassigned"
-msgstr "Unassigned"
-
 msgid "Unavailable"
 msgstr "Unavailable"
 
 msgid "Undo"
 msgstr "Undo"
-
-msgid "Uninstall"
-msgstr "Uninstall"
-
-msgid "Unlink"
-msgstr "Unlink"
-
-msgid "Unpin"
-msgstr "Unpin"
 
 msgid "Unpublish"
 msgstr "Unpublish"
@@ -3737,15 +1917,6 @@ msgstr "Unsupported file type: {0}"
 msgid "Up to date"
 msgstr "Up to date"
 
-msgid "Update computer"
-msgstr "Update computer"
-
-msgid "Update failed"
-msgstr "Update failed"
-
-msgid "Update progress"
-msgstr "Update progress"
-
 #. placeholder {0}: superseded.version
 msgid "Updated — v{0}"
 msgstr "Updated — v{0}"
@@ -3757,19 +1928,6 @@ msgstr "Updated by superchat · v{0}"
 #. placeholder {0}: state.arrived.version
 msgid "Updated by you · v{0}"
 msgstr "Updated by you · v{0}"
-
-msgid "Updates"
-msgstr "Updates"
-
-#. placeholder {0}: update.name
-msgid "Updating {0}’s Computer"
-msgstr "Updating {0}’s Computer"
-
-msgid "Updating Team Computer"
-msgstr "Updating Team Computer"
-
-msgid "Updating…"
-msgstr "Updating…"
 
 msgid "Upload"
 msgstr "Upload"
@@ -3789,29 +1947,8 @@ msgstr "Uploading {0}…"
 msgid "Uploading…"
 msgstr "Uploading…"
 
-msgid "Usage"
-msgstr "Usage"
-
-msgid "Use {hostLabel}"
-msgstr "Use {hostLabel}"
-
-msgid "Use a different email"
-msgstr "Use a different email"
-
-msgid "Use a found model"
-msgstr "Use a found model"
-
-msgid "Use a password"
-msgstr "Use a password"
-
-msgid "Use default guidance"
-msgstr "Use default guidance"
-
 msgid "Use this look"
 msgstr "Use this look"
-
-msgid "Use this model"
-msgstr "Use this model"
 
 msgid "Username"
 msgstr "Username"
@@ -3829,12 +1966,6 @@ msgstr "v{0} (latest)"
 
 msgid "Vault"
 msgstr "Vault"
-
-msgid "Verify and add"
-msgstr "Verify and add"
-
-msgid "Verifying…"
-msgstr "Verifying…"
 
 msgid "Version"
 msgstr "Version"
@@ -3859,9 +1990,6 @@ msgstr "View details"
 msgid "Visibility"
 msgstr "Visibility"
 
-msgid "Voice"
-msgstr "Voice"
-
 #. placeholder {0}: change.periodLabel
 msgid "vs. {0}"
 msgstr "vs. {0}"
@@ -3869,20 +1997,8 @@ msgstr "vs. {0}"
 msgid "Wait for superchat to finish, then clear."
 msgstr "Wait for superchat to finish, then clear."
 
-msgid "Waiting for approval"
-msgstr "Waiting for approval"
-
-msgid "Waiting for sign-in…"
-msgstr "Waiting for sign-in…"
-
 msgid "Waiting on you"
 msgstr "Waiting on you"
-
-msgid "Webhook"
-msgstr "Webhook"
-
-msgid "Weekdays"
-msgstr "Weekdays"
 
 msgid "Weekly"
 msgstr "Weekly"
@@ -3892,12 +2008,6 @@ msgstr "Weekly summary"
 
 msgid "Weight"
 msgstr "Weight"
-
-msgid "Welcome back."
-msgstr "Welcome back."
-
-msgid "What about its memories?"
-msgstr "What about its memories?"
 
 msgid "What can I help you with?"
 msgstr "What can I help you with?"
@@ -3924,32 +2034,11 @@ msgstr "What should change?"
 msgid "What should superchat do?"
 msgstr "What should superchat do?"
 
-msgid "What should this routine do each time it runs?"
-msgstr "What should this routine do each time it runs?"
-
-msgid "What this bot is for"
-msgstr "What this bot is for"
-
 msgid "What we talked about"
 msgstr "What we talked about"
 
-msgid "When a webhook fires"
-msgstr "When a webhook fires"
-
-msgid "When I do something you'll want again, I'll offer to save it. You can also paste steps and ask me to keep them."
-msgstr "When I do something you'll want again, I'll offer to save it. You can also paste steps and ask me to keep them."
-
 msgid "When I need a decision or an answer, it'll show up here."
 msgstr "When I need a decision or an answer, it'll show up here."
-
-msgid "When to run"
-msgstr "When to run"
-
-msgid "Where should bots run?"
-msgstr "Where should bots run?"
-
-msgid "Who can join"
-msgstr "Who can join"
 
 msgid "Who can open it"
 msgstr "Who can open it"
@@ -3982,9 +2071,6 @@ msgstr "Working in the whole workspace"
 msgid "Working now"
 msgstr "Working now"
 
-msgid "Working…"
-msgstr "Working…"
-
 msgid "Workspace"
 msgstr "Workspace"
 
@@ -3993,15 +2079,6 @@ msgstr "Yesterday"
 
 msgid "You"
 msgstr "You"
-
-msgid "You can close this tab if it does not redirect automatically."
-msgstr "You can close this tab if it does not redirect automatically."
-
-msgid "You can close this window."
-msgstr "You can close this window."
-
-msgid "You can come back later."
-msgstr "You can come back later."
 
 msgid "You changed {changedCount} cells on {sheetName}. superchat sees this before its next reply."
 msgstr "You changed {changedCount} cells on {sheetName}. superchat sees this before its next reply."
@@ -4015,6 +2092,9 @@ msgstr "You said, {when}"
 msgid "You're all caught up"
 msgstr "You're all caught up"
 
+msgid "You're not signed in. Open superchat through your organisation's sign-in."
+msgstr "You're not signed in. Open superchat through your organisation's sign-in."
+
 msgid "You've reached your monthly model budget."
 msgstr "You've reached your monthly model budget."
 
@@ -4023,12 +2103,6 @@ msgstr "Your account is paused. Contact your admin."
 
 msgid "Your Computer is starting. Try again in a moment."
 msgstr "Your Computer is starting. Try again in a moment."
-
-msgid "Your email address"
-msgstr "Your email address"
-
-msgid "Your name"
-msgstr "Your name"
 
 msgid "Your workspace, and what I made for you."
 msgstr "Your workspace, and what I made for you."

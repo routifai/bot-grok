@@ -1,7 +1,6 @@
 import * as z from "zod";
 import { botSecretDestinationSchema } from "./bot-secrets.js";
 import { Id } from "./ids.js";
-import { McpTransportSchema } from "./mcp.js";
 import { ReplyCardBlock } from "./reply-cards.js";
 
 export const ProductEventType = z.enum([
@@ -232,16 +231,6 @@ export const MessageBlock = z.discriminatedUnion("kind", [
     kind: z.literal("canvas"),
     title: z.string().optional(),
     tree: CanvasTree,
-  }),
-  z.object({
-    /** Approval card for an agent-created MCP server. The user completes the
-        OAuth popup (or confirms no authorization is needed) in the UI. */
-    kind: z.literal("mcp_approval"),
-    name: z.string(),
-    serverId: Id,
-    transport: McpTransportSchema,
-    endpoint: z.string().nullable(),
-    needsOAuth: z.boolean(),
   }),
   z.object({
     kind: z.literal("image"),

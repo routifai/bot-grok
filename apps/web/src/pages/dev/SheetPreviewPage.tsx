@@ -52,11 +52,6 @@ export function SheetPreviewPage() {
             canAnswer={false}
             message={message}
             onAnswer={async () => undefined}
-            onOpenPeerMessages={() => undefined}
-            peerBot={() => undefined}
-            voiceReady={false}
-            speaking={false}
-            onSpeak={() => undefined}
           />
         ))}
         {ask ? <ComposerAttachmentChip kind="sheet" label={ask.label} /> : null}

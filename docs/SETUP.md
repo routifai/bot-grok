@@ -131,9 +131,27 @@ built by `omnigent-server` (and `omnigent-host`), so move those `build:` setting
 is Superchat's thin engine layer. Pull Docker Hub images through the Docker daemon's registry
 mirror.
 
-## First sign-up
+## Who you are
 
-The first account you register becomes the deployment owner. There is no separate admin step.
+The web app has no sign-in of its own: it talks to the engine's REST API on its own origin (the
+`app` container proxies `/v1` to the engine at `OMNIGENT_URL`) and the engine decides who is asking.
+Locally the engine runs with `OMNIGENT_LOCAL_SINGLE_USER=1`, so a request with no identity header is
+the one local person; there is no sign-up.
+
+### Hosted: a sign-in broker in front
+
+For several people, put your organisation's SSO broker (an authenticating reverse proxy) in front of
+the app and the engine and:
+
+1. Remove `OMNIGENT_LOCAL_SINGLE_USER` from the engine's environment, so a request with no identity
+   is refused (the app then shows "You're not signed in").
+2. Have the broker set the engine's identity header (`X-Forwarded-Email`, or the header named by
+   `OMNIGENT_AUTH_HEADER`) to the signed-in person's email on every request, and add the shared
+   `X-Omnigent-Proxy-Secret` equal to `OMNIGENT_AUTH_HEADER_SECRET` (`OMNIGENT_PROXY_SECRET` in
+   `.env`). The engine honours the identity header only with that secret. The broker must strip any
+   identity header a browser sends.
+3. Optionally set `OMNIGENT_AUTH_TENANT_HEADER` and have the broker send the tenant (organisation)
+   in that header.
 
 ## Data
 

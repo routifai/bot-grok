@@ -2,7 +2,6 @@
 // sheet, standing rules and the spending cap, and the ask block of a Conversation.
 
 export { ApprovalCards } from "./ApprovalCards";
-export { ApprovalRulesSettings } from "./ApprovalRulesSettings";
 export { ApprovalsSettings } from "./ApprovalsSettings";
 export { AskCard } from "./AskCard";
 export { AskDecisionCard } from "./AskDecisionCard";

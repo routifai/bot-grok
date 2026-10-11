@@ -11,11 +11,12 @@ export function decodeArtifactBase64(contentBase64: string): Uint8Array {
   return bytes;
 }
 
+/** The engine's artifact ids are the person's own, so the target only says where the card sits. */
 export async function fetchArtifactBytes(
-  target: ArtifactTarget,
+  _target: ArtifactTarget,
   artifactId: string,
 ): Promise<Uint8Array> {
-  const artifact = await rpc.artifacts.get({ ...target, artifactId });
+  const artifact = await rpc.artifacts.getById({ artifactId });
   return decodeArtifactBase64(artifact.contentBase64);
 }
 

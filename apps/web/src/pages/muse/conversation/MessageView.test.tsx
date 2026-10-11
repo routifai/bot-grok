@@ -28,14 +28,12 @@ vi.mock("@lingui/core/macro", () => ({
 vi.mock("@superchat/chat-ui/web", () => ({ ChatMarkdown: () => null }));
 vi.mock("../../../features/artifacts/ArtifactFileCard", () => ({ ArtifactFileCard: () => null }));
 vi.mock("../../../features/approvals/AskCard", () => ({ AskCard: () => null }));
-vi.mock("../../../components/ai/CollaborationMarker", () => ({ CollaborationMarker: () => null }));
 vi.mock("../../../components/CloudAgentCard", () => ({ CloudAgentCard: () => null }));
 vi.mock("../../../components/cards/ReplyCard", () => ({ ReplyCardBlockView: () => null }));
 vi.mock("../../shell/message-cards", () => ({
   ArtifactImage: () => null,
   CanvasBlockView: () => null,
   ChartBlockView: () => null,
-  McpApprovalCard: () => null,
 }));
 vi.mock("../intro", () => ({ FirstRunHint: () => null }));
 vi.mock("./HelperTracker", () => ({ HelperTracker: () => null }));
@@ -79,11 +77,6 @@ async function mount(message: ThreadMessage): Promise<HTMLElement> {
         canAnswer={false}
         message={message}
         onAnswer={async () => undefined}
-        onOpenPeerMessages={() => undefined}
-        peerBot={() => undefined}
-        voiceReady={false}
-        speaking={false}
-        onSpeak={() => undefined}
       />,
     );
   });

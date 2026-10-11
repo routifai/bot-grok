@@ -43,9 +43,9 @@ export function decodeAttachmentBase64(contentBase64: string): Uint8Array {
   if (normalized.length % 4 !== 0 || !isWellFormedBase64(normalized)) {
     throw new AttachmentValidationError("Attachment content is not valid base64");
   }
-  let bytes: Buffer;
+  let bytes: Uint8Array;
   try {
-    bytes = Buffer.from(normalized, "base64");
+    bytes = Uint8Array.from(atob(normalized), (char) => char.charCodeAt(0));
   } catch {
     throw new AttachmentValidationError("Attachment content is not valid base64");
   }
@@ -53,7 +53,7 @@ export function decodeAttachmentBase64(contentBase64: string): Uint8Array {
   if (bytes.byteLength > ATTACHMENT_MAX_BYTES) {
     throw new AttachmentValidationError("Attachment exceeds the 10 MiB limit");
   }
-  return new Uint8Array(bytes);
+  return bytes;
 }
 
 export function validateAttachmentMimeType(mimeType: string): void {

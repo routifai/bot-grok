@@ -6,12 +6,12 @@ import { localTimezone } from "../../../lib/local-timezone";
 import { markOnce } from "../../../lib/performance";
 import { rpc } from "../../../lib/rpc";
 
-/** Where the person lands: their first Muse. */
-function firstBotRoute(bots: readonly Pick<Bot, "id">[]): string {
+/** Where the person lands: their Muse. */
+function museRoute(bots: readonly Pick<Bot, "id">[]): string {
   return bots[0] ? `/app/${bots[0].id}` : "/app";
 }
 
-/** The person's bots: bootstrap and background refresh. */
+/** The person and their one Muse: bootstrap and background refresh. */
 export function useBotRoster({
   botId,
   navigate,
@@ -24,7 +24,6 @@ export function useBotRoster({
   botsRef.current = bots;
   const botsRefreshEpoch = useRef(0);
   const botsRefreshApplied = useRef(0);
-  const archivedBotsRefreshEpoch = useRef(0);
   const botsRefreshInFlight = useRef(0);
   const [initialBotsLoaded, setInitialBotsLoaded] = useState(false);
   const [bootstrapMe, setBootstrapMe] = useState<Me | null>();
@@ -41,86 +40,47 @@ export function useBotRoster({
   const routeBotId = useRef<string | undefined>(botId);
   routeBotId.current = botId;
 
-  const refreshBots = useCallback(
-    async (includeArchived = false) => {
-      markOnce("rk:renderer:bots-request-start");
-      const request = ++botsRefreshEpoch.current;
-      const archivedRequest = includeArchived ? ++archivedBotsRefreshEpoch.current : null;
-      botsRefreshInFlight.current += 1;
-      try {
-        const [navigation, archived] = await Promise.all([
-          rpc.spaces.list(),
-          includeArchived ? rpc.bots.listArchived() : Promise.resolve(null),
-        ]);
-        const { bots: list } = navigation.current;
-        markOnce("rk:renderer:bots-response");
-        const botsFresh = request === botsRefreshEpoch.current;
-        const archivedFresh =
-          archivedRequest != null && archivedRequest === archivedBotsRefreshEpoch.current;
-        // A newer non-archived refresh can win the bots epoch while an older
-        // includeArchived request still owns archivedBotsRefreshEpoch — apply
-        // whichever slices are still current.
-        if (!botsFresh && !archivedFresh) return;
-        if (!botsFresh) return;
-        setBots(list);
-        setInitialBotsLoaded(true);
-        botsRefreshApplied.current = request;
-        if (
-          includeArchived &&
-          list.length === 0 &&
-          archived?.length === 0 &&
-          !navigation.spaces.some((space) => space.hasContent)
-        ) {
-          // Only the very first bot everywhere needs onboarding. An empty
-          // current space with content elsewhere stays in the app so the
-          // space can be switched to or deleted instead of trapping the user.
-          navigate("/onboarding", { replace: true });
-          return;
-        }
-        const currentBotId = routeBotId.current;
-        if (!currentBotId || !list.some((bot) => bot.id === currentBotId)) {
-          navigate(firstBotRoute(list), { replace: true });
-        }
-      } finally {
-        botsRefreshInFlight.current -= 1;
+  const refreshBots = useCallback(async () => {
+    markOnce("rk:renderer:bots-request-start");
+    const request = ++botsRefreshEpoch.current;
+    botsRefreshInFlight.current += 1;
+    try {
+      const list = await rpc.bots.list();
+      markOnce("rk:renderer:bots-response");
+      // Only the latest response applies.
+      if (request !== botsRefreshEpoch.current) return;
+      setBots(list);
+      setInitialBotsLoaded(true);
+      botsRefreshApplied.current = request;
+      const currentBotId = routeBotId.current;
+      if (!currentBotId || !list.some((bot) => bot.id === currentBotId)) {
+        navigate(museRoute(list), { replace: true });
       }
-    },
-    [navigate],
-  );
+    } finally {
+      botsRefreshInFlight.current -= 1;
+    }
+  }, [navigate]);
 
   useEffect(() => {
     let cancelled = false;
     const appliedAtStart = botsRefreshApplied.current;
-    void takeInitialBootstrap(botId)
+    void takeInitialBootstrap()
       .then((bootstrap) => {
         if (cancelled) return;
         setBootstrapMe(bootstrap.me);
         // Skip list/route writes only if a later refreshBots() successfully
         // committed (failed refreshes bump epoch but not botsRefreshApplied).
-        const applyBotLists = appliedAtStart === botsRefreshApplied.current;
-        if (applyBotLists) {
-          setBots(bootstrap.bots);
-          setInitialBotsLoaded(true);
-        }
+        if (appliedAtStart !== botsRefreshApplied.current) return;
+        setBots(bootstrap.bots);
+        setInitialBotsLoaded(true);
         markOnce("rk:renderer:bots-response");
-        if (!applyBotLists) return;
-        if (
-          bootstrap.bots.length === 0 &&
-          bootstrap.archivedBots.length === 0 &&
-          !bootstrap.spaces.some((space) => space.hasContent)
-        ) {
-          navigate("/onboarding", { replace: true });
-          return;
-        }
-        const selectedBotId = bootstrap.thread?.botId ?? bootstrap.bots[0]?.id;
-        if (selectedBotId && selectedBotId !== botId) {
-          navigate(`/app/${selectedBotId}`, { replace: true });
-        }
+        const museId = bootstrap.bots[0]?.id;
+        if (museId && museId !== botId) navigate(`/app/${museId}`, { replace: true });
       })
       .catch(() => {
         if (cancelled) return;
         setBootstrapMe(null);
-        void refreshBots(true);
+        void refreshBots();
       });
     let refreshTimer: number | undefined;
     const refreshVisibleBots = () => {
@@ -147,7 +107,6 @@ export function useBotRoster({
   }, []);
   return {
     bots,
-    setBots,
     botsRef,
     initialBotsLoaded,
     bootstrapMe,

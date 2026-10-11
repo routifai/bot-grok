@@ -10,11 +10,8 @@ import {
 } from "@superchat/ui-web";
 import { X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { BuiCard, SuccessPop } from "../../components/ai/primitives";
-import { type ArtifactTarget, decodeArtifactBase64 } from "../../lib/artifact-open";
+import { type ArtifactTarget, fetchArtifactBytes } from "../../lib/artifact-open";
 import { chartViewport } from "../../lib/chart-viewport";
-import { connectMcpOauth } from "../../lib/mcp-connect";
-import { rpc } from "../../lib/rpc";
 
 function ChartCanvas({
   spec,
@@ -97,104 +94,6 @@ function ChartCanvas({
       ) : null}
       <div ref={ref} className="[&_svg]:max-w-full" />
     </div>
-  );
-}
-
-type McpApprovalState = "pending" | "connecting" | "connected" | "dismissed";
-
-/** Approval card for an agent-created MCP server: the user completes browser
- * OAuth (or confirms no authorization is needed) without leaving the chat. */
-export function McpApprovalCard({
-  botId,
-  name,
-  serverId,
-  transport,
-  endpoint,
-  needsOAuth,
-}: {
-  botId: string | undefined;
-  name: string;
-  serverId: string;
-  transport: string;
-  endpoint: string | null;
-  needsOAuth: boolean;
-}) {
-  const { t } = useLingui();
-  const [state, setState] = useState<McpApprovalState>("pending");
-  const [error, setError] = useState<string | null>(null);
-
-  async function authorize() {
-    if (!botId) {
-      setError(t`This server cannot be assigned without a bot.`);
-      return;
-    }
-    setState("connecting");
-    setError(null);
-    try {
-      if (needsOAuth) {
-        const result = await connectMcpOauth(serverId);
-        if (result === "cancelled") {
-          setState("pending");
-          return;
-        }
-      }
-      await rpc.mcp.assignments.approve({ botId, serverId });
-      setState("connected");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t`Could not approve this server`);
-      setState("pending");
-    }
-  }
-
-  const summary = endpoint ?? `stdio · ${transport}`;
-  return (
-    <BuiCard className="max-w-[74%] p-4">
-      <div className="flex items-center gap-2">
-        <span className="grid h-7 w-7 place-items-center rounded-lg bg-muted text-xs text-foreground">
-          M
-        </span>
-        <span className="text-[14.5px] font-medium text-foreground">
-          <Trans>Connect MCP server “{name}”</Trans>
-        </span>
-      </div>
-      <p className="mt-1.5 truncate text-[12px] text-muted-foreground">{summary}</p>
-      {state === "pending" || state === "connecting" ? (
-        <>
-          <p className="mt-2 text-[13px] leading-[1.5] text-foreground/75">
-            {needsOAuth
-              ? t`Authorize this server so agents can use its tools. A popup opens.`
-              : t`Approve this server to let your agent use its tools.`}
-          </p>
-          {error ? <p className="mt-2 text-xs text-destructive">{error}</p> : null}
-          <div className="mt-3 flex gap-2">
-            <Button
-              className="rounded-full"
-              disabled={state === "connecting"}
-              onClick={() => void authorize()}
-            >
-              {state === "connecting" ? t`Connecting…` : needsOAuth ? t`Authorize` : t`Approve`}
-            </Button>
-            <Button
-              variant="secondary"
-              className="rounded-full"
-              onClick={() => setState("dismissed")}
-            >
-              <Trans>Not now</Trans>
-            </Button>
-          </div>
-        </>
-      ) : null}
-      {state === "connected" ? (
-        <div className="mt-3">
-          <SuccessPop label={t`Connected. Its tools are available from your next message.`} />
-        </div>
-      ) : null}
-      {state === "dismissed" ? (
-        <p className="mt-2 text-[13px] text-muted-foreground">
-          <Trans>Dismissed. Reconnect anytime from MCP settings.</Trans>
-        </p>
-      ) : null}
-    </BuiCard>
   );
 }
 
@@ -290,18 +189,18 @@ export function ArtifactImage({
   target,
   artifactId,
   name,
+  mimeType,
 }: {
   target: ArtifactTarget;
   artifactId: string;
   name: string;
+  mimeType?: string;
 }) {
   const { t } = useLingui();
   const [src, setSrc] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [visible, setVisible] = useState(false);
   const container = useRef<HTMLDivElement>(null);
-  const targetBotId = "botId" in target ? target.botId : undefined;
-  const targetGroupId = "groupId" in target ? target.groupId : undefined;
 
   useEffect(() => {
     const element = container.current;
@@ -327,17 +226,9 @@ export function ArtifactImage({
     let cancelled = false;
     let objectUrl: string | null = null;
     setSrc(null);
-    void rpc.artifacts
-      .get(
-        targetBotId
-          ? { botId: targetBotId, artifactId }
-          : { groupId: targetGroupId ?? "", artifactId },
-      )
-      .then((artifact) => {
-        const bytes = decodeArtifactBase64(artifact.contentBase64);
-        objectUrl = URL.createObjectURL(
-          new Blob([new Uint8Array(bytes)], { type: artifact.mimeType }),
-        );
+    void fetchArtifactBytes(target, artifactId)
+      .then((bytes) => {
+        objectUrl = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: mimeType }));
         if (cancelled) URL.revokeObjectURL(objectUrl);
         else setSrc(objectUrl);
       })
@@ -346,7 +237,7 @@ export function ArtifactImage({
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [artifactId, targetBotId, targetGroupId, visible]);
+  }, [artifactId, target, mimeType, visible]);
 
   return (
     <div ref={container}>

@@ -1,7 +1,7 @@
 import { i18n } from "@lingui/core";
 import { useLingui } from "@lingui/react/macro";
 import type { ThreadMessage } from "@superchat/contracts";
-import { isPeerReceiptBlocks, isToolActivityBlock } from "@superchat/core";
+import { isToolActivityBlock } from "@superchat/core";
 import { cn } from "@superchat/ui-web";
 import { ArrowDown } from "lucide-react";
 import {
@@ -94,11 +94,6 @@ const TranscriptView = memo(function Transcript({
   onAnswer,
   onReply,
   onQuote,
-  onOpenPeerMessages,
-  peerBot,
-  voiceReady,
-  speakingMessageId,
-  onSpeak,
   onFork,
   renderUnder,
   aside,
@@ -131,11 +126,6 @@ const TranscriptView = memo(function Transcript({
   /** Without reply/quote handlers (a Side Chat has no reply threads) those actions are hidden. */
   onReply?: (message: ThreadMessage) => void;
   onQuote?: (message: ThreadMessage, quote: string) => void;
-  onOpenPeerMessages: (peer: { peerBotId: string; peerBotName: string }) => void;
-  peerBot: (botId: string) => { color: string; status?: string } | undefined;
-  voiceReady: boolean;
-  speakingMessageId: string | null;
-  onSpeak: (message: ThreadMessage) => void;
   /** Fork a message (ADR 0010): offered on the messages the engine can anchor a fork to. */
   onFork?: (message: ThreadMessage) => void;
   /** Rendered under a message (its forks); return null for nothing. */
@@ -458,90 +448,71 @@ const TranscriptView = memo(function Transcript({
           const { message } = row;
           if (!museMode && !message.blocks.some((block) => !isToolActivityBlock(block)))
             return null;
-          const peerReceipt = isPeerReceiptBlocks(message.blocks);
           return (
             <div
               key={message.id}
               data-message-id={message.id}
-              className={peerReceipt ? "relative py-0.5" : "group/message relative hover:z-20"}
+              className="group/message relative hover:z-20"
             >
               <div
-                className={
-                  peerReceipt
-                    ? undefined
-                    : `relative flex ${message.role === "user" ? "justify-end" : "justify-start"}`
-                }
+                className={`relative flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 <div
-                  data-testid={peerReceipt ? undefined : "message-bubble-frame"}
-                  className={
-                    peerReceipt
-                      ? undefined
-                      : `relative w-fit min-w-0 ${
-                          message.role === "user"
-                            ? museMode
-                              ? "max-w-[80%]"
-                              : "max-w-[min(84%,calc(100%_-_6rem))]"
-                            : museMode
-                              ? "max-w-full"
-                              : "max-w-[min(88%,calc(100%_-_6rem))]"
-                        }`
-                  }
+                  data-testid="message-bubble-frame"
+                  className={`relative w-fit min-w-0 ${
+                    message.role === "user"
+                      ? museMode
+                        ? "max-w-[80%]"
+                        : "max-w-[min(84%,calc(100%_-_6rem))]"
+                      : museMode
+                        ? "max-w-full"
+                        : "max-w-[min(88%,calc(100%_-_6rem))]"
+                  }`}
                 >
-                  {peerReceipt ? null : (
-                    <MessageHoverActions
-                      message={message}
-                      side={message.role === "user" ? "start" : "end"}
-                      time={
-                        !museMode &&
-                        message.role === "user" &&
-                        !message.id.startsWith("progress:") ? (
-                          <time
-                            dateTime={message.createdAt}
-                            data-testid="message-hover-time"
-                            className="me-1 hidden text-xs tabular-nums whitespace-nowrap text-muted-foreground [@media(hover:hover)_and_(pointer:fine)]:block"
-                          >
-                            {new Date(message.createdAt).toLocaleTimeString(i18n.locale || "en", {
-                              hour: "numeric",
-                              minute: "2-digit",
-                            })}
-                          </time>
-                        ) : undefined
-                      }
-                      onReply={onReply}
-                      onFork={
-                        onFork && message.forks !== undefined && forkAnchorFor(message, messages)
-                          ? (clicked) => {
-                              const anchor = forkAnchorFor(clicked, messages);
-                              if (anchor) onFork(anchor);
-                            }
-                          : undefined
-                      }
-                      above={Boolean(onFork)}
-                    />
-                  )}
+                  <MessageHoverActions
+                    message={message}
+                    side={message.role === "user" ? "start" : "end"}
+                    time={
+                      !museMode &&
+                      message.role === "user" &&
+                      !message.id.startsWith("progress:") ? (
+                        <time
+                          dateTime={message.createdAt}
+                          data-testid="message-hover-time"
+                          className="me-1 hidden text-xs tabular-nums whitespace-nowrap text-muted-foreground [@media(hover:hover)_and_(pointer:fine)]:block"
+                        >
+                          {new Date(message.createdAt).toLocaleTimeString(i18n.locale || "en", {
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                        </time>
+                      ) : undefined
+                    }
+                    onReply={onReply}
+                    onFork={
+                      onFork && message.forks !== undefined && forkAnchorFor(message, messages)
+                        ? (clicked) => {
+                            const anchor = forkAnchorFor(clicked, messages);
+                            if (anchor) onFork(anchor);
+                          }
+                        : undefined
+                    }
+                    above={Boolean(onFork)}
+                  />
                   <MessageView
                     museMode={museMode}
                     botDisplayName={botDisplayName}
                     artifactTarget={artifactTarget}
                     message={message}
                     canAnswer={Boolean(museMode && hasOpenMuseAsk(message))}
-                    onOpenPeerMessages={onOpenPeerMessages}
                     onAnswer={onAnswer}
-                    peerBot={peerBot}
-                    voiceReady={voiceReady}
-                    speaking={speakingMessageId === message.id}
-                    onSpeak={() => onSpeak(message)}
                   />
-                  {museMode &&
-                  !peerReceipt &&
-                  message.role === "user" &&
-                  !message.id.startsWith("progress:") ? (
+                  {museMode && message.role === "user" && !message.id.startsWith("progress:") ? (
                     <UserMessageMeta message={message} />
                   ) : null}
                 </div>
               </div>
-              {peerReceipt ? null : renderUnder?.(message)}
+              {renderUnder?.(message)}
             </div>
           );
         })}

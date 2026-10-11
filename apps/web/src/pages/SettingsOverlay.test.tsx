@@ -35,13 +35,11 @@ vi.mock("@superchat/ui-web", () => ({
   DialogClose: ({
     children,
     "aria-label": ariaLabel,
-    disabled,
   }: {
     children?: ReactNode;
     "aria-label"?: string;
-    disabled?: boolean;
   }) => (
-    <button type="button" aria-label={ariaLabel} disabled={disabled}>
+    <button type="button" aria-label={ariaLabel}>
       {children}
     </button>
   ),
@@ -49,43 +47,17 @@ vi.mock("@superchat/ui-web", () => ({
 }));
 
 // Every panel below is presentational chrome not under test here: this file only
-// exercises the nav (which sections exist, in which order, for which product mode)
-// and the wiring into the Superchat section. Each stub reports the props it cares about
-// via data-testid so assertions can read them back.
-vi.mock("./AccountSettingsOverlay", () => ({
-  GeneralSettingsPanels: ({ museMode }: { museMode?: boolean }) => (
-    <div data-testid="general-panel" data-muse-mode={String(Boolean(museMode))} />
-  ),
-  UsageSettingsPanel: () => <div data-testid="usage-panel" />,
-  UpdatesSettingsPanel: () => <div data-testid="updates-panel" />,
-}));
-vi.mock("./ModelSettingsOverlay", () => ({
-  ModelSettingsOverlay: () => <div data-testid="models-panel" />,
-}));
-vi.mock("./VoiceSettingsOverlay", () => ({
-  VoiceSettingsOverlay: () => <div data-testid="voice-panel" />,
-}));
+// exercises the nav (which sections exist, in which order) and the wiring into the
+// Superchat section.
 vi.mock("./muse/settings/GeneralPanel", () => ({
-  GeneralPanel: () => <div data-testid="general-panel" data-muse-mode="true" />,
+  GeneralPanel: () => <div data-testid="general-panel" />,
 }));
-vi.mock("./muse/settings/VoicePanel", () => ({ VoicePanel: () => <div /> }));
+vi.mock("./muse/settings/ComputerStatusPanel", () => ({
+  ComputerStatusPanel: () => <div data-testid="computer-panel" />,
+}));
 vi.mock("./muse/SuperchatSettingsPanel", () => ({
-  SuperchatSettingsPanel: ({
-    bot,
-    onSave,
-  }: {
-    bot: Bot;
-    onSave: (patch: { name?: string; color?: string }) => Promise<void>;
-  }) => (
-    <div data-testid="superchat-panel" data-bot-name={bot.name}>
-      <button
-        type="button"
-        data-testid="superchat-panel-save"
-        onClick={() => void onSave({ name: "New name" })}
-      >
-        save
-      </button>
-    </div>
+  SuperchatSettingsPanel: ({ bot }: { bot: Bot }) => (
+    <div data-testid="superchat-panel" data-bot-name={bot.name} />
   ),
 }));
 const engine = vi.hoisted(() => ({ status: null as unknown }));
@@ -93,45 +65,21 @@ vi.mock("../features/models", () => ({
   useEngineModelsStatus: () => [engine.status, () => undefined, true],
   ModelsPanel: () => <div data-testid="engine-models-panel" />,
 }));
-vi.mock("../features/signups", () => ({
-  SignupsPanel: () => <div data-testid="org-signups" />,
-}));
 
 import { SettingsOverlay } from "./SettingsOverlay";
 
-function bot(overrides: Partial<Bot> = {}): Bot {
-  return {
-    id: "bot-1",
-    spaceId: "space-1",
-    name: "Superchat",
-    title: "",
-    description: "",
-    instructions: "",
-    color: "#0090FF",
-    notifyOnFinish: true,
-    pinned: false,
-    sectionId: null,
-    archivedAt: null,
-    unread: false,
-    parentBotId: null,
-    threadId: "thread-1",
-    preview: "",
-    status: "idle",
-    computerMode: "team",
-    updatedAt: new Date().toISOString(),
-    createdAt: new Date().toISOString(),
-    voiceId: null,
-    autoSpeak: false,
-    modelProvider: null,
-    modelId: null,
-    thinkingLevel: null,
-    teamChatAmbientEnabled: false,
-    teamChatRules: "",
-    webhookConfigured: false,
-    spawnKey: null,
-    ...overrides,
-  };
-}
+const museBot: Bot = {
+  id: "session-1",
+  name: "Superchat",
+  title: "",
+  description: "",
+  color: "#0090FF",
+  unread: false,
+  preview: "",
+  status: "idle",
+  updatedAt: new Date().toISOString(),
+  createdAt: new Date().toISOString(),
+};
 
 function render() {
   const container = document.createElement("div");
@@ -148,51 +96,20 @@ function navIds(container: HTMLElement) {
 
 const baseProps = {
   name: "Person",
-  avatarStyle: "robot" as const,
-  onAvatarStyleChange: async () => undefined,
+  museBot,
   onClose: () => undefined,
 };
 
-it("upstream mode: shows Avatars-capable General and Updates, no Superchat section", async () => {
+it("lists Superchat first, then General and Computer", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  engine.status = null;
   const { container, root } = render();
   try {
     await act(async () => root.render(<SettingsOverlay {...baseProps} />));
-    const ids = navIds(container);
-    expect(ids).toEqual(["general", "models", "voice", "usage", "updates"]);
-    expect(
-      container.querySelector('[data-testid="general-panel"]')?.getAttribute("data-muse-mode"),
-    ).toBe("false");
-  } finally {
-    await act(async () => root.unmount());
-    container.remove();
-    vi.unstubAllGlobals();
-  }
-});
-
-it("muse mode: adds Superchat first, drops Usage and Updates, and uses the Muse General panel", async () => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  const { container, root } = render();
-  try {
-    await act(async () =>
-      root.render(
-        <SettingsOverlay
-          {...baseProps}
-          museMode
-          museBot={bot({ name: "Superchat" })}
-          onMuseBotSave={async () => undefined}
-        />,
-      ),
-    );
-    const ids = navIds(container);
-    expect(ids).toEqual(["superchat", "general", "voice", "computer"]);
-    expect(ids).not.toContain("updates");
+    expect(navIds(container)).toEqual(["superchat", "general", "computer"]);
     expect(
       container.querySelector('[data-testid="settings-nav-superchat"]')?.textContent,
     ).toContain("Superchat");
-    expect(
-      container.querySelector('[data-testid="general-panel"]')?.getAttribute("data-muse-mode"),
-    ).toBe("true");
   } finally {
     await act(async () => root.unmount());
     container.remove();
@@ -200,32 +117,18 @@ it("muse mode: adds Superchat first, drops Usage and Updates, and uses the Muse 
   }
 });
 
-it("muse mode: opening Superchat renders the panel wired to the Muse bot and its save callback", async () => {
+it("opening Superchat renders the panel wired to the Muse", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  const onMuseBotSave = vi.fn().mockResolvedValue(undefined);
+  engine.status = null;
   const { container, root } = render();
   try {
+    await act(async () => root.render(<SettingsOverlay {...baseProps} />));
     await act(async () =>
-      root.render(
-        <SettingsOverlay
-          {...baseProps}
-          museMode
-          museBot={bot({ name: "Superchat" })}
-          onMuseBotSave={onMuseBotSave}
-        />,
-      ),
+      container.querySelector<HTMLButtonElement>('[data-testid="settings-nav-superchat"]')?.click(),
     );
-    const navButton = container.querySelector<HTMLButtonElement>(
-      '[data-testid="settings-nav-superchat"]',
-    );
-    await act(async () => navButton?.click());
-    const panel = container.querySelector('[data-testid="superchat-panel"]');
-    expect(panel?.getAttribute("data-bot-name")).toBe("Superchat");
-    const saveButton = container.querySelector<HTMLButtonElement>(
-      '[data-testid="superchat-panel-save"]',
-    );
-    await act(async () => saveButton?.click());
-    expect(onMuseBotSave).toHaveBeenCalledWith({ name: "New name" });
+    expect(
+      container.querySelector('[data-testid="superchat-panel"]')?.getAttribute("data-bot-name"),
+    ).toBe("Superchat");
   } finally {
     await act(async () => root.unmount());
     container.remove();
@@ -233,83 +136,40 @@ it("muse mode: opening Superchat renders the panel wired to the Muse bot and its
   }
 });
 
-const museProps = {
-  ...baseProps,
-  museMode: true,
-  museBot: null,
-  onMuseBotSave: async () => undefined,
-};
-
-it("muse mode on the engine: Models for everyone, and no Organization section", async () => {
+it("offers Models when the engine has them", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const { container, root } = render();
   try {
     engine.status = { enabled: true, harnesses: [], ready: true };
-    const { container, root } = render();
-    try {
-      await act(async () => root.render(<SettingsOverlay {...museProps} />));
-      expect(navIds(container)).toEqual(["superchat", "general", "models", "voice"]);
-      await act(async () =>
-        container.querySelector<HTMLButtonElement>('[data-testid="settings-nav-models"]')?.click(),
-      );
-      expect(container.querySelector('[data-testid="engine-models-panel"]')).toBeTruthy();
-      expect(container.querySelector('[data-testid="models-panel"]')).toBeNull();
-    } finally {
-      await act(async () => root.unmount());
-      container.remove();
-    }
+    await act(async () => root.render(<SettingsOverlay {...baseProps} />));
+    expect(navIds(container)).toEqual(["superchat", "general", "models", "computer"]);
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('[data-testid="settings-nav-models"]')?.click(),
+    );
+    expect(container.querySelector('[data-testid="engine-models-panel"]')).toBeTruthy();
   } finally {
     engine.status = null;
+    await act(async () => root.unmount());
+    container.remove();
     vi.unstubAllGlobals();
   }
 });
 
-it("opens at Models when asked to, and falls back to General without the engine", async () => {
+it("opens at Models when asked to, and falls back to General without engine models", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const { container, root } = render();
   try {
     engine.status = { enabled: true, harnesses: [], ready: false };
-    await act(async () => root.render(<SettingsOverlay {...museProps} initialSection="models" />));
+    await act(async () => root.render(<SettingsOverlay {...baseProps} initialSection="models" />));
     expect(container.querySelector('[data-testid="engine-models-panel"]')).toBeTruthy();
     engine.status = { enabled: false, harnesses: [], ready: false };
-    await act(async () => root.render(<SettingsOverlay {...museProps} initialSection="models" />));
+    await act(async () => root.render(<SettingsOverlay {...baseProps} initialSection="models" />));
     expect(container.querySelector('[data-testid="engine-models-panel"]')).toBeNull();
     expect(container.querySelector('[data-settings-section="general"]')).toBeTruthy();
   } finally {
     engine.status = null;
     await act(async () => root.unmount());
     container.remove();
-    vi.unstubAllGlobals();
-  }
-});
-
-it("offers Signups to the deployment owner only, whether or not the engine is reachable", async () => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  try {
-    for (const [isDeploymentOwner, expected] of [
-      [false, ["superchat", "general", "voice"]],
-      [true, ["superchat", "general", "voice", "signups"]],
-    ] as const) {
-      engine.status = null;
-      const { container, root } = render();
-      try {
-        await act(async () =>
-          root.render(<SettingsOverlay {...museProps} isDeploymentOwner={isDeploymentOwner} />),
-        );
-        expect(navIds(container)).toEqual(expected);
-        if (isDeploymentOwner) {
-          await act(async () =>
-            container
-              .querySelector<HTMLButtonElement>('[data-testid="settings-nav-signups"]')
-              ?.click(),
-          );
-          expect(container.querySelector('[data-testid="org-signups"]')).toBeTruthy();
-        }
-      } finally {
-        await act(async () => root.unmount());
-        container.remove();
-      }
-    }
-  } finally {
     vi.unstubAllGlobals();
   }
 });

@@ -10,7 +10,9 @@ import { MODEL_ERROR_COPY, redactSecrets } from "@superchat/core";
 export interface OmnigentConnection {
   /** Base URL of the Omnigent server, e.g. "http://127.0.0.1:8000". */
   baseUrl: string;
-  /** Shared secret Omnigent's header-auth proxy mode expects on every request. */
+  /** Shared secret Omnigent's header-auth proxy mode expects on every request. Empty when the
+   * caller's identity is supplied outside the request (a browser behind a sign-in broker, or the
+   * engine's single-user local mode). */
   proxySecret: string;
   /** Secret values redacted out of an Omnigent error body before it reaches a thrown Error's
    * message (./env.ts's `omnigentRedactionSecretsFromEnv` — the same list ./gateway.ts and
@@ -21,7 +23,8 @@ export interface OmnigentConnection {
 }
 
 /** A connection bound to the caller's tenant: the Superchat space id, sent on every call so the
- * engine scopes per-person resources (`/v1/me/muse`, the Muse's Computer) to that space. */
+ * engine scopes per-person resources (`/v1/me/muse`, the Muse's Computer) to that space. Empty
+ * when the engine alone decides the tenant. */
 export interface OmnigentClientConfig extends OmnigentConnection {
   tenant: string;
 }
@@ -55,9 +58,9 @@ export function omnigentHeaders(
 ): Record<string, string> {
   return {
     "content-type": "application/json",
-    "X-Forwarded-Email": email,
-    "X-Omnigent-Proxy-Secret": config.proxySecret,
-    [OMNIGENT_TENANT_HEADER]: config.tenant,
+    ...(email ? { "X-Forwarded-Email": email } : {}),
+    ...(config.proxySecret ? { "X-Omnigent-Proxy-Secret": config.proxySecret } : {}),
+    ...(config.tenant ? { [OMNIGENT_TENANT_HEADER]: config.tenant } : {}),
   };
 }
 

@@ -8,7 +8,6 @@ import type { SideChatView } from "./SideChatSession";
 
 const noop = () => undefined;
 const noopAsync = async () => undefined;
-const NOT_LIVE_BOT = () => undefined;
 
 /** The Conversation's own Transcript and Composer for a Side Chat session
  * (SideChatSession.tsx): same bubbles, Muse face, markdown, working row and scrolling, minus
@@ -51,11 +50,6 @@ export const sideChatView: Omit<SideChatView, "Approvals"> = {
         running={running}
         onLoadOlder={noop}
         onAnswer={noopAsync}
-        onOpenPeerMessages={noop}
-        peerBot={NOT_LIVE_BOT}
-        voiceReady={false}
-        speakingMessageId={null}
-        onSpeak={noop}
       />
     );
   },

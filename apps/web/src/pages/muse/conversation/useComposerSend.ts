@@ -310,7 +310,7 @@ export function useComposerSend({
       // The first real message closes the first-run welcome for good (muse/intro),
       // wherever it was sent from — the composer directly, or a welcome card's "Try it".
       markFirstRunSeen(userId, "welcome");
-      if (plan.shouldSend && botsRef.current.find((bot) => bot.id === botTarget)?.notifyOnFinish) {
+      if (plan.shouldSend) {
         const permissionRequest = requestBrowserNotificationPermission();
         if (permissionRequest) void permissionRequest.then(flushPendingBrowserNotifications);
       }
@@ -329,17 +329,6 @@ export function useComposerSend({
       };
       let showing = false;
       try {
-        if (plan.shouldRunRoutines) {
-          const sendNonce = newClientId();
-          await Promise.all(
-            plan.routineIds.map((routineId) =>
-              rpc.routines.testRun({
-                routineId,
-                clientNonce: `routine-mention:${sendNonce}:${routineId}`,
-              }),
-            ),
-          );
-        }
         if (!plan.shouldSend) {
           sentFiles();
           return true;

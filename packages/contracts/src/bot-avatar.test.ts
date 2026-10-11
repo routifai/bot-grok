@@ -4,7 +4,6 @@ import {
   BotAvatarValueSchema,
   isBotAvatarValue,
   parseBotAvatarValue,
-  UpdateBotInput,
 } from "./index.js";
 
 describe("bot avatar values", () => {
@@ -39,13 +38,5 @@ describe("bot avatar values", () => {
     ).toBe(false);
     expect(BotAvatarValueSchema.safeParse("#fff").success).toBe(true);
     expect(BotAvatarValueSchema.safeParse("not-a-color").success).toBe(false);
-    expect(UpdateBotInput.safeParse({ botId: "bot-1", color: "#8B5CF6::shape_2" }).success).toBe(
-      true,
-    );
-    expect(
-      UpdateBotInput.safeParse({ botId: "bot-1", color: "https://evil.example/x.png" }).success,
-    ).toBe(false);
-    expect(UpdateBotInput.safeParse({ botId: "bot-1", color: "gray" }).success).toBe(false);
-    expect(UpdateBotInput.safeParse({ botId: "bot-1", name: "Atlas" }).success).toBe(true);
   });
 });

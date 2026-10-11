@@ -1,6 +1,5 @@
 import type { ThreadMessage } from "@superchat/contracts";
 import { parseAttachmentReferences } from "@superchat/core";
-import { messageProviderLabel } from "./messaging";
 
 /** What a person's own text shows as outside the Conversation view (a side chat, the Activity
  * panel, a copy): their words, with the attachment reference lines as one "Attached: ..." line.
@@ -16,9 +15,6 @@ export function personText(text: string): string {
 export function copyableMessageText(message: ThreadMessage): string {
   return message.blocks
     .map((block) => {
-      if (block.kind === "channel_message") {
-        return `${messageProviderLabel(block.provider, block.transport)} · ${block.fromLabel}: ${block.text}`;
-      }
       if (block.kind === "text") {
         return message.role === "user" ? personText(block.text) : block.text;
       }

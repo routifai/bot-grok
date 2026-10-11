@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Runs the Superchat API, the background worker and the web server in ONE container.
-# Why one: the API and worker share DATA_DIR (one volume), and the web server proxies /api and
-# /rpc to the API on 127.0.0.1:3100. Public traffic goes to $PORT (the web server, 5173 unless the
-# platform sets it). If any process exits, the container exits so it is restarted as a whole.
+# Why one: the API and worker share DATA_DIR (one volume), and the web server proxies /v1 to the
+# engine at OMNIGENT_URL (the app no longer calls the API). Public traffic goes
+# to $PORT (the web server, 5173 unless the platform sets it). If any process exits, the container exits so it is restarted as a whole.
 set -uo pipefail
 
 pnpm --filter @superchat/db exec prisma migrate deploy || exit 1
@@ -18,7 +18,7 @@ for _ in $(seq 1 90); do
   kill -0 "$api" 2>/dev/null || break
   sleep 1
 done
-API_PROXY_TARGET=http://127.0.0.1:3100 pnpm --filter @superchat/web preview --host 0.0.0.0 --port "${PORT:-5173}" &
+pnpm --filter @superchat/web preview --host 0.0.0.0 --port "${PORT:-5173}" &
 web=$!
 
 trap 'kill "$api" "$worker" "$web" 2>/dev/null' TERM INT

@@ -73,7 +73,7 @@ let shown: ThreadMessage[] = [];
 
 function Harness() {
   latest = useComposerSend({
-    active: { id: BOT, notifyOnFinish: false } as Bot,
+    active: { id: BOT } as Bot,
     activeBotId: botRef,
     userId: "u1",
     messages: shown,

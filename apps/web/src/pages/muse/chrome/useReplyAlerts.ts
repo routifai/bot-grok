@@ -11,7 +11,6 @@ type Notify = (
   streamReady: boolean,
   botName: string,
   enabled: boolean,
-  groupNotification: boolean,
 ) => void;
 
 /** Browser notification for the Muse's replies, driven by the family stream. */
@@ -35,7 +34,7 @@ export function useReplyAlerts({
       void alertForReply(event, {
         botId: bot.id,
         botName: bot.name,
-        enabled: bot.notifyOnFinish,
+        enabled: true,
         focused: () => document.visibilityState === "visible" && document.hasFocus(),
         readText: async (chatId, itemId) => {
           const page = await rpc.chats.transcript({
@@ -49,7 +48,7 @@ export function useReplyAlerts({
             .join("\n");
         },
         notify: (notification, name, enabled) =>
-          notifyBrowserForEvent(notification, notification.threadId, 0, true, name, enabled, false),
+          notifyBrowserForEvent(notification, notification.threadId, 0, true, name, enabled),
       });
     });
   }, [botId]);

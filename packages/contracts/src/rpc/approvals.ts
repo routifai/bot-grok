@@ -1,6 +1,5 @@
 import { oc } from "@orpc/contract";
 import * as z from "zod";
-import { ActionApprovalRuleSchema, ActionAutoReviewSettingsSchema } from "../domain.js";
 import { Id } from "../ids.js";
 import { botId } from "./shared.js";
 
@@ -69,23 +68,6 @@ export const AnswerAskInput = z.object({
 });
 
 export const approvalsContract = {
-  approvalRules: {
-    list: oc.output(z.array(ActionApprovalRuleSchema)),
-    set: oc
-      .input(
-        z.object({
-          effect: z.enum(["always_allow", "require_approval"]),
-          matchKind: z.enum(["tool", "connector", "category"]),
-          matchValue: z.string().min(1),
-        }),
-      )
-      .output(ActionApprovalRuleSchema),
-    remove: oc.input(z.object({ id: Id })).output(z.object({ ok: z.literal(true) })),
-  },
-  autoReview: {
-    get: oc.output(ActionAutoReviewSettingsSchema),
-    set: oc.input(z.object({ enabled: z.boolean() })).output(ActionAutoReviewSettingsSchema),
-  },
   approvals: {
     rules: oc
       .input(botId)

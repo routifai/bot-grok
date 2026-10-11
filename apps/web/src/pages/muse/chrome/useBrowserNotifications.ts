@@ -9,7 +9,6 @@ export type PendingBrowserNotification = {
   event: Pick<ProductEvent, "id" | "type" | "threadId" | "botId" | "payload">;
   botId: string;
   botName: string;
-  groupNotification: boolean;
 };
 
 /** Native browser notifications for finished runs, held until permission is granted. */
@@ -23,7 +22,7 @@ export function useBrowserNotifications(botsRef: MutableRefObject<Bot[]>) {
       pending.event,
       currentBot.name || pending.botName,
       {
-        enabled: pending.groupNotification || currentBot.notifyOnFinish,
+        enabled: true,
         pageVisible: document.visibilityState === "visible",
         windowFocused: document.hasFocus(),
         permission: Notification.permission,
@@ -48,7 +47,6 @@ export function useBrowserNotifications(botsRef: MutableRefObject<Bot[]>) {
       streamReady: boolean,
       botName: string,
       enabled: boolean,
-      groupNotification: boolean,
     ) => {
       const botId = event.botId;
       if (typeof botId !== "string") return;
@@ -62,12 +60,7 @@ export function useBrowserNotifications(botsRef: MutableRefObject<Bot[]>) {
         notifiedEventIds: notifiedBrowserEvents.current,
       });
       if (!eligible || !enabled) return;
-      const pending = {
-        event,
-        botId,
-        botName,
-        groupNotification,
-      } satisfies PendingBrowserNotification;
+      const pending = { event, botId, botName } satisfies PendingBrowserNotification;
       if (typeof Notification === "undefined" || Notification.permission === "denied") return;
       if (Notification.permission === "default") {
         pendingBrowserNotifications.current.set(event.threadId, pending);

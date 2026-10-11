@@ -235,11 +235,6 @@ export function ForksPreviewPage() {
               running={false}
               onLoadOlder={noop}
               onAnswer={noopAsync}
-              onOpenPeerMessages={noop}
-              peerBot={() => undefined}
-              voiceReady={false}
-              speakingMessageId={null}
-              onSpeak={noop}
               onFork={forks.startAsk}
               renderUnder={forks.renderUnder}
               aside={

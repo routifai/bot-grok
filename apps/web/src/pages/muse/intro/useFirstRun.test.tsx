@@ -4,11 +4,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-vi.mock("../../../lib/auth", () => ({
-  authClient: {
-    useSession: () => ({ data: { user: { id: "user-1" } }, isPending: false }),
-  },
-}));
+vi.mock("../../../lib/use-user-id", () => ({ useUserId: () => "user-1" }));
 
 import { useFirstRun } from "./useFirstRun";
 

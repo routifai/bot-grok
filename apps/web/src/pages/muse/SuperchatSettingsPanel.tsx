@@ -1,77 +1,29 @@
-import { Trans, useLingui } from "@lingui/react/macro";
+import { Trans } from "@lingui/react/macro";
 import type { Bot } from "@superchat/contracts";
-import { BOT_NAME_MAX_LENGTH } from "@superchat/contracts";
 import { cn } from "@superchat/ui-web";
 import { Check, ChevronRight } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useState } from "react";
 import { SuperchatOrb } from "../../components/ai/orb";
 import { ApprovalsSettings } from "../../features/approvals";
 import { SideChatArchiving } from "../../features/side-chats/SideChatArchiving";
 import { VaultSettings } from "../../features/vault";
-import { authClient } from "../../lib/auth";
 import { resetFirstRun } from "./intro";
 import { MUSE_INSET_GROUP } from "./ui";
 
 /**
  * What the person tunes about their Muse, gathered in one place (docs/muse/DESIGN.md):
- * its name (Superchat is always the orb: no shape, color or upload). Everything here
- * saves through the same bot-update path bot-panel uses, so there is one source of truth.
+ * Superchat is always the orb, with the name the engine gives it.
  */
-export function SuperchatSettingsPanel({
-  bot,
-  onSave,
-}: {
-  bot: Bot;
-  onSave: (patch: { name?: string }) => Promise<void>;
-}) {
-  const { t } = useLingui();
-  const ids = useId();
-  const session = authClient.useSession();
-  const [name, setName] = useState(bot.name);
-  const [error, setError] = useState<string | null>(null);
+export function SuperchatSettingsPanel({ bot, userId }: { bot: Bot; userId: string | undefined }) {
   const [replayed, setReplayed] = useState(false);
-
-  useEffect(() => {
-    setName(bot.name);
-  }, [bot.id, bot.name]);
-
-  async function save(patch: { name?: string }) {
-    setError(null);
-    try {
-      await onSave(patch);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t`Could not save`);
-      setName(bot.name);
-    }
-  }
 
   return (
     <div data-testid="superchat-settings" className="flex flex-col gap-8 pb-4">
       <div className={cn(MUSE_INSET_GROUP, "flex flex-col items-center px-6 pt-7 pb-5")}>
         <SuperchatOrb size={88} flies={false} />
-        <label htmlFor={`${ids}-name`} className="sr-only">
-          <Trans>Name</Trans>
-        </label>
-        <input
-          id={`${ids}-name`}
-          value={name}
-          maxLength={BOT_NAME_MAX_LENGTH}
-          onChange={(event) => setName(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") event.currentTarget.blur();
-          }}
-          onBlur={() => {
-            const trimmed = name.trim();
-            if (trimmed && trimmed !== bot.name) void save({ name: trimmed });
-            else setName(bot.name);
-          }}
-          className="mt-4 w-full max-w-[280px] rounded-xl bg-transparent px-2 py-1 text-center text-[24px] font-semibold tracking-[-0.02em] text-foreground outline-none transition-colors hover:bg-muted/60 focus:bg-muted"
-        />
-        {error ? (
-          <p role="alert" className="mt-2 text-[13px] text-destructive">
-            {error}
-          </p>
-        ) : null}
+        <h3 className="mt-4 text-[24px] font-semibold tracking-[-0.02em] text-foreground">
+          {bot.name}
+        </h3>
       </div>
 
       <SideChatArchiving botId={bot.id} />
@@ -84,7 +36,7 @@ export function SuperchatSettingsPanel({
         <button
           type="button"
           onClick={() => {
-            resetFirstRun(session.data?.user.id);
+            resetFirstRun(userId);
             setReplayed(true);
           }}
           className="flex min-h-[52px] w-full items-center justify-between gap-4 px-4 text-start transition-colors hover:bg-accent/50 active:bg-accent"

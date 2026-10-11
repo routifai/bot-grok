@@ -141,10 +141,10 @@ it("falls back to the plain file view when the chart file is unreadable", async 
   expect(host.querySelector('[role="img"]')).not.toBeNull();
 });
 
-it("asks the server for the Library thumbnail in the current theme", async () => {
+it("asks for the Library thumbnail in the current theme", async () => {
   document.documentElement.dataset.theme = "dark";
   api.thumbnail.mockResolvedValue({
-    mimeType: "image/png",
+    mimeType: "image/svg+xml",
     contentBase64: "AAAA",
     width: 1,
     height: 1,
@@ -155,12 +155,11 @@ it("asks the server for the Library thumbnail in the current theme", async () =>
   });
   expect(api.thumbnail).toHaveBeenCalledWith({
     artifactId: "thumb-1",
-    format: "png",
     theme: "dark",
     width: 640,
     height: 400,
   });
-  expect(host.querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,AAAA");
+  expect(host.querySelector("img")?.getAttribute("src")).toBe("data:image/svg+xml;base64,AAAA");
   act(() => root.unmount());
   delete document.documentElement.dataset.theme;
 });

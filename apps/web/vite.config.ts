@@ -48,7 +48,12 @@ function attachDesktopStackProbe(
 
 export default defineConfig(({ mode }) => {
   const rootEnv = loadEnv(mode, path.resolve(import.meta.dirname, "../.."), "");
-  const api = process.env.API_PROXY_TARGET ?? rootEnv.API_PROXY_TARGET ?? "http://127.0.0.1:3100";
+  const engine =
+    process.env.OMNIGENT_URL ??
+    rootEnv.OMNIGENT_URL ??
+    process.env.ENGINE_URL ??
+    rootEnv.ENGINE_URL ??
+    "http://127.0.0.1:8012";
   const previewHost = process.env.SUPERCHAT_HOST ?? rootEnv.SUPERCHAT_HOST ?? "localhost";
   const performanceAssetDelayMs = Number(process.env.SUPERCHAT_PERFORMANCE_ASSET_DELAY_MS ?? 0);
   const desktopStackToken =
@@ -72,7 +77,7 @@ export default defineConfig(({ mode }) => {
           if (!Number.isFinite(performanceAssetDelayMs) || performanceAssetDelayMs <= 0) return;
           server.middlewares.use((req, _res, next) => {
             const pathname = req.url?.split("?", 1)[0] ?? "/";
-            if (["/api", "/rpc", "/apps/"].some((prefix) => pathname.startsWith(prefix))) {
+            if (["/v1", "/apps/"].some((prefix) => pathname.startsWith(prefix))) {
               next();
               return;
             }
@@ -86,10 +91,8 @@ export default defineConfig(({ mode }) => {
       port: webPort,
       strictPort: true,
       proxy: {
-        "/api": apiProxy(api),
-        "/rpc": apiProxy(api),
-        // Published mini apps (`/apps/<slug>`); the API sets their sandbox headers.
-        "^/apps/": apiProxy(api),
+        // The engine's REST API: the app talks to it directly, on this origin.
+        "/v1": apiProxy(engine),
       },
     },
     preview: {
@@ -97,10 +100,8 @@ export default defineConfig(({ mode }) => {
       port: Number(process.env.WEB_PORT ?? 5173),
       allowedHosts: [previewHost],
       proxy: {
-        "/api": apiProxy(api),
-        "/rpc": apiProxy(api),
-        // Published mini apps (`/apps/<slug>`); the API sets their sandbox headers.
-        "^/apps/": apiProxy(api),
+        // The engine's REST API: the app talks to it directly, on this origin.
+        "/v1": apiProxy(engine),
       },
     },
   };

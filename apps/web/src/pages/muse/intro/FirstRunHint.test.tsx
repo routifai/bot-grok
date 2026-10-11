@@ -10,11 +10,7 @@ vi.mock("react-dom/client", async (orig) =>
   ),
 );
 
-vi.mock("../../../lib/auth", () => ({
-  authClient: {
-    useSession: () => ({ data: { user: { id: "user-1" } }, isPending: false }),
-  },
-}));
+vi.mock("../../../lib/use-user-id", () => ({ useUserId: () => "user-1" }));
 vi.mock("@lingui/react/macro", () => ({
   useLingui: () => ({ t: (parts: TemplateStringsArray) => parts.join("") }),
 }));
@@ -99,7 +95,11 @@ it("stays hidden while inactive, without marking itself seen", async () => {
 
   await act(async () => {
     root.render(
-      <FirstRunHint hintKey="feed-section" text="Everything Superchat has to show you." active={false}>
+      <FirstRunHint
+        hintKey="feed-section"
+        text="Everything Superchat has to show you."
+        active={false}
+      >
         <span>Feed</span>
       </FirstRunHint>,
     );

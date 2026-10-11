@@ -1,13 +1,8 @@
 import { oc } from "@orpc/contract";
 import * as z from "zod";
-import {
-  ARTIFACT_DESCRIPTION_MAX_LENGTH,
-  ARTIFACT_NAME_MAX_LENGTH,
-  ATTACHMENT_MAX_BASE64_LENGTH,
-} from "../attachments.js";
 import { Id } from "../ids.js";
 
-import { botId, threadTarget } from "./shared.js";
+import { botId } from "./shared.js";
 
 export const ARTIFACT_PUBLISH_AUDIENCES = ["owner", "org", "link"] as const;
 export const ArtifactPublishAudienceSchema = z.enum(ARTIFACT_PUBLISH_AUDIENCES);
@@ -82,19 +77,6 @@ export const artifactsContract = {
         }),
       ),
     listVersions: oc.input(z.object({ familyId: Id })).output(z.array(ArtifactVersionSchema)),
-    create: oc
-      .input(
-        threadTarget.and(
-          z.object({
-            name: z.string().min(1).max(ARTIFACT_NAME_MAX_LENGTH),
-            description: z.string().max(ARTIFACT_DESCRIPTION_MAX_LENGTH).optional(),
-            mimeType: z.string().min(1),
-            contentBase64: z.string().min(1).max(ATTACHMENT_MAX_BASE64_LENGTH),
-          }),
-        ),
-      )
-      .output(ArtifactSchema),
-    get: oc.input(threadTarget.and(z.object({ artifactId: Id }))).output(ArtifactWithContentSchema),
     getById: oc.input(z.object({ artifactId: Id })).output(ArtifactWithContentSchema),
     remove: oc.input(z.object({ artifactId: Id })).output(z.object({ ok: z.literal(true) })),
   },

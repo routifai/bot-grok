@@ -8,9 +8,9 @@ import {
   ENGINE_NO_ANSWER_MESSAGE,
   failRunUnsupportedOnOmnigent,
   publicRunError,
-  readTurnImages,
   runTurnOnOmnigent,
 } from "./gateway.js";
+import { readTurnImages } from "./turn-images.js";
 
 const {
   adoptOmnigentMuse,

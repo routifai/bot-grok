@@ -126,8 +126,12 @@ services:
       <<: *proxy-env
       DATABASE_URL: postgres://${POSTGRES_USER:-omnigent}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-omnigent}?options=-csearch_path%3Dengine
       ENGINE_PUBLIC_URL: ${ENGINE_PUBLIC_URL:-http://host.docker.internal:${SUPERCHAT_ENGINE_PORT:-8012}}
-      # The API signs every call with this; the engine trusts the identity headers only with it.
+      # The engine trusts identity headers only alongside this secret, so a sign-in broker in
+      # front of it can name the person. A request with no identity header (the browser talking to
+      # the engine directly) is the one local person while OMNIGENT_LOCAL_SINGLE_USER is on;
+      # turn it off when a broker fronts the engine (docs/SETUP.md, "Hosted").
       OMNIGENT_AUTH_PROVIDER: header
+      OMNIGENT_LOCAL_SINGLE_USER: "1"
       OMNIGENT_AUTH_HEADER_SECRET: ${OMNIGENT_PROXY_SECRET:?Set OMNIGENT_PROXY_SECRET in .env}
       OMNIGENT_VAULT_KEY: ${OMNIGENT_VAULT_KEY:?Set OMNIGENT_VAULT_KEY in .env}
       # Each person's Computer: a container from the runner image, home on its own volume.

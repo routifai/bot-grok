@@ -1,17 +1,11 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import { LOCAL_SETTINGS_PAGE } from "@superchat/contracts";
+import { ORPCError } from "@orpc/server";
 import { Button, Skeleton } from "@superchat/ui-web";
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Navigate, Route, Routes, useSearchParams } from "react-router-dom";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Navigate, Route, Routes } from "react-router-dom";
 import { LoadingState } from "./components/ai/primitives";
-import { authClient } from "./lib/auth";
+import { loadMe, resetMe } from "./lib/bootstrap";
 import { markAfterPaint, markOnce } from "./lib/performance";
-import {
-  holdUnreachableGate,
-  sessionGate,
-  sessionRetryDelayMs,
-  showSessionUnavailable,
-} from "./lib/session-gate";
 import { ActivityPreviewPage } from "./pages/dev/ActivityPreviewPage";
 import { AutomationsPreviewPage } from "./pages/dev/AutomationsPreviewPage";
 import { CanvasPreviewPage } from "./pages/dev/CanvasPreviewPage";
@@ -23,30 +17,13 @@ import { ForksPreviewPage } from "./pages/dev/ForksPreviewPage";
 import { MemoryPreviewPage } from "./pages/dev/MemoryPreviewPage";
 import { SheetPreviewPage } from "./pages/dev/SheetPreviewPage";
 import { SideChatsPreviewPage } from "./pages/dev/SideChatsPreviewPage";
-import { IntegrationSetupPage } from "./pages/IntegrationSetup";
-import { LocalSettingsPage } from "./pages/LocalSettings";
-import { McpOAuthCallbackPage } from "./pages/McpOAuthCallback";
-import { isPendingApproval, PendingApprovalPage } from "./pages/PendingApproval";
 import { ShellPage } from "./pages/Shell";
 
-const AuthPage = lazy(() =>
-  import("./pages/Auth").then((module) => ({ default: module.AuthPage })),
-);
-const PasswordResetPage = lazy(() =>
-  import("./pages/Auth").then((module) => ({ default: module.PasswordResetPage })),
-);
-const OnboardingPage = lazy(() =>
-  import("./pages/Onboarding").then((module) => ({ default: module.OnboardingPage })),
-);
-const WelcomePage = lazy(() =>
-  import("./pages/Welcome").then((module) => ({ default: module.WelcomePage })),
-);
 const ArtifactsPage = lazy(() =>
   import("./features/artifacts/Artifacts").then((module) => ({ default: module.ArtifactsPage })),
 );
 
 export function App() {
-  if (window.location.pathname === LOCAL_SETTINGS_PAGE) return <LocalSettingsPage />;
   // Dev-only fixture route: no session needed, so screenshots and eyeballing don't
   // require a signed-in account or a live agent run.
   if (import.meta.env.DEV && window.location.pathname === "/dev/canvas") {
@@ -97,129 +74,98 @@ export function App() {
   return <SessionApp />;
 }
 
+type MeGate = "loading" | "ready" | "unauthorized" | "unreachable";
+
+function isUnauthorized(error: unknown) {
+  return error instanceof ORPCError && error.code === "UNAUTHORIZED";
+}
+
+/** The engine's answer to "who is this?": the whole app waits on it. */
+function useMeGate() {
+  const [gate, setGate] = useState<MeGate>("loading");
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    void loadMe().then(
+      () => {
+        if (!cancelled) setGate("ready");
+      },
+      (error: unknown) => {
+        if (!cancelled) setGate(isUnauthorized(error) ? "unauthorized" : "unreachable");
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [attempt]);
+  const retry = useCallback(() => {
+    resetMe();
+    setGate("loading");
+    setAttempt((value) => value + 1);
+  }, []);
+  return { gate, retry };
+}
+
 function SessionApp() {
-  const [searchParams] = useSearchParams();
-  const signInDestination =
-    searchParams.get("next") === "/integrations/setup" ? "/integrations/setup" : "/app";
-  const session = authClient.useSession();
-  const gate = sessionGate(session);
-  const [holdingUnreachable, setHoldingUnreachable] = useState(false);
-  const nextHolding = holdUnreachableGate(gate, holdingUnreachable);
-  if (nextHolding !== holdingUnreachable) setHoldingUnreachable(nextHolding);
+  const { gate, retry } = useMeGate();
 
   useLayoutEffect(() => {
-    if (session.isPending) return;
+    if (gate === "loading") return;
     markOnce("rk:renderer:session-committed");
     markAfterPaint("rk:renderer:session-painted");
-  }, [session.isPending]);
+  }, [gate]);
 
-  if (showSessionUnavailable(gate, nextHolding)) {
-    return <SessionUnavailable refetch={session.refetch} />;
-  }
-  if (gate === "loading") {
-    return window.location.pathname.startsWith("/app") ? (
-      <ShellSkeleton />
-    ) : (
-      <div
-        className="grid h-full place-items-center text-muted-foreground/80"
-        data-superchat-app-state="session-pending"
-      >
-        <Trans>Loading…</Trans>
-      </div>
-    );
-  }
+  if (gate === "unreachable") return <SessionUnavailable retry={retry} />;
+  if (gate === "unauthorized") return <SignedOut />;
+  if (gate === "loading") return <ShellSkeleton />;
 
-  const user = session.data?.user;
-  if (isPendingApproval(user)) return <PendingApprovalPage refetch={session.refetch} />;
   return (
     <div className="h-full" data-superchat-app-state="ready">
-      {/* Signed out, every page wears the night welcome surface, so the loading frame does too. */}
-      <Suspense
-        fallback={<div className={`h-full ${user ? "bg-background" : "bg-welcome-night"}`} />}
-      >
+      <Suspense fallback={<div className="h-full bg-background" />}>
         <Routes>
-          <Route path="/" element={user ? <Navigate to="/app" replace /> : <WelcomePage />} />
-          <Route
-            path="/sign-in"
-            element={
-              user ? <Navigate to={signInDestination} replace /> : <AuthPage key="in" mode="in" />
-            }
-          />
-          <Route
-            path="/sign-up"
-            element={user ? <Navigate to="/onboarding" replace /> : <AuthPage key="up" mode="up" />}
-          />
-          <Route
-            path="/forgot-password"
-            element={
-              user ? <Navigate to="/app" replace /> : <AuthPage key="forgot" mode="forgot" />
-            }
-          />
-          <Route path="/reset-password" element={<PasswordResetPage />} />
-          <Route
-            path="/onboarding"
-            element={user ? <OnboardingPage /> : <Navigate to="/sign-in" replace />}
-          />
-          <Route
-            path="/mcp/oauth/callback"
-            element={user ? <McpOAuthCallbackPage /> : <Navigate to="/sign-in" replace />}
-          />
-          <Route
-            path="/integrations/setup"
-            element={
-              user ? (
-                <IntegrationSetupPage />
-              ) : (
-                <Navigate to="/sign-in?next=/integrations/setup" replace />
-              )
-            }
-          />
-          <Route path="/app" element={user ? <ShellPage /> : <Navigate to="/sign-in" replace />} />
-          <Route
-            path="/app/artifacts"
-            element={user ? <ArtifactsPage /> : <Navigate to="/sign-in" replace />}
-          />
-          <Route
-            path="/app/artifacts/:artifactId"
-            element={user ? <ArtifactsPage /> : <Navigate to="/sign-in" replace />}
-          />
-          <Route
-            path="/app/:botId"
-            element={user ? <ShellPage /> : <Navigate to="/sign-in" replace />}
-          />
+          <Route path="/" element={<Navigate to="/app" replace />} />
+          <Route path="/app" element={<ShellPage />} />
+          <Route path="/app/artifacts" element={<ArtifactsPage />} />
+          <Route path="/app/artifacts/:artifactId" element={<ArtifactsPage />} />
+          <Route path="/app/:botId" element={<ShellPage />} />
         </Routes>
       </Suspense>
     </div>
   );
 }
 
+/** The engine answered 401: sign-in happens in front of superchat, so there is nothing to submit here. */
+function SignedOut() {
+  return (
+    <div
+      className="grid h-full place-items-center bg-background px-6 text-center"
+      data-superchat-app-state="signed-out"
+    >
+      <p className="max-w-sm text-[15px] text-muted-foreground">
+        <Trans>You're not signed in. Open superchat through your organisation's sign-in.</Trans>
+      </p>
+    </div>
+  );
+}
+
+const RETRY_BASE_MS = 1_000;
+const RETRY_MAX_MS = 15_000;
+
 /**
- * A session lookup that never reached the server is not a sign-out, so the app
- * waits and retries here instead of routing to sign-in and stranding a signed-in
- * user. Better Auth only polls once a session exists, so the retry lives here.
+ * A lookup that never reached the engine is not a sign-out, so the app waits and
+ * retries here instead of stranding a signed-in person on an error.
  */
-function SessionUnavailable({ refetch }: { refetch: () => Promise<void> }) {
+function SessionUnavailable({ retry }: { retry: () => void }) {
   const { t } = useLingui();
   const [attempt, setAttempt] = useState(0);
-  const [retryKey, setRetryKey] = useState(0);
-  const retryImmediately = useRef(false);
-  const refetchRef = useRef(refetch);
-  refetchRef.current = refetch;
+  const retryRef = useRef(retry);
+  retryRef.current = retry;
 
   useEffect(() => {
-    let cancelled = false;
-    const delay = retryImmediately.current ? 0 : sessionRetryDelayMs(attempt);
-    retryImmediately.current = false;
-    const timer = setTimeout(() => {
-      void refetchRef.current().finally(() => {
-        if (!cancelled) setAttempt((value) => value + 1);
-      });
-    }, delay);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [attempt, retryKey]);
+    const delay = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** attempt);
+    const timer = setTimeout(() => retryRef.current(), delay);
+    return () => clearTimeout(timer);
+  }, [attempt]);
 
   return (
     <div className="grid h-full place-items-center bg-background px-6 text-center">
@@ -233,9 +179,8 @@ function SessionUnavailable({ refetch }: { refetch: () => Promise<void> }) {
             variant="secondary"
             className="rounded-full"
             onClick={() => {
-              retryImmediately.current = true;
               setAttempt(0);
-              setRetryKey((key) => key + 1);
+              retry();
             }}
           >
             <Trans>Retry now</Trans>
@@ -269,7 +214,7 @@ function ShellSkeleton() {
       <main className="flex flex-1 flex-col">
         <div className="h-[74px] border-b border-sidebar-border" />
         <div className="flex flex-1 items-center justify-center text-[14px] text-muted-foreground">
-          <Trans>Opening your Space…</Trans>
+          <Trans>Opening superchat…</Trans>
         </div>
         <div className="mx-6 mb-6 h-[54px] rounded-full border border-border bg-background" />
       </main>

@@ -7,7 +7,5 @@ export function slashActionLabel(id: SlashActionId) {
       return t`Chat Settings`;
     case "settings-general":
       return t`Settings: General`;
-    case "settings-usage":
-      return t`Settings: Usage`;
   }
 }
