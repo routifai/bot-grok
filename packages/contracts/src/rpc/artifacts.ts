@@ -46,7 +46,8 @@ export const ArtifactVersionSchema = z.object({
   version: z.number().int(),
   name: z.string(),
   createdAt: z.string(),
-  /** "manual" when the person edited it by hand. */
+  /** "ai" (the Muse saved it), "manual" (edited by hand) or "restore" (an earlier version made
+   * newest again). */
   origin: z.string().optional(),
   parentVersionId: Id.nullable().optional(),
   editSummary: z.string().nullable().optional(),
@@ -79,5 +80,7 @@ export const artifactsContract = {
     listVersions: oc.input(z.object({ familyId: Id })).output(z.array(ArtifactVersionSchema)),
     getById: oc.input(z.object({ artifactId: Id })).output(ArtifactWithContentSchema),
     remove: oc.input(z.object({ artifactId: Id })).output(z.object({ ok: z.literal(true) })),
+    /** Makes this earlier version (its id) the newest again, as a new `restore` version. */
+    restore: oc.input(z.object({ artifactId: Id })).output(ArtifactSchema),
   },
 };

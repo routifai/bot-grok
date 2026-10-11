@@ -143,6 +143,17 @@ describe("artifacts", () => {
     });
   });
 
+  it("restores an earlier version as a new one", async () => {
+    let posted = "";
+    engine((url, init) => {
+      posted = `${init?.method} ${url.pathname}`;
+      return json({ ...row, id: "a3", version: 3, origin: "restore" });
+    });
+    const created = await call(artifactsRouter.artifacts.restore, { artifactId: "a0" });
+    expect(posted).toBe("POST /v1/artifacts/a0/restore");
+    expect(created).toMatchObject({ id: "a3", version: 3, botId: "sess-1" });
+  });
+
   it("maps an engine 404 to not-found", async () => {
     engine(() => json({ error: { code: "not_found" } }, 404));
     await expect(

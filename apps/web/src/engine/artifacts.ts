@@ -11,6 +11,7 @@ import {
   listOmnigentArtifacts,
   type OmnigentArtifact,
   type OmnigentPublication,
+  restoreOmnigentArtifact,
 } from "@superchat/adapters/omnigent/browser";
 import type { Artifact, ArtifactPublish } from "@superchat/contracts";
 import { engineClient, museSessionId, NO_EMAIL } from "./client";
@@ -126,6 +127,15 @@ export const artifactsRouter = {
         ...toArtifact(detail, (await ownerOf(detail.parent_session_id)) ?? null),
         contentBase64: bytesToBase64(bytes),
       };
+    }),
+    restore: os.artifacts.restore.handler(async ({ input }) => {
+      const created = await restoreOmnigentArtifact(
+        engineClient(),
+        NO_EMAIL,
+        input.artifactId,
+      ).catch(notFound);
+      const ownerOf = await ownerResolver();
+      return toArtifact(created, (await ownerOf(created.parent_session_id)) ?? null);
     }),
     remove: os.artifacts.remove.handler(async ({ input }) => {
       await deleteOmnigentArtifact(engineClient(), NO_EMAIL, input.artifactId).catch(notFound);

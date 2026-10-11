@@ -123,6 +123,21 @@ export async function deleteOmnigentArtifact(
   await throwOnError(response, "delete artifact", config.secrets);
 }
 
+/** `POST /v1/artifacts/{id}/restore` — makes that earlier version the newest again (a new
+ * `restore` version with its bytes); returns the new version. */
+export async function restoreOmnigentArtifact(
+  config: OmnigentClientConfig,
+  email: string,
+  id: string,
+): Promise<OmnigentArtifact> {
+  const response = await fetch(artifactUrl(config, id, "/restore"), {
+    method: "POST",
+    headers: omnigentHeaders(config, email),
+  });
+  await throwOnError(response, "restore artifact", config.secrets);
+  return (await response.json()) as OmnigentArtifact;
+}
+
 /** `POST /v1/artifacts` — saves bytes as the next version of `name` in a Conversation. */
 export async function createOmnigentArtifact(
   config: OmnigentClientConfig,
