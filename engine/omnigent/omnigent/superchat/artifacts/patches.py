@@ -101,6 +101,8 @@ class SetTheme(BaseModel):
 class SetFullSource(BaseModel):
     kind: Literal["set-full-source"]
     source: str = Field(max_length=MAX_ARTIFACT_BYTES)
+    #: What the document editor changed ("edited paragraph 2"); a text document's version note.
+    summary: str | None = Field(default=None, max_length=MAX_SUMMARY_CHARS)
 
 
 Patch = Annotated[

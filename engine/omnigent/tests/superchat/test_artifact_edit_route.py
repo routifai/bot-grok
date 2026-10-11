@@ -295,3 +295,57 @@ def test_muse_save_over_an_unseen_hand_edit_is_refused(env, tmp_path: Path) -> N
     (pending,) = store.pending_manual(user_id="alice", parent_session_id=_SESSION)
     store.mark_delivered(pending.id, user_id="alice")
     assert client.post(url, content=DECK.encode(), headers=H).status_code == 201
+
+
+BRIEF = "# Q3\n\n## Goals\n\nGrow revenue.\n\nHire later.\n"
+
+
+def _full(source: str, summary: str | None = None) -> list[dict]:
+    patch = {"kind": "set-full-source", "source": source}
+    return [patch | {"summary": summary}] if summary else [patch]
+
+
+def test_a_markdown_document_is_saved_whole_with_its_summary(env) -> None:
+    store, client = env
+    v1 = _save(store, name="brief.md", data=BRIEF.encode())
+    edited = BRIEF.replace("Hire later.", "Hire in October.")
+    resp = _edit(client, v1.id, patches=_full(edited, "edited paragraph 2"))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["version"] == 2 and body["origin"] == "manual"
+    assert body["edit_summary"] == "edited paragraph 2"
+    assert store.read(store.get(body["id"], user_id="alice")) == edited.encode()
+    # Undo is the earlier text saved whole, without a summary.
+    undo = _edit(client, body["id"], base=2, patches=_full(BRIEF))
+    assert undo.status_code == 200 and undo.json()["version"] == 3
+    assert undo.json()["edit_summary"] == "restored an earlier state of the file"
+    # Markdown has no HTML rules: a script tag or a web address is just text here.
+    links = BRIEF + "\n<script>x</script> https://example.com\n"
+    assert _edit(client, undo.json()["id"], base=3, patches=_full(links)).status_code == 200
+
+
+def test_a_text_document_goes_stale_and_takes_only_one_full_source(env) -> None:
+    store, client = env
+    v1 = _save(store, name="notes.txt", data=b"one")
+    assert _edit(client, v1.id, patches=_full("two")).status_code == 200
+    stale = _edit(client, v1.id, base=1, patches=_full("three"))
+    assert stale.status_code == 409 and stale.json()["code"] == "artifact_stale"
+    v2 = store.newest(v1)
+    assert _edit(client, v2.id, base=2, patches=_full("a") + _full("b")).status_code == 400
+    assert _edit(client, v2.id, base=2, patches=_full("  \n")).status_code == 400
+    assert len(store.versions(v1)) == 2
+
+
+def test_a_markdown_edit_is_written_back_and_noted(env, tmp_path: Path) -> None:
+    store, client = env
+    target = tmp_path / "brief.md"
+    target.write_bytes(BRIEF.encode())
+    v1 = _save(store, name="brief.md", data=BRIEF.encode(), source_path=str(target))
+    edited = BRIEF.replace("Grow revenue.", "Grow revenue in two regions.")
+    assert _edit(client, v1.id, patches=_full(edited, "edited paragraph 1")).status_code == 200
+    server = _FakeServer(client).client
+    notes = asyncio.run(deliver_manual_edits(server, _SESSION, roots=[tmp_path.resolve()]))
+    assert target.read_bytes() == edited.encode()
+    assert notes == [
+        "The person edited brief.md by hand (v1 → v2): edited paragraph 1. Treat v2 as current."
+    ]

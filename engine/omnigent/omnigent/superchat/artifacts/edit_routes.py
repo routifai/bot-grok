@@ -1,7 +1,9 @@
-"""``PATCH /v1/artifacts/{id}/edit``: hand edits of an HTML file, saved as a ``manual`` version.
+"""``PATCH /v1/artifacts/{id}/edit``: hand edits of a file, saved as a ``manual`` version.
 
 A deck or any HTML page or mini app takes the same patches (``artifacts/patches.py``; a page has no
-slides and no theme, so ``set-theme`` is refused for it). The engine applies them to the version
+slides and no theme, so ``set-theme`` is refused for it). A text document (markdown, plain text)
+takes one ``set-full-source`` patch: the document editor sends the whole new text and says what it
+changed in the patch's ``summary``. The engine applies them to the version
 it names and stores the result as a new version tagged ``manual``. A stale ``base_version`` is an
 ``artifact_stale`` 409 the editor reloads from; a patch that cannot be applied exactly is a
 ``conflict`` 409 whose message says to ask Superchat instead. The write-back to the Computer and
@@ -24,6 +26,7 @@ from omnigent.superchat.artifacts.patches import (
     AmbiguousEdit,
     InvalidPatch,
     Patch,
+    SetFullSource,
     apply_patches,
 )
 from omnigent.superchat.artifacts.routes import artifact_to_response, load_artifact, request_owner
@@ -31,6 +34,19 @@ from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore, VersionC
 
 #: Sent with ``ErrorCode.ARTIFACT_STALE``; the web keys off the code, never this text.
 STALE_MESSAGE = "The file changed since you opened it, so the latest version is showing now."
+
+#: Text documents the editor saves whole (no element ids, none of the HTML checks).
+TEXT_KINDS = frozenset({"md", "txt"})
+
+
+def _apply_text(patches: list[Patch]) -> tuple[bytes, str]:
+    """A text document's edit: exactly one ``set-full-source`` with the new text."""
+    patch = patches[0] if len(patches) == 1 else None
+    if not isinstance(patch, SetFullSource):
+        raise InvalidPatch("A document is saved whole: send one set-full-source patch")
+    if not patch.source.strip():
+        raise InvalidPatch("The file can't be empty")
+    return patch.source.encode("utf-8"), patch.summary or "restored an earlier state of the file"
 
 
 class HtmlEditBody(BaseModel):
@@ -43,7 +59,7 @@ class HtmlEditBody(BaseModel):
 def create_html_edit_router(
     store: SqlAlchemyArtifactStore, *, auth_provider: AuthProvider | None = None
 ) -> APIRouter:
-    """Build the HTML edit router (decks, pages), mounted at ``/v1`` after the artifacts one."""
+    """Build the edit router (decks, pages, text documents), mounted at ``/v1``."""
     router = APIRouter()
 
     @router.patch("/artifacts/{artifact_id}/edit")
@@ -51,7 +67,8 @@ def create_html_edit_router(
         """Apply patches as a NEW ``manual`` version; 409 when ``base_version`` is stale."""
         item = await load_artifact(store, request_owner(request, auth_provider), artifact_id)
         deck = is_deck_name(item.name)
-        if not deck and item.kind != "html":
+        text = item.kind in TEXT_KINDS
+        if not deck and not text and item.kind != "html":
             raise OmnigentError("That file can't be edited by hand", code=ErrorCode.INVALID_INPUT)
         if not deck and any(p.kind == "set-theme" for p in body.patches):
             raise OmnigentError("Only a deck has a theme", code=ErrorCode.INVALID_INPUT)
@@ -61,7 +78,10 @@ def create_html_edit_router(
             raise OmnigentError(STALE_MESSAGE, code=ErrorCode.ARTIFACT_STALE)
         data = await asyncio.to_thread(store.read, item)
         try:
-            new_data, summary = await asyncio.to_thread(apply_patches, data, body.patches)
+            if text:
+                new_data, summary = _apply_text(body.patches)
+            else:
+                new_data, summary = await asyncio.to_thread(apply_patches, data, body.patches)
         except InvalidPatch as exc:
             raise OmnigentError(str(exc), code=ErrorCode.INVALID_INPUT) from exc
         except AmbiguousEdit as exc:
