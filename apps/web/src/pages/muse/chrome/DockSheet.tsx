@@ -34,11 +34,13 @@ export function DockSheet({
       >
         <DialogTitle className="sr-only">{title}</DialogTitle>
         <DialogDescription className="sr-only">{title}</DialogDescription>
+        {/* Hidden while a dialog opened from the sheet (a Library preview) is on top: that
+            dialog's own close is the one to use, so only one close shows. */}
         <button
           type="button"
           aria-label={t`Close`}
           onClick={onClose}
-          className="absolute top-3.5 right-3.5 z-10 grid size-11 place-items-center rounded-xl text-foreground transition-colors hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-ring"
+          className="absolute top-3.5 right-3.5 z-10 [[data-nested-dialog-open]>&]:hidden grid size-11 place-items-center rounded-xl text-foreground transition-colors hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-ring"
         >
           <X size={20} strokeWidth={2.2} aria-hidden="true" />
         </button>
