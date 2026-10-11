@@ -199,8 +199,6 @@ function FileEditor(props: LoadedProps) {
   const { artifact, bytes } = props;
   const [askClicks, setAskClicks] = useState(0);
   const focusAsk = useCallback(() => setAskClicks((n) => n + 1), []);
-  // A sheet portals its own Edit button and edited pill into the header.
-  const [toolbarHost, setToolbarHost] = useState<HTMLElement | null>(null);
   const whole = t`Whole file`;
   const contextBlock = useCallback(
     () =>
@@ -220,7 +218,6 @@ function FileEditor(props: LoadedProps) {
         artifact={artifact}
         bytes={bytes}
         onEdited={props.content.adoptVersion}
-        toolbarHost={toolbarHost}
         page={props.page}
       />
     ),
@@ -238,7 +235,6 @@ function FileEditor(props: LoadedProps) {
       setEditing={() => {}}
       askClicks={askClicks}
       focusAsk={focusAsk}
-      toolbarHostRef={setToolbarHost}
     />
   );
 }
@@ -252,7 +248,6 @@ function LoadedEditor({
   editing,
   setEditing,
   askClicks,
-  toolbarHostRef,
   ...props
 }: LoadedProps & {
   parts: ArtifactEditorParts;
@@ -260,7 +255,6 @@ function LoadedEditor({
   setEditing: (on: boolean) => void;
   askClicks: number;
   focusAsk: () => void;
-  toolbarHostRef?: (element: HTMLElement | null) => void;
 }) {
   const { t } = useLingui();
   const url = useObjectUrl(bytes, artifact.mimeType);
@@ -318,7 +312,6 @@ function LoadedEditor({
 
   const actions = (
     <>
-      <div ref={toolbarHostRef} className="contents" />
       {parts.editable ? (
         <Button
           variant={editing ? "default" : "secondary"}

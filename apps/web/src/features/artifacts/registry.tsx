@@ -42,7 +42,6 @@ export interface ArtifactViewProps {
   artifact: Artifact;
   bytes: Uint8Array;
   onEdited?: (artifactId: string) => void;
-  toolbarHost?: HTMLElement | null;
   /** What to show when the viewer cannot (e.g. the file is not readable as a table). */
   fallback: ReactNode;
 }
@@ -119,8 +118,9 @@ export interface ArtifactEditorParts {
     chips: readonly AskChip[];
     onRemoveChip?: (id: string) => void;
     placeholder: string;
-    /** The request block for what is selected (or on screen) right now. */
-    contextBlock: () => string;
+    /** The request block for what is selected (or on screen) right now; a kind may read it from
+     * the engine (a sheet's range excerpt). */
+    contextBlock: () => string | Promise<string>;
     /** Bumped to focus the ask box (the selection chip's own Ask). */
     focusRequest?: number;
   };

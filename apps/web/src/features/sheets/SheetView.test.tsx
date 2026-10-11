@@ -3,7 +3,7 @@
 import { i18n } from "@lingui/core";
 import { I18nProvider } from "@lingui/react";
 import { act } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({
@@ -12,7 +12,13 @@ const api = vi.hoisted(() => ({
   tableRange: vi.fn(),
   listVersions: vi.fn(),
 }));
-vi.mock("../../lib/rpc", () => ({ rpc: { artifacts: api, sheets: api } }));
+const chats = vi.hoisted(() => ({
+  send: vi.fn(async (_input: { botId: string; text: string }) => ({ ok: true as const })),
+  interrupt: vi.fn(),
+  transcript: vi.fn(),
+}));
+vi.mock("../../lib/rpc", () => ({ rpc: { artifacts: api, sheets: api, chats } }));
+vi.mock("../../lib/family-stream", () => ({ watchFamily: () => () => {} }));
 vi.mock("@lingui/react/macro", () => ({
   useLingui: () => ({
     t: (parts: TemplateStringsArray, ...v: unknown[]) =>
@@ -20,8 +26,9 @@ vi.mock("@lingui/react/macro", () => ({
   }),
 }));
 
+import { resetEditorState } from "../artifacts/editor/editor-state";
+import { resetNavigatorFrame } from "../artifacts/editor/NavigatorFrame";
 import { SheetView } from "./SheetView";
-import { setSheetAsk, useSheetAsk, useSheetAskTarget } from "./sheet-ask";
 
 i18n.loadAndActivate({ locale: "en", messages: {} });
 
@@ -30,7 +37,9 @@ beforeEach(() => {
 });
 afterEach(() => {
   for (const fn of Object.values(api)) fn.mockReset();
-  setSheetAsk(null);
+  chats.send.mockClear();
+  resetEditorState();
+  resetNavigatorFrame();
   document.body.innerHTML = "";
 });
 
@@ -70,12 +79,16 @@ const ver = (id: string, version: number, extra = {}) => ({
 });
 
 const tick = () => act(async () => {});
+let root: Root;
+async function render(node: React.ReactNode) {
+  await act(async () => root.render(<I18nProvider i18n={i18n}>{node}</I18nProvider>));
+  await tick();
+}
 async function mount(node: React.ReactNode) {
   const container = document.createElement("div");
   document.body.append(container);
-  const root = createRoot(container);
-  await act(async () => root.render(<I18nProvider i18n={i18n}>{node}</I18nProvider>));
-  await tick();
+  root = createRoot(container);
+  await render(node);
   return container;
 }
 const at = (container: HTMLElement, r: number, c: number) =>
@@ -92,6 +105,22 @@ const key = (el: Element, k: string, init: KeyboardEventInit = {}) =>
   act(async () => {
     el.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, ...init }));
   });
+const edit = (container: HTMLElement) =>
+  act(async () =>
+    (container.querySelector('[data-testid="editor-edit"]') as HTMLButtonElement).click(),
+  );
+async function ask(container: HTMLElement, words: string) {
+  const box = container.querySelector(
+    'textarea[aria-label="Ask superchat"]',
+  ) as HTMLTextAreaElement;
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+    setter?.call(box, words);
+    box.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => button(container, /^Send$/).click());
+  await tick();
+}
 const grid = (container: HTMLElement) => container.querySelector('[role="grid"]') as HTMLElement;
 async function type(input: HTMLInputElement, value: string) {
   await act(async () => {
@@ -139,7 +168,6 @@ it("marks cells the person changed by hand against the last version Superchat sa
   ]);
   const view = await mount(<SheetView artifact={artifact} />);
 
-  expect(view.textContent).toContain("Edited by you");
   expect(view.querySelectorAll('[role="img"][aria-label="Edited by you"]').length).toBe(1);
   expect(at(view, 1, 2).querySelector('[aria-label="Edited by you"]')).not.toBeNull();
   expect(at(view, 1, 0).querySelector('[aria-label="Edited by you"]')).toBeNull();
@@ -162,7 +190,7 @@ it("saves an edit as a new version and switches to it", async () => {
   await key(grid(view), "7");
   expect(view.querySelector("input")).toBeNull();
 
-  await act(async () => button(view, /^Edit$/).click());
+  await edit(view);
   await key(grid(view), "7");
   const input = view.querySelector("input") as HTMLInputElement;
   expect(input.value).toBe("7");
@@ -194,7 +222,7 @@ it("reloads and re-applies the edit once when the version is stale", async () =>
     .mockRejectedValueOnce({ code: "CONFLICT" })
     .mockResolvedValueOnce({ id: "a9", version: 9 });
   const view = await mount(<SheetView artifact={artifact} />);
-  await act(async () => button(view, /^Edit$/).click());
+  await edit(view);
   await mouse(at(view, 1, 2), "mousedown");
   await key(grid(view), "Enter");
   await type(view.querySelector("input") as HTMLInputElement, "70000");
@@ -215,7 +243,7 @@ it("shows a calm error and keeps the file as it was when saving fails twice", as
   api.listVersions.mockResolvedValue([ver("a2", 2)]);
   api.editTable.mockRejectedValue(new Error("boom"));
   const view = await mount(<SheetView artifact={artifact} />);
-  await act(async () => button(view, /^Edit$/).click());
+  await edit(view);
   await mouse(at(view, 1, 2), "mousedown");
   await key(grid(view), "Enter");
   await type(view.querySelector("input") as HTMLInputElement, "1");
@@ -224,35 +252,6 @@ it("shows a calm error and keeps the file as it was when saving fails twice", as
 
   expect(view.querySelector('[role="alert"]')?.textContent).toBe("Couldn't save that change.");
   expect(at(view, 1, 2).textContent).toBe("64000");
-});
-
-it("selects a range with shift-click and puts it in the composer as a chip payload", async () => {
-  api.table.mockResolvedValue(tableOf("a2", 2));
-  api.listVersions.mockResolvedValue([ver("a2", 2)]);
-  api.tableRange.mockResolvedValue({ version: 2, block: "[selection ...]" });
-  let latest: ReturnType<typeof useSheetAsk> = null;
-  function Probe() {
-    useSheetAskTarget();
-    latest = useSheetAsk();
-    return null;
-  }
-  const view = await mount(
-    <>
-      <Probe />
-      <SheetView artifact={artifact} />
-    </>,
-  );
-
-  await mouse(at(view, 1, 2), "mousedown");
-  await mouse(at(view, 2, 2), "mousedown", { shiftKey: true });
-  const ask = button(view, /^Ask superchat about C2:C3$/);
-  expect(ask).toBeTruthy();
-  expect(view.textContent).toContain("2 cells · Sum 112,000");
-
-  await act(async () => ask.click());
-  await tick();
-  expect(api.tableRange).toHaveBeenCalledWith({ artifactId: "a2", sheet: "Sales", range: "C2:C3" });
-  expect(latest).toEqual({ label: "Sales!C2:C3 · 2 cells", block: "[selection ...]" });
 });
 
 it("moves the active cell with the arrow keys and shows its source in the formula bar", async () => {
@@ -299,7 +298,7 @@ it("shows numbers and dates through their format, but the formula bar and editor
     "2024-03-01T00:00:00",
   );
 
-  await act(async () => button(view, /^Edit$/).click());
+  await edit(view);
   await mouse(at(view, 1, 2), "mousedown");
   await key(grid(view), "Enter");
   expect((view.querySelector("input") as HTMLInputElement).value).toBe("64000");
@@ -317,7 +316,7 @@ it("sizes columns from the file's widths", async () => {
   expect(at(view, 2, 1).title).toBe("Mar 1, 2024");
 });
 
-it("keeps the number format on an edited cell and the date type on an undone date", async () => {
+it("keeps the number format on an edited cell and the date type on an undone date; Redo puts it back", async () => {
   const after = formatted();
   (after.sheets[0]?.rows[2]?.[1] as { v: string }).v = "2025-01-15T00:00:00";
   api.table.mockImplementation(async ({ artifactId }: { artifactId: string }) =>
@@ -328,7 +327,7 @@ it("keeps the number format on an edited cell and the date type on an undone dat
     .mockResolvedValue([ver("a3", 3, { origin: "manual", parentVersionId: "a2" }), ver("a2", 2)]);
   api.editTable.mockResolvedValue({ id: "a3", version: 3 });
   const view = await mount(<SheetView artifact={artifact} />);
-  await act(async () => button(view, /^Edit$/).click());
+  await edit(view);
   await mouse(at(view, 2, 1), "mousedown");
   await key(grid(view), "Enter");
   const input = view.querySelector("input") as HTMLInputElement;
@@ -344,38 +343,106 @@ it("keeps the number format on an edited cell and the date type on an undone dat
   expect(api.editTable.mock.calls[1]?.[0].edits).toEqual([
     { sheet: "Sales", row: 2, col: 1, value: "2024-03-01T00:00:00" },
   ]);
-});
-
-it("has one Undo, in the changes strip", async () => {
-  api.table.mockImplementation(async ({ artifactId }: { artifactId: string }) =>
-    artifactId === "a3" ? tableOf("a3", 3, 1) : tableOf("a2", 2),
-  );
-  api.listVersions
-    .mockResolvedValueOnce([ver("a2", 2)])
-    .mockResolvedValue([ver("a3", 3, { origin: "manual", parentVersionId: "a2" }), ver("a2", 2)]);
-  api.editTable.mockResolvedValue({ id: "a3", version: 3 });
-  const view = await mount(<SheetView artifact={artifact} />);
-  await act(async () => button(view, /^Edit$/).click());
-  await mouse(at(view, 1, 2), "mousedown");
-  await key(grid(view), "Enter");
-  await type(view.querySelector("input") as HTMLInputElement, "1");
-  await key(view.querySelector("input") as HTMLInputElement, "Enter");
   await tick();
-  const undos = [...view.querySelectorAll("button")].filter((b) =>
-    /^Undo$/.test(b.textContent ?? ""),
-  );
-  expect(undos).toHaveLength(1);
-  expect(view.querySelector('[data-testid="sheet-changes"]')?.contains(undos[0] as Node)).toBe(
-    true,
-  );
+  // The shell's toolbar holds the one undo; the changes strip has none of its own.
+  expect(view.querySelector('[data-testid="sheet-changes"] button')).toBeNull();
+  await act(async () => button(view, /^Redo$/).click());
+  expect(api.editTable.mock.calls[2]?.[0].edits).toEqual([
+    { sheet: "Sales", row: 2, col: 1, value: "2025-01-15T00:00:00" },
+  ]);
 });
 
-it("puts Edit in the host it is given instead of its own row", async () => {
+it("lists a workbook's sheets in the navigator and switches between them; a CSV has none", async () => {
+  const two = tableOf("a2", 2);
+  two.sheets.push({ ...structuredClone(two.sheets[0]!), name: "By region" });
+  api.table.mockResolvedValue(two);
+  api.listVersions.mockResolvedValue([ver("a2", 2)]);
+  const view = await mount(<SheetView artifact={artifact} />);
+  const tabs = () => [...view.querySelectorAll<HTMLElement>('[data-testid="sheet-tab"]')];
+  expect(tabs().map((tab) => tab.textContent)).toEqual(["Sales", "By region"]);
+  expect(tabs()[0]?.getAttribute("aria-current")).toBe("true");
+  await act(async () => tabs()[1]?.click());
+  expect(grid(view).getAttribute("aria-label")).toBe("By region");
+  expect(tabs()[1]?.getAttribute("aria-current")).toBe("true");
+
+  api.table.mockResolvedValue({ ...tableOf("c1", 1), kind: "csv" });
+  const csv = await mount(<SheetView artifact={{ id: "c1", name: "q3.csv", version: 1 }} />);
+  expect(csv.querySelector('[data-testid="sheet-list"]')).toBeNull();
+  expect(csv.querySelector('[data-testid="version-label"]')?.textContent).toBe("Sheet · version 1");
+});
+
+it("asks about the selected range with the engine's excerpt, else about the whole sheet", async () => {
   api.table.mockResolvedValue(tableOf("a2", 2));
   api.listVersions.mockResolvedValue([ver("a2", 2)]);
-  const host = document.createElement("div");
-  document.body.append(host);
-  const view = await mount(<SheetView artifact={artifact} toolbarHost={host} />);
-  expect(button(view, /^Edit$/)).toBeUndefined();
-  expect(host.querySelector("button")?.textContent).toBe("Edit");
+  api.tableRange.mockResolvedValue({ version: 2, block: "[selection ...]" });
+  const view = await mount(<SheetView artifact={artifact} botId="bot-1" />);
+  const chips = (on = view) =>
+    [...on.querySelectorAll('[data-testid="ask-chip"]')].map((chip) => chip.textContent);
+  const box = (on = view) =>
+    on.querySelector('textarea[aria-label="Ask superchat"]') as HTMLTextAreaElement;
+
+  expect(chips()).toEqual([]);
+  expect(box().placeholder).toBe("Ask superchat to change this sheet…");
+  await ask(view, "Add a total");
+  expect(chats.send.mock.calls[0]?.[0].text).toContain('chip="Whole sheet"');
+  expect(api.tableRange).not.toHaveBeenCalled();
+
+  // A fresh editor: the first ask is still working.
+  const other = await mount(<SheetView artifact={artifact} botId="bot-1" />);
+  await mouse(at(other, 1, 1), "mousedown");
+  await mouse(at(other, 2, 2), "mousedown", { shiftKey: true });
+  expect(chips(other)).toEqual(["Sales · B2:C3"]);
+  expect(box(other).placeholder).toBe("Ask superchat to change this…");
+  await ask(other, "Round these");
+  expect(api.tableRange).toHaveBeenCalledWith({ artifactId: "a2", sheet: "Sales", range: "B2:C3" });
+  expect(chats.send.mock.calls.at(-1)?.[0].text).toBe("[selection ...]\n\nRound these");
+
+  await act(async () => button(other, /^Remove Sales · B2:C3$/).click());
+  expect(chips(other)).toEqual([]);
+});
+
+it("shows the selection's sum, count and average in the inspector while editing", async () => {
+  api.table.mockResolvedValue(tableOf("a2", 2));
+  api.listVersions.mockResolvedValue([ver("a2", 2)]);
+  const view = await mount(<SheetView artifact={artifact} />);
+  const inspector = () => view.querySelector('[data-testid="sheet-inspector"]');
+  expect(inspector()).toBeNull();
+  await edit(view);
+  expect(inspector()?.textContent).toContain("Select cells");
+  await mouse(at(view, 1, 1), "mousedown");
+  await mouse(at(view, 2, 2), "mousedown", { shiftKey: true });
+  const text = inspector()?.textContent ?? "";
+  expect(text).toContain("Selection · 4 cells");
+  expect(text).toContain("Sum112,000");
+  expect(text).toContain("Count2");
+  expect(text).toContain("Average56,000");
+});
+
+it("an older version is read-only: no Edit", async () => {
+  api.table.mockResolvedValue(tableOf("a2", 2));
+  api.listVersions.mockResolvedValue([ver("a3", 3), ver("a2", 2)]);
+  const view = await mount(<SheetView artifact={artifact} />);
+  expect(view.querySelector('[data-testid="editor-edit"]')).toBeNull();
+});
+
+it("Undo steps back over superchat's answer to an ask from here", async () => {
+  api.table.mockImplementation(async ({ artifactId }: { artifactId: string }) =>
+    artifactId === "a3" ? tableOf("a3", 3, 99) : tableOf("a2", 2),
+  );
+  api.listVersions.mockResolvedValue([ver("a2", 2)]);
+  api.tableRange.mockResolvedValue({ version: 2, block: "[selection ...]" });
+  api.editTable.mockResolvedValue({ id: "a4", version: 4 });
+  const view = await mount(<SheetView artifact={artifact} botId="bot-1" />);
+  await edit(view);
+  await ask(view, "Make it 99");
+  api.listVersions.mockResolvedValue([ver("a3", 3), ver("a2", 2)]);
+  await render(<SheetView artifact={{ id: "a3", name: "q3.xlsx", version: 3 }} botId="bot-1" />);
+  expect(at(view, 1, 2).textContent).toBe("99");
+
+  await act(async () => button(view, /^Undo$/).click());
+  expect(api.editTable).toHaveBeenCalledWith({
+    artifactId: "a3",
+    baseVersion: 3,
+    edits: [{ sheet: "Sales", row: 1, col: 2, value: 64000 }],
+  });
 });

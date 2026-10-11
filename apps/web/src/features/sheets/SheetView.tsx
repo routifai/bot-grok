@@ -1,20 +1,30 @@
 import { useLingui } from "@lingui/react/macro";
-import type { ArtifactTable, TableCell, TableCellEdit } from "@superchat/contracts";
-import { Button, Tabs, TabsList, TabsTrigger } from "@superchat/ui-web";
+import type { Artifact, ArtifactTable, TableCell, TableCellEdit } from "@superchat/contracts";
+import { cn } from "@superchat/ui-web";
 import {
+  createContext,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
 import { rpc } from "../../lib/rpc";
+import {
+  type ArtifactEditorArgs,
+  type ArtifactEditorHistory,
+  type ArtifactEditorKind,
+  type ArtifactEditorParts,
+  ArtifactPreview,
+} from "../artifacts";
+import { ArtifactEditorView } from "../artifacts/editor/ArtifactEditor";
+import { buildFileAsk } from "../artifacts/editor/html-ask";
+import { NavigatorFrame } from "../artifacts/editor/NavigatorFrame";
 import { createEvaluator } from "./formula-eval";
-import { setSheetAsk, sheetAskLabel, useSheetAskAvailable } from "./sheet-ask";
 import {
   type CellPos,
   type CellRange,
@@ -89,8 +99,11 @@ function columnPx(
 const OVERSCAN = 8;
 /** Used until the grid is measured (and where there is no layout, e.g. tests). */
 const FALLBACK_VIEW_H = 640;
+/** The most cells one save may change (the engine's limit). */
+const MAX_EDITS = 500;
+const HISTORY_MAX = 50;
 
-/** The calls the viewer makes; the API by default (a fixture in the dev preview). */
+/** The calls the editor makes; the API by default (a fixture in the dev preview). */
 export interface SheetSource {
   table(input: { artifactId: string }): Promise<ArtifactTable>;
   listVersions(input: {
@@ -108,85 +121,104 @@ export interface SheetSource {
   }): Promise<{ block: string }>;
 }
 
-type Artifact = { id: string; name: string; version: number };
-
 /** What the version history says about the table on screen. */
 type History = {
   /** The newest version: older ones are read-only. */
   newest: boolean;
-  /** The person's hand edit is the version on screen. */
-  manual: boolean;
   /** Cells changed by hand since the last version Superchat saved. */
   changed: Set<string>;
-  /** The edits that put the previous version's values back. */
-  revert: TableCellEdit[];
 };
 
-const NO_HISTORY: History = { newest: true, manual: false, changed: new Set(), revert: [] };
+const NO_HISTORY: History = { newest: true, changed: new Set() };
+
+type EditKind = "edit" | "undo" | "redo";
 
 const isConflict = (error: unknown): boolean =>
   typeof error === "object" && error !== null && (error as { code?: unknown }).code === "CONFLICT";
 
 /** The table calls live on `sheets`, the version list on `artifacts`. */
-const defaultSource = {
-  table: (input: { artifactId: string }) => rpc.sheets.table(input),
-  editTable: (input: Parameters<typeof rpc.sheets.editTable>[0]) => rpc.sheets.editTable(input),
-  tableRange: (input: Parameters<typeof rpc.sheets.tableRange>[0]) => rpc.sheets.tableRange(input),
-  listVersions: (input: { familyId: string }) => rpc.artifacts.listVersions(input),
+const defaultSource: SheetSource = {
+  table: (input) => rpc.sheets.table(input),
+  editTable: (input) => rpc.sheets.editTable(input),
+  tableRange: (input) => rpc.sheets.tableRange(input),
+  listVersions: (input) => rpc.artifacts.listVersions(input),
 };
 
-/** A CSV / XLSX as a grid: read, select, ask Superchat about a range, and (behind Edit) change cells.
- * Every edit saves at once as a new version; `onEdited` hands the caller its id. */
-export function SheetView({
+const SheetSourceContext = createContext<SheetSource>(defaultSource);
+
+/**
+ * A CSV / XLSX in the artifact editor: the grid on the stage, its sheets in the navigator.
+ * Selecting cells puts them in the ask box (the engine's excerpt of the range is the request
+ * block) and, in edit mode, their sum, count and average in the inspector. Behind the shell's
+ * Edit every cell change saves at once as a new version; undo and redo send the earlier values
+ * back the same way, so the history is the shell's one undo.
+ */
+function useSheetEditor({
   artifact,
+  bytes,
+  editing: editMode,
   onEdited,
-  fallback,
-  source = defaultSource,
-  toolbarHost,
-}: {
-  artifact: Artifact;
-  onEdited?: (artifactId: string) => void;
-  /** Shown if the file cannot be read as a table. */
-  fallback?: ReactNode;
-  source?: SheetSource;
-  /** Where the Edit button and the "Edited by you" pill go (the panel's header). Undefined keeps
-   * them in a row above the grid; null waits for the host to mount. */
-  toolbarHost?: HTMLElement | null;
-}) {
+}: ArtifactEditorArgs): ArtifactEditorParts {
   const { t } = useLingui();
-  const askAvailable = useSheetAskAvailable();
+  const source = useContext(SheetSourceContext);
   const cells = (n: number) => (n === 1 ? t`1 cell` : t`${n} cells`);
   const [table, setTable] = useState<ArtifactTable | null>(null);
   const [failed, setFailed] = useState(false);
   const [history, setHistory] = useState<History>(NO_HISTORY);
   const [sheetIndex, setSheetIndex] = useState(0);
   const [overlay, setOverlay] = useState<ReadonlyMap<string, TableCell>>(new Map());
-  const [editMode, setEditMode] = useState(false);
   const [editing, setEditing] = useState<{ r: number; c: number; draft: string } | null>(null);
+  // Whether the person has selected cells (the ask box then asks about them).
+  const [picked, setPicked] = useState(false);
   const [anchor, setAnchor] = useState<CellPos>({ r: 0, c: 0 });
   const [head, setHead] = useState<CellPos>({ r: 0, c: 0 });
   const [error, setError] = useState<string | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewH, setViewH] = useState(FALLBACK_VIEW_H);
   const [undoStack, setUndoStack] = useState<TableCellEdit[][]>([]);
+  const [redoStack, setRedoStack] = useState<TableCellEdit[][]>([]);
+  const [saving, setSaving] = useState(false);
+  const undoRef = useRef(undoStack);
+  undoRef.current = undoStack;
+  const redoRef = useRef(redoStack);
+  redoRef.current = redoStack;
   const scroller = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
   const settled = useRef(false);
-  const canFallbackUndo = useRef(true);
   const loadSeq = useRef(0);
   const headVersion = useRef({ id: artifact.id, version: artifact.version });
   const queue = useRef<Promise<void>>(Promise.resolve());
+  const pending = useRef(0);
+  const shownTable = useRef<ArtifactTable | null>(null);
+  // Superchat was asked from here: its next version joins the history (Undo steps back over it).
+  const expectAsk = useRef(false);
 
   const requestedId = useRef<string | null>(null);
   const load = useCallback(
-    async (id: string) => {
+    async (id: string, own: boolean) => {
       const seq = ++loadSeq.current;
       requestedId.current = id;
+      // Read now: the ask settles (and clears this) as soon as the new version is on screen.
+      const asked = !own && expectAsk.current;
+      if (!own) expectAsk.current = false;
       try {
         const next = await source.table({ artifactId: id });
         const versions = await source.listVersions({ familyId: id }).catch(() => []);
         const info = await readHistory(source, id, next, versions);
         if (seq !== loadSeq.current) return;
+        if (!own) {
+          // Someone else's version ends the history (the old values would clobber it), except
+          // superchat's answer to an ask from here, which Undo can put back.
+          const before = shownTable.current;
+          const revert = asked && before ? revertEdits(diffTables(before.sheets, next.sheets)) : [];
+          setUndoStack((stack) =>
+            revert.length > 0 && revert.length <= MAX_EDITS
+              ? [...stack, revert].slice(-HISTORY_MAX)
+              : [],
+          );
+          setRedoStack([]);
+        }
+        shownTable.current = next;
         headVersion.current = { id: next.artifactId, version: next.version };
         setTable(next);
         setHistory(info);
@@ -200,14 +232,19 @@ export function SheetView({
   );
 
   useEffect(() => {
-    // A version this view just saved is already loading.
-    if (requestedId.current !== artifact.id) void load(artifact.id);
+    // A version this editor just saved is already loading.
+    if (requestedId.current !== artifact.id) void load(artifact.id, false);
   }, [artifact.id, load]);
 
   useEffect(() => {
     const node = scroller.current;
     if (node && node.clientHeight > 0) setViewH(node.clientHeight);
   }, [table]);
+
+  // Leaving edit mode drops a cell that is being typed into.
+  useEffect(() => {
+    if (!editMode) setEditing(null);
+  }, [editMode]);
 
   const sheet = table?.sheets[Math.min(sheetIndex, (table?.sheets.length ?? 1) - 1)];
   const sheetName = sheet?.name ?? "";
@@ -236,18 +273,23 @@ export function SheetView({
     () => createEvaluator(table?.sheets ?? [], (name, r, c) => overlay.get(cellKey(name, r, c))),
     [table, overlay],
   );
-  const cell = useCallback(
-    (r: number, c: number): TableCell => {
+  /** A cell of any sheet as it now stands (an unsaved edit, else the file, formulas worked out). */
+  const cellIn = useCallback(
+    (name: string, r: number, c: number): TableCell => {
       const raw =
-        overlay.get(cellKey(sheetName, r, c)) ??
-        (sheet ? cellAt(sheet, r, c) : cellAt(EMPTY_SHEET, r, c));
+        overlay.get(cellKey(name, r, c)) ??
+        cellAt(table?.sheets.find((entry) => entry.name === name) ?? EMPTY_SHEET, r, c);
       if (!raw.f) return raw;
-      const computed = evaluate(sheetName, r, c);
+      const computed = evaluate(name, r, c);
       return computed === undefined
         ? raw
         : { ...raw, v: computed, t: typeof computed === "number" ? "n" : raw.t };
     },
-    [overlay, sheet, sheetName, evaluate],
+    [overlay, table, evaluate],
+  );
+  const cell = useCallback(
+    (r: number, c: number): TableCell => cellIn(sheetName, r, c),
+    [cellIn, sheetName],
   );
 
   const selection: CellRange = useMemo(() => normalizeRange(anchor, head), [anchor, head]);
@@ -279,56 +321,83 @@ export function SheetView({
         }
         headVersion.current = { id: created.id, version: created.version };
         onEdited?.(created.id);
-        await load(created.id);
+        await load(created.id, true);
       } catch {
         setError(t`Couldn't save that change.`);
-        await load(headVersion.current.id);
+        await load(headVersion.current.id, true);
       }
     },
     [load, onEdited, source, t],
   );
 
+  /** Shows the edits at once and saves them as a new version; the values they replace go on the
+   * undo stack (an edit, a redo) or the redo stack (an undo). */
   const commit = useCallback(
-    (edits: TableCellEdit[], options?: { undo?: boolean }) => {
-      if (!sheet || edits.length === 0) return;
+    (edits: TableCellEdit[], kind: EditKind = "edit") => {
+      if (edits.length === 0) return;
       setError(null);
-      if (!options?.undo) {
-        canFallbackUndo.current = false;
-        const before = edits.map((edit) => ({
-          ...edit,
-          value: cell(edit.row, edit.col).f ?? cell(edit.row, edit.col).v,
-        }));
-        setUndoStack((stack) => [...stack, before]);
-      }
+      const before = edits.map((edit) => {
+        const now = cellIn(edit.sheet, edit.row, edit.col);
+        return { ...edit, value: now.f ?? now.v };
+      });
+      if (kind === "undo") setRedoStack((stack) => [...stack, before].slice(-HISTORY_MAX));
+      else setUndoStack((stack) => [...stack, before].slice(-HISTORY_MAX));
+      if (kind === "edit") setRedoStack([]);
       setOverlay((current) => {
         const next = new Map(current);
         for (const edit of edits) {
           next.set(
             cellKey(edit.sheet, edit.row, edit.col),
-            cellFromValue(edit.value, cell(edit.row, edit.col)),
+            cellFromValue(edit.value, cellIn(edit.sheet, edit.row, edit.col)),
           );
         }
         return next;
       });
-      queue.current = queue.current.then(() => save(edits));
+      pending.current += 1;
+      setSaving(true);
+      queue.current = queue.current
+        .then(() => save(edits))
+        .finally(() => {
+          pending.current -= 1;
+          if (pending.current === 0) setSaving(false);
+        });
     },
-    [cell, save, sheet],
+    [cellIn, save],
   );
+  const commitRef = useRef(commit);
+  commitRef.current = commit;
 
-  const undoEdits = useMemo<TableCellEdit[] | null>(() => {
-    const last = undoStack.at(-1);
-    if (last) return last;
-    return canFallbackUndo.current && history.manual && history.revert.length > 0
-      ? history.revert
-      : null;
-  }, [undoStack, history]);
-
-  function undo() {
-    if (!undoEdits) return;
-    if (undoStack.length > 0) setUndoStack((stack) => stack.slice(0, -1));
-    else canFallbackUndo.current = false;
-    commit(undoEdits, { undo: true });
-  }
+  const step = useCallback(async (kind: "undo" | "redo") => {
+    await queue.current;
+    const stack = kind === "undo" ? undoRef : redoRef;
+    const edits = stack.current.at(-1);
+    if (!edits) return;
+    stack.current = stack.current.slice(0, -1);
+    (kind === "undo" ? setUndoStack : setRedoStack)(stack.current);
+    commitRef.current(edits, kind);
+    await queue.current;
+  }, []);
+  const undo = useCallback(() => step("undo"), [step]);
+  const redo = useCallback(() => step("redo"), [step]);
+  const flush = useCallback(() => queue.current, []);
+  const setExpectAsk = useCallback((on: boolean) => {
+    expectAsk.current = on;
+  }, []);
+  const canUndo = undoStack.length > 0;
+  const canRedo = redoStack.length > 0;
+  const editHistory = useMemo<ArtifactEditorHistory>(
+    () => ({
+      canUndo,
+      canRedo,
+      saving,
+      undo,
+      redo,
+      flush,
+      expectAsk: setExpectAsk,
+      headVersion: () => headVersion.current.version,
+    }),
+    [canUndo, canRedo, saving, undo, redo, flush, setExpectAsk],
+  );
 
   // --- selection and keys -------------------------------------------------------------------
 
@@ -344,6 +413,17 @@ export function SheetView({
     const next = clamp(pos);
     if (!extend) setAnchor(next);
     setHead(next);
+    setPicked(true);
+  }
+
+  function pickSheet(index: number) {
+    setSheetIndex(index);
+    setAnchor({ r: 0, c: 0 });
+    setHead({ r: 0, c: 0 });
+    setPicked(false);
+    setEditing(null);
+    if (scroller.current) scroller.current.scrollTop = 0;
+    setScrollTop(0);
   }
 
   function finishEdit(save: boolean, move?: { dr: number; dc: number }) {
@@ -356,6 +436,9 @@ export function SheetView({
     if (move) select({ r: r + move.dr, c: c + move.dc }, false);
     window.requestAnimationFrame(() => scroller.current?.focus());
   }
+
+  const canEdit = history.newest;
+  const editOn = editMode && canEdit;
 
   function onGridKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
     if (editing || !sheet) return;
@@ -376,7 +459,7 @@ export function SheetView({
       case "Tab":
         return step(0, event.shiftKey ? -1 : 1);
     }
-    if (!editMode) return;
+    if (!editOn) return;
     if (event.key === "Enter" || event.key === "F2") {
       event.preventDefault();
       setEditing({ r: anchor.r, c: anchor.c, draft: cellSource(cell(anchor.r, anchor.c)) });
@@ -390,7 +473,7 @@ export function SheetView({
           }
         }
       }
-      commit(edits.slice(0, 500));
+      commit(edits.slice(0, MAX_EDITS));
     } else if (event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey) {
       event.preventDefault();
       setEditing({ r: anchor.r, c: anchor.c, draft: event.key });
@@ -443,36 +526,88 @@ export function SheetView({
     // biome-ignore lint/correctness/useExhaustiveDependencies: colWidth reads colLeft
   }, [head, frozen, colLeft]);
 
-  // --- ask Superchat -----------------------------------------------------------------------------
+  // --- ask superchat -----------------------------------------------------------------------------
 
-  const [asking, setAsking] = useState(false);
-  async function askSuperchat() {
-    if (!sheet) return;
-    const label = rangeLabel(selection);
-    setAsking(true);
-    try {
+  const label = rangeLabel(selection);
+  const total = rangeCellCount(selection);
+  const asksRange = picked && !!sheet;
+  const whole = t`Whole sheet`;
+  // The selected range as the engine excerpts it, else the whole file.
+  const contextBlock = useCallback(async () => {
+    const at = headVersion.current;
+    if (asksRange) {
       const { block } = await source.tableRange({
-        artifactId: headVersion.current.id,
+        artifactId: at.id,
         sheet: sheetName,
         range: label,
       });
-      const n = rangeCellCount(selection);
-      setSheetAsk({
-        label: sheetAskLabel(sheetName, label, n),
-        block,
-      });
-    } catch {
-      setError(t`Couldn't read that selection.`);
-    } finally {
-      setAsking(false);
+      return block;
     }
-  }
+    return buildFileAsk({
+      artifactId: at.id,
+      name: artifact.name,
+      version: at.version,
+      label: whole,
+    }).block;
+  }, [asksRange, source, sheetName, label, artifact.name, whole]);
 
   // --- render -------------------------------------------------------------------------------
 
-  if (failed && !table)
-    return <>{fallback ?? <SheetNote>{t`Couldn't open this sheet.`}</SheetNote>}</>;
-  if (!table || !sheet) return <SheetNote>{t`Loading…`}</SheetNote>;
+  const parts = (stage: ReactNode): ArtifactEditorParts => ({
+    label: t`Sheet`,
+    editable: canEdit,
+    stage,
+    navigator:
+      table && table.sheets.length > 1 ? (
+        <NavigatorFrame
+          label={t`Sheets`}
+          showLabel={t`Show sheets`}
+          hideLabel={t`Hide sheets`}
+          testId="sheet-list"
+        >
+          <ul
+            aria-label={t`Sheets`}
+            className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pt-1 pb-3"
+          >
+            {table.sheets.map((entry, index) => (
+              <li key={entry.name}>
+                <button
+                  type="button"
+                  data-testid="sheet-tab"
+                  aria-current={entry.name === sheetName ? "true" : undefined}
+                  onClick={() => pickSheet(index)}
+                  className={cn(
+                    "flex h-7 w-full items-center truncate rounded-md px-2 text-start text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    entry.name === sheetName
+                      ? "bg-accent font-medium text-foreground"
+                      : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                  )}
+                >
+                  <span className="truncate">{entry.name}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </NavigatorFrame>
+      ) : null,
+    inspector: (
+      <SelectionStats picked={asksRange} cells={cells(total)} {...rangeSum(cell, selection)} />
+    ),
+    history: editHistory,
+    ask: {
+      chips: asksRange
+        ? [{ id: "selection", label: `${sheetName} · ${label}`, detail: cells(total) }]
+        : [],
+      onRemoveChip: () => setPicked(false),
+      placeholder: asksRange
+        ? t`Ask superchat to change this…`
+        : t`Ask superchat to change this sheet…`,
+      contextBlock,
+    },
+  });
+
+  if (failed && !table) return parts(<ArtifactPreview artifact={artifact} bytes={bytes} />);
+  if (!table || !sheet) return parts(<SheetNote>{t`Loading…`}</SheetNote>);
 
   const changedHere = (r: number, c: number) =>
     history.changed.has(cellKey(sheetName, r, c)) || overlay.has(cellKey(sheetName, r, c));
@@ -480,39 +615,10 @@ export function SheetView({
   for (const key of history.changed) {
     if (key.startsWith(`${sheetName}\u0000`) && !overlay.has(key)) changedCount += 1;
   }
-  const canEdit = history.newest;
-  const editOn = editMode && canEdit;
   const first = Math.max(frozen, Math.floor(scrollTop / ROW_H) - OVERSCAN);
   const last = Math.min(rowCount, Math.ceil((scrollTop + viewH) / ROW_H) + OVERSCAN);
   const activeCell = cell(anchor.r, anchor.c);
   const barText = editing ? editing.draft : cellSource(activeCell);
-  const stats = rangeSum(cell, selection);
-  const total = rangeCellCount(selection);
-  const label = rangeLabel(selection);
-
-  const toolbar = (
-    <>
-      {history.manual ? (
-        <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[11px] whitespace-nowrap text-warning">
-          {t`Edited by you`}
-        </span>
-      ) : null}
-      {canEdit ? (
-        <Button
-          variant={editMode ? "default" : "secondary"}
-          size="sm"
-          className="rounded-full"
-          aria-pressed={editMode}
-          onClick={() => {
-            setEditMode((on) => !on);
-            setEditing(null);
-          }}
-        >
-          {t`Edit`}
-        </Button>
-      ) : null}
-    </>
-  );
 
   const rowNodes: ReactNode[] = [];
   const pushRow = (r: number) => {
@@ -522,7 +628,9 @@ export function SheetView({
         <th
           scope="row"
           className={`sticky start-0 z-10 border-e border-b border-border bg-muted text-center text-[11px] font-normal tabular-nums ${
-            selection.r0 <= r && r <= selection.r1 ? "text-foreground" : "text-muted-foreground"
+            picked && selection.r0 <= r && r <= selection.r1
+              ? "text-foreground"
+              : "text-muted-foreground"
           }`}
           style={isFrozen ? { top: HEAD_H + r * ROW_H, zIndex: 15 } : undefined}
         >
@@ -532,8 +640,8 @@ export function SheetView({
           const value = cell(r, c);
           const shown = cellText(value);
           const isEditing = editing?.r === r && editing.c === c;
-          const active = anchor.r === r && anchor.c === c;
-          const selected = inRange(selection, r, c);
+          const active = picked && anchor.r === r && anchor.c === c;
+          const selected = picked && inRange(selection, r, c);
           return (
             <td
               key={c}
@@ -587,37 +695,8 @@ export function SheetView({
     );
   }
 
-  return (
+  return parts(
     <div data-testid="sheet-view" className="flex h-full min-h-0 flex-col bg-background">
-      {toolbarHost === undefined ? (
-        <div className="flex shrink-0 items-center justify-end gap-2 px-4 pt-3">{toolbar}</div>
-      ) : toolbarHost ? (
-        createPortal(toolbar, toolbarHost)
-      ) : null}
-
-      {table.sheets.length > 1 ? (
-        <Tabs
-          value={String(sheetIndex)}
-          onValueChange={(value) => {
-            setSheetIndex(Number(value));
-            setAnchor({ r: 0, c: 0 });
-            setHead({ r: 0, c: 0 });
-            setEditing(null);
-            if (scroller.current) scroller.current.scrollTop = 0;
-            setScrollTop(0);
-          }}
-          className="shrink-0 px-4 pt-2"
-        >
-          <TabsList variant="line" aria-label={t`Sheets`}>
-            {table.sheets.map((entry, index) => (
-              <TabsTrigger key={entry.name} value={String(index)}>
-                {entry.name}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-      ) : null}
-
       <div className="mx-4 mt-2.5 flex shrink-0 items-center gap-2.5 rounded-lg border border-border bg-card px-2.5 py-1.5 text-[13px]">
         <b className="min-w-10 font-medium text-muted-foreground tabular-nums">
           {rangeLabel({ r0: anchor.r, c0: anchor.c, r1: anchor.r, c1: anchor.c })}
@@ -662,7 +741,7 @@ export function SheetView({
                   key={c}
                   scope="col"
                   className={`sticky top-0 z-20 border-e border-b border-border text-[11px] font-normal ${
-                    selection.c0 <= c && c <= selection.c1
+                    picked && selection.c0 <= c && c <= selection.c1
                       ? "bg-accent text-foreground"
                       : "bg-muted text-muted-foreground"
                   }`}
@@ -682,23 +761,6 @@ export function SheetView({
         </p>
       ) : null}
 
-      {askAvailable ? (
-        <div className="mx-4 mt-3 flex shrink-0 flex-wrap items-center gap-2.5">
-          <Button
-            size="sm"
-            className="rounded-full"
-            disabled={asking}
-            onClick={() => void askSuperchat()}
-          >
-            {t`Ask superchat about ${label}`}
-          </Button>
-          <span className="text-[12px] text-muted-foreground tabular-nums">
-            {cells(total)}
-            {stats.numeric > 0 ? ` · ${t`Sum ${formatSum(stats.sum)}`}` : ""}
-          </span>
-        </div>
-      ) : null}
-
       <div className="mx-4 my-3 flex shrink-0 flex-col gap-2">
         {error ? (
           <p role="alert" className="text-[13px] text-destructive">
@@ -716,22 +778,106 @@ export function SheetView({
                 ? t`You changed 1 cell on ${sheetName}. superchat sees this before its next reply.`
                 : t`You changed ${changedCount} cells on ${sheetName}. superchat sees this before its next reply.`}
             </span>
-            {undoEdits ? (
-              <Button variant="outline" size="sm" className="rounded-full" onClick={undo}>
-                {t`Undo`}
-              </Button>
-            ) : null}
           </div>
         ) : null}
       </div>
-    </div>
+    </div>,
+  );
+}
+
+/** CSV and XLSX files in the artifact editor. */
+export const sheetEditorKind: ArtifactEditorKind = {
+  id: "sheet",
+  useEditor: useSheetEditor,
+};
+
+const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const NO_BYTES = new Uint8Array();
+
+/** One sheet in the editor shell without the version machinery: the dev page and tests, with
+ * their own table calls. */
+export function SheetView({
+  artifact,
+  onEdited,
+  source = defaultSource,
+  botId = null,
+}: {
+  artifact: { id: string; name: string; version: number };
+  onEdited?: (artifactId: string) => void;
+  source?: SheetSource;
+  /** The Muse that owns the file: the ask box asks it. */
+  botId?: string | null;
+}) {
+  const file: Artifact = {
+    ...artifact,
+    mimeType: artifact.name.endsWith(".csv") ? "text/csv" : XLSX_MIME,
+    botId,
+    runId: null,
+    description: null,
+    size: 0,
+    createdAt: "",
+  };
+  return (
+    <SheetSourceContext.Provider value={source}>
+      <ArtifactEditorView
+        artifact={file}
+        bytes={NO_BYTES}
+        kind={sheetEditorKind}
+        onEdited={onEdited}
+      />
+    </SheetSourceContext.Provider>
+  );
+}
+
+/** The inspector: what the selected cells add up to. */
+function SelectionStats({
+  picked,
+  cells,
+  sum,
+  numeric,
+}: {
+  picked: boolean;
+  cells: string;
+  sum: number;
+  numeric: number;
+}) {
+  const { t } = useLingui();
+  const stats: Array<[string, string]> = [
+    [t`Sum`, numeric > 0 ? formatSum(sum) : "–"],
+    [t`Count`, String(numeric)],
+    [t`Average`, numeric > 0 ? formatSum(sum / numeric) : "–"],
+  ];
+  return (
+    <aside
+      data-testid="sheet-inspector"
+      aria-label={t`Selection`}
+      className="flex max-h-full w-[288px] flex-col gap-4 overflow-y-auto rounded-2xl bg-popover px-4 py-4 text-popover-foreground ring-1 ring-border"
+    >
+      {picked ? (
+        <>
+          <div className="text-[11px] tracking-[0.5px] text-muted-foreground uppercase">
+            {t`Selection · ${cells}`}
+          </div>
+          {stats.map(([name, value]) => (
+            <div key={name} className="flex flex-col gap-1.5">
+              <span className="text-[12px] text-muted-foreground">{name}</span>
+              <span className="text-[15px] font-semibold tabular-nums">{value}</span>
+            </div>
+          ))}
+        </>
+      ) : (
+        <p className="text-[13px] text-muted-foreground">
+          {t`Select cells to see their sum, count and average.`}
+        </p>
+      )}
+    </aside>
   );
 }
 
 const EMPTY_SHEET = { rows: [] } as unknown as Parameters<typeof cellAt>[0];
 
 const formatSum = (value: number): string =>
-  Number.isInteger(value) ? value.toLocaleString("en-US") : String(Math.round(value * 100) / 100);
+  value.toLocaleString("en-US", { maximumFractionDigits: 2 });
 
 function SheetNote({ children }: { children: ReactNode }) {
   return (
@@ -812,19 +958,12 @@ async function readHistory(
     baseId = entry.parentVersionId;
   }
   try {
-    const parent = await source.table({ artifactId: here.parentVersionId });
-    const base =
-      baseId === here.parentVersionId ? parent : await source.table({ artifactId: baseId });
+    const base = await source.table({ artifactId: baseId });
     const changed = new Set(
       diffTables(base.sheets, current.sheets).map((d) => cellKey(d.sheet, d.row, d.col)),
     );
-    return {
-      ...info,
-      manual: true,
-      changed,
-      revert: revertEdits(diffTables(parent.sheets, current.sheets)),
-    };
+    return { ...info, changed };
   } catch {
-    return { ...info, manual: true };
+    return info;
   }
 }

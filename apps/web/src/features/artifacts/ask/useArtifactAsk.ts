@@ -51,7 +51,7 @@ export function useArtifactAsk({
 }: {
   artifact: AskArtifact | null;
   /** The kind's request block for the current selection; "" for none. */
-  contextBlock: () => string;
+  contextBlock: () => string | Promise<string>;
 }) {
   const [status, setStatus] = useState<AskStatus>({ kind: "idle" });
   const statusRef = useRef(status);
@@ -105,11 +105,11 @@ export function useArtifactAsk({
     async (words: string, savedVersion?: number) => {
       const asked = words.trim();
       if (!botId || !asked) return false;
-      const block = contextBlock();
       // The newest saved version (one just saved by hand may not be on screen yet) is the base.
       base.current = Math.max(version, savedVersion ?? 0);
       setStatus({ kind: "sending", asked });
       try {
+        const block = await contextBlock();
         await rpc.chats.send({ botId, text: block ? `${block}\n\n${asked}` : asked });
         setStatus((current) => (current.kind === "sending" ? { kind: "editing", asked } : current));
         return true;

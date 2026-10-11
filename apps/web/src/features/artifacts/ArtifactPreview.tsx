@@ -12,22 +12,19 @@ export function ArtifactPreview({
   artifact,
   bytes,
   onEdited,
-  toolbarHost,
   page,
 }: {
   artifact: Artifact;
   bytes: Uint8Array;
   /** Open a PDF at this page. */
   page?: number;
-  /** A new version was saved from the viewer (a sheet edit). */
+  /** A new version was saved from the viewer. */
   onEdited?: (artifactId: string) => void;
-  /** Header slot for a sheet's Edit button and edited pill (see `SheetView`). */
-  toolbarHost?: HTMLElement | null;
 }) {
   const extensions = useArtifactExtensions();
   const fallback = <ArtifactPreviewBody artifact={artifact} bytes={bytes} page={page} />;
   for (const extension of extensions) {
-    const view = extension.view?.({ artifact, bytes, onEdited, toolbarHost, fallback });
+    const view = extension.view?.({ artifact, bytes, onEdited, fallback });
     if (view) return view;
   }
   return fallback;

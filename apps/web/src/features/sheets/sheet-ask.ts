@@ -1,38 +1,9 @@
 import { t } from "@lingui/core/macro";
-import { useMemo } from "react";
-import {
-  registerAttachmentParser,
-  setComposerAttachment,
-  useComposerAttachAvailable,
-  useComposerAttachment,
-  useComposerAttachTarget,
-  withComposerAttachments,
-} from "../../lib/composer-attachments";
+import { registerAttachmentParser } from "../../lib/composer-attachments";
 import { parseRange, rangeCellCount } from "./sheet-model";
 
-/** A selection from a sheet the person wants Superchat to look at: the chip label the composer shows
- * and the engine's untrusted-data block that travels ahead of their message. */
-export type SheetAsk = { label: string; block: string };
-
-const KIND = "sheet";
-
-export const setSheetAsk = (next: SheetAsk | null): void => setComposerAttachment(KIND, next);
-
-export function useSheetAsk(): SheetAsk | null {
-  const current = useComposerAttachment(KIND);
-  return useMemo(
-    () => (current ? { label: current.label, block: current.block } : null),
-    [current],
-  );
-}
-
-/** Registers a mounted composer, so a sheet only offers "Ask Superchat" when there is one to ask in. */
-export const useSheetAskTarget = useComposerAttachTarget;
-export const useSheetAskAvailable = useComposerAttachAvailable;
-
-/** The message as sent: the selection block first, then what the person wrote. */
-export const withSheetAsk = (text: string, current: SheetAsk | null): string =>
-  withComposerAttachments(text, current ? [{ kind: KIND, ...current }] : []);
+// A sheet selection asked about from the editor travels as the engine's excerpt block ahead of
+// the person's words; a sent message is read back into its chip here.
 
 /** The chip text for a selection: `Sales!C2:C8 · 7 cells`. */
 export function sheetAskLabel(sheet: string, range: string, n: number): string {

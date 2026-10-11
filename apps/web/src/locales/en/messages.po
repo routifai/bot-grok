@@ -271,9 +271,6 @@ msgstr "Ask me anything, or tell me what you're working toward."
 msgid "Ask superchat"
 msgstr "Ask superchat"
 
-msgid "Ask superchat about {label}"
-msgstr "Ask superchat about {label}"
-
 msgid "Ask superchat instead"
 msgstr "Ask superchat instead"
 
@@ -285,6 +282,9 @@ msgstr "Ask superchat to change this file…"
 
 msgid "Ask superchat to change this page…"
 msgstr "Ask superchat to change this page…"
+
+msgid "Ask superchat to change this sheet…"
+msgstr "Ask superchat to change this sheet…"
 
 msgid "Ask superchat to change this slide…"
 msgstr "Ask superchat to change this slide…"
@@ -321,6 +321,9 @@ msgstr "Automatic"
 
 msgid "Automations"
 msgstr "Automations"
+
+msgid "Average"
+msgstr "Average"
 
 msgid "Back"
 msgstr "Back"
@@ -578,9 +581,6 @@ msgstr "Couldn't load this look. Try again in a moment."
 msgid "Couldn’t move this chat. Try again."
 msgstr "Couldn’t move this chat. Try again."
 
-msgid "Couldn't open this sheet."
-msgstr "Couldn't open this sheet."
-
 msgid "Couldn't prepare PDF"
 msgstr "Couldn't prepare PDF"
 
@@ -593,9 +593,6 @@ msgstr "Couldn’t reach superchat’s computer. Retrying…"
 #. placeholder {0}: attachment.file.name
 msgid "Couldn't read {0}"
 msgstr "Couldn't read {0}"
-
-msgid "Couldn't read that selection."
-msgstr "Couldn't read that selection."
 
 msgid "Couldn’t read the workspace."
 msgstr "Couldn’t read the workspace."
@@ -614,6 +611,9 @@ msgstr "Couldn't send that."
 
 msgid "Couldn't switch the theme."
 msgstr "Couldn't switch the theme."
+
+msgid "Count"
+msgstr "Count"
 
 msgid "Create automation"
 msgstr "Create automation"
@@ -923,6 +923,9 @@ msgstr "Hide hidden files"
 
 msgid "Hide layers"
 msgstr "Hide layers"
+
+msgid "Hide sheets"
+msgstr "Hide sheets"
 
 msgid "Hide slides"
 msgstr "Hide slides"
@@ -1598,6 +1601,15 @@ msgstr "Sections"
 msgid "See summary"
 msgstr "See summary"
 
+msgid "Select cells to see their sum, count and average."
+msgstr "Select cells to see their sum, count and average."
+
+msgid "Selection"
+msgstr "Selection"
+
+msgid "Selection · {cells}"
+msgstr "Selection · {cells}"
+
 msgid "Send"
 msgstr "Send"
 
@@ -1615,6 +1627,9 @@ msgstr "Settings"
 
 msgid "Settings: General"
 msgstr "Settings: General"
+
+msgid "Sheet"
+msgstr "Sheet"
 
 msgid "Sheets"
 msgstr "Sheets"
@@ -1642,6 +1657,9 @@ msgstr "Show layers"
 
 msgid "Show less"
 msgstr "Show less"
+
+msgid "Show sheets"
+msgstr "Show sheets"
 
 msgid "Show slides"
 msgstr "Show slides"
@@ -1752,9 +1770,8 @@ msgstr "subagent"
 msgid "Suggested follow-ups"
 msgstr "Suggested follow-ups"
 
-#. placeholder {0}: formatSum(stats.sum)
-msgid "Sum {0}"
-msgstr "Sum {0}"
+msgid "Sum"
+msgstr "Sum"
 
 msgid "Summarize what changed in my files this week and tell me what needs attention."
 msgstr "Summarize what changed in my files this week and tell me what needs attention."
@@ -2008,6 +2025,9 @@ msgstr "Whole file"
 
 msgid "Whole page"
 msgstr "Whole page"
+
+msgid "Whole sheet"
+msgstr "Whole sheet"
 
 msgid "Whole workspace"
 msgstr "Whole workspace"
