@@ -8,6 +8,7 @@ import type {
 } from "@superchat/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { rpc } from "../../../../lib/rpc";
+import type { ArtifactEditorHistory } from "../../registry";
 import { registerEditorFlush, takeOwnVersion } from "../editor-state";
 import { type CommitOutcome, Committer } from "./committer";
 import {
@@ -261,6 +262,23 @@ export function useHtmlEditor({
     intent.current = "redo";
     await committer.commit([{ kind: "set-full-source", source: next }]);
   }, [committer]);
+  const canUndo = undoStack.length > 0;
+  const canRedo = redoStack.length > 0;
+  /** The editor shell's undo / redo / save state for this file. */
+  const history = useMemo<ArtifactEditorHistory>(
+    () => ({
+      canUndo,
+      canRedo,
+      saving,
+      undo,
+      redo,
+      flush,
+      expectAsk: setExpectAsk,
+      headVersion: () => saved.current.version,
+    }),
+    [canUndo, canRedo, saving, undo, redo, flush, setExpectAsk],
+  );
+
   /** The bridge's messages (already validated and nonce-checked by the stage). */
   const onFrameMessage = useCallback(
     (message: DeckEditFromFrame) => {
@@ -299,23 +317,17 @@ export function useHtmlEditor({
     notice,
     dismissNotice: () => setNotice(null),
     textEditing,
-    saving,
     reloadKey,
     selectedIds,
     askRequest,
-    canUndo: undoStack.length > 0,
-    canRedo: redoStack.length > 0,
     head: saved,
+    history,
     applyStyle,
     setAttributes,
     flush,
-    undo,
-    redo,
     remove: removeSelected,
     duplicate: duplicateSelected,
     onFrameMessage,
-    /** Whether the next outside version is superchat's answer to an ask from this editor. */
-    expectAsk: setExpectAsk,
     finishText: () => postRef.current({ type: "superchat:edit-text-finish", commit: true }),
     /** Select these elements (a layer picked in the navigator); kept for a frame not yet up. */
     select: (ids: string[]) => {

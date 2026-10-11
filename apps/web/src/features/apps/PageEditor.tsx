@@ -239,16 +239,7 @@ function usePageEditor({
         {app ? t`Run` : t`Preview`}
       </Button>
     ),
-    history: {
-      canUndo: editor.canUndo,
-      canRedo: editor.canRedo,
-      saving: editor.saving,
-      undo: editor.undo,
-      redo: editor.redo,
-      flush: editor.flush,
-      expectAsk: editor.expectAsk,
-      headVersion: () => editor.head.current.version,
-    },
+    history: editor.history,
     ask: {
       chips: targets.map((target) => ({
         id: target.id,

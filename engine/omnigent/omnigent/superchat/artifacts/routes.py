@@ -22,6 +22,7 @@ from omnigent.server.routes._auth_helpers import require_access, require_user
 from omnigent.stores import ConversationStore, PermissionStore
 from omnigent.superchat.artifact_kinds import KIND_MIME, MAX_ARTIFACT_BYTES, kind_for_name
 from omnigent.superchat.artifacts.store import (
+    HAND_ORIGINS,
     Artifact,
     Publication,
     SqlAlchemyArtifactStore,
@@ -78,10 +79,6 @@ def artifact_to_response(
         "parent_version_id": item.parent_version_id,
         "edit_summary": item.edit_summary,
     }
-
-
-#: Versions the person made (by hand, or by restoring an earlier one) that the Muse is told about.
-HAND_ORIGINS = ("manual", "restore")
 
 
 def check_id(value: str, what: str) -> None:

@@ -35,6 +35,8 @@ _BLOB_PREFIX = "muse-artifacts"
 _CREATE_ATTEMPTS = 5
 
 AUDIENCES = ("owner", "org", "link")
+#: Versions the person made (by hand, or by restoring an earlier one) that the Muse is told about.
+HAND_ORIGINS = ("manual", "restore")
 #: A repeat open by the same viewer within this many seconds is not counted again.
 VIEW_DEDUPE_SECONDS = 30
 _SLUG_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"
@@ -307,7 +309,7 @@ class SqlAlchemyArtifactStore:
                     SqlArtifact.workspace_id == current_workspace_id(),
                     _owner_clause(user_id),
                     SqlArtifact.parent_session_id == parent_session_id,
-                    SqlArtifact.origin.in_(("manual", "restore")),
+                    SqlArtifact.origin.in_(HAND_ORIGINS),
                     SqlArtifact.delivered_at.is_(None),
                 )
                 .order_by(SqlArtifact.created_at, SqlArtifact.version)

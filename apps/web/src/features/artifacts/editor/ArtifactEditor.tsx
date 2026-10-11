@@ -60,7 +60,8 @@ export type ArtifactEditorProps = {
   fullScreen?: { on: boolean; toggle: () => void };
 };
 
-function isTypingTarget(target: EventTarget | null): boolean {
+/** Focus is where the person types: keyboard shortcuts leave the key to it. */
+export function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }

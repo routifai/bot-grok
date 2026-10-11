@@ -13,7 +13,7 @@ import {
 } from "react";
 import { SandboxedHtmlViewer } from "../../components/SandboxedHtmlViewer";
 import type { ArtifactEditorArgs, ArtifactEditorKind, ArtifactEditorParts } from "../artifacts";
-import { ArtifactEditorView } from "../artifacts/editor/ArtifactEditor";
+import { ArtifactEditorView, isTypingTarget } from "../artifacts/editor/ArtifactEditor";
 import { artifactKey } from "../artifacts/editor/editor-state";
 import { EditStage } from "../artifacts/editor/html/EditStage";
 import { targetLabel } from "../artifacts/editor/html/edit-model";
@@ -37,11 +37,6 @@ import {
 import { setDeckThemeOpen, useDeckPresentRequest, useDeckThemeOpen } from "./deck-ui-state";
 
 const BAR_HIDE_MS = 2500;
-
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
-}
 
 /** Where a deck's edits, theme dictionary and current theme come from: the API by default, a
  * recorder on the dev page and fakes in tests. */
@@ -372,16 +367,7 @@ function useDeckEditor({
       />
     ),
     ownsDownload: true,
-    history: {
-      canUndo: editor.canUndo,
-      canRedo: editor.canRedo,
-      saving: editor.saving,
-      undo: editor.undo,
-      redo: editor.redo,
-      flush: editor.flush,
-      expectAsk: editor.expectAsk,
-      headVersion: () => editor.head.current.version,
-    },
+    history: editor.history,
     ask: {
       chips: targets.map((target) => ({
         id: target.id,
