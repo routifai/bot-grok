@@ -182,7 +182,6 @@ describe("loadEnv", () => {
         NODE_ENV: "production",
         BETTER_AUTH_SECRET: "dev-secret-change-me-please-32chars",
         ENCRYPTION_KEY: "real-encryption-key-value",
-        SCREEN_PROXY_SECRET: "real-screen-proxy-secret-with-enough-length",
       }),
     ).toThrow(/BETTER_AUTH_SECRET/);
   });
@@ -193,13 +192,11 @@ describe("loadEnv", () => {
       NODE_ENV: "production",
       BETTER_AUTH_SECRET: "prod-auth-secret-with-enough-length",
       ENCRYPTION_KEY: "prod-encryption-key-with-enough-length",
-      SCREEN_PROXY_SECRET: "prod-screen-proxy-secret-with-enough-length",
       SANDBOX_PROVIDER: "e2b",
       API_HOST: "0.0.0.0",
     });
     expect(env.authSecret).toBe("prod-auth-secret-with-enough-length");
     expect(env.encryptionKey).toBe("prod-encryption-key-with-enough-length");
-    expect(env.screenProxySecret).toBe("prod-screen-proxy-secret-with-enough-length");
     expect(env.apiHost).toBe("0.0.0.0");
   });
 
@@ -228,7 +225,6 @@ describe("loadEnv", () => {
         NODE_ENV: "production",
         BETTER_AUTH_SECRET: "prod-auth-secret-with-enough-length",
         ENCRYPTION_KEY: "prod-encryption-key-with-enough-length",
-        SCREEN_PROXY_SECRET: "prod-screen-proxy-secret-with-enough-length",
         SANDBOX_PROVIDER: "none",
         EMAIL_EMULATOR: "true",
       }).emailEmulator,

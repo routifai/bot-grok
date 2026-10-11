@@ -153,12 +153,6 @@ tags:
 - assertVisible: "Space default.*"
 - takeScreenshot: "17-bot-settings"
 
-- openLink: "superchat:///computer?botId=${SUPERCHAT_SCREENSHOT_BOT_ID}&name=Researcher"
-- extendedWaitUntil:
-    visible: "Take control"
-    timeout: 10000
-- takeScreenshot: "18-computer"
-
 - openLink: "superchat:///group-thread?groupId=${SUPERCHAT_SCREENSHOT_GROUP_ID}&name=Launch%20team"
 - extendedWaitUntil:
     visible: "The fixture launch plan is ready."

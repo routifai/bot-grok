@@ -6,7 +6,11 @@ import type {
   MessageBlock,
   Routine,
 } from "@superchat/contracts";
-import { canReactToThreadMessage, MESSAGE_REACTIONS, type MessageReaction } from "@superchat/contracts";
+import {
+  canReactToThreadMessage,
+  MESSAGE_REACTIONS,
+  type MessageReaction,
+} from "@superchat/contracts";
 import {
   abortableDelay,
   attachmentsForThread,
@@ -171,11 +175,7 @@ function formatAttachmentSkip(item: { name: string; reason: string }): string {
 
 function isWorkingStatus(status: string | undefined): boolean {
   return (
-    status === "queued" ||
-    status === "leased" ||
-    status === "running" ||
-    status === "waiting_input" ||
-    status === "waiting_takeover"
+    status === "queued" || status === "leased" || status === "running" || status === "waiting_input"
   );
 }
 
@@ -690,14 +690,6 @@ function Thread() {
         }),
     },
     {
-      text: t("Open computer"),
-      onPress: () =>
-        router.push({
-          pathname: "/computer",
-          params: { botId: botId ?? "", name: displayName ?? t("Bot") },
-        }),
-    },
-    {
       text: t("Clear conversation"),
       destructive: true,
       onPress: () =>
@@ -960,7 +952,6 @@ function Thread() {
                 event.type === "thread.cloud_agent" ||
                 event.type === "thread.cleared" ||
                 event.type === "run.waiting_input" ||
-                event.type === "computer.takeover.requested" ||
                 isRunTerminalEvent(event)
               ) {
                 if (event.type === "thread.cleared") {

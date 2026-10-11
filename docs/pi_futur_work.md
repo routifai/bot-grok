@@ -8,7 +8,7 @@ non-Claude models through OpenRouter. Verified live on a test side chat: search 
    `render_card` file card after a Helper finished. Have the engine post the card for a Helper's
    saved files so delivery never depends on the model following the instruction.
 2. **Helpers under a Pi Muse.** The switch is total: with `SUPERCHAT_MUSE_HARNESS=pi`, the Muse and
-   every Helper type (`worker`, `subworker`, `goal`, `teacher`), including scheduled and
+   every Helper type (`worker`, `subworker`, `goal`), including scheduled and
    background Helper runs, run on Pi (bundle `superchat-pi`); nothing stays on Claude. Open: a
    coordinator worker under a Pi Muse has not yet split a job into subworkers (it did a
    multi-part trip plan alone); check whether that is model or prompt. Verify live that a

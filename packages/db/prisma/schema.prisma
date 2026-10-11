@@ -203,7 +203,6 @@ model Space {
   ideas                       Idea[]
   posts                       Post[]
   followedTopics              FollowedTopic[]
-  taughtSkills                TaughtSkill[]
   episodes                    Episode[]
   agentSkills                 AgentSkill[]
   connections                 Connection[]
@@ -401,7 +400,6 @@ model SpaceVoicePreference {
 }
 
 model Bot {
-  screenGeneration       Int               @default(0)
   id                     String            @id @default(cuid())
   spaceId                String
   space                  Space             @relation(fields: [spaceId], references: [id], onDelete: Cascade)
@@ -461,7 +459,6 @@ model Bot {
   followedTopics         FollowedTopic[]
   /// The Feed log: this Muse's own Thread for `feed.topics` research turns (B10).
   feedLog                Thread?           @relation("BotFeedLog")
-  taughtSkills           TaughtSkill[]
   episodes               Episode[]
   omnigentSession        OmnigentSession?
   memoryDocuments        MemoryDocument[]
@@ -981,31 +978,6 @@ model FollowedTopic {
   @@map("followed_topics")
 }
 
-model TaughtSkill {
-  id        String    @id @default(cuid())
-  spaceId   String
-  space     Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
-  botId     String
-  bot       Bot       @relation(fields: [botId], references: [id], onDelete: Cascade)
-  userId    String
-  name      String    @default("")
-  goal      String
-  status    String
-  playbook  Json      @default("{}")
-  recording Json      @default("{\"events\":[],\"snapshots\":[]}")
-  startedAt DateTime?
-  expiresAt DateTime?
-  stoppedAt DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
-  @@index([spaceId, botId])
-  @@index([spaceId, botId, status])
-  // Partial unique index taught_skills_botId_recording_key is created in SQL:
-  // one recording session per bot.
-  @@map("taught_skills")
-}
-
 /// Episodic memory: one short, dated record per finished task, written automatically
 /// (packages/adapters/src/muse/episodes.ts) and recalled by run-executor and the
 /// recall_episodes tool. runId is unique so a resumed run never creates a duplicate.
@@ -1055,7 +1027,6 @@ model OmnigentSession {
 
 /// Claude Agent Skills: SKILL.md recipes shared across assistants (not per-bot).
 /// The Pi runtime already understands this format; we persist and inject them.
-/// Distinct from TaughtSkill (demo/record playbooks).
 model AgentSkill {
   id          String   @id @default(cuid())
   spaceId     String
@@ -1190,7 +1161,6 @@ model ComputerUpdate {
 }
 
 model Computer {
-  screenGeneration        Int                      @default(0)
   id                      String                   @id @default(cuid())
   spaceId                 String
   space                   Space                    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
@@ -1202,17 +1172,10 @@ model Computer {
   kind                    String
   providerRef             String?
   state                   String                   @default("stopped")
-  controlHolder           String                   @default("none")
-  controlLeaseId          String?
-  controlLeaseExpiresAt   DateTime?
-  controlBotId            String?
-  controlRunId            String?
-  controlFence            Int                      @default(0)
   executionRunId          String?
   executionBotId          String?
   executionLeaseExpiresAt DateTime?
   executionFence          Int                      @default(0)
-  screenUrl               String?
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
   bots                    Bot[]
@@ -1309,7 +1272,6 @@ model NotificationPreference {
   userId   String
   finish   Boolean @default(true)
   help     Boolean @default(true)
-  takeover Boolean @default(true)
 
   @@unique([spaceId, userId])
   @@map("notification_preferences")

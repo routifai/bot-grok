@@ -1,3 +1,4 @@
+import { ORPCError } from "@orpc/server";
 import { type JobPublisher, runContinueJob, type SandboxProvider } from "@superchat/adapter-kit";
 import { cancelComputerRunWork, screenLeaseIdForRun, toComputerRef } from "@superchat/adapters";
 import {
@@ -36,7 +37,6 @@ import {
   touchGroupUpdatedAt,
 } from "@superchat/db";
 import { getLogger } from "@superchat/logging";
-import { ORPCError } from "@orpc/server";
 import {
   buildSendPrompt,
   buildUserMessageBlocks,
@@ -65,9 +65,9 @@ export type ThreadTarget =
     };
 
 const THREAD_MESSAGE_PAGE_SIZE = 100;
-const RUNS_NEEDING_CONTINUE = new Set(["queued", "waiting_takeover"]);
+const RUNS_NEEDING_CONTINUE = new Set(["queued"]);
 
-const STEERABLE_RUN_STATUSES = new Set(["queued", "leased", "running", "waiting_takeover"]);
+const STEERABLE_RUN_STATUSES = new Set(["queued", "leased", "running"]);
 /**
  * A routine's, webhook's, or creation intro's turn is its own prompt, not the conversation.
  * A user message that lands while one is busy (not `waiting_input`) is stored as pending
@@ -358,7 +358,7 @@ export async function threadSnapshot(
             where: {
               botId: target.botId,
               threadId: target.threadId,
-              status: { in: ["waiting_input", "waiting_takeover"] },
+              status: "waiting_input",
             },
             orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           }),
@@ -443,10 +443,7 @@ export async function threadSnapshot(
           threadId: target.threadId,
           status: { in: [...ACTIVE_RUN_STATUSES] },
           // Include waiting peer runs so their ask cards stay answerable.
-          OR: [
-            { trigger: { not: "bot_message" } },
-            { status: { in: ["waiting_input", "waiting_takeover"] } },
-          ],
+          OR: [{ trigger: { not: "bot_message" } }, { status: "waiting_input" }],
         },
         orderBy: { createdAt: "desc" },
       }),
@@ -510,7 +507,7 @@ export async function threadSnapshot(
 }
 
 /**
- * Prefer a waiting ask/takeover over a merely-busy run for the group's headline
+ * Prefer a waiting ask over a merely-busy run for the group's headline
  * `run` field, even when the busy run started more recently — createdAt-desc
  * ordering alone would let a fresh busy run for one bot bury an older waiting
  * card for another. `activeRuns` still carries every active run regardless of
@@ -518,10 +515,7 @@ export async function threadSnapshot(
  * single-run summary field.
  */
 function pickPrimaryActiveRun<T extends { status: string }>(runs: readonly T[]): T | undefined {
-  return (
-    runs.find((run) => run.status === "waiting_input" || run.status === "waiting_takeover") ??
-    runs[0]
-  );
+  return runs.find((run) => run.status === "waiting_input") ?? runs[0];
 }
 
 /** Latest terminal by end time (completedAt, else createdAt), then createdAt, then id. */

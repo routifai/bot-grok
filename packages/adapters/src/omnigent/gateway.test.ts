@@ -125,21 +125,6 @@ describe("runTurnOnOmnigent", () => {
     expect(events.finalizeRun).not.toHaveBeenCalled();
   });
 
-  it("runs a skill test run as an ordinary engine turn", async () => {
-    const prisma = fakePrisma({
-      run: {
-        findUnique: vi.fn(async () => ({ ...RUN, trigger: "skill" })),
-        updateMany: vi.fn(async () => ({ count: 0 })),
-      },
-    });
-    const result = await runTurnOnOmnigent(
-      { prisma, events: fakeEvents(), ...DEPS_BASE },
-      "run-1",
-      "worker-1",
-    );
-    expect(result).toBe(true);
-  });
-
   it("fails a run the engine cannot handle once, without touching the engine", async () => {
     const prisma = fakePrisma({
       run: {

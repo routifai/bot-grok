@@ -221,7 +221,7 @@ class ComputerSandboxLauncher(ExecModelHostLauncher):
 
     @property
     def capabilities(self) -> SandboxCapabilities:
-        return SandboxCapabilities(managed_launch=True, screen=False, recording=False)
+        return SandboxCapabilities(managed_launch=True, screen=False)
 
     def prepare_for_launch(
         self,

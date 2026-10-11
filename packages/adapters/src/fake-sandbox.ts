@@ -3,14 +3,10 @@ import type {
   CommandRequest,
   ComputerActionRequest,
   ComputerFileEntry,
-  ComputerInput,
   ComputerRef,
-  ControlLeaseRef,
   PortableFile,
   ProcessEvent,
   SandboxProvider,
-  ScreenRequest,
-  ScreenSession,
 } from "@superchat/adapter-kit";
 import { canReleaseScreenLease, canTakeScreenLease } from "@superchat/core";
 import { ComputerScreenUnavailableError, screenSessionKey } from "./computer-screens.js";
@@ -41,7 +37,6 @@ export class FakeSandboxProvider implements SandboxProvider {
         graphical: true,
         pty: true,
         snapshots: true,
-        takeover: true,
         persistentHome: true,
         multiScreen: true,
       },
@@ -108,36 +103,6 @@ export class FakeSandboxProvider implements SandboxProvider {
   ): Promise<"idle"> {
     return "idle";
   }
-
-  async connectScreen(
-    computer: ComputerRef,
-    _request: ScreenRequest,
-    context: AdapterContext,
-  ): Promise<ScreenSession> {
-    const key = screenSessionKey(context);
-    this.screenSlot(this.requiredBox(computer), key, context.screenLeaseId);
-    return {
-      url: `fake://screen/${computer.id}/${key}`,
-      mimeType: "text/plain",
-      close: async () => undefined,
-    };
-  }
-
-  async sendInput(
-    computer: ComputerRef,
-    input: ComputerInput,
-    _lease: ControlLeaseRef,
-    context: AdapterContext,
-  ): Promise<void> {
-    const box = this.boxes.get(computer.id);
-    if (box) {
-      applyPlaceholderAction(
-        this.screenSlot(box, screenSessionKey(context), context.screenLeaseId),
-        input,
-      );
-    }
-  }
-
   async observe(computer: ComputerRef, context: AdapterContext) {
     const key = screenSessionKey(context);
     return placeholderObservation(

@@ -1,30 +1,13 @@
 import { timingSafeEqual } from "node:crypto";
-import type { ClientRequest, IncomingMessage } from "node:http";
-import http from "node:http";
-import https from "node:https";
-import net from "node:net";
 import path from "node:path";
-import tls from "node:tls";
 import { lingui } from "@lingui/vite-plugin";
-import type { DesktopStackProbeResponse } from "@superchat/contracts";
-import {
-  safeScreenProxyResponseHeaders,
-  stripSensitiveHandshakeHeaders,
-} from "@superchat/core/node/screen-proxy-response";
 import babel from "@rolldown/plugin-babel";
+import type { DesktopStackProbeResponse } from "@superchat/contracts";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import type { PreviewServer, ViteDevServer } from "vite";
 import { defineConfig, loadEnv } from "vite";
-import { resolveScreenProxySecret } from "../../packages/core/src/secrets-guard.ts";
 import { apiProxy } from "./src/api-proxy.js";
-import { collectNovncHtml, injectScreenLifecycle, MAX_NOVNC_HTML_BYTES } from "./src/novnc-html.js";
-import {
-  checkNovncTarget,
-  resolveNovncTarget,
-  safeProxyHeaders,
-  watchScreenAuthorization,
-} from "./src/screen-proxy.js";
 
 const webPort = Number(process.env.WEB_PORT ?? 5173);
 const DESKTOP_STACK_PROBE_PATH = "/.well-known/superchat-desktop-stack";
@@ -63,252 +46,10 @@ function attachDesktopStackProbe(
   });
 }
 
-async function recheckNovncTarget(url: string | undefined, secret: string, api: string) {
-  const result = await checkNovncTarget(url, secret, api);
-  return result.status === "unavailable" ? ("unavailable" as const) : result.status === "allowed";
-}
-
-function attachNovncProxy(server: ViteDevServer | PreviewServer, secret: string, api: string) {
-  server.middlewares.use(async (req, res, next) => {
-    if (!req.url?.startsWith("/novnc/")) {
-      next();
-      return;
-    }
-    const target = await resolveNovncTarget(req.url, secret, api);
-    if (res.destroyed) return;
-    if (!target) {
-      res.statusCode = 403;
-      res.end("Invalid or expired screen capability");
-      return;
-    }
-    const headers = {
-      ...safeProxyHeaders(req.headers),
-      ...(isCreateOSNovncHost(target.hostname) ? { "accept-encoding": "identity" } : {}),
-      host: `${target.hostname}:${target.port}`,
-    };
-    const transport = target.protocol === "https:" ? https : http;
-    let upstream: ClientRequest | undefined;
-    let retries = 0;
-    let retryPending = false;
-    let stopChecking: () => void = () => undefined;
-    const retryable = req.method === "GET";
-    const scheduleRetry = (incoming?: IncomingMessage) => {
-      if (!retryable || retryPending || retries >= 3 || res.destroyed) return false;
-      retryPending = true;
-      retries += 1;
-      const delayMs = 50 * retries;
-      const retry = () => {
-        setTimeout(() => {
-          retryPending = false;
-          if (!res.destroyed) requestUpstream();
-        }, delayMs);
-      };
-      if (incoming && !incoming.destroyed) {
-        incoming.once("close", retry);
-        incoming.destroy();
-      } else {
-        retry();
-      }
-      return true;
-    };
-    let downstreamFinished = false;
-    const finishUnavailable = () => {
-      if (downstreamFinished || res.destroyed || res.writableEnded) return;
-      downstreamFinished = true;
-      stopChecking();
-      if (res.headersSent) {
-        res.destroy();
-        return;
-      }
-      res.statusCode = 502;
-      res.end("Screen unavailable");
-    };
-    function requestUpstream() {
-      if (res.destroyed) return;
-      upstream = transport.request(
-        {
-          hostname: target.hostname,
-          port: target.port,
-          path: target.path,
-          method: req.method,
-          headers,
-          ...(target.protocol === "https:" ? { servername: target.hostname } : {}),
-        },
-        (incoming) => {
-          if ((incoming.statusCode ?? 502) >= 500 && scheduleRetry(incoming)) {
-            return;
-          }
-          const responseHeaders = safeScreenProxyResponseHeaders(incoming.headers);
-          if (shouldRewriteNovncHtml(responseHeaders)) {
-            const declaredLength = Number(incoming.headers["content-length"] ?? 0);
-            if (Number.isFinite(declaredLength) && declaredLength > MAX_NOVNC_HTML_BYTES) {
-              finishUnavailable();
-              incoming.destroy();
-              return;
-            }
-            void collectNovncHtml(incoming, MAX_NOVNC_HTML_BYTES)
-              .then((html) => {
-                if (downstreamFinished || res.destroyed || res.writableEnded) return;
-                downstreamFinished = true;
-                const body = injectScreenLifecycle(
-                  isCreateOSNovncHost(target.hostname) ? injectNovncStorageShim(html) : html,
-                );
-                delete responseHeaders["content-length"];
-                res.writeHead(incoming.statusCode ?? 502, responseHeaders);
-                res.end(body);
-              })
-              .catch(() => {
-                finishUnavailable();
-              });
-            return;
-          }
-          res.writeHead(incoming.statusCode ?? 502, responseHeaders);
-          incoming.pipe(res);
-        },
-      );
-      upstream.on("error", () => {
-        if (
-          retryable &&
-          !downstreamFinished &&
-          !res.headersSent &&
-          !res.destroyed &&
-          (retryPending || scheduleRetry())
-        ) {
-          return;
-        }
-        finishUnavailable();
-      });
-      if (req.method === "GET" || req.readableEnded) upstream.end();
-      else req.pipe(upstream);
-    }
-    stopChecking = watchScreenAuthorization(
-      () => recheckNovncTarget(req.url, secret, api),
-      () => {
-        upstream?.destroy();
-        res.destroy();
-      },
-    );
-    res.once("close", () => {
-      stopChecking();
-      upstream?.destroy();
-    });
-    requestUpstream();
-  });
-
-  server.httpServer?.on("upgrade", async (req, socket, head) => {
-    if (!req.url?.startsWith("/novnc/")) return;
-    const target = await resolveNovncTarget(req.url, secret, api);
-    if (socket.destroyed) return;
-    if (!target) {
-      socket.destroy();
-      return;
-    }
-    const upstream =
-      target.protocol === "https:"
-        ? tls.connect({ port: target.port, host: target.hostname, servername: target.hostname })
-        : net.connect(target.port, target.hostname);
-    const stopChecking = watchScreenAuthorization(
-      () => recheckNovncTarget(req.url, secret, api),
-      () => {
-        socket.destroy();
-        upstream.destroy();
-      },
-    );
-    socket.once("close", () => {
-      stopChecking();
-      upstream.destroy();
-    });
-    upstream.once("close", () => {
-      stopChecking();
-      socket.destroy();
-    });
-    upstream.once(target.protocol === "https:" ? "secureConnect" : "connect", () => {
-      const headerLines = [
-        `${req.method ?? "GET"} ${target.path} HTTP/1.1`,
-        `Host: ${target.hostname}:${target.port}`,
-      ];
-      for (const [key, value] of Object.entries(safeProxyHeaders(req.headers))) {
-        headerLines.push(`${key}: ${Array.isArray(value) ? value.join(",") : value}`);
-      }
-      upstream.write(`${headerLines.join("\r\n")}\r\n\r\n`);
-      if (head.length) upstream.write(head);
-      socket.pipe(upstream);
-      const responseChunks: Buffer[] = [];
-      let responseSize = 0;
-      let responseTail = Buffer.alloc(0);
-      const forwardHandshake = (chunk: Buffer) => {
-        responseChunks.push(chunk);
-        responseSize += chunk.length;
-        if (responseSize > 64 * 1024) {
-          socket.destroy();
-          upstream.destroy();
-          return;
-        }
-        const boundarySearch = Buffer.concat([responseTail, chunk]);
-        if (boundarySearch.indexOf("\r\n\r\n") < 0) {
-          responseTail = Buffer.from(boundarySearch.subarray(-3));
-          return;
-        }
-        const responseHead = Buffer.concat(responseChunks, responseSize);
-        const safe = stripSensitiveHandshakeHeaders(responseHead);
-        if (!safe) {
-          socket.destroy();
-          upstream.destroy();
-          return;
-        }
-        upstream.off("data", forwardHandshake);
-        socket.write(safe);
-        upstream.pipe(socket);
-      };
-      upstream.on("data", forwardHandshake);
-    });
-    upstream.on("error", () => socket.destroy());
-    socket.on("error", () => upstream.destroy());
-  });
-}
-
-const NOVNC_STORAGE_SHIM_HOSTS = [".app.sb.createos.sh"];
-
-function isCreateOSNovncHost(hostname: string) {
-  return NOVNC_STORAGE_SHIM_HOSTS.some((suffix) => hostname.endsWith(suffix));
-}
-
-/** Every noVNC document gets the disconnect hook; only CreateOS hosts also need the storage shim. */
-function shouldRewriteNovncHtml(headers: http.IncomingHttpHeaders) {
-  if (headers["content-encoding"]) return false;
-  const contentType = String(headers["content-type"] ?? "").toLowerCase();
-  return contentType.includes("text/html") || contentType.includes("application/xhtml+xml");
-}
-
-function injectNovncStorageShim(html: string) {
-  const shim = `<script>
-Object.defineProperty(window, "localStorage", {
-  configurable: true,
-  value: {
-    getItem() { return null; },
-    setItem() {},
-    removeItem() {},
-    clear() {},
-  },
-});
-</script>`;
-  return html.includes("<head>")
-    ? html.replace("<head>", `<head>${shim}`)
-    : html.replace(/<script\b/i, `${shim}<script`);
-}
-
 export default defineConfig(({ mode }) => {
   const rootEnv = loadEnv(mode, path.resolve(import.meta.dirname, "../.."), "");
   const api = process.env.API_PROXY_TARGET ?? rootEnv.API_PROXY_TARGET ?? "http://127.0.0.1:3100";
   const previewHost = process.env.SUPERCHAT_HOST ?? rootEnv.SUPERCHAT_HOST ?? "localhost";
-  const screenProxySecret = () =>
-    resolveScreenProxySecret({
-      ...process.env,
-      SCREEN_PROXY_SECRET: process.env.SCREEN_PROXY_SECRET ?? rootEnv.SCREEN_PROXY_SECRET,
-      SANDBOX_SUPERVISOR_TOKEN:
-        process.env.SANDBOX_SUPERVISOR_TOKEN ?? rootEnv.SANDBOX_SUPERVISOR_TOKEN,
-      BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET ?? rootEnv.BETTER_AUTH_SECRET,
-    });
   const performanceAssetDelayMs = Number(process.env.SUPERCHAT_PERFORMANCE_ASSET_DELAY_MS ?? 0);
   const desktopStackToken =
     process.env.SUPERCHAT_DESKTOP_STACK_TOKEN ?? rootEnv.SUPERCHAT_DESKTOP_STACK_TOKEN ?? "";
@@ -331,20 +72,13 @@ export default defineConfig(({ mode }) => {
           if (!Number.isFinite(performanceAssetDelayMs) || performanceAssetDelayMs <= 0) return;
           server.middlewares.use((req, _res, next) => {
             const pathname = req.url?.split("?", 1)[0] ?? "/";
-            if (
-              ["/api", "/rpc", "/novnc", "/apps/"].some((prefix) => pathname.startsWith(prefix))
-            ) {
+            if (["/api", "/rpc", "/apps/"].some((prefix) => pathname.startsWith(prefix))) {
               next();
               return;
             }
             setTimeout(next, performanceAssetDelayMs);
           });
         },
-      },
-      {
-        name: "superchat-novnc-proxy",
-        configureServer: (server) => attachNovncProxy(server, screenProxySecret(), api),
-        configurePreviewServer: (server) => attachNovncProxy(server, screenProxySecret(), api),
       },
     ],
     server: {

@@ -25,7 +25,7 @@ fill() { [[ -n "$(env_get "$1")" ]] || env_set "$1" "$2"; }
 
 # Secrets, and any model key this shell already has.
 fill POSTGRES_PASSWORD "$(openssl rand -hex 16)"
-for key in BETTER_AUTH_SECRET ENCRYPTION_KEY SCREEN_PROXY_SECRET OMNIGENT_PROXY_SECRET; do
+for key in BETTER_AUTH_SECRET ENCRYPTION_KEY OMNIGENT_PROXY_SECRET; do
   fill "$key" "$(openssl rand -hex 32)"
 done
 fill OMNIGENT_VAULT_KEY "$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"

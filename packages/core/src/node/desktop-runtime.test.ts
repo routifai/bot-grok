@@ -1,24 +1,13 @@
 import type { ChildProcess } from "node:child_process";
 import { spawn, spawnSync } from "node:child_process";
-import {
-  chmodSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   browserCloseProgram,
   DEFAULT_DESKTOP_ENV,
-  desktopControlCommand,
-  desktopUrl,
   ensureScreenCommand,
-  interactiveScreenCommand,
   MAX_DESKTOP_DISPLAY,
   managedDesktopCommand,
   quiesceBrowserProfilesCommand,
@@ -77,7 +66,6 @@ const env = {
   workspaceDir: "/home/user/work",
   browserProfilesDir: "/home/user/work/.browser-profiles",
   displayStart: 20,
-  portStart: 6100,
 };
 
 function fixture() {
@@ -93,13 +81,15 @@ function fixture() {
           // Lifecycle processes are stubbed here; the opt-in Docker smoke runs the real commands.
           "flock() { :; }",
           `bash() { return ${failLifecycle ? 1 : 0}; }`,
-          script.replaceAll("/tmp/superchat/desktop-assignments", root).replaceAll("/tmp/superchat", root),
+          script
+            .replaceAll("/tmp/superchat/desktop-assignments", root)
+            .replaceAll("/tmp/superchat", root),
         ].join("\n"),
       ],
       { encoding: "utf8", timeout: 5000 },
     );
   const ensure = (bot: string, lease = "run:1", fail = false) =>
-    run(managedDesktopCommand(bot, lease, env, `view-${bot}`), fail);
+    run(managedDesktopCommand(bot, lease, env), fail);
   const release = (bot: string, lease = "run:1", fail = false) =>
     run(releaseDesktopCommand(bot, lease, env), fail);
   return { root, run, ensure, release };
@@ -108,51 +98,39 @@ function fixture() {
 describe("shared Linux desktop lifecycle", () => {
   it("allocates live slots past 1000 bots, keeps assignments across callers, and rejects stale leases", () => {
     const f = fixture();
-    expect(f.ensure("a").stdout).toContain("SUPERCHAT_DESKTOP=0:view-a");
-    expect(f.ensure("b").stdout).toContain("SUPERCHAT_DESKTOP=1:view-b");
-    expect(f.ensure("a", "new:2").stdout).toContain("SUPERCHAT_DESKTOP=0:view-a");
+    expect(f.ensure("a").stdout).toContain("SUPERCHAT_DESKTOP=0\n");
+    expect(f.ensure("b").stdout).toContain("SUPERCHAT_DESKTOP=1\n");
+    expect(f.ensure("a", "new:2").stdout).toContain("SUPERCHAT_DESKTOP=0\n");
     expect(f.ensure("a", "run:1").status).toBe(75);
     expect(f.release("a", "run:3").status).toBe(75);
     expect(f.release("a", "new:1").status).toBe(75);
     for (let i = 2; i < 1000; i++)
-      writeFileSync(path.join(f.root, `seed-${i}.slot`), `${i}\nseed:1\nunused\n`);
-    expect(f.ensure("bot-1000").stdout).toContain("SUPERCHAT_DESKTOP=1000:view-bot-1000");
+      writeFileSync(path.join(f.root, `seed-${i}.slot`), `${i}\nseed:1\n`);
+    expect(f.ensure("bot-1000").stdout).toContain("SUPERCHAT_DESKTOP=1000\n");
     expect(f.release("a", "new:2").status).toBe(0);
-    expect(f.ensure("c").stdout).toContain("SUPERCHAT_DESKTOP=0:view-c");
-    expect(f.ensure("b").stdout).toContain("SUPERCHAT_DESKTOP=1:view-b");
+    expect(f.ensure("c").stdout).toContain("SUPERCHAT_DESKTOP=0\n");
+    expect(f.ensure("b").stdout).toContain("SUPERCHAT_DESKTOP=1\n");
   });
 
   it("reserves failed startup and teardown slots until a successful retry", () => {
     const f = fixture();
     expect(f.ensure("a", "run:1", true).status).toBe(1);
-    expect(f.ensure("b").stdout).toContain("SUPERCHAT_DESKTOP=1:view-b");
-    expect(f.ensure("a").stdout).toContain("SUPERCHAT_DESKTOP=0:view-a");
+    expect(f.ensure("b").stdout).toContain("SUPERCHAT_DESKTOP=1\n");
+    expect(f.ensure("a").stdout).toContain("SUPERCHAT_DESKTOP=0\n");
     expect(f.release("a", "run:1", true).status).toBe(1);
-    expect(f.ensure("c").stdout).toContain("SUPERCHAT_DESKTOP=2:view-c");
+    expect(f.ensure("c").stdout).toContain("SUPERCHAT_DESKTOP=2\n");
     expect(f.release("a").status).toBe(0);
-    expect(f.ensure("d").stdout).toContain("SUPERCHAT_DESKTOP=0:view-d");
-  });
-
-  it("does not create a screen on control release and keeps newer fences", () => {
-    const f = fixture();
-    expect(f.run(desktopControlCommand("missing", "run:1", env, false, "token")).status).toBe(0);
-    expect(readdirSync(f.root).filter((name) => name.endsWith(".slot"))).toEqual([]);
-    expect(f.ensure("a", "new:2").status).toBe(0);
-    expect(f.run(desktopControlCommand("a", "old:1", env, true, "token")).status).toBe(75);
-    const slot = readdirSync(f.root).find((name) => name.endsWith(".slot"))!;
-    expect(readFileSync(path.join(f.root, slot), "utf8")).toContain("new:2");
+    expect(f.ensure("d").stdout).toContain("SUPERCHAT_DESKTOP=0\n");
   });
 
   it.each([DEFAULT_DESKTOP_ENV, env])(
     "generates valid shell for every lifecycle operation ($displayStart)",
     (environment) => {
       for (const command of [
-        ensureScreenCommand(0, "bot's id", "token", environment),
-        ensureScreenCommand(1, "bot's id", "token", environment),
-        managedDesktopCommand("bot's id", "run:1", environment, "token"),
+        ensureScreenCommand(0, "bot's id", environment),
+        ensureScreenCommand(1, "bot's id", environment),
+        managedDesktopCommand("bot's id", "run:1", environment),
         releaseDesktopCommand("bot's id", "run:1", environment),
-        desktopControlCommand("bot's id", "run:1", environment, true, "token"),
-        interactiveScreenCommand(false, "token", screenPorts(1, environment)),
         stopExtraScreenCommand(1, "bot's id", environment),
       ]) {
         const result = spawnSync("bash", ["-n", "-c", command], { encoding: "utf8" });
@@ -165,14 +143,14 @@ describe("shared Linux desktop lifecycle", () => {
   it("skips damaged assignments while reserving their live display markers", () => {
     const f = fixture();
     writeFileSync(path.join(f.root, "empty.slot"), "");
-    writeFileSync(path.join(f.root, "invalid.slot"), "broken\nlease:1\ntoken\n");
+    writeFileSync(path.join(f.root, "invalid.slot"), "broken\nlease:1\n");
     writeFileSync(
       path.join(f.root, "browser-profile-20"),
       "/home/user/work/.browser-profiles/live",
     );
-    expect(f.ensure("a").stdout).toContain("SUPERCHAT_DESKTOP=1:view-a");
-    expect(f.ensure("b").stdout).toContain("SUPERCHAT_DESKTOP=2:view-b");
-    expect(f.ensure("a").stdout).toContain("SUPERCHAT_DESKTOP=1:view-a");
+    expect(f.ensure("a").stdout).toContain("SUPERCHAT_DESKTOP=1\n");
+    expect(f.ensure("b").stdout).toContain("SUPERCHAT_DESKTOP=2\n");
+    expect(f.ensure("a").stdout).toContain("SUPERCHAT_DESKTOP=1\n");
   });
 
   it("continues resetting valid displays after invalid or out-of-range markers", () => {
@@ -197,32 +175,21 @@ describe("shared Linux desktop lifecycle", () => {
     expect(readFileSync(record, "utf8")).toBe("0\n2\n");
   });
 
-  it("stops only the selected VNC transport and keeps the shared gateway", () => {
+  it("stops only the selected display's processes", () => {
     const command = stopExtraScreenCommand(1, "a", env);
     const patterns = [...command.matchAll(/pkill -f '([^']+)'/g)].map(
       (match) => new RegExp(match[1]!),
     );
-    for (const pattern of patterns) {
+    for (const pattern of patterns)
       expect(`/bin/bash -c ${shellQuote(command)}`).not.toMatch(pattern);
-      expect(
-        "/usr/bin/python3 /usr/local/bin/websockify --web=/opt/noVNC 0.0.0.0:6100",
-      ).not.toMatch(pattern);
-    }
-    expect(
-      patterns.some((pattern) =>
-        pattern.test(
-          "/usr/bin/x11vnc -display :21 -rfbport 0 -unixsock /tmp/superchat/sockets/view-21-token -forever",
-        ),
-      ),
-    ).toBe(true);
+    expect(patterns.some((pattern) => pattern.test("Xvfb :21 -screen 0 1280x800x24"))).toBe(true);
+    expect(patterns.some((pattern) => pattern.test("Xvfb :22 -screen 0 1280x800x24"))).toBe(false);
   });
 
-  it("uses one published gateway and distinct private ports across 1000 desktops", () => {
+  it("uses distinct private debugger ports across 1000 desktops", () => {
     const ports = new Set<number>();
     for (let index = 0; index < 1000; index++) {
       const layout = screenPorts(index, env);
-      expect(layout.viewPort).toBe("6100");
-      expect(layout.controlPort).toBe("6100");
       expect(ports.has(layout.debugPort)).toBe(false);
       ports.add(layout.debugPort);
     }
@@ -404,12 +371,4 @@ describe("shared Linux desktop lifecycle", () => {
       }
     },
   );
-
-  it("keeps provider authentication while adding the per-lease websocket capability", () => {
-    const url = new URL(
-      desktopUrl("https://desktop.test/vnc.html?_token=provider-key", "view-key"),
-    );
-    expect(url.searchParams.get("_token")).toBe("provider-key");
-    expect(url.searchParams.get("path")).toBe("websockify?_token=provider-key&token=view-key");
-  });
 });

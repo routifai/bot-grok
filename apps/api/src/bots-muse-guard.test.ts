@@ -1,6 +1,6 @@
+import { RPCHandler } from "@orpc/server/fetch";
 import type { Actor } from "@superchat/contracts";
 import type { PrismaClient } from "@superchat/db";
-import { RPCHandler } from "@orpc/server/fetch";
 import { describe, expect, it, vi } from "vitest";
 import { assertMuseSingleBotAllowed, createRouter, type RouterDeps } from "./router.js";
 
@@ -99,7 +99,6 @@ function routerDeps(
       defaultProvider: "fake",
       defaultModel: "fake-model",
       webOrigin: "http://127.0.0.1:5173",
-      screenProxySecret: "fake-test-secret",
       sandboxProvider: "fake",
     },
     dataDir: "/tmp/superchat-bots-muse-guard-test",
@@ -191,7 +190,6 @@ describe("bots.restore — muse single-Muse guard", () => {
         defaultProvider: "fake",
         defaultModel: "fake-model",
         webOrigin: "http://127.0.0.1:5173",
-        screenProxySecret: "fake-test-secret",
         sandboxProvider: "fake",
       },
       dataDir: "/tmp/superchat-bots-muse-guard-test",

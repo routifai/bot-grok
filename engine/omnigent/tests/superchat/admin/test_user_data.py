@@ -58,18 +58,8 @@ def test_rules_point_at_real_columns_and_parents() -> None:
 
 
 def _seed(connection, user: str) -> dict[str, str]:
-    skill, artifact, parent = (uuid.uuid4().hex for _ in range(3))
+    artifact, parent = (uuid.uuid4().hex for _ in range(2))
     slug = f"app-{user}-{uuid.uuid4().hex[:6]}"
-    connection.execute(
-        insert(TABLES["taught_skills"]).values(
-            id=skill, user_id=user, parent_session_id=parent, goal="goal", created_at=1
-        )
-    )
-    connection.execute(
-        insert(TABLES["taught_skill_versions"]).values(
-            skill_id=skill, version=1, doc="doc", created_at=1
-        )
-    )
     connection.execute(
         insert(TABLES["artifacts"]).values(
             id=artifact,
@@ -99,14 +89,14 @@ def _seed(connection, user: str) -> dict[str, str]:
             slug=slug, day="2026-10-01", viewer_key="v", last_at=1
         )
     )
-    return {"slug": slug, "skill": skill}
+    return {"slug": slug}
 
 
 def _count(connection, table: str) -> int:
     return len(connection.execute(select(TABLES[table])).all())
 
 
-def test_delete_removes_a_persons_skills_artifacts_publications_and_views(tmp_path: Path) -> None:
+def test_delete_removes_a_persons_artifacts_publications_and_views(tmp_path: Path) -> None:
     engine = get_or_create_engine(f"sqlite:///{tmp_path / 'u.db'}")
     OmnigentBase.metadata.create_all(engine)
     with engine.begin() as connection:
@@ -114,12 +104,10 @@ def test_delete_removes_a_persons_skills_artifacts_publications_and_views(tmp_pa
         bob = _seed(connection, "bob@example.test")
         assert artifact_blob_keys(connection, "alice@example.test") == ["blob-alice@example.test"]
         removed = delete_user_rows(connection, "alice@example.test")
-        assert removed["taught_skill_versions"] == 1
+        assert removed["artifacts"] == 1
         assert removed["artifact_views"] == 1
         assert removed["artifact_publications"] == 1
         for table in (
-            "taught_skills",
-            "taught_skill_versions",
             "artifacts",
             "artifact_publications",
             "artifact_views",

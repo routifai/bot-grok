@@ -68,7 +68,7 @@ function fixture(status = "queued") {
 describe("background computer maintenance", () => {
   it("persists stages and releases its reservation only after completion; redelivery is harmless", async () => {
     const { row, computer, deps } = fixture();
-    replacement.mockImplementationOnce(async (_deps, _id, _mode, _ctx, _holder, progress) => {
+    replacement.mockImplementationOnce(async (_deps, _id, _mode, _ctx, progress) => {
       for (const stage of ["saving", "recreating", "restoring", "reconnecting"] as const)
         await progress?.(stage);
       return {} as Awaited<ReturnType<typeof replaceComputer>>;
@@ -112,7 +112,7 @@ describe("background computer maintenance", () => {
     const pending = new Promise<void>((resolve) => {
       release = resolve;
     });
-    replacement.mockImplementationOnce(async (_deps, _id, _mode, _ctx, _holder, progress) => {
+    replacement.mockImplementationOnce(async (_deps, _id, _mode, _ctx, progress) => {
       await pending;
       await progress?.("recreating");
       return {} as Awaited<ReturnType<typeof replaceComputer>>;

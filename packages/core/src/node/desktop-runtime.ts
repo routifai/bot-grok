@@ -19,7 +19,6 @@ export interface DesktopEnvironment {
   browserProfilesDir: string;
   displayStart: number;
   preservePrimaryDisplay?: boolean;
-  portStart?: number;
 }
 export const DEFAULT_DESKTOP_ENV: DesktopEnvironment = {
   homeDir: "/home/superchat",
@@ -35,8 +34,6 @@ export function screenPorts(index: number, env = DEFAULT_DESKTOP_ENV) {
   return {
     display: `:${displayNumber}`,
     displayNumber,
-    viewPort: String(env.portStart ?? 6080),
-    controlPort: String(env.portStart ?? 6080),
     debugPort: 9221 + displayNumber,
   };
 }
@@ -48,8 +45,6 @@ function commandLayout(index: number | undefined, env: DesktopEnvironment) {
     display: ":${desktop_display}",
     // biome-ignore lint/suspicious/noTemplateCurlyInString: generated shell parameter expansion
     displayNumber: "${desktop_display}",
-    viewPort: String(env.portStart ?? 6080),
-    controlPort: String(env.portStart ?? 6080),
     // biome-ignore lint/suspicious/noTemplateCurlyInString: generated shell parameter expansion
     debugPort: "${desktop_debug}",
   };
@@ -67,7 +62,7 @@ function layoutVariables(index: number | undefined, env: DesktopEnvironment) {
   ];
 }
 
-// Expand only generated layout variables and the validated view token.
+// Expand only generated layout variables.
 function quoteLayout(value: string) {
   return value
     .split(/(\$\{desktop_[a-z_]+\})/)
@@ -295,11 +290,8 @@ export function quiesceBrowserProfilesCommand(env = DEFAULT_DESKTOP_ENV) {
 
 /** Reset discovered runtime processes after a supervisor restart; profiles remain durable. */
 export function resetDesktopRuntimeCommand(env = DEFAULT_DESKTOP_ENV) {
-  const port = String(env.portStart ?? 6080);
-  const gatewayPattern = `^([^ ]*/)?python[0-9.]* +(-m +websockify|[^ ]*websockify[^ ]*) +.*[ :]${port}( |$)`;
   const stop = [
     ...layoutVariables(undefined, env),
-    renderStopScreenTransportsCommand(undefined, env),
     ...(env.preservePrimaryDisplay
       ? [`if [ "$desktop_display" != "${env.displayStart}" ]; then`]
       : []),
@@ -311,9 +303,6 @@ export function resetDesktopRuntimeCommand(env = DEFAULT_DESKTOP_ENV) {
   ].join("\n");
   return [
     "set -eu",
-    `pkill -f ${shellQuote(gatewayPattern)} || true`,
-    "sleep 0.1",
-    `pkill -KILL -f ${shellQuote(gatewayPattern)} || true`,
     stopAllDesktopBrowsersCommand(env),
     "for marker in /tmp/superchat/browser-profile-*; do",
     '  [ -f "$marker" ] || continue',
@@ -324,84 +313,16 @@ export function resetDesktopRuntimeCommand(env = DEFAULT_DESKTOP_ENV) {
     `  index=$((display - ${env.displayStart}))`,
     `  bash -eu -c ${shellQuote(stop)} desktop "$index"`,
     "done",
-    // Retire the default image's legacy primary VNC process too.
-    "pkill -f '^([^ ]*/)?x11vnc .* -rfbport 5900( |$)' || true",
-    `rm -f ${TARGETS}/view-* ${TARGETS}/control-* /tmp/superchat/browser-pid-* /tmp/superchat/browser-profile-* /tmp/superchat/browser-launch-*`,
+    `rm -f /tmp/superchat/browser-pid-* /tmp/superchat/browser-profile-* /tmp/superchat/browser-launch-*`,
   ].join("\n");
-}
-
-const TARGETS = "/tmp/superchat/desktop-targets";
-
-// Keep fixed mapping files present: TokenFile may be reading the directory concurrently.
-function revokeTargetCommand(kind: "view" | "control", display: number | string) {
-  return `mkdir -p ${TARGETS}; : >/tmp/superchat/${kind}-target-next-${display}; mv /tmp/superchat/${kind}-target-next-${display} ${TARGETS}/${kind}-${display}`;
-}
-
-function stopVncCommand(kind: "view" | "control", layout: ReturnType<typeof commandLayout>) {
-  const socketPrefix = `/tmp/superchat/sockets/${kind}-${layout.displayNumber}-`;
-  const pattern = quoteLayout(`^([^ ]*/)?x11vnc .* -unixsock ${socketPrefix}[^ ]+( |$)`);
-  return [
-    `pkill -f ${pattern} || true`,
-    "sleep 0.1",
-    `pkill -KILL -f ${pattern} || true`,
-    `for i in $(seq 1 10); do pgrep -f ${pattern} >/dev/null || break; sleep 0.1; done`,
-    `if pgrep -f ${pattern} >/dev/null; then echo 'computer screen transport failed to stop' >&2; exit 1; fi`,
-    `rm -f ${socketPrefix}*`,
-  ].join("\n");
-}
-
-function gatewayCommand(port: string) {
-  const processPattern = `^([^ ]*/)?python[0-9.]* +(-m +websockify|[^ ]*websockify[^ ]*) +.*`;
-  const portPattern = shellQuote(`${processPattern}[ :]${port}( |$)`);
-  const gatewayPattern = shellQuote(
-    `${processPattern}--token-source=${TARGETS} +0.0.0.0:${port}( |$)`,
-  );
-  return [
-    proxyEnvironmentCommand(),
-    `mkdir -p ${TARGETS}`,
-    // This lock only covers gateway startup; desktop startup remains independent.
-    `exec 10>/tmp/superchat/gateway-${port}.lock; flock -w 120 10`,
-    `if ! pgrep -f ${gatewayPattern} >/dev/null || ! (echo >/dev/tcp/127.0.0.1/${port}) >/dev/null 2>&1; then`,
-    // Older images boot a single-screen gateway on this port. Retire it under the startup lock.
-    `  pkill -f ${portPattern} || true`,
-    `  for i in $(seq 1 20); do if ! (echo >/dev/tcp/127.0.0.1/${port}) >/dev/null 2>&1; then break; fi; sleep 0.1; done`,
-    `  if (echo >/dev/tcp/127.0.0.1/${port}) >/dev/null 2>&1; then echo 'screen gateway port is busy' >&2; exit 1; fi`,
-    `  nohup "$proxy" --heartbeat=30 --web="$web" --token-plugin=TokenFile --token-source=${TARGETS} 0.0.0.0:${port} 8>&- 9>&- 10>&- </dev/null >/tmp/superchat/gateway-${port}.log 2>&1 &`,
-    "fi",
-    `for i in $(seq 1 50); do (echo >/dev/tcp/127.0.0.1/${port}) >/dev/null 2>&1 && break; sleep 0.1; done`,
-    `flock -u 10; exec 10>&-`,
-    `(echo >/dev/tcp/127.0.0.1/${port}) >/dev/null 2>&1`,
-  ].join("\n");
-}
-
-export function stopScreenTransportsCommand(index: number, env = DEFAULT_DESKTOP_ENV) {
-  return renderStopScreenTransportsCommand(index, env);
 }
 
 export function stopExtraScreenCommand(index: number, screenId: string, env = DEFAULT_DESKTOP_ENV) {
   return renderStopExtraScreenCommand(index, screenId, env);
 }
 
-export function ensureScreenCommand(
-  index: number,
-  screenId: string,
-  viewToken: string,
-  env = DEFAULT_DESKTOP_ENV,
-) {
-  return renderEnsureScreenCommand(index, screenId, viewToken, env);
-}
-
-function renderStopScreenTransportsCommand(index: number | undefined, env = DEFAULT_DESKTOP_ENV) {
-  const layout = commandLayout(index, env);
-  return [
-    ...layoutVariables(index, env),
-    // Drop authorization first, then terminate VNC so already connected gateway clients disconnect.
-    revokeTargetCommand("view", layout.displayNumber),
-    revokeTargetCommand("control", layout.displayNumber),
-    stopVncCommand("view", layout),
-    stopVncCommand("control", layout),
-    `rm -f /tmp/superchat/control-token-${layout.displayNumber}`,
-  ].join("\n");
+export function ensureScreenCommand(index: number, screenId: string, env = DEFAULT_DESKTOP_ENV) {
+  return renderEnsureScreenCommand(index, screenId, env);
 }
 
 function renderStopExtraScreenCommand(
@@ -413,8 +334,6 @@ function renderStopExtraScreenCommand(
   const fluxHome = `/tmp/fluxbox-home-${layout.displayNumber}`;
   return [
     "set -eu",
-    // Stop every client before touching browser state or recycling the display.
-    renderStopScreenTransportsCommand(index, env),
     stopBrowserCommand(screenId, env),
     `rm -f /tmp/superchat/browser-profile-${layout.displayNumber} ${browserLauncherPath(layout.displayNumber)}`,
     ...(index === 0 && env.preservePrimaryDisplay
@@ -438,17 +357,9 @@ export function prepareBrowserProfileCommand(screenId: string, env = DEFAULT_DES
   return `mkdir -p ${shellQuote(browserProfilePathForScreen(screenId, env))}`;
 }
 
-function proxyEnvironmentCommand() {
-  return [
-    'if command -v websockify >/dev/null 2>&1; then proxy=$(command -v websockify); elif [ -x /opt/noVNC/utils/websockify/run ]; then proxy=/opt/noVNC/utils/websockify/run; else echo "websockify is required" >&2; exit 1; fi',
-    'if [ -d /usr/share/novnc ]; then web=/usr/share/novnc; elif [ -d /opt/noVNC ]; then web=/opt/noVNC; else echo "noVNC is required" >&2; exit 1; fi',
-  ].join("\n");
-}
-
 function renderEnsureScreenCommand(
   index: number | undefined,
   screenId: string,
-  viewToken: string,
   env = DEFAULT_DESKTOP_ENV,
 ) {
   const layout = commandLayout(index, env);
@@ -475,26 +386,9 @@ function renderEnsureScreenCommand(
           `  HOME=${shellQuote(env.homeDir)} CHROME_USER_DATA_DIR=${shellQuote(profile)} BROWSER=${browserLauncherPath(layout.displayNumber)} DISPLAY=${layout.display} nohup fluxbox -rc ${fluxHome}/.fluxbox/init 8>&- 9>&- </dev/null >${log}-fluxbox.log 2>&1 &`,
           "fi",
         ];
-  const targetFile = `${TARGETS}/view-${layout.displayNumber}`;
-  const socket = `/tmp/superchat/sockets/view-${layout.displayNumber}-\${desktop_view_token}`;
-  const setupView = [
-    `mkdir -p ${TARGETS} /tmp/superchat/sockets`,
-    `if [ ! -S ${socket} ] || ! pgrep -f ${quoteLayout(`^([^ ]*/)?x11vnc .* -unixsock ${socket}( |$)`)} >/dev/null; then`,
-    stopVncCommand("view", layout),
-    `  nohup x11vnc -display ${layout.display} -forever -shared -viewonly -nopw -rfbport 0 -unixsock ${socket} -xkb -ncache 0 8>&- 9>&- </dev/null >${log}-x11vnc.log 2>&1 &`,
-    "fi",
-    `for i in $(seq 1 50); do [ -S ${socket} ] && break; sleep 0.1; done`,
-    `[ -S ${socket} ] || exit 1`,
-    `printf '%s: unix_socket:%s\\n' "$desktop_view_token" ${socket} >/tmp/superchat/view-target-next-${layout.displayNumber}`,
-    `mv /tmp/superchat/view-target-next-${layout.displayNumber} ${targetFile}`,
-    gatewayCommand(layout.viewPort),
-  ];
   return [
     "set -eu",
     ...layoutVariables(index, env),
-    `desktop_view_token=${shellQuote(viewToken)}`,
-    '[[ "$desktop_view_token" =~ ^[a-zA-Z0-9_-]{1,64}$ ]] || exit 75',
-    proxyEnvironmentCommand(),
     `mkdir -p /tmp/superchat`,
     `printf %s ${shellQuote(browserLauncherCommand(index, screenId, env))} >${browserLauncherPath(layout.displayNumber)}`,
     `chmod 700 ${browserLauncherPath(layout.displayNumber)}`,
@@ -510,51 +404,10 @@ function renderEnsureScreenCommand(
     "fi",
     `for i in $(seq 1 80); do browser_running && (echo >/dev/tcp/127.0.0.1/${layout.debugPort}) >/dev/null 2>&1 && break; sleep 0.25; done`,
     `browser_running && (echo >/dev/tcp/127.0.0.1/${layout.debugPort}) >/dev/null 2>&1 || exit 1`,
-    ...setupView,
-    `for i in $(seq 1 50); do (echo >/dev/tcp/127.0.0.1/${layout.viewPort}) >/dev/null 2>&1 && exit 0; sleep 0.1; done`,
-    "exit 1",
-  ].join("\n");
-}
-
-export function interactiveScreenCommand(
-  interactive: boolean,
-  controlToken?: string,
-  layout: ReturnType<typeof commandLayout> = screenPorts(0),
-) {
-  const tokenFile = `/tmp/superchat/control-token-${layout.displayNumber}`;
-  const targetFile = `${TARGETS}/control-${layout.displayNumber}`;
-  const stopProcesses = [
-    revokeTargetCommand("control", layout.displayNumber),
-    stopVncCommand("control", layout),
-    `rm -f ${tokenFile}`,
-  ].join("\n");
-  if (!interactive) {
-    if (!controlToken) return stopProcesses;
-    return [
-      `if [ -f ${tokenFile} ] && [ "$(cat ${tokenFile})" = ${shellQuote(controlToken)} ]; then`,
-      stopProcesses,
-      "printf 'SUPERCHAT_CONTROL_RELEASED\\n'",
-      "fi",
-    ].join("\n");
-  }
-  if (!controlToken) throw new Error("interactive screen requires a control token");
-  const socket = `/tmp/superchat/sockets/control-${layout.displayNumber}-${browserKeyForScreen(controlToken)}`;
-  return [
-    `[ -f ${tokenFile} ] && [ "$(cat ${tokenFile})" = ${shellQuote(controlToken)} ] && [ -S ${socket} ] && pgrep -f ${quoteLayout(`^([^ ]*/)?x11vnc .* -unixsock ${socket}( |$)`)} >/dev/null && (echo >/dev/tcp/127.0.0.1/${layout.controlPort}) >/dev/null 2>&1 && exit 0 || true`,
-    stopProcesses,
-    `mkdir -p ${TARGETS} /tmp/superchat/sockets`,
-    `printf %s ${shellQuote(controlToken)} >${tokenFile}`,
-    `nohup x11vnc -display ${layout.display} -forever -shared -nopw -rfbport 0 -unixsock ${socket} -xkb -ncache 0 8>&- 9>&- </dev/null >/tmp/superchat/x11vnc-control-${layout.displayNumber}.log 2>&1 &`,
-    `for i in $(seq 1 50); do [ -S ${socket} ] && break; sleep 0.1; done`,
-    `[ -S ${socket} ] || exit 1`,
-    `printf '%s: unix_socket:%s\\n' ${shellQuote(controlToken)} ${socket} >/tmp/superchat/control-target-next-${layout.displayNumber}`,
-    `mv /tmp/superchat/control-target-next-${layout.displayNumber} ${targetFile}`,
-    gatewayCommand(layout.controlPort),
   ].join("\n");
 }
 
 const REGISTRY = "/tmp/superchat/desktop-assignments";
-const TOKEN_PLACEHOLDER = "SUPERCHAT_INTERNAL_VIEW_TOKEN";
 
 function registryLockCommand(screenId: string) {
   return [
@@ -590,13 +443,11 @@ export function managedDesktopCommand(
   screenId: string,
   leaseId: string | undefined,
   env: DesktopEnvironment,
-  viewToken: string,
 ) {
   return [
     ...registryLockCommand(screenId),
     ...acceptLeaseCommand(leaseId),
     'index=$(sed -n "1p" "$slot" 2>/dev/null || true)',
-    'view_token=$(sed -n "3p" "$slot" 2>/dev/null || true)',
     'if [ -z "$index" ]; then',
     `  index=$(python3 -c ${shellQuote(`import pathlib, sys
 used = set()
@@ -614,15 +465,13 @@ if index > ${MAX_DESKTOP_DISPLAY - env.displayStart}: sys.exit(75)
 print(index)
 `)} "$dir")`,
     '  [ -n "$index" ] || exit 75',
-    `  view_token=${shellQuote(viewToken)}`,
     "fi",
-    "case \"$view_token\" in ''|*[!a-zA-Z0-9_-]*) exit 75 ;; esac",
     '[ -n "$incoming" ] || incoming="$current"',
-    'printf "%s\\n%s\\n%s\\n" "$index" "$incoming" "$view_token" >"$slot.next"',
+    'printf "%s\\n%s\\n" "$index" "$incoming" >"$slot.next"',
     'mv "$slot.next" "$slot"',
     "flock -u 9; exec 9>&-",
-    `bash -eu -c ${shellQuote(renderEnsureScreenCommand(undefined, screenId, TOKEN_PLACEHOLDER, env).replace(shellQuote(TOKEN_PLACEHOLDER), '"$2"'))} desktop "$index" "$view_token"`,
-    'printf "SUPERCHAT_DESKTOP=%s:%s\\n" "$index" "$view_token"',
+    `bash -eu -c ${shellQuote(renderEnsureScreenCommand(undefined, screenId, env))} desktop "$index"`,
+    'printf "SUPERCHAT_DESKTOP=%s\\n" "$index"',
   ].join("\n");
 }
 
@@ -643,32 +492,4 @@ export function releaseDesktopCommand(
     'rm -f "$slot"',
     'printf "SUPERCHAT_DESKTOP_RELEASED=%s\\n" "$index"',
   ].join("\n");
-}
-
-/** Guard a control transition with the persisted allocation and execution fence. */
-export function desktopControlCommand(
-  screenId: string,
-  leaseId: string | undefined,
-  env: DesktopEnvironment,
-  interactive: boolean,
-  token: string,
-) {
-  return [
-    ...registryLockCommand(screenId),
-    `[ -f "$slot" ] || exit ${interactive ? 75 : 0}`,
-    ...acceptLeaseCommand(leaseId, !interactive),
-    'index=$(sed -n "1p" "$slot")',
-    "flock -u 9; exec 9>&-",
-    `bash -eu -c ${shellQuote([...layoutVariables(undefined, env), interactiveScreenCommand(interactive, token, commandLayout(undefined, env))].join("\n"))} desktop "$index"`,
-  ].join("\n");
-}
-
-export function desktopUrl(screenUrl: string, token: string) {
-  const url = new URL(screenUrl);
-  url.searchParams.set("autoconnect", "true");
-  url.searchParams.set("resize", "scale");
-  const socketQuery = new URLSearchParams(new URL(screenUrl).search);
-  socketQuery.set("token", token);
-  url.searchParams.set("path", `websockify?${socketQuery}`);
-  return url.toString();
 }

@@ -23,11 +23,6 @@ const context = (operation: string, userId = ""): AdapterContext => ({
 });
 
 const RELEASED = {
-  controlHolder: "none" as const,
-  controlLeaseId: null,
-  controlLeaseExpiresAt: null,
-  controlBotId: null,
-  controlRunId: null,
   executionRunId: null,
   executionBotId: null,
   executionLeaseExpiresAt: null,
@@ -81,7 +76,7 @@ export async function destroySpaceComputers(
       await deps.sandbox.destroy(toComputerRef(computer), context(operation, computer.userId));
       await deps.prisma.computer.update({
         where: { id: computer.id },
-        data: { providerRef: null, state: "stopped", screenUrl: null, ...RELEASED },
+        data: { providerRef: null, state: "stopped", ...RELEASED },
       });
     } catch (error) {
       failures.push(`${computer.id}: ${error instanceof Error ? error.message : String(error)}`);

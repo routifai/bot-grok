@@ -1,4 +1,4 @@
-"""``GET /sessions/{id}/computer``: a connected runner is running, screen or not."""
+"""``GET /sessions/{id}/computer``: ready is a connected runner."""
 
 from __future__ import annotations
 
@@ -36,14 +36,13 @@ def _client(conv: Any, tunnels: _Tunnels) -> TestClient:
     return TestClient(app)
 
 
-def test_a_connected_runner_without_a_screen_is_ready() -> None:
+def test_a_connected_runner_is_ready() -> None:
     conv = SimpleNamespace(runner_id="runner_1", host_id=None)
     body = _client(conv, _Tunnels("runner_1")).get("/sessions/conv_1/computer").json()
-    assert body["available"] is False
-    assert body["ready"] is True
+    assert body == {"ready": True, "launch": None}
 
 
 def test_a_runner_that_is_not_connected_is_not_ready() -> None:
     conv = SimpleNamespace(runner_id="runner_1", host_id=None)
     body = _client(conv, _Tunnels()).get("/sessions/conv_1/computer").json()
-    assert body == {"available": False, "in_control": False, "ready": False, "launch": None}
+    assert body == {"ready": False, "launch": None}

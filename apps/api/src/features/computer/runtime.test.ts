@@ -16,7 +16,7 @@ const actor = { userId: "user-1", spaceId: "space-1" } as never;
 
 function deps(session: string | null = "sess-1") {
   const prisma = {
-    bot: { findFirst: vi.fn(async () => ({ id: "bot-1", screenGeneration: 0 })) },
+    bot: { findFirst: vi.fn(async () => ({ id: "bot-1" })) },
     user: { findUnique: vi.fn(async () => ({ email: "p@example.test" })) },
     omnigentSession: {
       findUnique: vi.fn(async () =>

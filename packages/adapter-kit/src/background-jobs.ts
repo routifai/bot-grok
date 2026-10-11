@@ -14,11 +14,6 @@ const payloadSchemas = {
   }),
   "computer.update": z.object({ updateId: z.string().min(1) }),
   "computer.sleep": z.object({ computerId: z.string().min(1) }),
-  "computer.control-expire": z.object({
-    computerId: z.string().min(1),
-    leaseId: z.string().min(1),
-  }),
-  "skill.teaching-expire": z.object({ skillId: z.string().min(1) }),
   "messaging.deliver": z.object({ runId: z.string().min(1).optional() }),
 } satisfies { [Name in BackgroundJobName]: z.ZodType<BackgroundJobPayloads[Name]> };
 
@@ -51,16 +46,6 @@ export function computerSleepJobKey(computerId: string): string {
   return `computer.sleep:${computerId}`;
 }
 
-export function computerControlExpireJobKey(computerId: string, leaseId?: string): string {
-  return leaseId
-    ? `computer.control-expire:${computerId}:${leaseId}`
-    : `computer.control-expire:${computerId}`;
-}
-
-export function skillTeachingExpireJobKey(skillId: string): string {
-  return `skill.teaching-expire:${skillId}`;
-}
-
 export function runContinueJob(runId: string): BackgroundJob {
   return {
     name: "run.continue",
@@ -84,28 +69,6 @@ export function computerSleepJob(computerId: string, availableAt: Date): Backgro
     payload: { computerId },
     availableAt,
     replaceKey: computerSleepJobKey(computerId),
-  };
-}
-
-export function computerControlExpireJob(
-  computerId: string,
-  leaseId: string,
-  availableAt: Date,
-): BackgroundJob {
-  return {
-    name: "computer.control-expire",
-    payload: { computerId, leaseId },
-    availableAt,
-    replaceKey: computerControlExpireJobKey(computerId, leaseId),
-  };
-}
-
-export function skillTeachingExpireJob(skillId: string, availableAt: Date): BackgroundJob {
-  return {
-    name: "skill.teaching-expire",
-    payload: { skillId },
-    availableAt,
-    replaceKey: skillTeachingExpireJobKey(skillId),
   };
 }
 

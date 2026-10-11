@@ -110,9 +110,7 @@ export function CardsPreviewPage({ scenario }: { scenario: CardsScenario }) {
             onJumpToMessage={noop}
             onOpenPeerMessages={noop}
             peerBot={() => undefined}
-            onRefresh={noopAsync}
             onBotChanged={noopAsync}
-            onAddRoutine={noop}
             voiceReady={false}
             speakingMessageId={null}
             onSpeak={noop}

@@ -95,5 +95,5 @@ async def resolve_caller(ctx: HandlerCtx) -> Caller | str:
     return Caller(ctx.server_client, ctx.conversation_id, lookup[0] == "sub_agent", lookup[1])
 
 
-#: A 32-character hex record id (objective, taught skill, scheduled task).
+#: A 32-character hex record id (objective, scheduled task).
 HEX_ID_RE = re.compile(r"^[0-9a-fA-F]{32}$")

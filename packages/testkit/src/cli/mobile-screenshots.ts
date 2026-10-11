@@ -164,7 +164,6 @@ function configureEnvironment() {
     COMPOSIO_API_KEY: "",
     BETTER_AUTH_SECRET: "mobile-screenshot-auth-secret-32chars",
     ENCRYPTION_KEY: "mobile-screenshot-encryption-key-32chars",
-    SCREEN_PROXY_SECRET: "mobile-screenshot-screen-secret-32chars",
     BETTER_AUTH_URL: HOST_API_URL,
     WEB_ORIGIN,
     API_HOST: "0.0.0.0",

@@ -81,7 +81,6 @@ describe("unattendedTriggerToolRequiresApproval", () => {
       "read_file",
       "web_search",
       "browser_snapshot",
-      "request_takeover",
       "run_subagent",
     ]) {
       expect(unattendedTriggerToolRequiresApproval("webhook", name, false)).toBe(false);

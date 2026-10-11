@@ -9,12 +9,8 @@ The one persistent agent a person has. It owns the conversation, the memory, and
 _Avoid_: bot, assistant, Chief, teammate
 
 **Computer**:
-The Muse's own machine: its screen, files, and browser. Each Muse has exactly one, and every turn the Muse takes runs inside it. The person can watch its screen.
+The Muse's own machine: its files and browser. Each Muse has exactly one, and every turn the Muse takes runs inside it. The person sees whether it is ready and browses its files, but does not watch or drive it.
 _Avoid_: sandbox, container, runner, desktop
-
-**Take over**:
-The person taking control of the Computer's screen to click and type themselves, then handing it back. While the person is in control, the Muse does not act on the Computer.
-_Avoid_: control lease, interactive mode, remote control
 
 **Helper**:
 A short-lived task executor the Muse starts for one piece of work. It does not inherit the Conversation: it starts with its brief, what the Muse remembers about the person, and a short summary of the Conversation that the Conversation hands it; it can look up exact past messages when it needs them. It cannot talk to the person, and ends when its work is done; its result goes back to the chat that started it. Its status shows as an Activity. In the engine it is a Sub-agent.
@@ -81,11 +77,11 @@ A suggestion of something the person could ask the Muse next, drawn from their G
 _Avoid_: prompt suggestion, recommendation, next step
 
 **Skill**:
-A task the person taught the Muse by doing it once on the Computer. The Muse turns the recording into a draft (steps, what changes each time, what to ask first); the person reviews and saves it, and the Muse can then run it again with different inputs.
+A reusable recipe the Muse keeps. The Muse offers to save something it just did, or the person pastes steps and asks it to keep them; the Muse can then run it again whenever it fits.
 _Avoid_: macro, recording, playbook
 
 **Library**:
-Everything the Muse has made for the person (pages, documents, files), from the Conversation and every Goal log, in one place, with the Skills it has been taught.
+Everything the Muse has made for the person (pages, documents, files), from the Conversation and every Goal log, in one place, with the Skills it has kept.
 _Avoid_: files, artifacts, attachments, gallery
 
 **Check-in**:

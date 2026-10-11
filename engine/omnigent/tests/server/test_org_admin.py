@@ -498,19 +498,9 @@ def test_delete_leaves_no_skills_artifacts_publications_or_blobs_for_a_returning
     _seed_people(world)
 
     def seed(user: str) -> None:
-        skill, artifact, parent = (uuid.uuid4().hex for _ in range(3))
+        artifact, parent = (uuid.uuid4().hex for _ in range(2))
         slug = f"app-{user}-{uuid.uuid4().hex[:6]}"
         with engine.begin() as c:
-            c.execute(
-                insert(tables["taught_skills"]).values(
-                    id=skill, user_id=user, parent_session_id=parent, goal="g", created_at=1
-                )
-            )
-            c.execute(
-                insert(tables["taught_skill_versions"]).values(
-                    skill_id=skill, version=1, doc="d", created_at=1
-                )
-            )
             c.execute(
                 insert(tables["artifacts"]).values(
                     id=artifact,
@@ -545,12 +535,10 @@ def test_delete_leaves_no_skills_artifacts_publications_or_blobs_for_a_returning
     seed("bob")
     r = world.client.delete("/v1/admin/users/alice", headers=ROOT)
     assert r.status_code == 200
-    assert r.json()["rows_removed"] >= 5
+    assert r.json()["rows_removed"] >= 3
     assert deleted_blobs == ["blob-alice"]
     with engine.begin() as c:
         for name in (
-            "taught_skills",
-            "taught_skill_versions",
             "artifacts",
             "artifact_publications",
             "artifact_views",

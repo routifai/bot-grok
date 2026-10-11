@@ -21,7 +21,6 @@ import type {
   ComputerActionRequest,
   ComputerActionResult,
   ComputerFileEntry,
-  ComputerInput,
   ComputerObservation,
   ComputerRef,
   ConnectorCall,
@@ -29,7 +28,6 @@ import type {
   ConnectorCatalogItem,
   ConnectorEvent,
   ConnectorTool,
-  ControlLeaseRef,
   MessagingInboundEvent,
   MessagingPlatformDescriptor,
   MessagingSendRequest,
@@ -40,8 +38,6 @@ import type {
   PortableFile,
   ProcessEvent,
   SandboxCapabilities,
-  ScreenRequest,
-  ScreenSession,
   SecretRecord,
   SnapshotRef,
   SpeechClip,
@@ -83,23 +79,6 @@ export interface SandboxProvider {
     markerId: string,
     context: AdapterContext,
   ): Promise<"active" | "idle" | "unknown">;
-  connectScreen(
-    computer: ComputerRef,
-    request: ScreenRequest,
-    context: AdapterContext,
-  ): Promise<ScreenSession>;
-  setScreenControl?(
-    computer: ComputerRef,
-    interactive: boolean,
-    context: AdapterContext,
-    controlToken?: string,
-  ): Promise<void>;
-  sendInput(
-    computer: ComputerRef,
-    input: ComputerInput,
-    lease: ControlLeaseRef,
-    context: AdapterContext,
-  ): Promise<void>;
   observe(computer: ComputerRef, context: AdapterContext): Promise<ComputerObservation>;
   act(
     computer: ComputerRef,

@@ -1,6 +1,8 @@
 // The engine connection every capability route shares: the engine client for an actor's space,
 // the "needs the engine" refusal, and the engine session behind a Muse (its Computer's session).
 // Superchat runs on the engine (docs/adr/0004-engine-owns-the-computer.md); it keeps no Computer state.
+
+import { ORPCError } from "@orpc/server";
 import {
   type OmnigentClientConfig,
   omnigentClientConfigFromEnv,
@@ -8,13 +10,12 @@ import {
 } from "@superchat/adapters";
 import type { Actor } from "@superchat/contracts";
 import type { PrismaClient } from "@superchat/db";
-import { ORPCError } from "@orpc/server";
 
 export interface EngineComputer {
   client: OmnigentClientConfig;
   email: string;
   sessionId: string | null;
-  bot: { id: string; screenGeneration: number };
+  bot: { id: string };
 }
 
 /** The engine client for this actor's space (the tenant every engine call carries); `undefined`
@@ -47,7 +48,7 @@ export async function resolveEngineComputer(
   const [bot, user, session] = await Promise.all([
     deps.prisma.bot.findFirst({
       where: { id: botId, spaceId: actor.spaceId, userId: actor.userId },
-      select: { id: true, screenGeneration: true },
+      select: { id: true },
     }),
     deps.prisma.user.findUnique({ where: { id: actor.userId }, select: { email: true } }),
     deps.prisma.omnigentSession.findUnique({
@@ -57,16 +58,4 @@ export async function resolveEngineComputer(
   ]);
   if (!bot || !user) throw new ORPCError("NOT_FOUND", { message: "Muse not found" });
   return { client, email: user.email, sessionId: session?.omnigentSessionId ?? null, bot };
-}
-
-/** The engine session and owner email behind a Muse's Computer, for engine routes that act on
- * it (teaching records it). `sessionId` is `null` until the Muse has had a turn. */
-export async function engineSessionOf(
-  deps: { prisma: PrismaClient },
-  client: OmnigentClientConfig,
-  actor: Actor,
-  botId: string,
-): Promise<{ email: string; sessionId: string | null }> {
-  const { email, sessionId } = await resolveEngineComputer(deps, client, actor, botId);
-  return { email, sessionId };
 }

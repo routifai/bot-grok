@@ -115,7 +115,7 @@ describe("expo push", () => {
     vi.stubGlobal("fetch", fetchMock);
     const push = new ExpoPushProvider(dataDir);
     await push.send(
-      { kind: "takeover", title: "Need you", body: "on screen", botId: "bot-1", threadId: "th-1" },
+      { kind: "help", title: "Need you", body: "a question", botId: "bot-1", threadId: "th-1" },
       notifyContext,
     );
     expect(fetchMock).toHaveBeenCalledOnce();
@@ -132,7 +132,7 @@ describe("expo push", () => {
     expect(body.title).toBe("Need you");
     expect(body.collapseId).toBe("th-1");
     expect(body.tag).toBe("th-1");
-    expect(body.data.kind).toBe("takeover");
+    expect(body.data.kind).toBe("help");
   });
 
   it("throws when Expo rejects the request", async () => {

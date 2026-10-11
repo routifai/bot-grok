@@ -103,9 +103,7 @@ const TranscriptView = memo(function Transcript({
   onOpenPeerMessages,
   memberName,
   peerBot,
-  onRefresh,
   onBotChanged,
-  onAddRoutine,
   voiceReady,
   speakingMessageId,
   onSpeak,
@@ -149,9 +147,7 @@ const TranscriptView = memo(function Transcript({
   onOpenPeerMessages: (peer: { peerBotId: string; peerBotName: string }) => void;
   memberName?: (botId: string | undefined) => string | undefined;
   peerBot: (botId: string) => { color: string; status?: string } | undefined;
-  onRefresh: () => Promise<void>;
   onBotChanged: () => Promise<void>;
-  onAddRoutine: (name: string, prompt: string) => void;
   voiceReady: boolean;
   speakingMessageId: string | null;
   onSpeak: (message: ThreadMessage) => void;
@@ -576,9 +572,7 @@ const TranscriptView = memo(function Transcript({
                     }
                     replyToMessageId={message.replyToMessageId}
                     onJumpToMessage={onJumpToMessage}
-                    onRefresh={onRefresh}
                     onBotChanged={onBotChanged}
-                    onAddRoutine={onAddRoutine}
                     voiceReady={voiceReady}
                     speaking={speakingMessageId === message.id}
                     onSpeak={() => onSpeak(message)}

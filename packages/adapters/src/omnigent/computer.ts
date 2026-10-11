@@ -2,26 +2,18 @@ import type { OmnigentClientConfig } from "./client/core.js";
 import { omnigentHeaders, throwOnError } from "./client/core.js";
 
 export interface OmnigentComputerState {
-  available: boolean;
-  in_control: boolean;
-  /** The session's runner is connected; absent on engines that predate it. */
-  ready?: boolean;
+  /** The session's runner is connected (Files and tools can reach it). */
+  ready: boolean;
   /** The managed launch's progress while it is in flight or failed; `null` once it is up. */
-  launch?: { stage: string; error: string | null } | null;
+  launch: { stage: string; error: string | null } | null;
 }
 
-export interface OmnigentComputerScreen {
-  /** The supervisor's noVNC URL incl. token — reachable from Superchat's API host, not the browser. */
-  screen_url: string;
-  in_control: boolean;
+export function computerUrl(config: OmnigentClientConfig, sessionId: string): URL {
+  return new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/computer`, config.baseUrl);
 }
 
-export function computerUrl(config: OmnigentClientConfig, sessionId: string, tail = ""): URL {
-  return new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/computer${tail}`, config.baseUrl);
-}
-
-/** `GET /v1/sessions/{id}/computer` — whether the session has a Computer and who controls it
- * (engine/omnigent/omnigent/server/routes/sessions/routes_computer.py). */
+/** `GET /v1/sessions/{id}/computer` — whether the session's Computer is ready and how its launch
+ * is going (engine/omnigent/omnigent/superchat/computer/routes.py). */
 export async function getOmnigentComputer(
   config: OmnigentClientConfig,
   email: string,
@@ -32,36 +24,6 @@ export async function getOmnigentComputer(
   });
   await throwOnError(response, "get computer", config.secrets);
   return (await response.json()) as OmnigentComputerState;
-}
-
-/** `POST /v1/sessions/{id}/computer/screen` — `interactive: true` is Take over. */
-export async function openOmnigentComputerScreen(
-  config: OmnigentClientConfig,
-  email: string,
-  sessionId: string,
-  interactive: boolean,
-): Promise<OmnigentComputerScreen> {
-  const response = await fetch(computerUrl(config, sessionId, "/screen"), {
-    method: "POST",
-    headers: omnigentHeaders(config, email),
-    body: JSON.stringify({ interactive }),
-  });
-  await throwOnError(response, "open computer screen", config.secrets);
-  return (await response.json()) as OmnigentComputerScreen;
-}
-
-/** `POST /v1/sessions/{id}/computer/release` — hand control back to the Muse. */
-export async function releaseOmnigentComputer(
-  config: OmnigentClientConfig,
-  email: string,
-  sessionId: string,
-): Promise<OmnigentComputerScreen> {
-  const response = await fetch(computerUrl(config, sessionId, "/release"), {
-    method: "POST",
-    headers: omnigentHeaders(config, email),
-  });
-  await throwOnError(response, "release computer", config.secrets);
-  return (await response.json()) as OmnigentComputerScreen;
 }
 
 // The Muse's Computer workspace on the Omnigent side: the session filesystem routes

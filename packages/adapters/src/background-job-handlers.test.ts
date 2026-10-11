@@ -134,12 +134,11 @@ describe("createBackgroundJobHandlers", () => {
     );
   });
 
-  it("leaves the engine's always-on Computer alone: no idle sleep or control expiry", async () => {
+  it("leaves the engine's always-on Computer alone: no idle sleep", async () => {
     const jobs = { enqueue: vi.fn() } as unknown as JobPublisher;
     const handlers = handlersFor({ jobs, omnigent: {} as unknown as OmnigentGatewayDeps });
 
     await handlers["computer.sleep"]({ computerId: "computer-1" });
-    await handlers["computer.control-expire"]({ computerId: "computer-1", leaseId: "lease-1" });
 
     expect(jobs.enqueue).not.toHaveBeenCalled();
   });

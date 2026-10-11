@@ -12,10 +12,9 @@ describe("deriveMuseState", () => {
     expect(deriveMuseState([{ status: "leased" }], 0)).toBe("thinking");
   });
 
-  it("is working while a run is running (or paused waiting on input/takeover)", () => {
+  it("is working while a run is running (or paused waiting on input)", () => {
     expect(deriveMuseState([{ status: "running" }], 0)).toBe("working");
     expect(deriveMuseState([{ status: "waiting_input" }], 0)).toBe("working");
-    expect(deriveMuseState([{ status: "waiting_takeover" }], 0)).toBe("working");
   });
 
   it("prefers the most alive status across concurrent runs", () => {

@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
+import { ORPCError, onError } from "@orpc/server";
+import { RPCHandler } from "@orpc/server/fetch";
 import type {
   JobPublisher,
   ManagedConnectorProvider,
@@ -82,15 +84,12 @@ import {
   SERVICE_NAMES,
 } from "@superchat/logging";
 import { requestLogging } from "@superchat/logging/hono";
-import { ORPCError, onError } from "@orpc/server";
-import { RPCHandler } from "@orpc/server/fetch";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { engineComputerClient } from "./engine-client.js";
 import type { AppEnv } from "./env.js";
 import { loadEnv } from "./env.js";
 import { mountPublishedApps } from "./features/apps/published-apps.js";
-import { mountScreenTarget } from "./features/computer/screen-proxy.js";
 import { setEngineAccountSuspended } from "./features/signups/index.js";
 import { mountLocalSettings } from "./local-settings.js";
 import { createMessagingInboundHandler } from "./messaging-inbound.js";
@@ -503,7 +502,6 @@ export async function createApp(
       deploymentModelKey: env.deploymentModelKey,
       webOrigin: env.webOrigin,
       privacyPolicyUrl: env.privacyPolicyUrl,
-      screenProxySecret: env.screenProxySecret,
       sandboxProvider: env.sandboxProvider,
       integrationsCatalogUrl: env.integrationsCatalogUrl,
       mcpAllowPrivateEndpoint: env.mcpAllowPrivateEndpoint,
@@ -552,7 +550,6 @@ export async function createApp(
     );
   }
   mountApiRequestBodyLimits(app);
-  mountScreenTarget(app, prisma, env.screenProxySecret, mayAct);
   mountPublishedApps(app, {
     prisma,
     secret: env.authSecret,

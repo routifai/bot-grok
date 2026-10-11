@@ -1,3 +1,4 @@
+import { ORPCError } from "@orpc/server";
 import { runContinueJob, runJobKey } from "@superchat/adapter-kit";
 import { ACTIVE_RUN_STATUSES } from "@superchat/core";
 import {
@@ -8,8 +9,6 @@ import {
   touchGroupUpdatedAt,
 } from "@superchat/db";
 import { getLogger } from "@superchat/logging";
-import { ORPCError } from "@orpc/server";
-import { assertTeachingSendAllowed } from "../teaching-guard.js";
 import {
   isPeerRun,
   loadMessagePage,
@@ -71,9 +70,6 @@ export function threadsRouter(c: RouterContext) {
           throw new ORPCError("BAD_REQUEST", { message: "Connect a model to start a run." });
         }
         const target = await resolveThreadTarget(deps.prisma, context.actor, input);
-        if (target.kind === "bot") {
-          await assertTeachingSendAllowed(deps.prisma, context.actor, target.botId);
-        }
         return sendThreadMessage(deps, context.actor, target, input);
       }),
       react: authed.threads.react.handler(async ({ context, input }) => {
@@ -109,7 +105,6 @@ export function threadsRouter(c: RouterContext) {
       followUp: authed.threads.followUp.handler(async ({ context, input }) => {
         const target = await resolveThreadTarget(deps.prisma, context.actor, input);
         if (target.kind === "bot") {
-          await assertTeachingSendAllowed(deps.prisma, context.actor, target.botId);
           const sent = await deps.events.sendUserMessage({
             spaceId: context.actor.spaceId,
             threadId: target.threadId,

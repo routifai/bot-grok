@@ -16,7 +16,6 @@ type Row = {
   homeKey?: string;
   kind?: string;
   userId?: string;
-  screenUrl?: string;
 };
 
 function fixture(computers: Row[]) {
@@ -24,7 +23,6 @@ function fixture(computers: Row[]) {
     homeKey: "home",
     kind: "fake",
     userId: "u1",
-    screenUrl: "x",
     ...row,
   }));
   const update = vi.fn(async ({ where, data }: { where: { id: string }; data: object }) => {

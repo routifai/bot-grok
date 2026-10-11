@@ -36,17 +36,3 @@ name: Superchat mobile smoke
 - pressKey: Enter
 - assertVisible: ${SUPERCHAT_E2E_MESSAGE}
 
-- tapOn: "Bot actions"
-- tapOn: "Open computer"
-- extendedWaitUntil:
-    visible: "Open computer"
-    timeout: 30000
-- tapOn: "Open computer"
-- extendedWaitUntil:
-    visible: "You have control"
-    timeout: 90000
-- tapOn: "Close computer"
-- tapOn: "Release"
-- extendedWaitUntil:
-    visible: "Take control"
-    timeout: 30000

@@ -56,7 +56,6 @@ export async function queueComputerUpdate(
         id: computerId,
         maintenanceId: null,
         state: { notIn: ["booting", "suspending"] },
-        controlHolder: { not: "user" },
         executionLeases: { none: { expiresAt: { gt: new Date() } } },
         bots: {
           some: { id: botId, archivedAt: null },
@@ -130,7 +129,6 @@ export async function performComputerUpdate(deps: Deps, updateId: string) {
         userId: bot.userId,
         signal: controller.signal,
       },
-      "none",
       async (stage) => {
         controller.signal.throwIfAborted();
         const result = await deps.prisma.computerUpdate.updateMany({

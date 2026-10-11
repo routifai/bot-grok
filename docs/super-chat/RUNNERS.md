@@ -120,28 +120,20 @@ Deployment requirements found live:
   started before ADR 0009 keep their deprecated `superchat.computer` / `superchat.bot` /
   `superchat.space` labels, which are still read.
 
-## The Computer: screen and Take over
+## The Computer: status
 
 The engine owns the Computer (ADR 0004); Superchat holds no Computer state and
 only relays.
 
 - The computer provider re-resolves a recreated container by Muse identity
   (bot + space), so a supervisor-side recreate does not strand the session.
-- The provider declares `SandboxCapabilities.screen`
-  (`sandboxes/base.py`: `screen_url`, `release_control`). Session routes
-  (`server/routes/sessions/routes_computer.py`): `GET /v1/sessions/{id}/computer`
-  (`{available, in_control}`), `POST .../computer/screen` `{interactive}`
-  (`true` = Take over: mints a control token), `POST .../computer/release`.
-- The supervisor's `screen-mode` returns the Muse's X `display`; the provider
-  forwards it to the runner as `DISPLAY`, so the viewer and the runner share
-  one screen.
-- Superchat's API (`apps/api/src/features/computer/service.ts`) calls those routes and
-  relays the noVNC stream through its same-origin screen proxy; browsers
-  never reach the engine.
-- While the person holds control, the Muse's computer tools (`sys_os_*`,
-  `browser_*`) refuse (`tool_dispatch.py` asks `GET .../computer`).
-- The Computer is always on. The Pi-era idle sleep and control-expire jobs
-  skip engine Muses.
+- The session route `GET /v1/sessions/{id}/computer`
+  (`engine/omnigent/omnigent/superchat/computer/routes.py`) answers
+  `{ready, launch}`: whether the Conversation's runner is connected, and the launch stage
+  while it is in flight or failed. Superchat's API
+  (`apps/api/src/features/computer/service.ts`) turns that into the Computer status the
+  apps show; browsers never reach the engine.
+- The Computer is always on. The Pi-era idle sleep job skips engine Muses.
 - Browser tools need `OMNIGENT_BROWSER_BACKEND=local` (above).
 
 ## Running the computer path locally
@@ -168,6 +160,3 @@ In order, each depending on the one before:
   home by `bot_id` alone (`<root>/homes/<bot_id>`, `computer.py`). A bot
   shared across users/spaces would resolve to one home; no per-user or
   per-space isolation today.
-- **Take-over state persistence.** Control state is being moved into the
-  engine's own store. Until that lands it is an in-memory map in
-  `routes_computer.py` and is lost on an engine restart.

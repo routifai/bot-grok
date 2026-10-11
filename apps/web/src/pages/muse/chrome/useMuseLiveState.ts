@@ -50,7 +50,7 @@ export function waitingKey(
 function activeRunFor(runs: readonly MuseLiveRun[]): MuseLiveRun | undefined {
   return (
     runs.find((run) => run.status === "running") ??
-    runs.find((run) => run.status === "waiting_input" || run.status === "waiting_takeover")
+    runs.find((run) => run.status === "waiting_input")
   );
 }
 

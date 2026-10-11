@@ -23,18 +23,10 @@ function publisher() {
 function fakePrisma(
   runs: Array<{ id: string; updatedAt: Date }> = [],
   routines: Array<{ id: string; nextRunAt: Date | null }> = [],
-  controls: Array<{
-    id: string;
-    controlBotId: string | null;
-    controlLeaseId: string | null;
-    controlLeaseExpiresAt: Date | null;
-    updatedAt: Date;
-  }> = [],
 ) {
   return {
     run: { findMany: vi.fn(async () => runs) },
     routine: { findMany: vi.fn(async () => routines) },
-    computer: { findMany: vi.fn(async () => controls) },
     messagingOutbound: { findFirst: vi.fn(async () => null) },
   } as unknown as PrismaClient;
 }
@@ -54,7 +46,6 @@ describe("createJobReconciler", () => {
     expect(reconcileComputerUpdates).toHaveBeenCalledOnce();
     expect(prisma.run.findMany).toHaveBeenCalled();
     expect(prisma.routine.findMany).toHaveBeenCalled();
-    expect(prisma.computer.findMany).toHaveBeenCalled();
     expect(prisma.messagingOutbound.findFirst).toHaveBeenCalled();
   });
 
@@ -103,19 +94,9 @@ describe("createJobReconciler", () => {
 
   it("restores queued runs and near-due routines with stable replacement keys", async () => {
     const scheduledFor = new Date(Date.now() + 30_000);
-    const controlExpiresAt = new Date(Date.now() + 15_000);
     const prisma = fakePrisma(
       [{ id: "run-1", updatedAt: new Date() }],
       [{ id: "routine-1", nextRunAt: scheduledFor }],
-      [
-        {
-          id: "computer-1",
-          controlBotId: "bot-1",
-          controlLeaseId: "lease-1",
-          controlLeaseExpiresAt: controlExpiresAt,
-          updatedAt: new Date(),
-        },
-      ],
     );
     const { jobs, enqueue } = publisher();
     const reconciler = createJobReconciler({ prisma, jobs });
@@ -133,133 +114,6 @@ describe("createJobReconciler", () => {
       availableAt: scheduledFor,
       replaceKey: "routine:routine-1",
     });
-    expect(enqueue).toHaveBeenCalledWith({
-      name: "computer.control-expire",
-      payload: { computerId: "computer-1", leaseId: "lease-1" },
-      availableAt: controlExpiresAt,
-      replaceKey: "computer.control-expire:computer-1:lease-1",
-    });
-    expect(vi.mocked(prisma.computer.findMany)).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          AND: [
-            { controlLeaseId: { not: null } },
-            {
-              OR: [
-                { controlLeaseExpiresAt: null },
-                { controlLeaseExpiresAt: { lte: expect.any(Date) } },
-              ],
-            },
-          ],
-        },
-        orderBy: [{ controlLeaseExpiresAt: "asc" }, { id: "asc" }],
-      }),
-    );
-  });
-
-  it("restores expiry for orphaned user-control leases without a control bot", async () => {
-    const controlExpiresAt = new Date(Date.now() - 5_000);
-    const prisma = fakePrisma(
-      [],
-      [],
-      [
-        {
-          id: "computer-orphan",
-          controlBotId: null,
-          controlLeaseId: "lease-orphan",
-          controlLeaseExpiresAt: controlExpiresAt,
-          updatedAt: new Date(),
-        },
-      ],
-    );
-    const { jobs, enqueue } = publisher();
-
-    await createJobReconciler({ prisma, jobs }).reconcileOnce();
-
-    expect(enqueue).toHaveBeenCalledWith({
-      name: "computer.control-expire",
-      payload: { computerId: "computer-orphan", leaseId: "lease-orphan" },
-      availableAt: controlExpiresAt,
-      replaceKey: "computer.control-expire:computer-orphan:lease-orphan",
-    });
-  });
-
-  it("finishes a frozen control scan before admitting leases ahead of its cursor", async () => {
-    const firstExpiry = new Date(Date.now() + 10_000);
-    const secondExpiry = new Date(Date.now() + 20_000);
-    const controls = [
-      {
-        id: "computer-1",
-        controlBotId: "bot-1",
-        controlLeaseId: "lease-1",
-        controlLeaseExpiresAt: firstExpiry,
-      },
-      {
-        id: "computer-2",
-        controlBotId: "bot-2",
-        controlLeaseId: "lease-2",
-        controlLeaseExpiresAt: secondExpiry,
-      },
-      {
-        id: "computer-3",
-        controlBotId: "bot-3",
-        controlLeaseId: "lease-3",
-        controlLeaseExpiresAt: null,
-      },
-    ];
-    const computerFindMany = vi
-      .fn()
-      .mockResolvedValueOnce(controls.slice(0, 2))
-      .mockResolvedValueOnce(controls.slice(2))
-      .mockResolvedValueOnce([
-        {
-          id: "computer-0",
-          controlBotId: "bot-0",
-          controlLeaseId: "lease-0",
-          controlLeaseExpiresAt: firstExpiry,
-        },
-      ]);
-    const prisma = {
-      run: { findMany: vi.fn(async () => []) },
-      routine: { findMany: vi.fn(async () => []) },
-      computer: { findMany: computerFindMany },
-      messagingOutbound: { findFirst: vi.fn(async () => null) },
-    } as unknown as PrismaClient;
-    const { jobs, enqueue } = publisher();
-    const reconciler = createJobReconciler({ prisma, jobs }, { batchSize: 2 });
-
-    await reconciler.reconcileOnce();
-    await reconciler.reconcileOnce();
-    await reconciler.reconcileOnce();
-
-    expect(enqueue).toHaveBeenCalledTimes(4);
-    expect(computerFindMany.mock.calls[1]?.[0]).toMatchObject({
-      orderBy: [{ controlLeaseExpiresAt: "asc" }, { id: "asc" }],
-      where: {
-        AND: [
-          expect.anything(),
-          expect.anything(),
-          {
-            OR: [
-              { controlLeaseExpiresAt: { gt: secondExpiry } },
-              { controlLeaseExpiresAt: secondExpiry, id: { gt: "computer-2" } },
-              { controlLeaseExpiresAt: null },
-            ],
-          },
-        ],
-      },
-    });
-    const firstDeadline =
-      computerFindMany.mock.calls[0]?.[0].where.AND[1].OR[1].controlLeaseExpiresAt.lte;
-    const secondDeadline =
-      computerFindMany.mock.calls[1]?.[0].where.AND[1].OR[1].controlLeaseExpiresAt.lte;
-    expect(secondDeadline).toEqual(firstDeadline);
-    expect(computerFindMany.mock.calls[2]?.[0].where.AND).toHaveLength(2);
-    expect(enqueue).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        payload: { computerId: "computer-0", leaseId: "lease-0" },
-      }),
-    );
   });
 
   it("advances stable cursors so recoverable work beyond one batch is dispatched", async () => {
@@ -352,7 +206,6 @@ describe("createJobReconciler", () => {
 
     expect(prisma.run.findMany).not.toHaveBeenCalled();
     expect(prisma.routine.findMany).not.toHaveBeenCalled();
-    expect(prisma.computer.findMany).not.toHaveBeenCalled();
     expect(prisma.messagingOutbound.findFirst).not.toHaveBeenCalled();
     expect(enqueue).not.toHaveBeenCalled();
     expect(leadership.release).toHaveBeenCalledOnce();
@@ -429,7 +282,7 @@ describe("createJobReconciler", () => {
 
   it("prefers the latest final reply over earlier untagged narration", async () => {
     const terminalRun = {
-      id: "run-takeover",
+      id: "run-pending",
       spaceId: "workspace-1",
       threadId: "thread-1",
       botId: "bot-1",

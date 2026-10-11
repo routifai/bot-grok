@@ -492,9 +492,7 @@ function ThreadReply({
               onOpenPeerMessages={noop}
               onAnswer={noopAsync}
               peerBot={NOT_LIVE_BOT}
-              onRefresh={noopAsync}
               onBotChanged={noopAsync}
-              onAddRoutine={noop}
               voiceReady={false}
               speaking={false}
               onSpeak={noop}

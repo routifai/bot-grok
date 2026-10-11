@@ -8,12 +8,9 @@ import type {
   ComputerInput,
   ComputerObservation,
   ComputerRef,
-  ControlLeaseRef,
   PortableFile,
   ProcessEvent,
   SandboxProvider,
-  ScreenRequest,
-  ScreenSession,
 } from "@superchat/adapter-kit";
 import { boundedSandboxCommandTimeoutMs } from "@superchat/core";
 import { stopBrowserProfileCommand } from "@superchat/core/node/desktop-runtime";
@@ -42,7 +39,6 @@ const CREATEOS_SCREEN_MAP_PATH = `${CREATEOS_WORKSPACE}/.superchat/screens.json`
 export const CREATEOS_SCREEN_MAP_SENTINEL = "SUPERCHAT_SCREEN_MAP_V1";
 const CREATEOS_SCREEN_MAP_NEED_CREATE = "NEED_CREATE";
 const DEFAULT_CREATEOS_BASE_URL = "https://api.sb.createos.sh";
-const CREATEOS_INGRESS_ZONE = "sb.createos.sh";
 const DEFAULT_CREATEOS_SHAPE = "s-2vcpu-2gb";
 const DEFAULT_CREATEOS_ROOTFS = "desktop:1";
 export const MAX_CREATEOS_ERROR_RESPONSE_BYTES = 8 * 1024;
@@ -177,13 +173,6 @@ interface CreateOSExecResponse {
   };
 }
 
-interface CreateOSScreenConnection {
-  screen_id: string;
-  url?: string;
-  path?: string;
-  token?: string;
-}
-
 export class CreateOSSandboxProvider implements SandboxProvider {
   private readonly baseUrl: string;
   private readonly shape: string;
@@ -192,10 +181,6 @@ export class CreateOSSandboxProvider implements SandboxProvider {
   private readonly screenAssignments = new Map<string, Map<string, string>>();
   /** Serializes assignment changes with the connect decision for one session. */
   private readonly screenGates = new Map<string, Promise<void>>();
-  /** Sessions whose remote screen is being torn down. Checked before a URL is returned. */
-  private readonly retiringSessions = new Set<string>();
-  /** Connect calls that already resolved a screen id and have not finished yet. */
-  private readonly activeScreenConnections = new Map<string, Set<Promise<void>>>();
 
   constructor(private readonly options: CreateOSSandboxProviderOptions) {
     this.baseUrl = (options.baseUrl?.trim() || DEFAULT_CREATEOS_BASE_URL).replace(/\/+$/, "");
@@ -214,7 +199,6 @@ export class CreateOSSandboxProvider implements SandboxProvider {
         graphical: true,
         pty: false,
         snapshots: true,
-        takeover: true,
         persistentHome: true,
         multiScreen: true,
       },
@@ -316,37 +300,6 @@ export class CreateOSSandboxProvider implements SandboxProvider {
     if (result.result?.error) yield { type: "stderr", data: `${result.result.error}\n` };
     yield { type: "exit", code: result.result?.exit_code ?? (result.result?.error ? 1 : 0) };
   }
-
-  async connectScreen(
-    computer: ComputerRef,
-    request: ScreenRequest,
-    context: AdapterContext,
-  ): Promise<ScreenSession> {
-    return this.connectAssignedScreen(computer, request, context, 0);
-  }
-
-  async setScreenControl(
-    _computer: ComputerRef,
-    interactive: boolean,
-    _context: AdapterContext,
-    controlToken?: string,
-  ): Promise<void> {
-    // Release, expiry, and demotion pass the lease id. CreateOS cannot flip an
-    // existing noVNC socket; the screen proxy drops it once this lease is cleared.
-    if (!interactive) return;
-    if (!controlToken) throw new Error("interactive screen requires a control token");
-    throw new Error("CreateOS screen control changes are unsupported");
-  }
-
-  async sendInput(
-    computer: ComputerRef,
-    input: ComputerInput,
-    _lease: ControlLeaseRef,
-    context: AdapterContext,
-  ): Promise<void> {
-    await this.applyAction(computer, input, context);
-  }
-
   async observe(computer: ComputerRef, context: AdapterContext): Promise<ComputerObservation> {
     const screenId = await this.resolveScreen(computer, context);
     const [image, size, cursor, window] = await Promise.all([
@@ -528,32 +481,16 @@ print(json.dumps(out))
     const screenKey = screenSessionKey(context);
     const gateKey = this.screenGateKey(computer.providerRef, screenKey);
     const screenId = await this.withScreenGate(gateKey, async () => {
-      // Visible before the map update returns, so a connect does not hand back this screen.
-      this.retiringSessions.add(gateKey);
-      try {
-        return await this.runScreenMap(computer, "begin-release", screenKey, "", context);
-      } catch (error) {
-        this.retiringSessions.delete(gateKey);
-        throw error;
-      }
+      return this.runScreenMap(computer, "begin-release", screenKey, "", context);
     });
     this.screenAssignments.get(computer.providerRef)?.delete(screenKey);
-    if (!screenId) {
-      this.retiringSessions.delete(gateKey);
-      return;
-    }
+    if (!screenId) return;
     try {
-      // The assignment is draining, so a new connect will not adopt this id.
-      // Wait until connects that already resolved it finish or rebind, then delete.
-      if (screenId !== "screen-0") {
-        await this.waitForScreenConnections(computer.providerRef, screenId);
-        await this.deleteScreen(computer, screenId, context);
-      }
+      // The assignment is draining, so no new session adopts this id.
+      if (screenId !== "screen-0") await this.deleteScreen(computer, screenId, context);
     } catch (error) {
       await this.runScreenMap(computer, "abort-release", screenKey, screenId, context);
       throw error;
-    } finally {
-      this.retiringSessions.delete(gateKey);
     }
     await this.runScreenMap(computer, "commit-release", screenKey, screenId, context);
   }
@@ -581,91 +518,6 @@ print(json.dumps(out))
     this.screenAssignments.delete(id);
   }
 
-  /**
-   * Bind a session to its current screen. A release marks that assignment draining
-   * before the remote screen disappears; this either returns a live connection or
-   * allocates a replacement instead of a null URL.
-   */
-  private async connectAssignedScreen(
-    computer: ComputerRef,
-    request: ScreenRequest,
-    context: AdapterContext,
-    attempt: number,
-  ): Promise<ScreenSession> {
-    const screenKey = screenSessionKey(context);
-    const gateKey = this.screenGateKey(computer.providerRef, screenKey);
-    const screenId = await this.resolveScreen(computer, context);
-    const endConnection = this.trackScreenConnection(computer.providerRef, screenId);
-    let outcome: "keep" | "retry" | "empty" = "empty";
-    let session: ScreenSession | undefined;
-    try {
-      let missed = false;
-      const connection = await this.getJson<CreateOSScreenConnection>(
-        `/v1/sandboxes/${encodeURIComponent(computer.providerRef)}/computer/screens/${encodeURIComponent(screenId)}/connect`,
-        context,
-      ).catch((error) => {
-        if (!isUnrecoverableCreateOSError(error)) throw error;
-        missed = true;
-        return null;
-      });
-      const rawUrl = connection?.url ?? connection?.path;
-      if (!missed && !rawUrl) {
-        outcome = "empty";
-      } else {
-        outcome = await this.withScreenGate(gateKey, async () => {
-          const recorded = await this.readScreenMap(computer, context);
-          const current = liveScreenId(recorded[screenKey]);
-          if (this.retiringSessions.has(gateKey) || missed || current !== screenId) {
-            if (missed && recorded[screenKey] === screenId) {
-              await this.runScreenMap(computer, "remove", screenKey, screenId, context);
-              this.screenAssignments.get(computer.providerRef)?.delete(screenKey);
-            }
-            return attempt < 1 ? "retry" : "empty";
-          }
-          return "keep";
-        });
-        if (outcome === "keep" && connection && rawUrl) {
-          // A release queued on this gate marks the session before its map update returns.
-          await Promise.resolve();
-          const current = liveScreenId((await this.readScreenMap(computer, context))[screenKey]);
-          if (this.retiringSessions.has(gateKey) || current !== screenId) {
-            outcome = attempt < 1 ? "retry" : "empty";
-          } else {
-            session = this.screenSession(rawUrl, connection.token, request);
-          }
-        }
-      }
-    } finally {
-      endConnection();
-    }
-    if (outcome === "keep" && session) return session;
-    if (outcome === "retry") {
-      try {
-        return await this.connectAssignedScreen(computer, request, context, attempt + 1);
-      } catch (error) {
-        if (isUnrecoverableCreateOSError(error)) return emptyScreenSession();
-        throw error;
-      }
-    }
-    return emptyScreenSession();
-  }
-
-  private screenSession(
-    rawUrl: string,
-    token: string | undefined,
-    request: ScreenRequest,
-  ): ScreenSession {
-    const url = new URL(rawUrl, this.baseUrl);
-    if (!isAllowedCreateOSScreenUrl(url, this.baseUrl)) {
-      throw new Error("CreateOS screen URL host is not allowed");
-    }
-    url.searchParams.set("autoconnect", "true");
-    url.searchParams.set("resize", "scale");
-    if (token && !url.searchParams.has("token")) url.searchParams.set("token", token);
-    if (!request.interactive) url.searchParams.set("view_only", "true");
-    return { url: url.toString(), mimeType: "text/html", close: async () => undefined };
-  }
-
   private screenGateKey(providerRef: string, screenKey: string): string {
     return `${providerRef}\0${screenKey}`;
   }
@@ -684,40 +536,6 @@ print(json.dumps(out))
     } finally {
       releaseCurrent();
       if (this.screenGates.get(key) === tail) this.screenGates.delete(key);
-    }
-  }
-
-  private trackScreenConnection(providerRef: string, screenId: string): () => void {
-    const key = `${providerRef}\0${screenId}`;
-    let connections = this.activeScreenConnections.get(key);
-    if (!connections) {
-      connections = new Set();
-      this.activeScreenConnections.set(key, connections);
-    }
-    let finish!: () => void;
-    const pending = new Promise<void>((resolve) => {
-      finish = resolve;
-    });
-    const active = connections;
-    active.add(pending);
-    let ended = false;
-    return () => {
-      if (ended) return;
-      ended = true;
-      finish();
-      active.delete(pending);
-      if (active.size === 0 && this.activeScreenConnections.get(key) === active) {
-        this.activeScreenConnections.delete(key);
-      }
-    };
-  }
-
-  private async waitForScreenConnections(providerRef: string, screenId: string): Promise<void> {
-    const key = `${providerRef}\0${screenId}`;
-    for (;;) {
-      const pending = [...(this.activeScreenConnections.get(key) ?? [])];
-      if (pending.length === 0) return;
-      await Promise.all(pending);
     }
   }
 
@@ -1396,48 +1214,12 @@ function shouldSkipCreateOSWorkspaceFile(relative: string): boolean {
   return shouldSkipPortableWorkspaceFile(relative);
 }
 
-export function isAllowedCreateOSScreenUrl(resolved: URL, baseUrl: string): boolean {
-  let base: URL;
-  try {
-    base = new URL(baseUrl);
-  } catch {
-    return false;
-  }
-  if (resolved.username || resolved.password) return false;
-  if (resolved.protocol !== "https:" && resolved.protocol !== "http:") return false;
-  if (
-    resolved.protocol === "http:" &&
-    (!LOOPBACK_HOSTS.has(resolved.hostname) || !LOOPBACK_HOSTS.has(base.hostname))
-  ) {
-    return false;
-  }
-  if (!isAllowedCreateOSScreenHost(resolved.hostname, base.hostname)) return false;
-  if (LOOPBACK_HOSTS.has(resolved.hostname)) return true;
-  if (resolved.protocol !== "https:") return false;
-  if (resolved.port === "" || resolved.port === "443") return true;
-  return resolved.hostname === base.hostname && resolved.port === base.port;
-}
-
-function isAllowedCreateOSScreenHost(hostname: string, baseHost: string): boolean {
-  const host = hostname.toLowerCase();
-  const base = baseHost.toLowerCase();
-  if (host === base || host.endsWith(`.${base}`)) return true;
-  if (base === "api.sb.createos.sh" || base.endsWith(`.${CREATEOS_INGRESS_ZONE}`)) {
-    return host === CREATEOS_INGRESS_ZONE || host.endsWith(`.${CREATEOS_INGRESS_ZONE}`);
-  }
-  return false;
-}
-
 function createosCwd(cwd: string | undefined): string {
   if (!cwd || cwd === "." || cwd === "/" || cwd === "/home/superchat" || cwd === "/home/desktop") {
     return CREATEOS_WORKSPACE;
   }
   if (cwd === CREATEOS_WORKSPACE || cwd.startsWith(`${CREATEOS_WORKSPACE}/`)) return cwd;
   return workspacePath(CREATEOS_WORKSPACE, cwd);
-}
-
-function emptyScreenSession(): ScreenSession {
-  return { url: null, mimeType: "text/html", close: async () => undefined };
 }
 
 function liveScreenId(value: string | undefined): string | undefined {

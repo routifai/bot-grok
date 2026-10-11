@@ -156,7 +156,10 @@ describe("BoxSandboxProvider", () => {
   it("exports browser profile files over 5 MiB without losing their bytes", async () => {
     const fixture = boxFixture();
     const content = Buffer.alloc(6 * 1024 * 1024, 0xab);
-    fixture.files.set("/home/user/superchat-home/.browser-profiles/chrome/Default/History", content);
+    fixture.files.set(
+      "/home/user/superchat-home/.browser-profiles/chrome/Default/History",
+      content,
+    );
     const provider = new BoxSandboxProvider({ apiKey: "test-key" }, fixture.client);
     const computer = await provider.provision({ botId: "bot-a", homePath: "/unused" }, context);
     const exported = [];
@@ -233,7 +236,7 @@ describe("BoxSandboxProvider", () => {
     expect(body.locked).toBe(false);
   });
 
-  it("captures independent desktops and exposes protected ports", async () => {
+  it("captures independent desktops", async () => {
     const fixture = boxFixture();
     const provider = new BoxSandboxProvider({ apiKey: "test-key" }, fixture.client);
     const computer = await provider.provision({ botId: "bot-a", homePath: "/unused" }, context);
@@ -247,16 +250,6 @@ describe("BoxSandboxProvider", () => {
       cursor: { x: 10, y: 20 },
     });
     expect(observation.image).toEqual(Uint8Array.from([1, 2, 3]));
-
-    const screen = await provider.connectScreen(
-      computer,
-      { view: "stream", interactive: false },
-      context,
-    );
-    expect(new URL(screen.url!).searchParams.get("path")).toMatch(
-      /^websockify\?_token=secret&token=view-/,
-    );
-    expect(screen.url).toContain("_token=secret");
 
     await provider.act(
       computer,
@@ -365,22 +358,11 @@ function boxFixture(options: { state?: string } = {}) {
     stop: vi.fn(async ({ boxId }: { boxId: string }) => actionResponse("archiving", boxId)),
     update: vi.fn(async ({ boxId }: { boxId: string }) => infoResponse(boxId, fixture.state)),
     deleteBox: vi.fn(async () => undefined),
-    desktop: vi.fn(async () => ({
-      ok: true,
-      type: "desktop.url",
-      success: true,
-      desktopUrl: "https://vnc.box.test/vnc.html?password=pw&_token=secret",
-      mode: "vnc",
-    })),
     commandStatus: vi.fn(),
     command: vi.fn(async (request: { commandRequest: { command: string; cwd?: string } }) => {
       const command = request.commandRequest.command;
       const response = respond(command);
       if (response) return finished(response);
-      if (command.includes("host ") && command.includes("--private")) {
-        const port = command.match(/host (\d+)/)?.[1];
-        return finished({ stdout: `https://box-test-${port}.on.ascii.dev?_token=secret` });
-      }
       if (command.includes("TEST_VALUE=works")) return finished({ stdout: "hello\n" });
       if (command.includes("find ") && command.includes("superchat-home/bin")) {
         const target = "/home/user/superchat-home/bin/tool";

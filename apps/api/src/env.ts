@@ -1,11 +1,6 @@
 import { resolveDeploymentModel, resolveSandboxProvider } from "@superchat/adapters";
 import { assertOidcConfig, type OidcConfig } from "@superchat/auth";
-import {
-  parseDomains,
-  resolveAuthSecret,
-  resolveEncryptionKey,
-  resolveScreenProxySecret,
-} from "@superchat/core";
+import { parseDomains, resolveAuthSecret, resolveEncryptionKey } from "@superchat/core";
 
 export { resolveSandboxProvider } from "@superchat/adapters";
 
@@ -35,7 +30,6 @@ export interface AppEnv {
   rateLimit: boolean | undefined;
   encryptionKey: string;
   dataDir: string;
-  screenProxySecret: string;
   sandboxProvider: string;
   agentRuntime: string;
   deploymentModelKey: string | undefined;
@@ -125,7 +119,6 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
           : undefined,
     encryptionKey: resolveEncryptionKey(source),
     dataDir: source.DATA_DIR ?? "./data",
-    screenProxySecret: resolveScreenProxySecret(source),
     sandboxProvider,
     agentRuntime: source.AGENT_RUNTIME ?? "pi",
     // Provider, model and key resolve together: see resolveDeploymentModel.

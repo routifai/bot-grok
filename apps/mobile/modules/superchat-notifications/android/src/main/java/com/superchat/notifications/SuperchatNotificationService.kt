@@ -142,7 +142,7 @@ class SuperchatNotificationService : Service() {
               .putBoolean(SEEN_RUNS_SEEDED, true)
               .apply()
             if (settings.needsAttention) {
-              active.filter { it.status == "waiting_input" || it.status == "waiting_takeover" }
+              active.filter { it.status == "waiting_input" }
                 .filter { it.notificationsEnabled }
                 .filter { alertedAttention.add("${it.runId}:${it.status}") }
                 .forEach { immediate += it to attentionCopy(it) }
@@ -414,11 +414,6 @@ private data class NotificationCopy(val title: String, val body: String, val cha
 
 private fun attentionCopy(run: RunRecord): NotificationCopy = when (run.status) {
   "failed" -> NotificationCopy("${run.botName} hit a problem", run.prompt, Channels.ATTENTION)
-  "waiting_takeover" -> NotificationCopy(
-    "${run.botName} needs you on screen",
-    run.prompt,
-    Channels.ATTENTION,
-  )
   else -> NotificationCopy("${run.botName} needs your input", run.prompt, Channels.ATTENTION)
 }
 

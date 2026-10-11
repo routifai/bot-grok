@@ -287,7 +287,6 @@ def test_capabilities_are_headless_managed_launch_only() -> None:
     caps = make_launcher(FakeDocker()).capabilities
     assert caps.managed_launch is True
     assert caps.screen is False
-    assert caps.recording is False
 
 
 def test_demux_splits_stdout_and_stderr_frames() -> None:

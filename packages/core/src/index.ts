@@ -40,8 +40,6 @@ export * from "./search.js";
 export * from "./secrets-guard.js";
 export * from "./signup-policy.js";
 export * from "./speech-text.js";
-export * from "./teach-playbook.js";
-export * from "./teach-recording.js";
 export * from "./text-direction.js";
 export * from "./thread-message-updates.js";
 export * from "./thread-subscription.js";

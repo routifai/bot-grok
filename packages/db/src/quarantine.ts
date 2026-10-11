@@ -65,15 +65,6 @@ export async function quarantineUserSpaces(
     await tx.actionApprovalRule.deleteMany({ where: { createdByUserId: userId } });
     await tx.actionAutoReviewPreference.deleteMany({ where: { userId } });
     await tx.aiDataConsent.deleteMany({ where: { userId } });
-    // Live screen links carry the generations; bumping them kills every link issued before now.
-    await tx.bot.updateMany({
-      where: { spaceId: { in: spaceIds } },
-      data: { screenGeneration: { increment: 1 } },
-    });
-    await tx.computer.updateMany({
-      where: { spaceId: { in: spaceIds } },
-      data: { screenGeneration: { increment: 1 }, screenUrl: null },
-    });
     for (const organizationId of organizationIds) {
       await tx.organization.update({
         where: { id: organizationId },

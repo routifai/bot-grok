@@ -8,7 +8,6 @@ import {
 } from "@superchat/adapter-kit";
 import { ACTIVE_RUN_STATUSES } from "@superchat/core";
 import type { PrismaClient, ThreadEvents } from "@superchat/db";
-import { expireComputerControl, hasActiveComputerControl } from "./computer-control.js";
 import { toComputerRef } from "./computer-lifecycle.js";
 import { checkpointComputerWorkspace } from "./computer-workspace.js";
 
@@ -192,19 +191,10 @@ export async function sleepComputerIfIdle(
   },
   computerId: string,
 ): Promise<void> {
-  let computer = await loadComputer(deps.prisma, computerId);
+  const computer = await loadComputer(deps.prisma, computerId);
   if (!computer?.providerRef || computer.state !== "running") return;
 
-  if (computer.controlBotId && computer.controlLeaseId && !hasActiveComputerControl(computer)) {
-    await expireComputerControl(deps, computer.id, computer.controlLeaseId);
-    computer = await loadComputer(deps.prisma, computerId);
-    if (!computer?.providerRef || computer.state !== "running") return;
-  }
-
-  const activeStatuses = hasActiveComputerControl(computer)
-    ? [...ACTIVE_RUN_STATUSES]
-    : ACTIVE_RUN_STATUSES.filter((status) => status !== "waiting_takeover");
-  if (await findActiveRun(deps.prisma, computerId, activeStatuses)) {
+  if (await findActiveRun(deps.prisma, computerId)) {
     scheduleComputerSleep(deps.jobs, computerId);
     return;
   }
@@ -215,7 +205,6 @@ export async function sleepComputerIfIdle(
     traceId: "computer.sleep",
     spaceId: computer.spaceId,
     userId: computer.userId,
-    botId: computer.controlBotId ?? undefined,
     signal: new AbortController().signal,
   };
   if (await hasActiveBackgroundWork(deps.sandbox, ref, ctx, computerId)) {
@@ -282,7 +271,7 @@ export async function sleepComputerIfIdle(
       where: { id: computerId },
       select: { state: true, providerRef: true, updatedAt: true },
     }),
-    findActiveRun(deps.prisma, computerId, activeStatuses),
+    findActiveRun(deps.prisma, computerId),
     hasActiveBackgroundWork(deps.sandbox, ref, ctx, computerId),
   ]);
   if (activeAfterCheckpoint || backgroundAfterCheckpoint) {
@@ -320,11 +309,6 @@ export async function sleepComputerIfIdle(
     where: suspensionClaim,
     data: {
       state: "suspended",
-      controlHolder: "none",
-      controlLeaseId: null,
-      controlLeaseExpiresAt: null,
-      controlBotId: null,
-      controlRunId: null,
     },
   });
   const bots = await deps.prisma.bot.findMany({
@@ -354,20 +338,16 @@ function loadComputer(prisma: PrismaClient, computerId: string) {
       state: true,
       spaceId: true,
       userId: true,
-      controlHolder: true,
-      controlLeaseId: true,
-      controlLeaseExpiresAt: true,
-      controlBotId: true,
       updatedAt: true,
     },
   });
 }
 
-function findActiveRun(prisma: PrismaClient, computerId: string, statuses: readonly string[]) {
+function findActiveRun(prisma: PrismaClient, computerId: string) {
   return prisma.run.findFirst({
     where: {
       bot: { computerId },
-      status: { in: statuses as (typeof ACTIVE_RUN_STATUSES)[number][] },
+      status: { in: [...ACTIVE_RUN_STATUSES] },
     },
     select: { id: true },
   });

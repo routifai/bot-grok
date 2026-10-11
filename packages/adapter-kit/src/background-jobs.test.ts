@@ -12,8 +12,6 @@ function handlers(): BackgroundJobHandlers {
     "routine.wakeup": vi.fn(async () => undefined),
     "computer.update": vi.fn(async () => undefined),
     "computer.sleep": vi.fn(async () => undefined),
-    "computer.control-expire": vi.fn(async () => undefined),
-    "skill.teaching-expire": vi.fn(async () => undefined),
     "messaging.deliver": vi.fn(async () => undefined),
   };
 }
@@ -56,23 +54,5 @@ describe("background job contracts", () => {
       }),
     ).toThrow();
     expect(() => parseBackgroundJob("run.continue", { runId: "" })).toThrow();
-    expect(() =>
-      parseBackgroundJob("computer.control-expire", {
-        computerId: "computer-1",
-        leaseId: "",
-      }),
-    ).toThrow();
-  });
-
-  it("validates and dispatches a control-expiry job", async () => {
-    const target = handlers();
-    await dispatchBackgroundJob(target, "computer.control-expire", {
-      computerId: "computer-1",
-      leaseId: "lease-1",
-    });
-    expect(target["computer.control-expire"]).toHaveBeenCalledWith({
-      computerId: "computer-1",
-      leaseId: "lease-1",
-    });
   });
 });

@@ -54,21 +54,3 @@ export class SingleScreenClaimTracker {
     return false;
   }
 }
-
-export function isComputerScreenUnavailable(error: unknown): error is Error {
-  return (
-    error instanceof ComputerScreenUnavailableError ||
-    (error instanceof Error && /cannot allocate another screen/i.test(error.message))
-  );
-}
-
-export async function withComputerScreenAvailability<T>(
-  work: () => Promise<T>,
-): Promise<T | { error: string }> {
-  try {
-    return await work();
-  } catch (error) {
-    if (isComputerScreenUnavailable(error)) return { error: error.message };
-    throw error;
-  }
-}

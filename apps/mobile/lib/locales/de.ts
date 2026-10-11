@@ -242,21 +242,10 @@ export const DE_MESSAGES: Record<string, string> = {
   "This routine no longer exists": "Diese Routine gibt es nicht mehr",
   Webhook: "Webhook",
   // app/computer.tsx
-  "Booting {label}": "{label} wird gestartet",
   Bot: "Bot",
-  "Close computer": "Computer schließen",
   "Could not continue": "Fortfahren fehlgeschlagen",
-  "Could not load the desktop. This device cannot reach the screen URL.":
-    "Der Desktop konnte nicht geladen werden. Dieses Gerät erreicht die Bildschirm-URL nicht.",
-  "Could not open computer": "Computer konnte nicht geöffnet werden",
-  "Could not switch computer": "Computer konnte nicht gewechselt werden",
-  "I’m done": "Ich bin fertig",
-  "Open computer": "Computer öffnen",
-  "Open in full window": "In vollständigem Fenster öffnen",
   Release: "Freigeben",
   Skip: "Überspringen",
-  "Take control": "Kontrolle übernehmen",
-  "You have control": "Du hast die Kontrolle",
   // app/models.tsx
   "Active model": "Aktives Modell",
   "Authorization code": "Autorisierungscode",
@@ -445,10 +434,10 @@ export const DE_MESSAGES: Record<string, string> = {
   "Live working status": "Live-Arbeitsstatus",
   More: "Mehr",
   "Needs attention": "Aufmerksamkeit erforderlich",
+  "Questions and approvals": "Fragen und Genehmigungen",
   "Notification settings": "Benachrichtigungseinstellungen",
   Notifications: "Benachrichtigungen",
   Organic: "Organisch",
-  "Questions, approvals, takeover": "Fragen, Freigaben, Übernahme",
   "Replies and completed work": "Antworten und erledigte Arbeit",
   Restore: "Wiederherstellen",
   Robot: "Roboter",
@@ -546,7 +535,6 @@ export const DE_MESSAGES: Record<string, string> = {
   "Share {name}": "{name} teilen",
   // lib/activity.ts
   "Needs input": "Eingabe erforderlich",
-  "Needs takeover": "Übernahme erforderlich",
   Queued: "In Warteschlange",
   Starting: "Startet",
   "just now": "gerade eben",
@@ -585,20 +573,14 @@ export const DE_MESSAGES: Record<string, string> = {
   "Keep memories": "Erinnerungen behalten",
   // lib/computer.ts
   Asleep: "Im Ruhezustand",
-  "Booting live desktop…": "Live-Desktop wird gestartet…",
-  "Computer failed to boot": "Computer konnte nicht gestartet werden",
-  "Computer is asleep. Take control to wake it.":
-    "Der Computer ist im Ruhezustand. Übernimm die Kontrolle, um ihn zu wecken.",
-  "Computer is stopped": "Computer ist gestoppt",
   "Team Computer": "Team-Computer",
-  "{name} is using it": "{name} verwendet ihn gerade",
-  "{name}’s computer": "Computer von {name}",
   // lib/endpoint.ts
   "Could not reach that server": "Dieser Server ist nicht erreichbar",
   "Enter a server URL": "Gib eine Server-URL ein",
   "Public servers need https://. HTTP only works on your local network.":
     "Öffentliche Server brauchen https://. HTTP funktioniert nur im lokalen Netzwerk.",
-  "That URL did not look like a Superchat server": "Diese URL sieht nicht nach einem Superchat-Server aus",
+  "That URL did not look like a Superchat server":
+    "Diese URL sieht nicht nach einem Superchat-Server aus",
   "That URL is missing a host": "Dieser URL fehlt ein Host",
   "That doesn’t look like a URL": "Das sieht nicht nach einer URL aus",
   "Use an http or https URL": "Verwende eine http- oder https-URL",

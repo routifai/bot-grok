@@ -3,11 +3,6 @@ import { describe, expect, it } from "vitest";
 import { assertTransition, canTransition, isConversationalRun } from "./run-state.js";
 
 describe("run state machine", () => {
-  it("allows takeover resume onto a lease", () => {
-    expect(canTransition("waiting_takeover", "leased")).toBe(true);
-    expect(canTransition("waiting_takeover", "running")).toBe(false);
-  });
-
   it("withholds user steering from routine, webhook, and creation intro turns", () => {
     expect(isConversationalRun("user")).toBe(true);
     expect(isConversationalRun("follow_up")).toBe(true);

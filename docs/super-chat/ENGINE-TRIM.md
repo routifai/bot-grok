@@ -28,7 +28,7 @@ don't use, so it can be removed before production.
 | Stores, DB, migrations | `omnigent/stores`, `omnigent/db` | Everything |
 | Header auth with shared secret | `omnigent/server/auth.py` | Superchat API → engine identity |
 | Computer runner location | `omnigent/onboarding/sandboxes/{computer,base,registry,agent_sandbox,agent_sandbox_warm_pool}.py`, `server/managed_hosts.py` | Muse runner in its computer |
-| Computer screen and Take over | `omnigent/onboarding/sandboxes/base.py` (screen methods), `omnigent/server/routes/sessions/routes_computer.py` | Screen viewer and Take over |
+| Computer status | `omnigent/superchat/computer/routes.py` | Ready and launch status |
 | Local browser backend | `omnigent/tools/browser_backend.py` | `browser_*` on the Computer's own screen |
 | OS tools | `omnigent/inner/os_env.py` (`sys_os_*`) | The Muse acting on its Computer |
 | Browser prompt instruction | `omnigent/runtime/prompt.py` | Steers the Muse to `browser_*` |

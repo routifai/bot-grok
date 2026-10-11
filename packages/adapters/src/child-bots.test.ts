@@ -257,14 +257,8 @@ describe("destroyBot", () => {
 
     expect(transaction).toHaveBeenCalledOnce();
     expect(releaseComputers).toHaveBeenCalledWith({
-      where: {
-        OR: [{ controlBotId: "bot-1" }, { executionBotId: "bot-1" }],
-      },
-      data: expect.objectContaining({
-        controlHolder: "none",
-        controlBotId: null,
-        executionBotId: null,
-      }),
+      where: { executionBotId: "bot-1" },
+      data: expect.objectContaining({ executionBotId: null }),
     });
     expect(executeRaw).toHaveBeenCalledOnce();
     expect(executeRaw.mock.calls[0]?.slice(1)).toEqual([

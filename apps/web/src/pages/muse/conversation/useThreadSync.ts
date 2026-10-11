@@ -1,11 +1,4 @@
-import type {
-  Bot,
-  Group,
-  Routine,
-  TaughtSkill,
-  ThreadMessage,
-  ThreadSnapshot,
-} from "@superchat/contracts";
+import type { Bot, Group, Routine, ThreadMessage, ThreadSnapshot } from "@superchat/contracts";
 import {
   isRunTerminalEvent,
   runThreadSubscription,
@@ -22,16 +15,10 @@ import {
   useRef,
   useState,
 } from "react";
-import { screenLinkKey } from "../../../features/computer/computer-screen";
-import type { useComputerScreen } from "../../../features/computer/useComputerScreen";
 import type { useComputerStore } from "../../../features/computer/useComputerStore";
 import { markOnce } from "../../../lib/performance";
 import { rpc } from "../../../lib/rpc";
-import {
-  isComputerStatusEvent,
-  prependThreadMessagePage,
-  reconcileRefreshedThread,
-} from "../../../lib/thread-events";
+import { prependThreadMessagePage, reconcileRefreshedThread } from "../../../lib/thread-events";
 import { transcriptCanSnapAfterFrame, transcriptIsNearEnd } from "../../../lib/transcript-scroll";
 import type { useBrowserNotifications } from "../chrome/useBrowserNotifications";
 import { applyThreadEvent } from "./threadEvents";
@@ -49,7 +36,6 @@ export function useThreadSync({
   target,
   thread,
   computerStore,
-  screen,
   roster,
   notifyBrowserForEvent,
   lists,
@@ -66,7 +52,6 @@ export function useThreadSync({
   };
   thread: ReturnType<typeof useThreadState>;
   computerStore: ReturnType<typeof useComputerStore>;
-  screen: ReturnType<typeof useComputerScreen>;
   roster: {
     botsRef: MutableRefObject<Bot[]>;
     setGroups: Dispatch<SetStateAction<Group[]>>;
@@ -75,36 +60,19 @@ export function useThreadSync({
     markBotReadIfVisible: (id: string) => void;
   };
   notifyBrowserForEvent: ReturnType<typeof useBrowserNotifications>["notifyBrowserForEvent"];
-  /** Routines and taught skills ride along with each thread refresh. */
+  /** Routines ride along with each thread refresh. */
   lists: {
     setRoutines: Dispatch<SetStateAction<Routine[]>>;
     setRoutinesBotId: Dispatch<SetStateAction<string | null>>;
-    setTaughtSkills: Dispatch<SetStateAction<TaughtSkill[]>>;
-    setTaughtSkillsBotId: Dispatch<SetStateAction<string | null>>;
   };
   searchParamsRef: MutableRefObject<URLSearchParams>;
   bootstrappedThread: MutableRefObject<ThreadSnapshot | null>;
 }) {
   const { active, activeGroup, groupId, inGroup, activeBotId, activeGroupId } = target;
   const { snapshot, snapshotRef, commitSnapshot, updateSnapshot } = thread;
-  const {
-    computerRef,
-    computerOpenRef,
-    computerBotIdRef,
-    cacheComputerFor,
-    commitComputer,
-    computerCacheRef,
-    screenLinkKeys,
-  } = computerStore;
-  const {
-    screenRequest,
-    setComputerError,
-    setComputerErrorFromScreen,
-    setScreenUrl,
-    refreshComputerScreen,
-  } = screen;
+  const { computerRef, cacheComputerFor, commitComputer, computerCacheRef } = computerStore;
   const { botsRef, setGroups, refreshBots, manuallyUnread, markBotReadIfVisible } = roster;
-  const { setRoutines, setRoutinesBotId, setTaughtSkills, setTaughtSkillsBotId } = lists;
+  const { setRoutines, setRoutinesBotId } = lists;
   const threadRefreshEpoch = useRef(0);
   const groupRefreshEpoch = useRef(0);
   // A very fast run can finish over SSE while its threads.send response is still
@@ -158,7 +126,7 @@ export function useThreadSync({
       expandedHistoryThread.current === snap.threadId,
     );
     commitSnapshot(reconciled.snapshot);
-    if (!computerOpenRef.current) commitComputer(null);
+    commitComputer(null);
     setRoutines([]);
     setRoutinesBotId(null);
     // Keep the search-jump viewport; expandedHistoryThread merge still accepts live messages.
@@ -178,8 +146,8 @@ export function useThreadSync({
     markOnce("rk:renderer:thread-request-start");
     const epoch = historyEpoch.current;
     const request = ++threadRefreshEpoch.current;
-    // Apply threads.get as soon as it returns so stop/takeover status is not held behind
-    // routines/skills/screen fetches (progress can advance the cursor meanwhile).
+    // Apply threads.get as soon as it returns so stop status is not held behind the routines
+    // fetch (progress can advance the cursor meanwhile).
     const snap = await rpc.threads.get({ botId: id }, signal ? { signal } : undefined);
     markOnce("rk:renderer:thread-response");
     if (
@@ -205,27 +173,22 @@ export function useThreadSync({
     ) {
       snapTranscriptToEndAfterFrame();
     }
-    void Promise.all([
-      rpc.routines.list({ botId: id }).catch(() => null),
-      rpc.skills.list({ botId: id }).catch(() => null),
-      refreshComputerScreen(id).catch(() => null),
-    ]).then(([routines, skills]) => {
-      if (
-        activeBotId.current !== id ||
-        epoch !== historyEpoch.current ||
-        request !== threadRefreshEpoch.current
-      ) {
-        return;
-      }
-      if (routines) {
-        setRoutines(routines);
-        setRoutinesBotId(id);
-      }
-      if (skills) {
-        setTaughtSkills(skills);
-        setTaughtSkillsBotId(id);
-      }
-    });
+    void rpc.routines
+      .list({ botId: id })
+      .catch(() => null)
+      .then((routines) => {
+        if (
+          activeBotId.current !== id ||
+          epoch !== historyEpoch.current ||
+          request !== threadRefreshEpoch.current
+        ) {
+          return;
+        }
+        if (routines) {
+          setRoutines(routines);
+          setRoutinesBotId(id);
+        }
+      });
     return snap;
   }
   async function loadOlderMessages() {
@@ -291,18 +254,10 @@ export function useThreadSync({
     if (!pendingJump) {
       pinnedAroundRef.current = null;
     }
-    screenRequest.current += 1;
-    setComputerError(null);
-    setComputerErrorFromScreen(false);
     const cached = computerCacheRef.current.get(active.id);
-    if (cached) {
-      // Paint the last-known computer instantly; refreshThread/refreshComputerScreen
-      // below still run and reconcile with fresh data in the background.
-      setScreenUrl(cached.screenUrl);
-      commitComputer(cached.computer);
-    } else {
-      setScreenUrl(null);
-    }
+    // Paint the last-known computer instantly; refreshThread below still runs and reconciles
+    // with fresh data in the background.
+    if (cached) commitComputer(cached.computer);
     expandedHistoryThread.current = null;
     historyEpoch.current += 1;
     const abort = new AbortController();
@@ -370,17 +325,9 @@ export function useThreadSync({
           }
           if (event.payload.role === "bot") markBotReadIfVisible(active.id);
         }
-        if (
-          isRunTerminalEvent(event) ||
-          event.type === "run.waiting_input" ||
-          event.type === "skill.teaching.stopped"
-        ) {
+        if (isRunTerminalEvent(event) || event.type === "run.waiting_input") {
           // waiting_input: reconcile ask cards if a stale post-send refresh raced SSE.
           void refreshThread(active.id).catch(() => undefined);
-        } else if (isComputerStatusEvent(event)) {
-          const force =
-            screenLinkKeys.current.get(active.id) !== screenLinkKey(computerRef.current);
-          void refreshComputerScreen(active.id, { force }).catch(() => undefined);
         }
       },
     });
@@ -437,16 +384,7 @@ export function useThreadSync({
       currentSnapshot: () => snapshotRef.current,
       subscribe: (cursor) => rpc.threads.subscribe({ groupId, cursor }, { signal: abort.signal }),
       applyEvent: (event) =>
-        applyThreadEvent(
-          event,
-          commitSnapshot,
-          (next) => {
-            if (isComputerStatusEvent(event) && event.botId !== computerBotIdRef.current) return;
-            commitComputer(next);
-          },
-          snapshotRef,
-          computerRef,
-        ),
+        applyThreadEvent(event, commitSnapshot, commitComputer, snapshotRef, computerRef),
       onEvent: (event, initial) => {
         const eventBot = botsRef.current.find((bot) => bot.id === event.botId);
         notifyBrowserForEvent(

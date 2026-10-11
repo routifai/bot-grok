@@ -96,7 +96,7 @@ A Side chat and a Helper are attached to the tree in two different ways.
 | `omnigent.subagent.dispatch_id` | work id | The dispatch a Helper runs | `labels.py:32` | Runner, in the create body (`tool_dispatch.py:3092`). Server for scheduled Helpers (`helper_fire.py:537`) |
 | `omnigent.subagent.delivered_id` | work id | The Result the parent drained | `omnigent/runner/app.py:534` | Runner PATCH on inbox drain (`tool_dispatch.py:1612-1638`) |
 | `omnigent.subagent.scheduled_task_id` | task id | A scheduled Helper (Study, Goal run) | `labels.py:41` | Server (`helper_fire.py:540`) |
-| `omnigent.subagent.adhoc` | marker | A quiet ad-hoc Helper (daily-note pass, teacher) | `labels.py:51` | Server (`helper_fire.py:542`) |
+| `omnigent.subagent.adhoc` | marker | A quiet ad-hoc Helper (daily-note pass) | `labels.py:51` | Server (`helper_fire.py:542`) |
 | `omnigent.subagent` | `1` | "This session is a Helper", for tool gating | `labels.py:36` | **Runner only, never stored.** Added in memory by `_tool_labels_for_session` when the session snapshot has a parent (`omnigent/runner/app.py:9010-9021`, `:9020`) |
 
 The last row is important for [section 5](#5-the-label-lookup-question). The `omnigent.subagent`
@@ -145,12 +145,12 @@ responsive.
 | Offered when | the session is superside-chat **and** its own agent spec declares a Helper Type (`omnigent/superchat/helpers/feature.py:18-22`), then filtered by the spec's `allow` list (`omnigent/tools/manager.py:219-235`) |
 | Handler | `omnigent/superchat/helpers/handlers.py:163-211` |
 | Dedup | the same task from the same chat within 10 s returns the first receipt (`DEDUP_WINDOW_S`, `handlers.py:22`; in-memory `_recent`, `:26-28`) |
-| Type chosen | a declared Type whose role (`params.helper_type`) is `worker`, else `subworker` (`handlers.py:59-70`). `goal` and `teacher` are never chosen by this tool |
+| Type chosen | a declared Type whose role (`params.helper_type`) is `worker`, else `subworker` (`handlers.py:59-70`). `goal` is never chosen by this tool |
 | Receipt | `{"started": true, "helper_id", "title", "message"}`. For the Muse the message is: "Tell the person in one sentence that you started it, then end your turn; do not wait or poll." (`handlers.py:108-124`) |
 
 **Who gets the tool.**
 
-- The Muse bundle allows `start_helper` and declares `worker`, `goal` and `teacher`
+- The Muse bundle allows `start_helper` and declares `worker` and `goal`
   (`infra/omnigent/agents/superchat-claude/config.yaml:65`, `:87-90`).
 - Side chats run on the same agent, so they get it too.
 - A `worker` declares `agents: [subworker]` and allows `start_helper`. It can start parts
@@ -169,7 +169,6 @@ renders them into both Muse bundles.
 | `worker` | `start_helper` from the Muse or a Side chat | not pinned: `fast` or `strong` per dispatch, else the parent's model | 5 | web, `browser_*`, `sys_os_*`, read-only memory (`memory_search`, `memory_get`), `session_history`, `vault_fill`, `artifact_*`, `files_*`, `deck_*`, `start_helper` |
 | `subworker` | `start_helper` from a worker | not pinned | 5 | the worker set without `start_helper` and session tools |
 | `goal` | a parent-bound scheduled run (`omnigent/superchat/goals/routes.py:204-229`) | pinned to the fast model on the Claude bundle | 2 | web, browser, shell, `objective_get`, `objective_update_task`, `objective_propose`, `memory_search`, `vault_fill` |
-| `teacher` | `start_adhoc_helper` after a recording (`omnigent/superchat/skills/teach.py:71-77`) | pinned to the fast model on the Claude bundle | 1 | `skill_draft_save` only |
 
 **Fast and strong.** `fast` and `strong` map to model ids through `OMNIGENT_HELPER_MODEL_FAST` and
 `OMNIGENT_HELPER_MODEL_STRONG`, with harness-scoped variants such as `..._PI`
@@ -342,7 +341,7 @@ The steps, with code:
 7. **The transcript hides the notice.** It shows a `helper` block instead (see
    [section 3](#3-activity-and-how-tool-calls-are-masked)).
 
-**Quiet Helpers do not wake anyone.** The daily-note pass and the teacher are started with
+**Quiet Helpers do not wake anyone.** The daily-note pass is started with
 `wake_parent=False` and the `omnigent.subagent.adhoc` label (`helper_fire.py:634-691`). The runner
 registers no work for them (`app.py:9043-9045`).
 
@@ -818,7 +817,7 @@ Canonical words are from [CONTEXT.md](../../CONTEXT.md). The engine's words are 
 | **Side chat** | a separate full-size chat, `with_context` or `blank` | Side Chat |
 | **Fork** | a Side chat anchored on one message | Side Chat with anchor labels |
 | **Helper** | a background worker for one task | Sub-agent |
-| **Sub-agent Type** | a named kind of Helper (`worker`, `subworker`, `goal`, `teacher`) | Sub-agent Type |
+| **Sub-agent Type** | a named kind of Helper (`worker`, `subworker`, `goal`) | Sub-agent Type |
 | **Brief** | the task the Muse writes for a Helper | Brief |
 | **Result** | a Helper's final message, delivered to the Originating Chat | Result |
 | **Originating Chat** | the chat that started a Helper | Originating Chat |

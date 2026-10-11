@@ -1,11 +1,11 @@
 import { randomBytes } from "node:crypto";
+import { ORPCError } from "@orpc/server";
 import { runJobKey } from "@superchat/adapter-kit";
 import {
   archiveBot,
   cancelComputerRunWork,
   checkpointAndRecordComputerWorkspace,
   destroyBot,
-  hasActiveComputerControl,
   listPiCatalog,
   modelCredentialDto,
   screenLeaseIdForRun,
@@ -25,7 +25,6 @@ import {
   SpaceDeletionInProgressError,
 } from "@superchat/db";
 import { getLogger } from "@superchat/logging";
-import { ORPCError } from "@orpc/server";
 import { botProfileLabelsChanged, commitBotUpdate } from "../bot-update.js";
 import { loadMessagePage } from "../thread-message-pages.js";
 import type { RouterContext, RouterDeps } from "./context.js";
@@ -262,9 +261,6 @@ export function botsRouter(c: RouterContext) {
           if (active) {
             throw new ORPCError("BAD_REQUEST", { message: "Stop the bot first" });
           }
-          if (bot.computer.controlBotId === bot.id && hasActiveComputerControl(bot.computer)) {
-            throw new ORPCError("BAD_REQUEST", { message: "Release the computer first" });
-          }
           if (bot.computer.scope === "dedicated" && bot.computer.providerRef) {
             const ctx = computerContext(context.actor, bot.id, "computer.switch");
             const ref = toComputerRef(bot.computer);
@@ -279,11 +275,6 @@ export function botsRouter(c: RouterContext) {
               where: { id: bot.computer.id },
               data: {
                 state: "stopped",
-                controlHolder: "none",
-                controlLeaseId: null,
-                controlLeaseExpiresAt: null,
-                controlBotId: null,
-                controlRunId: null,
                 executionRunId: null,
                 executionBotId: null,
                 executionLeaseExpiresAt: null,

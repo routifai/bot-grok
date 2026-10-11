@@ -388,7 +388,7 @@ export default function Account() {
             />
             <NotificationSwitch
               label={t("Needs attention")}
-              detail={t("Questions, approvals, takeover")}
+              detail={t("Questions and approvals")}
               value={notifications.needsAttention}
               disabled={notificationPending || !notificationsReady}
               onChange={(needsAttention) =>

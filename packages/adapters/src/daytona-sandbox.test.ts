@@ -87,7 +87,6 @@ describe("DaytonaSandboxProvider", () => {
     expect(fixture.create).toHaveBeenCalledWith(
       expect.objectContaining({
         labels: { botId: "bot-a", superchat: "computer" },
-        envVars: { VNC_RESOLUTION: "1280x800" },
       }),
       { timeout: 120 },
     );
@@ -161,24 +160,7 @@ describe("DaytonaSandboxProvider", () => {
       undefined,
       300,
     );
-    const [screen, interactiveScreen] = await Promise.all([
-      provider.connectScreen(computer, { view: "stream", interactive: false }, context),
-      provider.connectScreen(
-        computer,
-        { view: "stream", interactive: true, controlToken: "control-1" },
-        context,
-      ),
-    ]);
-    expect(screen.url).toContain("/vnc.html");
-    expect(new URL(screen.url!).searchParams.get("path")).toMatch(/^websockify\?token=view-/);
-    await screen.close();
-    expect(new URL(interactiveScreen.url!).searchParams.get("path")).toBe(
-      "websockify?token=control-1",
-    );
-    expect(fixture.getSignedPreviewUrl).toHaveBeenCalledOnce();
-
     await provider.stop(computer, context);
-    expect(fixture.expireSignedPreviewUrl).toHaveBeenCalledWith(6100, "preview-token");
     expect(fixture.stop).toHaveBeenCalledWith(120);
   });
 
@@ -301,7 +283,7 @@ describe("DaytonaSandboxProvider", () => {
     expect(fixture.deleteSandbox).toHaveBeenCalledTimes(2);
   });
 
-  it("gives Team bots distinct Daytona previews using the shared runtime", async () => {
+  it("gives Team bots distinct displays using the shared runtime", async () => {
     const fixture = daytonaFixture();
     const provider = new DaytonaSandboxProvider({ apiKey: "test-key" }, fixture.client);
     const computer = await provider.provision({ botId: "team-home", homePath: "/unused" }, context);
@@ -310,28 +292,8 @@ describe("DaytonaSandboxProvider", () => {
     const researcher = { ...context, botId: "researcher" };
     const _screenRegistry = desktopCommandResponder();
 
-    fixture.getSignedPreviewUrl.mockImplementation(async (port: number) => ({
-      url: `https://${port}-preview.proxy.daytona.test`,
-      token: `token-${port}`,
-    }));
     await provider.observe(computer, writer);
     await provider.observe(computer, researcher);
-    const writerView = await provider.connectScreen(
-      computer,
-      { view: "stream", interactive: false },
-      writer,
-    );
-    const researcherView = await provider.connectScreen(
-      computer,
-      { view: "stream", interactive: false },
-      researcher,
-    );
-    expect(writerView.url).toContain("6100-preview");
-    expect(researcherView.url).not.toBe(writerView.url);
-    expect(researcherView.url).toContain("6100-preview");
-    expect(new URL(researcherView.url!).searchParams.get("path")).toMatch(
-      /^websockify\?token=view-/,
-    );
     expect(fixture.computerUse.start).not.toHaveBeenCalled();
     expect(fixture.click).not.toHaveBeenCalled();
 
@@ -353,21 +315,6 @@ describe("DaytonaSandboxProvider", () => {
       width: 1280,
       height: 800,
     });
-
-    const researcherControl = await provider.connectScreen(
-      computer,
-      { view: "stream", interactive: true, controlToken: "lease-1" },
-      researcher,
-    );
-    expect(researcherControl.url).toContain("6100-preview");
-    expect(new URL(researcherControl.url!).searchParams.get("path")).toBe(
-      "websockify?token=lease-1",
-    );
-    expect(
-      fixture.executeCommand.mock.calls.some(([command]) =>
-        String(command).includes("sockets/control-"),
-      ),
-    ).toBe(true);
 
     expect(provider.describe().capabilities.multiScreen).toBe(true);
   });
@@ -416,16 +363,11 @@ function daytonaFixture(options: { id?: string; state?: string; prepareFails?: b
   const start = vi.fn(async () => undefined);
   const stop = vi.fn(async () => undefined);
   const deleteSandbox = vi.fn(async () => undefined);
-  const expireSignedPreviewUrl = vi.fn(async () => undefined);
   const drag = vi.fn(async () => ({}));
   const click = vi.fn(async () => ({}));
   const press = vi.fn(async () => undefined);
   const type = vi.fn(async () => undefined);
   const scroll = vi.fn(async () => true);
-  const getSignedPreviewUrl = vi.fn(async (_port: number) => ({
-    url: `https://${_port}-preview.proxy.daytona.test`,
-    token: "preview-token",
-  }));
   const sandbox = {
     id,
     state: options.state ?? "started",
@@ -465,8 +407,6 @@ function daytonaFixture(options: { id?: string; state?: string; prepareFails?: b
     },
     getUserHomeDir: vi.fn(async () => "/home/daytona"),
     getWorkDir: vi.fn(async () => "/home/daytona"),
-    getSignedPreviewUrl,
-    expireSignedPreviewUrl,
     refreshActivity: vi.fn(async () => undefined),
     start,
     stop,
@@ -484,8 +424,6 @@ function daytonaFixture(options: { id?: string; state?: string; prepareFails?: b
     start,
     stop,
     deleteSandbox,
-    getSignedPreviewUrl,
-    expireSignedPreviewUrl,
     drag,
     click,
     press,

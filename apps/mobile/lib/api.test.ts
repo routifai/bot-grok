@@ -79,7 +79,10 @@ describe("mobile API authentication", () => {
         body: JSON.stringify({ email: "ada@example.com", password: "correct horse" }),
       }),
     );
-    expect(SecureStore.setItemAsync).toHaveBeenCalledWith("superchat.session_token", "session-token");
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith(
+      "superchat.session_token",
+      "session-token",
+    );
     expect(resumeLiveNotifications).not.toHaveBeenCalled();
   });
 
@@ -101,7 +104,10 @@ describe("mobile API authentication", () => {
         }),
       }),
     );
-    expect(SecureStore.setItemAsync).toHaveBeenCalledWith("superchat.session_token", "signup-token");
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith(
+      "superchat.session_token",
+      "signup-token",
+    );
   });
 
   it("loads password recovery capability and requests a server-approved redirect", async () => {
@@ -1464,7 +1470,10 @@ describe("mobile API authentication", () => {
       storage.delete(key);
     });
     vi.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value) => {
-      if (key === "superchat.api_base" || (key === "superchat.space_id" && value === "space-support")) {
+      if (
+        key === "superchat.api_base" ||
+        (key === "superchat.space_id" && value === "space-support")
+      ) {
         throw new Error("device locked");
       }
       storage.set(key, value);
@@ -2016,60 +2025,6 @@ describe("mobile thread event reduction", () => {
     expect(repeated?.run).toBe(waiting?.run);
   });
 
-  it("applies computer takeover requests as waiting_takeover", () => {
-    const progress = mobileMessage("progress:run-1", [{ kind: "progress", text: "working…" }], 1);
-    const initial: MobileSnapshot = {
-      ...snapshot([progress]),
-      run: { id: "run-1", status: "running" },
-      activeRuns: [{ id: "run-1", status: "running" }],
-    };
-    const waiting = applyMobileThreadEvent(initial, {
-      type: "computer.takeover.requested",
-      runId: "run-1",
-      seq: 10,
-    });
-
-    expect(waiting?.run?.status).toBe("waiting_takeover");
-    expect(waiting?.activeRuns?.[0]?.status).toBe("waiting_takeover");
-    expect(waiting?.messages.some((message) => message.id.startsWith("progress:"))).toBe(false);
-    expect(waiting?.cursor).toBe(10);
-  });
-
-  it("inserts a peer takeover run that was absent from the open snapshot", () => {
-    const progress = mobileMessage(
-      "progress:run-peer",
-      [{ kind: "progress", text: "working…" }],
-      1,
-    );
-    const initial: MobileSnapshot = {
-      ...snapshot([progress]),
-      run: { id: "run-user", status: "running" },
-      activeRuns: [{ id: "run-user", status: "running" }],
-      computer: {
-        state: "running",
-        controlHolder: "bot",
-        screenAvailable: true,
-        mode: "team",
-        busyBotName: "Peer",
-      },
-    };
-
-    const waiting = applyMobileThreadEvent(initial, {
-      type: "computer.takeover.requested",
-      runId: "run-peer",
-      botId: "bot-peer",
-      seq: 12,
-    });
-
-    expect(waiting?.run).toEqual({ id: "run-peer", botId: "bot-peer", status: "waiting_takeover" });
-    expect(waiting?.activeRuns).toEqual([
-      { id: "run-user", status: "running" },
-      { id: "run-peer", botId: "bot-peer", status: "waiting_takeover" },
-    ]);
-    expect(waiting?.messages.some((message) => message.id.startsWith("progress:"))).toBe(false);
-    expect(waiting?.computer?.busyBotName).toBeNull();
-  });
-
   it("advances the cursor for durable message events", () => {
     const next = applyMobileThreadEvent(snapshot(), {
       type: "thread.message.created",
@@ -2251,8 +2206,6 @@ function snapshot(
     run: null,
     computer: {
       state: "running",
-      controlHolder: "bot",
-      screenAvailable: true,
       mode: "team",
       busyBotName: null,
     },

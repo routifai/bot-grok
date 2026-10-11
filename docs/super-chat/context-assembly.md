@@ -195,8 +195,8 @@ The Muse runs on one of two bundles, `superchat-claude` (harness `claude-sdk`) a
 - `AGENTS.md` is `templates/AGENTS.md` with `{{FILESYSTEM}}` and `{{DECKS}}` filled in, and its
   leading provenance comment removed (`infra/omnigent/render-agents.mjs:85-101`). The deck layout
   menu comes from the deck kit itself (`infra/omnigent/render-agents.mjs:60-61`, `:89-92`).
-- Each bundle also gets the Sub-agent Types `worker`, `worker/agents/subworker`, `goal` and
-  `teacher` (`infra/omnigent/render-agents.mjs:59`, `:119-137`).
+- Each bundle also gets the Sub-agent Types `worker`, `worker/agents/subworker` and
+  `goal` (`infra/omnigent/render-agents.mjs:59`, `:119-137`).
 - The engine picks the bundle with `OMNIGENT_SUPERCHAT_DEFAULT_AGENT`
   (`infra/omnigent/render-agents.mjs:19-22`).
 
@@ -250,7 +250,6 @@ exposed as `mcp__omnigent__<name>` (`omnigent/inner/claude_sdk_executor.py:1049-
 - `session_history` (recall the exact record),
 - `memory_*` (long-term memory),
 - `files_*` (the person's indexed files),
-- `skill_*` (taught skills),
 - `side_chat_open`, `open_project`, `start_helper`, `message_helper`.
 
 A `worker` Helper has a smaller list (`infra/omnigent/templates/agents/worker/config.yaml:46-78`).
@@ -753,7 +752,6 @@ untrusted data, not instructions.
 | `files_search`, `files_vsearch`, `files_query` | Passages from the person's indexed files (keyword, vector, hybrid + rerank) | Long attachments, or any question about the person's files (`infra/omnigent/templates/AGENTS.md:349-357`) | 8 results default, 25 max | `omnigent/runner/knowledge/indexer.py:79-84`, `omnigent/superchat/knowledge/handlers.py:28` |
 | `files_get`, `files_multi_get` | Markdown of a file or some pages; `truncated` says where it stopped | Reading what search found | 24,000 chars default, 60,000 max; 20 files for multi-get | `omnigent/runner/knowledge/indexer.py:88-95`, `:825-839` |
 | `files_read_page` | One PDF page as an image with its text | Charts, tables, layout | n/a | `infra/omnigent/templates/AGENTS.md:358-361` |
-| `skill_list`, `skill_run` | The person's taught skills; the steps of one | The person asks for something a saved skill covers (`infra/omnigent/templates/AGENTS.md:211-217`) | n/a | `omnigent/superchat/skills/tools.py:94-108` |
 
 `session_history` is scoped by construction: the session id comes from the runtime, and a
 `chat_id` must be one that `list_chats` returns for the caller

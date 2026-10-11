@@ -17,7 +17,6 @@ import { ReplyCardBlockView } from "../../../components/cards/ReplyCard";
 import { WorkspaceAttachmentChip } from "../../../components/WorkspaceAttachmentChip";
 import { AskCard } from "../../../features/approvals";
 import { ArtifactFileCard } from "../../../features/artifacts";
-import { SkillDraftCard } from "../../../features/skills/teach/SkillDraftCard";
 import type { ArtifactTarget } from "../../../lib/artifact-open";
 import { splitComposerAttachments } from "../../../lib/composer-attachments";
 import { messageProviderLabel } from "../../../lib/messaging";
@@ -76,9 +75,7 @@ export const MessageView = memo(function MessageView({
   replyPreview,
   replyToMessageId,
   onJumpToMessage,
-  onRefresh,
   onBotChanged,
-  onAddRoutine,
   voiceReady,
   speaking,
   onSpeak,
@@ -98,9 +95,7 @@ export const MessageView = memo(function MessageView({
   replyPreview?: ThreadMessage;
   replyToMessageId?: string;
   onJumpToMessage?: (messageId: string) => void;
-  onRefresh: () => Promise<void>;
   onBotChanged: () => Promise<void>;
-  onAddRoutine: (name: string, prompt: string) => void;
   voiceReady: boolean;
   speaking: boolean;
   onSpeak: () => void;
@@ -616,13 +611,6 @@ export const MessageView = memo(function MessageView({
           if (!botId) return null;
           return (
             <HelperTracker key={i} botId={botId} helperId={block.helperId} title={block.title} />
-          );
-        }
-        if (block.kind === "skill_draft") {
-          return (
-            <div key={i} className="flex justify-start">
-              <SkillDraftCard block={block} onRefresh={onRefresh} onAddRoutine={onAddRoutine} />
-            </div>
           );
         }
         return null;

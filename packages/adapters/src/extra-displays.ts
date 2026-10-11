@@ -1,4 +1,4 @@
-import type { ComputerAction, ComputerInput } from "@superchat/adapter-kit";
+import type { ComputerAction } from "@superchat/adapter-kit";
 import { clampRounded, shellQuote } from "./computer-support.js";
 export interface ExtraDisplayLayout {
   display: string;
@@ -73,24 +73,4 @@ export function extraDisplayActionCommand(
     return `DISPLAY=${layout.display} xdg-open ${shellQuote(action.path)}`;
   }
   return `DISPLAY=${layout.display} ${shellQuote(action.application)}${action.uri ? ` ${shellQuote(action.uri)}` : ""}`;
-}
-
-export function extraDisplayInputCommand(layout: ExtraDisplayLayout, input: ComputerInput): string {
-  if (input.kind === "key") {
-    return `DISPLAY=${layout.display} xdotool key ${shellQuote(input.key)}`;
-  }
-  if (input.kind === "clipboard") {
-    return `DISPLAY=${layout.display} xdotool type ${shellQuote(input.text)}`;
-  }
-  const button = input.button === "right" ? "3" : "1";
-  if (input.type === "move") {
-    return `DISPLAY=${layout.display} xdotool mousemove ${input.x} ${input.y}`;
-  }
-  if (input.type === "down") {
-    return `DISPLAY=${layout.display} xdotool mousemove ${input.x} ${input.y} mousedown ${button}`;
-  }
-  if (input.type === "up") {
-    return `DISPLAY=${layout.display} xdotool mousemove ${input.x} ${input.y} mouseup ${button}`;
-  }
-  return `DISPLAY=${layout.display} xdotool mousemove ${input.x} ${input.y} click ${button}`;
 }

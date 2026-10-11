@@ -62,7 +62,6 @@ async function main() {
     process.env.BETTER_AUTH_SECRET = "test-secret-test-secret-32chars!";
     process.env.ENCRYPTION_KEY = "test-encryption-key-test-encryption-key";
     process.env.SANDBOX_SUPERVISOR_TOKEN = "test-supervisor-token-test-32chars";
-    process.env.SCREEN_PROXY_SECRET = "test-screen-proxy-secret-test-32chars";
     process.env.BETTER_AUTH_URL = webOrigin;
     process.env.WEB_ORIGIN = webOrigin;
     process.env.API_PORT = String(apiPort);
@@ -154,7 +153,10 @@ async function main() {
     const [
       { ComposioEmulator, EmailEmulator, PipedreamConnector, ThirdPartyConnectorEmulator },
       { createApp },
-    ] = await Promise.all([import("@superchat/adapters"), import("../../../../apps/api/src/app.ts")]);
+    ] = await Promise.all([
+      import("@superchat/adapters"),
+      import("../../../../apps/api/src/app.ts"),
+    ]);
     const { serve } = await import("@hono/node-server");
     const thirdParties = new ThirdPartyConnectorEmulator();
     const pipedream = new PipedreamConnector(

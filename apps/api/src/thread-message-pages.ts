@@ -143,8 +143,7 @@ export function shouldForwardPeerThreadEvent(event: {
     event.type === "run.completed" ||
     event.type === "run.failed" ||
     event.type === "run.cancelled" ||
-    event.type === "run.waiting_input" ||
-    event.type === "computer.takeover.requested"
+    event.type === "run.waiting_input"
   ) {
     return true;
   }

@@ -2,13 +2,10 @@ import type {
   AdapterContext,
   CommandRequest,
   ComputerActionRequest,
-  ComputerInput,
   ComputerRef,
-  ControlLeaseRef,
   PortableFile,
   ProcessEvent,
   SandboxProvider,
-  ScreenRequest,
 } from "@superchat/adapter-kit";
 
 export const NO_SANDBOX_MESSAGE =
@@ -27,7 +24,6 @@ export class NoneSandboxProvider implements SandboxProvider {
         graphical: false,
         pty: false,
         snapshots: false,
-        takeover: false,
         persistentHome: false,
         multiScreen: false,
       },
@@ -61,24 +57,6 @@ export class NoneSandboxProvider implements SandboxProvider {
   ): AsyncIterable<ProcessEvent> {
     this.fail();
   }
-
-  async connectScreen(
-    _computer: ComputerRef,
-    _request: ScreenRequest,
-    _context: AdapterContext,
-  ): Promise<never> {
-    this.fail();
-  }
-
-  async sendInput(
-    _computer: ComputerRef,
-    _input: ComputerInput,
-    _lease: ControlLeaseRef,
-    _context: AdapterContext,
-  ): Promise<void> {
-    this.fail();
-  }
-
   async observe(_computer: ComputerRef, _context: AdapterContext): Promise<never> {
     this.fail();
   }

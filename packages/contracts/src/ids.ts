@@ -26,7 +26,6 @@ export const RunStatus = z.enum([
   "leased",
   "running",
   "waiting_input",
-  "waiting_takeover",
   "completed",
   "failed",
   "cancelled",

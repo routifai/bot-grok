@@ -42,8 +42,6 @@ async function fixture(provider: "fake" | "desktop" = "fake") {
     state: "running",
     providerRef: first.providerRef as string | null,
     kind: first.kind,
-    controlHolder: "none",
-    controlLeaseId: null,
     maintenanceId: null as string | null,
     homeRevision: "saved",
     updatedAt: new Date("2024-01-01T00:00:00.000Z"),

@@ -14,15 +14,11 @@ import type {
   CommandRequest,
   ComputerActionRequest,
   ComputerFileEntry,
-  ComputerInput,
   ComputerObservation,
   ComputerRef,
-  ControlLeaseRef,
   PortableFile,
   ProcessEvent,
   SandboxProvider,
-  ScreenRequest,
-  ScreenSession,
 } from "@superchat/adapter-kit";
 import { boundedSandboxCommandTimeoutMs } from "@superchat/core";
 import { boxResponseError, wrapBoxCall } from "./box-errors.js";
@@ -49,7 +45,6 @@ export type BoxSandboxSdk = Pick<
   | "command"
   | "commandStatus"
   | "create"
-  | "desktop"
   | "get"
   | "resume"
   | "stop"
@@ -74,7 +69,6 @@ export class BoxSandboxProvider implements SandboxProvider {
       workspaceDir: BOX_WORKSPACE,
       browserProfilesDir: BOX_BROWSER_PROFILES,
       displayStart: 20,
-      portStart: 6100,
     }),
     run: async (computer, command, context) => {
       const result = await this.runCommand(
@@ -89,24 +83,6 @@ export class BoxSandboxProvider implements SandboxProvider {
         stdout: result.stdout,
         stderr: result.stderr,
       };
-    },
-    screenUrl: async (computer, port, context) => {
-      const result = await this.runCommand(
-        this.id(computer),
-        `host ${port} --private`,
-        undefined,
-        60_000,
-        context.signal,
-      );
-      if (result.exitCode !== 0 || result.timedOut)
-        throw new Error("could not expose protected desktop port");
-      const match = result.stdout.match(/https:\/\/[^\s]+/);
-      if (!match) throw new Error("Box did not return a desktop URL");
-      const url = new URL(match[0]);
-      if (!url.hostname.endsWith(".on.ascii.dev") || !url.searchParams.get("_token"))
-        throw new Error("Box desktop URL is not protected");
-      url.pathname = "/vnc.html";
-      return url.toString();
     },
   });
   private readonly pendingProvisions = new Map<string, Promise<ComputerRef>>();
@@ -129,7 +105,6 @@ export class BoxSandboxProvider implements SandboxProvider {
         graphical: true,
         pty: false,
         snapshots: true,
-        takeover: true,
         persistentHome: true,
         multiScreen: true,
       },
@@ -286,30 +261,6 @@ export class BoxSandboxProvider implements SandboxProvider {
       }
       throw error;
     }
-  }
-
-  async connectScreen(
-    computer: ComputerRef,
-    request: ScreenRequest,
-    context: AdapterContext,
-  ): Promise<ScreenSession> {
-    return this.desktops.connectScreen(computer, request, context);
-  }
-  async setScreenControl(
-    computer: ComputerRef,
-    interactive: boolean,
-    context: AdapterContext,
-    controlToken?: string,
-  ): Promise<void> {
-    return this.desktops.setScreenControl(computer, interactive, context, controlToken);
-  }
-  async sendInput(
-    computer: ComputerRef,
-    input: ComputerInput,
-    _lease: ControlLeaseRef,
-    context: AdapterContext,
-  ): Promise<void> {
-    return this.desktops.sendInput(computer, input, context);
   }
   async observe(computer: ComputerRef, context: AdapterContext): Promise<ComputerObservation> {
     return this.desktops.observe(computer, context);
@@ -718,7 +669,6 @@ function createBoxSdk(config: { apiKey: string; apiUrl?: string }): BoxSandboxSd
     command: wrapBoxCall(api.command.bind(api), config.apiKey),
     commandStatus: wrapBoxCall(api.commandStatus.bind(api), config.apiKey),
     create: wrapBoxCall(api.create.bind(api), config.apiKey),
-    desktop: wrapBoxCall(api.desktop.bind(api), config.apiKey),
     get: wrapBoxCall(api.get.bind(api), config.apiKey),
     resume: wrapBoxCall(api.resume.bind(api), config.apiKey),
     stop: wrapBoxCall(api.stop.bind(api), config.apiKey),

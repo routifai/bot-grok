@@ -7163,34 +7163,6 @@ async def _fetch_peek_meta(
     return _PeekMeta(agent=parsed.agent, title=parsed.title, pending_elicitations=pending)
 
 
-_PERSON_HAS_COMPUTER_ERROR = (
-    "The person is using the computer right now. Wait until they hand it back."
-)
-
-
-async def _person_has_computer(
-    server_client: httpx.AsyncClient | None, conversation_id: str | None
-) -> bool:
-    """
-    Whether a person has taken over this session's computer.
-
-    Asks the server (``GET /v1/sessions/{id}/computer``) so the Muse does not act on the
-    computer while the person controls it. Fails open: no client, no session, or any
-    request/parse failure means "not in control", so a server hiccup never blocks tools.
-
-    :param server_client: httpx client pointed at the Omnigent server, or ``None``.
-    :param conversation_id: The session being served, e.g. ``"conv_123"``.
-    :returns: ``True`` only when the server reports ``in_control``.
-    """
-    if server_client is None or conversation_id is None:
-        return False
-    try:
-        resp = await server_client.get(f"/v1/sessions/{conversation_id}/computer")
-        return resp.status_code == 200 and resp.json().get("in_control") is True
-    except Exception:  # noqa: BLE001 - best-effort gate; never block tools on it
-        return False
-
-
 async def execute_tool(
     *,
     tool_name: str,
@@ -7280,10 +7252,6 @@ async def execute_tool(
                 "use sys_os_* tools and an inherited terminal for filesystem operations"
             }
         )
-    if (tool_name in _OS_ENV_TOOLS or tool_name in _BROWSER_TOOLS) and await _person_has_computer(
-        server_client, conversation_id
-    ):
-        return json.dumps({"error": _PERSON_HAS_COMPUTER_ERROR})
     try:
         if mcp_manager is not None:
             # All MCP tool calls are routed through the AP server's

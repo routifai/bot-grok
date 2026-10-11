@@ -1,3 +1,4 @@
+import { type ImplementerInternalWithMiddlewares, implement, ORPCError } from "@orpc/server";
 import type {
   AgentHomeStore,
   ArtifactStore,
@@ -18,11 +19,9 @@ import type { Actor } from "@superchat/contracts";
 import { appContract } from "@superchat/contracts";
 import type { PrismaClient, SignupPolicyEnv, ThreadEvents } from "@superchat/db";
 import { createGroupRepos, createRepos } from "@superchat/db";
-import { type ImplementerInternalWithMiddlewares, implement, ORPCError } from "@orpc/server";
 import type { EngineArtifactsDeps } from "../features/artifacts/index.js";
 import { withEngineComputer } from "../features/computer/service.js";
 import { createAgentSkillsService } from "../features/skills/agent-skills.js";
-import { createTaughtSkillsService } from "../features/skills/taught-skills.js";
 
 export interface RouterDeps {
   prisma: PrismaClient;
@@ -56,7 +55,6 @@ export interface RouterDeps {
     deploymentModelKey?: string;
     webOrigin: string;
     privacyPolicyUrl?: string;
-    screenProxySecret: string;
     sandboxProvider: string;
     integrationsCatalogUrl?: string;
     mcpAllowPrivateEndpoint?: boolean;
@@ -92,7 +90,6 @@ export interface RouterContext {
   groupRepos: ReturnType<typeof createGroupRepos>;
   onboardingDeps: Pick<RouterDeps, "prisma" | "events" | "connectors">;
   mcpOAuth: McpOAuthBroker;
-  taughtSkills: ReturnType<typeof createTaughtSkillsService>;
   agentSkills: ReturnType<typeof createAgentSkillsService>;
   engineArtifactsDeps: EngineArtifactsDeps;
   engineFilesDeps: { prisma: RouterDeps["prisma"] };
@@ -113,11 +110,6 @@ export function createRouterContext(deps: RouterDeps): RouterContext {
   };
   const mcpOAuth = deps.mcpOAuth ?? new McpOAuthBroker(deps.prisma, deps.secrets);
   const groupRepos = createGroupRepos(deps.prisma);
-  const taughtSkills = createTaughtSkillsService({
-    prisma: deps.prisma,
-    events: deps.events,
-    jobs: deps.jobs,
-  });
   const agentSkills = createAgentSkillsService(deps.prisma);
 
   const authed = makeAuthed(os);
@@ -134,7 +126,6 @@ export function createRouterContext(deps: RouterDeps): RouterContext {
     groupRepos,
     onboardingDeps,
     mcpOAuth,
-    taughtSkills,
     agentSkills,
     engineArtifactsDeps,
     engineFilesDeps,

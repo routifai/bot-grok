@@ -186,7 +186,6 @@ export function narrateTool(toolName: string): string | null {
     [/^(archive_bot|delete_bot)$/, "archiving a bot"],
     [/^remember$/, "writing a memory"],
     [/^attach_file$/, "attaching a file"],
-    [/^request_takeover$/, "asking you to take over"],
   ];
   for (const [pattern, phrase] of verbs) {
     if (pattern.test(bare)) return phrase;

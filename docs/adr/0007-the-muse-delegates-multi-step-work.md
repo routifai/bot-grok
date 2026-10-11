@@ -16,5 +16,5 @@ The Computer's workspace follows one layout so delegated work lands where the pe
 ## Consequences
 
 - The engine gains a generic per-turn work-step limit for Super Chat turns and a model allowlist for Helper spawns.
-- `researcher`, `analyst` and `drafter` retire; followed topics that ran as `researcher` move to `worker`. `goal` and `teacher` stay.
+- `researcher`, `analyst` and `drafter` retire; followed topics that ran as `researcher` move to `worker`. `goal` stays.
 - Results arrive as Activities and through the existing Helper result path; the Muse acknowledges in one line and ends its turn instead of narrating.

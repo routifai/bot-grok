@@ -8,14 +8,12 @@ import type {
 import { messagingDeliverJob } from "@superchat/adapter-kit";
 import { cancelRunsInTransaction, type PrismaClient, type ThreadEvents } from "@superchat/db";
 import { getLogger } from "@superchat/logging";
-import { expireComputerControl } from "./computer-control.js";
-import { scheduleComputerSleep, sleepComputerIfIdle } from "./computer-idle.js";
+import { sleepComputerIfIdle } from "./computer-idle.js";
 import { performComputerUpdate } from "./computer-update.js";
 import { deliverMessagingOutbound, mirrorMessagingOutbound } from "./messaging-delivery.js";
 import type { OmnigentGatewayDeps } from "./omnigent/gateway.js";
 import { failRunUnsupportedOnOmnigent, runTurnOnOmnigent } from "./omnigent/gateway.js";
 import { wakeRoutine } from "./routine-wakeup.js";
-import { expireTaughtSkillTeaching } from "./teaching-session.js";
 
 export function createBackgroundJobHandlers(deps: {
   prisma: PrismaClient;
@@ -110,19 +108,10 @@ export function createBackgroundJobHandlers(deps: {
     "computer.update": async ({ updateId }) => {
       await performComputerUpdate(deps, updateId);
     },
-    // The engine's Computer is always on: no idle sleep or control expiry for its Muses.
+    // The engine's Computer is always on: no idle sleep for its Muses.
     "computer.sleep": async (payload) => {
       if (deps.omnigent) return;
       await sleepComputerIfIdle(deps, payload.computerId);
-    },
-    "computer.control-expire": async (payload) => {
-      if (deps.omnigent) return;
-      if (await expireComputerControl(deps, payload.computerId, payload.leaseId)) {
-        scheduleComputerSleep(deps.jobs, payload.computerId);
-      }
-    },
-    "skill.teaching-expire": async (payload) => {
-      await expireTaughtSkillTeaching(deps, payload.skillId);
     },
   };
 }

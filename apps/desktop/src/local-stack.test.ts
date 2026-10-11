@@ -62,18 +62,13 @@ describe("resolveImageTag", () => {
 });
 
 describe("renderStackEnv", () => {
-  it("fills the five secrets and drops the image tag lines of the shipped template", async () => {
+  it("fills the four secrets and drops the image tag lines of the shipped template", async () => {
     const template = await readFile(path.join(COMPOSE_DIR, STACK_ENV_TEMPLATE), "utf8");
     const rendered = renderStackEnv(template, fakeHex);
     const lines = rendered.split("\n");
 
     expect(lines).toContain(`POSTGRES_PASSWORD=${"ab".repeat(16)}`);
-    for (const name of [
-      "BETTER_AUTH_SECRET",
-      "ENCRYPTION_KEY",
-      "SCREEN_PROXY_SECRET",
-      "SANDBOX_SUPERVISOR_TOKEN",
-    ]) {
+    for (const name of ["BETTER_AUTH_SECRET", "ENCRYPTION_KEY", "SANDBOX_SUPERVISOR_TOKEN"]) {
       expect(lines).toContain(`${name}=${"ab".repeat(32)}`);
     }
     expect(lines.some((line) => line.startsWith("SUPERCHAT_IMAGE_TAG="))).toBe(false);
@@ -369,7 +364,11 @@ describe("LocalStackController", () => {
 
     const state = await stack.start();
     expect(state).toMatchObject({ phase: "ready", message: null, imageTag: "v1.2.3" });
-    expect(state.output).toEqual(["app Pulled", "computer Pulled", "Container superchat-web-1 Started"]);
+    expect(state.output).toEqual([
+      "app Pulled",
+      "computer Pulled",
+      "Container superchat-web-1 Started",
+    ]);
     expect(phases).toEqual([
       "checking-docker",
       "checking-docker",

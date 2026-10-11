@@ -75,20 +75,6 @@ export type ProcessEvent =
   | { type: "stderr"; data: string }
   | { type: "exit"; code: number };
 
-export interface ScreenRequest {
-  view: "stream" | "snapshot";
-  /** Request a separately authorized control stream instead of the read-only viewer. */
-  interactive?: boolean;
-  /** Fences an interactive stream so an older lease cannot revoke its replacement. */
-  controlToken?: string;
-}
-
-export interface ScreenSession {
-  url: string | null;
-  mimeType: string;
-  close(): Promise<void>;
-}
-
 export type ComputerInput =
   | { kind: "key"; key: string; modifiers?: string[] }
   | {
@@ -157,12 +143,6 @@ export interface AgentToolCompletion {
   paused?: boolean;
 }
 
-export interface ControlLeaseRef {
-  leaseId: string;
-  holder: "user" | "bot";
-  fence: number;
-}
-
 export interface SnapshotRef {
   id: string;
   createdAt: string;
@@ -172,7 +152,6 @@ export interface SandboxCapabilities {
   graphical: boolean;
   pty: boolean;
   snapshots: boolean;
-  takeover: boolean;
   persistentHome: boolean;
   /** Distinct graphical screens for concurrent Team bots on one computer. */
   multiScreen?: boolean;
@@ -310,7 +289,6 @@ export type AgentRuntimeEvent =
       detail?: string;
       actions?: Array<{ id: string; label: string }>;
     }
-  | { type: "takeover"; reason: string }
   | {
       type: "usage";
       inputTokens: number;
@@ -381,8 +359,6 @@ export interface BackgroundJobPayloads {
   "routine.wakeup": { routineId: string; scheduledFor: string };
   "computer.sleep": { computerId: string };
   "computer.update": { updateId: string };
-  "computer.control-expire": { computerId: string; leaseId: string };
-  "skill.teaching-expire": { skillId: string };
   "messaging.deliver": { runId?: string };
 }
 
@@ -421,7 +397,7 @@ export interface ArtifactPut {
 }
 
 export interface NotificationMessage {
-  kind: "completion" | "failure" | "help" | "takeover";
+  kind: "completion" | "failure" | "help";
   title: string;
   body: string;
   botId: string;

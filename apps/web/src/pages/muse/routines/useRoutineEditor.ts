@@ -5,7 +5,6 @@ import {
   type Dispatch,
   type MutableRefObject,
   type SetStateAction,
-  useCallback,
   useEffect,
   useRef,
   useState,
@@ -74,13 +73,6 @@ export function useRoutineEditor({
     setDeleteRoutineTarget(null);
     setPanel((current) => (current === "routine" ? null : current));
   }, [active?.id]);
-
-  const addSkillRoutine = useCallback((name: string, prompt: string) => {
-    setRoutineDraft({ ...emptyRoutineDraft(), name, prompt });
-    setRoutineWebhookSecret(null);
-    setEditingRoutine(null);
-    setPanel("routine");
-  }, []);
 
   function openNew() {
     setRoutineDraft(emptyRoutineDraft());
@@ -214,7 +206,7 @@ export function useRoutineEditor({
       setDeleteRoutineTarget(editingRoutine);
       return;
     }
-    setPanel("computer");
+    setPanel(null);
   }
 
   async function confirmDeleteRoutine(target: Routine) {
@@ -223,7 +215,7 @@ export function useRoutineEditor({
     setEditingRoutine((current) => (current?.id === target.id ? null : current));
     if (activeBotId.current !== target.botId) return;
     await refreshThread(target.botId);
-    if (activeBotId.current === target.botId) setPanel("computer");
+    if (activeBotId.current === target.botId) setPanel(null);
   }
 
   return {
@@ -239,7 +231,6 @@ export function useRoutineEditor({
     runningRoutine,
     routineError,
     ensureWebhookSecret,
-    addSkillRoutine,
     openNew,
     openRoutine,
     saveRoutine,

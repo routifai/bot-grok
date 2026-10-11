@@ -27,7 +27,6 @@ const runTriggers = new Set<Run["trigger"]>([
   "resume",
   "follow_up",
   "spawn",
-  "skill",
   "bot_message",
   "webhook",
   "messaging",
@@ -156,10 +155,9 @@ export function mergeThreadSnapshot(
 }
 
 /**
- * Apply a threads.get refresh without clobbering newer event-sourced takeover state.
+ * Apply a threads.get refresh without clobbering newer event-sourced state.
  *
- * A refresh that started earlier can still return running+busyBotName after the client
- * already applied waiting_takeover. Cursor comparisons only apply within the same thread.
+ * Cursor comparisons only apply within the same thread.
  * Stop clears run/busy optimistically in the shell so an in-flight refresh cannot revive
  * the run before its run.cancelled event lands; an older-cursor refresh must keep that
  * cleared local state (see Shell stopRun).
@@ -196,43 +194,18 @@ export function reconcileRefreshedThread(
       };
     }
     // Progress can advance the thread cursor while embedded computer status from threads.get
-    // is still useful — but only while a live run remains. Preserve event-sourced
-    // waiting_takeover clears and optimistic stop clears.
-    const preserveLocalComputer =
-      prev.run?.status === "waiting_takeover" ||
-      !prev.run ||
-      !isActive(prev.run.status as RunStatus);
+    // is still useful — but only while a live run remains. Preserve optimistic stop clears.
+    const preserveLocalComputer = !prev.run || !isActive(prev.run.status as RunStatus);
     return {
       snapshot: prev,
       computer: preserveLocalComputer ? prevComputer : (snap.computer ?? null),
     };
   }
 
-  let snapshot = mergeThreadSnapshot(prev, snap, preserveLoadedHistory);
-  let computer = snap.computer ?? null;
-
-  const localWaiting =
-    sameThread &&
-    prev?.run?.status === "waiting_takeover" &&
-    snapshot.run?.id === prev.run.id &&
-    snapshot.run.status !== "waiting_takeover" &&
-    isActive(snapshot.run.status as RunStatus);
-
-  if (localWaiting && snapshot.run) {
-    const runId = snapshot.run.id;
-    snapshot = {
-      ...snapshot,
-      run: { ...snapshot.run, status: "waiting_takeover" },
-      activeRuns: snapshot.activeRuns?.map((run) =>
-        run.id === runId ? { ...run, status: "waiting_takeover" } : run,
-      ),
-    };
-    if (computer?.busyBotName) computer = { ...computer, busyBotName: null };
-  } else if (snapshot.run?.status === "waiting_takeover" && computer?.busyBotName) {
-    computer = { ...computer, busyBotName: null };
-  }
-
-  return { snapshot, computer };
+  return {
+    snapshot: mergeThreadSnapshot(prev, snap, preserveLoadedHistory),
+    computer: snap.computer ?? null,
+  };
 }
 
 export function prependThreadMessagePage(
@@ -255,7 +228,6 @@ export function isThreadSnapshotEvent(event: ProductEvent): boolean {
     event.type === "thread.message.reaction" ||
     event.type === "run.started" ||
     event.type === "run.waiting_input" ||
-    event.type === "computer.takeover.requested" ||
     isRunTerminalEvent(event)
   );
 }
@@ -302,15 +274,15 @@ export function reduceThreadSnapshot(
       activeRuns,
     };
   }
-  if (event.type === "run.waiting_input" || event.type === "computer.takeover.requested") {
-    const status = event.type === "run.waiting_input" ? "waiting_input" : "waiting_takeover";
+  if (event.type === "run.waiting_input") {
+    const status = "waiting_input";
     const runId = event.runId;
     const knownInRun = Boolean(runId && prev.run?.id === runId);
     const knownInActive = Boolean(
       runId && prev.activeRuns?.some((candidate) => candidate.id === runId),
     );
     // Peer bot_message runs are omitted from snapshots while busy; the first wait
-    // event is how an open thread learns they need ask/takeover UI.
+    // event is how an open thread learns they need ask UI.
     const needsInsert = Boolean(runId) && !knownInRun && !knownInActive;
     const runChanged = Boolean(knownInRun && prev.run && prev.run.status !== status);
     const activeRunChanged = Boolean(
@@ -321,10 +293,9 @@ export function reduceThreadSnapshot(
     // Ask pauses delete progress events server-side; drop the live bubble so a missed
     // message.created cannot leave "working…" stuck next to waiting_input.
     const liveId = progressMessageId(event);
-    const messages =
-      event.type === "run.waiting_input" && prev.messages.some((message) => message.id === liveId)
-        ? prev.messages.filter((message) => message.id !== liveId)
-        : prev.messages;
+    const messages = prev.messages.some((message) => message.id === liveId)
+      ? prev.messages.filter((message) => message.id !== liveId)
+      : prev.messages;
     if (
       !runChanged &&
       !activeRunChanged &&
@@ -352,9 +323,7 @@ export function reduceThreadSnapshot(
       };
       const baseActive = prev.activeRuns ?? (prev.run ? [prev.run] : []);
       const activeRuns = [...baseActive.filter((candidate) => candidate.id !== runId), waitingRun];
-      const promoteWaiting =
-        !prev.run ||
-        (prev.run.status !== "waiting_input" && prev.run.status !== "waiting_takeover");
+      const promoteWaiting = prev.run?.status !== "waiting_input";
       return {
         ...prev,
         cursor: event.seq,
@@ -517,48 +486,6 @@ function updateMemberStatus(
   );
 }
 
-export function userHoldsComputerControl(
-  computer: Pick<ComputerStatus, "controlHolder" | "controlBotId"> | null | undefined,
-  botId: string | undefined,
-): boolean {
-  return Boolean(botId && computer?.controlHolder === "user" && computer.controlBotId === botId);
-}
-
-/** True when a live bot run is blocking Take control (API would return 409). */
-export function computerTakeoverBlocked(
-  computer: Pick<ComputerStatus, "busyBotName"> | null | undefined,
-  runStatus?: string | null,
-): boolean {
-  if (!computer?.busyBotName) return false;
-  // waiting_takeover is the bot asking for control; terminal/idle clears the block even if
-  // busyBotName is briefly stale while the executor still holds the lease in finally.
-  if (!runStatus || runStatus === "waiting_takeover") return false;
-  return isActive(runStatus as RunStatus);
-}
-
-export function computerPanelAutoBoot(
-  state: ComputerStatus["state"] | undefined,
-  screenUrl?: string | null,
-): "boot" | "recover-screen" | "wait" {
-  if (state === "booting" || state === "suspended") return "wait";
-  if (state === "running") return screenUrl ? "wait" : "recover-screen";
-  return "boot";
-}
-
-/** Auto panel reconnect must use computer.boot — never computer.recover (that destroys the sandbox). */
-export function computerPanelAutoUsesBoot(
-  action: ReturnType<typeof computerPanelAutoBoot>,
-): boolean {
-  return action === "boot" || action === "recover-screen";
-}
-
-export function computerPanelNeedsMaintenance(
-  state: ComputerStatus["state"] | undefined,
-  booting: boolean,
-): boolean {
-  return !booting && (state === "error" || state === "stopped");
-}
-
 export function reduceComputerStatus(
   prev: ComputerStatus | null,
   event: ProductEvent,
@@ -566,70 +493,14 @@ export function reduceComputerStatus(
   if (!prev) return prev;
   if (!isComputerStatusEvent(event)) return prev;
   if (event.botId !== prev.botId) return prev;
-  if (event.type === "computer.takeover.requested") {
-    const retainedControl = event.payload.retainedControl === true;
-    const next = {
-      ...prev,
-      busyBotName: null,
-      takeoverRequested: true,
-      ...(retainedControl ? {} : { controlHolder: "none" as const, controlBotId: null }),
-    };
-    return prev.busyBotName === next.busyBotName &&
-      prev.takeoverRequested === next.takeoverRequested &&
-      prev.controlHolder === next.controlHolder &&
-      prev.controlBotId === next.controlBotId
-      ? prev
-      : next;
-  }
-  if (event.type === "computer.takeover.granted") {
-    const takeoverRequested = event.payload.takeoverRequested === true;
-    return prev.controlHolder === "user" &&
-      prev.controlBotId === event.botId &&
-      prev.takeoverRequested === takeoverRequested &&
-      prev.busyBotName === null
-      ? prev
-      : {
-          ...prev,
-          controlHolder: "user",
-          controlBotId: event.botId,
-          takeoverRequested,
-          busyBotName: null,
-        };
-  }
-  if (event.type === "computer.takeover.released") {
-    const holder = event.payload.holder;
-    if (holder !== "bot" && holder !== "none") return prev;
-    return prev.controlHolder === holder &&
-      prev.controlBotId === null &&
-      !prev.takeoverRequested &&
-      prev.busyBotName === null
-      ? prev
-      : {
-          ...prev,
-          controlHolder: holder,
-          controlBotId: null,
-          takeoverRequested: false,
-          busyBotName: null,
-        };
-  }
   const status = event.payload.status;
   if (!isComputerState(status)) return prev;
-  const screenAvailable = status === "running" || status === "booting" || prev.screenAvailable;
-  if (status === prev.state && screenAvailable === prev.screenAvailable) return prev;
-  return {
-    ...prev,
-    state: status,
-    screenAvailable,
-  };
+  if (status === prev.state) return prev;
+  return { ...prev, state: status };
 }
 
 export function isComputerStatusEvent(event: ProductEvent): boolean {
-  return (
-    event.type === "computer.status" ||
-    event.type === "computer.takeover.requested" ||
-    event.type === "computer.takeover.granted" ||
-    event.type === "computer.takeover.released"
-  );
+  return event.type === "computer.status";
 }
 
 function isComputerState(value: unknown): value is ComputerStatus["state"] {

@@ -4,26 +4,23 @@ from pathlib import Path
 
 import sqlalchemy as sa
 from alembic import command
-from alembic.script import ScriptDirectory
 
 from omnigent.db.utils import _build_alembic_config, get_or_create_engine
 
 PREVIOUS = "kn2b3c4d5e6f"
-REVISION = "sa1b2c3d4e5f"
 
 
 def _columns(engine: sa.Engine) -> set[str]:
     return {c["name"] for c in sa.inspect(engine).get_columns("scheduled_tasks")}
 
 
-def test_anchor_migration_is_the_head_and_round_trips(tmp_path: Path) -> None:
+def test_anchor_migration_round_trips(tmp_path: Path) -> None:
     uri = f"sqlite:///{tmp_path / 'anchor.db'}"
     engine = get_or_create_engine(uri)
     config = _build_alembic_config(uri)
     with engine.begin() as connection:
         config.attributes["connection"] = connection
         command.upgrade(config, "head")
-        assert ScriptDirectory.from_config(config).get_heads() == [REVISION]
     assert "anchor_at" in _columns(engine)
 
     with engine.begin() as connection:

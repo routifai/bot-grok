@@ -4,15 +4,11 @@ import type {
   CommandRequest,
   ComputerActionRequest,
   ComputerFileEntry,
-  ComputerInput,
   ComputerObservation,
   ComputerRef,
-  ControlLeaseRef,
   PortableFile,
   ProcessEvent,
   SandboxProvider,
-  ScreenRequest,
-  ScreenSession,
 } from "@superchat/adapter-kit";
 import { boundedSandboxCommandTimeoutMs } from "@superchat/core";
 import { sandboxIdleMs } from "./computer-idle.js";
@@ -71,14 +67,11 @@ export class E2BSandboxProvider implements SandboxProvider {
       workspaceDir: E2B_WORKSPACE,
       browserProfilesDir: E2B_BROWSER_PROFILES,
       displayStart: 20,
-      portStart: 6100,
     }),
     run: async (computer, command, context) => {
       const result = await this.runSetupCommand(await this.box(computer), command, context.signal);
       return { code: result.exitCode, stdout: result.stdout, stderr: result.stderr };
     },
-    screenUrl: async (computer, port) =>
-      `https://${(await this.box(computer)).getHost(port)}/vnc.html`,
   });
   private readonly boxes = new Map<string, Sandbox>();
   private readonly connections = new Map<string, Promise<Sandbox>>();
@@ -98,7 +91,6 @@ export class E2BSandboxProvider implements SandboxProvider {
         graphical: true,
         pty: true,
         snapshots: true,
-        takeover: true,
         persistentHome: true,
         multiScreen: true,
       },
@@ -222,30 +214,6 @@ export class E2BSandboxProvider implements SandboxProvider {
       }
       throw error;
     }
-  }
-
-  async connectScreen(
-    computer: ComputerRef,
-    request: ScreenRequest,
-    context: AdapterContext,
-  ): Promise<ScreenSession> {
-    return this.desktops.connectScreen(computer, request, context);
-  }
-  async setScreenControl(
-    computer: ComputerRef,
-    interactive: boolean,
-    context: AdapterContext,
-    controlToken?: string,
-  ): Promise<void> {
-    return this.desktops.setScreenControl(computer, interactive, context, controlToken);
-  }
-  async sendInput(
-    computer: ComputerRef,
-    input: ComputerInput,
-    _lease: ControlLeaseRef,
-    context: AdapterContext,
-  ): Promise<void> {
-    return this.desktops.sendInput(computer, input, context);
   }
   async observe(computer: ComputerRef, context: AdapterContext): Promise<ComputerObservation> {
     return this.desktops.observe(computer, context);

@@ -100,13 +100,6 @@ msgstr "{0} runs · {1} tokens"
 msgid "{0} will still respond to direct mentions."
 msgstr "{0} will still respond to direct mentions."
 
-#. placeholder {0}: computerBot.name
-msgid "{0}'s computer"
-msgstr "{0}'s computer"
-
-msgid "{botName}’s computer"
-msgstr "{botName}’s computer"
-
 msgid "{count, plural, one {# reply} other {# replies}}"
 msgstr "{count, plural, one {# reply} other {# replies}}"
 
@@ -142,9 +135,6 @@ msgstr "{name} stopped"
 
 msgid "{providerLabel} API key"
 msgstr "{providerLabel} API key"
-
-msgid "{remaining} left · bot is watching, not acting"
-msgstr "{remaining} left · bot is watching, not acting"
 
 msgid "{size} B"
 msgstr "{size} B"
@@ -296,17 +286,11 @@ msgstr "Add server"
 msgid "Add server URL"
 msgstr "Add server URL"
 
-msgid "Add step"
-msgstr "Add step"
-
 msgid "Add this computer"
 msgstr "Add this computer"
 
 msgid "Add to Conversation"
 msgstr "Add to Conversation"
-
-msgid "Add to routine"
-msgstr "Add to routine"
 
 msgid "Add Treg"
 msgstr "Add Treg"
@@ -534,13 +518,6 @@ msgstr "Ask me"
 msgid "Ask me anything, or tell me what you're working toward."
 msgstr "Ask me anything, or tell me what you're working toward."
 
-msgid "Ask me first"
-msgstr "Ask me first"
-
-#. placeholder {0}: index + 1
-msgid "Ask me first before step {0}"
-msgstr "Ask me first before step {0}"
-
 msgid "Ask superchat"
 msgstr "Ask superchat"
 
@@ -552,9 +529,6 @@ msgstr "Ask superchat instead"
 
 msgid "Ask the server owner to configure this provider."
 msgstr "Ask the server owner to configure this provider."
-
-msgid "Asleep"
-msgstr "Asleep"
 
 msgid "At"
 msgstr "At"
@@ -638,13 +612,6 @@ msgstr "Bearer token"
 msgid "Bold"
 msgstr "Bold"
 
-msgid "Booting live desktop…"
-msgstr "Booting live desktop…"
-
-#. placeholder {0}: computerBot?.name ?? active?.name
-msgid "Booting up {0}’s computer"
-msgstr "Booting up {0}’s computer"
-
 msgid "bot"
 msgstr "bot"
 
@@ -654,9 +621,6 @@ msgstr "Bot"
 #. js-lingui-explicit-id
 msgid "Bot"
 msgstr "Bot"
-
-msgid "Bot screen"
-msgstr "Bot screen"
 
 msgid "Bot to link"
 msgstr "Bot to link"
@@ -685,9 +649,6 @@ msgstr "Built-in skills can't be edited."
 msgid "Call"
 msgstr "Call"
 
-msgid "Can't connect"
-msgstr "Can't connect"
-
 msgid "Can't reach the server."
 msgstr "Can't reach the server."
 
@@ -711,9 +672,6 @@ msgstr "Card view"
 
 msgid "Change password"
 msgstr "Change password"
-
-msgid "Changes each time"
-msgstr "Changes each time"
 
 msgid "Changing…"
 msgstr "Changing…"
@@ -801,9 +759,6 @@ msgstr "Close"
 msgid "Close chart"
 msgstr "Close chart"
 
-msgid "Close computer"
-msgstr "Close computer"
-
 msgid "Close dashboard"
 msgstr "Close dashboard"
 
@@ -863,21 +818,6 @@ msgstr "Complete"
 
 msgid "Computer"
 msgstr "Computer"
-
-msgid "Computer failed to boot"
-msgstr "Computer failed to boot"
-
-msgid "Computer is asleep"
-msgstr "Computer is asleep"
-
-msgid "Computer is asleep. Open it to wake."
-msgstr "Computer is asleep. Open it to wake."
-
-msgid "Computer is stopped"
-msgstr "Computer is stopped"
-
-msgid "Computer view"
-msgstr "Computer view"
 
 msgid "Configure a plugin catalog on the server to connect apps."
 msgstr "Configure a plugin catalog on the server to connect apps."
@@ -1003,9 +943,6 @@ msgstr "Could not change the default model"
 msgid "Could not change this."
 msgstr "Could not change this."
 
-msgid "Could not check teaching status. Refresh the view to continue."
-msgstr "Could not check teaching status. Refresh the view to continue."
-
 msgid "Could not clear conversation"
 msgstr "Could not clear conversation"
 
@@ -1029,9 +966,6 @@ msgstr "Could not connect this service."
 
 msgid "Could not connect this voice provider"
 msgstr "Could not connect this voice provider"
-
-msgid "Could not connect to the computer screen"
-msgstr "Could not connect to the computer screen"
 
 msgid "Could not continue"
 msgstr "Could not continue"
@@ -1304,17 +1238,11 @@ msgstr "Could not send that"
 msgid "Could not start OAuth"
 msgstr "Could not start OAuth"
 
-msgid "Could not start teaching"
-msgstr "Could not start teaching"
-
 msgid "Could not submit this answer"
 msgstr "Could not submit this answer"
 
 msgid "Could not switch model."
 msgstr "Could not switch model."
-
-msgid "Could not take control"
-msgstr "Could not take control"
 
 msgid "Could not update"
 msgstr "Could not update"
@@ -1609,9 +1537,6 @@ msgstr "Dismissed. Reconnect anytime from MCP settings."
 msgid "Display name"
 msgstr "Display name"
 
-msgid "Do not type passwords into the demo. Use Take control for credentials."
-msgstr "Do not type passwords into the demo. Use Take control for credentials."
-
 msgid "Docker"
 msgstr "Docker"
 
@@ -1646,9 +1571,6 @@ msgstr "Download Executor"
 
 msgid "Downloading…"
 msgstr "Downloading…"
-
-msgid "Draft"
-msgstr "Draft"
 
 msgid "Duplicate"
 msgstr "Duplicate"
@@ -1732,10 +1654,6 @@ msgstr "Every week"
 msgid "Everything I made for you."
 msgstr "Everything I made for you."
 
-#. placeholder {0}: input.name
-msgid "Example for {0}"
-msgstr "Example for {0}"
-
 msgid "Executor token"
 msgstr "Executor token"
 
@@ -1769,9 +1687,6 @@ msgstr "Explore"
 
 msgid "Export"
 msgstr "Export"
-
-msgid "Export this week's list from the CRM and drop it in the shared folder"
-msgstr "Export this week's list from the CRM and drop it in the shared folder"
 
 msgid "Exported by you"
 msgstr "Exported by you"
@@ -1939,9 +1854,6 @@ msgstr "Group updates"
 msgid "Groups"
 msgstr "Groups"
 
-msgid "Hand back to {museName}"
-msgstr "Hand back to {museName}"
-
 msgid "Hang up"
 msgstr "Hang up"
 
@@ -2008,18 +1920,11 @@ msgstr "hour"
 msgid "hours"
 msgstr "hours"
 
-msgid "How I'll know it worked"
-msgstr "How I'll know it worked"
-
 msgid "How often"
 msgstr "How often"
 
 msgid "How superchat works with you"
 msgstr "How superchat works with you"
-
-#. placeholder {0}: index + 1
-msgid "How to tell step {0} worked"
-msgstr "How to tell step {0} worked"
 
 msgid "HTML (source)"
 msgstr "HTML (source)"
@@ -2029,9 +1934,6 @@ msgstr "I ask before doing anything I can't undo."
 
 msgid "I couldn't reach the model provider. Try again."
 msgstr "I couldn't reach the model provider. Try again."
-
-msgid "I couldn't turn that into a skill. Discard it and show me again."
-msgstr "I couldn't turn that into a skill. Discard it and show me again."
 
 msgid "I have an account"
 msgstr "I have an account"
@@ -2044,9 +1946,6 @@ msgstr "I need your API key to think."
 
 msgid "I'll plan, research, draft and follow up in the background, and always ask before anything I can't undo."
 msgstr "I'll plan, research, draft and follow up in the background, and always ask before anything I can't undo."
-
-msgid "I’m done"
-msgstr "I’m done"
 
 msgid "If you heard that, voice is ready."
 msgstr "If you heard that, voice is ready."
@@ -2245,9 +2144,6 @@ msgstr "Listening"
 
 msgid "Listening…"
 msgstr "Listening…"
-
-msgid "Live"
-msgstr "Live"
 
 msgid "Load earlier"
 msgstr "Load earlier"
@@ -2484,10 +2380,6 @@ msgstr "My organization"
 msgid "Name"
 msgstr "Name"
 
-#. placeholder {0}: input.name
-msgid "Name of {0}"
-msgstr "Name of {0}"
-
 msgid "Name this bot"
 msgstr "Name this bot"
 
@@ -2497,14 +2389,8 @@ msgstr "Name this routine"
 msgid "Navigate"
 msgstr "Navigate"
 
-msgid "Needs a restart"
-msgstr "Needs a restart"
-
 msgid "Needs attention"
 msgstr "Needs attention"
-
-msgid "Needs you"
-msgstr "Needs you"
 
 msgid "Never"
 msgstr "Never"
@@ -3071,16 +2957,6 @@ msgstr "Reconnect OAuth"
 msgid "Reconnecting"
 msgstr "Reconnecting"
 
-msgid "Recording may have started, but the view could not refresh"
-msgstr "Recording may have started, but the view could not refresh"
-
-msgid "Recording started. Refresh the view to continue."
-msgstr "Recording started. Refresh the view to continue."
-
-#. placeholder {0}: recording.goal
-msgid "Recording: {0}"
-msgstr "Recording: {0}"
-
 msgid "Recover computer"
 msgstr "Recover computer"
 
@@ -3115,17 +2991,8 @@ msgstr "Reflection"
 msgid "Refresh files"
 msgstr "Refresh files"
 
-msgid "Refresh view"
-msgstr "Refresh view"
-
-msgid "Refreshing…"
-msgstr "Refreshing…"
-
 msgid "Reject"
 msgstr "Reject"
-
-msgid "Release"
-msgstr "Release"
 
 msgid "Release computer"
 msgstr "Release computer"
@@ -3163,10 +3030,6 @@ msgstr "Remove selection"
 #. placeholder {0}: selectedSkill.name
 msgid "Remove skill {0}"
 msgstr "Remove skill {0}"
-
-#. placeholder {0}: index + 1
-msgid "Remove step {0}"
-msgstr "Remove step {0}"
 
 msgid "Remove webhook"
 msgstr "Remove webhook"
@@ -3284,14 +3147,8 @@ msgstr "Retry"
 msgid "Retry now"
 msgstr "Retry now"
 
-msgid "Retry screen"
-msgstr "Retry screen"
-
 msgid "Return to superchat"
 msgstr "Return to superchat"
-
-msgid "Review"
-msgstr "Review"
 
 msgid "Revoke"
 msgstr "Revoke"
@@ -3388,9 +3245,6 @@ msgstr "Say something. Silence sends it."
 
 msgid "Say yes or no, or answer in a sentence."
 msgstr "Say yes or no, or answer in a sentence."
-
-msgid "Screen"
-msgstr "Screen"
 
 msgid "Search"
 msgstr "Search"
@@ -3679,9 +3533,6 @@ msgstr "Spent this month"
 msgid "Start it, and {0} works on it in the background."
 msgstr "Start it, and {0} works on it in the background."
 
-msgid "Start recording"
-msgstr "Start recording"
-
 msgid "Start with"
 msgstr "Start with"
 
@@ -3700,10 +3551,6 @@ msgstr "Starting…"
 msgid "Status"
 msgstr "Status"
 
-#. placeholder {0}: index + 1
-msgid "Step {0}"
-msgstr "Step {0}"
-
 msgid "Steps"
 msgstr "Steps"
 
@@ -3715,9 +3562,6 @@ msgstr "Stop"
 
 msgid "Stop speaking"
 msgstr "Stop speaking"
-
-msgid "Stop teaching"
-msgstr "Stop teaching"
 
 #. js-lingui-explicit-id
 msgid "Stopped."
@@ -3794,20 +3638,8 @@ msgstr "Switching…"
 msgid "System"
 msgstr "System"
 
-msgid "Taught"
-msgstr "Taught"
-
-msgid "Teach a task"
-msgstr "Teach a task"
-
-msgid "Teaching in progress. Stop teaching before sending a new message."
-msgstr "Teaching in progress. Stop teaching before sending a new message."
-
 msgid "Team"
 msgstr "Team"
-
-msgid "Team Computer"
-msgstr "Team Computer"
 
 msgid "Team conversations"
 msgstr "Team conversations"
@@ -3817,9 +3649,6 @@ msgstr "Teams message"
 
 msgid "Teams not enabled"
 msgstr "Teams not enabled"
-
-msgid "Test"
-msgstr "Test"
 
 msgid "Test run"
 msgstr "Test run"
@@ -3869,9 +3698,6 @@ msgstr "Things I do for you on a schedule."
 msgid "Thinking"
 msgstr "Thinking"
 
-msgid "This bot runs on this computer, not a Linux desktop. Shell and files use your home folder."
-msgstr "This bot runs on this computer, not a Linux desktop. Shell and files use your home folder."
-
 msgid "This can't be undone."
 msgstr "This can't be undone."
 
@@ -3900,9 +3726,6 @@ msgstr "This deletes all {0} versions of this artifact. This can't be undone."
 #. placeholder {0}: pendingDelete.versionCount
 msgid "This deletes all {0} versions of this. This can't be undone."
 msgstr "This deletes all {0} versions of this. This can't be undone."
-
-msgid "This draft is from an earlier version"
-msgstr "This draft is from an earlier version"
 
 msgid "This file is not valid UTF-8 text."
 msgstr "This file is not valid UTF-8 text."
@@ -4154,9 +3977,6 @@ msgstr "Waiting on you"
 msgid "Waiting…"
 msgstr "Waiting…"
 
-msgid "Watching you work…"
-msgstr "Watching you work…"
-
 msgid "Webhook"
 msgstr "Webhook"
 
@@ -4196,9 +4016,6 @@ msgstr "What do you want to look at?"
 msgid "What I do on my own, in the background."
 msgstr "What I do on my own, in the background."
 
-msgid "What result will you demonstrate?"
-msgstr "What result will you demonstrate?"
-
 #. placeholder {0}: target.id
 msgid "What should change in {0}?"
 msgstr "What should change in {0}?"
@@ -4221,8 +4038,8 @@ msgstr "What we talked about"
 msgid "When a webhook fires"
 msgstr "When a webhook fires"
 
-msgid "When I do something you'll want again, I'll offer to save it. You can also teach me on my computer, or paste steps and ask me to keep them."
-msgstr "When I do something you'll want again, I'll offer to save it. You can also teach me on my computer, or paste steps and ask me to keep them."
+msgid "When I do something you'll want again, I'll offer to save it. You can also paste steps and ask me to keep them."
+msgstr "When I do something you'll want again, I'll offer to save it. You can also paste steps and ask me to keep them."
 
 msgid "When I need a decision or an answer, it'll show up here."
 msgstr "When I need a decision or an answer, it'll show up here."
@@ -4273,12 +4090,6 @@ msgstr "Working…"
 msgid "Workspace"
 msgstr "Workspace"
 
-msgid "Writing the draft…"
-msgstr "Writing the draft…"
-
-msgid "Writing…"
-msgstr "Writing…"
-
 msgid "Yesterday"
 msgstr "Yesterday"
 
@@ -4299,9 +4110,6 @@ msgstr "You changed {changedCount} cells on {sheetName}. superchat sees this bef
 
 msgid "You changed 1 cell on {sheetName}. superchat sees this before its next reply."
 msgstr "You changed 1 cell on {sheetName}. superchat sees this before its next reply."
-
-msgid "You have control"
-msgstr "You have control"
 
 msgid "You said, {when}"
 msgstr "You said, {when}"

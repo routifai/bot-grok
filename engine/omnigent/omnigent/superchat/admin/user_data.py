@@ -75,8 +75,6 @@ USER_DATA: dict[str, Rule] = {
     "artifacts": Direct(),
     "artifact_publications": Direct(),
     "objectives": Direct(),
-    "computer_recordings": Direct(),
-    "taught_skills": Direct(),
     "memory_claims": Direct(),
     "memory_upkeep_runs": Direct(),
     "approval_rules": Direct(),
@@ -89,10 +87,8 @@ USER_DATA: dict[str, Rule] = {
     "daily_notes": Direct("owner"),
     # -- rows that hang off those, with no foreign key ------------------------------------
     "artifact_views": Child("artifact_publications", "slug", "slug"),
-    "taught_skill_versions": Child("taught_skills", "skill_id", "id"),
     "objective_tasks": Child("objectives", "objective_id", "id"),
     "objective_proposals": Child("objectives", "objective_id", "id"),
-    "recording_keyframes": Child("computer_recordings", "recording_id", "id"),
     "scheduled_task_runs": Child("scheduled_tasks", "scheduled_task_id", "id"),
     # -- removed by dedicated steps in delete_user ----------------------------------------
     "users": Handled("the account itself, deleted last by the account store"),

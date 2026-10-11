@@ -6,9 +6,6 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { brotliCompressSync, gzipSync } from "node:zlib";
 import { serve } from "@hono/node-server";
-import { abortableDelay } from "@superchat/core";
-import { loadRootEnv } from "@superchat/core/node/load-root-env";
-import { createThreadMessage, type PrismaClient } from "@superchat/db";
 import {
   type CDPSession,
   type ElectronApplication,
@@ -16,6 +13,9 @@ import {
   expect,
   type Page,
 } from "@playwright/test";
+import { abortableDelay } from "@superchat/core";
+import { loadRootEnv } from "@superchat/core/node/load-root-env";
+import { createThreadMessage, type PrismaClient } from "@superchat/db";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import type { createApp } from "../../../../apps/api/src/app.ts";
 import {
@@ -165,7 +165,6 @@ function performanceEnvironment(databaseUrl: string): NodeJS.ProcessEnv {
     BETTER_AUTH_SECRET: "superchat-benchmark-auth-secret-over-32-characters",
     ENCRYPTION_KEY: "superchat-benchmark-encryption-key-over-32-characters",
     SANDBOX_SUPERVISOR_TOKEN: "superchat-benchmark-supervisor-token-over-32-characters",
-    SCREEN_PROXY_SECRET: "superchat-benchmark-screen-proxy-secret-over-32-characters",
     BETTER_AUTH_URL: webOrigin,
     WEB_ORIGIN: webOrigin,
     API_PORT: String(apiPort),
@@ -518,8 +517,9 @@ async function measureInteractions(app: ElectronApplication, page: Page) {
     const target = document.querySelector<HTMLInputElement>('input[placeholder^="Message "]');
     if (!target) throw new Error("Composer is missing");
     const samples: number[] = [];
-    (window as typeof window & { __superchatKeyPaintSamples?: number[] }).__superchatKeyPaintSamples =
-      samples;
+    (
+      window as typeof window & { __superchatKeyPaintSamples?: number[] }
+    ).__superchatKeyPaintSamples = samples;
     target.addEventListener("keydown", () => {
       const started = performance.now();
       requestAnimationFrame(() => samples.push(performance.now() - started));
@@ -528,13 +528,14 @@ async function measureInteractions(app: ElectronApplication, page: Page) {
   await page.keyboard.type("a".repeat(characterCount), { delay: 16 });
   await page.waitForFunction(
     (count) =>
-      ((window as typeof window & { __superchatKeyPaintSamples?: number[] }).__superchatKeyPaintSamples
-        ?.length ?? 0) >= count,
+      ((window as typeof window & { __superchatKeyPaintSamples?: number[] })
+        .__superchatKeyPaintSamples?.length ?? 0) >= count,
     characterCount,
   );
   const keyPaintMs = await page.evaluate(
     () =>
-      (window as typeof window & { __superchatKeyPaintSamples?: number[] }).__superchatKeyPaintSamples ?? [],
+      (window as typeof window & { __superchatKeyPaintSamples?: number[] })
+        .__superchatKeyPaintSamples ?? [],
   );
   const typingAfter = await cdpMetrics(session);
 

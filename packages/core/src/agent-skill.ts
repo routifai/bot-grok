@@ -1,7 +1,6 @@
 /**
  * Claude Agent Skills: reusable SKILL.md recipes shared across assistants.
  * The Pi runtime already understands this format; we persist and inject them.
- * Distinct from taught skills (demo/record playbooks on a single bot).
  */
 
 const FRONTMATTER_FENCE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;

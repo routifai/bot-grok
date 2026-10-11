@@ -716,11 +716,9 @@ and every turn runs inside it (CONTEXT.md, [ADR 0004](../adr/0004-engine-owns-th
   still there. For a provider without this flag, a recreate stores an `info`-level `workspace_reset`
   notice in the chat (see [Errors and notices](#9-errors-and-notices)). Setup and the shared-path
   rule are in [RUNNERS.md](RUNNERS.md).
-- **Screen routes** (`engine/omnigent/omnigent/superchat/computer/routes.py`):
-  `GET /v1/sessions/{id}/computer` (`{available, in_control, ready}`),
-  `POST .../computer/screen` `{interactive}` (a view URL, or a control token to **take over**),
-  `POST .../computer/release` (hand back), `POST .../computer/recording` (`start` or `stop`, used
-  to teach a Skill). Superchat relays the screen stream through its same-origin proxy.
+- **Status route** (`engine/omnigent/omnigent/superchat/computer/routes.py`):
+  `GET /v1/sessions/{id}/computer` (`{ready, launch}`): whether the Conversation's runner is
+  connected, and how the managed launch is going while it is in flight or failed.
 - **Files and artifacts.** The Muse saves deliverables with the `artifact_save` tool. The engine
   stores them (`/v1/artifacts`, `engine/omnigent/omnigent/superchat/artifacts/`): a name that exists
   gets a new version. Allowed kinds are `html`, `md`, `pdf`, `docx`, `xlsx`, `csv`, `pptx`, `png`,
@@ -852,10 +850,7 @@ engine's (Superchat sends the person's email, a proxy secret, and a tenant heade
 | POST | `/sessions/{id}/memory/remember` | Save a claim |
 | POST | `/sessions/{id}/memory/forget` | Forget a claim (`confirm` to execute) |
 | GET / PUT | `/me/daily-notes`, `/me/daily-notes/{date}` | List, read and edit daily notes |
-| GET | `/sessions/{id}/computer` | Is there a screen, is a person in control, is the runner ready |
-| POST | `/sessions/{id}/computer/screen` | View URL, or take over (`interactive: true`) |
-| POST | `/sessions/{id}/computer/release` | Hand the screen back |
-| POST | `/sessions/{id}/computer/recording` | Start or stop a teaching recording |
+| GET | `/sessions/{id}/computer` | Is the runner ready, and how is the launch going |
 | POST / GET | `/artifacts`, `/artifacts/{id}`, `/artifacts/{id}/content` | Save and read deliverable files |
 | GET | `/me/asks` | Open Asks |
 | POST | `/me/asks/{ask_id}/answer` | Answer an Ask |
@@ -864,7 +859,7 @@ engine's (Superchat sends the person's email, a proxy secret, and a tenant heade
 | GET / PUT | `/me/archiving` | Per-person auto-archive setting (section 8) |
 
 Other routes registered by the same features, not covered here: `/objectives` (Goals), `/me/feed`,
-`/me/topics`, `/suggestions` (Ideas), `/taught-skills` (Skills), `/me/vault`, `/me/approval-rules`,
+`/me/topics`, `/suggestions` (Ideas), `/me/vault`, `/me/approval-rules`,
 `/me/approval-settings`, `/cards/schemas`, `/me/proactivity`.
 
 ## 11. Settings

@@ -133,7 +133,7 @@ vi.mock("@superchat/ui-web", () => {
     museAvatarState: (status: string | undefined, waitingCount: number | undefined) => {
       if ((waitingCount ?? 0) > 0) return "waiting";
       if (status === "queued" || status === "leased") return "thinking";
-      if (status === "running" || status === "waiting_input" || status === "waiting_takeover") {
+      if (status === "running" || status === "waiting_input") {
         return "working";
       }
       return "idle";
@@ -142,7 +142,7 @@ vi.mock("@superchat/ui-web", () => {
 });
 
 // Stubs: every module below is presentational chrome not under test here
-// (settings panels, dialogs, teach overlays, message cards, ...). Each export
+// (settings panels, dialogs, message cards, ...). Each export
 // becomes either a component rendering nothing or a harmless no-op function.
 function Stub() {
   return null;
@@ -160,15 +160,6 @@ vi.mock("../features/computer/ComputerMaintenanceActions", () => ({
 }));
 vi.mock("../features/computer/ComputerUpdateProgress", () => ({ ComputerUpdateProgress: Stub }));
 vi.mock("../components/MessageHoverMetadata", () => ({ MessageHoverMetadata: Stub }));
-vi.mock("../features/skills/teach/SkillDraftCard", () => ({ SkillDraftCard: Stub }));
-vi.mock("../features/skills/teach/TeachCaptureOverlay", () => ({ TeachCaptureOverlay: Stub }));
-vi.mock("../features/skills/teach/TeachComputerOverlay", () => ({
-  TeachComputerOverlayControl: Stub,
-}));
-vi.mock("../features/skills/teach/TeachRecordingChrome", () => ({
-  TeachRecordingChrome: Stub,
-  TeachStopButton: Stub,
-}));
 vi.mock("./muse/sheets/DockSheets", () => ({ DockSheets: Stub }));
 vi.mock("./GroupPanel", () => ({
   GroupSettings: Stub,

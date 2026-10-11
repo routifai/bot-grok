@@ -97,8 +97,6 @@ class SandboxCapabilities:
     :param screen: Provider can serve a viewable (and, on request, interactive) screen of the
         sandbox — :meth:`~omnigent.onboarding.sandboxes.base.SandboxLifecycle.screen_url` and
         :meth:`~omnigent.onboarding.sandboxes.base.SandboxLifecycle.release_control`.
-    :param recording: Provider can record what a person does on the sandbox's browser as semantic
-        actions plus keyframes (:class:`~omnigent.onboarding.sandboxes.recording.RecordingMixin`).
     """
 
     cli_bootstrap: bool = False
@@ -116,7 +114,6 @@ class SandboxCapabilities:
     multi_repo: bool = False
     git_clone_options: bool = False
     screen: bool = False
-    recording: bool = False
 
 
 @dataclass(frozen=True)

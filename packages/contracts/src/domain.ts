@@ -611,10 +611,6 @@ export const ComputerStatusSchema = z.object({
   mode: ComputerModeSchema,
   kind: SandboxKind,
   state: z.enum(["stopped", "booting", "running", "suspended", "error"]),
-  controlHolder: z.enum(["bot", "user", "none"]),
-  controlBotId: Id.nullable(),
-  takeoverRequested: z.boolean(),
-  screenAvailable: z.boolean(),
   /** The Conversation's runner is connected (Files and tools can reach it); absent when unknown. */
   runnerReady: z.boolean().optional(),
   /** Where the Computer's start-up is, while the engine is launching it or it failed; absent
@@ -622,16 +618,11 @@ export const ComputerStatusSchema = z.object({
   launch: z
     .object({ stage: z.enum(["provisioning", "cloning", "starting", "connecting", "failed"]) })
     .optional(),
-  screenWidth: z.number().int().positive(),
-  screenHeight: z.number().int().positive(),
   homeRevision: z.string().nullable(),
   busyBotName: z.string().nullable(),
   canUpdate: z.boolean(),
 });
 export type ComputerStatus = z.infer<typeof ComputerStatusSchema>;
-
-export const ComputerReleaseReasonSchema = z.enum(["done", "skipped"]);
-export type ComputerReleaseReason = z.infer<typeof ComputerReleaseReasonSchema>;
 
 export const MessagingLinkedIdentitySchema = z.object({
   id: Id,
@@ -689,7 +680,6 @@ export const RunSchema = z.object({
     "follow_up",
     "reaction",
     "spawn",
-    "skill",
     "bot_message",
     "webhook",
     "messaging",

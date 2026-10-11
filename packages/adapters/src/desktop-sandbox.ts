@@ -19,14 +19,10 @@ import type {
   CommandRequest,
   ComputerActionRequest,
   ComputerFileEntry,
-  ComputerInput,
   ComputerRef,
-  ControlLeaseRef,
   PortableFile,
   ProcessEvent,
   SandboxProvider,
-  ScreenRequest,
-  ScreenSession,
 } from "@superchat/adapter-kit";
 import { boundedSandboxCommandTimeoutMs } from "@superchat/core";
 import {
@@ -72,7 +68,6 @@ export class DesktopSandboxProvider implements SandboxProvider {
         graphical: false,
         pty: true,
         snapshots: true,
-        takeover: false,
         persistentHome: true,
         multiScreen: false,
       },
@@ -146,29 +141,6 @@ export class DesktopSandboxProvider implements SandboxProvider {
     if (result.stderr) yield { type: "stderr", data: result.stderr };
     yield { type: "exit", code: result.code };
   }
-
-  async connectScreen(
-    computer: ComputerRef,
-    _request: ScreenRequest,
-    _context: AdapterContext,
-  ): Promise<ScreenSession> {
-    return {
-      url: `desktop://screen/${computer.id}`,
-      mimeType: "text/plain",
-      close: async () => undefined,
-    };
-  }
-
-  async sendInput(
-    computer: ComputerRef,
-    input: ComputerInput,
-    _lease: ControlLeaseRef,
-    _context: AdapterContext,
-  ): Promise<void> {
-    const box = this.boxFor(computer);
-    if (box) applyPlaceholderAction(box, input);
-  }
-
   async observe(computer: ComputerRef) {
     return placeholderObservation(this.requiredBox(computer).screen);
   }

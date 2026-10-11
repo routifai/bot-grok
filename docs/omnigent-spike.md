@@ -41,7 +41,7 @@ untouched and still the default.
   `packages/adapters/src/omnigent/context-provider.ts` (`composeOmnigentContext`), reusing the
   same builders the existing engine uses: the static Muse voice/reply/goals instructions
   (`packages/adapters/src/executor/run-prompt.ts`), durable memory (`memory-context.ts`),
-  scratchpad, active Goals, ranked past episodes, taught/agent skills, and the current date/time
+  scratchpad, active Goals, ranked past episodes, agent skills, and the current date/time
   in the person's timezone. Everything is redacted with the same `redactSecrets` the executor
   uses, and capped at 48 KB total.
 - **Scope isolation** — Omnigent sets a session label `superchat.scope`. Only `"private"` gets the full

@@ -9,20 +9,17 @@ import type { Pool, PrismaClient, ThreadEvents } from "@superchat/db";
 import { getLogger } from "@superchat/logging";
 import type { PoolClient } from "pg";
 import { returnBotMessageOutcome } from "./bot-messages.js";
-import { scheduleComputerControlExpiry } from "./computer-control.js";
 import { isUserProgressClientNonce } from "./user-progress.js";
 
 const DEFAULT_INTERVAL_MS = 30_000;
 const DEFAULT_BATCH_SIZE = 100;
 const ROUTINE_LOOKAHEAD_MS = 60_000;
-const CONTROL_LOOKAHEAD_MS = 60_000;
 // Two keys give Superchat's lock a namespace without relying on a hash that might collide
 // with an application using the one-key advisory-lock API.
 const RECONCILIATION_LOCK_NAMESPACE = 1_380_019_075;
 const RECONCILIATION_LOCK_ID = 1;
 
 type Cursor = { at: Date; id: string };
-type ControlCursor = { at: Date | null; id: string };
 
 export interface ReconciliationLeadership {
   tryAcquire(): Promise<boolean>;
@@ -115,8 +112,6 @@ export function createJobReconciler(
   let reconciling: Promise<void> | undefined;
   let runCursor: Cursor | undefined;
   let routineCursor: Cursor | undefined;
-  let controlCursor: ControlCursor | undefined;
-  let controlScanDeadline: Date | undefined;
 
   const reconcileOnce = async () => {
     if (reconciling) return reconciling;
@@ -134,7 +129,6 @@ export function createJobReconciler(
       }
 
       const now = new Date();
-      controlScanDeadline ??= new Date(now.getTime() + CONTROL_LOOKAHEAD_MS);
       const runCursorFilter = runCursor
         ? {
             OR: [
@@ -151,21 +145,7 @@ export function createJobReconciler(
             ],
           }
         : undefined;
-      const controlCursorFilter = controlCursor
-        ? controlCursor.at
-          ? {
-              OR: [
-                { controlLeaseExpiresAt: { gt: controlCursor.at } },
-                {
-                  controlLeaseExpiresAt: controlCursor.at,
-                  id: { gt: controlCursor.id },
-                },
-                { controlLeaseExpiresAt: null },
-              ],
-            }
-          : { controlLeaseExpiresAt: null, id: { gt: controlCursor.id } }
-        : undefined;
-      const [runs, routines, controls, dueOutbound, unmirroredMessagingRuns] = await Promise.all([
+      const [runs, routines, dueOutbound, unmirroredMessagingRuns] = await Promise.all([
         deps.prisma.run.findMany({
           where: {
             AND: [
@@ -198,32 +178,6 @@ export function createJobReconciler(
           orderBy: [{ nextRunAt: "asc" }, { id: "asc" }],
           take: batchSize,
           select: { id: true, nextRunAt: true },
-        }),
-        deps.prisma.computer.findMany({
-          where: {
-            AND: [
-              { controlLeaseId: { not: null } },
-              {
-                OR: [
-                  { controlLeaseExpiresAt: null },
-                  {
-                    controlLeaseExpiresAt: {
-                      lte: controlScanDeadline,
-                    },
-                  },
-                ],
-              },
-              ...(controlCursorFilter ? [controlCursorFilter] : []),
-            ],
-          },
-          orderBy: [{ controlLeaseExpiresAt: "asc" }, { id: "asc" }],
-          take: batchSize,
-          select: {
-            id: true,
-            controlBotId: true,
-            controlLeaseId: true,
-            controlLeaseExpiresAt: true,
-          },
         }),
         deps.prisma.messagingOutbound.findFirst({
           where: {
@@ -307,18 +261,6 @@ export function createJobReconciler(
             ? [deps.jobs.enqueue(routineWakeupJob(routine.id, routine.nextRunAt))]
             : [],
         ),
-        ...controls.flatMap((computer) =>
-          computer.controlLeaseId
-            ? [
-                scheduleComputerControlExpiry(
-                  deps.jobs,
-                  computer.id,
-                  computer.controlLeaseId,
-                  computer.controlLeaseExpiresAt ?? now,
-                ),
-              ]
-            : [],
-        ),
         ...(dueOutbound ? [deps.jobs.enqueue(messagingDeliverJob())] : []),
         ...unmirroredMessagingRuns.map((run) => deps.jobs.enqueue(messagingDeliverJob(run.id))),
       ]);
@@ -333,12 +275,6 @@ export function createJobReconciler(
         routines.length === batchSize && lastRoutine?.nextRunAt
           ? { at: lastRoutine.nextRunAt, id: lastRoutine.id }
           : undefined;
-      const lastControl = controls.at(-1);
-      controlCursor =
-        controls.length === batchSize && lastControl
-          ? { at: lastControl.controlLeaseExpiresAt, id: lastControl.id }
-          : undefined;
-      if (!controlCursor) controlScanDeadline = undefined;
     })().finally(() => {
       reconciling = undefined;
     });

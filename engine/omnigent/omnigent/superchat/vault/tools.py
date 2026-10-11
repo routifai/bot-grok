@@ -73,7 +73,7 @@ class VaultFillTool(_VaultTool):
     _DESC = (
         "Fill a login field in the Computer's browser from a saved login. Find the field's ref "
         "with browser_snapshot. Works only on the site the login was saved for. Codes (2FA, "
-        "CAPTCHA) cannot be filled: ask the person to take over."
+        "CAPTCHA) cannot be filled: tell the person and stop."
     )
     _PROPERTIES = {
         "name": {"type": "string", "description": "The saved login's name."},

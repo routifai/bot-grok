@@ -294,9 +294,7 @@ export async function archiveBot(
     });
     await expireComputerExecutionLeases(tx, { botId: bot.id });
     await tx.computer.updateMany({
-      where: {
-        OR: [{ controlBotId: bot.id }, { executionBotId: bot.id }],
-      },
+      where: { executionBotId: bot.id },
       data: releasedComputerLease(),
     });
     if (dedicated) {
@@ -385,7 +383,7 @@ export async function destroyBot(
       await tx.computer.updateMany({
         where: {
           ...(dedicated ? { id: { not: dedicated.id } } : {}),
-          OR: [{ controlBotId: bot.id }, { executionBotId: bot.id }],
+          executionBotId: bot.id,
         },
         data: releasedComputerLease(),
       });
@@ -566,11 +564,6 @@ function archivedMemoryDirectory(name: string, botId: string) {
 
 function releasedComputerLease() {
   return {
-    controlHolder: "none" as const,
-    controlLeaseId: null,
-    controlLeaseExpiresAt: null,
-    controlBotId: null,
-    controlRunId: null,
     executionRunId: null,
     executionBotId: null,
     executionLeaseExpiresAt: null,

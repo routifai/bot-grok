@@ -11,13 +11,7 @@ export interface MuseStateRun {
 
 // When more than one run is active at once (only really happens in a group thread),
 // the "most alive" status wins — that is what the face should reflect.
-const RUN_STATUS_PRIORITY: readonly string[] = [
-  "running",
-  "waiting_input",
-  "waiting_takeover",
-  "leased",
-  "queued",
-];
+const RUN_STATUS_PRIORITY: readonly string[] = ["running", "waiting_input", "leased", "queued"];
 
 function dominantRunStatus(runs: readonly MuseStateRun[]): string | undefined {
   for (const status of RUN_STATUS_PRIORITY) {

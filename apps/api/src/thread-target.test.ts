@@ -287,7 +287,7 @@ describe("threadSnapshot", () => {
           threadId: "thread-1",
           trigger: { not: "bot_message" },
           status: {
-            in: ["queued", "leased", "running", "waiting_input", "waiting_takeover", "failed"],
+            in: ["queued", "leased", "running", "waiting_input", "failed"],
           },
         }),
       }),
@@ -297,7 +297,7 @@ describe("threadSnapshot", () => {
         where: {
           botId: "bot-1",
           threadId: "thread-1",
-          status: { in: ["waiting_input", "waiting_takeover"] },
+          status: "waiting_input",
         },
       }),
     );
@@ -460,7 +460,7 @@ describe("threadSnapshot", () => {
       expect.objectContaining({
         where: expect.objectContaining({
           status: {
-            in: ["queued", "leased", "running", "waiting_input", "waiting_takeover", "failed"],
+            in: ["queued", "leased", "running", "waiting_input", "failed"],
           },
         }),
       }),
@@ -501,11 +501,8 @@ describe("threadSnapshot", () => {
       expect.objectContaining({
         where: {
           threadId: "thread-1",
-          status: { in: ["queued", "leased", "running", "waiting_input", "waiting_takeover"] },
-          OR: [
-            { trigger: { not: "bot_message" } },
-            { status: { in: ["waiting_input", "waiting_takeover"] } },
-          ],
+          status: { in: ["queued", "leased", "running", "waiting_input"] },
+          OR: [{ trigger: { not: "bot_message" } }, { status: "waiting_input" }],
         },
       }),
     );
@@ -555,11 +552,8 @@ describe("threadSnapshot", () => {
     expect(findManyRuns).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          OR: [
-            { trigger: { not: "bot_message" } },
-            { status: { in: ["waiting_input", "waiting_takeover"] } },
-          ],
-          status: { in: ["queued", "leased", "running", "waiting_input", "waiting_takeover"] },
+          OR: [{ trigger: { not: "bot_message" } }, { status: "waiting_input" }],
+          status: { in: ["queued", "leased", "running", "waiting_input"] },
         }),
       }),
     );
@@ -877,7 +871,7 @@ function matchesPeerActiveFilter(
   where:
     | {
         trigger?: { not?: string };
-        OR?: Array<{ trigger?: { not?: string }; status?: { in?: string[] } }>;
+        OR?: Array<{ trigger?: { not?: string }; status?: string | { in?: string[] } }>;
       }
     | undefined,
 ) {
@@ -885,6 +879,7 @@ function matchesPeerActiveFilter(
   if (!where?.OR) return true;
   return where.OR.some((clause) => {
     if (clause.trigger?.not === "bot_message") return row.trigger !== "bot_message";
+    if (typeof clause.status === "string") return clause.status === row.status;
     if (clause.status?.in) return clause.status.in.includes(row.status ?? "");
     return false;
   });
@@ -901,12 +896,13 @@ function botRunFindFirst(
   return vi.fn().mockImplementation(
     async (args: {
       where?: {
-        status?: { in?: string[] };
+        status?: string | { in?: string[] };
         trigger?: { not?: string };
       };
       select?: { id?: boolean };
     }) => {
-      const statuses = args.where?.status?.in;
+      const status = args.where?.status;
+      const statuses = typeof status === "string" ? [status] : status?.in;
       const matched = rows
         .filter((row) => !statuses || statuses.includes(row.status))
         .filter((row) =>
@@ -929,7 +925,7 @@ function groupRunFindMany(input: { active?: unknown[]; terminals?: unknown[] }) 
       where?: {
         status?: { in?: string[] };
         trigger?: { not?: string };
-        OR?: Array<{ trigger?: { not?: string }; status?: { in?: string[] } }>;
+        OR?: Array<{ trigger?: { not?: string }; status?: string | { in?: string[] } }>;
       };
     }) => {
       const rows = isTerminalRunQuery(args.where) ? (input.terminals ?? []) : (input.active ?? []);
@@ -1495,85 +1491,6 @@ describe("sendThreadMessage", () => {
     expect(enqueue).not.toHaveBeenCalled();
   });
 
-  it("steers a waiting-takeover run instead of refusing the message", async () => {
-    const tx = {
-      thread: {
-        update: vi
-          .fn()
-          .mockResolvedValueOnce({ nextMessageSeq: 2 })
-          .mockResolvedValueOnce({ nextEventSeq: 3 }),
-      },
-      message: {
-        create: vi.fn().mockResolvedValue({
-          id: "msg-1",
-          threadId: "thread-1",
-          seq: 1,
-          role: "user",
-          blocks: [{ kind: "text", text: "skip that" }],
-          botId: null,
-          replyToMessageId: null,
-          runId: null,
-          createdAt: new Date(),
-        }),
-        update: vi.fn(),
-      },
-      run: {
-        findMany: vi
-          .fn()
-          .mockResolvedValue([{ id: "run-waiting", taskId: "task-1", status: "waiting_takeover" }]),
-        findUnique: vi.fn().mockResolvedValue({
-          status: "waiting_takeover",
-          startedAt: new Date(),
-        }),
-      },
-      steeringMessage: { create: vi.fn() },
-      event: { create: vi.fn().mockResolvedValue({ seq: 2 }) },
-      task: { create: vi.fn() },
-    };
-    const prisma = {
-      message: { findUnique: vi.fn().mockResolvedValue(null) },
-      $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
-    } as unknown as PrismaClient;
-    const actor = { spaceId: "workspace-1", userId: "user-1" } as Actor;
-    const target = {
-      kind: "bot",
-      botId: "bot-1",
-      threadId: "thread-1",
-      bot: { computer: null },
-    } as ThreadTarget;
-    const enqueue = vi.fn().mockResolvedValue(undefined);
-
-    await expect(
-      sendThreadMessage(
-        {
-          prisma,
-          events: { notify: vi.fn().mockResolvedValue(undefined) } as never,
-          jobs: { enqueue } as never,
-        },
-        actor,
-        target,
-        {
-          text: "skip that",
-          clientNonce: "nonce-takeover",
-        },
-      ),
-    ).resolves.toMatchObject({
-      runId: "run-waiting",
-      taskId: "task-1",
-      seq: 1,
-      runIds: ["run-waiting"],
-    });
-    expect(tx.steeringMessage.create).toHaveBeenCalledWith({
-      data: {
-        messageId: "msg-1",
-        botId: "bot-1",
-        userId: "user-1",
-        runId: "run-waiting",
-      },
-    });
-    expect(tx.task.create).not.toHaveBeenCalled();
-    expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ name: "run.continue" }));
-  });
   it("keeps a message pending instead of steering into an active routine run", async () => {
     let messageSeq = 0;
     let eventSeq = 0;

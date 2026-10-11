@@ -139,28 +139,6 @@ describePostgres("quarantine of a used space (PostgreSQL, fake sandbox)", () => 
     await prisma.$executeRaw`DELETE FROM email_quota WHERE key LIKE ${`%-${tag}`}`;
   });
 
-  it("bumps screen generations in one transaction with the detach, so old links die even after a restore", async () => {
-    const { id, spaceId } = await usedAccount("screens");
-    const botId = `screen-bot-${tag}`;
-    await prisma.bot
-      .create({
-        data: { id: botId, spaceId, userId: id, name: "Superchat", screenGeneration: 3 } as never,
-      })
-      .catch(() => undefined);
-    const before = await prisma.computer.findFirstOrThrow({ where: { spaceId } });
-    await quarantineUserSpaces(prisma, id);
-    const after = await prisma.computer.findFirstOrThrow({ where: { spaceId } });
-    expect(after.screenGeneration).toBe(before.screenGeneration + 1);
-    expect(after.screenUrl).toBeNull();
-    const bot = await prisma.bot.findUnique({ where: { id: botId } });
-    if (bot) expect(bot.screenGeneration).toBe(4);
-    await restoreQuarantinedSpaces(prisma, id);
-    const restored = await prisma.computer.findFirstOrThrow({ where: { spaceId } });
-    expect(restored.screenGeneration).toBe(after.screenGeneration);
-    const user = await prisma.user.findUniqueOrThrow({ where: { id } });
-    expect(user.engineQuarantinePaused).toBe(true);
-  });
-
   it("lets only one of restore and purge win a quarantined space", async () => {
     const a = await usedAccount("race-a");
     await quarantineUserSpaces(prisma, a.id);

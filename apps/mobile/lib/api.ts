@@ -792,8 +792,6 @@ export type MobileSnapshot = {
   members?: MobileGroup["members"];
   computer?: {
     state: string;
-    controlHolder: string;
-    screenAvailable: boolean;
     mode: ComputerMode;
     busyBotName: string | null;
   };
@@ -959,8 +957,8 @@ export function applyMobileThreadEvent(
       activeRuns: [],
     };
   }
-  if (event.type === "run.waiting_input" || event.type === "computer.takeover.requested") {
-    const status = event.type === "run.waiting_input" ? "waiting_input" : "waiting_takeover";
+  if (event.type === "run.waiting_input") {
+    const status = "waiting_input";
     const progressId = progressMessageId(event);
     // Waiting pauses drop live progress server-side; clear a leftover bubble so
     // the waiting footer is not hidden behind a stale "Working…" row.
@@ -972,20 +970,15 @@ export function applyMobileThreadEvent(
       runId && prev.activeRuns?.some((candidate) => candidate.id === runId),
     );
     // Peer bot_message runs are omitted from snapshots while busy; the first wait
-    // event is how an open thread learns they need ask/takeover UI.
+    // event is how an open thread learns they need ask UI.
     const needsInsert = Boolean(runId) && !knownInRun && !knownInActive;
     const runChanged = Boolean(knownInRun && prev.run && prev.run.status !== status);
     const activeRunChanged = Boolean(
       knownInActive &&
         prev.activeRuns?.some((candidate) => candidate.id === runId && candidate.status !== status),
     );
-    const computer =
-      event.type === "computer.takeover.requested" && prev.computer?.busyBotName
-        ? { ...prev.computer, busyBotName: null }
-        : prev.computer;
-    const computerChanged = computer !== prev.computer;
     const cursor = event.seq ?? prev.cursor;
-    if (!runChanged && !activeRunChanged && !progressCleared && !needsInsert && !computerChanged) {
+    if (!runChanged && !activeRunChanged && !progressCleared && !needsInsert) {
       return cursor === prev.cursor ? prev : { ...prev, cursor };
     }
     if (needsInsert && runId) {
@@ -996,14 +989,11 @@ export function applyMobileThreadEvent(
       };
       const baseActive = prev.activeRuns ?? (prev.run ? [prev.run] : []);
       const activeRuns = [...baseActive.filter((candidate) => candidate.id !== runId), waitingRun];
-      const promoteWaiting =
-        !prev.run ||
-        (prev.run.status !== "waiting_input" && prev.run.status !== "waiting_takeover");
+      const promoteWaiting = prev.run?.status !== "waiting_input";
       return {
         ...prev,
         cursor,
         messages,
-        computer,
         run: promoteWaiting ? waitingRun : prev.run,
         activeRuns,
       };
@@ -1014,7 +1004,7 @@ export function applyMobileThreadEvent(
           candidate.id === runId ? { ...candidate, status } : candidate,
         )
       : prev.activeRuns;
-    return { ...prev, cursor, run, activeRuns, messages, computer };
+    return { ...prev, cursor, run, activeRuns, messages };
   }
   if (isRunTerminalEvent(event)) {
     const activeRuns = prev.activeRuns?.filter((candidate) => candidate.id !== event.runId);

@@ -18,7 +18,8 @@ from omnigent.superchat.features import _load
 
 REPO = Path(__file__).resolve().parents[4]
 BUNDLES = [
-    REPO / "infra/omnigent/agents" / name / "config.yaml" for name in ("superchat-claude", "superchat-pi")
+    REPO / "infra/omnigent/agents" / name / "config.yaml"
+    for name in ("superchat-claude", "superchat-pi")
 ]
 MUSE_LABELS = {"omnigent.context.mode": "superside-chat", "omnigent.superchat.muse": "true"}
 
@@ -46,8 +47,6 @@ RISK: dict[str, str | None] = {
     "render_card": None,
     "session_history": None,
     "side_chat_open": None,
-    "skill_list": None,
-    "skill_run": None,
     "start_helper": None,
     "message_helper": None,
     "suggest_follow_ups": None,

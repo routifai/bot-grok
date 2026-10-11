@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { ORPCError } from "@orpc/server";
-import { computerControlExpireJobKey } from "@superchat/adapter-kit";
 import type { ComputerExecutionLease } from "@superchat/adapters";
 import {
   acquireComputerExecutionLease,
@@ -20,7 +19,6 @@ import { IsolationError } from "@superchat/db";
 import { engineComputerClient, requireEngine } from "../../engine-client.js";
 import type { RouterContext } from "../../routers/context.js";
 import { computerContext } from "../../routers/shared.js";
-import { computerControlProcedures } from "./control.js";
 import {
   engineComputerRuntime,
   moveEngineComputerRunner,
@@ -28,6 +26,7 @@ import {
 } from "./runtime.js";
 import { engineComputerHost, engineComputerStatus } from "./service.js";
 import { computerStatus, runComputerReplace } from "./support.js";
+import { computerWorkspaceProcedures } from "./workspace.js";
 
 export function computerRouter(c: RouterContext) {
   const { deps, authed, repos } = c;
@@ -83,7 +82,6 @@ export function computerRouter(c: RouterContext) {
       stop: authed.computer.stop.handler(async ({ context, input }) => {
         const bot = await repos.getBot(context.actor, input.botId);
         if (!bot.computer) throw new IsolationError();
-        const controlLeaseId = bot.computer.controlLeaseId;
         const now = new Date();
         const claimed = await deps.prisma.computer.updateMany({
           where: {
@@ -132,11 +130,6 @@ export function computerRouter(c: RouterContext) {
             where: { id: bot.computer.id },
             data: {
               state: "stopped",
-              controlHolder: "none",
-              controlLeaseId: null,
-              controlLeaseExpiresAt: null,
-              controlBotId: null,
-              controlRunId: null,
             },
           });
         } catch (error) {
@@ -148,9 +141,6 @@ export function computerRouter(c: RouterContext) {
             .catch(() => undefined);
           throw error;
         }
-        await deps.jobs.cancel(
-          computerControlExpireJobKey(bot.computer.id, controlLeaseId ?? undefined),
-        );
         return computerStatus(deps, context.actor, input.botId);
       }),
       host: authed.computer.host.handler(async ({ context, input }) => {
@@ -279,7 +269,7 @@ export function computerRouter(c: RouterContext) {
         });
         return { ok: true as const };
       }),
-      ...computerControlProcedures(c),
+      ...computerWorkspaceProcedures(c),
     },
   };
 }

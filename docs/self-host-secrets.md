@@ -13,7 +13,6 @@ without a backup.
 | `POSTGRES_PASSWORD` | `openssl rand -hex 16` | Postgres role password (keep it URI-safe) |
 | `BETTER_AUTH_SECRET` | `openssl rand -hex 32` | sign-in and session signing |
 | `ENCRYPTION_KEY` | `openssl rand -hex 32` | encrypts stored credentials at rest |
-| `SCREEN_PROXY_SECRET` | `openssl rand -hex 32` | signs short-lived proxy capabilities |
 | `OMNIGENT_PROXY_SECRET` | `openssl rand -hex 32` | signs API to engine calls |
 | `OMNIGENT_VAULT_KEY` | `openssl rand -base64 32 \| tr '+/' '-_' \| tr -d '='` | seals saved model keys |
 

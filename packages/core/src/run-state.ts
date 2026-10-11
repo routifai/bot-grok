@@ -5,7 +5,6 @@ export const ACTIVE_RUN_STATUSES = [
   "leased",
   "running",
   "waiting_input",
-  "waiting_takeover",
 ] as const satisfies readonly RunStatus[];
 const TERMINAL: RunStatus[] = ["completed", "failed", "cancelled"];
 /**
@@ -18,9 +17,8 @@ const NON_CONVERSATIONAL_RUN_TRIGGERS = new Set(["routine", "webhook", "created"
 const allowed: Record<RunStatus, RunStatus[]> = {
   queued: ["leased", "cancelled"],
   leased: ["running", "queued", "cancelled"],
-  running: ["waiting_input", "waiting_takeover", "completed", "failed", "cancelled", "leased"],
+  running: ["waiting_input", "completed", "failed", "cancelled", "leased"],
   waiting_input: ["queued", "leased", "cancelled"],
-  waiting_takeover: ["queued", "leased", "cancelled"],
   completed: [],
   failed: ["queued"],
   cancelled: [],

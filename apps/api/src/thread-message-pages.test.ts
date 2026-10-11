@@ -20,9 +20,6 @@ describe("thread message pages", () => {
 
   it("forwards peer waiting, ask, and text events on an open thread", () => {
     expect(shouldForwardPeerThreadEvent({ type: "run.waiting_input", payload: {} })).toBe(true);
-    expect(shouldForwardPeerThreadEvent({ type: "computer.takeover.requested", payload: {} })).toBe(
-      true,
-    );
     expect(
       shouldForwardPeerThreadEvent({
         type: "thread.message.created",

@@ -1,6 +1,6 @@
+import { RPCHandler } from "@orpc/server/fetch";
 import type { Actor } from "@superchat/contracts";
 import type { PrismaClient } from "@superchat/db";
-import { RPCHandler } from "@orpc/server/fetch";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getMuseSettings, updateMuseSettings } from "./muse-settings.js";
 import { createRouter, type RouterDeps } from "./router.js";
@@ -29,7 +29,6 @@ function museSettingsDeps(botRow: BotRow | null) {
       defaultProvider: "fake",
       defaultModel: "fake-model",
       webOrigin: "http://127.0.0.1:5173",
-      screenProxySecret: "fake-test-secret",
       sandboxProvider: "fake",
     },
     dataDir: "/tmp/superchat-muse-settings-test",

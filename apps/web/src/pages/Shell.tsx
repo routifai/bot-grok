@@ -6,7 +6,6 @@ import type {
   ConnectionCatalogItem,
   Group,
   Routine,
-  TaughtSkill,
   ThreadMessage,
   ThreadSnapshot,
 } from "@superchat/contracts";
@@ -56,8 +55,6 @@ import { ChartGallery, chartsExtension, isChartMessage } from "../features/chart
 import { ComputerUpdateProgress } from "../features/computer/ComputerUpdateProgress";
 import { FolderPicker } from "../features/computer/FolderPicker";
 import { HostComputerPrompt } from "../features/computer/HostComputerPrompt";
-import { useComputer } from "../features/computer/useComputer";
-import { useComputerScreen } from "../features/computer/useComputerScreen";
 import { useComputerStore } from "../features/computer/useComputerStore";
 import { DeckThemeChoice, decksExtension } from "../features/decks";
 import { knowledgeExtension } from "../features/knowledge";
@@ -193,7 +190,7 @@ export function ShellPage() {
   const userId = session.data?.user.id;
   const { snapshot, snapshotRef, commitSnapshot, updateSnapshot } = useThreadState();
   const computerStore = useComputerStore();
-  const { computer, commitComputer } = computerStore;
+  const { commitComputer } = computerStore;
 
   const [panel, setPanel] = useState<Panel>(null);
   const [peerConversation, setPeerConversation] = useState<{
@@ -202,8 +199,6 @@ export function ShellPage() {
   } | null>(null);
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [routinesBotId, setRoutinesBotId] = useState<string | null>(null);
-  const [taughtSkills, setTaughtSkills] = useState<TaughtSkill[]>([]);
-  const [taughtSkillsBotId, setTaughtSkillsBotId] = useState<string | null>(null);
   const { agentSkills, setAgentSkills, refreshAgentSkills } = useAgentSkills();
   const [mentionRoutines, setMentionRoutines] = useState<Array<Routine & { botName?: string }>>([]);
   const [mentionConnectors, setMentionConnectors] = useState<
@@ -307,15 +302,12 @@ export function ShellPage() {
   /** Below `md` the Muse sidebar is an off-canvas drawer opened from the main header. */
   const [_navOpen, _setNavOpen] = useState(false);
   const activeGroup = groups.find((group) => group.id === groupId);
-  const activeTaughtSkills = taughtSkillsBotId === active?.id ? taughtSkills : [];
-  const recordingSkill = activeTaughtSkills.find((skill) => skill.status === "recording") ?? null;
   const activeBotId = useRef<string | undefined>(inGroup ? undefined : active?.id);
   activeBotId.current = inGroup ? undefined : active?.id;
   const activeGroupId = useRef<string | undefined>(groupId);
   activeGroupId.current = groupId;
   const { flushPendingBrowserNotifications, notifyBrowserForEvent } =
     useBrowserNotifications(botsRef);
-  const screen = useComputerScreen({ computerStore, activeBotId });
   const {
     scrollRequest,
     clearScrollRequest,
@@ -335,10 +327,9 @@ export function ShellPage() {
     target: { active, activeGroup, groupId, inGroup, activeBotId, activeGroupId },
     thread: { snapshot, snapshotRef, commitSnapshot, updateSnapshot },
     computerStore,
-    screen,
     roster: { botsRef, setGroups, refreshBots, manuallyUnread, markBotReadIfVisible },
     notifyBrowserForEvent,
-    lists: { setRoutines, setRoutinesBotId, setTaughtSkills, setTaughtSkillsBotId },
+    lists: { setRoutines, setRoutinesBotId },
     searchParamsRef,
     bootstrappedThread,
   });
@@ -774,25 +765,6 @@ export function ShellPage() {
     },
     [sendMessage],
   );
-  useComputer({
-    target: { active, bots, botsRef, activeBotId, activeGroupId },
-    panel,
-    computerStore,
-    screen,
-    thread: { snapshot, refreshThread, refreshThreadRef, refreshGroupThreadRef },
-  });
-  // Transcript and MessageView are memoized; these must stay referentially stable or every
-  // Shell state change re-renders the whole transcript.
-  const refreshActiveThread = useCallback(async () => {
-    const groupId = activeGroupId.current;
-    if (groupId) {
-      await refreshGroupThreadRef.current(groupId);
-      return;
-    }
-    const id = activeBotId.current;
-    if (!id) return;
-    await refreshThreadRef.current(id);
-  }, []);
   const routineEditor = useRoutineEditor({
     active,
     activeBotId,
@@ -808,7 +780,6 @@ export function ShellPage() {
     deleteRoutineTarget,
     setDeleteRoutineTarget,
     confirmDeleteRoutine,
-    addSkillRoutine,
   } = routineEditor;
 
   const userName = session.data?.user.name ?? t`You`;
@@ -819,7 +790,6 @@ export function ShellPage() {
       museMode={museMode}
       activeName={inGroup ? (activeGroup?.name ?? activeSnapshot?.groupName) : active?.name}
       running={composerRunning}
-      disabled={Boolean(recordingSkill)}
       pendingAttachments={activePendingAttachments}
       pendingFolders={activePendingFolders}
       onAttachFolder={museMode && active && !inGroup ? () => setFolderPickerOpen(true) : undefined}
@@ -1103,9 +1073,7 @@ export function ShellPage() {
                     }}
                     memberName={resolveTranscriptMemberName}
                     peerBot={resolveTranscriptBot}
-                    onRefresh={refreshActiveThread}
                     onBotChanged={refreshBots}
-                    onAddRoutine={addSkillRoutine}
                     voiceReady={Boolean(voiceStatus?.ready)}
                     speakingMessageId={speakingMessageId}
                     onSpeak={speakMessage}
@@ -1133,11 +1101,6 @@ export function ShellPage() {
                     }
                   />
                 )}
-                {recordingSkill ? (
-                  <div className="px-6 pb-2 text-center text-[13px] text-destructive">
-                    <Trans>Teaching in progress. Stop teaching before sending a new message.</Trans>
-                  </div>
-                ) : null}
                 {active || activeGroup ? (
                   // Kept mounted under the Forks list so a half-written message survives.
                   <div
@@ -1236,12 +1199,8 @@ export function ShellPage() {
         } ${
           panel && (active || activeGroup || panel === "create")
             ? museMode
-              ? // Muse: an inset panel like <main>; the computer gets room for a real preview.
-                `w-full md:m-2 ${
-                  panel === "computer"
-                    ? "max-w-[520px] md:w-[520px] md:max-w-none"
-                    : "max-w-[400px] md:w-[400px] md:max-w-none"
-                }`
+              ? // Muse: an inset panel like <main>.
+                "w-full max-w-[400px] md:m-2 md:w-[400px] md:max-w-none"
               : "w-full max-w-[384px] border-s border-sidebar-border md:w-[384px] md:max-w-none"
             : "pointer-events-none w-0"
         }`}
@@ -1249,16 +1208,11 @@ export function ShellPage() {
         {panel && (active || activeGroup || panel === "create") ? (
           <div
             className={`rk-scroll h-full w-full overflow-y-auto px-5 py-[17px] ${
-              museMode ? (panel === "computer" ? "md:w-[520px]" : "md:w-[400px]") : "md:w-[384px]"
+              museMode ? "md:w-[400px]" : "md:w-[384px]"
             }`}
           >
             {panel !== "routine" && panel !== "create" && panel !== "group-settings" ? (
-              <SidePanelHeader
-                panel={panel}
-                setPanel={setPanel}
-                active={active}
-                computer={computer}
-              />
+              <SidePanelHeader panel={panel} setPanel={setPanel} active={active} />
             ) : null}
             {panel === "group-settings" && activeGroup ? (
               <GroupSettingsPanel

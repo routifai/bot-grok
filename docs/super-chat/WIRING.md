@@ -47,9 +47,6 @@ Code lives in feature files: oRPC routers in `apps/api/src/routers/` (for exampl
 | Activity panel | `activities.list({botId, before?, limit?})` | `GET /v1/sessions/{super}/activities` |
 | Memory tab | `memory.profile({botId})` | `GET /v1/sessions/{super}/memory/profile` |
 | Activity / Helper detail | `activities.get({botId, activityId})` | `GET /v1/sessions/{super}/activities/{id}` |
-| Computer screen | `computer.screenUrl({botId})` | `POST /v1/sessions/{super}/computer/screen` `{interactive:false}`; stream relayed by the same-origin screen proxy |
-| Take over | `computer.takeover({botId})` | `POST /v1/sessions/{super}/computer/screen` `{interactive:true}` |
-| Hand back | `computer.release({botId})` | `POST /v1/sessions/{super}/computer/release` |
 | Computer status | thread snapshot `computer` | `GET /v1/sessions/{super}/computer` |
 
 `ChatSummary` (contracts `muse.ts`) maps from `related_chats`:

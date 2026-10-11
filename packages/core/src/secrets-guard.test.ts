@@ -2,12 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   DEV_AUTH_SECRET_PLACEHOLDER,
   DEV_ENCRYPTION_KEY_PLACEHOLDER,
-  DEV_SCREEN_PROXY_SECRET_PLACEHOLDER,
   DEV_SUPERVISOR_TOKEN_PLACEHOLDER,
   hasValidBearerToken,
   resolveAuthSecret,
   resolveEncryptionKey,
-  resolveScreenProxySecret,
   resolveSupervisorToken,
   timingSafeStringEqual,
 } from "./secrets-guard.js";
@@ -17,9 +15,6 @@ describe("secrets-guard", () => {
     expect(resolveAuthSecret({ NODE_ENV: "test" })).toBe(DEV_AUTH_SECRET_PLACEHOLDER);
     expect(resolveEncryptionKey({ NODE_ENV: "test" })).toBe(DEV_ENCRYPTION_KEY_PLACEHOLDER);
     expect(resolveSupervisorToken({ NODE_ENV: "test" })).toBe(DEV_SUPERVISOR_TOKEN_PLACEHOLDER);
-    expect(resolveScreenProxySecret({ NODE_ENV: "test" })).toBe(
-      DEV_SCREEN_PROXY_SECRET_PLACEHOLDER,
-    );
   });
 
   it("rejects missing secrets outside local/test", () => {
@@ -27,9 +22,6 @@ describe("secrets-guard", () => {
     expect(() => resolveEncryptionKey({ NODE_ENV: "production" })).toThrow(/ENCRYPTION_KEY/);
     expect(() => resolveSupervisorToken({ NODE_ENV: "production" })).toThrow(
       /SANDBOX_SUPERVISOR_TOKEN/,
-    );
-    expect(() => resolveScreenProxySecret({ NODE_ENV: "production" })).toThrow(
-      /SCREEN_PROXY_SECRET/,
     );
   });
 
@@ -58,18 +50,6 @@ describe("secrets-guard", () => {
         SANDBOX_SUPERVISOR_TOKEN: "replace-with-32-plus-character-supervisor-token",
       }),
     ).toThrow(/SANDBOX_SUPERVISOR_TOKEN/);
-    expect(() =>
-      resolveScreenProxySecret({
-        NODE_ENV: "production",
-        SCREEN_PROXY_SECRET: DEV_SCREEN_PROXY_SECRET_PLACEHOLDER,
-      }),
-    ).toThrow(/SCREEN_PROXY_SECRET/);
-    expect(() =>
-      resolveScreenProxySecret({
-        NODE_ENV: "production",
-        SCREEN_PROXY_SECRET: "replace-with-32-plus-character-screen-proxy-secret",
-      }),
-    ).toThrow(/SCREEN_PROXY_SECRET/);
   });
 
   it("rejects blank and whitespace-padded placeholder secrets in production", () => {
@@ -109,13 +89,6 @@ describe("secrets-guard", () => {
         SANDBOX_SUPERVISOR_TOKEN: "prod-supervisor-token-with-enough-length",
       }),
     ).toBe("prod-supervisor-token-with-enough-length");
-    expect(
-      resolveScreenProxySecret({
-        NODE_ENV: "production",
-        SCREEN_PROXY_SECRET: "prod-screen-proxy-secret-with-enough-length",
-        SANDBOX_SUPERVISOR_TOKEN: "prod-supervisor-token-with-enough-length",
-      }),
-    ).toBe("prod-screen-proxy-secret-with-enough-length");
   });
 
   it("accepts real secrets in production", () => {
@@ -139,7 +112,7 @@ describe("secrets-guard", () => {
     );
   });
 
-  it("requires dedicated supervisor and screen-proxy credentials", () => {
+  it("requires a dedicated supervisor credential", () => {
     expect(
       resolveSupervisorToken({
         NODE_ENV: "test",
@@ -152,21 +125,6 @@ describe("secrets-guard", () => {
         NODE_ENV: "test",
         SANDBOX_SUPERVISOR_TOKEN: "custom-auth",
         BETTER_AUTH_SECRET: "custom-auth",
-      }),
-    ).toThrow(/must differ/);
-    expect(
-      resolveScreenProxySecret({
-        NODE_ENV: "test",
-        SCREEN_PROXY_SECRET: "screen-only",
-        SANDBOX_SUPERVISOR_TOKEN: "supervisor-only",
-        BETTER_AUTH_SECRET: "custom-auth",
-      }),
-    ).toBe("screen-only");
-    expect(() =>
-      resolveScreenProxySecret({
-        NODE_ENV: "test",
-        SCREEN_PROXY_SECRET: "supervisor-only",
-        SANDBOX_SUPERVISOR_TOKEN: "supervisor-only",
       }),
     ).toThrow(/must differ/);
     expect(() =>

@@ -1,14 +1,15 @@
-import type { ComputerStatus, ProductEvent, ThreadMessage, ThreadSnapshot } from "@superchat/contracts";
+import type {
+  ComputerStatus,
+  ProductEvent,
+  ThreadMessage,
+  ThreadSnapshot,
+} from "@superchat/contracts";
 import { withLiveStreamingProgress } from "@superchat/core";
 import { describe, expect, it } from "vitest";
 import {
   activeThreadRuns,
   applyThreadSendReceipt,
   clearActiveThreadRuns,
-  computerPanelAutoBoot,
-  computerPanelAutoUsesBoot,
-  computerPanelNeedsMaintenance,
-  computerTakeoverBlocked,
   isThreadSnapshotEvent,
   mergeThreadSnapshot,
   prependThreadMessagePage,
@@ -16,7 +17,6 @@ import {
   reduceComputerStatus,
   reduceThreadSnapshot,
   threadRunError,
-  userHoldsComputerControl,
 } from "./thread-events.js";
 
 describe("thread event reduction", () => {
@@ -435,7 +435,6 @@ describe("thread event reduction", () => {
     ).toBe(true);
     expect(isThreadSnapshotEvent(event({ type: "run.started" }))).toBe(true);
     expect(isThreadSnapshotEvent(event({ type: "run.completed" }))).toBe(true);
-    expect(isThreadSnapshotEvent(event({ type: "computer.takeover.requested" }))).toBe(true);
     expect(isThreadSnapshotEvent(event({ type: "agent.tool.completed" }))).toBe(true);
   });
 
@@ -498,88 +497,12 @@ describe("thread event reduction", () => {
     expect(started?.run?.trigger).toBe("webhook");
   });
 
-  it("marks the run as waiting when computer takeover is requested", () => {
-    const run = threadRun("run-1");
-    const initial: ThreadSnapshot = {
-      ...snapshot([]),
-      run,
-      activeRuns: [run],
-    };
-
-    const waiting = reduceThreadSnapshot(
-      initial,
-      event({ type: "computer.takeover.requested", seq: 5, runId: run.id }),
-    );
-
-    expect(waiting?.run?.status).toBe("waiting_takeover");
-    expect(waiting?.activeRuns?.[0]?.status).toBe("waiting_takeover");
-  });
-
-  it("inserts a peer takeover run that was absent from the open snapshot", () => {
-    const userRun = threadRun("run-user");
-    const initial: ThreadSnapshot = {
-      ...snapshot([]),
-      run: userRun,
-      activeRuns: [userRun],
-    };
-
-    const waiting = reduceThreadSnapshot(
-      initial,
-      event({
-        type: "computer.takeover.requested",
-        seq: 12,
-        runId: "run-peer",
-        botId: "bot-peer",
-      }),
-    );
-
-    expect(waiting?.run).toMatchObject({
-      id: "run-peer",
-      botId: "bot-peer",
-      status: "waiting_takeover",
-      trigger: "bot_message",
-    });
-    expect(waiting?.activeRuns?.map((run) => ({ id: run.id, status: run.status }))).toEqual([
-      { id: "run-user", status: "running" },
-      { id: "run-peer", status: "waiting_takeover" },
-    ]);
-  });
-
-  it("keeps event-sourced waiting_takeover when a stale refresh still shows the bot busy", () => {
-    const run = threadRun("run-1");
-    const waitingLocal: ThreadSnapshot = {
-      ...snapshot([]),
-      cursor: 10,
-      run: { ...run, status: "waiting_takeover" },
-      activeRuns: [{ ...run, status: "waiting_takeover" }],
-    };
-    const staleRefresh: ThreadSnapshot = {
-      ...snapshot([]),
-      cursor: 10,
-      run,
-      activeRuns: [run],
-      computer: computer({ state: "running", busyBotName: "Chief" }),
-    };
-
-    const reconciled = reconcileRefreshedThread(
-      waitingLocal,
-      staleRefresh,
-      computer({ state: "running", busyBotName: null }),
-    );
-
-    expect(reconciled.snapshot.run?.status).toBe("waiting_takeover");
-    expect(reconciled.computer?.busyBotName).toBeNull();
-    expect(computerTakeoverBlocked(reconciled.computer, reconciled.snapshot.run?.status)).toBe(
-      false,
-    );
-  });
-
   it("ignores a refresh whose cursor is behind the event-sourced snapshot", () => {
     const run = threadRun("run-1");
     const newer: ThreadSnapshot = {
       ...snapshot([]),
       cursor: 12,
-      run: { ...run, status: "waiting_takeover" },
+      run: { ...run, status: "completed" },
     };
     const older: ThreadSnapshot = {
       ...snapshot([]),
@@ -602,13 +525,13 @@ describe("thread event reduction", () => {
       ...snapshot([]),
       cursor: 9,
       run,
-      computer: computer({ state: "running", controlHolder: "bot", busyBotName: "Chief" }),
+      computer: computer({ state: "running", busyBotName: "Chief" }),
     };
 
     const reconciled = reconcileRefreshedThread(
       newer,
       older,
-      computer({ state: "running", controlHolder: "bot", busyBotName: null }),
+      computer({ state: "running", busyBotName: null }),
     );
 
     expect(reconciled.snapshot).toBe(newer);
@@ -626,7 +549,7 @@ describe("thread event reduction", () => {
       ...snapshot([]),
       cursor: 11,
       run,
-      computer: computer({ state: "running", controlHolder: "bot", busyBotName: "Chief" }),
+      computer: computer({ state: "running", busyBotName: "Chief" }),
     };
 
     const reconciled = reconcileRefreshedThread(newer, older, computer());
@@ -659,7 +582,7 @@ describe("thread event reduction", () => {
 
   it("keeps an optimistic stop clear when an older cursor refresh still looks busy", () => {
     // Stop has no terminal event, so progress can leave the local cursor ahead of threads.get.
-    // After the shell clears run/busy locally, that older get must not restore Stop / Take control block.
+    // After the shell clears run/busy locally, that older get must not restore the Stop block.
     const run = threadRun("run-1");
     const stoppedLocal: ThreadSnapshot = {
       ...snapshot([]),
@@ -682,9 +605,6 @@ describe("thread event reduction", () => {
     expect(reconciled.snapshot.run).toBeNull();
     expect(reconciled.snapshot.activeRuns).toEqual([]);
     expect(reconciled.computer?.busyBotName).toBeNull();
-    expect(computerTakeoverBlocked(reconciled.computer, reconciled.snapshot.run?.status)).toBe(
-      false,
-    );
   });
 
   it("always replaces the snapshot when switching to a different thread", () => {
@@ -1423,102 +1343,12 @@ describe("computer event reduction", () => {
       event({ type: "computer.status", payload: { status: "destroyed" } }),
     );
 
-    expect(running).toMatchObject({ state: "running", screenAvailable: true });
-    expect(unknown).toMatchObject({ state: "running", screenAvailable: true });
+    expect(running).toMatchObject({ state: "running" });
     expect(unknown).toBe(running);
   });
 
-  it("grants user control without overwriting the lifecycle state", () => {
-    const granted = reduceComputerStatus(
-      computer({ state: "suspended", controlHolder: "bot" }),
-      event({ type: "computer.takeover.granted", payload: { takeoverRequested: true } }),
-    );
-    expect(granted).toMatchObject({
-      state: "suspended",
-      controlHolder: "user",
-      controlBotId: "bot-1",
-      takeoverRequested: true,
-    });
-    expect(
-      reduceComputerStatus(
-        granted,
-        event({ type: "computer.takeover.granted", payload: { takeoverRequested: true } }),
-      ),
-    ).toBe(granted);
-  });
-
-  it("applies the authoritative holder when a takeover is released or expires", () => {
-    const initial = computer({
-      state: "running",
-      controlHolder: "user",
-      controlBotId: "bot-1",
-      takeoverRequested: true,
-    });
-    const expired = reduceComputerStatus(
-      initial,
-      event({
-        type: "computer.takeover.released",
-        payload: { holder: "none", reason: "expired" },
-      }),
-    );
-    const released = reduceComputerStatus(
-      initial,
-      event({
-        type: "computer.takeover.released",
-        payload: { holder: "bot", reason: "released" },
-      }),
-    );
-    expect(expired).toMatchObject({
-      state: "running",
-      controlHolder: "none",
-      controlBotId: null,
-      takeoverRequested: false,
-    });
-    expect(released).toMatchObject({
-      state: "running",
-      controlHolder: "bot",
-      controlBotId: null,
-      takeoverRequested: false,
-    });
-  });
-
-  it("fills in controlBotId when a grant arrives after controlHolder is already user", () => {
-    const granted = reduceComputerStatus(
-      computer({ state: "running", controlHolder: "user", controlBotId: null }),
-      event({ type: "computer.takeover.granted", payload: {} }),
-    );
-    expect(granted).toMatchObject({
-      state: "running",
-      controlHolder: "user",
-      controlBotId: "bot-1",
-    });
-    expect(userHoldsComputerControl(granted, "bot-1")).toBe(true);
-    expect(userHoldsComputerControl(granted, "bot-2")).toBe(false);
-  });
-
-  it("treats a busy bot name as a blocked takeover", () => {
-    expect(computerTakeoverBlocked(computer({ busyBotName: "Writer" }), "running")).toBe(true);
-    expect(computerTakeoverBlocked(computer({ busyBotName: "Writer" }))).toBe(false);
-    expect(computerTakeoverBlocked(computer({ busyBotName: null }), "running")).toBe(false);
-    expect(computerTakeoverBlocked(null, "running")).toBe(false);
-    expect(computerTakeoverBlocked(computer({ busyBotName: "Writer" }), "waiting_takeover")).toBe(
-      false,
-    );
-    expect(computerTakeoverBlocked(computer({ busyBotName: "Writer" }), "completed")).toBe(false);
-  });
-
   it("ignores computer events that belong to a different bot", () => {
-    const prev = computer({ takeoverRequested: false, controlHolder: "bot" });
-    expect(
-      reduceComputerStatus(
-        prev,
-        event({
-          type: "computer.takeover.requested",
-          botId: "bot-peer",
-          payload: {},
-        }),
-      ),
-    ).toBe(prev);
+    const prev = computer();
     expect(
       reduceComputerStatus(
         prev,
@@ -1529,81 +1359,6 @@ describe("computer event reduction", () => {
         }),
       ),
     ).toBe(prev);
-  });
-
-  it("marks takeover requested and clears control unless the lease was retained", () => {
-    const busy = computer({ state: "running", busyBotName: "Writer", controlHolder: "bot" });
-    expect(
-      reduceComputerStatus(busy, event({ type: "computer.takeover.requested", payload: {} })),
-    ).toMatchObject({
-      busyBotName: null,
-      takeoverRequested: true,
-      controlHolder: "none",
-      controlBotId: null,
-    });
-    expect(
-      reduceComputerStatus(
-        computer({
-          state: "running",
-          controlHolder: "user",
-          controlBotId: "bot-1",
-          takeoverRequested: false,
-        }),
-        event({
-          type: "computer.takeover.requested",
-          payload: { retainedControl: true },
-        }),
-      ),
-    ).toMatchObject({
-      controlHolder: "user",
-      controlBotId: "bot-1",
-      takeoverRequested: true,
-      busyBotName: null,
-    });
-    expect(
-      reduceComputerStatus(
-        busy,
-        event({ type: "computer.takeover.granted", payload: { takeoverRequested: true } }),
-      ),
-    ).toMatchObject({
-      controlHolder: "user",
-      busyBotName: null,
-      takeoverRequested: true,
-    });
-  });
-
-  it("auto-boots stopped computers and recovers a running screen that has no URL", () => {
-    expect(computerPanelAutoBoot("stopped")).toBe("boot");
-    expect(computerPanelAutoBoot("error")).toBe("boot");
-    expect(computerPanelAutoBoot(undefined)).toBe("boot");
-    expect(computerPanelAutoBoot("running", "https://screen.example")).toBe("wait");
-    expect(computerPanelAutoBoot("running", null)).toBe("recover-screen");
-    expect(computerPanelAutoBoot("booting")).toBe("wait");
-    expect(computerPanelAutoBoot("suspended")).toBe("wait");
-  });
-
-  it("maps recover-screen to computer.boot, not computer.recover", () => {
-    expect(computerPanelAutoUsesBoot("recover-screen")).toBe(true);
-    expect(computerPanelAutoUsesBoot("boot")).toBe(true);
-    expect(computerPanelAutoUsesBoot("wait")).toBe(false);
-  });
-
-  it("shows maintenance only after a stopped or errored computer finishes booting", () => {
-    expect(computerPanelNeedsMaintenance("error", false)).toBe(true);
-    expect(computerPanelNeedsMaintenance("stopped", false)).toBe(true);
-    expect(computerPanelNeedsMaintenance("error", true)).toBe(false);
-    expect(computerPanelNeedsMaintenance("running", false)).toBe(false);
-    expect(computerPanelNeedsMaintenance(undefined, false)).toBe(false);
-  });
-
-  it("hides side-panel maintenance while the computer overlay is open", () => {
-    const panel = "computer";
-    const booting = false;
-    const showInSidePanel = (computerOpen: boolean) =>
-      panel === "computer" && !computerOpen && computerPanelNeedsMaintenance("stopped", booting);
-
-    expect(showInSidePanel(false)).toBe(true);
-    expect(showInSidePanel(true)).toBe(false);
   });
 });
 
@@ -1643,12 +1398,6 @@ function computer(overrides: Partial<ComputerStatus> = {}): ComputerStatus {
     mode: "team",
     kind: "fake",
     state: "booting",
-    controlHolder: "none",
-    controlBotId: null,
-    takeoverRequested: false,
-    screenAvailable: false,
-    screenWidth: 1280,
-    screenHeight: 800,
     homeRevision: null,
     busyBotName: null,
     canUpdate: true,

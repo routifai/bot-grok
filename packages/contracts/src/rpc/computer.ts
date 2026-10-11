@@ -1,11 +1,7 @@
 import { oc } from "@orpc/contract";
 import * as z from "zod";
 import { ARTIFACT_NAME_MAX_LENGTH, ATTACHMENT_MAX_BASE64_LENGTH } from "../attachments.js";
-import {
-  ComputerReleaseReasonSchema,
-  ComputerStatusSchema,
-  ComputerUpdateSchema,
-} from "../domain.js";
+import { ComputerStatusSchema, ComputerUpdateSchema } from "../domain.js";
 import { Id } from "../ids.js";
 
 import { ArtifactSchema } from "./artifacts.js";
@@ -56,15 +52,6 @@ export const computerContract = {
       .input(z.object({ id: Id, workersStopped: z.literal(true) }))
       .output(z.object({ ok: z.literal(true) })),
     dismissUpdate: oc.input(z.object({ id: Id })).output(z.object({ ok: z.literal(true) })),
-    takeover: oc.input(botId).output(z.object({ leaseId: Id, expiresAt: z.string() })),
-    release: oc
-      .input(
-        z.object({
-          botId: Id,
-          reason: ComputerReleaseReasonSchema.optional(),
-        }),
-      )
-      .output(z.object({ ok: z.literal(true) })),
     files: oc
       .input(z.object({ botId: Id, path: z.string().default("/") }))
       .output(
@@ -73,7 +60,6 @@ export const computerContract = {
     readFile: oc
       .input(z.object({ botId: Id, path: z.string() }))
       .output(z.object({ path: z.string(), content: z.string() })),
-    screenUrl: oc.input(botId).output(z.object({ url: z.string().nullable() })),
     heartbeat: oc.input(botId).output(z.object({ ok: z.literal(true) })),
     /** Which engine host and agent bundle the Muse's Conversation runs on (read-only; Settings). */
     host: oc.input(botId).output(

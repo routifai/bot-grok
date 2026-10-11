@@ -1,26 +1,9 @@
 import { computerSupportsUpdate } from "@superchat/adapters";
 import type { ComputerStatus } from "@superchat/contracts";
-import { ACTIVE_RUN_STATUSES, computerScreenSize } from "@superchat/core";
+import { ACTIVE_RUN_STATUSES } from "@superchat/core";
 import type { PrismaClient } from "@superchat/db";
 
-/** Mirrors computer.takeover: an execution lease blocks user control unless a takeover is pending. */
-export function executionBlocksUserTakeover(input: {
-  hasLease: boolean;
-  leaseExpiresAt: Date | null | undefined;
-  runStatus: string | null | undefined;
-  now?: number;
-  takeoverRequested?: boolean;
-}): boolean {
-  if (!input.hasLease) return false;
-  if (input.runStatus === "waiting_takeover" || input.takeoverRequested) return false;
-  const now = input.now ?? Date.now();
-  const leaseActive = Boolean(input.leaseExpiresAt && input.leaseExpiresAt.getTime() > now);
-  const runActive = Boolean(
-    input.runStatus && (ACTIVE_RUN_STATUSES as readonly string[]).includes(input.runStatus),
-  );
-  return leaseActive || runActive;
-}
-
+/** The name of the bot using this shared Computer right now, or `null` when none is. */
 export async function resolveBusyBotName(
   prisma: PrismaClient,
   input: {
@@ -32,21 +15,18 @@ export async function resolveBusyBotName(
   if (!input.computerId) return null;
   const lease = await prisma.computerExecutionLease.findUnique({
     where: { computerId_botId: { computerId: input.computerId, botId: input.botId } },
-    select: { expiresAt: true, runId: true, computer: { select: { controlRunId: true } } },
+    select: { expiresAt: true, runId: true },
   });
   if (!lease) return null;
   const run = await prisma.run.findUnique({
     where: { id: lease.runId },
     select: { status: true },
   });
-  return executionBlocksUserTakeover({
-    hasLease: true,
-    leaseExpiresAt: lease.expiresAt,
-    runStatus: run?.status,
-    takeoverRequested: lease.computer.controlRunId === lease.runId,
-  })
-    ? input.botName
-    : null;
+  const leaseActive = lease.expiresAt.getTime() > Date.now();
+  const runActive = Boolean(
+    run?.status && (ACTIVE_RUN_STATUSES as readonly string[]).includes(run.status),
+  );
+  return leaseActive || runActive ? input.botName : null;
 }
 
 export function toComputerStatus(
@@ -55,9 +35,6 @@ export function toComputerStatus(
     kind: string;
     state: string;
     scope: string;
-    controlHolder: string;
-    controlBotId?: string | null;
-    controlRunId?: string | null;
     homeRevision: string;
     maintenanceId?: string | null;
   } | null,
@@ -74,19 +51,12 @@ export function toComputerStatus(
           computer?.state === "error"
         ? computer.state
         : "stopped";
-  const screen = computerScreenSize(computer?.kind);
   const kind = (computer?.kind ?? "fake") as ComputerStatus["kind"];
   return {
     botId,
     mode: computer?.scope === "dedicated" ? "dedicated" : "team",
     kind,
     state,
-    controlHolder: (computer?.controlHolder ?? "none") as ComputerStatus["controlHolder"],
-    controlBotId: computer?.controlBotId ?? null,
-    takeoverRequested: Boolean(computer?.controlRunId),
-    screenAvailable: !computer?.maintenanceId && (state === "running" || state === "booting"),
-    screenWidth: screen.width,
-    screenHeight: screen.height,
     homeRevision: computer?.homeRevision ?? null,
     busyBotName,
     canUpdate: computerSupportsUpdate(kind),

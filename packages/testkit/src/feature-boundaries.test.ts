@@ -173,9 +173,6 @@ const BASELINE: readonly string[] = [
   // artifact card above.
   "web:pages/muse/conversation/MessageView.test.tsx -> approvals",
   "web:pages/muse/conversation/MessageView.tsx -> approvals",
-  // The same block extension point will draw the taught-skill draft card (skills SkillDraftCard).
-  "web:pages/muse/conversation/MessageView.test.tsx -> skills",
-  "web:pages/muse/conversation/MessageView.tsx -> skills",
   // Answering an inline ask from the composer calls asks.answer and tells the Asks list (the
   // waiting sheet, the Feed) to refetch; goes away when the composer takes an "answered an ask"
   // callback from the shell.

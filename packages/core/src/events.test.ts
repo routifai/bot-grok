@@ -575,7 +575,7 @@ describe("humanizeToolName", () => {
   });
 
   it("turns a lowercase builtin tool name into a readable label", () => {
-    expect(humanizeToolName("request_takeover")).toBe("Request takeover");
+    expect(humanizeToolName("run_subagent")).toBe("Run subagent");
   });
 });
 

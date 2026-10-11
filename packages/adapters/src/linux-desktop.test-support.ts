@@ -11,7 +11,7 @@ export function desktopCommandResponder() {
         while (used.has(index)) index++;
         slots.set(key, index);
       }
-      return { exitCode: 0, stdout: `SUPERCHAT_DESKTOP=${index}:view-${key}\n`, stderr: "" };
+      return { exitCode: 0, stdout: `SUPERCHAT_DESKTOP=${index}\n`, stderr: "" };
     }
     if (key && command.includes("SUPERCHAT_DESKTOP_RELEASED=")) {
       slots.delete(key);

@@ -1817,15 +1817,6 @@ def test_tools_allow_unset_keeps_every_tool() -> None:
     assert "sys_add_policy" in ToolManager(_make_spec()).get_tool_names()
 
 
-def test_taught_skill_tools_split_between_the_muse_and_its_helpers() -> None:
-    chat = {"omnigent.context.mode": "superside-chat"}
-    muse = ToolManager(_make_spec(), labels=chat).get_tool_names()
-    helper = ToolManager(_make_spec(), labels={**chat, "omnigent.subagent": "1"}).get_tool_names()
-    assert {"skill_list", "skill_run"} <= set(muse) and "skill_draft_save" not in muse
-    assert "skill_draft_save" in helper and not {"skill_list", "skill_run"} & set(helper)
-    assert not {"skill_list", "skill_draft_save"} & set(ToolManager(_make_spec()).get_tool_names())
-
-
 def test_vault_tools_split_between_the_muse_and_its_helpers() -> None:
     chat = {"omnigent.context.mode": "superside-chat"}
     muse = ToolManager(_make_spec(), labels=chat).get_tool_names()

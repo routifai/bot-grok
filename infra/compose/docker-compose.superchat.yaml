@@ -209,7 +209,6 @@ services:
       SANDBOX_PROVIDER: none
       OMNIGENT_URL: ${OMNIGENT_URL:-http://omnigent:8000}
       OMNIGENT_PROXY_SECRET: ${OMNIGENT_PROXY_SECRET:?Set OMNIGENT_PROXY_SECRET in .env}
-      SCREEN_PROXY_SECRET: ""
     volumes:
       - artifact-data:/data
     depends_on:
@@ -222,7 +221,6 @@ services:
     command: ["pnpm", "--filter", "@superchat/web", "preview", "--host", "0.0.0.0", "--port", "5173"]
     environment:
       API_PROXY_TARGET: http://api:3100
-      SCREEN_PROXY_SECRET: ${SCREEN_PROXY_SECRET:?Set SCREEN_PROXY_SECRET in .env}
       SUPERCHAT_HOST: ${SUPERCHAT_HOST:-localhost}
     ports:
       - "127.0.0.1:${SUPERCHAT_WEB_PORT:-5173}:5173"

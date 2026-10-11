@@ -1,14 +1,9 @@
-import {
-  COMPUTER_SCREEN_UNAVAILABLE,
-  ComputerScreenUnavailableError,
-  screenLeaseIdForRun,
-} from "@superchat/adapters";
+import { RPCHandler } from "@orpc/server/fetch";
+import { screenLeaseIdForRun } from "@superchat/adapters";
 import type { Actor } from "@superchat/contracts";
 import { REPLY_QUOTE_MAX_LENGTH } from "@superchat/contracts";
-import { openScreenCapability } from "@superchat/core/node/screen-capability";
 import type { PrismaClient } from "@superchat/db";
 import { createLogger, createTestSink, installLogger } from "@superchat/logging";
-import { RPCHandler } from "@orpc/server/fetch";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRouter, type RouterDeps } from "./router.js";
 
@@ -34,7 +29,6 @@ describe("account preferences", () => {
         defaultProvider: "fake",
         defaultModel: "fake-model",
         webOrigin: "http://127.0.0.1:5173",
-        screenProxySecret: "fake-test-secret",
         sandboxProvider: "fake",
       },
       dataDir: "/tmp/superchat-router-test",
@@ -202,7 +196,6 @@ describe("model setup gate", () => {
         defaultModel: "test-model",
         deploymentModelKey: options.deploymentModelKey,
         webOrigin: "http://127.0.0.1:5173",
-        screenProxySecret: "fake-test-secret",
         sandboxProvider: "fake",
       },
       dataDir: "/tmp/superchat-router-test",
@@ -347,7 +340,6 @@ describe("thread answer delivery", () => {
         defaultProvider: "fake",
         defaultModel: "fake-model",
         webOrigin: "http://127.0.0.1:5173",
-        screenProxySecret: "fake-test-secret",
         sandboxProvider: "fake",
       },
       dataDir: "/tmp/superchat-router-test",
@@ -410,7 +402,6 @@ describe("MCP server deletion", () => {
         defaultProvider: "fake",
         defaultModel: "fake-model",
         webOrigin: "http://127.0.0.1:5173",
-        screenProxySecret: "fake-test-secret",
         sandboxProvider: "fake",
       },
       dataDir: "/tmp/superchat-router-test",
@@ -482,7 +473,6 @@ describe("connections.begin", () => {
         defaultProvider: "fake",
         defaultModel: "fake-model",
         webOrigin: "http://127.0.0.1:5173",
-        screenProxySecret: "fake-test-secret",
         sandboxProvider: "fake",
       },
       dataDir: "/tmp/superchat-router-test",
@@ -589,7 +579,6 @@ describe("connections.complete", () => {
         defaultProvider: "fake",
         defaultModel: "fake-model",
         webOrigin: "http://127.0.0.1:5173",
-        screenProxySecret: "fake-test-secret",
         sandboxProvider: "fake",
       },
       dataDir: "/tmp/superchat-router-test",
@@ -623,135 +612,6 @@ describe("connections.complete", () => {
       expect.objectContaining({ spaceId: "workspace-1", userId: "user-1" }),
     );
     expect(connectionReady).toHaveBeenCalled();
-  });
-});
-
-describe("computer screen url", () => {
-  const actor = {
-    spaceId: "workspace-1",
-    userId: "user-1",
-    email: "user@superchat.test",
-    isDeploymentOwner: true,
-  } satisfies Actor;
-  const computerRow = {
-    id: "computer-1",
-    screenGeneration: 3,
-    kind: "e2b",
-    scope: "team",
-    state: "running",
-    providerRef: "sandbox-ref-1",
-    homeKey: "home-1",
-    controlHolder: "none",
-    controlLeaseId: null,
-    controlLeaseExpiresAt: null,
-    controlBotId: null,
-    controlRunId: null,
-  };
-
-  const callScreenUrl = async (connectScreen: () => Promise<unknown>, updateMany = vi.fn()) => {
-    const prisma = {
-      bot: {
-        findFirst: vi.fn().mockResolvedValue({
-          id: "bot-1",
-          screenGeneration: 2,
-          thread: { id: "thread-1" },
-          computer: computerRow,
-        }),
-      },
-      computer: { updateMany },
-      computerExecutionLease: { findUnique: vi.fn().mockResolvedValue(null) },
-    } as unknown as PrismaClient;
-    const deps = {
-      prisma,
-      sandbox: { connectScreen },
-      jobs: { enqueue: vi.fn().mockResolvedValue(undefined) },
-      env: {
-        defaultProvider: "fake",
-        defaultModel: "fake-model",
-        webOrigin: "http://127.0.0.1:5173",
-        screenProxySecret: "fake-test-secret",
-        sandboxProvider: "e2b",
-      },
-      dataDir: "/tmp/superchat-router-test",
-    } as unknown as RouterDeps;
-    const handler = new RPCHandler(createRouter(deps));
-    const { response } = await handler.handle(
-      new Request("http://127.0.0.1/rpc/computer/screenUrl", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ json: { botId: "bot-1" } }),
-      }),
-      { prefix: "/rpc", context: { actor } },
-    );
-    return { response, updateMany };
-  };
-
-  it("issues lifecycle-bound capabilities for managed-provider screens too", async () => {
-    const { response } = await callScreenUrl(async () => ({
-      url: "https://screen.example/vnc.html?token=fake-token",
-    }));
-    expect(response.status).toBe(200);
-    const { json } = await response.json();
-    const url = new URL(json.url);
-    expect(url.origin).toBe("http://127.0.0.1:5173");
-    expect(openScreenCapability(url.pathname, "fake-test-secret")).toMatchObject({
-      scope: {
-        botId: "bot-1",
-        computerId: "computer-1",
-        botGeneration: 2,
-        computerGeneration: 3,
-        controlLeaseId: null,
-      },
-      target: { hostname: "screen.example", interactive: false },
-    });
-  });
-
-  it("returns desktop provider screen URLs without sealing them", async () => {
-    const { response } = await callScreenUrl(async () => ({
-      url: "desktop://screen/computer-1",
-    }));
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      json: { url: "desktop://screen/computer-1?view_only=true" },
-    });
-  });
-
-  it("clears the row instead of 500ing when the provider says the sandbox is gone", async () => {
-    const { response, updateMany } = await callScreenUrl(() =>
-      Promise.reject(
-        Object.assign(new Error("Sandbox is probably not running anymore"), {
-          name: "SandboxNotFoundError",
-        }),
-      ),
-    );
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ json: { url: null } });
-    expect(updateMany).toHaveBeenCalledWith({
-      where: { id: "computer-1", providerRef: "sandbox-ref-1" },
-      data: { state: "stopped", providerRef: null },
-    });
-  });
-
-  it("keeps a transport blip an error and leaves the row alone", async () => {
-    const { response, updateMany } = await callScreenUrl(() =>
-      Promise.reject(Object.assign(new Error("fetch failed"), { code: "ECONNRESET" })),
-    );
-    expect(response.status).toBe(500);
-    expect(updateMany).not.toHaveBeenCalled();
-  });
-
-  it("returns a recoverable conflict when the screen is temporarily busy", async () => {
-    const { response, updateMany } = await callScreenUrl(() =>
-      Promise.reject(new ComputerScreenUnavailableError()),
-    );
-    expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toEqual({
-      json: expect.objectContaining({
-        code: "CONFLICT",
-        message: COMPUTER_SCREEN_UNAVAILABLE,
-      }),
-    });
-    expect(updateMany).not.toHaveBeenCalled();
   });
 });
 
@@ -956,7 +816,6 @@ describe("model credential persistence", () => {
         defaultProvider: "openrouter",
         defaultModel: options?.envDefaultModel ?? "openai/gpt-5.6-luna",
         webOrigin: "http://127.0.0.1:5173",
-        screenProxySecret: "fake-test-secret",
         sandboxProvider: "fake",
         agentRuntime: "pi",
       },
@@ -1151,7 +1010,6 @@ describe("codex catalog auth", () => {
         defaultProvider: "fake",
         defaultModel: "fake-model",
         webOrigin: "http://127.0.0.1:5173",
-        screenProxySecret: "fake-test-secret",
         sandboxProvider: "fake",
       },
     } as unknown as RouterDeps;
@@ -1278,7 +1136,6 @@ describe("model set default auth", () => {
           defaultProvider: "fake",
           defaultModel: "fake-model",
           webOrigin: "http://127.0.0.1:5173",
-          screenProxySecret: "fake-test-secret",
           sandboxProvider: "fake",
         },
       } as unknown as RouterDeps),
@@ -1372,7 +1229,6 @@ describe("model set default auth", () => {
           defaultProvider: "fake",
           defaultModel: "fake-model",
           webOrigin: "http://127.0.0.1:5173",
-          screenProxySecret: "fake-test-secret",
           sandboxProvider: "fake",
         },
       } as unknown as RouterDeps),
@@ -1474,7 +1330,6 @@ describe("model set default auth", () => {
           defaultProvider: "fake",
           defaultModel: "fake-model",
           webOrigin: "http://127.0.0.1:5173",
-          screenProxySecret: "fake-test-secret",
           sandboxProvider: "fake",
         },
       } as unknown as RouterDeps),
@@ -1627,7 +1482,6 @@ describe("bot model auth on save", () => {
         defaultProvider: "fake",
         defaultModel: "fake-model",
         webOrigin: "http://127.0.0.1:5173",
-        screenProxySecret: "fake-test-secret",
         sandboxProvider: "fake",
       },
     } as unknown as RouterDeps;
@@ -1889,7 +1743,6 @@ describe("groups.archive", () => {
         defaultProvider: "fake",
         defaultModel: "fake-model",
         webOrigin: "http://127.0.0.1:5173",
-        screenProxySecret: "fake-test-secret",
         sandboxProvider: "fake",
       },
       dataDir: "/tmp/superchat-router-test",

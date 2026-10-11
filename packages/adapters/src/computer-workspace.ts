@@ -125,13 +125,6 @@ export async function checkpointRunComputerWorkspace(
           ...(ownLease ? { NOT: { runId: ownLease.ownerId, fence: ownLease.fence } } : {}),
         },
       },
-      OR: [
-        { controlHolder: { not: "user" } },
-        { controlLeaseId: null },
-        { controlLeaseExpiresAt: null },
-        { controlLeaseExpiresAt: { lte: now } },
-        ...(context.botId ? [{ controlBotId: context.botId }] : []),
-      ],
     },
     data: { state: "suspending", updatedAt: now },
   });

@@ -12,26 +12,19 @@ import type {
   CommandRequest,
   ComputerActionRequest,
   ComputerFileEntry,
-  ComputerInput,
   ComputerObservation,
   ComputerRef,
-  ControlLeaseRef,
   PortableFile,
   ProcessEvent,
   SandboxProvider,
-  ScreenRequest,
-  ScreenSession,
 } from "@superchat/adapter-kit";
 import { boundedSandboxCommandTimeoutMs } from "@superchat/core";
-import { screenSessionKey } from "./computer-screens.js";
 import { normalizeWorkspacePath, shellQuote, workspacePath } from "./computer-support.js";
 import {
   PORTABLE_TRANSFER_BATCH_BYTES,
   shouldSkipPortableWorkspaceFile,
 } from "./computer-workspace.js";
 import { LinuxDesktop, PREPARE_LINUX_DESKTOP } from "./linux-desktop.js";
-
-const DAYTONA_SCREEN_TTL_SECONDS = 3_600;
 
 export type DaytonaSandboxSdk = Pick<Daytona, "create" | "get">;
 
@@ -49,7 +42,6 @@ export class DaytonaSandboxProvider implements SandboxProvider {
         workspaceDir: await this.workspaceRoot(sandbox),
         browserProfilesDir: path.posix.join(await this.workspaceRoot(sandbox), ".browser-profiles"),
         displayStart: 20,
-        portStart: 6100,
       };
     },
     run: async (computer, command, context) => {
@@ -62,26 +54,8 @@ export class DaytonaSandboxProvider implements SandboxProvider {
       );
       return { code: result.exitCode, stdout: result.result, stderr: result.result };
     },
-    screenUrl: async (computer, port, context) => {
-      const preview = await this.screenPreview(
-        await this.box(computer),
-        screenSessionKey(context),
-        port,
-      );
-      const url = new URL(preview.url);
-      url.pathname = "/vnc.html";
-      return url.toString();
-    },
   });
   private readonly preparations = new Map<string, Promise<void>>();
-  private readonly screenPreviews = new Map<
-    string,
-    { url: string; token: string; expiresAt: number; viewPort: number }
-  >();
-  private readonly screenPreviewStarts = new Map<
-    string,
-    Promise<{ url: string; token: string; expiresAt: number; viewPort: number }>
-  >();
 
   /** Optional Daytona snapshot name for new bot computers; unset = server default. */
   private readonly snapshotName: string | undefined;
@@ -110,7 +84,6 @@ export class DaytonaSandboxProvider implements SandboxProvider {
         graphical: true,
         pty: false,
         snapshots: true,
-        takeover: true,
         persistentHome: true,
         multiScreen: true,
       },
@@ -140,7 +113,6 @@ export class DaytonaSandboxProvider implements SandboxProvider {
       {
         ...(this.snapshotName ? { snapshot: this.snapshotName } : {}),
         labels: { botId: request.botId, superchat: "computer" },
-        envVars: { VNC_RESOLUTION: "1280x800" },
         autoStopInterval: 0,
         autoDeleteInterval: -1,
       },
@@ -192,30 +164,6 @@ export class DaytonaSandboxProvider implements SandboxProvider {
       }
       throw error;
     }
-  }
-
-  async connectScreen(
-    computer: ComputerRef,
-    request: ScreenRequest,
-    context: AdapterContext,
-  ): Promise<ScreenSession> {
-    return this.desktops.connectScreen(computer, request, context);
-  }
-  async setScreenControl(
-    computer: ComputerRef,
-    interactive: boolean,
-    context: AdapterContext,
-    controlToken?: string,
-  ): Promise<void> {
-    return this.desktops.setScreenControl(computer, interactive, context, controlToken);
-  }
-  async sendInput(
-    computer: ComputerRef,
-    input: ComputerInput,
-    _lease: ControlLeaseRef,
-    context: AdapterContext,
-  ): Promise<void> {
-    return this.desktops.sendInput(computer, input, context);
   }
   async observe(computer: ComputerRef, context: AdapterContext): Promise<ComputerObservation> {
     return this.desktops.observe(computer, context);
@@ -328,12 +276,6 @@ export class DaytonaSandboxProvider implements SandboxProvider {
       this.forget(id);
       return;
     }
-    const previewKeys = [...this.screenPreviews.keys()].filter((key) => key.startsWith(`${id}:`));
-    await Promise.all(
-      previewKeys.map((previewKey) =>
-        this.revokeScreenPreview(sandbox, this.screenPreviews.get(previewKey)),
-      ),
-    );
     this.forget(id);
     await sandbox.computerUse.stop().catch(() => undefined);
     await sandbox.stop(120);
@@ -346,12 +288,6 @@ export class DaytonaSandboxProvider implements SandboxProvider {
       this.forget(id);
       return;
     }
-    const previewKeys = [...this.screenPreviews.keys()].filter((key) => key.startsWith(`${id}:`));
-    await Promise.all(
-      previewKeys.map((previewKey) =>
-        this.revokeScreenPreview(sandbox, this.screenPreviews.get(previewKey)),
-      ),
-    );
     this.forget(id);
     try {
       await sandbox.delete(120, true);
@@ -475,63 +411,12 @@ export class DaytonaSandboxProvider implements SandboxProvider {
     }
   }
 
-  private async screenPreview(sandbox: Sandbox, screenKey: string, viewPort: number) {
-    const previewKey = `${sandbox.id}:${screenKey}:${viewPort}`;
-    const cached = this.screenPreviews.get(previewKey);
-    if (cached && cached.expiresAt > Date.now() + 60_000) return cached;
-    const pending = this.screenPreviewStarts.get(previewKey);
-    if (pending) return pending;
-    let start!: Promise<{
-      url: string;
-      token: string;
-      expiresAt: number;
-      viewPort: number;
-    }>;
-    start = sandbox
-      .getSignedPreviewUrl(viewPort, DAYTONA_SCREEN_TTL_SECONDS)
-      .then(async (preview) => {
-        const cachedPreview = {
-          url: preview.url,
-          token: preview.token,
-          expiresAt: Date.now() + DAYTONA_SCREEN_TTL_SECONDS * 1_000,
-          viewPort,
-        };
-        if (this.screenPreviewStarts.get(previewKey) !== start) {
-          await sandbox.expireSignedPreviewUrl(viewPort, preview.token).catch(() => undefined);
-          throw new Error("Daytona screen preview was invalidated during teardown");
-        }
-        this.screenPreviews.set(previewKey, cachedPreview);
-        return cachedPreview;
-      })
-      .finally(() => {
-        if (this.screenPreviewStarts.get(previewKey) === start) {
-          this.screenPreviewStarts.delete(previewKey);
-        }
-      });
-    this.screenPreviewStarts.set(previewKey, start);
-    return start;
-  }
-
-  private async revokeScreenPreview(
-    sandbox: Sandbox,
-    preview: { url: string; token: string; expiresAt: number; viewPort: number } | undefined,
-  ): Promise<void> {
-    if (!preview) return;
-    await sandbox.expireSignedPreviewUrl(preview.viewPort, preview.token).catch(() => undefined);
-  }
-
   private forget(id: string): void {
     this.boxes.delete(id);
     this.connections.delete(id);
     this.workspaceRoots.delete(id);
     this.prepared.delete(id);
     this.preparations.delete(id);
-    for (const key of [...this.screenPreviews.keys()]) {
-      if (key.startsWith(`${id}:`)) this.screenPreviews.delete(key);
-    }
-    for (const key of [...this.screenPreviewStarts.keys()]) {
-      if (key.startsWith(`${id}:`)) this.screenPreviewStarts.delete(key);
-    }
   }
 }
 

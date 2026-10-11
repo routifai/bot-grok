@@ -1,12 +1,5 @@
-"""Computer screen routes: see the sandbox screen, take it over, hand it back.
+"""Computer status route: whether a session's Computer is up (``/sessions/{id}/computer``).
 
-Layout: ``routes`` (``/sessions/{id}/computer*``, mounted on the sessions router), ``target``
-(which screen a session sits on). ``skills`` builds on this capability (recording what the person
-does on the screen), through the names exported here only.
+Mounted on the sessions router; the Computer itself (runner, files, headless browser) is not
+this package's concern, only reporting its readiness and launch progress.
 """
-
-from __future__ import annotations
-
-from omnigent.superchat.computer.target import require_target, screen_target
-
-__all__ = ["require_target", "screen_target"]

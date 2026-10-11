@@ -29,7 +29,7 @@ describe("canTakeScreenLease", () => {
 });
 
 describe("canReleaseScreenLease", () => {
-  it("lets the same run release after a takeover fence bump", () => {
+  it("lets the same run release after a fence bump", () => {
     expect(canReleaseScreenLease("run-1:1", "run-1:8")).toBe(true);
     expect(canReleaseScreenLease("run-1:1", "run-1:1")).toBe(true);
   });

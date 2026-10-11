@@ -57,7 +57,13 @@ describe("sandbox idle", () => {
     expect(harness.sandbox.execute).toHaveBeenCalledWith(
       expect.objectContaining({ id: harness.computer.providerRef }),
       expect.objectContaining({
-        argv: ["bash", "-c", BACKGROUND_WORK_PROBE, "superchat-background-probe", harness.computer.id],
+        argv: [
+          "bash",
+          "-c",
+          BACKGROUND_WORK_PROBE,
+          "superchat-background-probe",
+          harness.computer.id,
+        ],
       }),
       expect.anything(),
     );
@@ -82,17 +88,6 @@ describe("sandbox idle", () => {
     expect(harness.sandbox.stop).not.toHaveBeenCalled();
     expect(harness.sandbox.keepAlive).toHaveBeenCalledOnce();
     expect(harness.jobs.enqueue).toHaveBeenCalledOnce();
-  });
-
-  it("does not let an abandoned waiting takeover prevent idle suspension", async () => {
-    const harness = idleHarness();
-    harness.prisma.run.findFirst.mockImplementation(async ({ where }) =>
-      where.status.in.includes("waiting_takeover") ? { id: "waiting" } : null,
-    );
-
-    await sleepComputerIfIdle(harness.deps, harness.computer.id);
-
-    expect(harness.sandbox.stop).toHaveBeenCalledOnce();
   });
 
   it("claims the lease boundary before any checkpoint export", async () => {
@@ -151,11 +146,6 @@ describe("sandbox idle", () => {
       },
       data: {
         state: "suspended",
-        controlHolder: "none",
-        controlLeaseId: null,
-        controlLeaseExpiresAt: null,
-        controlBotId: null,
-        controlRunId: null,
       },
     });
     expect(harness.events.append).toHaveBeenCalledWith(
@@ -468,10 +458,6 @@ function idleHarness(
     state: "running",
     spaceId: "workspace",
     userId: "user",
-    controlHolder: "none",
-    controlLeaseId: null,
-    controlLeaseExpiresAt: null,
-    controlBotId: null,
     executionBotId: null,
     updatedAt: new Date("2026-01-01T00:00:00.000Z"),
   };
@@ -547,9 +533,13 @@ function idleHarness(
 
 function probeBackgroundWork(markerId: string): Promise<number> {
   return new Promise((resolve, reject) => {
-    const child = spawn("bash", ["-c", BACKGROUND_WORK_PROBE, "superchat-background-probe", markerId], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    const child = spawn(
+      "bash",
+      ["-c", BACKGROUND_WORK_PROBE, "superchat-background-probe", markerId],
+      {
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
     child.on("error", reject);
     child.on("close", (code) => resolve(code ?? 1));
   });

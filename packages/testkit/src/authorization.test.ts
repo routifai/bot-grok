@@ -121,12 +121,8 @@ describeWithDatabase("API authorization and resource isolation", () => {
       ["computer/status", { botId: "missing-bot" }],
       ["computer/boot", { botId: "missing-bot" }],
       ["computer/stop", { botId: "missing-bot" }],
-      ["computer/takeover", { botId: "missing-bot" }],
-      ["computer/release", { botId: "missing-bot" }],
-      ["computer/input", { botId: "missing-bot", kind: "key", payload: { key: "A" } }],
       ["computer/files", { botId: "missing-bot", path: "/" }],
       ["computer/readFile", { botId: "missing-bot", path: "MEMORY.md" }],
-      ["computer/screenUrl", { botId: "missing-bot" }],
       ["computer/heartbeat", { botId: "missing-bot" }],
       ["routines/list", { botId: "missing-bot" }],
       ["routines/create", routineInput("missing-bot")],
@@ -137,22 +133,6 @@ describeWithDatabase("API authorization and resource isolation", () => {
       ["scratchpad/create", { botId: "missing-bot", title: "Nope" }],
       ["scratchpad/update", { itemId: "missing-item", title: "Nope" }],
       ["scratchpad/remove", { itemId: "missing-item" }],
-      ["skills/list", { botId: "missing-bot" }],
-      ["skills/get", { skillId: "missing-skill" }],
-      ["skills/start", { botId: "missing-bot", goal: "Demonstrate export" }],
-      [
-        "skills/appendEvent",
-        {
-          skillId: "missing-skill",
-          event: { at: new Date().toISOString(), kind: "key", key: "a" },
-        },
-      ],
-      ["skills/snapshot", { skillId: "missing-skill" }],
-      ["skills/stop", { skillId: "missing-skill" }],
-      ["skills/updateDraft", { skillId: "missing-skill", playbook: skillPlaybookInput() }],
-      ["skills/save", { skillId: "missing-skill" }],
-      ["skills/testRun", { skillId: "missing-skill" }],
-      ["skills/remove", { skillId: "missing-skill" }],
       ["agentSkills/list"],
       ["agentSkills/get", { skillId: "missing-skill" }],
       ["agentSkills/create", { name: "Unauthenticated", description: "Nope", body: "Steps" }],
@@ -223,18 +203,6 @@ describeWithDatabase("API authorization and resource isolation", () => {
       botId: ownerBot.id,
       title: "Owner open work",
       notes: "private",
-    });
-    const ownerSkill = await handles.prisma.taughtSkill.create({
-      data: {
-        spaceId: ownerActor.spaceId,
-        botId: ownerBot.id,
-        userId: ownerActor.userId,
-        name: "Owner Skill",
-        goal: "Owner-only skill",
-        status: "saved",
-        playbook: skillPlaybookInput(),
-        recording: { events: [], snapshots: [] },
-      },
     });
     const ownerAgentSkill = await rpc<{ id: string }>(app, owner, "agentSkills/create", {
       name: "Owner Recipe",
@@ -318,19 +286,13 @@ describeWithDatabase("API authorization and resource isolation", () => {
       ["computer/status", { botId: ownerBot.id }],
       ["computer/boot", { botId: ownerBot.id }],
       ["computer/stop", { botId: ownerBot.id }],
-      ["computer/takeover", { botId: ownerBot.id }],
-      ["computer/release", { botId: ownerBot.id }],
-      ["computer/input", { botId: ownerBot.id, kind: "key", payload: { key: "A" } }],
       ["computer/files", { botId: ownerBot.id, path: "/" }],
       ["computer/readFile", { botId: ownerBot.id, path: "PRIVATE.md" }],
-      ["computer/screenUrl", { botId: ownerBot.id }],
       ["computer/heartbeat", { botId: ownerBot.id }],
       ["routines/list", { botId: ownerBot.id }],
       ["routines/create", routineInput(ownerBot.id)],
       ["scratchpad/list", { botId: ownerBot.id }],
       ["scratchpad/create", { botId: ownerBot.id, title: "Stolen item" }],
-      ["skills/list", { botId: ownerBot.id }],
-      ["skills/start", { botId: ownerBot.id, goal: "Intruder demo" }],
       ["artifacts/list", { botId: ownerBot.id }],
       [
         "artifacts/create",
@@ -385,17 +347,6 @@ describeWithDatabase("API authorization and resource isolation", () => {
       ["routines/testRun", { routineId: ownerRoutine.id }],
       ["scratchpad/update", { itemId: ownerScratchpad.id, title: "Stolen item" }],
       ["scratchpad/remove", { itemId: ownerScratchpad.id }],
-      ["skills/get", { skillId: ownerSkill.id }],
-      [
-        "skills/appendEvent",
-        { skillId: ownerSkill.id, event: { at: new Date().toISOString(), kind: "key", key: "x" } },
-      ],
-      ["skills/snapshot", { skillId: ownerSkill.id }],
-      ["skills/stop", { skillId: ownerSkill.id }],
-      ["skills/updateDraft", { skillId: ownerSkill.id, playbook: skillPlaybookInput() }],
-      ["skills/save", { skillId: ownerSkill.id }],
-      ["skills/testRun", { skillId: ownerSkill.id }],
-      ["skills/remove", { skillId: ownerSkill.id }],
       ["agentSkills/get", { skillId: ownerAgentSkill.id }],
       ["agentSkills/update", { skillId: ownerAgentSkill.id, description: "Stolen" }],
       ["agentSkills/remove", { skillId: ownerAgentSkill.id }],
@@ -656,7 +607,11 @@ describeWithDatabase("API authorization and resource isolation", () => {
   });
 
   it("reuses provider credentials and copies their selections into a new Space", async () => {
-    const cookie = await signup(app, `space-provider-copy-${stamp}@superchat.test`, "Provider Copy");
+    const cookie = await signup(
+      app,
+      `space-provider-copy-${stamp}@superchat.test`,
+      "Provider Copy",
+    );
     const actor = await rpc<Actor>(app, cookie, "me");
     const model = await rpc<ModelCredential>(app, cookie, "models/connect", {
       provider: "copy-provider",
@@ -1228,7 +1183,11 @@ describeWithDatabase("API authorization and resource isolation", () => {
   });
 
   it("binds a new default to the space preference credential, not a newer unused duplicate", async () => {
-    const cookie = await signup(app, `model-duplicates-${stamp}@superchat.test`, "Model Duplicates");
+    const cookie = await signup(
+      app,
+      `model-duplicates-${stamp}@superchat.test`,
+      "Model Duplicates",
+    );
     const actor = await rpc<Actor>(app, cookie, "me");
     const olderSecret = await handles.prisma.secret.create({
       data: {
@@ -1392,18 +1351,6 @@ function routineInput(botId: string) {
     timezone: "UTC",
     notify: false,
     active: false,
-  };
-}
-
-function skillPlaybookInput() {
-  return {
-    whenToUse: "When needed",
-    inputs: ["example"],
-    steps: ["Do the thing"],
-    howToCheck: "Verify result",
-    whatToReturn: "Summary",
-    approvalBoundaries: "Ask first",
-    failureHandling: "Stop and ask",
   };
 }
 

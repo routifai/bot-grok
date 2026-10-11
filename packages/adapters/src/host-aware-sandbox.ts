@@ -3,13 +3,10 @@ import type {
   AdapterContext,
   CommandRequest,
   ComputerActionRequest,
-  ComputerInput,
   ComputerRef,
-  ControlLeaseRef,
   PortableFile,
   ProcessEvent,
   SandboxProvider,
-  ScreenRequest,
 } from "@superchat/adapter-kit";
 import type { PrismaClient } from "@superchat/db";
 import { DesktopSandboxProvider } from "./desktop-sandbox.js";
@@ -109,20 +106,6 @@ export class HostAwareSandbox implements SandboxProvider {
   ): AsyncIterable<ProcessEvent> {
     yield* this.route(computer).execute(computer, request, context);
   }
-
-  connectScreen(computer: ComputerRef, request: ScreenRequest, context: AdapterContext) {
-    return this.route(computer).connectScreen(computer, request, context);
-  }
-
-  sendInput(
-    computer: ComputerRef,
-    input: ComputerInput,
-    lease: ControlLeaseRef,
-    context: AdapterContext,
-  ) {
-    return this.route(computer).sendInput(computer, input, lease, context);
-  }
-
   observe(computer: ComputerRef, context: AdapterContext) {
     return this.route(computer).observe(computer, context);
   }
@@ -171,19 +154,6 @@ export class HostAwareSandbox implements SandboxProvider {
   releaseScreen(computer: ComputerRef, context: AdapterContext) {
     return this.route(computer).releaseScreen?.(computer, context) ?? Promise.resolve();
   }
-
-  setScreenControl(
-    computer: ComputerRef,
-    interactive: boolean,
-    context: AdapterContext,
-    controlToken?: string,
-  ) {
-    return (
-      this.route(computer).setScreenControl?.(computer, interactive, context, controlToken) ??
-      Promise.resolve()
-    );
-  }
-
   stop(computer: ComputerRef, context: AdapterContext) {
     return this.route(computer).stop(computer, context);
   }

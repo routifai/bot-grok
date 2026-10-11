@@ -1,4 +1,8 @@
-import { BoxSandboxProvider, CreateOSSandboxProvider, E2BSandboxProvider } from "@superchat/adapters";
+import {
+  BoxSandboxProvider,
+  CreateOSSandboxProvider,
+  E2BSandboxProvider,
+} from "@superchat/adapters";
 import { loadRootEnv } from "@superchat/core/node/load-root-env";
 import { describe, expect, it } from "vitest";
 
@@ -117,9 +121,6 @@ describeCreateos("live CreateOS canary", () => {
       expect(stdout).toContain("createos-ok");
 
       expect((await sandbox.observe(computer, ctx)).image.byteLength).toBeGreaterThan(0);
-      expect(
-        (await sandbox.connectScreen(computer, { view: "stream", interactive: true }, ctx)).url,
-      ).toBeTruthy();
 
       await sandbox.writeFile(
         computer,

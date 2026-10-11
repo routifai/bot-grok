@@ -1,20 +1,14 @@
-import { randomUUID } from "node:crypto";
 import type {
   AdapterContext,
   ComputerAction,
   ComputerActionRequest,
-  ComputerInput,
   ComputerRef,
-  ScreenRequest,
-  ScreenSession,
 } from "@superchat/adapter-kit";
 import {
   BROWSER_APPLICATIONS,
   browserLauncherPath,
   browserProfilePathForScreen,
   type DesktopEnvironment,
-  desktopControlCommand,
-  desktopUrl,
   managedDesktopCommand,
   releaseDesktopCommand,
   screenPorts,
@@ -30,7 +24,6 @@ import {
 } from "./computer-support.js";
 import {
   extraDisplayActionCommand,
-  extraDisplayInputCommand,
   observeExtraDisplayCommand,
   parseExtraDisplayObservation,
 } from "./extra-displays.js";
@@ -42,10 +35,9 @@ export interface LinuxDesktopHost {
     command: string,
     context: AdapterContext,
   ): Promise<{ code: number; stdout: string; stderr?: string }>;
-  screenUrl(computer: ComputerRef, port: number, context: AdapterContext): Promise<string>;
 }
 
-/** Provider SDKs supply only command execution, workspace paths, and protected port URLs. */
+/** Provider SDKs supply only command execution and workspace paths. */
 export class LinuxDesktop {
   constructor(private readonly host: LinuxDesktopHost) {}
 
@@ -62,69 +54,13 @@ export class LinuxDesktop {
     const key = screenSessionKey(context);
     const output = await this.run(
       computer,
-      managedDesktopCommand(key, context.screenLeaseId, env, randomUUID()),
+      managedDesktopCommand(key, context.screenLeaseId, env),
       context,
     );
-    const match = output.match(/SUPERCHAT_DESKTOP=(\d+):([a-zA-Z0-9_-]+)/);
+    const match = output.match(/SUPERCHAT_DESKTOP=(\d+)/);
     if (!match) throw new ComputerScreenUnavailableError();
     const index = Number(match[1]);
-    const ports = screenPorts(index, env);
-    const layout = {
-      ...ports,
-      viewPort: Number(ports.viewPort),
-      controlPort: Number(ports.controlPort),
-    };
-    return { env, key, layout, token: match[2]! };
-  }
-
-  async connectScreen(
-    computer: ComputerRef,
-    request: ScreenRequest,
-    context: AdapterContext,
-  ): Promise<ScreenSession> {
-    const screen = await this.ensure(computer, context);
-    let token = screen.token;
-    if (request.interactive) {
-      if (!request.controlToken) throw new Error("interactive screen requires a control token");
-      token = request.controlToken;
-      await this.run(
-        computer,
-        desktopControlCommand(screen.key, context.screenLeaseId, screen.env, true, token),
-        context,
-      );
-    }
-    const url = await this.host.screenUrl(
-      computer,
-      request.interactive ? screen.layout.controlPort : screen.layout.viewPort,
-      context,
-    );
-    return { url: desktopUrl(url, token), mimeType: "text/html", close: async () => undefined };
-  }
-
-  async setScreenControl(
-    computer: ComputerRef,
-    interactive: boolean,
-    context: AdapterContext,
-    token?: string,
-  ) {
-    if (!token) {
-      if (interactive) throw new Error("interactive screen requires a control token");
-      return;
-    }
-    const env = interactive
-      ? (await this.ensure(computer, context)).env
-      : await this.host.environment(computer);
-    await this.run(
-      computer,
-      desktopControlCommand(
-        screenSessionKey(context),
-        context.screenLeaseId,
-        env,
-        interactive,
-        token,
-      ),
-      context,
-    );
+    return { env, key, layout: screenPorts(index, env) };
   }
 
   async observe(computer: ComputerRef, context: AdapterContext) {
@@ -145,11 +81,6 @@ export class LinuxDesktop {
       height: 800,
       cursor: observed.cursor,
     });
-  }
-
-  async sendInput(computer: ComputerRef, input: ComputerInput, context: AdapterContext) {
-    const { layout } = await this.ensure(computer, context);
-    await this.run(computer, extraDisplayInputCommand(layout, input), context);
   }
 
   async act(computer: ComputerRef, request: ComputerActionRequest, context: AdapterContext) {
@@ -214,9 +145,7 @@ export const PREPARE_LINUX_DESKTOP = [
   "set -eu",
   'missing=""',
   // biome-ignore lint/suspicious/noTemplateCurlyInString: shell parameter expansion
-  'for pair in python3:python3 flock:util-linux Xvfb:xvfb xdpyinfo:x11-utils x11vnc:x11vnc fluxbox:fluxbox xdotool:xdotool scrot:scrot; do command -v "${pair%%:*}" >/dev/null 2>&1 || missing="$missing ${pair#*:}"; done',
-  'if ! command -v websockify >/dev/null 2>&1 && [ ! -x /opt/noVNC/utils/websockify/run ]; then missing="$missing websockify"; fi',
-  'if [ ! -d /usr/share/novnc ] && [ ! -d /opt/noVNC ]; then missing="$missing novnc"; fi',
+  'for pair in python3:python3 flock:util-linux Xvfb:xvfb xdpyinfo:x11-utils fluxbox:fluxbox xdotool:xdotool scrot:scrot; do command -v "${pair%%:*}" >/dev/null 2>&1 || missing="$missing ${pair#*:}"; done',
   'if [ -n "$missing" ]; then',
   '  if [ "$(id -u)" -eq 0 ]; then root=""; else root="sudo -n"; fi',
   "  $root apt-get update -qq && $root env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $missing",

@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { Bot, ComputerStatus } from "@superchat/contracts";
+import type { Bot } from "@superchat/contracts";
 import { Button } from "@superchat/ui-web";
 import { X } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
@@ -10,12 +10,10 @@ export function SidePanelHeader({
   panel,
   setPanel,
   active,
-  computer,
 }: {
   panel: Panel;
   setPanel: Dispatch<SetStateAction<Panel>>;
   active: Bot | undefined;
-  computer: ComputerStatus | null;
 }) {
   const { t } = useLingui();
   return (
@@ -24,7 +22,7 @@ export function SidePanelHeader({
         {panel === "settings" ? (
           <Trans>Settings</Trans>
         ) : active ? (
-          (computer?.state ?? active.status)
+          active.status
         ) : (
           <Trans>Group</Trans>
         )}

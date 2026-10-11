@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { AgentSkill, AgentSkillCatalogEntry, TaughtSkill } from "@superchat/contracts";
+import type { AgentSkill, AgentSkillCatalogEntry } from "@superchat/contracts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,27 +20,19 @@ import { useEffect, useState } from "react";
 import { illustrationUrl } from "../../lib/illustrations";
 import { rpc } from "../../lib/rpc";
 import { EmptyState, MUSE_INSET_GROUP } from "../../pages/muse/ui/index";
-import { SkillReviewSheet } from "./teach/SkillReviewSheet";
 
 /**
- * Library · Skills: what the Muse knows how to do. Skills come from a demonstration (Teach a
- * task), from an offer the person accepted, or from steps they pasted; this lists them and
- * lets the person read, edit or delete each one.
+ * Library · Skills: what the Muse knows how to do. Skills come from an offer the person
+ * accepted or from steps they pasted; this lists them and lets the person read, edit or delete
+ * each one.
  */
-export function SkillsPanel({ botId }: { botId: string }) {
+export function SkillsPanel() {
   const { t } = useLingui();
   const [skills, setSkills] = useState<AgentSkillCatalogEntry[] | null>(null);
-  const [taught, setTaught] = useState<TaughtSkill[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
-  const [openTaughtId, setOpenTaughtId] = useState<string | null>(null);
 
   async function load() {
-    // Taught skills live on the engine; the Library still lists the rest if it is unreachable.
-    void rpc.skills
-      .list({ botId })
-      .then((all) => setTaught(all.filter((skill) => skill.status === "saved")))
-      .catch(() => setTaught([]));
     try {
       setSkills(await rpc.agentSkills.list());
       setError(null);
@@ -52,7 +44,7 @@ export function SkillsPanel({ botId }: { botId: string }) {
 
   useEffect(() => {
     void load();
-  }, [botId]);
+  }, []);
 
   if (skills === null) {
     return <div className="h-40 animate-pulse rounded-[22px] bg-muted/60" aria-hidden="true" />;
@@ -61,40 +53,17 @@ export function SkillsPanel({ botId }: { botId: string }) {
   // Only what the Muse learned is listed; built-in and plugin skills stay available to it
   // but aren't the person's to manage here.
   const learned = skills.filter((skill) => skill.source === "user");
-  if (learned.length === 0 && taught.length === 0) {
+  if (learned.length === 0) {
     return (
       <EmptyState illustration="light-bulb" headline={t`No skills yet`}>
-        {t`When I do something you'll want again, I'll offer to save it. You can also teach me on my computer, or paste steps and ask me to keep them.`}
+        {t`When I do something you'll want again, I'll offer to save it. You can also paste steps and ask me to keep them.`}
       </EmptyState>
     );
   }
 
   return (
     <div className="flex flex-col gap-8">
-      {taught.length ? (
-        <SkillGroup
-          title={t`Taught`}
-          skills={taught.map((skill) => ({
-            id: skill.id,
-            name: skill.name || skill.goal,
-            description: skill.goal,
-          }))}
-          onOpen={setOpenTaughtId}
-        />
-      ) : null}
-      {learned.length ? (
-        <SkillGroup title={t`Learned`} skills={learned} onOpen={setOpenId} />
-      ) : null}
-      {openTaughtId ? (
-        <SkillReviewSheet
-          skillId={openTaughtId}
-          open
-          onOpenChange={(open) => {
-            if (!open) setOpenTaughtId(null);
-          }}
-          onChanged={() => load()}
-        />
-      ) : null}
+      <SkillGroup title={t`Learned`} skills={learned} onOpen={setOpenId} />
       {openId ? (
         <SkillSheet
           skillId={openId}

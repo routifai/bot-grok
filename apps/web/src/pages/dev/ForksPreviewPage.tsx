@@ -242,9 +242,7 @@ export function ForksPreviewPage() {
               onJumpToMessage={noop}
               onOpenPeerMessages={noop}
               peerBot={() => undefined}
-              onRefresh={noopAsync}
               onBotChanged={noopAsync}
-              onAddRoutine={noop}
               voiceReady={false}
               speakingMessageId={null}
               onSpeak={noop}

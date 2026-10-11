@@ -71,7 +71,6 @@ export const Composer = memo(function Composer({
   museMode,
   activeName,
   running,
-  disabled,
   pendingAttachments = NO_ATTACHMENTS,
   pendingFolders = NO_FOLDERS,
   onAttachFolder,
@@ -106,7 +105,6 @@ export const Composer = memo(function Composer({
   museMode?: boolean;
   activeName?: string;
   running: boolean;
-  disabled?: boolean;
   pendingAttachments?: PendingAttachment[];
   /** Workspace folders the next message points at. */
   pendingFolders?: readonly string[];
@@ -347,7 +345,7 @@ export const Composer = memo(function Composer({
     (slashSkillOptions.length > 0 || slashActionOptions.length > 0);
 
   function send() {
-    if (!canSend || sending || disabled || attachmentsPending) return;
+    if (!canSend || sending || attachmentsPending) return;
     const text = serializeComposerPrompt(draft, selectedSkill, selectedMentions);
     const kept = { draft, skill: selectedSkill, mentions: selectedMentions, attachments };
     setDraft("");
@@ -372,11 +370,6 @@ export const Composer = memo(function Composer({
     const dataTransfer = event.dataTransfer;
     if (!isFileDrag(dataTransfer)) return;
     event.preventDefault();
-    if (disabled) {
-      dragDepth.current = 0;
-      setDraggingFiles(false);
-      return;
-    }
     dragDepth.current += 1;
     setDraggingFiles(true);
   }
@@ -385,22 +378,12 @@ export const Composer = memo(function Composer({
     const dataTransfer = event.dataTransfer;
     if (!isFileDrag(dataTransfer)) return;
     event.preventDefault();
-    dataTransfer.dropEffect = disabled ? "none" : "copy";
-    if (disabled) {
-      dragDepth.current = 0;
-      setDraggingFiles(false);
-      return;
-    }
+    dataTransfer.dropEffect = "copy";
     setDraggingFiles(true);
   }
 
   function handleDragLeave(event: DragEvent<HTMLFieldSetElement>) {
     if (!isFileDrag(event.dataTransfer)) return;
-    if (disabled) {
-      dragDepth.current = 0;
-      setDraggingFiles(false);
-      return;
-    }
     dragDepth.current = Math.max(0, dragDepth.current - 1);
     if (dragDepth.current === 0) setDraggingFiles(false);
   }
@@ -411,13 +394,13 @@ export const Composer = memo(function Composer({
     event.preventDefault();
     dragDepth.current = 0;
     setDraggingFiles(false);
-    if (!disabled) void onAttachmentPick?.(dataTransfer.files);
+    void onAttachmentPick?.(dataTransfer.files);
   }
 
   function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
     const clipboardData = event.clipboardData;
     // Only intercept real FileList pastes; leave text-only / empty-files native.
-    if (disabled || !onAttachmentPick || !clipboardData || !isFilePaste(clipboardData)) return;
+    if (!onAttachmentPick || !clipboardData || !isFilePaste(clipboardData)) return;
     event.preventDefault();
     void onAttachmentPick(clipboardData.files);
     const text = clipboardData.getData("text/plain");
@@ -786,7 +769,6 @@ export const Composer = memo(function Composer({
               <DropdownMenu>
                 <DropdownMenuTrigger
                   aria-label={t`Attach`}
-                  disabled={disabled}
                   className="grid size-[34px] shrink-0 place-items-center rounded-full text-ink-3 transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
                 >
                   <Plus size={16} strokeWidth={2} />
@@ -807,7 +789,6 @@ export const Composer = memo(function Composer({
                 variant="ghost"
                 size="icon"
                 aria-label={t`Attach file`}
-                disabled={disabled}
                 onClick={() => fileInputRef?.current?.click()}
                 className={cn(
                   "size-8 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
@@ -918,7 +899,6 @@ export const Composer = memo(function Composer({
                 send();
               }
             }}
-            disabled={disabled}
             placeholder={
               showComposerPlaceholder
                 ? (placeholder ??
@@ -956,7 +936,6 @@ export const Composer = memo(function Composer({
             size="icon"
             aria-label={t`Voice`}
             title={t`Voice`}
-            disabled={disabled}
             onClick={onVoice}
             className={cn(
               "size-8 shrink-0 rounded-full",
@@ -975,7 +954,7 @@ export const Composer = memo(function Composer({
             <Button
               size="icon"
               aria-label={t`Send`}
-              disabled={sending || !canSend || disabled || attachmentsPending}
+              disabled={sending || !canSend || attachmentsPending}
               onClick={send}
               className={cn(
                 "size-8 rounded-full shadow-sm transition-transform active:scale-95",
@@ -1001,7 +980,7 @@ export const Composer = memo(function Composer({
           <Button
             size="icon"
             aria-label={t`Send`}
-            disabled={sending || !canSend || disabled || attachmentsPending}
+            disabled={sending || !canSend || attachmentsPending}
             onClick={send}
             className={cn(
               "size-8 shrink-0 rounded-full shadow-sm transition-transform active:scale-95",

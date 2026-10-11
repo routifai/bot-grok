@@ -13,7 +13,6 @@ import {
   acquireComputerExecutionLease,
   ComputerBusyError,
   computerSupportsUpdate,
-  holdComputerExecutionLeaseForTakeover,
   provisionComputer,
   releaseComputerExecutionLease,
   renewComputerExecutionLease,
@@ -50,7 +49,6 @@ describe("computer provisioning", () => {
       kind: "cloud",
       scope: "dedicated",
       state: "stopped",
-      controlLeaseId: null,
       updatedAt: new Date("2024-01-01T00:00:00.000Z"),
     };
     const prisma = {
@@ -154,7 +152,6 @@ describe("computer provisioning", () => {
       kind: "cloud",
       scope: "dedicated",
       state: "booting",
-      controlLeaseId: null,
       updatedAt: new Date("2024-01-01T00:00:00.000Z"),
     };
     const prisma = {
@@ -250,7 +247,6 @@ describe("computer provisioning", () => {
       kind: "cloud",
       scope: "dedicated",
       state: "suspending",
-      controlLeaseId: null,
       updatedAt: observed,
     };
     const updateMany = vi.fn(
@@ -321,7 +317,6 @@ describe("computer provisioning", () => {
           kind: "cloud",
           scope: "dedicated",
           state: "suspending",
-          controlLeaseId: null,
           updatedAt: new Date(nowMs - ttlMs + 1),
         })),
         updateMany,
@@ -373,7 +368,6 @@ describe("computer provisioning", () => {
           kind: "cloud",
           scope: "dedicated",
           state: "suspending",
-          controlLeaseId: null,
           updatedAt: new Date(nowMs),
         })),
         updateMany,
@@ -417,7 +411,6 @@ describe("computer provisioning", () => {
       kind: "cloud",
       scope: "dedicated",
       state: "suspending",
-      controlLeaseId: null,
       updatedAt: new Date("2024-01-01T00:00:00.000Z"),
     };
     const rowBooting = {
@@ -465,7 +458,6 @@ describe("computer provisioning", () => {
       kind: "cloud",
       scope: "dedicated",
       state: "stopped",
-      controlLeaseId: null,
       updatedAt: new Date("2024-01-01T00:00:00.000Z"),
     };
     const updateMany = vi.fn(
@@ -524,7 +516,6 @@ describe("computer provisioning", () => {
       kind: "cloud",
       scope: "dedicated",
       state: "booting",
-      controlLeaseId: null,
       updatedAt: observed,
     };
     const updateMany = vi.fn(
@@ -606,7 +597,6 @@ describe("computer provisioning", () => {
       kind: "cloud",
       scope: "dedicated",
       state: "booting",
-      controlLeaseId: null,
       // Claim stamp is "now" — still inside the boot-wait window, so not abandoned.
       updatedAt: new Date(nowMs),
     };
@@ -661,7 +651,6 @@ describe("computer provisioning", () => {
       kind: "cloud",
       scope: "dedicated",
       state: "booting",
-      controlLeaseId: null,
       // Older than an execution-lease TTL — stamp looks abandoned, but the run is alive.
       updatedAt: new Date("2024-01-01T00:00:00.000Z"),
     };
@@ -723,7 +712,6 @@ describe("computer provisioning", () => {
       kind: "cloud",
       scope: "team",
       state: "stopped",
-      controlLeaseId: null,
       updatedAt: new Date("2024-01-01T00:00:00.000Z"),
     };
     const updateMany = vi.fn(
@@ -800,7 +788,6 @@ describe("computer provisioning", () => {
         kind: "box",
         scope: "dedicated",
         state: "running",
-        controlLeaseId: null,
         updatedAt: new Date("2024-01-01T00:00:00.000Z"),
       };
       const ref = {
@@ -885,7 +872,6 @@ describe("computer provisioning", () => {
       kind: "box",
       scope: "dedicated",
       state: "running",
-      controlLeaseId: null,
       updatedAt: new Date("2024-01-01T00:00:00.000Z"),
     };
     const ref = {
@@ -964,7 +950,6 @@ describe("computer provisioning", () => {
             kind: "box",
             scope: "dedicated",
             state: "running",
-            controlLeaseId: null,
             updatedAt: new Date("2024-01-01T00:00:00.000Z"),
           }),
           updateMany: vi
@@ -1040,7 +1025,6 @@ describe("computer provisioning", () => {
           kind: "fake",
           scope: "dedicated",
           state: "stopped",
-          controlLeaseId: null,
           updatedAt: new Date("2024-01-01T00:00:00.000Z"),
         }),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
@@ -1103,7 +1087,6 @@ describe("computer provisioning", () => {
           kind: "docker",
           scope: "team",
           state: "stopped",
-          controlLeaseId: null,
           updatedAt: new Date("2024-01-01T00:00:00.000Z"),
         }),
         updateMany,
@@ -1163,7 +1146,6 @@ describe("computer provisioning", () => {
           kind: "e2b",
           scope: "dedicated",
           state: "stopped",
-          controlLeaseId: null,
           updatedAt: new Date("2024-01-01T00:00:00.000Z"),
         }),
         updateMany,
@@ -1234,7 +1216,6 @@ describe("computer provisioning", () => {
             kind: "cloud",
             scope: "dedicated",
             state: "running",
-            controlLeaseId: null,
             updatedAt: new Date("2024-01-01T00:00:00.000Z"),
           }),
           updateMany: vi.fn().mockResolvedValue({ count: 1 }),
@@ -1300,7 +1281,6 @@ describe("computer provisioning", () => {
           kind: "createos",
           scope: "dedicated",
           state: "running",
-          controlLeaseId: null,
           updatedAt: new Date("2024-01-01T00:00:00.000Z"),
         }),
         updateMany,
@@ -1456,10 +1436,7 @@ describe("computer execution leases", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  it.each([
-    ["renewal", renewComputerExecutionLease],
-    ["takeover", holdComputerExecutionLeaseForTakeover],
-  ] as const)(
+  it.each([["renewal", renewComputerExecutionLease]] as const)(
     "does not let late %s revive an expired lease during checkpointing",
     async (_, extend) => {
       const now = new Date("2026-01-01T00:00:00Z");
@@ -1663,26 +1640,6 @@ describe("computer execution leases", () => {
     );
   });
 
-  it("only reclaims an active same-run lease when resuming a held takeover", async () => {
-    const prisma = leasePrisma({ scope: "team", reclaim: true, fence: 8 });
-
-    await acquireComputerExecutionLease(prisma.client, {
-      computerId: "computer-1",
-      runId: "run-1",
-      botId: "bot-1",
-      resumeHeldLease: true,
-    });
-
-    expect(prisma.updateManyAndReturn).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          OR: [{ expiresAt: { lt: expect.any(Date) } }, { runId: "run-1" }],
-        }),
-      }),
-    );
-    expect(prisma.create).not.toHaveBeenCalled();
-  });
-
   it("keeps the screen lease on the run id and fence", () => {
     expect(screenLeaseIdForRun({ runId: "run-1", fence: 8 }, "run-1")).toBe("run-1:8");
     expect(screenLeaseIdForRun(null, "run-1", 0)).toBe("run-1:0");
@@ -1820,7 +1777,6 @@ describe("computer replacement", () => {
       kind: "fake",
       scope: "dedicated",
       state: "running",
-      controlLeaseId: null,
       updatedAt: new Date("2024-01-01T00:00:00.000Z"),
       homeRevision: revision,
     };
@@ -1884,7 +1840,6 @@ describe("computer replacement", () => {
           kind: "fake",
           scope: "team",
           state: "running",
-          controlLeaseId: null,
           updatedAt: new Date("2024-01-01T00:00:00.000Z"),
         }),
         updateMany: vi.fn().mockResolvedValueOnce({ count: 1 }),
@@ -1920,7 +1875,6 @@ describe("computer replacement", () => {
           kind: "fake",
           scope: "team",
           state: "suspending",
-          controlLeaseId: null,
           updatedAt: new Date("2024-01-01T00:00:00.000Z"),
         }),
         updateMany,
@@ -1962,7 +1916,6 @@ describe("computer replacement", () => {
           kind: "fake",
           scope: "team",
           state: "suspending",
-          controlLeaseId: null,
           updatedAt: stale,
         }),
         updateMany,
@@ -2004,7 +1957,6 @@ describe("computer replacement", () => {
           kind: "fake",
           scope: "team",
           state: "suspending",
-          controlLeaseId: null,
           updatedAt: new Date(nowMs),
         }),
         updateMany,
@@ -2046,7 +1998,6 @@ describe("computer replacement", () => {
           kind: "fake",
           scope: "team",
           state: "suspending",
-          controlLeaseId: null,
           updatedAt: new Date("2024-01-01T00:00:00.000Z"),
         }),
         updateMany,
@@ -2085,7 +2036,6 @@ describe("computer replacement", () => {
           kind: "fake",
           scope: "dedicated",
           state: "booting",
-          controlLeaseId: null,
           updatedAt: new Date("2024-01-01T00:00:00.000Z"),
         }),
         updateMany,
@@ -2124,7 +2074,6 @@ describe("computer replacement", () => {
           kind: "fake",
           scope: "team",
           state: "booting",
-          controlLeaseId: null,
           updatedAt: new Date("2024-01-01T00:00:00.000Z"),
         }),
         updateMany,
@@ -2166,7 +2115,6 @@ describe("computer replacement", () => {
           kind: "fake",
           scope: "dedicated",
           state: "booting",
-          controlLeaseId: null,
           updatedAt: new Date(nowMs),
         }),
         updateMany,
@@ -2210,7 +2158,6 @@ describe("computer replacement", () => {
           kind: "fake",
           scope: "dedicated",
           state: "booting",
-          controlLeaseId: null,
           updatedAt: new Date("2024-01-01T00:00:00.000Z"),
         }),
         updateMany,
@@ -2246,7 +2193,6 @@ describe("computer replacement", () => {
           kind: "fake",
           scope: "dedicated",
           state: "running",
-          controlLeaseId: null,
           updatedAt: new Date("2024-01-01T00:00:00.000Z"),
         }),
         updateMany: vi.fn().mockResolvedValueOnce({ count: 1 }),
@@ -2271,232 +2217,6 @@ describe("computer replacement", () => {
     ).rejects.toBeInstanceOf(ComputerBusyError);
   });
 
-  it("rejects replacement while any bot holds user control", async () => {
-    const prisma = {
-      computer: {
-        findUniqueOrThrow: vi.fn().mockResolvedValue({
-          id: "computer-1",
-          homeKey: "bot-1",
-          providerRef: "provider-1",
-          kind: "fake",
-          scope: "team",
-          state: "running",
-          controlHolder: "user",
-          controlLeaseId: "lease-1",
-          controlLeaseExpiresAt: new Date(Date.now() + 60_000),
-          controlBotId: "other-bot",
-        }),
-      },
-    } as unknown as PrismaClient;
-    await expect(
-      replaceComputer(
-        {
-          prisma,
-          sandbox: new FakeSandboxProvider(),
-          home: {} as AgentHomeStore,
-          jobs: {} as JobPublisher,
-          events: {} as ThreadEvents,
-        },
-        "computer-1",
-        "recover",
-        context,
-      ),
-    ).rejects.toBeInstanceOf(ComputerBusyError);
-  });
-
-  it("rejects replacement while the same bot holds user control", async () => {
-    const prisma = {
-      computer: {
-        findUniqueOrThrow: vi.fn().mockResolvedValue({
-          id: "computer-1",
-          homeKey: "bot-1",
-          providerRef: "provider-1",
-          kind: "fake",
-          scope: "dedicated",
-          state: "running",
-          controlHolder: "user",
-          controlLeaseId: "lease-1",
-          controlLeaseExpiresAt: new Date(Date.now() + 60_000),
-          controlBotId: "bot-1",
-        }),
-      },
-    } as unknown as PrismaClient;
-    await expect(
-      replaceComputer(
-        {
-          prisma,
-          sandbox: new FakeSandboxProvider(),
-          home: {} as AgentHomeStore,
-          jobs: {} as JobPublisher,
-          events: {} as ThreadEvents,
-        },
-        "computer-1",
-        "reset",
-        context,
-      ),
-    ).rejects.toBeInstanceOf(ComputerBusyError);
-  });
-
-  it("does not treat stale user control without a lease as busy during reset", async () => {
-    const updateMany = vi
-      .fn()
-      .mockResolvedValueOnce({ count: 1 }) // clearInactiveUserComputerControl
-      .mockResolvedValueOnce({ count: 0 }); // suspending claim races
-    const findUniqueOrThrow = vi
-      .fn()
-      .mockResolvedValueOnce({
-        id: "computer-1",
-        homeKey: "bot-1",
-        providerRef: "provider-1",
-        kind: "fake",
-        scope: "dedicated",
-        state: "running",
-        controlHolder: "user",
-        controlLeaseId: null,
-        updatedAt: new Date("2024-01-01T00:00:00.000Z"),
-        controlLeaseExpiresAt: null,
-        controlBotId: "bot-1",
-      })
-      .mockResolvedValueOnce({
-        id: "computer-1",
-        homeKey: "bot-1",
-        providerRef: "provider-1",
-        kind: "fake",
-        scope: "dedicated",
-        state: "running",
-        controlHolder: "none",
-        controlLeaseId: null,
-        updatedAt: new Date("2024-01-01T00:00:00.000Z"),
-        controlLeaseExpiresAt: null,
-        controlBotId: null,
-      });
-    const prisma = {
-      computer: {
-        findUniqueOrThrow,
-        updateMany,
-      },
-      run: { findFirst: vi.fn() },
-    } as unknown as PrismaClient;
-
-    await expect(
-      replaceComputer(
-        {
-          prisma,
-          sandbox: new FakeSandboxProvider(),
-          home: {} as AgentHomeStore,
-          jobs: {} as JobPublisher,
-          events: {} as ThreadEvents,
-        },
-        "computer-1",
-        "reset",
-        context,
-      ),
-    ).rejects.toBeInstanceOf(ComputerBusyError);
-
-    expect(updateMany).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        where: expect.objectContaining({ id: "computer-1", controlHolder: "user" }),
-        data: expect.objectContaining({ controlHolder: "none" }),
-      }),
-    );
-    expect(updateMany).toHaveBeenCalledTimes(2);
-    expect(prisma.run.findFirst).not.toHaveBeenCalled();
-  });
-
-  it("blocks reset while expired control revocation is still in progress", async () => {
-    const computer = {
-      id: "computer-1",
-      homeKey: "bot-1",
-      providerRef: "provider-1",
-      kind: "fake",
-      scope: "dedicated",
-      state: "running",
-      controlHolder: "user",
-      controlLeaseId: "lease-1",
-      controlLeaseExpiresAt: new Date(Date.now() - 60_000),
-      controlBotId: null,
-      spaceId: "space-1",
-      userId: "user-1",
-    };
-    const findUniqueOrThrow = vi.fn().mockResolvedValue(computer);
-    const findUnique = vi.fn().mockResolvedValue(computer);
-    const prisma = {
-      computer: { findUniqueOrThrow, findUnique, updateMany: vi.fn() },
-      run: { findFirst: vi.fn() },
-    } as unknown as PrismaClient;
-    const sandbox = Object.assign(new FakeSandboxProvider(), {
-      setScreenControl: async () => {
-        throw new Error("provider unavailable");
-      },
-    }) as SandboxProvider;
-
-    await expect(
-      replaceComputer(
-        {
-          prisma,
-          sandbox,
-          home: {} as AgentHomeStore,
-          jobs: { enqueue: vi.fn().mockResolvedValue(undefined) } as unknown as JobPublisher,
-          events: {} as ThreadEvents,
-        },
-        "computer-1",
-        "reset",
-        context,
-      ),
-    ).rejects.toThrow("computer control revocation is still in progress");
-    expect(prisma.computer.updateMany).not.toHaveBeenCalled();
-  });
-
-  it("rejects replacement when control is claimed before the suspending lock", async () => {
-    const prisma = {
-      computer: {
-        findUniqueOrThrow: vi.fn().mockResolvedValue({
-          id: "computer-1",
-          homeKey: "bot-1",
-          providerRef: "provider-1",
-          kind: "fake",
-          scope: "dedicated",
-          state: "running",
-          controlHolder: "none",
-          controlLeaseId: null,
-          updatedAt: new Date("2024-01-01T00:00:00.000Z"),
-          controlLeaseExpiresAt: null,
-          controlBotId: null,
-        }),
-        updateMany: vi.fn().mockResolvedValueOnce({ count: 0 }),
-      },
-      run: { findFirst: vi.fn() },
-    } as unknown as PrismaClient;
-    await expect(
-      replaceComputer(
-        {
-          prisma,
-          sandbox: new FakeSandboxProvider(),
-          home: {} as AgentHomeStore,
-          jobs: {} as JobPublisher,
-          events: {} as ThreadEvents,
-        },
-        "computer-1",
-        "recover",
-        context,
-      ),
-    ).rejects.toBeInstanceOf(ComputerBusyError);
-    expect(prisma.computer.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          state: "running",
-          OR: expect.arrayContaining([
-            { controlHolder: { not: "user" } },
-            { controlLeaseId: null },
-            { controlLeaseExpiresAt: null },
-            { controlLeaseExpiresAt: { lte: expect.any(Date) } },
-          ]),
-        }),
-      }),
-    );
-  });
-
   it("rejects replacement of a stopped computer while a run is still active", async () => {
     const updateMany = vi
       .fn()
@@ -2511,7 +2231,6 @@ describe("computer replacement", () => {
           kind: "fake",
           scope: "dedicated",
           state: "stopped",
-          controlLeaseId: null,
           updatedAt: new Date("2024-01-01T00:00:00.000Z"),
         }),
         updateMany,
@@ -2564,7 +2283,6 @@ describe("computer replacement", () => {
           kind: "fake",
           scope: "dedicated",
           state: "suspended",
-          controlLeaseId: null,
           updatedAt: new Date("2024-01-01T00:00:00.000Z"),
         }),
         updateMany,
@@ -2620,7 +2338,6 @@ describe("computer replacement", () => {
         kind: "fake",
         scope: "dedicated",
         state: "stopped",
-        controlLeaseId: null,
         updatedAt: new Date("2024-01-01T00:00:00.000Z"),
       })
       .mockResolvedValue({
@@ -2630,7 +2347,6 @@ describe("computer replacement", () => {
         kind: "fake",
         scope: "dedicated",
         state: "stopped",
-        controlLeaseId: null,
         updatedAt: new Date("2024-01-01T00:00:00.000Z"),
       });
     const prisma = {
@@ -2675,7 +2391,6 @@ describe("computer replacement", () => {
           kind: "fake",
           scope: "dedicated",
           state: "stopped",
-          controlLeaseId: null,
           updatedAt: new Date("2024-01-01T00:00:00.000Z"),
         }),
         updateMany: vi.fn().mockResolvedValueOnce({ count: 0 }),
@@ -2716,7 +2431,6 @@ describe("computer replacement", () => {
       kind: "fake",
       scope: "dedicated",
       state: "running",
-      controlLeaseId: null,
       updatedAt: new Date("2024-01-01T00:00:00.000Z"),
       homeRevision: null,
     };
@@ -2775,7 +2489,6 @@ describe("computer replacement", () => {
       kind: "fake",
       scope: "dedicated",
       state: "running",
-      controlLeaseId: null,
       updatedAt: new Date("2024-01-01T00:00:00.000Z"),
       homeRevision: null,
     };

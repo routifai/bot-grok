@@ -69,7 +69,7 @@ const ENGINE_BLOCK_KINDS: ReadonlySet<string> = new Set([
  * The Conversation as shown: the engine's transcript, plus Superchat's own thread rows, by time.
  *
  * These rows are Superchat-owned, not engine behaviour: cards and notices Superchat writes into the
- * Muse's thread itself (a taught-skill draft, an app-connect card, a messaging notice, a
+ * Muse's thread itself (an app-connect card, a messaging notice, a
  * Muse-to-Muse marker). The engine knows nothing of them, so they are layered in here, purely
  * for display. Superchat's copies of the person's messages and of replies are left out (the
  * transcript is the source), except a message accepted but not yet recorded by the engine.

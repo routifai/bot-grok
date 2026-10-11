@@ -53,7 +53,7 @@ export function RoutinePanel({
       saving={savingRoutine}
       running={runningRoutine}
       error={routineError}
-      onBack={() => setPanel("computer")}
+      onBack={() => setPanel(null)}
       onClose={() => setPanel(null)}
       onEnsureWebhook={async () => {
         await ensureWebhookSecret(active.id);
