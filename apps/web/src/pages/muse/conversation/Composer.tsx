@@ -64,7 +64,6 @@ import { slashActionLabel } from "./slashActionLabel";
 const NO_FOLDERS: readonly string[] = [];
 
 export const Composer = memo(function Composer({
-  museMode,
   activeName,
   running,
   pendingAttachments = NO_ATTACHMENTS,
@@ -93,7 +92,6 @@ export const Composer = memo(function Composer({
   seedText,
   onSeedConsumed,
 }: {
-  museMode?: boolean;
   activeName?: string;
   running: boolean;
   pendingAttachments?: PendingAttachment[];
@@ -380,7 +378,7 @@ export const Composer = memo(function Composer({
       onDrop={handleDrop}
       className={cn(
         "relative z-30 m-0 min-w-0 border-0 px-3 pb-4 pt-3 md:px-6 md:pb-6",
-        museMode && "mx-auto w-full max-w-[748px] pt-2 md:pb-[18px]",
+        "mx-auto w-full max-w-[748px] pt-2 md:pb-[18px]",
         draggingFiles && "rounded-[14px] ring-2 ring-inset ring-ring",
       )}
     >
@@ -643,9 +641,7 @@ export const Composer = memo(function Composer({
         data-testid="composer-bar"
         className={cn(
           "flex gap-3.5 border border-border bg-background py-[9px] pe-2.5 ps-3 transition-[border-color,box-shadow] duration-150 focus-within:border-ring",
-          museMode
-            ? "sc-composer min-h-[108px] flex-wrap content-between items-end gap-x-1.5 gap-y-2 rounded-[20px] px-3 pt-3.5 pb-2.5"
-            : "items-center rounded-full",
+          "sc-composer min-h-[108px] flex-wrap content-between items-end gap-x-1.5 gap-y-2 rounded-[20px] px-3 pt-3.5 pb-2.5",
         )}
       >
         {onAttachmentPick ? (
@@ -685,9 +681,7 @@ export const Composer = memo(function Composer({
                 onClick={() => fileInputRef?.current?.click()}
                 className={cn(
                   "size-8 shrink-0 rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
-                  museMode
-                    ? "size-[34px] border-0 bg-transparent text-ink-3"
-                    : "border border-border bg-muted",
+                  "size-[34px] border-0 bg-transparent text-ink-3",
                 )}
               >
                 <Plus size={16} strokeWidth={2} />
@@ -698,7 +692,7 @@ export const Composer = memo(function Composer({
         <div
           className={cn(
             "flex min-w-0 flex-1 flex-wrap items-end gap-1.5",
-            museMode && "order-first basis-full px-1.5",
+            "order-first basis-full px-1.5",
           )}
         >
           {selectedMentions.map((mention) => (
@@ -771,17 +765,10 @@ export const Composer = memo(function Composer({
             }}
             placeholder={
               showComposerPlaceholder
-                ? (placeholder ??
-                  (activeName
-                    ? museMode
-                      ? t`What can I help you with?`
-                      : t`Message ${activeName}`
-                    : t`Message…`))
+                ? (placeholder ?? (activeName ? t`What can I help you with?` : t`Message…`))
                 : undefined
             }
-            aria-label={
-              museMode ? t`Message superchat` : activeName ? t`Message ${activeName}` : t`Message`
-            }
+            aria-label={t`Message superchat`}
             role="combobox"
             aria-autocomplete="list"
             aria-haspopup="listbox"
@@ -794,14 +781,12 @@ export const Composer = memo(function Composer({
             rows={1}
             className={cn(
               "min-h-[24px] min-w-[8rem] flex-1 resize-none overflow-y-auto bg-transparent py-0.5 leading-6 text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-40",
-              museMode
-                ? "max-h-[200px] min-h-[44px] text-[15px] placeholder:text-ink-3"
-                : "max-h-32 text-[15.5px]",
+              "max-h-[200px] min-h-[44px] text-[15px] placeholder:text-ink-3",
             )}
           />
         </div>
         {running ? (
-          <div className={cn("flex shrink-0 items-center gap-1.5", museMode && "ms-auto")}>
+          <div className={"ms-auto flex shrink-0 items-center gap-1.5"}>
             <Button
               size="icon"
               aria-label={t`Send`}
@@ -809,9 +794,7 @@ export const Composer = memo(function Composer({
               onClick={send}
               className={cn(
                 "size-8 rounded-full shadow-sm transition-transform active:scale-95",
-                museMode
-                  ? "size-[34px] bg-tint text-white shadow-none hover:bg-tint hover:brightness-110"
-                  : "bg-white text-black hover:bg-white/90",
+                "size-[34px] bg-tint text-white shadow-none hover:bg-tint hover:brightness-110",
               )}
             >
               <ArrowUp size={16} strokeWidth={2.2} />
@@ -835,10 +818,7 @@ export const Composer = memo(function Composer({
             onClick={send}
             className={cn(
               "size-8 shrink-0 rounded-full shadow-sm transition-transform active:scale-95",
-              museMode && "ms-auto",
-              museMode
-                ? "size-[34px] bg-tint text-white shadow-none hover:bg-tint hover:brightness-110 disabled:bg-selection disabled:text-ink-3 disabled:opacity-100"
-                : "bg-white text-black hover:bg-white/90 disabled:bg-white/10 disabled:text-muted-foreground/30 disabled:shadow-none",
+              "ms-auto size-[34px] bg-tint text-white shadow-none hover:bg-tint hover:brightness-110 disabled:bg-selection disabled:text-ink-3 disabled:opacity-100",
             )}
           >
             <ArrowUp size={16} strokeWidth={2.2} />

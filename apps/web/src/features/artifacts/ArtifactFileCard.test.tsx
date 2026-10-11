@@ -23,6 +23,7 @@ vi.mock("../../lib/artifact-open", () => ({
   // Resolved (rather than a bare `vi.fn()`) so the dialog can actually mount its
   // preview once opened, the way the real fetch would.
   fetchArtifactBytes: vi.fn().mockResolvedValue(new Uint8Array()),
+  opensInNewTab: () => false,
 }));
 vi.mock("@lingui/core/macro", () => ({
   t: (parts: TemplateStringsArray, ...values: unknown[]) =>
@@ -125,12 +126,10 @@ it("shows the same live preview as the Library for a freshly attached HTML artif
   });
 
   const view = await renderCard({
-    target: { botId: "bot-1" },
     artifactId: "artifact-1",
     name: "Ukrainian Hello",
     mimeType: "text/html",
     size: 2500,
-    museMode: true,
   });
   try {
     await act(async () => {
@@ -161,12 +160,10 @@ it("gives the open and download actions accessible names, and opens the preview 
   });
 
   const view = await renderCard({
-    target: { botId: "bot-1" },
     artifactId: "artifact-1",
     name: "Ukrainian Hello",
     mimeType: "text/html",
     size: 2500,
-    museMode: true,
   });
   try {
     const openAction = buttonsNamed(view.container, "Open Ukrainian Hello");
@@ -189,31 +186,12 @@ it("gives the open and download actions accessible names, and opens the preview 
   }
 });
 
-it("keeps the plain row outside muse mode, without eagerly fetching a preview", async () => {
-  const view = await renderCard({
-    target: { botId: "bot-1" },
-    artifactId: "artifact-2",
-    name: "Ukrainian Hello",
-    mimeType: "text/html",
-    size: 2500,
-  });
-  try {
-    expect(view.container.querySelector("iframe")).toBeNull();
-    expect(api.getById).not.toHaveBeenCalled();
-    expect(view.container.textContent).toContain("Ukrainian Hello");
-  } finally {
-    await view.cleanup();
-  }
-});
-
 it("gives a PDF the same muse card, with its type icon and no thumbnail fetch", async () => {
   const view = await renderCard({
-    target: { botId: "bot-1" },
     artifactId: "artifact-3",
     name: "Q3 report.pdf",
     mimeType: "application/pdf",
     size: 10240,
-    museMode: true,
   });
   try {
     expect(view.container.querySelector("iframe")).toBeNull();

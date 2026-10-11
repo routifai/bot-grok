@@ -64,7 +64,6 @@ import {
 } from "./muse/chrome/EmptyConversation";
 import { Home } from "./muse/chrome/Home";
 import { HomeActivity } from "./muse/chrome/HomeActivity";
-import { museMode } from "./muse/chrome/museMode";
 import { BotSettingsPanel } from "./muse/chrome/PanelForms";
 import type { Panel } from "./muse/chrome/panel";
 import { SidePanelHeader } from "./muse/chrome/SidePanelHeader";
@@ -329,7 +328,6 @@ export function ShellPage() {
   const startPage =
     !forksView &&
     conversationLayout({
-      museMode,
       hasMuse: Boolean(active),
       loaded: museTranscript.messages !== null,
       messageCount: transcriptMessages.length,
@@ -444,7 +442,6 @@ export function ShellPage() {
   const composerEl = (
     <Composer
       key={`bot:${active?.id}`}
-      museMode={museMode}
       activeName={active?.name}
       running={running}
       pendingAttachments={activePendingAttachments}
@@ -619,7 +616,6 @@ export function ShellPage() {
                 ) : active ? (
                   <Transcript
                     key={museTranscript.threadId ?? active.id}
-                    museMode={museMode}
                     botDisplayName={active.name}
                     followSignal={followSignal}
                     museFace={{ color: active.color, identity: active.id }}

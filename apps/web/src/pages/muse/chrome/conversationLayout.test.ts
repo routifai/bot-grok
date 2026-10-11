@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { conversationLayout } from "./conversationLayout";
 
-const empty = { museMode: true, hasMuse: true, loaded: true, messageCount: 0, running: false };
+const empty = { hasMuse: true, loaded: true, messageCount: 0, running: false };
 
 describe("conversationLayout", () => {
   it("is the start page for the Muse's loaded, empty, idle Conversation", () => {
@@ -21,7 +21,6 @@ describe("conversationLayout", () => {
   });
 
   it("is the thread outside the Muse's own Conversation", () => {
-    expect(conversationLayout({ ...empty, museMode: false })).toBe("thread");
     expect(conversationLayout({ ...empty, hasMuse: false })).toBe("thread");
   });
 });

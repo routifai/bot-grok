@@ -10,7 +10,7 @@ import {
 } from "@superchat/ui-web";
 import { X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { type ArtifactTarget, fetchArtifactBytes } from "../../lib/artifact-open";
+import { fetchArtifactBytes } from "../../lib/artifact-open";
 import { chartViewport } from "../../lib/chart-viewport";
 
 function ChartCanvas({
@@ -186,12 +186,10 @@ export function CanvasBlockView({
 }
 
 export function ArtifactImage({
-  target,
   artifactId,
   name,
   mimeType,
 }: {
-  target: ArtifactTarget;
   artifactId: string;
   name: string;
   mimeType?: string;
@@ -226,7 +224,7 @@ export function ArtifactImage({
     let cancelled = false;
     let objectUrl: string | null = null;
     setSrc(null);
-    void fetchArtifactBytes(target, artifactId)
+    void fetchArtifactBytes(artifactId)
       .then((bytes) => {
         objectUrl = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: mimeType }));
         if (cancelled) URL.revokeObjectURL(objectUrl);
@@ -237,7 +235,7 @@ export function ArtifactImage({
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [artifactId, target, mimeType, visible]);
+  }, [artifactId, mimeType, visible]);
 
   return (
     <div ref={container}>

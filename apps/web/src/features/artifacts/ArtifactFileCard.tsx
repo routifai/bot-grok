@@ -12,14 +12,13 @@ import {
   DialogContent,
   DialogTitle,
 } from "@superchat/ui-web";
-import { Code2, Download, ExternalLink, FileText, X } from "lucide-react";
+import { Download, ExternalLink, X } from "lucide-react";
 import type { RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
 import { MEDIA_ACTION, MediaArt, MediaFrame, MediaTile } from "../../components/MediaTile";
 import { PdfViewer } from "../../components/PdfViewer";
 import { SandboxedHtmlViewer } from "../../components/SandboxedHtmlViewer";
 import { artifactKind, kindLabel } from "../../lib/artifact-kind";
-import type { ArtifactTarget } from "../../lib/artifact-open";
 import {
   downloadArtifact,
   downloadArtifactBytes,
@@ -34,14 +33,10 @@ import {
 } from "./ArtifactPreviewThumbnail";
 
 type ArtifactFileCardProps = {
-  target: ArtifactTarget;
   artifactId: string;
   name: string;
   mimeType: string;
   size: number;
-  /** Muse mode gets a compact preview card (same visual family as the Library) for
-   *  previewable kinds; every other mode keeps the plain row unchanged. */
-  museMode?: boolean;
 };
 
 const PREVIEWABLE_MIME_TYPES = new Set(["text/markdown", "text/html", "application/pdf"]);
@@ -72,131 +67,61 @@ export function ArtifactFileCard(props: ArtifactFileCardProps) {
   async function startDownload() {
     setDownloadError(null);
     try {
-      await downloadArtifact(props.target, props.artifactId, props.name, props.mimeType);
+      await downloadArtifact(props.artifactId, props.name, props.mimeType);
     } catch {
       setDownloadError(t`Could not download ${props.name}. Try again.`);
     }
   }
 
-  if (props.museMode) {
-    // Every file in the Conversation is the same card: a thumbnail on the left, the name and
-    // a quiet meta line, then its actions in one row. Kinds the dialog can't show download.
-    const openable = previewable || isAttachmentImageMimeType(props.mimeType);
-    const open = () => (openable ? setPreviewOpen(true) : void startDownload());
-    return (
-      <>
-        <MediaTile
-          openRef={previewButton}
-          kind={kind}
-          brand={kind === "document" ? t`Report` : kindLabel(kind)}
-          title={heading ?? readableFileName(props.name)}
-          art={
-            hasLivePreview(artifact) || customThumbnail ? (
-              <MediaFrame>
-                <ArtifactPreviewThumbnail artifact={artifact} onHeading={setHeading} />
-              </MediaFrame>
-            ) : (
-              <MediaArt kind={kind} />
-            )
-          }
-          meta={
-            <>
-              <b className="font-semibold">{kindLabel(kind)}</b> • {formatBytes(props.size)}
-            </>
-          }
-          openLabel={openable ? t`Open` : t`Download`}
-          openAriaLabel={openable ? t`Open ${props.name}` : t`Download ${props.name}`}
-          onOpen={open}
-          actions={
-            openable ? (
-              <button
-                type="button"
-                aria-label={t`Download ${props.name}`}
-                title={t`Download`}
-                onClick={() => void startDownload()}
-                className={MEDIA_ACTION}
-              >
-                <Download strokeWidth={2} aria-hidden="true" />
-              </button>
-            ) : undefined
-          }
-        />
-        {downloadError ? <DownloadError message={downloadError} /> : null}
-        <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-          <DialogContent
-            showCloseButton={false}
-            initialFocus={closeButton}
-            finalFocus={previewButton}
-            className="flex h-[85vh] w-[90vw] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-none"
-          >
-            <FilePreview {...props} closeButtonRef={closeButton} />
-          </DialogContent>
-        </Dialog>
-      </>
-    );
-  }
-
-  if (!previewable) {
-    return (
-      <div>
-        <button
-          type="button"
-          onClick={() => void startDownload()}
-          className="rounded-2xl border border-border bg-card px-4 py-3 text-left text-[14px] text-foreground hover:bg-accent"
-        >
-          <div className="font-medium">{props.name}</div>
-          <div className="mt-1 text-muted-foreground">
-            {props.mimeType} · {formatBytes(props.size)}
-          </div>
-        </button>
-        {downloadError ? <DownloadError message={downloadError} /> : null}
-      </div>
-    );
-  }
-
+  // Every file in the Conversation is the same card: a thumbnail on the left, the name and
+  // a quiet meta line, then its actions in one row. Kinds the dialog can't show download.
+  const openable = previewable || isAttachmentImageMimeType(props.mimeType);
+  const open = () => (openable ? setPreviewOpen(true) : void startDownload());
   return (
     <>
-      <div>
-        <div className="flex min-w-[280px] overflow-hidden rounded-2xl border border-border bg-card text-left text-foreground">
-          <button
-            ref={previewButton}
-            type="button"
-            aria-label={t`Preview ${props.name}`}
-            onClick={() => setPreviewOpen(true)}
-            className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left hover:bg-accent"
-          >
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[10px] bg-muted text-foreground">
-              {props.mimeType === "text/html" ? (
-                <Code2 size={21} strokeWidth={1.8} />
-              ) : (
-                <FileText size={21} strokeWidth={1.8} />
-              )}
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate text-[14px] font-medium">{props.name}</span>
-              <span className="mt-0.5 block text-[13px] text-muted-foreground">
-                {formatBytes(props.size)}
-              </span>
-            </span>
-          </button>
-          <button
-            type="button"
-            aria-label={t`Download ${props.name}`}
-            title={t`Download ${props.name}`}
-            onClick={() => void startDownload()}
-            className="grid w-14 shrink-0 place-items-center border-l border-border text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            <Download size={19} strokeWidth={1.8} />
-          </button>
-        </div>
-        {downloadError ? <DownloadError message={downloadError} /> : null}
-      </div>
+      <MediaTile
+        openRef={previewButton}
+        kind={kind}
+        brand={kind === "document" ? t`Report` : kindLabel(kind)}
+        title={heading ?? readableFileName(props.name)}
+        art={
+          hasLivePreview(artifact) || customThumbnail ? (
+            <MediaFrame>
+              <ArtifactPreviewThumbnail artifact={artifact} onHeading={setHeading} />
+            </MediaFrame>
+          ) : (
+            <MediaArt kind={kind} />
+          )
+        }
+        meta={
+          <>
+            <b className="font-semibold">{kindLabel(kind)}</b> • {formatBytes(props.size)}
+          </>
+        }
+        openLabel={openable ? t`Open` : t`Download`}
+        openAriaLabel={openable ? t`Open ${props.name}` : t`Download ${props.name}`}
+        onOpen={open}
+        actions={
+          openable ? (
+            <button
+              type="button"
+              aria-label={t`Download ${props.name}`}
+              title={t`Download`}
+              onClick={() => void startDownload()}
+              className={MEDIA_ACTION}
+            >
+              <Download strokeWidth={2} aria-hidden="true" />
+            </button>
+          ) : undefined
+        }
+      />
+      {downloadError ? <DownloadError message={downloadError} /> : null}
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
         <DialogContent
           showCloseButton={false}
           initialFocus={closeButton}
           finalFocus={previewButton}
-          className="flex h-[min(88vh,900px)] w-[min(960px,94vw)] flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
+          className="flex h-[85vh] w-[90vw] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-none"
         >
           <FilePreview {...props} closeButtonRef={closeButton} />
         </DialogContent>
@@ -206,11 +131,9 @@ export function ArtifactFileCard(props: ArtifactFileCardProps) {
 }
 
 function FilePreview({
-  target,
   artifactId,
   name,
   mimeType,
-  museMode,
   closeButtonRef,
 }: ArtifactFileCardProps & { closeButtonRef: RefObject<HTMLButtonElement | null> }) {
   const { t } = useLingui();
@@ -220,17 +143,12 @@ function FilePreview({
     | { status: "ready"; bytes: Uint8Array; text?: string }
     | { status: "error"; message: string }
   >({ status: "loading" });
-  const targetBotId = "botId" in target ? target.botId : undefined;
-  const targetGroupId = "groupId" in target ? target.groupId : undefined;
-  // Muse mode only: an object URL so the dialog can offer "Open in new tab" once the
-  // bytes are in; upstream's dialog is left exactly as it was.
+  // An object URL so the dialog can offer "Open in new tab" once the bytes are in.
   const objectUrl = useObjectUrl(state.status === "ready" ? state.bytes : EMPTY_BYTES, mimeType);
 
   useEffect(() => {
     let cancelled = false;
-    const artifactTarget: ArtifactTarget =
-      targetBotId !== undefined ? { botId: targetBotId } : { groupId: targetGroupId! };
-    void fetchArtifactBytes(artifactTarget, artifactId)
+    void fetchArtifactBytes(artifactId)
       .then((bytes) => {
         if (cancelled) return;
         if (!TEXT_MIME_TYPES.has(mimeType)) {
@@ -254,7 +172,7 @@ function FilePreview({
     return () => {
       cancelled = true;
     };
-  }, [artifactId, targetBotId, targetGroupId, mimeType, t]);
+  }, [artifactId, mimeType, t]);
 
   return (
     <>
@@ -262,7 +180,7 @@ function FilePreview({
         <DialogTitle className="min-w-0 flex-1 truncate text-[14px] leading-5 font-medium text-foreground">
           {name}
         </DialogTitle>
-        {museMode && state.status === "ready" && objectUrl && opensInNewTab(mimeType) ? (
+        {state.status === "ready" && objectUrl && opensInNewTab(mimeType) ? (
           <a
             href={objectUrl}
             target="_blank"
@@ -288,7 +206,7 @@ function FilePreview({
               setDownloadError(null);
               try {
                 if (state.status === "ready") downloadArtifactBytes(name, mimeType, state.bytes);
-                else await downloadArtifact(target, artifactId, name, mimeType);
+                else await downloadArtifact(artifactId, name, mimeType);
               } catch {
                 setDownloadError(t`Could not download ${name}. Try again.`);
               }

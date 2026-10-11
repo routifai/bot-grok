@@ -4,7 +4,6 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
 import { BloopAvatar } from "./components/ai/bloop/BloopAvatar";
-import { DesktopUpdatesProvider } from "./components/DesktopUpdates";
 import { I18nBootstrap } from "./components/I18nBootstrap";
 import { applyUiDirection } from "./lib/apply-ui-direction";
 import { markAfterPaint, markOnce } from "./lib/performance";
@@ -55,11 +54,9 @@ createRoot(document.getElementById("root")!).render(
           the stale location, so deep links (?m=) and thread switches never
           land while the URL already moved. */}
       <BrowserRouter useTransitions={false}>
-        <DesktopUpdatesProvider>
-          <LiveMuseFaceProvider value={BloopAvatar}>
-            <App />
-          </LiveMuseFaceProvider>
-        </DesktopUpdatesProvider>
+        <LiveMuseFaceProvider value={BloopAvatar}>
+          <App />
+        </LiveMuseFaceProvider>
       </BrowserRouter>
     </I18nBootstrap>
   </StrictMode>,

@@ -39,9 +39,7 @@ async function render(
   document.body.append(host);
   const root = createRoot(host);
   await act(async () => {
-    root.render(
-      <Composer museMode running={false} sending={false} failure={failure} onSend={onSend} />,
-    );
+    root.render(<Composer running={false} sending={false} failure={failure} onSend={onSend} />);
   });
   return { host, cleanup: () => act(async () => root.unmount()) };
 }

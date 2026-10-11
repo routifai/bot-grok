@@ -1,4 +1,3 @@
-import { i18n } from "@lingui/core";
 import { useLingui } from "@lingui/react/macro";
 import type { ThreadMessage } from "@superchat/contracts";
 import { isToolActivityBlock } from "@superchat/core";
@@ -54,13 +53,7 @@ export function Transcript({
     return hidden.size === 0 ? allMessages : allMessages.filter((m) => !hidden.has(m.id));
   }, [allMessages, running]);
   const view = (
-    <ReplyCardBotProvider
-      botId={
-        props.artifactTarget && "botId" in props.artifactTarget
-          ? props.artifactTarget.botId
-          : undefined
-      }
-    >
+    <ReplyCardBotProvider botId={props.artifactTarget.botId}>
       <ReplyCardThreadProvider messages={props.messages} running={props.running}>
         <TranscriptView {...props} messages={shownMessages} />
       </ReplyCardThreadProvider>
@@ -74,7 +67,6 @@ export function Transcript({
 }
 
 const TranscriptView = memo(function Transcript({
-  museMode,
   museFace,
   botDisplayName,
   museRuns,
@@ -98,12 +90,11 @@ const TranscriptView = memo(function Transcript({
   renderUnder,
   aside,
 }: {
-  museMode?: boolean;
-  /** Muse mode: the face shown beside the Muse's replies. */
+  /** The face shown beside the Muse's replies. */
   museFace: { color: string; identity: string };
-  /** Muse mode: the Muse's own name, for first-run hint copy (`FirstRunHint`). */
+  /** The Muse's own name, for first-run hint copy (`FirstRunHint`). */
   botDisplayName?: string;
-  /** Muse mode: the turn in flight, for the gutter face and bottom-of-transcript row. */
+  /** The turn in flight, for the gutter face and bottom-of-transcript row. */
   museRuns: readonly MuseLiveRun[];
   /** Rendered at the top of the scrolling column, before the messages. */
   leading?: ReactNode;
@@ -153,14 +144,8 @@ const TranscriptView = memo(function Transcript({
   // Charts in a row (a dashboard reply) read as one set across the column.
   const group = useTranscriptGroup();
   const transcriptRows = useMemo<TranscriptRow[]>(
-    () =>
-      foldGroupRuns(
-        museMode
-          ? foldFailureRuns(messages)
-          : messages.map((message) => ({ kind: "message", message })),
-        group,
-      ),
-    [museMode, messages, group],
+    () => foldGroupRuns(foldFailureRuns(messages), group),
+    [messages, group],
   );
   const [quoteDraft, setQuoteDraft] = useState<{
     message: ThreadMessage;
@@ -404,8 +389,7 @@ const TranscriptView = memo(function Transcript({
         data-fade-top=""
         className={cn(
           "rk-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-5 md:px-7 md:py-6",
-          museMode &&
-            "mx-auto w-full max-w-[748px] gap-[22px] overflow-x-hidden pt-8 [overflow-wrap:anywhere] md:px-6 md:pt-9 md:pb-6",
+          "mx-auto w-full max-w-[748px] gap-[22px] overflow-x-hidden pt-8 [overflow-wrap:anywhere] md:px-6 md:pt-9 md:pb-6",
         )}
       >
         {leading}
@@ -446,8 +430,6 @@ const TranscriptView = memo(function Transcript({
             );
           }
           const { message } = row;
-          if (!museMode && !message.blocks.some((block) => !isToolActivityBlock(block)))
-            return null;
           return (
             <div
               key={message.id}
@@ -460,34 +442,12 @@ const TranscriptView = memo(function Transcript({
                 <div
                   data-testid="message-bubble-frame"
                   className={`relative w-fit min-w-0 ${
-                    message.role === "user"
-                      ? museMode
-                        ? "max-w-[80%]"
-                        : "max-w-[min(84%,calc(100%_-_6rem))]"
-                      : museMode
-                        ? "max-w-full"
-                        : "max-w-[min(88%,calc(100%_-_6rem))]"
+                    message.role === "user" ? "max-w-[80%]" : "max-w-full"
                   }`}
                 >
                   <MessageHoverActions
                     message={message}
                     side={message.role === "user" ? "start" : "end"}
-                    time={
-                      !museMode &&
-                      message.role === "user" &&
-                      !message.id.startsWith("progress:") ? (
-                        <time
-                          dateTime={message.createdAt}
-                          data-testid="message-hover-time"
-                          className="me-1 hidden text-xs tabular-nums whitespace-nowrap text-muted-foreground [@media(hover:hover)_and_(pointer:fine)]:block"
-                        >
-                          {new Date(message.createdAt).toLocaleTimeString(i18n.locale || "en", {
-                            hour: "numeric",
-                            minute: "2-digit",
-                          })}
-                        </time>
-                      ) : undefined
-                    }
                     onReply={onReply}
                     onFork={
                       onFork && message.forks !== undefined && forkAnchorFor(message, messages)
@@ -500,14 +460,13 @@ const TranscriptView = memo(function Transcript({
                     above={Boolean(onFork)}
                   />
                   <MessageView
-                    museMode={museMode}
                     botDisplayName={botDisplayName}
                     artifactTarget={artifactTarget}
                     message={message}
-                    canAnswer={Boolean(museMode && hasOpenMuseAsk(message))}
+                    canAnswer={hasOpenMuseAsk(message)}
                     onAnswer={onAnswer}
                   />
-                  {museMode && message.role === "user" && !message.id.startsWith("progress:") ? (
+                  {message.role === "user" && !message.id.startsWith("progress:") ? (
                     <UserMessageMeta message={message} />
                   ) : null}
                 </div>

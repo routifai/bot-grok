@@ -1,6 +1,7 @@
 import { rpc } from "./rpc";
 
-export type ArtifactTarget = { botId: string } | { groupId: string };
+/** Where an artifact card sits: the Muse it belongs to. */
+export type ArtifactTarget = { botId: string };
 
 export function decodeArtifactBase64(contentBase64: string): Uint8Array {
   const binary = atob(contentBase64);
@@ -11,11 +12,7 @@ export function decodeArtifactBase64(contentBase64: string): Uint8Array {
   return bytes;
 }
 
-/** The engine's artifact ids are the person's own, so the target only says where the card sits. */
-export async function fetchArtifactBytes(
-  _target: ArtifactTarget,
-  artifactId: string,
-): Promise<Uint8Array> {
+export async function fetchArtifactBytes(artifactId: string): Promise<Uint8Array> {
   const artifact = await rpc.artifacts.getById({ artifactId });
   return decodeArtifactBase64(artifact.contentBase64);
 }
@@ -31,12 +28,11 @@ export function downloadArtifactBytes(name: string, mimeType: string, bytes: Uin
 }
 
 export async function downloadArtifact(
-  target: ArtifactTarget,
   artifactId: string,
   name: string,
   mimeType: string,
 ): Promise<void> {
-  const bytes = await fetchArtifactBytes(target, artifactId);
+  const bytes = await fetchArtifactBytes(artifactId);
   downloadArtifactBytes(name, mimeType, bytes);
 }
 

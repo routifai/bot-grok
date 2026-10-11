@@ -480,7 +480,6 @@ function ThreadReply({
           <div className="relative rounded-[18px] rounded-es-[6px] bg-card px-3.5 py-3 text-[14.5px]">
             <Connector tone={tone} />
             <MessageView
-              museMode
               artifactTarget={artifactTarget}
               message={message}
               canAnswer={false}

@@ -72,7 +72,6 @@ async function mount(message: ThreadMessage): Promise<HTMLElement> {
   await act(async () => {
     createRoot(host).render(
       <MessageView
-        museMode
         artifactTarget={{ botId: "bot-1" }}
         canAnswer={false}
         message={message}

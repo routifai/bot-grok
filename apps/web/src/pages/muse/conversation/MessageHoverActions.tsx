@@ -8,7 +8,7 @@ import {
   DropdownMenuTrigger,
 } from "@superchat/ui-web";
 import { Check, Copy, MoreHorizontal, Reply } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { useState } from "react";
 import { MessageHoverMetadata } from "../../../components/MessageHoverMetadata";
 import { BranchIcon } from "../../../features/side-chats/forkParts";
 import { copyableMessageText } from "../../../lib/message-text";
@@ -16,15 +16,12 @@ import { copyableMessageText } from "../../../lib/message-text";
 export function MessageHoverActions({
   message,
   side,
-  time,
   onReply,
   onFork,
   above = Boolean(onFork),
 }: {
   message: ThreadMessage;
   side: "start" | "end";
-  /** The send time, shown beside the actions so it stays next to the bubble. */
-  time?: ReactNode;
   onReply?: (message: ThreadMessage) => void;
   /** Fork this message (ADR 0010); the actions then float above the bubble as a toolbar. */
   onFork?: (message: ThreadMessage) => void;
@@ -55,7 +52,6 @@ export function MessageHoverActions({
 
   return (
     <MessageHoverMetadata pinned={moreOpen} side={side} above={above}>
-      {time}
       <div data-testid="message-hover-actions" className="flex items-center gap-0.5">
         <button
           type="button"

@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
+import { ORPCError } from "@orpc/client";
 import type { Ask } from "@superchat/contracts";
 import type * as UiWeb from "@superchat/ui-web";
-import { ORPCError } from "@orpc/client";
 import type { ComponentProps, ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -104,8 +104,7 @@ async function renderPanel(props: Partial<Parameters<typeof ContextPanel>[0]> = 
   };
 }
 
-// jsdom in this repo's vitest setup doesn't provide `window.localStorage` (see
-// apps/web/src/lib/bots-sidebar-pref.test.ts), so each test stubs a fresh in-memory one —
+// jsdom in this repo's vitest setup doesn't provide `window.localStorage`, so each test stubs a fresh in-memory one —
 // `window` and `globalThis` are the same object in jsdom, so this reaches the component too.
 function stubLocalStorage(): void {
   const store = new Map<string, string>();

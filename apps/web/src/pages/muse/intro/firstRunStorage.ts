@@ -1,8 +1,7 @@
 // Per-user first-run flags (welcome + one-time contextual hints): which of them this
 // person has already seen or dismissed. No general preferences RPC exists yet for this
-// (only `preferences.update` for `avatarStyle`), so this follows the same localStorage
-// pattern as `../../../lib/bots-sidebar-pref.ts` — one JSON array of seen keys per user,
-// wrapped in try/catch so a blocked or full store never breaks the app.
+// (only `preferences.update` for `avatarStyle`), so this keeps them in localStorage: one
+// JSON array of seen keys per user, wrapped in try/catch so a blocked or full store never breaks the app.
 
 const STORAGE_PREFIX = "superchat:first-run:";
 

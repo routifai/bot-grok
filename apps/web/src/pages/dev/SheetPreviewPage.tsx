@@ -47,7 +47,6 @@ export function SheetPreviewPage() {
         {sent.map((message) => (
           <MessageView
             key={message.id}
-            museMode
             artifactTarget={{ botId: "dev" }}
             canAnswer={false}
             message={message}

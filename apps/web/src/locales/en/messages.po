@@ -415,9 +415,6 @@ msgstr "Chat with the workspace"
 msgid "Chats"
 msgstr "Chats"
 
-msgid "Check for updates"
-msgstr "Check for updates"
-
 msgid "Checking…"
 msgstr "Checking…"
 
@@ -505,9 +502,6 @@ msgstr "Corner radius"
 
 msgid "Could not clear conversation"
 msgstr "Could not clear conversation"
-
-msgid "Could not complete the update. Try again."
-msgstr "Could not complete the update. Try again."
 
 msgid "Could not delete"
 msgstr "Could not delete"
@@ -745,12 +739,6 @@ msgstr "Deny"
 msgid "Description"
 msgstr "Description"
 
-msgid "Desktop app"
-msgstr "Desktop app"
-
-msgid "Desktop update"
-msgstr "Desktop update"
-
 msgid "Details"
 msgstr "Details"
 
@@ -784,9 +772,6 @@ msgstr "Download {name}"
 
 msgid "Download {title}"
 msgstr "Download {title}"
-
-msgid "Downloading…"
-msgstr "Downloading…"
 
 msgid "Duplicate"
 msgstr "Duplicate"
@@ -944,9 +929,6 @@ msgstr "From a fork:"
 msgid "Full screen"
 msgstr "Full screen"
 
-msgid "Fullscreen"
-msgstr "Fullscreen"
-
 msgid "General"
 msgstr "General"
 
@@ -1058,9 +1040,6 @@ msgstr "Kind"
 msgid "Knows our conversation"
 msgstr "Knows our conversation"
 
-msgid "Later"
-msgstr "Later"
-
 msgid "Layers"
 msgstr "Layers"
 
@@ -1135,9 +1114,6 @@ msgstr "Message"
 msgid "Message"
 msgstr "Message"
 
-msgid "Message {activeName}"
-msgstr "Message {activeName}"
-
 msgid "Message composer"
 msgstr "Message composer"
 
@@ -1149,9 +1125,6 @@ msgstr "Message this side chat"
 
 msgid "Message…"
 msgstr "Message…"
-
-msgid "Minimize"
-msgstr "Minimize"
 
 msgid "Model"
 msgstr "Model"
@@ -1232,9 +1205,6 @@ msgstr "No artifacts found."
 
 msgid "No automations yet"
 msgstr "No automations yet"
-
-msgid "No bots"
-msgstr "No bots"
 
 msgid "No change was made."
 msgstr "No change was made."
@@ -1441,7 +1411,6 @@ msgstr "Present"
 msgid "Preview"
 msgstr "Preview"
 
-#. placeholder {0}: props.name
 #. placeholder {0}: theme.name
 msgid "Preview {0}"
 msgstr "Preview {0}"
@@ -1598,9 +1567,6 @@ msgstr "Research"
 msgid "Research something for me"
 msgstr "Research something for me"
 
-msgid "Restart to update"
-msgstr "Restart to update"
-
 msgid "Restore"
 msgstr "Restore"
 
@@ -1664,9 +1630,6 @@ msgstr "Saved to Library"
 msgid "Saving…"
 msgstr "Saving…"
 
-msgid "Search"
-msgstr "Search"
-
 #. placeholder {0}: counts.all
 msgid "Search {0} forks"
 msgstr "Search {0} forks"
@@ -1676,9 +1639,6 @@ msgstr "Search activity"
 
 msgid "Search artifacts…"
 msgstr "Search artifacts…"
-
-msgid "Search bots and switch conversations"
-msgstr "Search bots and switch conversations"
 
 msgid "Search folders"
 msgstr "Search folders"
@@ -1883,9 +1843,6 @@ msgstr "superchat starts fresh. You can still show earlier messages."
 msgid "superchat will see this after the current step"
 msgstr "superchat will see this after the current step"
 
-msgid "Switch bot"
-msgstr "Switch bot"
-
 #. placeholder {0}: undo?.name ?? ""
 msgid "Switched to {0}"
 msgstr "Switched to {0}"
@@ -2006,9 +1963,6 @@ msgstr "Unread"
 #. placeholder {0}: pending.file.name
 msgid "Unsupported file type: {0}"
 msgstr "Unsupported file type: {0}"
-
-msgid "Up to date"
-msgstr "Up to date"
 
 #. placeholder {0}: superseded.version
 msgid "Updated — v{0}"

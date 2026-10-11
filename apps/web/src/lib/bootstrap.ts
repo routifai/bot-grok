@@ -36,7 +36,7 @@ function requestBootstrap(): Promise<AppBootstrap> {
 
 let primedBootstrap: Promise<AppBootstrap> | null = null;
 
-if (isBootstrapRoute(window.location.pathname, Boolean(window.superchatDesktop))) {
+if (isBootstrapRoute(window.location.pathname)) {
   primedBootstrap = requestBootstrap();
   // The gate may show an error before the Shell consumes this speculative request.
   // Register a rejection handler immediately while preserving rejection for a consumer.

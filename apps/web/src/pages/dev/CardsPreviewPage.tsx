@@ -89,7 +89,6 @@ export function CardsPreviewPage({ scenario }: { scenario: CardsScenario }) {
         </div>
         <AskPreviewsProvider value={ASK_PREVIEWS}>
           <Transcript
-            museMode
             botDisplayName={DEV_MUSE_NAME}
             museFace={{ color: DEV_MUSE_COLOR, identity: DEV_BOT_ID }}
             museRuns={[]}

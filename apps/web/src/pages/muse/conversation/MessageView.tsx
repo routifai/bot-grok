@@ -50,15 +50,13 @@ function ToolActivityStep({ block }: { block: ThreadMessage["blocks"][number] })
 }
 
 export const MessageView = memo(function MessageView({
-  museMode,
   botDisplayName,
   artifactTarget,
   canAnswer,
   message,
   onAnswer,
 }: {
-  museMode?: boolean;
-  /** Muse mode: the Muse's own name, for first-run hint copy (`FirstRunHint`). */
+  /** The Muse's own name, for first-run hint copy (`FirstRunHint`). */
   botDisplayName?: string;
   artifactTarget: ArtifactTarget;
   canAnswer: boolean;
@@ -81,24 +79,19 @@ export const MessageView = memo(function MessageView({
         block.kind === "fork_summary",
     );
   const quoteMessageId = message.id.includes(":") ? undefined : message.id;
-  const visibleNarrationBlocks = message.blocks.filter(
-    (block) => museMode || !isToolActivityBlock(block),
-  );
   if (isNarration) {
-    if (visibleNarrationBlocks.length === 0) return null;
+    if (message.blocks.length === 0) return null;
     return (
       <div className="flex w-fit max-w-full justify-start">
         <div
           data-testid="message-bot-bubble"
           className={cn(
             "max-w-full space-y-2.5",
-            museMode
-              ? "muse-reply text-[15px] leading-[1.47] tracking-[-0.24px] text-foreground"
-              : "rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90",
+            "muse-reply text-[15px] leading-[1.47] tracking-[-0.24px] text-foreground",
           )}
           dir="auto"
         >
-          {visibleNarrationBlocks.map((block, i) => {
+          {message.blocks.map((block, i) => {
             if (block.kind === "text" || (block.kind === "progress" && !block.activity)) {
               return (
                 <div
@@ -109,7 +102,7 @@ export const MessageView = memo(function MessageView({
                 </div>
               );
             }
-            if (museMode && isToolActivityBlock(block)) {
+            if (isToolActivityBlock(block)) {
               return <ToolActivityStep key={i} block={block} />;
             }
             return null;
@@ -122,7 +115,7 @@ export const MessageView = memo(function MessageView({
     <>
       {message.blocks.map((block, i) => {
         if (isToolActivityBlock(block)) {
-          return museMode ? <ToolActivityStep key={i} block={block} /> : null;
+          return <ToolActivityStep key={i} block={block} />;
         }
         if (block.kind === "meta") {
           return (
@@ -142,9 +135,7 @@ export const MessageView = memo(function MessageView({
                 data-testid="message-bot-bubble"
                 className={cn(
                   "max-w-full",
-                  museMode
-                    ? "muse-reply text-[15px] leading-[1.47] tracking-[-0.24px] text-foreground"
-                    : "rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90",
+                  "muse-reply text-[15px] leading-[1.47] tracking-[-0.24px] text-foreground",
                 )}
                 dir="auto"
               >
@@ -216,7 +207,6 @@ export const MessageView = memo(function MessageView({
               className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
             >
               <ArtifactImage
-                target={artifactTarget}
                 artifactId={block.artifactId}
                 name={block.name}
                 mimeType={block.mimeType}
@@ -231,12 +221,10 @@ export const MessageView = memo(function MessageView({
               className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
             >
               <ArtifactFileCard
-                target={artifactTarget}
                 artifactId={block.artifactId}
                 name={block.name}
                 mimeType={block.mimeType}
                 size={block.size}
-                museMode={museMode}
               />
             </div>
           );
@@ -258,7 +246,7 @@ export const MessageView = memo(function MessageView({
           const hasChips =
             ask.chips.length > 0 || files.attachments.length > 0 || files.folders.length > 0;
           const body = hasChips ? ask.rest : block.text;
-          const fileBotId = "botId" in artifactTarget ? artifactTarget.botId : message.botId;
+          const fileBotId = artifactTarget.botId;
           return (
             <div key={i} className="flex w-fit max-w-full flex-col items-end gap-1.5">
               {files.folders.map((folder) => (
@@ -299,9 +287,7 @@ export const MessageView = memo(function MessageView({
                   data-quote-message-id={quoteMessageId}
                   className={cn(
                     "max-w-full whitespace-pre-wrap wrap-anywhere",
-                    museMode
-                      ? "sc-user-bubble rounded-2xl px-4 py-3 text-[15px] leading-[1.6] text-foreground"
-                      : "rounded-[20px] bg-chat-user px-[18px] py-3 text-[15.5px] leading-[1.45] text-chat-user-foreground",
+                    "sc-user-bubble rounded-2xl px-4 py-3 text-[15px] leading-[1.6] text-foreground",
                   )}
                   dir="auto"
                 >
@@ -330,9 +316,7 @@ export const MessageView = memo(function MessageView({
                 data-testid="message-bot-bubble"
                 className={cn(
                   "max-w-full",
-                  museMode
-                    ? "muse-reply text-[15px] leading-[1.47] tracking-[-0.24px] text-foreground"
-                    : "rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90",
+                  "muse-reply text-[15px] leading-[1.47] tracking-[-0.24px] text-foreground",
                 )}
                 dir="auto"
               >
@@ -361,7 +345,7 @@ export const MessageView = memo(function MessageView({
         }
         if (block.kind === "ask") {
           const isProposal = block.actions?.some((action) => action.id === "accept") ?? false;
-          if (!museMode || !isProposal) {
+          if (!isProposal) {
             return (
               <AskCard
                 key={i}
@@ -390,10 +374,13 @@ export const MessageView = memo(function MessageView({
         }
         if (block.kind === "cloud_agent") return <CloudAgentCard key={i} block={block} />;
         if (block.kind === "helper") {
-          const botId = "botId" in artifactTarget ? artifactTarget.botId : message.botId;
-          if (!botId) return null;
           return (
-            <HelperTracker key={i} botId={botId} helperId={block.helperId} title={block.title} />
+            <HelperTracker
+              key={i}
+              botId={artifactTarget.botId}
+              helperId={block.helperId}
+              title={block.title}
+            />
           );
         }
         return null;

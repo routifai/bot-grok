@@ -33,7 +33,6 @@ export const sideChatView: Omit<SideChatView, "Approvals"> = {
     const museFace = useMemo(() => ({ color: bot.color, identity: bot.id }), [bot.color, bot.id]);
     return (
       <Transcript
-        museMode
         botDisplayName={bot.name}
         museFace={museFace}
         museRuns={runs}
@@ -56,7 +55,6 @@ export const sideChatView: Omit<SideChatView, "Approvals"> = {
   Composer: function SideChatComposer({ placeholder, sending, onSend }) {
     return (
       <Composer
-        museMode
         activeName=""
         placeholder={placeholder}
         sending={sending}

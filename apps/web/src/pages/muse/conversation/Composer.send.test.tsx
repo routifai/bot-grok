@@ -95,7 +95,6 @@ function Wired() {
   });
   return (
     <Composer
-      museMode
       running={false}
       sending={latest.sending}
       pendingAttachments={latest.activePendingAttachments}
