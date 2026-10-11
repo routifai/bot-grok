@@ -31,6 +31,7 @@ import { useChatArtifacts } from "../features/artifacts/useChatArtifacts";
 import { ChartGallery, chartsExtension, isChartMessage } from "../features/charts";
 import { FolderPicker } from "../features/computer/FolderPicker";
 import { DeckThemeChoice, decksExtension } from "../features/decks";
+import { documentsExtension } from "../features/documents";
 import { knowledgeExtension } from "../features/knowledge";
 import { ConversationModelPicker } from "../features/models";
 import { useChatPlace, WorkInChip } from "../features/projects/WorkIn";
@@ -113,6 +114,7 @@ const ARTIFACT_EXTENSIONS = [
   appsExtension,
   sheetsExtension,
   decksExtension,
+  documentsExtension,
   chartsExtension,
   knowledgeExtension,
 ];

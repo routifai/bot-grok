@@ -85,7 +85,12 @@ export const HtmlPatchSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("duplicate-element"), id: ElementId }),
   /** Swap the whole theme (tokens, theme CSS, fonts); the slides are untouched. */
   z.object({ kind: z.literal("set-theme"), theme: z.string().min(1).max(60) }),
-  z.object({ kind: z.literal("set-full-source"), source: z.string().min(1).max(25_000_000) }),
+  z.object({
+    kind: z.literal("set-full-source"),
+    source: z.string().min(1).max(25_000_000),
+    /** What a text document's editor changed ("edited paragraph 2"): the version's note. */
+    summary: z.string().max(400).optional(),
+  }),
 ]);
 export type HtmlPatch = z.infer<typeof HtmlPatchSchema>;
 
@@ -111,7 +116,8 @@ export const artifactsContract = {
     remove: oc.input(z.object({ artifactId: Id })).output(z.object({ ok: z.literal(true) })),
     /** Makes this earlier version (its id) the newest again, as a new `restore` version. */
     restore: oc.input(z.object({ artifactId: Id })).output(ArtifactSchema),
-    /** Hand edits of an HTML file as source patches: a new `manual` version. CONFLICT with
+    /** Hand edits of an HTML file as source patches, or a text document's whole new text (one
+     * `set-full-source`): a new `manual` version. CONFLICT with
      * `data.code` `artifact_stale` when `baseVersion` is no longer the newest, `conflict` when the
      * engine cannot apply a patch exactly (ask Superchat instead). */
     edit: oc

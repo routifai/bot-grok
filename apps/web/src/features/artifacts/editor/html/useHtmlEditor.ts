@@ -325,6 +325,10 @@ export function useHtmlEditor({
     applyStyle,
     setAttributes,
     flush,
+    /** Saves a whole new source now (a text document's block edit) as one step of the history;
+     * `summary` says what changed. */
+    saveSource: (source: string, summary?: string) =>
+      committer.commit([{ kind: "set-full-source", source, summary }]),
     remove: removeSelected,
     duplicate: duplicateSelected,
     onFrameMessage,

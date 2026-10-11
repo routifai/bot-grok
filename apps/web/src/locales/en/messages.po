@@ -277,6 +277,9 @@ msgstr "Ask superchat instead"
 msgid "Ask superchat to change this app…"
 msgstr "Ask superchat to change this app…"
 
+msgid "Ask superchat to change this document…"
+msgstr "Ask superchat to change this document…"
+
 msgid "Ask superchat to change this file…"
 msgstr "Ask superchat to change this file…"
 
@@ -336,6 +339,9 @@ msgstr "Back to the conversation"
 
 msgid "Background"
 msgstr "Background"
+
+msgid "Block"
+msgstr "Block"
 
 msgid "Bold"
 msgstr "Bold"
@@ -722,11 +728,20 @@ msgstr "Dismiss"
 msgid "Dismiss error"
 msgstr "Dismiss error"
 
+msgid "Divider"
+msgstr "Divider"
+
+msgid "Document"
+msgstr "Document"
+
 msgid "Documents"
 msgstr "Documents"
 
 msgid "Done"
 msgstr "Done"
+
+msgid "Double-click or press Enter to edit its text."
+msgstr "Double-click or press Enter to edit its text."
 
 msgid "Download"
 msgstr "Download"
@@ -906,6 +921,15 @@ msgstr "Harness"
 msgid "Heading"
 msgstr "Heading"
 
+msgid "Heading 1"
+msgstr "Heading 1"
+
+msgid "Heading 2"
+msgstr "Heading 2"
+
+msgid "Heading 3"
+msgstr "Heading 3"
+
 msgid "Height"
 msgstr "Height"
 
@@ -923,6 +947,9 @@ msgstr "Hide hidden files"
 
 msgid "Hide layers"
 msgstr "Hide layers"
+
+msgid "Hide outline"
+msgstr "Hide outline"
 
 msgid "Hide sheets"
 msgstr "Hide sheets"
@@ -1035,6 +1062,9 @@ msgstr "Link"
 
 msgid "Link address"
 msgstr "Link address"
+
+msgid "List"
+msgstr "List"
 
 msgid "Load earlier"
 msgstr "Load earlier"
@@ -1297,6 +1327,9 @@ msgstr "Organization limit"
 msgid "Outcome"
 msgstr "Outcome"
 
+msgid "Outline"
+msgstr "Outline"
+
 #. placeholder {0}: item.page
 msgid "p. {0}"
 msgstr "p. {0}"
@@ -1315,6 +1348,9 @@ msgstr "Palette"
 
 msgid "Panel sections"
 msgstr "Panel sections"
+
+msgid "Paragraph"
+msgstr "Paragraph"
 
 msgid "Password"
 msgstr "Password"
@@ -1601,11 +1637,18 @@ msgstr "Sections"
 msgid "See summary"
 msgstr "See summary"
 
+msgid "Select a block to change it."
+msgstr "Select a block to change it."
+
 msgid "Select cells to see their sum, count and average."
 msgstr "Select cells to see their sum, count and average."
 
 msgid "Selection"
 msgstr "Selection"
+
+#. placeholder {0}: words[pickedBlock.type]
+msgid "Selection · {0}"
+msgstr "Selection · {0}"
 
 msgid "Selection · {cells}"
 msgstr "Selection · {cells}"
@@ -1657,6 +1700,9 @@ msgstr "Show layers"
 
 msgid "Show less"
 msgstr "Show less"
+
+msgid "Show outline"
+msgstr "Show outline"
 
 msgid "Show sheets"
 msgstr "Show sheets"
@@ -1800,6 +1846,9 @@ msgstr "Switched to {0}"
 
 msgid "System"
 msgstr "System"
+
+msgid "Table"
+msgstr "Table"
 
 msgid "Text"
 msgstr "Text"
@@ -2019,6 +2068,9 @@ msgstr "When I need a decision or an answer, it'll show up here."
 
 msgid "Who can open it"
 msgstr "Who can open it"
+
+msgid "Whole document"
+msgstr "Whole document"
 
 msgid "Whole file"
 msgstr "Whole file"

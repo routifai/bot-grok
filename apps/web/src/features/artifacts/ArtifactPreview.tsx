@@ -1,5 +1,4 @@
 import { Trans } from "@lingui/react/macro";
-import { ChatMarkdown } from "@superchat/chat-ui/web";
 import type { Artifact } from "@superchat/contracts";
 import { isAttachmentImageMimeType } from "@superchat/contracts";
 import { PdfViewer } from "../../components/PdfViewer";
@@ -42,16 +41,6 @@ function ArtifactPreviewBody({
   if (artifact.mimeType === "text/html") {
     const html = new TextDecoder("utf-8").decode(bytes);
     return <SandboxedHtmlViewer html={html} title={artifact.name} />;
-  }
-  if (artifact.mimeType === "text/markdown") {
-    const text = new TextDecoder("utf-8").decode(bytes);
-    return (
-      <div className="h-full overflow-y-auto bg-background">
-        <article className="mx-auto w-full max-w-[760px] px-8 py-10 text-[16px] leading-7 text-foreground">
-          <ChatMarkdown>{text}</ChatMarkdown>
-        </article>
-      </div>
-    );
   }
   if (["text/plain", "text/csv", "application/json"].includes(artifact.mimeType)) {
     const text = new TextDecoder("utf-8").decode(bytes);

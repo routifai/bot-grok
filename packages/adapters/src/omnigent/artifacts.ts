@@ -155,10 +155,10 @@ export type OmnigentHtmlPatch =
   | { kind: "remove-element"; id: string }
   | { kind: "duplicate-element"; id: string }
   | { kind: "set-theme"; theme: string }
-  | { kind: "set-full-source"; source: string };
+  | { kind: "set-full-source"; source: string; summary?: string };
 
 /** `PATCH /v1/artifacts/{id}/edit` — hand edits of an HTML file (a deck, a page) as source
- * patches, saved as a new `manual` version. Fails with `artifact_stale` when `baseVersion` is no
+ * patches, or a text document's whole new text (one `set-full-source`), saved as a new `manual` version. Fails with `artifact_stale` when `baseVersion` is no
  * longer the newest, `conflict` when a patch cannot be applied exactly. */
 export async function editOmnigentArtifact(
   config: OmnigentClientConfig,
