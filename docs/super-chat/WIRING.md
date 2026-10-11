@@ -1,5 +1,7 @@
 # Wiring Superchat to Omnigent superside-chat
 
+> **Note.** The API, worker, mobile and desktop apps named below were removed ([ADR 0015](../adr/0015-no-app-server-the-web-talks-to-the-engine.md)); the web now talks to the engine directly. Those paths are kept as history and exist in git history only.
+
 How each Superchat screen reaches the engine. Concepts: [README.md](README.md).
 Ground rule (engine ADR 0001): **Omnigent owns every capability**. Superchat's API
 only checks who is asking and passes calls through; it never re-implements

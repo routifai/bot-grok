@@ -21,7 +21,7 @@ on top. `setup.sh` runs, from the repo root (`dc` standing for
 
 ```sh
 dc --profile build build omnigent-server ubuntu-python omnigent-host computer
-dc build omnigent app
+dc build omnigent
 dc up -d --wait
 ```
 
@@ -30,9 +30,11 @@ the repo root with the files in this order.
 
 | Service | Role | Host port |
 |---|---|---|
-| `postgres` | one database, `omnigent`, with `app` and `engine` schemas | none |
-| `omnigent` | the Omnigent agent server (Superchat's engine); starts each person's Computer over the Docker socket | `8012` (`SUPERCHAT_ENGINE_PORT`) |
-| `app` | the interface, its API and background worker, in one container (`infra/app/start.sh`) | `5173` (`SUPERCHAT_WEB_PORT`) |
+| `postgres` | one database, `omnigent`, with an `engine` schema | none |
+| `omnigent` | the Omnigent agent server (Superchat's engine); serves the web and the published apps; starts each person's Computer over the Docker socket | web `5173` (`SUPERCHAT_WEB_PORT`), engine `8012` (`SUPERCHAT_ENGINE_PORT`) |
+
+There is no app server: the web is built into the engine image and talks to the engine directly. Open
+http://127.0.0.1:5173.
 
 `omnigent-server`, `ubuntu-python`, `omnigent-host` and `computer` only build images: they sit
 under the `build` profile, so `up` never creates a container for them. `omnigent-server`
@@ -73,7 +75,7 @@ the default, fast and strong models in **Settings > Models**.
 `UBUNTU_IMAGE`, `CHROMIUM_IMAGE`, `NODE_IMAGE` and `PYTHON_IMAGE` point the base images at a
 registry mirror, and `TORCH_INDEX_URL` the engine's CPU-only torch at a mirror of PyTorch's CPU
 index.
-Every Dockerfile that downloads packages (Omnigent's, the Computer's and the app's) also takes an optional build secret, `ca_bundle`: a PEM file with your company's CA, added
+Every Dockerfile that downloads packages (Omnigent's and the Computer's) also takes an optional build secret, `ca_bundle`: a PEM file with your company's CA, added
 to each image's trust store for apt, pip, uv, npm and pnpm. Without it the builds are unchanged.
 
 To build behind a company proxy, keep the machine's settings in a third Compose file of your own,
@@ -113,9 +115,6 @@ services:
       args:
         CHROMIUM_IMAGE: registry.mirror.example/playwright/python:v1.63.0-noble
       secrets: *ca
-  api: { build: { secrets: *ca } }
-  worker: { build: { secrets: *ca } }
-  web: { build: { secrets: *ca } }
 ```
 
 ```sh
@@ -134,17 +133,17 @@ mirror.
 ## Who you are
 
 The web app has no sign-in of its own: it talks to the engine's REST API on its own origin (the
-`app` container proxies `/v1` to the engine at `OMNIGENT_URL`) and the engine decides who is asking.
+engine serves the web) and the engine decides who is asking.
 Locally the engine runs with `OMNIGENT_LOCAL_SINGLE_USER=1`, so a request with no identity header is
 the one local person; there is no sign-up.
 
 ### Hosted: a sign-in broker in front
 
 For several people, put your organisation's SSO broker (an authenticating reverse proxy) in front of
-the app and the engine and:
+the engine and:
 
 1. Remove `OMNIGENT_LOCAL_SINGLE_USER` from the engine's environment, so a request with no identity
-   is refused (the app then shows "You're not signed in").
+   is refused (the web then shows "You're not signed in").
 2. Have the broker set the engine's identity header (`X-Forwarded-Email`, or the header named by
    `OMNIGENT_AUTH_HEADER`) to the signed-in person's email on every request, and add the shared
    `X-Omnigent-Proxy-Secret` equal to `OMNIGENT_AUTH_HEADER_SECRET` (`OMNIGENT_PROXY_SECRET` in
@@ -175,5 +174,5 @@ git pull && ./scripts/setup.sh   # update; keeps .env and secrets
   bridge address (for example `http://172.17.0.1:8012`) and set `SUPERCHAT_ENGINE_BIND` to it.
 - **A service fails on boot.** The same `docker compose` command as above with `logs <service>`.
   A blank required secret fails closed; re-run `./scripts/setup.sh` to fill it.
-- **Port in use.** Set `SUPERCHAT_WEB_PORT` or `SUPERCHAT_API_PORT`, and the web port in
-  `BETTER_AUTH_URL`, `WEB_ORIGIN` and `API_URL`, then re-run setup.
+- **Port in use.** Set `SUPERCHAT_WEB_PORT` (web) or `SUPERCHAT_ENGINE_PORT` (engine) in `.env`,
+  then re-run setup.

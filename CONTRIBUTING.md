@@ -11,45 +11,22 @@ required secrets, and startup commands.
 
 | Command | When to run |
 | --- | --- |
-| `pnpm test` | Default. Units, properties, and in-process contracts. Fake sandbox, in-memory wakeup — no live connector or model-provider calls. |
-| `pnpm test:integration` | Postgres via Testcontainers: authorization, Graphile / LISTEN/NOTIFY. Needs Docker. |
-| `pnpm test:e2e` | Playwright against the emulated API. Needs Docker. |
-| `pnpm test:topology` | Local product-path smoke: Docker computer + Graphile worker recovery. Needs Docker. Not PR CI. |
-| `pnpm test:canary` | Live provider canaries. Needs keys. Not PR CI. |
+| `pnpm test` | Default. Units and properties for the web and the shared packages. No live model-provider calls. |
 | `pnpm check` | TypeScript (`tsc`) across the monorepo. |
 | `pnpm lint` | Biome lint and format check. |
 
-CI runs `pnpm lint`, `pnpm check`, production builds (including Electron preload smoke), `pnpm test`, `pnpm test:integration`, and `pnpm test:e2e` on every PR.
+CI runs `pnpm lint`, `pnpm check`, production builds and `pnpm test` on every PR.
 
 ## Adding a UI language
 
-The web and Electron-hosted UI use Lingui catalogs. To add a locale, register it in
+The web UI uses Lingui catalogs. To add a locale, register it in
 `apps/web/lingui.config.ts`, `apps/web/src/lib/ui-locale.ts`, and
 `apps/web/src/lib/i18n.ts`, then run `pnpm --filter @superchat/web intl:extract`, fill the new
 `apps/web/src/locales/<locale>/messages.po` catalog, and validate it with
 `pnpm --filter @superchat/web intl:compile`. Keep message IDs, placeholders, JSX markers, and
 ICU plural branches intact; do not commit generated `*.js`/`*.mjs` catalog files.
 
-Expo mobile has its own catalog and locale registry. Add the locale to
-`apps/mobile/lib/ui-locale.ts`, add `apps/mobile/lib/locales/<locale>.ts`, and register the
-catalog in `apps/mobile/lib/i18n.ts`. Web PO entries do not translate mobile automatically.
-Update the locale unit tests and a UI E2E scenario for each supported surface. The native
-Electron setup window has a separate localization path;
-scope and test those changes explicitly instead of assuming the web catalog covers them.
-
-## Optional live-provider checks
-
-The default Playwright suite uses the fake sandbox. To run the same scripted-agent suite against
-real computers, set the matching `E2B_API_KEY`, `DAYTONA_API_KEY`, or `BOX_API_KEY` and choose a provider:
-
-```bash
-pnpm test:e2e -- --sandbox=e2b
-pnpm test:e2e -- --sandbox=daytona
-pnpm test:e2e -- --sandbox=box
-```
-
-The Playwright workflow also accepts these providers through its manual **Sandbox provider** input.
-These runs provision real machines and destroy them after the suite. Automatic runs use `fake`.
+Update the locale unit tests for the new locale.
 
 ## Secrets and configuration
 
@@ -57,7 +34,7 @@ These runs provision real machines and destroy them after the suite. Automatic r
 - **Never** paste API keys, tokens, or passwords in issues or PRs.
 - Use placeholders in examples (`your-openrouter-key`, etc.).
 
-Turns run on the Omnigent engine (`OMNIGENT_URL`). Emulator settings (`AGENT_RUNTIME=scripted`, `SANDBOX_PROVIDER=fake`, `WAKEUP_DRIVER=memory`) are for tests only.
+Turns run on the Omnigent engine; `pnpm dev` proxies to it at `OMNIGENT_URL`.
 
 **Integrations** can use [Composio](https://composio.dev/) or Pipedream Connect as optional managed
 app catalogs. Users can also install HTTPS MCP servers (including Treg) and bounded OpenAPI tool

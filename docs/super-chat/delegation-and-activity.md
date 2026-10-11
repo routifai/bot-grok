@@ -1,5 +1,7 @@
 # Delegation and Activity: Helpers, Side chats, labels and what the person sees
 
+> **Note.** The API, worker, mobile and desktop apps named below were removed ([ADR 0015](../adr/0015-no-app-server-the-web-talks-to-the-engine.md)); the web now talks to the engine directly. Those paths are kept as history and exist in git history only.
+
 This page explains how the Muse hands work to Helpers, how that work comes back, and how it shows
 up for the person as Activity instead of raw tool calls. It also answers one specific question: what
 the runner does when it cannot read a session's labels.

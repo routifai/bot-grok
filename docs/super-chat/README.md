@@ -1,5 +1,7 @@
 # How Superchat's conversation works: Super Chat, Side Chats, Forks, Helpers
 
+> **Note.** The API, worker, mobile and desktop apps named below were removed ([ADR 0015](../adr/0015-no-app-server-the-web-talks-to-the-engine.md)); the web now talks to the engine directly. Those paths are kept as history and exist in git history only.
+
 This guide is for two readers:
 
 - a **developer** wiring a website to the engine,

@@ -1,5 +1,7 @@
 # Where a Muse's turns run
 
+> **Note.** The API, worker, mobile and desktop apps named below were removed ([ADR 0015](../adr/0015-no-app-server-the-web-talks-to-the-engine.md)); the web now talks to the engine directly. Those paths are kept as history and exist in git history only.
+
 Every Super Chat / side chat / Helper turn is executed by an Omnigent
 **runner** — a short-lived process that holds the harness (Claude SDK) and
 does the actual work. The runner always lives inside a **host**: a process
