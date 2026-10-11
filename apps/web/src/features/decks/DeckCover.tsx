@@ -1,4 +1,5 @@
-import { isDeckArtifactName } from "@superchat/contracts";
+import { plural } from "@lingui/core/macro";
+import { deckSlideCount, isDeckArtifactName } from "@superchat/contracts";
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SandboxedHtmlViewer } from "../../components/SandboxedHtmlViewer";
 import { KIND_ICON } from "../../lib/artifact-kind";
@@ -12,6 +13,7 @@ const FRAME_W = 1952;
 const FRAME_H = 1112;
 const MARGIN = 16;
 const SLIDE_W = FRAME_W - 2 * MARGIN;
+const SLIDE_H = FRAME_H - 2 * MARGIN;
 
 /** Fetched decks by id and version, so a Library and a transcript share one download. */
 const bytesCache = new Map<string, Promise<Uint8Array>>();
@@ -51,28 +53,40 @@ function useNear() {
   return { ref, near };
 }
 
-/** Width of the element, for scaling a fixed-size frame to cover it. */
-function useWidth(ref: RefObject<HTMLDivElement | null>) {
-  const [width, setWidth] = useState<number | null>(null);
+/** Size of the element, for scaling a fixed-size frame to cover it. */
+function useSize(ref: RefObject<HTMLDivElement | null>) {
+  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
   useEffect(() => {
     const node = ref.current;
     if (!node || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver((entries) => {
-      const next = entries[0]?.contentRect.width;
-      if (next) setWidth(next);
+      const rect = entries[0]?.contentRect;
+      if (rect?.width) setSize({ width: rect.width, height: rect.height });
     });
     observer.observe(node);
     return () => observer.disconnect();
   }, [ref]);
-  return width;
+  return size;
 }
 
 /**
  * A deck's thumbnail: its first slide, drawn live once the card is near the screen. An HTML deck
  * renders in the same sandbox as its viewer; a .pptx through the same renderer as its preview.
- * The deck icon stands in until the slide is drawn, and stays when it cannot be.
+ * The deck icon stands in until the slide is drawn, and stays when it cannot be. The slide
+ * covers the card edge to edge whatever the card's shape. `onMeta` hears an HTML deck's
+ * slide count ("4 slides") once its bytes are here.
  */
-export function DeckCover({ id, name, version }: { id: string; name: string; version?: number }) {
+export function DeckCover({
+  id,
+  name,
+  version,
+  onMeta,
+}: {
+  id: string;
+  name: string;
+  version?: number;
+  onMeta?: (meta: string) => void;
+}) {
   const { ref, near } = useNear();
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
 
@@ -88,6 +102,12 @@ export function DeckCover({ id, name, version }: { id: string; name: string; ver
       cancelled = true;
     };
   }, [near, id, version]);
+
+  useEffect(() => {
+    if (!bytes || !onMeta || !isDeckArtifactName(name)) return;
+    const slides = deckSlideCount(new TextDecoder("utf-8").decode(bytes));
+    if (slides) onMeta(plural(slides, { one: "# slide", other: "# slides" }));
+  }, [bytes, name, onMeta]);
 
   const [drawn, setDrawn] = useState(false);
   const markDrawn = useCallback(() => setDrawn(true), []);
@@ -112,6 +132,13 @@ export function DeckCover({ id, name, version }: { id: string; name: string; ver
   );
 }
 
+function coverTransform(width: number, height: number): string {
+  const scale = Math.max(width / SLIDE_W, height / SLIDE_H);
+  const x = (width - SLIDE_W * scale) / 2;
+  const y = (height - SLIDE_H * scale) / 2;
+  return `translate(${x}px, ${y}px) scale(${scale}) translate(${-MARGIN}px, ${-MARGIN}px)`;
+}
+
 function HtmlFirstSlide({
   bytes,
   title,
@@ -123,7 +150,7 @@ function HtmlFirstSlide({
 }) {
   const box = useRef<HTMLDivElement>(null);
   const frame = useRef<HTMLIFrameElement>(null);
-  const width = useWidth(box);
+  const size = useSize(box);
   const html = useMemo(() => new TextDecoder("utf-8").decode(bytes), [bytes]);
   // Like the viewer's rail: once the deck says it is ready, park it on its first slide.
   useEffect(() => {
@@ -138,15 +165,16 @@ function HtmlFirstSlide({
   }, [onDrawn]);
   return (
     <div ref={box} className="h-full w-full">
-      {width ? (
+      {size ? (
         <div
           aria-hidden="true"
           className="origin-top-left"
           style={{
             width: FRAME_W,
             height: FRAME_H,
-            // Crop the deck's own margin so the slide fills the card.
-            transform: `scale(${width / SLIDE_W}) translate(${-MARGIN}px, ${-MARGIN}px)`,
+            // Crop the deck's own margin, then cover the card: scale to whichever side needs
+            // more and center the overflow, so no band shows whatever the card's shape.
+            transform: coverTransform(size.width, size.height),
           }}
         >
           <SandboxedHtmlViewer html={html} title={title} relay decorative frameRef={frame} />

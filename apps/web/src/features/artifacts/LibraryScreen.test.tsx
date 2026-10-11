@@ -173,7 +173,8 @@ it("filters by name and description as the search field is typed", async () => {
     act(() => {
       typeSearch(page.container, "quarterly");
     });
-    expect(page.container.textContent).toContain("Q3 report");
+    // The card reads its saved title, not its file name.
+    expect(page.container.textContent).toContain("Quarterly numbers");
     expect(page.container.textContent).not.toContain("Trip itinerary");
   } finally {
     await page.cleanup();
@@ -227,7 +228,7 @@ it("shows the empty state when the Library has nothing yet", async () => {
       });
     });
     expect(page.container.textContent).toContain(
-      "Pages, documents and files your Muse makes will appear here.",
+      "Apps, decks, documents and files your Muse makes will appear here",
     );
   } finally {
     await page.cleanup();
@@ -243,15 +244,15 @@ it("tapping an empty-state suggestion chip calls onSendIdea with its text", asyn
   try {
     await act(async () => {
       await vi.waitFor(() => {
-        expect(page.container.textContent).toContain("Draft a one-pager on our new product");
+        expect(page.container.textContent).toContain("Make a short deck about our new product");
       });
     });
-    const button = findButton(page.container, "Draft a one-pager on our new product");
+    const button = findButton(page.container, "Make a short deck about our new product");
     expect(button).toBeTruthy();
     await act(async () => {
       button?.click();
     });
-    expect(onSendIdea).toHaveBeenCalledWith("Draft a one-pager on our new product");
+    expect(onSendIdea).toHaveBeenCalledWith("Make a short deck about our new product");
   } finally {
     await page.cleanup();
     vi.unstubAllGlobals();
@@ -304,7 +305,7 @@ it("adds a Published facet that filters to the published apps", async () => {
   try {
     await act(async () => {
       await vi.waitFor(() => {
-        expect(page.container.textContent).toContain("todo.html");
+        expect(page.container.textContent).toContain("Todo");
       });
     });
     const facet = findButton(page.container, "Published 1");
@@ -312,10 +313,101 @@ it("adds a Published facet that filters to the published apps", async () => {
     act(() => {
       facet?.click();
     });
-    expect(page.container.textContent).toContain("todo.html");
-    expect(page.container.textContent).not.toContain("notes.html");
+    expect(page.container.textContent).toContain("Todo");
+    expect(page.container.textContent).not.toContain("Notes");
   } finally {
     await page.cleanup();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("hides the kind filter when every item is the same kind", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  api.listSpace.mockResolvedValue({
+    items: [
+      artifact({ id: "a-1", name: "tea.deck.html", mimeType: "text/html" }),
+      artifact({ id: "a-2", name: "coffee.deck.html", mimeType: "text/html" }),
+    ],
+    nextCursor: null,
+  });
+  const page = await renderLibrary();
+  try {
+    await act(async () => {
+      await vi.waitFor(() => {
+        expect(page.container.textContent).toContain("Coffee");
+      });
+    });
+    expect(findButton(page.container, "All 2")).toBeUndefined();
+    expect(findButton(page.container, "Decks 2")).toBeUndefined();
+    expect(page.container.querySelector("input[type='search']")).toBeTruthy();
+  } finally {
+    await page.cleanup();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("titles a card with its saved title, else its file name made readable", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  api.listSpace.mockResolvedValue({
+    items: [
+      artifact({
+        id: "a-1",
+        name: "tea.deck.html",
+        mimeType: "text/html",
+        description: "Tea: one plant, many teas",
+      }),
+      artifact({ id: "a-2", name: "q3_sales-report.pdf", mimeType: "application/pdf" }),
+    ],
+    nextCursor: null,
+  });
+  const page = await renderLibrary();
+  try {
+    await act(async () => {
+      await vi.waitFor(() => {
+        expect(page.container.textContent).toContain("Tea: one plant, many teas");
+      });
+    });
+    expect(page.container.textContent).toContain("Q3 sales report");
+    expect(page.container.textContent).not.toContain("tea.deck.html");
+    expect(page.container.querySelector("[aria-label='Open Q3 sales report']")).toBeTruthy();
+  } finally {
+    await page.cleanup();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("in a dock sheet, shows one compact search beside the filter chips", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  api.listSpace.mockResolvedValue({
+    items: [
+      artifact({ id: "a-1", name: "Trip itinerary", mimeType: "text/html" }),
+      artifact({ id: "a-2", name: "Q3 report", mimeType: "application/pdf" }),
+    ],
+    nextCursor: null,
+  });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(<LibraryScreen botId="bot-1" embedded />);
+  });
+  try {
+    await act(async () => {
+      await vi.waitFor(() => {
+        expect(container.textContent).toContain("Trip itinerary");
+      });
+    });
+    expect(container.querySelectorAll("input[type='search']")).toHaveLength(1);
+    const pages = findButton(container, "Pages 1");
+    expect(pages?.getAttribute("aria-pressed")).toBe("false");
+    act(() => {
+      pages?.click();
+    });
+    expect(findButton(container, "Pages 1")?.getAttribute("aria-pressed")).toBe("true");
+    expect(container.textContent).not.toContain("Q3 report");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
     vi.unstubAllGlobals();
   }
 });

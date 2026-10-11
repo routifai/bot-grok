@@ -91,6 +91,9 @@ export interface ArtifactThumbnailArgs {
   name: string;
   mimeType: string;
   version?: number;
+  /** Reports a short fact read from the file once its bytes are here (a deck's "4 slides"),
+   * for the card's meta line. Must be stable. */
+  onMeta?: (meta: string) => void;
 }
 
 const ArtifactRegistryContext = createContext<readonly ArtifactExtension[]>([]);

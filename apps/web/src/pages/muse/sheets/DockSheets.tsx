@@ -9,7 +9,7 @@ import { rpc } from "../../../lib/rpc";
 import type { DockKey } from "../chrome/Dock";
 import { DockSheet, DockSheetHeader } from "../chrome/DockSheet";
 import { readFileAsBase64 } from "../conversation/shared";
-import { PRIMARY_BUTTON, QUIET_BUTTON } from "../ui";
+import { QUIET_BUTTON } from "../ui";
 
 function LibrarySheet({
   botId,
@@ -29,21 +29,15 @@ function LibrarySheet({
   const { t } = useLingui();
   return (
     <DockSheet open={open} title={t`Library`} onClose={onClose}>
-      <DockSheetHeader title={t`Library`} subtitle={t`Apps, decks and documents I made for you.`} />
+      <DockSheetHeader title={t`Library`} subtitle={t`Apps, decks and documents I made for you.`}>
+        <button type="button" className={QUIET_BUTTON} onClick={onNewApp}>
+          <Plus size={15} strokeWidth={2} aria-hidden="true" className="me-1 -ms-0.5" />
+          <Trans>New app</Trans>
+        </button>
+      </DockSheetHeader>
       {open ? (
-        <div className="rk-scroll flex min-h-0 flex-1 flex-col overflow-y-auto">
-          <LibraryScreen
-            embedded
-            botId={botId}
-            botName={botName}
-            onSendIdea={onSendIdea}
-            toolbarAction={
-              <button type="button" className={PRIMARY_BUTTON} onClick={onNewApp}>
-                <Plus size={16} aria-hidden="true" className="me-1.5" />
-                <Trans>New app</Trans>
-              </button>
-            }
-          />
+        <div className="rk-scroll -mx-1 flex min-h-0 flex-1 flex-col overflow-y-auto px-1">
+          <LibraryScreen embedded botId={botId} botName={botName} onSendIdea={onSendIdea} />
         </div>
       ) : null}
     </DockSheet>

@@ -49,7 +49,10 @@ export function hasLivePreview(
 }
 
 /** The thumbnail an extension draws for this artifact (a chart, a deck), or null. */
-export function useCustomThumbnail(artifact: PreviewableArtifact): ReactNode | null {
+export function useCustomThumbnail(
+  artifact: PreviewableArtifact,
+  onMeta?: (meta: string) => void,
+): ReactNode | null {
   const extensions = useArtifactExtensions();
   for (const extension of extensions) {
     const node = extension.thumbnail?.({
@@ -57,6 +60,7 @@ export function useCustomThumbnail(artifact: PreviewableArtifact): ReactNode | n
       name: artifact.name,
       mimeType: artifact.mimeType,
       version: artifact.version,
+      onMeta,
     });
     if (node) return node;
   }
@@ -141,6 +145,7 @@ export function ArtifactPreviewThumbnail({
   artifact,
   onReady,
   onHeading,
+  onMeta,
   fallback,
 }: {
   artifact: PreviewableArtifact;
@@ -150,6 +155,8 @@ export function ArtifactPreviewThumbnail({
   onReady?: () => void;
   /** The document's own title, once its bytes are here (see {@link documentHeading}). */
   onHeading?: (heading: string) => void;
+  /** A short fact read from the file (a deck's "4 slides"), for the card's meta line. */
+  onMeta?: (meta: string) => void;
 }) {
   const kind = artifactKind(artifact.mimeType);
   const [ref, near] = useNearViewport();
@@ -193,7 +200,7 @@ export function ArtifactPreviewThumbnail({
   }, [bytes, kind, onHeading]);
 
   const Icon = KIND_ICON[kind];
-  const custom = useCustomThumbnail(artifact);
+  const custom = useCustomThumbnail(artifact, onMeta);
 
   return (
     <div ref={ref} className="grid h-full w-full place-items-center">

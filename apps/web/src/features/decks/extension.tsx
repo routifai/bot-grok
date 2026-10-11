@@ -53,7 +53,12 @@ export const decksExtension: ArtifactExtension = {
   card: () => null,
   thumbnail: (artifact) =>
     isDeckArtifactName(artifact.name) || isPptxArtifact(artifact) ? (
-      <DeckCover id={artifact.id} name={artifact.name} version={artifact.version} />
+      <DeckCover
+        id={artifact.id}
+        name={artifact.name}
+        version={artifact.version}
+        onMeta={artifact.onMeta}
+      />
     ) : null,
   view: ({ artifact, bytes, onEdited, fallback }) => {
     if (isPptxArtifact(artifact)) return <PptxPreview bytes={bytes} fallback={fallback} />;
