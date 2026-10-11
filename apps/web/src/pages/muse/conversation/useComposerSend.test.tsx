@@ -63,7 +63,12 @@ const roots: Root[] = [];
 let latest: ReturnType<typeof useComposerSend>;
 
 const botRef = { current: BOT as string | undefined };
-const transcript = { beginSend: vi.fn(), failSend: vi.fn(), refresh: vi.fn() };
+const transcript = {
+  beginSend: vi.fn(),
+  failSend: vi.fn(),
+  stopWaiting: vi.fn(),
+  refresh: vi.fn(),
+};
 let shown: ThreadMessage[] = [];
 
 function Harness() {
@@ -108,6 +113,7 @@ beforeEach(() => {
   }));
   transcript.beginSend.mockReset();
   transcript.failSend.mockReset();
+  transcript.stopWaiting.mockReset();
   transcript.refresh.mockReset();
   api.chats.interrupt.mockReset().mockResolvedValue({ ok: true });
   api.asks.answer.mockReset().mockResolvedValue({ ok: true });
@@ -460,11 +466,19 @@ it("takes the message back and reports it when the retry fails too", async () =>
   }
 });
 
-it("stops the running turn on the engine and reads the Conversation again", async () => {
+it("stops the running turn on the engine, expects no reply, and reads the Conversation again", async () => {
   await mount();
   await act(async () => latest.stopRun());
   expect(api.chats.interrupt).toHaveBeenCalledWith({ botId: BOT });
+  expect(transcript.stopWaiting).toHaveBeenCalledTimes(1);
   expect(transcript.refresh).toHaveBeenCalled();
+});
+
+it("keeps expecting the reply when the stop fails", async () => {
+  api.chats.interrupt.mockRejectedValueOnce(new Error("offline"));
+  await mount();
+  await act(async () => latest.stopRun());
+  expect(transcript.stopWaiting).not.toHaveBeenCalled();
 });
 
 it("answers an ask on the engine", async () => {

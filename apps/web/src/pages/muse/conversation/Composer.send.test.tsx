@@ -75,7 +75,12 @@ const BOT = "b".repeat(32);
 const botRef = { current: BOT as string | undefined };
 const roots: Root[] = [];
 let latest: ReturnType<typeof useComposerSend>;
-const transcript = { beginSend: vi.fn(), failSend: vi.fn(), refresh: vi.fn() };
+const transcript = {
+  beginSend: vi.fn(),
+  failSend: vi.fn(),
+  stopWaiting: vi.fn(),
+  refresh: vi.fn(),
+};
 
 /** The real hook wired to the real Composer, the way Shell does it. */
 function Wired() {

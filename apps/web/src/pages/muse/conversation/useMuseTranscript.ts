@@ -195,6 +195,9 @@ export function useMuseTranscript(
     setWaiting(false);
   }, []);
 
+  /** The turn was stopped: no reply is coming, though the last message is still the person's. */
+  const stopWaiting = useCallback(() => setWaiting(false), []);
+
   const loadOlder = useCallback(async () => {
     const current = loadedRef.current;
     if (!botId || !current || current.botId !== botId || !current.olderCursor || loadingOlder) {
@@ -297,6 +300,7 @@ export function useMuseTranscript(
     running: Boolean(forBot?.running) || pending !== null || waiting,
     beginSend,
     failSend,
+    stopWaiting,
     /** The cursor of the next older page, or `null` when this is the start. */
     olderCursor: forBot?.olderCursor ?? null,
     loadingOlder,

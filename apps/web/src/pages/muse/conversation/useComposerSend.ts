@@ -53,7 +53,10 @@ export function useComposerSend({
   userId: string | undefined;
   /** The Conversation as shown: the latest failed reply drives the composer's note. */
   messages: readonly ThreadMessage[];
-  transcript: Pick<ReturnType<typeof useMuseTranscript>, "beginSend" | "failSend" | "refresh">;
+  transcript: Pick<
+    ReturnType<typeof useMuseTranscript>,
+    "beginSend" | "failSend" | "stopWaiting" | "refresh"
+  >;
   botsRef: MutableRefObject<Bot[]>;
   flushPendingBrowserNotifications: () => void;
 }) {
@@ -67,7 +70,7 @@ export function useComposerSend({
       }),
     [],
   );
-  const { beginSend, failSend, refresh } = transcript;
+  const { beginSend, failSend, stopWaiting, refresh } = transcript;
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const pendingRef = useRef<PendingAttachment[]>([]);
   pendingRef.current = pendingAttachments;
@@ -445,8 +448,9 @@ export function useComposerSend({
     } finally {
       setSending(false);
     }
+    if (activeBotId.current === botId) stopWaiting();
     refresh();
-  }, [refresh, sending, t]);
+  }, [refresh, sending, stopWaiting, t]);
 
   function dismissComposerError() {
     // The strip shows one message at a time: a failed send first, then the failed reply.
