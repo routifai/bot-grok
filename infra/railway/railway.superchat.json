@@ -5,7 +5,7 @@
     "dockerfilePath": "infra/compose/Dockerfile"
   },
   "deploy": {
-    "startCommand": "bash infra/railway/start-superchat.sh",
+    "startCommand": "bash infra/app/start.sh",
     "healthcheckPath": "/",
     "healthcheckTimeout": 120,
     "restartPolicyType": "ON_FAILURE",

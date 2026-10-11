@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Runs the Superchat API, the background worker and the web server in ONE container.
-# Why one: the API and worker share DATA_DIR (a Railway volume attaches to a single service),
-# and the web server proxies /api and /rpc to the API on 127.0.0.1:3100.
-# Railway routes public traffic to $PORT (the web server). If any process exits, the container
-# exits so Railway restarts all three.
+# Why one: the API and worker share DATA_DIR (one volume), and the web server proxies /api and
+# /rpc to the API on 127.0.0.1:3100. Public traffic goes to $PORT (the web server, 5173 unless the
+# platform sets it). If any process exits, the container exits so it is restarted as a whole.
 set -uo pipefail
 
 pnpm --filter @superchat/db exec prisma migrate deploy || exit 1

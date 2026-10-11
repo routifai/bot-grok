@@ -49,6 +49,7 @@ services:
   # machine's own -f file may swap the dockerfile, args and secrets here). The engine is built FROM it.
   omnigent-server:
     image: superchat/omnigent-server:local
+    profiles: ["build"]
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
@@ -67,6 +68,7 @@ services:
   # Build-only: plain Ubuntu with the distro's Python, the base of the Computer's runner image.
   ubuntu-python:
     image: superchat/ubuntu-python:local
+    profiles: ["build"]
     build:
       context: ../../../../infra/sandboxes/computer
       dockerfile: ubuntu-python.Dockerfile
@@ -77,6 +79,7 @@ services:
 
   omnigent-host:
     image: superchat/omnigent-host:local
+    profiles: ["build"]
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
@@ -95,6 +98,7 @@ services:
   # Build-only: the Computer image the engine starts for each person.
   computer:
     image: superchat/computer:local
+    profiles: ["build"]
     build:
       context: ../../../..
       dockerfile: infra/sandboxes/computer/Dockerfile
@@ -115,8 +119,9 @@ services:
     build: !override
       context: ../../../../infra/omnigent
       dockerfile: Dockerfile
+      # Built first under the "build" profile (scripts/setup.sh), so `up` never lists it.
       additional_contexts:
-        omnigent-server: service:omnigent-server
+        omnigent-server: docker-image://superchat/omnigent-server:local
     environment:
       <<: *proxy-env
       DATABASE_URL: postgres://${POSTGRES_USER:-omnigent}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-omnigent}?options=-csearch_path%3Dengine
@@ -146,9 +151,6 @@ services:
       # and colima alike; DOCKER_SOCKET_PATH overrides it (e.g. rootless Docker). Never mounted
       # into a Computer.
       - ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:/var/run/docker.sock
-    depends_on:
-      computer:
-        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
       interval: 5s
@@ -156,16 +158,15 @@ services:
       retries: 30
       start_period: 60s
 
-  api:
+  # The app: API, background worker and web server in one container (infra/app/start.sh).
+  app:
     image: superchat/app:local
     build: *app-build
-    command: ["bash", "-lc", "pnpm --filter @superchat/db exec prisma migrate deploy && pnpm --filter @superchat/api start"]
     env_file:
       - ../../../../.env
     environment:
       <<: *proxy-env
       DATABASE_URL: postgres://${POSTGRES_USER:-omnigent}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-omnigent}?schema=app
-      API_HOST: "0.0.0.0"
       DATA_DIR: /data
       WAKEUP_DRIVER: graphile
       # The app's own run sandbox is unused: every chat goes through the engine.
@@ -173,8 +174,10 @@ services:
       # The Omnigent chat engine (the omnigent service unless OMNIGENT_URL points elsewhere).
       OMNIGENT_URL: ${OMNIGENT_URL:-http://omnigent:8000}
       OMNIGENT_PROXY_SECRET: ${OMNIGENT_PROXY_SECRET:?Set OMNIGENT_PROXY_SECRET in .env}
+      SUPERCHAT_HOST: ${SUPERCHAT_HOST:-localhost}
+      PORT: "5173"
     ports:
-      - "127.0.0.1:${SUPERCHAT_API_PORT:-3100}:3100"
+      - "127.0.0.1:${SUPERCHAT_WEB_PORT:-5173}:5173"
     volumes:
       - artifact-data:/data
     depends_on:
@@ -191,39 +194,4 @@ services:
       interval: 5s
       timeout: 5s
       retries: 30
-      start_period: 15s
-
-  worker:
-    image: superchat/app:local
-    build: *app-build
-    command: ["pnpm", "--filter", "@superchat/worker", "start"]
-    env_file:
-      - ../../../../.env
-    environment:
-      <<: *proxy-env
-      BETTER_AUTH_SECRET: ""
-      DATABASE_URL: postgres://${POSTGRES_USER:-omnigent}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-omnigent}?schema=app
-      DATA_DIR: /data
-      WAKEUP_DRIVER: graphile
-      # The app's own run sandbox is unused: every chat goes through the engine.
-      SANDBOX_PROVIDER: none
-      OMNIGENT_URL: ${OMNIGENT_URL:-http://omnigent:8000}
-      OMNIGENT_PROXY_SECRET: ${OMNIGENT_PROXY_SECRET:?Set OMNIGENT_PROXY_SECRET in .env}
-    volumes:
-      - artifact-data:/data
-    depends_on:
-      api:
-        condition: service_healthy
-
-  web:
-    image: superchat/app:local
-    build: *app-build
-    command: ["pnpm", "--filter", "@superchat/web", "preview", "--host", "0.0.0.0", "--port", "5173"]
-    environment:
-      API_PROXY_TARGET: http://api:3100
-      SUPERCHAT_HOST: ${SUPERCHAT_HOST:-localhost}
-    ports:
-      - "127.0.0.1:${SUPERCHAT_WEB_PORT:-5173}:5173"
-    depends_on:
-      api:
-        condition: service_healthy
+      start_period: 30s

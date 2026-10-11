@@ -16,12 +16,13 @@ Node.js and pnpm are not needed; everything builds in Docker.
 
 One Compose project, `superchat`: Omnigent's own `engine/omnigent/deploy/docker/docker-compose.yaml`
 (Postgres and the Omnigent server), unchanged, with `infra/compose/docker-compose.superchat.yaml`
-on top. `setup.sh` runs, from the repo root:
+on top. `setup.sh` runs, from the repo root (`dc` standing for
+`docker compose --env-file .env -f engine/omnigent/deploy/docker/docker-compose.yaml -f infra/compose/docker-compose.superchat.yaml`):
 
 ```sh
-docker compose --env-file .env \
-  -f engine/omnigent/deploy/docker/docker-compose.yaml \
-  -f infra/compose/docker-compose.superchat.yaml up --build
+dc --profile build build omnigent-server ubuntu-python omnigent-host computer
+dc build omnigent app
+dc up -d --wait
 ```
 
 Compose resolves relative paths in every file against the first file's directory, so run it from
@@ -31,11 +32,10 @@ the repo root with the files in this order.
 |---|---|---|
 | `postgres` | one database, `omnigent`, with `app` and `engine` schemas | none |
 | `omnigent` | the Omnigent agent server (Superchat's engine); starts each person's Computer over the Docker socket | `8012` (`SUPERCHAT_ENGINE_PORT`) |
-| `api` | sign-in, accounts, authorization | `3100` (`SUPERCHAT_API_PORT`) |
-| `worker` | background jobs for the API | none |
-| `web` | the interface | `5173` (`SUPERCHAT_WEB_PORT`) |
+| `app` | the interface, its API and background worker, in one container (`infra/app/start.sh`) | `5173` (`SUPERCHAT_WEB_PORT`) |
 
-`omnigent-server`, `omnigent-host` and `computer` only build images and exit. `omnigent-server`
+`omnigent-server`, `ubuntu-python`, `omnigent-host` and `computer` only build images: they sit
+under the `build` profile, so `up` never creates a container for them. `omnigent-server`
 and `omnigent-host` are Omnigent's own images (its Dockerfile's server and `host` targets); the
 engine (`superchat/engine:local`, `infra/omnigent/Dockerfile`) is the server image plus
 `infra/omnigent` at `/opt/bundle`. The Computer (`superchat/computer:local`) is the host image,

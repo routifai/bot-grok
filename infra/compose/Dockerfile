@@ -1,6 +1,6 @@
-# One image for the api, worker and web services (Compose runs each with its own command; Railway
-# runs all three through infra/railway/start-superchat.sh). Only those three apps and the packages
-# they use are installed: the desktop, mobile and marketing workspaces keep just their manifests
+# The app image: the api, worker and web server, run together in one container by
+# infra/app/start.sh (Compose and Railway alike). Only those three apps and the packages they use
+# are installed: the desktop, mobile and marketing workspaces keep just their manifests
 # so the lockfile matches.
 ARG NODE_IMAGE=node:22-slim
 FROM ${NODE_IMAGE}
@@ -42,4 +42,4 @@ ENV GIT_SHA=$GIT_SHA
 EXPOSE 3100 5173 7091
 # Railway mounts its volume root-owned: run that service with RAILWAY_RUN_UID=0.
 USER node
-CMD ["pnpm", "--filter", "@superchat/api", "start"]
+CMD ["bash", "infra/app/start.sh"]
