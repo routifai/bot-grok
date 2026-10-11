@@ -8,13 +8,15 @@ import {
   getOmnigentContextSummary,
   getOmnigentSession,
   getOmnigentTranscript,
-  getOmnigentWorkingProject,
+  getOmnigentWorkingPlace,
+  getOmnigentWorkspaceRoot,
   interruptOmnigentSession,
   listOmnigentRelatedChats,
   mapRelatedChatToSummary,
   mapSideChatCreateToSummary,
   mapTranscriptPage,
   markOmnigentRead,
+  moveOmnigentSessionForPerson,
   OmnigentApiError,
   OmnigentSideChatError,
   postOmnigentMessage,
@@ -22,7 +24,6 @@ import {
   readTurnImages,
   resetOmnigentSession,
   resolveChatOwnership,
-  setOmnigentSessionWorkspace,
   sideChatStartToWire,
   streamOmnigentFamily,
   unarchiveOmnigentSession,
@@ -122,17 +123,8 @@ async function createFolderSideChat(
   superSessionId: string,
   input: { start: SideChatStart; text: string; folder?: string },
 ): Promise<ChatSummary> {
-  let relative: string;
-  try {
-    relative = confineWorkspacePath(input.folder ?? "");
-  } catch {
-    throw new ORPCError("BAD_REQUEST", { message: "That folder is outside the workspace." });
-  }
+  const workspace = await folderWorkspace(superSessionId, input.folder ?? "");
   const client = engineClient();
-  const root = (await getOmnigentSession(client, NO_EMAIL, superSessionId)).workspace;
-  if (typeof root !== "string" || !root) {
-    throw new ORPCError("NOT_FOUND", { message: "No workspace yet" });
-  }
   let created: Awaited<ReturnType<typeof createOmnigentSideChat>>;
   try {
     created = await createOmnigentSideChat(client, NO_EMAIL, superSessionId, {
@@ -142,12 +134,13 @@ async function createFolderSideChat(
     throw new ORPCError("BAD_GATEWAY", { message: "Could not open a side chat." });
   }
   try {
-    if (relative) {
-      await setOmnigentSessionWorkspace(
+    if (workspace.relative) {
+      await moveOmnigentSessionForPerson(
         client,
         NO_EMAIL,
         created.conversation_id,
-        `${root.replace(/\/+$/, "")}/${relative}`,
+        workspace.path,
+        true,
       );
     }
     await postOmnigentMessage(client, NO_EMAIL, created.conversation_id, input.text);
@@ -157,6 +150,50 @@ async function createFolderSideChat(
     });
   }
   return mapSideChatCreateToSummary(created, input.text);
+}
+
+/** A workspace folder (relative, as the Files browser lists it; `""` is the whole workspace) as
+ * an absolute path under the Muse's workspace root. */
+async function folderWorkspace(
+  superSessionId: string,
+  folder: string,
+): Promise<{ relative: string; path: string }> {
+  let relative: string;
+  try {
+    relative = confineWorkspacePath(folder);
+  } catch {
+    throw new ORPCError("BAD_REQUEST", { message: "That folder is outside the workspace." });
+  }
+  const root = await getOmnigentWorkspaceRoot(engineClient(), NO_EMAIL, superSessionId);
+  if (!root) throw new ORPCError("NOT_FOUND", { message: "No workspace yet" });
+  return { relative, path: relative ? `${root}/${relative}` : root };
+}
+
+/** The person moves a chat (or the Conversation) to a folder; `null` is the whole workspace. */
+async function setChatFolder(input: {
+  botId: string;
+  chatId?: string;
+  folder: string | null;
+}): Promise<{ ok: true }> {
+  const superSessionId = await requireMuse(input.botId);
+  if (input.chatId) await requireOwnSideChat(input.botId, input.chatId);
+  const sessionId = input.chatId ?? superSessionId;
+  const workspace = await folderWorkspace(superSessionId, input.folder ?? "");
+  try {
+    await moveOmnigentSessionForPerson(
+      engineClient(),
+      NO_EMAIL,
+      sessionId,
+      workspace.path,
+      input.folder !== null && workspace.relative !== "",
+    );
+  } catch (error) {
+    if (error instanceof OmnigentApiError && error.code === "invalid_input") {
+      throw new ORPCError("BAD_REQUEST", { message: "Superchat can't work in that folder." });
+    }
+    throw error;
+  }
+  return { ok: true };
 }
 
 /**
@@ -393,13 +430,12 @@ export const chatsRouter = {
       if (input.chatId) {
         const ownership = await ownershipOf(input.chatId);
         if (!ownership) throw new ORPCError("NOT_FOUND", { message: "Chat not found" });
-        return { project: ownership.project };
+        return { project: ownership.project, folder: ownership.folder, chosen: ownership.chosen };
       }
       const sessionId = await requireMuse(input.botId);
-      return {
-        project: await onSuperChat(getOmnigentWorkingProject(engineClient(), NO_EMAIL, sessionId)),
-      };
+      return onSuperChat(getOmnigentWorkingPlace(engineClient(), NO_EMAIL, sessionId));
     }),
+    setFolder: os.chats.setFolder.handler(({ input }) => onSuperChat(setChatFolder(input))),
     archiving: os.chats.archiving.handler(async ({ input }) => {
       await requireMuse(input.botId);
       return toArchiving(await getOmnigentArchiving(engineClient(), NO_EMAIL));

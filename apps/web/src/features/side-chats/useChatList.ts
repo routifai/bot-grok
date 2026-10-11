@@ -1,5 +1,5 @@
-import type { ChatSummary, SideChatStart } from "@superchat/contracts";
 import { ORPCError } from "@orpc/client";
+import type { ChatSummary, SideChatStart } from "@superchat/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { watchFamily } from "../../lib/family-stream";
 import { rpc } from "../../lib/rpc";
@@ -71,8 +71,13 @@ export function useChatList(botId: string) {
 
   /** Creates a Side Chat and sends its first message atomically, then refreshes the list. */
   const createSide = useCallback(
-    async (start: SideChatStart, text: string) => {
-      const chat = await rpc.chats.createSide({ botId, start, text });
+    async (start: SideChatStart, text: string, folder?: string) => {
+      const chat = await rpc.chats.createSide({
+        botId,
+        start,
+        text,
+        ...(folder !== undefined ? { folder } : {}),
+      });
       load();
       return chat;
     },

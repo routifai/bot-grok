@@ -14,6 +14,8 @@ const adapters = vi.hoisted(() => ({
   putOmnigentArchiving: vi.fn(),
   addOmnigentForkToConversation: vi.fn(),
   archiveOmnigentSession: vi.fn(),
+  getOmnigentWorkspaceRoot: vi.fn(),
+  moveOmnigentSessionForPerson: vi.fn(),
 }));
 
 // The mapping and error classes stay real so `instanceof` checks and the mapped shapes are
@@ -38,6 +40,8 @@ const OWNED = {
   superSessionId: "conv_super",
   botId: "conv_super",
   project: null,
+  folder: null,
+  chosen: false,
 };
 const run = <T>(procedure: unknown, input: unknown) =>
   call(procedure as never, input as never) as Promise<T>;
@@ -86,6 +90,75 @@ describe("chats.createSide", () => {
       run(chatsRouter.chats.createSide, { botId: "other", start: "blank", text: "hi" }),
     ).rejects.toThrow(/Muse not found/);
     expect(adapters.createOmnigentSideChat).not.toHaveBeenCalled();
+  });
+});
+
+describe("chats.createSide in a folder and chats.setFolder", () => {
+  const ROOT = "/home/u/workspace";
+
+  it("moves the new chat into the chosen folder before its first message", async () => {
+    adapters.getOmnigentWorkspaceRoot.mockResolvedValue(ROOT);
+    adapters.createOmnigentSideChat.mockResolvedValue({
+      conversation_id: "conv_new",
+      title: "q3",
+      start: "withContext",
+    });
+    await run(chatsRouter.chats.createSide, {
+      botId: "conv_super",
+      start: "withContext",
+      text: "look",
+      folder: "projects/q3",
+    });
+    expect(adapters.moveOmnigentSessionForPerson).toHaveBeenCalledWith(
+      expect.anything(),
+      "",
+      "conv_new",
+      `${ROOT}/projects/q3`,
+      true,
+    );
+    expect(adapters.postOmnigentMessage).toHaveBeenCalledWith(
+      expect.anything(),
+      "",
+      "conv_new",
+      "look",
+    );
+  });
+
+  it("moves a side chat for the person, and back to the whole workspace without the mark", async () => {
+    adapters.getOmnigentWorkspaceRoot.mockResolvedValue(ROOT);
+    adapters.resolveChatOwnership.mockResolvedValue(OWNED);
+    await run(chatsRouter.chats.setFolder, {
+      botId: "conv_super",
+      chatId: "conv_side",
+      folder: "reports",
+    });
+    expect(adapters.moveOmnigentSessionForPerson).toHaveBeenLastCalledWith(
+      expect.anything(),
+      "",
+      "conv_side",
+      `${ROOT}/reports`,
+      true,
+    );
+    await run(chatsRouter.chats.setFolder, { botId: "conv_super", folder: null });
+    expect(adapters.moveOmnigentSessionForPerson).toHaveBeenLastCalledWith(
+      expect.anything(),
+      "",
+      "conv_super",
+      ROOT,
+      false,
+    );
+  });
+
+  it("refuses a folder outside the workspace and a chat that is not the Muse's", async () => {
+    adapters.getOmnigentWorkspaceRoot.mockResolvedValue(ROOT);
+    await expect(
+      run(chatsRouter.chats.setFolder, { botId: "conv_super", folder: "../etc" }),
+    ).rejects.toThrow(/outside the workspace/);
+    adapters.resolveChatOwnership.mockResolvedValue(null);
+    await expect(
+      run(chatsRouter.chats.setFolder, { botId: "conv_super", chatId: "x", folder: "a" }),
+    ).rejects.toThrow(/not found/i);
+    expect(adapters.moveOmnigentSessionForPerson).not.toHaveBeenCalled();
   });
 });
 

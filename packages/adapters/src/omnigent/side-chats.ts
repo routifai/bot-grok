@@ -310,6 +310,10 @@ export interface ChatOwnership {
   botId: string;
   /** The Project the chat has open (ADR 0008). */
   project: { slug: string; name: string } | null;
+  /** The folder it works in, relative to the workspace (`null` at the root). */
+  folder: string | null;
+  /** The person chose that folder themselves. */
+  chosen: boolean;
 }
 
 export interface OwnedSuperChat {
@@ -349,6 +353,8 @@ export function createChatOwnershipResolver(
       superSessionId: owner.omnigentSessionId,
       botId: owner.botId,
       project: family.project ?? null,
+      folder: family.folder ?? null,
+      chosen: family.workspace_chosen ?? false,
     };
   };
   return (chatId) => {

@@ -148,6 +148,11 @@ vi.mock("../features/approvals/AskCard", () => ({ AskCard: Stub }));
 vi.mock("../components/CloudAgentCard", () => ({ CloudAgentCard: Stub }));
 vi.mock("../components/MessageHoverMetadata", () => ({ MessageHoverMetadata: Stub }));
 vi.mock("./muse/sheets/DockSheets", () => ({ DockSheets: Stub }));
+vi.mock("../features/projects/WorkIn", () => ({
+  useChatPlace: () => ({ place: null, reload: () => undefined }),
+  WorkInChip: Stub,
+  WorkInPill: Stub,
+}));
 vi.mock("./SettingsOverlay", () => ({ SettingsOverlay: Stub }));
 vi.mock("./shell/dialogs", () => ({ ClearConversationDialog: Stub }));
 vi.mock("./shell/message-cards", () => ({

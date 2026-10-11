@@ -180,10 +180,23 @@ export const sideChatsContract = {
     updateArchiving: oc
       .input(ArchivingUpdateSchema.safeExtend({ botId: Id }))
       .output(ArchivingSchema),
-    /** The Project a chat is working in (its working directory is a Project folder), or null.
-     * Without `chatId`, the Conversation itself. */
-    project: oc
-      .input(z.object({ botId: Id, chatId: Id.optional() }))
-      .output(z.object({ project: z.object({ slug: z.string(), name: z.string() }).nullable() })),
+    /** Where a chat works: its Project (its working directory is a Project folder) or null, the
+     * folder relative to the workspace (null: the whole workspace) and whether the person chose
+     * it. Without `chatId`, the Conversation itself. */
+    project: oc.input(z.object({ botId: Id, chatId: Id.optional() })).output(
+      z.object({
+        project: z.object({ slug: z.string(), name: z.string() }).nullable(),
+        folder: z.string().nullable().optional(),
+        chosen: z.boolean().optional(),
+      }),
+    ),
+    /** The person moves a chat (without `chatId`: the Conversation) to a workspace folder,
+     * relative as the Files browser lists it; `null` is the whole workspace and clears their
+     * choice. The Muse keeps a folder the person chose and is told of the move once. */
+    setFolder: oc
+      .input(
+        z.object({ botId: Id, chatId: Id.optional(), folder: z.string().max(1024).nullable() }),
+      )
+      .output(z.object({ ok: z.literal(true) })),
   },
 };

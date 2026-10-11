@@ -13,6 +13,40 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+msgid "Choose where this chat works"
+msgstr "Choose where this chat works"
+
+msgid "Couldn’t move this chat. Try again."
+msgstr "Couldn’t move this chat. Try again."
+
+msgid "Couldn’t read the workspace."
+msgstr "Couldn’t read the workspace."
+
+msgid "Folders"
+msgstr "Folders"
+
+msgid "Projects"
+msgstr "Projects"
+
+msgid "Search folders"
+msgstr "Search folders"
+
+msgid "Show in Files"
+msgstr "Show in Files"
+
+#. placeholder {0}: lastSegment(dir)
+msgid "Work in {0}"
+msgstr "Work in {0}"
+
+msgid "Work in: Whole workspace"
+msgstr "Work in: Whole workspace"
+
+msgid "Work in: {shown}"
+msgstr "Work in: {shown}"
+
+msgid "Work in…"
+msgstr "Work in…"
+
 #. placeholder {0}: messages.length
 msgid "{0, plural, one {# failed attempt} other {# failed attempts}}"
 msgstr "{0, plural, one {# failed attempt} other {# failed attempts}}"
@@ -2059,14 +2093,8 @@ msgstr "Working"
 msgid "Working · {0}"
 msgstr "Working · {0}"
 
-msgid "Working in {folder}"
-msgstr "Working in {folder}"
-
 msgid "Working in {name}"
 msgstr "Working in {name}"
-
-msgid "Working in the whole workspace"
-msgstr "Working in the whole workspace"
 
 msgid "Working now"
 msgstr "Working now"

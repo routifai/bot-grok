@@ -34,6 +34,7 @@ import { FolderPicker } from "../features/computer/FolderPicker";
 import { DeckThemeChoice, decksExtension } from "../features/decks";
 import { knowledgeExtension } from "../features/knowledge";
 import { ConversationModelPicker } from "../features/models";
+import { useChatPlace, WorkInChip } from "../features/projects/WorkIn";
 import { sheetsExtension } from "../features/sheets";
 import { AllForks } from "../features/side-chats/AllForks";
 import { ForkAsk } from "../features/side-chats/ForkAsk";
@@ -65,7 +66,6 @@ import { Home } from "./muse/chrome/Home";
 import { HomeActivity } from "./muse/chrome/HomeActivity";
 import { museMode } from "./muse/chrome/museMode";
 import { BotSettingsPanel } from "./muse/chrome/PanelForms";
-import { type ChatProject, ProjectChip, useChatProject } from "./muse/chrome/ProjectChip";
 import type { Panel } from "./muse/chrome/panel";
 import { SidePanelHeader } from "./muse/chrome/SidePanelHeader";
 import { useBotRoster } from "./muse/chrome/useBotRoster";
@@ -164,12 +164,14 @@ export function ShellPage() {
   const sideChatWire = useMemo<SideChatWire>(
     () => ({
       summaryPreview: (input) => rpc.chats.summaryPreview(input),
-      createSide: (input) => chatList.createSide(input.start, input.text),
+      createSide: (input) => chatList.createSide(input.start, input.text, input.folder),
       transcript: (input) => rpc.chats.transcript(input),
       watch: (botId, listener) => watchFamily(botId, listener),
       send: (input) => rpc.chats.send(input),
       markRead: (input) => rpc.chats.markRead(input),
       project: (input) => rpc.chats.project(input),
+      listFolder: (input) => rpc.files.list(input),
+      setFolder: (input) => rpc.chats.setFolder(input),
       unarchive: (input) =>
         rpc.chats.unarchive(input).then((result) => {
           chatList.refresh();
@@ -260,19 +262,23 @@ export function ShellPage() {
   const openForkRef = useRef<(target: ForkThreadTarget) => void>(() => undefined);
   // Bumps each time a turn finishes, so the Files view follows the Muse's work.
   const [filesRefreshKey, setFilesRefreshKey] = useState(0);
-  // The Project folder to show in the Files tab, set by the "Working in" chip.
+  // The folder to show in the Files tab, set by the "Working in" chip.
   const [filesReveal, setFilesReveal] = useState<{ path: string; nonce: number } | null>(null);
-  const openProjectFiles = useCallback((project: ChatProject) => {
-    setFilesReveal((current) => ({
-      path: `projects/${project.slug}`,
-      nonce: (current?.nonce ?? 0) + 1,
-    }));
+  const showFolderInFiles = useCallback((path: string) => {
+    setFilesReveal((current) => ({ path, nonce: (current?.nonce ?? 0) + 1 }));
     setDockSheet("files");
   }, []);
-  const conversationProject = useChatProject(
+  const { place: conversationPlace, reload: reloadConversationPlace } = useChatPlace(
     active ? () => rpc.chats.project({ botId: active.id }) : undefined,
     active?.id ?? "",
     filesRefreshKey,
+  );
+  const listWorkspaceFolder = useCallback(
+    (path: string) =>
+      active
+        ? rpc.files.list({ botId: active.id, path }).then(({ entries }) => entries)
+        : Promise.resolve([]),
+    [active?.id],
   );
   // The Muse's Conversation is the engine's transcript (ADR 0009), and so is whether it is working.
   const museTranscript = useMuseTranscript(active?.id, messageScroll);
@@ -482,13 +488,21 @@ export function ShellPage() {
   const superchatTopBar = active ? (
     <div className="app-drag relative z-10 flex h-[84px] min-w-0 shrink-0 items-center gap-3 ps-4 pe-4 md:ps-0 md:pe-6">
       <SuperchatLogo className="md:hidden" />
-      {conversationProject ? (
-        <span className="app-no-drag hidden md:inline-flex">
-          <ProjectChip project={conversationProject} onOpen={openProjectFiles} />
-        </span>
-      ) : null}
       <span className="min-w-0 flex-1" />
       <div className="app-no-drag flex shrink-0 items-center gap-2">
+        {activeChat ? null : (
+          <span className="app-no-drag hidden md:inline-flex">
+            <WorkInChip
+              align="end"
+              place={conversationPlace}
+              list={listWorkspaceFolder}
+              onShow={showFolderInFiles}
+              onPick={(folder) =>
+                rpc.chats.setFolder({ botId: active.id, folder }).then(reloadConversationPlace)
+              }
+            />
+          </span>
+        )}
         <ConversationModelPicker botId={active.id} />
         <ChatsPopover
           botId={active.id}
@@ -560,7 +574,7 @@ export function ShellPage() {
                 onCreated={setActiveChat}
                 onReplied={chatList.refresh}
                 onClose={() => setActiveChat(null)}
-                onOpenProject={openProjectFiles}
+                onShowFolder={showFolderInFiles}
                 onRestored={() =>
                   setActiveChat((current) =>
                     current && current !== "draft" ? { ...current, archived: false } : current,

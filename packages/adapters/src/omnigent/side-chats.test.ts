@@ -181,18 +181,26 @@ describe("resolveChatOwnership", () => {
     superchat: Record<string, unknown> | null,
     status = "idle",
   ): Record<string, unknown> => ({ id, status, superchat });
-  const family = (kind: string, root: string, project: unknown = null) => ({
+  const family = (kind: string, root: string, project: unknown = null, extra = {}) => ({
     kind,
     root_id: root,
     parent_id: root,
     seed_item_id: null,
     project,
+    ...extra,
   });
 
   it("resolves a Side Chat of the caller's Super Chat", async () => {
     const project = { slug: "q3-deck", name: "Q3 board deck" };
     getOmnigentSession.mockResolvedValue(
-      session("conv_side", family("side", "conv_super", project), "running"),
+      session(
+        "conv_side",
+        family("side", "conv_super", project, {
+          folder: "projects/q3-deck",
+          workspace_chosen: true,
+        }),
+        "running",
+      ),
     );
     const ownership = await resolveChatOwnership(CLIENT, EMAIL, superChats, "conv_side");
     expect(ownership).toEqual({
@@ -200,6 +208,8 @@ describe("resolveChatOwnership", () => {
       superSessionId: "conv_super",
       botId: "bot-1",
       project,
+      folder: "projects/q3-deck",
+      chosen: true,
     });
   });
 
@@ -211,6 +221,8 @@ describe("resolveChatOwnership", () => {
       superSessionId: "conv_super",
       botId: "bot-1",
       project: null,
+      folder: null,
+      chosen: false,
     });
   });
 

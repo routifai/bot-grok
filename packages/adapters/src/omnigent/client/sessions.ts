@@ -11,6 +11,10 @@ export interface OmnigentSessionSuperchat {
   seed_item_id: string | null;
   /** The Project the session has open (ADR 0008). */
   project: { slug: string; name: string } | null;
+  /** The working directory relative to the workspace (`null` at its root). */
+  folder?: string | null;
+  /** The person chose that folder themselves; the Muse keeps it. */
+  workspace_chosen?: boolean;
 }
 
 /** `GET /v1/sessions/{id}` — a cheap session snapshot (no items, liveness or usage). */
