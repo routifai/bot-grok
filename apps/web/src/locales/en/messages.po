@@ -13,43 +13,6 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
-msgid "Choose where this chat works"
-msgstr "Choose where this chat works"
-
-msgid "Couldn’t move this chat. Try again."
-msgstr "Couldn’t move this chat. Try again."
-
-msgid "Couldn’t read the workspace."
-msgstr "Couldn’t read the workspace."
-
-msgid "Folders"
-msgstr "Folders"
-
-msgid "Projects"
-msgstr "Projects"
-
-msgid "Search folders"
-msgstr "Search folders"
-
-msgid "Show as fork"
-msgstr "Show as fork"
-
-msgid "Show in Files"
-msgstr "Show in Files"
-
-#. placeholder {0}: lastSegment(dir)
-msgid "Work in {0}"
-msgstr "Work in {0}"
-
-msgid "Work in: Whole workspace"
-msgstr "Work in: Whole workspace"
-
-msgid "Work in: {shown}"
-msgstr "Work in: {shown}"
-
-msgid "Work in…"
-msgstr "Work in…"
-
 #. placeholder {0}: messages.length
 msgid "{0, plural, one {# failed attempt} other {# failed attempts}}"
 msgstr "{0, plural, one {# failed attempt} other {# failed attempts}}"
@@ -281,8 +244,11 @@ msgstr "Appearance"
 msgid "Approvals"
 msgstr "Approvals"
 
-msgid "Apps superchat builds for you will appear here."
-msgstr "Apps superchat builds for you will appear here."
+msgid "Apps, decks and documents I made for you."
+msgstr "Apps, decks and documents I made for you."
+
+msgid "Apps, decks, documents and files your Muse makes will appear here."
+msgstr "Apps, decks, documents and files your Muse makes will appear here."
 
 msgid "Archive"
 msgstr "Archive"
@@ -349,6 +315,9 @@ msgstr "Automatic"
 
 msgid "Automations"
 msgstr "Automations"
+
+msgid "Back"
+msgstr "Back"
 
 msgid "Back to steps"
 msgstr "Back to steps"
@@ -427,6 +396,9 @@ msgstr "Check for updates"
 msgid "Checking…"
 msgstr "Checking…"
 
+msgid "Choose where this chat works"
+msgstr "Choose where this chat works"
+
 msgid "Clear"
 msgstr "Clear"
 
@@ -472,9 +444,6 @@ msgstr "Code"
 
 msgid "Collapse sidebar"
 msgstr "Collapse sidebar"
-
-msgid "Collapse slides"
-msgstr "Collapse slides"
 
 msgid "Color"
 msgstr "Color"
@@ -615,6 +584,9 @@ msgstr "Couldn't load the themes. Try again in a moment."
 msgid "Couldn't load this look. Try again in a moment."
 msgstr "Couldn't load this look. Try again in a moment."
 
+msgid "Couldn’t move this chat. Try again."
+msgstr "Couldn’t move this chat. Try again."
+
 msgid "Couldn't open this sheet."
 msgstr "Couldn't open this sheet."
 
@@ -633,6 +605,9 @@ msgstr "Couldn't read {0}"
 
 msgid "Couldn't read that selection."
 msgstr "Couldn't read that selection."
+
+msgid "Couldn’t read the workspace."
+msgstr "Couldn’t read the workspace."
 
 msgid "Couldn't run"
 msgstr "Couldn't run"
@@ -766,13 +741,15 @@ msgstr "Done"
 msgid "Download"
 msgstr "Download"
 
-#. placeholder {0}: artifact.name
 #. placeholder {0}: props.name
 msgid "Download {0}"
 msgstr "Download {0}"
 
 msgid "Download {name}"
 msgstr "Download {name}"
+
+msgid "Download {title}"
+msgstr "Download {title}"
 
 msgid "Downloading…"
 msgstr "Downloading…"
@@ -794,6 +771,9 @@ msgstr "Edit memory"
 
 msgid "Edited by you"
 msgstr "Edited by you"
+
+msgid "Editing"
+msgstr "Editing"
 
 msgid "Editorial"
 msgstr "Editorial"
@@ -825,9 +805,6 @@ msgstr "Expand {title}"
 
 msgid "Expand sidebar"
 msgstr "Expand sidebar"
-
-msgid "Expand slides"
-msgstr "Expand slides"
 
 msgid "Expired"
 msgstr "Expired"
@@ -863,9 +840,6 @@ msgstr "File"
 msgid "Files"
 msgstr "Files"
 
-msgid "Files view"
-msgstr "Files view"
-
 msgid "Fill"
 msgstr "Fill"
 
@@ -896,6 +870,9 @@ msgstr "Finished"
 #. js-lingui-explicit-id
 msgid "Finished."
 msgstr "Finished."
+
+msgid "Folders"
+msgstr "Folders"
 
 msgid "Font"
 msgstr "Font"
@@ -959,6 +936,9 @@ msgstr "Hide activity"
 
 msgid "Hide hidden files"
 msgstr "Hide hidden files"
+
+msgid "Hide slides"
+msgstr "Hide slides"
 
 msgid "How superchat works with you"
 msgstr "How superchat works with you"
@@ -1084,9 +1064,6 @@ msgstr "Loading preview…"
 msgid "Loading…"
 msgstr "Loading…"
 
-msgid "Made for you"
-msgstr "Made for you"
-
 msgid "Main"
 msgstr "Main"
 
@@ -1127,9 +1104,6 @@ msgstr "Message this side chat"
 msgid "Message…"
 msgstr "Message…"
 
-msgid "Mini Apps"
-msgstr "Mini Apps"
-
 msgid "Minimize"
 msgstr "Minimize"
 
@@ -1154,11 +1128,13 @@ msgstr "More"
 msgid "More actions"
 msgstr "More actions"
 
-#. placeholder {0}: artifact.name
 #. placeholder {0}: automation.name
 #. placeholder {0}: data.name
 msgid "More actions for {0}"
 msgstr "More actions for {0}"
+
+msgid "More actions for {title}"
+msgstr "More actions for {title}"
 
 msgid "My computer restarted. Try again."
 msgstr "My computer restarted. Try again."
@@ -1204,9 +1180,6 @@ msgstr "Next look"
 
 msgid "Next slide"
 msgstr "Next slide"
-
-msgid "No apps yet."
-msgstr "No apps yet."
 
 msgid "No artifacts found."
 msgstr "No artifacts found."
@@ -1317,9 +1290,9 @@ msgstr "Open"
 msgid "Open · {0}"
 msgstr "Open · {0}"
 
-#. placeholder {0}: artifact.name
 #. placeholder {0}: data.name
 #. placeholder {0}: doc.title
+#. placeholder {0}: props.name
 msgid "Open {0}"
 msgstr "Open {0}"
 
@@ -1370,9 +1343,6 @@ msgstr "Padding"
 
 msgid "Pages"
 msgstr "Pages"
-
-msgid "Pages, documents and files your Muse makes will appear here."
-msgstr "Pages, documents and files your Muse makes will appear here."
 
 msgid "Palette"
 msgstr "Palette"
@@ -1448,6 +1418,9 @@ msgstr "Private"
 msgid "Professional"
 msgstr "Professional"
 
+msgid "Projects"
+msgstr "Projects"
+
 msgid "Projects & focus"
 msgstr "Projects & focus"
 
@@ -1506,6 +1479,9 @@ msgstr "Reconnecting"
 
 msgid "Redo"
 msgstr "Redo"
+
+msgid "Redo (⇧⌘Z)"
+msgstr "Redo (⇧⌘Z)"
 
 msgid "Reflection"
 msgstr "Reflection"
@@ -1639,14 +1615,11 @@ msgstr "Search artifacts…"
 msgid "Search bots and switch conversations"
 msgstr "Search bots and switch conversations"
 
+msgid "Search folders"
+msgstr "Search folders"
+
 msgid "Search forks"
 msgstr "Search forks"
-
-msgid "Search your apps"
-msgstr "Search your apps"
-
-msgid "Search your apps…"
-msgstr "Search your apps…"
 
 msgid "Search your Library"
 msgstr "Search your Library"
@@ -1662,6 +1635,9 @@ msgstr "Sections"
 
 msgid "See summary"
 msgstr "See summary"
+
+msgid "Select something on the slide first"
+msgstr "Select something on the slide first"
 
 msgid "Send"
 msgstr "Send"
@@ -1690,17 +1666,26 @@ msgstr "Show"
 msgid "Show all ({count} characters)"
 msgstr "Show all ({count} characters)"
 
+msgid "Show as fork"
+msgstr "Show as fork"
+
 msgid "Show earlier messages"
 msgstr "Show earlier messages"
 
 msgid "Show hidden files"
 msgstr "Show hidden files"
 
+msgid "Show in Files"
+msgstr "Show in Files"
+
 msgid "Show less"
 msgstr "Show less"
 
 msgid "Show list"
 msgstr "Show list"
+
+msgid "Show slides"
+msgstr "Show slides"
 
 #. placeholder {0}: sheet.rows.length
 msgid "Showing the first {0} rows"
@@ -1727,9 +1712,6 @@ msgstr "Slide rail"
 
 msgid "Slides"
 msgstr "Slides"
-
-msgid "Small apps I built for you."
-msgstr "Small apps I built for you."
 
 msgid "Something went wrong before it could start."
 msgstr "Something went wrong before it could start."
@@ -1938,6 +1920,9 @@ msgstr "Unavailable"
 msgid "Undo"
 msgstr "Undo"
 
+msgid "Undo (⌘Z)"
+msgstr "Undo (⌘Z)"
+
 msgid "Unpublish"
 msgstr "Unpublish"
 
@@ -2024,9 +2009,6 @@ msgstr "View all"
 msgid "View details"
 msgstr "View details"
 
-msgid "Visibility"
-msgstr "Visibility"
-
 #. placeholder {0}: change.periodLabel
 msgid "vs. {0}"
 msgstr "vs. {0}"
@@ -2089,6 +2071,19 @@ msgstr "Width"
 msgid "With context"
 msgstr "With context"
 
+#. placeholder {0}: lastSegment(dir)
+msgid "Work in {0}"
+msgstr "Work in {0}"
+
+msgid "Work in: {shown}"
+msgstr "Work in: {shown}"
+
+msgid "Work in: Whole workspace"
+msgstr "Work in: Whole workspace"
+
+msgid "Work in…"
+msgstr "Work in…"
+
 msgid "Working"
 msgstr "Working"
 
@@ -2135,5 +2130,5 @@ msgstr "Your account is paused. Contact your admin."
 msgid "Your Computer is starting. Try again in a moment."
 msgstr "Your Computer is starting. Try again in a moment."
 
-msgid "Your workspace, and what I made for you."
-msgstr "Your workspace, and what I made for you."
+msgid "Your workspace."
+msgstr "Your workspace."
