@@ -46,21 +46,20 @@ def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]
 
 def _install(app: FastAPI, deps: InstallDeps) -> None:
     from omnigent.runtime import get_artifact_store
-    from omnigent.superchat.apps.routes import create_apps_router
+    from omnigent.superchat.apps.routes import (
+        create_apps_router,
+        create_published_pages_router,
+    )
     from omnigent.superchat.artifacts import SqlAlchemyArtifactStore
 
     if deps.scheduled_task_store is None:
         return
+    store = SqlAlchemyArtifactStore(deps.scheduled_task_store.storage_location, get_artifact_store)
     app.include_router(
-        create_apps_router(
-            SqlAlchemyArtifactStore(
-                deps.scheduled_task_store.storage_location, get_artifact_store
-            ),
-            auth_provider=deps.auth_provider,
-        ),
-        prefix="/v1",
-        tags=["apps"],
+        create_apps_router(store, auth_provider=deps.auth_provider), prefix="/v1", tags=["apps"]
     )
+    # The published page itself, at the origin root (before the SPA catch-all mount).
+    app.include_router(create_published_pages_router(store, auth_provider=deps.auth_provider))
 
 
 APPS_FEATURE = Feature(
