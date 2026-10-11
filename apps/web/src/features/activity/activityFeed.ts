@@ -15,7 +15,7 @@ export interface ActivityFeedSnapshot {
 
 export interface ActivityFeedDeps {
   list: (input: { botId: string; before?: number; limit?: number }) => Promise<ActivityPage>;
-  /** Opens the engine's live "the feed changed" signal (`activities.watch`). */
+  /** Opens the engine's live "the feed changed" signal (the family stream's `activitiesChanged`). */
   watch: (input: { botId: string }, signal: AbortSignal) => Promise<AsyncIterable<ActivityChanged>>;
   /** True for "this Muse has no Conversation / no backend yet": calm empty, not an error. */
   isUnavailable: (error: unknown) => boolean;
@@ -59,7 +59,7 @@ function epochSeconds(iso: string): number {
  * It stays live while the tab is hidden: browsers report a page "hidden" whenever its window is
  * covered or in the background (often the window the person glances back at, or one driven by
  * automation), and pausing there left a Helper "Working now" long after it had finished. The
- * signal is one idle connection and the browser throttles hidden timers itself; coming back into
+ * signal rides the family stream the tab already holds and the browser throttles hidden timers; coming back into
  * view only adds an immediate re-read.
  */
 export class ActivityFeed {

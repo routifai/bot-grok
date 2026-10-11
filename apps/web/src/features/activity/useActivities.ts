@@ -1,5 +1,6 @@
 import { ORPCError } from "@orpc/client";
 import { useSyncExternalStore } from "react";
+import { familyActivityChanges } from "../../lib/family-stream";
 import { rpc } from "../../lib/rpc";
 import type { ActivityWire } from "./ActivityRunDialog";
 import { type ActivitiesState, ActivityFeed } from "./activityFeed";
@@ -27,7 +28,8 @@ export function activityFeedFor(botId: string): ActivityFeed {
   if (!feed) {
     feed = new ActivityFeed(botId, {
       list: (input) => rpc.activities.list(input),
-      watch: (input, signal) => rpc.activities.watch(input, { signal }),
+      // Off the shared family stream: one long-lived connection per tab, not two.
+      watch: (input, signal) => familyActivityChanges(input, signal),
       isUnavailable,
     });
     feeds.set(botId, feed);

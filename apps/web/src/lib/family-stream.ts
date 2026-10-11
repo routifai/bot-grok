@@ -1,4 +1,4 @@
-import type { FamilyEvent } from "@superchat/contracts";
+import type { ActivityChanged, FamilyEvent } from "@superchat/contracts";
 import { rpc } from "./rpc";
 
 /** Opens the Muse's family stream (`chats.watch`). A seam so tests and fixtures can supply
@@ -88,4 +88,47 @@ export function watchFamily(
     stream = created;
   }
   return stream.subscribe(listener);
+}
+
+/**
+ * The Activity Feed's "the feed changed" signal, read off the Muse's family stream instead of a
+ * stream of its own. A browser keeps only six connections open per origin over HTTP/1.1; one
+ * long-lived stream per tab rather than two leaves room for a few tabs before every other request
+ * (a send, a file read) queues behind them. A (re)connect counts as a change: whatever happened
+ * while the stream was down is read again.
+ */
+export function familyActivityChanges(
+  input: { botId: string },
+  signal: AbortSignal,
+  watch: FamilyWatch = liveWatch,
+): Promise<AsyncIterable<ActivityChanged>> {
+  const queue: ActivityChanged[] = [];
+  let wake: (() => void) | undefined;
+  const stop = watchFamily(
+    input.botId,
+    (event) => {
+      if (event.type === "activitiesChanged" || event.type === "open") {
+        queue.push({ type: "changed" });
+      } else if (event.type === "heartbeat") {
+        queue.push({ type: "heartbeat" });
+      } else return;
+      wake?.();
+    },
+    watch,
+  );
+  const close = () => {
+    stop();
+    wake?.();
+  };
+  if (signal.aborted) close();
+  else signal.addEventListener("abort", close, { once: true });
+  return Promise.resolve(
+    (async function* () {
+      while (!signal.aborted) {
+        const next = queue.shift();
+        if (next) yield next;
+        else await new Promise<void>((resolve) => (wake = resolve));
+      }
+    })(),
+  );
 }

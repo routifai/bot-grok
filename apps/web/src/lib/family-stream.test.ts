@@ -1,6 +1,6 @@
 import type { FamilyEvent } from "@superchat/contracts";
 import { describe, expect, it, vi } from "vitest";
-import { watchFamily } from "./family-stream";
+import { familyActivityChanges, watchFamily } from "./family-stream";
 
 function source(...events: FamilyEvent[]) {
   const watch = vi.fn(async (_input: { botId: string }, signal: AbortSignal) =>
@@ -51,5 +51,58 @@ describe("watchFamily", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("familyActivityChanges", () => {
+  it("reads the feed signal off the family stream the tab already holds", async () => {
+    const watch = source(
+      { type: "open" },
+      { type: "chatsChanged" },
+      { type: "activitiesChanged" },
+      { type: "heartbeat" },
+    );
+    const conversation = vi.fn();
+    const stopConversation = watchFamily("bot-c", conversation, watch);
+    const abort = new AbortController();
+    const frames: string[] = [];
+    const reading = (async () => {
+      for await (const frame of await familyActivityChanges(
+        { botId: "bot-c" },
+        abort.signal,
+        watch,
+      ))
+        frames.push(frame.type);
+    })();
+
+    await vi.waitFor(() => expect(frames).toEqual(["changed", "changed", "heartbeat"]));
+    // One connection for both: the Conversation's stream carries the feed's signal too.
+    expect(watch).toHaveBeenCalledTimes(1);
+    const signal = watch.mock.calls[0]?.[1];
+
+    abort.abort();
+    await reading;
+    expect(signal?.aborted).toBe(false);
+    stopConversation();
+    expect(signal?.aborted).toBe(true);
+  });
+
+  it("counts a (re)connect as a change and closes the stream when it is the last reader", async () => {
+    const watch = source({ type: "open" });
+    const abort = new AbortController();
+    const frames: string[] = [];
+    const reading = (async () => {
+      for await (const frame of await familyActivityChanges(
+        { botId: "bot-d" },
+        abort.signal,
+        watch,
+      ))
+        frames.push(frame.type);
+    })();
+
+    await vi.waitFor(() => expect(frames).toEqual(["changed"]));
+    abort.abort();
+    await reading;
+    expect(watch.mock.calls[0]?.[1].aborted).toBe(true);
   });
 });
