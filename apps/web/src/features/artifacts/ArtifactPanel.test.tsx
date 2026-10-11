@@ -181,3 +181,34 @@ it("full screen toggles the panel and Escape leaves it before closing", async ()
   expect(onClose).not.toHaveBeenCalled();
   expect(panel.className).toContain("md:relative");
 });
+
+it("sits beside the Conversation on a wide row and is a sheet over it on a narrow one", async () => {
+  api.listVersions.mockResolvedValue([]);
+  api.getById.mockResolvedValue(htmlArtifact());
+  const rowWidth = { current: 1400 };
+  const rect = vi
+    .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+    .mockImplementation(() => ({ width: rowWidth.current }) as DOMRect);
+  const onClose = vi.fn();
+  try {
+    const wide = await mount(<ArtifactPanel artifactId="h1" onClose={onClose} />);
+    await tick();
+    const panel = wide.querySelector("[data-testid=artifact-panel]") as HTMLElement;
+    expect(panel.dataset.layout).toBe("split");
+    expect(panel.style.width).toBe("637px");
+    expect(byText(wide, "Back")).toBeUndefined();
+    document.body.innerHTML = "";
+
+    rowWidth.current = 700;
+    const narrow = await mount(<ArtifactPanel artifactId="h1" onClose={onClose} />);
+    await tick();
+    const sheet = narrow.querySelector("[data-testid=artifact-panel]") as HTMLElement;
+    expect(sheet.dataset.layout).toBe("overlay");
+    expect(sheet.className).toContain("md:absolute");
+    expect(sheet.style.width).toBe("");
+    await act(async () => byText(narrow, "Back")?.click());
+    expect(onClose).toHaveBeenCalled();
+  } finally {
+    rect.mockRestore();
+  }
+});

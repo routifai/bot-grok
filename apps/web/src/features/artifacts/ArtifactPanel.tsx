@@ -1,6 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
 import { Button, cn } from "@superchat/ui-web";
-import { Download, ExternalLink, Lock, X } from "lucide-react";
+import { ChevronLeft, Download, ExternalLink, Lock, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { formatSize } from "../../components/cards/catalog";
 import { downloadArtifactBytes } from "../../lib/artifact-open";
@@ -9,18 +9,19 @@ import { ArtifactPreview } from "./Artifacts";
 import { FullScreenToggle } from "./FullScreenToggle";
 import { useArtifactContent } from "./library/useArtifactContent";
 import { PanelOverflowMenu } from "./PanelOverflowMenu";
+import { artifactPanelLayout, useParentWidth } from "./panel-layout";
 import { useArtifactPanelParts } from "./registry";
 
-/** The panel's width from `md` up: usual, wider for a file that needs room, widest while a file is
- * being edited. */
+/** The panel's width from `md` up before its row is measured: usual, wider for a file that needs
+ * room, widest while a file is being edited. Once measured, `artifactPanelLayout` decides. */
 export const artifactPanelWidth = ({ wide, expanded }: { wide?: boolean; expanded?: boolean }) =>
   expanded ? "md:w-[min(84vw,1600px)]" : wide ? "md:w-[min(58vw,900px)]" : "md:w-[min(46vw,640px)]";
 
 const EMPTY_BYTES = new Uint8Array(0);
 
 /**
- * A deliverable at full height, in the conversation's right column (a full-screen sheet below
- * `md`). Defaults to the latest version; the picker switches content in place. Esc closes.
+ * A deliverable at full height, in the conversation's right column; a sheet over the Conversation
+ * when the row is too narrow for both (and full screen below `md`). Defaults to the latest version; the picker switches content in place. Esc closes.
  */
 export function ArtifactPanel({
   artifactId,
@@ -41,6 +42,8 @@ export function ArtifactPanel({
 
   const [toolbarHost, setToolbarHost] = useState<HTMLElement | null>(null);
   const [fullScreen, setFullScreen] = useState(false);
+  const [element, setElement] = useState<HTMLElement | null>(null);
+  const rowWidth = useParentWidth(element);
   const isApp = ready?.artifact.mimeType === "text/html";
   const extra = useArtifactPanelParts({
     artifact: ready?.artifact,
@@ -48,6 +51,9 @@ export function ArtifactPanel({
     bytes: ready?.bytes,
     openUrl: url,
   });
+  const layout = rowWidth === null ? null : artifactPanelLayout(rowWidth, extra);
+  const overlay = layout?.mode === "overlay";
+  const splitWidth = layout?.mode === "split" ? layout.width : undefined;
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -73,18 +79,38 @@ export function ArtifactPanel({
 
   return (
     <section
+      ref={setElement}
       data-testid="artifact-panel"
+      data-layout={fullScreen ? "full-screen" : (layout?.mode ?? "split")}
       aria-label={title || name || t`Artifact`}
+      style={fullScreen ? undefined : { width: splitWidth }}
       className={cn(
         "fixed inset-0 z-50 flex min-h-0 flex-col overflow-hidden bg-background",
         !fullScreen &&
-          "md:relative md:inset-auto md:z-auto md:m-2 md:shrink-0 md:rounded-[18px] md:bg-glass md:ring-[0.5px] md:ring-glass-line md:ring-inset md:backdrop-blur-[30px] md:backdrop-saturate-[1.8]",
-        !fullScreen && artifactPanelWidth(extra),
+          overlay &&
+          // A sheet over the Conversation, under the window's top bar (84px), not beside it.
+          "md:absolute md:inset-x-0 md:top-[76px] md:bottom-0 md:z-30 md:m-2 md:rounded-[18px] md:shadow-float md:ring-[0.5px] md:ring-glass-line md:ring-inset md:motion-safe:animate-in md:motion-safe:fade-in md:motion-safe:slide-in-from-right-2",
         !fullScreen &&
+          !overlay &&
+          "md:relative md:inset-auto md:z-auto md:m-2 md:shrink-0 md:rounded-[18px] md:bg-glass md:ring-[0.5px] md:ring-glass-line md:ring-inset md:backdrop-blur-[30px] md:backdrop-saturate-[1.8]",
+        !fullScreen && !layout && artifactPanelWidth(extra),
+        !fullScreen &&
+          !overlay &&
           "md:motion-safe:transition-[width] md:motion-safe:duration-300 md:motion-safe:ease-out",
       )}
     >
-      <header className="flex shrink-0 items-center gap-1 border-b border-border px-4 py-2.5">
+      <header className="flex min-w-0 shrink-0 items-center gap-1 border-b border-border px-4 py-2.5">
+        {overlay && !fullScreen ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="-ms-2 me-1 shrink-0 text-muted-foreground"
+            onClick={onClose}
+          >
+            <ChevronLeft />
+            {t`Back`}
+          </Button>
+        ) : null}
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
             <div className="truncate text-[14px] font-medium" dir="auto">
