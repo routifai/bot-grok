@@ -43,6 +43,7 @@ function nextRun(automation: Automation, locale: string | undefined): string {
 }
 
 function lastRun(automation: Automation): string {
+  if (automation.lastRunStatus === "running") return "Running…";
   if (!automation.lastRunAt) return "Never run";
   const when = formatRelativeTime(automation.lastRunAt);
   return automation.lastRunStatus === "failed" ? `Failed ${when}` : `Ran ${when}`;

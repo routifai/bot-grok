@@ -1611,6 +1611,25 @@ async def test_paused_task_has_null_next_run_at(
     assert patched["next_run_at"] is None
 
 
+async def test_a_fire_still_starting_lists_as_running(
+    auth_client: httpx.AsyncClient, db_uri: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Run-now returns before the run row exists; the list says running meanwhile."""
+    from omnigent.db.db_models import current_workspace_id
+    from omnigent.server.scheduled import fire
+
+    _make_user(db_uri)
+    created = (
+        await auth_client.post("/v1/scheduled-tasks", json=_create_body(), headers=_headers())
+    ).json()
+    listed = (await auth_client.get("/v1/scheduled-tasks", headers=_headers())).json()
+    assert listed["scheduled_tasks"][0]["last_run_status"] is None
+
+    monkeypatch.setattr(fire, "_IN_FLIGHT_TASKS", {(current_workspace_id(), created["id"])})
+    listed = (await auth_client.get("/v1/scheduled-tasks", headers=_headers())).json()
+    assert listed["scheduled_tasks"][0]["last_run_status"] == "running"
+
+
 # ── POST /v1/scheduled-tasks/{id}/run (run now) ──────────────────────────────
 
 

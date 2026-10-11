@@ -26,6 +26,8 @@ const LIVE_WIRE: AutomationsWire = {
   remove: (input) => rpc.automations.remove(input),
 };
 
+const RUNNING_POLL_MS = 3_000;
+
 function message(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong.";
 }
@@ -50,6 +52,15 @@ export function useAutomations(botId: string, enabled: boolean, wire: Automation
     setState({ status: "loading" });
     void refresh();
   }, [enabled, refresh]);
+
+  // While a run is going, follow it until it ends.
+  const running =
+    state.status === "ready" && state.automations.some((a) => a.lastRunStatus === "running");
+  useEffect(() => {
+    if (!enabled || !running) return;
+    const poll = window.setInterval(() => void refresh(), RUNNING_POLL_MS);
+    return () => window.clearInterval(poll);
+  }, [enabled, running, refresh]);
 
   const [systemJobs, setSystemJobs] = useState<SystemJob[] | null>(null);
   // Read-only and best effort: a failure leaves the section empty rather than breaking the sheet.
@@ -93,11 +104,6 @@ export function useAutomations(botId: string, enabled: boolean, wire: Automation
     async (id: string) => {
       await wire.run({ botId, id });
       await refresh();
-      // The engine records the run once the fire starts, a moment after the request returns.
-      for (const delayMs of [1500, 4000]) {
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-        await refresh();
-      }
     },
     [botId, refresh, wire],
   );

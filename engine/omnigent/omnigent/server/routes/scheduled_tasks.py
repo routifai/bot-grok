@@ -38,6 +38,7 @@ from omnigent.server.routes._session_create_validation import (
     validate_session_model_metadata,
     validate_session_permission_mode,
 )
+from omnigent.server.scheduled.fire import is_firing
 from omnigent.server.scheduled.rrule import (
     RRuleValidationError,
     next_fire_times,
@@ -650,7 +651,10 @@ def create_scheduled_tasks_router(
             "scheduled_tasks": [
                 _to_response(
                     t,
-                    last_run_status=latest_status.get(t.id),
+                    # A run-now returns before its run row exists: report it running meanwhile.
+                    last_run_status=(
+                        "running" if is_firing(t.workspace_id, t.id) else latest_status.get(t.id)
+                    ),
                     next_run_at=scheduler.next_run_at(t.id) if scheduler is not None else None,
                 )
                 for t in tasks

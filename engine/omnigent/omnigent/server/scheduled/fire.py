@@ -122,6 +122,11 @@ _PENDING_FIRES: set[asyncio.Task[None]] = set()
 _IN_FLIGHT_TASKS: set[tuple[int, str]] = set()
 
 
+def is_firing(workspace_id: int, scheduled_task_id: str) -> bool:
+    """Whether a fire of the task is starting (before its run row is recorded)."""
+    return (workspace_id, scheduled_task_id) in _IN_FLIGHT_TASKS
+
+
 # ``launch_dispatch(conv, task)`` — launch the runner for a freshly created
 # session and dispatch the task's prompt so the agent runs. Injectable so the
 # orchestration can be unit-tested without a live host/runner.
