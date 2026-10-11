@@ -41,6 +41,7 @@ export function DeckViewer({
   editSource,
   themesSource,
   themeSource,
+  botId,
 }: {
   html: string;
   title: string;
@@ -52,6 +53,8 @@ export function DeckViewer({
   themesSource?: DeckThemesSource;
   /** Where the gallery reads the theme the deck is on (the API by default). */
   themeSource?: DeckThemeSource;
+  /** The Muse that owns the deck: edit mode can ask superchat to change it. */
+  botId?: string | null;
 }) {
   const { t } = useLingui();
   const slides = useMemo(() => parseDeckSlides(html), [html]);
@@ -226,6 +229,7 @@ export function DeckViewer({
         bar={bar}
         onEdited={onEdited}
         source={editSource}
+        botId={botId}
       />
     ) : null;
 

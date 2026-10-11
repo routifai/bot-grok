@@ -85,6 +85,24 @@ export function buildDeckAsk(input: {
   return { label, block: [head, rule, ...body].join("\n") + END };
 }
 
+/** The request about a whole slide (nothing selected): the same block, scoped to one slide. */
+export function buildDeckSlideAsk(input: {
+  artifactId: string;
+  name: string;
+  version: number;
+  /** 1-based. */
+  slide: number;
+}): DeckAsk {
+  const label = `Slide ${input.slide}`;
+  const head =
+    `<${TAG} deck="${sanitizeField(input.name, 160)}" artifact="${sanitizeField(input.artifactId, 64)}" ` +
+    `version="${input.version}" chip="${label}">`;
+  const rule =
+    `Hard scope: change ONLY slide ${input.slide} of this deck, and nothing on any other slide. ` +
+    "Keep the deck's theme, fonts and the data-superchat-id attributes.";
+  return { label, block: [head, rule].join("\n") + END };
+}
+
 /** Reads a leading element request back out of a sent message. */
 export function splitDeckAsk(text: string): { label: string; rest: string } | null {
   if (!text.startsWith(`<${TAG} `)) return null;

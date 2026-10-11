@@ -1,18 +1,9 @@
-// Portions modified from nexu-io/open-design apps/web/src/components/ManualEditPanel.tsx@802708f, Apache-2.0; changes: rewritten small with shadcn components; fonts and colours limited to the deck's theme tokens, controls report preview-now / save-later changes, per-element ask-Superchat notes.
+// Portions modified from nexu-io/open-design apps/web/src/components/ManualEditPanel.tsx@802708f, Apache-2.0; changes: rewritten small with shadcn components; fonts and colours limited to the deck's theme tokens, controls report preview-now / save-later changes, asking superchat lives in the ask box under the stage.
 import { useLingui } from "@lingui/react/macro";
 import type { DeckEditTarget, DeckEditTheme } from "@superchat/contracts";
-import { Button, Input, NativeSelect, NativeSelectOption, Textarea } from "@superchat/ui-web";
-import {
-  AlignCenter,
-  AlignLeft,
-  AlignRight,
-  Copy,
-  Italic,
-  Sparkles,
-  Trash2,
-  X,
-} from "lucide-react";
-import { useEffect, useState } from "react";
+import { Button, Input, NativeSelect, NativeSelectOption } from "@superchat/ui-web";
+import { AlignCenter, AlignLeft, AlignRight, Copy, Italic, Trash2, X } from "lucide-react";
+import { useState } from "react";
 import {
   firstFamily,
   num,
@@ -40,10 +31,6 @@ export type StylePanelProps = {
   targets: readonly DeckEditTarget[];
   theme: DeckEditTheme | null;
   slideCount: number;
-  /** Whether a message composer is mounted to receive "Ask Superchat". */
-  canAsk: boolean;
-  asked: boolean;
-  focusAsk: number;
   onStyle: (changes: StyleChanges, mode: ChangeMode) => void;
   onAttributes: (attributes: { href?: string | null; alt?: string | null }) => void;
   onCommit: () => void;
@@ -51,8 +38,6 @@ export type StylePanelProps = {
   onClose: () => void;
   onRemove: () => void;
   onDuplicate: () => void;
-  onAsk: (notes: Record<string, string>) => void;
-  onDismissNotice: () => void;
 };
 
 /**
@@ -95,10 +80,11 @@ export function StylePanel(props: StylePanelProps) {
             <div className="truncate text-[11px] text-muted-foreground">{primary.id}</div>
           ) : null}
         </div>
+        {/* Only the narrow layout's sheet needs its own close; the column clears by clicking away. */}
         <Button
           variant="ghost"
           size="icon-sm"
-          className="text-muted-foreground"
+          className="text-muted-foreground @[900px]:hidden"
           aria-label={t`Close`}
           title={t`Close`}
           onClick={props.onClose}
@@ -127,7 +113,6 @@ export function StylePanel(props: StylePanelProps) {
       {primary.kind === "link" || primary.kind === "image" ? (
         <AttributeSection key={primary.id} {...props} primary={primary} />
       ) : null}
-      <AskSection {...props} />
     </aside>
   );
 }
@@ -172,10 +157,13 @@ export function EditNoticeBanner({
   notice,
   onDismissNotice,
   onAsk,
-  targets,
   canAsk,
-}: Pick<StylePanelProps, "onDismissNotice" | "onAsk" | "targets" | "canAsk"> & {
+}: {
   notice: EditNotice | null;
+  onDismissNotice: () => void;
+  /** Focuses the ask box. */
+  onAsk: () => void;
+  canAsk: boolean;
 }) {
   const { t } = useLingui();
   if (!notice) return null;
@@ -202,9 +190,8 @@ export function EditNoticeBanner({
           <X size={13} />
         </button>
       </div>
-      {notice.kind === "inexact" && canAsk && targets.length ? (
-        <Button size="sm" variant="outline" onClick={() => onAsk({})}>
-          <Sparkles />
+      {notice.kind === "inexact" && canAsk ? (
+        <Button size="sm" variant="outline" onClick={onAsk}>
           {t`Ask superchat instead`}
         </Button>
       ) : null}
@@ -470,50 +457,6 @@ function AttributeSection({
           className="h-7 text-[12px]"
         />
       </Row>
-    </Section>
-  );
-}
-
-function AskSection({ targets, canAsk, asked, focusAsk, onAsk }: StylePanelProps) {
-  const { t } = useLingui();
-  const [notes, setNotes] = useState<Record<string, string>>({});
-  const first = targets[targets.length - 1]?.id;
-  // The selection chrome's own "Ask Superchat" button asks with what is typed so far.
-  const [handled, setHandled] = useState(focusAsk);
-  useEffect(() => {
-    if (focusAsk !== handled) {
-      setHandled(focusAsk);
-      if (canAsk) onAsk(notes);
-    }
-  }, [focusAsk, handled, canAsk, onAsk, notes]);
-  if (!canAsk) return null;
-  return (
-    <Section title={t`Ask superchat`}>
-      {targets.map((target) => (
-        <Textarea
-          key={target.id}
-          rows={targets.length > 1 ? 1 : 2}
-          aria-label={
-            targets.length > 1 ? t`What should change in ${target.id}?` : t`What should change?`
-          }
-          placeholder={targets.length > 1 ? target.id : t`What should change?`}
-          value={notes[target.id] ?? ""}
-          onChange={(event) =>
-            setNotes((current) => ({ ...current, [target.id]: event.target.value }))
-          }
-          className="min-h-0 text-[12px]"
-          autoFocus={false}
-        />
-      ))}
-      <div className="flex items-center gap-2">
-        <Button size="sm" variant="outline" disabled={!first} onClick={() => onAsk(notes)}>
-          <Sparkles />
-          {t`Ask superchat`}
-        </Button>
-        {asked ? (
-          <span className="text-[11.5px] text-muted-foreground">{t`Added to your message`}</span>
-        ) : null}
-      </div>
     </Section>
   );
 }

@@ -73,6 +73,7 @@ export const decksExtension: ArtifactExtension = {
         title={artifact.name}
         artifact={{ id: artifact.id, version: artifact.version }}
         onEdited={onEdited}
+        botId={artifact.botId}
       />
     );
   },

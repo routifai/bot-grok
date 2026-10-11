@@ -40,7 +40,8 @@ export type PostToFrame = (message: Record<string, unknown>) => void;
  * The deck editor's brain: what is selected, how changes become saved versions, and undo / redo.
  * Every change shows at once in the frame (a preview) and is saved as a `manual` version through
  * one `Committer`; undo and redo save the earlier source back as a new version, so history is
- * always version-aware and a change from Superchat ends it (the older sources would clobber hers).
+ * always version-aware and a change from elsewhere ends it (the older sources would clobber it),
+ * except the one superchat makes when asked from this editor, which Undo can step back over.
  */
 export function useDeckEditor({
   deckKey,
@@ -79,6 +80,8 @@ export function useDeckEditor({
   const seen = useRef({ version, html });
   const own = useRef(new Map<number, Kind>());
   const intent = useRef<Kind>("edit");
+  // Superchat was asked from this editor: its next version joins the history (Undo steps back).
+  const expectAsk = useRef(false);
   const selectedIds = useRef<string[]>([]);
   const targetsRef = useRef(targets);
   targetsRef.current = targets;
@@ -96,6 +99,10 @@ export function useDeckEditor({
     let kind = own.current.get(version);
     if (!kind && takeDeckVersionEdit(deckKey, version)) {
       kind = "edit"; // the Theme gallery's switch: Undo steps back over it
+      saved.current = { id: artifactId, version };
+    } else if (!kind && expectAsk.current) {
+      expectAsk.current = false;
+      kind = "edit"; // superchat's change asked from here: Undo steps back over it too
       saved.current = { id: artifactId, version };
     }
     if (kind) {
@@ -289,6 +296,10 @@ export function useDeckEditor({
     remove: removeSelected,
     duplicate: duplicateSelected,
     onFrameMessage,
+    /** Whether the next outside version is superchat's answer to an ask from this editor. */
+    expectAsk: (on: boolean) => {
+      expectAsk.current = on;
+    },
     finishText: () => postRef.current({ type: "superchat:edit-text-finish", commit: true }),
   };
 }

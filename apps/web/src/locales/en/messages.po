@@ -165,9 +165,6 @@ msgstr "Added to Conversation"
 msgid "Added to your Library"
 msgstr "Added to your Library"
 
-msgid "Added to your message"
-msgstr "Added to your message"
-
 msgid "Address"
 msgstr "Address"
 
@@ -285,6 +282,12 @@ msgstr "Ask superchat about {label}"
 
 msgid "Ask superchat instead"
 msgstr "Ask superchat instead"
+
+msgid "Ask superchat to change this slide…"
+msgstr "Ask superchat to change this slide…"
+
+msgid "Ask superchat to change this…"
+msgstr "Ask superchat to change this…"
 
 msgid "At"
 msgstr "At"
@@ -615,6 +618,9 @@ msgstr "Couldn't run"
 msgid "Couldn't save that change."
 msgstr "Couldn't save that change."
 
+msgid "Couldn't send that."
+msgstr "Couldn't send that."
+
 msgid "Couldn't switch the theme."
 msgstr "Couldn't switch the theme."
 
@@ -783,6 +789,12 @@ msgstr "Email"
 
 msgid "Enter to save · Esc to cancel"
 msgstr "Enter to save · Esc to cancel"
+
+msgid "Enter to send · Shift+Enter for a new line"
+msgstr "Enter to send · Shift+Enter for a new line"
+
+msgid "Enter to send · Shift+Enter for a new line · superchat changes only what you selected"
+msgstr "Enter to send · Shift+Enter for a new line · superchat changes only what you selected"
 
 msgid "Everything I made for you."
 msgstr "Everything I made for you."
@@ -1190,6 +1202,9 @@ msgstr "No automations yet"
 msgid "No bots"
 msgstr "No bots"
 
+msgid "No change was made."
+msgstr "No change was made."
+
 msgid "No files yet."
 msgstr "No files yet."
 
@@ -1493,6 +1508,7 @@ msgid "Remove"
 msgstr "Remove"
 
 #. placeholder {0}: attachment.file.name
+#. placeholder {0}: chip.label
 msgid "Remove {0}"
 msgstr "Remove {0}"
 
@@ -1635,9 +1651,6 @@ msgstr "Sections"
 
 msgid "See summary"
 msgstr "See summary"
-
-msgid "Select something on the slide first"
-msgstr "Select something on the slide first"
 
 msgid "Send"
 msgstr "Send"
@@ -1803,6 +1816,9 @@ msgstr "Summarize what changed in my files this week and tell me what needs atte
 msgid "superchat"
 msgstr "superchat"
 
+msgid "superchat is editing…"
+msgstr "superchat is editing…"
+
 msgid "superchat is working"
 msgstr "superchat is working"
 
@@ -1943,6 +1959,10 @@ msgstr "Up to date"
 msgid "Updated — v{0}"
 msgstr "Updated — v{0}"
 
+#. placeholder {0}: status.version
+msgid "Updated · version {0}"
+msgstr "Updated · version {0}"
+
 #. placeholder {0}: state.arrived.version
 msgid "Updated by superchat · v{0}"
 msgstr "Updated by superchat · v{0}"
@@ -2043,13 +2063,6 @@ msgstr "What do you want to look at?"
 msgid "What I do on my own, in the background."
 msgstr "What I do on my own, in the background."
 
-#. placeholder {0}: target.id
-msgid "What should change in {0}?"
-msgstr "What should change in {0}?"
-
-msgid "What should change?"
-msgstr "What should change?"
-
 msgid "What should superchat do?"
 msgstr "What should superchat do?"
 
@@ -2105,6 +2118,10 @@ msgstr "Yesterday"
 
 msgid "You"
 msgstr "You"
+
+#. placeholder {0}: status.asked
+msgid "You asked: {0}"
+msgstr "You asked: {0}"
 
 msgid "You changed {changedCount} cells on {sheetName}. superchat sees this before its next reply."
 msgstr "You changed {changedCount} cells on {sheetName}. superchat sees this before its next reply."

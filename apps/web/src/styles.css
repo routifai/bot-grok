@@ -732,3 +732,58 @@ body {
     transform: none;
   }
 }
+
+/* The ask box: a message box with a thin lit edge in the brand blue. Calm at rest, a touch
+   brighter on focus; while superchat works a soft highlight travels slowly around the edge. */
+@property --sc-ask-sweep {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes sc-ask-travel {
+  to {
+    --sc-ask-sweep: 360deg;
+  }
+}
+.sc-ask {
+  border-radius: 17px;
+  padding: 1px;
+  background: color-mix(in srgb, var(--tint) 55%, transparent);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--tint) 6%, transparent),
+    0 0 12px color-mix(in srgb, var(--tint) 14%, transparent);
+  transition:
+    box-shadow 160ms ease,
+    background-color 160ms ease;
+}
+.sc-ask:focus-within {
+  background: color-mix(in srgb, var(--tint) 75%, transparent);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--tint) 9%, transparent),
+    0 0 14px color-mix(in srgb, var(--tint) 20%, transparent);
+}
+.sc-ask[data-state="editing"] {
+  background: conic-gradient(
+    from var(--sc-ask-sweep),
+    color-mix(in srgb, var(--tint) 22%, transparent) 0deg,
+    color-mix(in srgb, var(--tint) 22%, transparent) 240deg,
+    color-mix(in srgb, var(--tint) 65%, transparent) 320deg,
+    color-mix(in srgb, var(--tint) 22%, transparent) 360deg
+  );
+  box-shadow: 0 0 12px color-mix(in srgb, var(--tint) 12%, transparent);
+  animation: sc-ask-travel 6s linear infinite;
+}
+.sc-ask[data-state="updated"] {
+  background: color-mix(in srgb, var(--tint) 35%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--tint) 8%, transparent);
+}
+.sc-ask > .sc-ask-body {
+  border-radius: 16px;
+  background-color: var(--popover);
+}
+@media (prefers-reduced-motion: reduce) {
+  .sc-ask[data-state="editing"] {
+    animation: none;
+    background: color-mix(in srgb, var(--tint) 45%, transparent);
+  }
+}

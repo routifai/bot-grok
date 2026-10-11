@@ -1,6 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
 import { Button, cn } from "@superchat/ui-web";
-import { Check, Redo2, Sparkles, Undo2 } from "lucide-react";
+import { Check, MessageSquare, Redo2, Undo2 } from "lucide-react";
 import {
   type MutableRefObject,
   type ReactNode,
@@ -9,11 +9,9 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  setComposerAttachment,
-  useComposerAttachAvailable,
-} from "../../../lib/composer-attachments";
-import { buildDeckAsk, DECK_ASK_KIND } from "../deck-ask";
+import { AskBox } from "../../artifacts/ask/AskBox";
+import { useArtifactAsk } from "../../artifacts/ask/useArtifactAsk";
+import { buildDeckAsk, buildDeckSlideAsk } from "../deck-ask";
 import { setDeckEditing } from "../deck-ui-state";
 import { EditStage } from "./EditStage";
 import { targetLabel } from "./edit-model";
@@ -26,8 +24,8 @@ function isTypingTarget(target: EventTarget | null): boolean {
 }
 
 /**
- * Edit mode of a deck: a floating toolbar over the stage (undo, redo, ask Superchat about the
- * selection, done), the stage with the edit bridge and the style panel. `bar` is the viewer's
+ * Edit mode of a deck: a floating toolbar over the stage (undo, redo, ask superchat, done), the
+ * stage with the edit bridge, the ask box under it and the style panel. `bar` is the viewer's
  * slide navigation, kept under the stage. The deck's own source is never touched here; every
  * change goes through `useDeckEditor` as patches the engine applies.
  */
@@ -40,6 +38,7 @@ export function DeckEditor({
   bar,
   onEdited,
   source,
+  botId,
 }: {
   artifact: { id: string; version: number };
   html: string;
@@ -49,6 +48,8 @@ export function DeckEditor({
   bar: ReactNode;
   onEdited?: (artifactId: string) => void;
   source?: DeckEditSource;
+  /** The Muse that owns the deck; asking superchat needs it. */
+  botId?: string | null;
 }) {
   const { t } = useLingui();
   const postRef = useRef<PostToFrame>(() => {});
@@ -62,9 +63,7 @@ export function DeckEditor({
     post,
     source,
   });
-  const canAsk = useComposerAttachAvailable();
-  const [asked, setAsked] = useState(false);
-  // The toolbar's Ask asks the way the selection chrome's own button does (with what is typed).
+  // The toolbar's Ask and the selection chip's Ask both focus the ask box.
   const [askClicks, setAskClicks] = useState(0);
 
   // Undo / redo from the keyboard while focus is outside the frame (the bridge covers inside).
@@ -93,35 +92,55 @@ export function DeckEditor({
     link: t`Link`,
     box: t`Box`,
   };
-  const ask = useCallback(
-    (notes: Record<string, string>) => {
-      const list = editor.targets;
-      if (!list.length) return;
-      const request = buildDeckAsk({
-        artifactId: editor.head.current.id,
+  const { targets, head, flush, expectAsk, undo: undoEdit } = editor;
+  const contextBlock = useCallback(() => {
+    const at = head.current;
+    if (!targets.length) {
+      return buildDeckSlideAsk({
+        artifactId: at.id,
         name: title,
-        version: editor.head.current.version,
-        noun: (n) => t`${n} elements`,
-        elements: list.map((target) => ({
-          id: target.id,
-          label: targetLabel(target, words),
-          slide: target.slide,
-          text: target.text,
-          style: target.computed,
-          note: notes[target.id] ?? "",
-        })),
-      });
-      setComposerAttachment(DECK_ASK_KIND, request);
-      setAsked(true);
+        version: at.version,
+        slide: active + 1,
+      }).block;
+    }
+    return buildDeckAsk({
+      artifactId: at.id,
+      name: title,
+      version: at.version,
+      noun: (n) => t`${n} elements`,
+      elements: targets.map((target) => ({
+        id: target.id,
+        label: targetLabel(target, words),
+        slide: target.slide,
+        text: target.text,
+        style: target.computed,
+        note: "",
+      })),
+    }).block;
+  }, [targets, head, title, active, t]);
+  const ask = useArtifactAsk({
+    artifact: botId ? { id: artifact.id, name: title, version: artifact.version, botId } : null,
+    contextBlock,
+  });
+  const sendAsk = useCallback(
+    async (text: string) => {
+      await flush(); // what is staged by hand is saved first, so superchat works on it
+      expectAsk(true);
+      const sent = await ask.send(text, head.current.version);
+      if (!sent) expectAsk(false);
+      return sent;
     },
-    [editor.targets, editor.head, title, t],
+    [flush, expectAsk, ask.send, head],
   );
-  // A different selection is a different ask.
-  useEffect(() => {
-    if (editor.targets.map((x) => x.id).join() !== "") setAsked(false);
-  }, [editor.targets]);
-  // Leaving edit mode takes its attachment with it.
-  useEffect(() => () => setComposerAttachment(DECK_ASK_KIND, null), []);
+  const stopAsk = useCallback(() => {
+    expectAsk(false);
+    void ask.stop();
+  }, [expectAsk, ask.stop]);
+  const chips = targets.map((target) => ({
+    id: target.id,
+    label: target.kind === "slide" ? targetLabel(target, words) : `${target.tag} · ${target.id}`,
+    detail: targetLabel(target, words),
+  }));
 
   const selected = editor.targets.length > 0;
   const toolButton = "rounded-full";
@@ -157,18 +176,16 @@ export function DeckEditor({
             >
               <Redo2 />
             </Button>
-            {canAsk ? (
+            {ask.available ? (
               <>
                 <span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />
                 <Button
                   variant="ghost"
                   size="sm"
                   className={toolButton}
-                  disabled={!selected}
-                  title={selected ? undefined : t`Select something on the slide first`}
                   onClick={() => setAskClicks((n) => n + 1)}
                 >
-                  <Sparkles />
+                  <MessageSquare />
                   {t`Ask superchat`}
                 </Button>
               </>
@@ -201,12 +218,39 @@ export function DeckEditor({
               <div className="pointer-events-auto">
                 <EditNoticeBanner
                   notice={editor.notice}
-                  targets={editor.targets}
-                  canAsk={canAsk}
-                  onAsk={ask}
+                  canAsk={ask.available && selected}
+                  onAsk={() => setAskClicks((n) => n + 1)}
                   onDismissNotice={editor.dismissNotice}
                 />
               </div>
+            </div>
+          ) : null}
+          {ask.available ? (
+            <div className="px-4 pt-2 pb-1">
+              <AskBox
+                className="mx-auto max-w-[760px]"
+                chips={chips}
+                onRemoveChip={(id) =>
+                  post({
+                    type: "superchat:edit-select",
+                    ids: targets.map((x) => x.id).filter((x) => x !== id),
+                  })
+                }
+                placeholder={
+                  selected
+                    ? t`Ask superchat to change this…`
+                    : t`Ask superchat to change this slide…`
+                }
+                focusRequest={editor.askRequest + askClicks}
+                status={ask.status}
+                onSend={sendAsk}
+                onStop={stopAsk}
+                onUndo={() => {
+                  ask.dismiss();
+                  void undoEdit();
+                }}
+                canUndo={editor.canUndo}
+              />
             </div>
           ) : null}
           {bar}
@@ -228,9 +272,6 @@ export function DeckEditor({
             targets={editor.targets}
             theme={editor.theme}
             slideCount={editor.theme?.slideCount ?? 0}
-            canAsk={canAsk}
-            asked={asked}
-            focusAsk={editor.askRequest + askClicks}
             onStyle={(changes, mode) => editor.applyStyle(changes, mode)}
             onAttributes={editor.setAttributes}
             onCommit={() => {
@@ -240,8 +281,6 @@ export function DeckEditor({
             onClose={() => post({ type: "superchat:edit-select", ids: [] })}
             onRemove={editor.remove}
             onDuplicate={editor.duplicate}
-            onAsk={ask}
-            onDismissNotice={editor.dismissNotice}
           />
         </div>
       </div>

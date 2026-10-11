@@ -14,12 +14,27 @@ vi.mock("@lingui/react/macro", () => ({
   }),
 }));
 
-import {
-  clearComposerAttachments,
-  useComposerAttachments,
-  useComposerAttachTarget,
-} from "../../../lib/composer-attachments";
+const chats = vi.hoisted(() => ({
+  send: vi.fn(async (_input: { botId: string; text: string }) => ({ ok: true as const })),
+  interrupt: vi.fn(async (_input: { botId: string }) => ({ ok: true as const })),
+  transcript: vi.fn(async (_input: { botId: string }) => ({ messages: [] as unknown[] })),
+}));
+const artifactsApi = vi.hoisted(() => ({
+  listVersions: vi.fn(async (_input: { familyId: string }) => [] as Array<{ version: number }>),
+}));
+const family = vi.hoisted(() => ({ listeners: [] as Array<(event: unknown) => void> }));
+vi.mock("../../../lib/rpc", () => ({ rpc: { chats, artifacts: artifactsApi } }));
+vi.mock("../../../lib/family-stream", () => ({
+  watchFamily: (_botId: string, listener: (event: unknown) => void) => {
+    family.listeners.push(listener);
+    return () => {
+      family.listeners = family.listeners.filter((l) => l !== listener);
+    };
+  },
+}));
+
 import { DeckViewer } from "../DeckViewer";
+import { splitDeckAsk } from "../deck-ask";
 import { FIXTURE_DECK } from "../deck-fixture";
 import { resetDeckUi, setDeckEditing } from "../deck-ui-state";
 import { COMMIT_DEBOUNCE_MS } from "./committer";
@@ -67,16 +82,15 @@ let root: Root;
 let host: HTMLElement;
 const edits: Array<{ artifactId: string; baseVersion: number; patches: unknown[] }> = [];
 
-function AttachProbe({ out }: { out: { current: ReturnType<typeof useComposerAttachments> } }) {
-  useComposerAttachTarget();
-  out.current = useComposerAttachments();
-  return null;
-}
-
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.useFakeTimers();
   edits.length = 0;
+  chats.send.mockClear();
+  chats.interrupt.mockClear();
+  chats.transcript.mockClear();
+  artifactsApi.listVersions.mockClear();
+  family.listeners = [];
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
@@ -85,7 +99,6 @@ afterEach(async () => {
   await act(async () => root.unmount());
   vi.useRealTimers();
   resetDeckUi();
-  clearComposerAttachments();
   document.body.innerHTML = "";
 });
 
@@ -94,17 +107,15 @@ const source = async (input: { artifactId: string; baseVersion: number; patches:
   return { id: `v${input.baseVersion + 1}`, version: input.baseVersion + 1 };
 };
 
-type Probe = { current: ReturnType<typeof useComposerAttachments> };
-
-async function mount(opts: { version?: number; html?: string; probe?: Probe } = {}) {
+async function mount(opts: { version?: number; html?: string; botId?: string | null } = {}) {
   const view = (version: number, html: string) => (
     <I18nProvider i18n={i18n}>
-      {opts.probe ? <AttachProbe out={opts.probe} /> : null}
       <DeckViewer
         html={html}
         title={NAME}
         artifact={{ id: `v${version}`, version }}
         editSource={source}
+        botId={opts.botId === undefined ? "bot-1" : opts.botId}
       />
     </I18nProvider>
   );
@@ -143,6 +154,11 @@ function typeInto(input: HTMLInputElement | HTMLTextAreaElement, value: string) 
   const proto = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement : HTMLInputElement;
   Object.getOwnPropertyDescriptor(proto.prototype, "value")?.set?.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+const askInput = () =>
+  host.querySelector('textarea[aria-label="Ask superchat"]') as HTMLTextAreaElement;
+function press(el: HTMLElement, key: string, init: KeyboardEventInit = {}) {
+  el.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init }));
 }
 const control = (label: string) =>
   host.querySelector(`[aria-label="${label}"]`) as HTMLInputElement & HTMLButtonElement;
@@ -339,16 +355,15 @@ it("a patch the engine won't apply exactly says so and offers superchat", async 
       code: "CONFLICT",
     });
   };
-  const probe: Probe = { current: [] };
   await act(async () =>
     root.render(
       <I18nProvider i18n={i18n}>
-        <AttachProbe out={probe} />
         <DeckViewer
           html={FIXTURE_DECK}
           title={NAME}
           artifact={{ id: "v1", version: 1 }}
           editSource={refuse}
+          botId="bot-1"
         />
       </I18nProvider>,
     ),
@@ -372,39 +387,7 @@ it("a patch the engine won't apply exactly says so and offers superchat", async 
     b.textContent?.includes("Ask superchat instead"),
   );
   await act(async () => ask?.click());
-  expect(probe.current[0]?.block).toContain('<element id="title"');
-});
-
-it("Ask superchat attaches a hard-scope element request with the person's note", async () => {
-  const probe: Probe = { current: [] };
-  await mount({ probe });
-  await act(async () => setDeckEditing(NAME, true));
-  const frame = editFrame();
-  await ready(frame);
-  await select(frame);
-  await act(async () => typeInto(control("What should change?"), "make it punchier"));
-  const ask = [...host.querySelectorAll("button")].find((b) => b.textContent === "Ask superchat");
-  await act(async () => ask?.click());
-  const attachment = probe.current[0];
-  expect(attachment?.kind).toBe("deck");
-  expect(attachment?.label).toBe("Slide 1 · title");
-  expect(attachment?.block).toContain(
-    '<superchat-element-request deck="launch.deck.html" artifact="v1"',
-  );
-  expect(attachment?.block).toContain("Hard scope: change ONLY these elements");
-  expect(attachment?.block).toContain('text: "Launch"');
-  expect(attachment?.block).toContain("request: make it punchier");
-});
-
-it("the Ask superchat button on the selection (a bridge message) attaches too", async () => {
-  const probe: Probe = { current: [] };
-  await mount({ probe });
-  await act(async () => setDeckEditing(NAME, true));
-  const frame = editFrame();
-  await ready(frame);
-  await select(frame);
-  await fromFrame(frame, { type: "superchat:edit-ask" });
-  expect(probe.current[0]?.block).toContain('<element id="title"');
+  expect(document.activeElement).toBe(askInput());
 });
 
 it("a new version keeps the selection by selecting the same ids in the new frame", async () => {
@@ -435,24 +418,146 @@ it("a new version keeps the selection by selecting the same ids in the new frame
   expect(host.querySelector('[data-testid="deck-edit-frame-next"]')).toBeNull();
 });
 
-it("the floating toolbar asks about the selection and Done leaves edit mode", async () => {
-  const probe: Probe = { current: [] };
-  await mount({ probe });
+it("the floating toolbar's Ask focuses the ask box, with or without a selection; Done leaves edit mode", async () => {
+  await mount();
   await act(async () => setDeckEditing(NAME, true));
   const toolbar = host.querySelector('[data-testid="deck-edit-toolbar"]') as HTMLElement;
   expect(toolbar.getAttribute("role")).toBe("toolbar");
   const button = (text: string) =>
     [...toolbar.querySelectorAll("button")].find((b) => b.textContent === text);
-  expect(button("Ask superchat")?.disabled).toBe(true);
-
-  const frame = editFrame();
-  await ready(frame);
-  await select(frame);
   expect(button("Ask superchat")?.disabled).toBe(false);
-  await act(async () => typeInto(control("What should change?"), "shorter"));
   await act(async () => button("Ask superchat")?.click());
-  expect(probe.current[0]?.block).toContain("request: shorter");
+  expect(document.activeElement).toBe(askInput());
 
   await act(async () => button("Done")?.click());
   expect(host.querySelector('[data-testid="deck-edit-toolbar"]')).toBeNull();
+});
+
+it("the selection chip's Ask (a bridge message) focuses the ask box", async () => {
+  await mount();
+  await act(async () => setDeckEditing(NAME, true));
+  const frame = editFrame();
+  await ready(frame);
+  await select(frame);
+  await fromFrame(frame, { type: "superchat:edit-ask" });
+  expect(document.activeElement).toBe(askInput());
+});
+
+it("sends the hard-scope element request and the person's words to the Muse's Conversation", async () => {
+  await mount();
+  await act(async () => setDeckEditing(NAME, true));
+  const frame = editFrame();
+  await ready(frame);
+  await select(frame);
+  const chips = [...host.querySelectorAll('[data-testid="ask-chip"]')].map((c) => c.textContent);
+  expect(chips).toEqual(["h1 · title"]);
+  expect(askInput().placeholder).toBe("Ask superchat to change this…");
+  await act(async () => typeInto(askInput(), "make it punchier"));
+  await act(async () => press(askInput(), "Enter"));
+  expect(chats.send).toHaveBeenCalledTimes(1);
+  const sent = chats.send.mock.calls[0]?.[0];
+  expect(sent?.botId).toBe("bot-1");
+  expect(sent?.text).toContain('<superchat-element-request deck="launch.deck.html" artifact="v1"');
+  expect(sent?.text).toContain("Hard scope: change ONLY these elements");
+  expect(sent?.text).toContain('<element id="title" slide="1"');
+  expect(sent?.text).toContain('text: "Launch"');
+  // The transcript shows it back as a chip and the person's words.
+  expect(splitDeckAsk(sent?.text ?? "")).toEqual({
+    label: "Slide 1 · title",
+    rest: "make it punchier",
+  });
+  expect(askInput().value).toBe("");
+});
+
+it("Shift+Enter is a new line, not a send", async () => {
+  await mount();
+  await act(async () => setDeckEditing(NAME, true));
+  await act(async () => typeInto(askInput(), "first line"));
+  await act(async () => press(askInput(), "Enter", { shiftKey: true }));
+  expect(chats.send).not.toHaveBeenCalled();
+});
+
+it("with nothing selected it asks about the slide on screen", async () => {
+  await mount();
+  await act(async () => setDeckEditing(NAME, true));
+  expect(host.querySelector('[data-testid="ask-chip"]')).toBeNull();
+  expect(askInput().placeholder).toBe("Ask superchat to change this slide…");
+  await act(async () => typeInto(askInput(), "warmer colours"));
+  await act(async () => press(askInput(), "Enter"));
+  const text = chats.send.mock.calls[0]?.[0]?.text ?? "";
+  expect(text).toContain("Hard scope: change ONLY slide 1 of this deck");
+  expect(splitDeckAsk(text)).toEqual({ label: "Slide 1", rest: "warmer colours" });
+});
+
+it("shows editing, then Updated when superchat's version lands, and Undo steps back over it", async () => {
+  const view = await mount();
+  await act(async () => setDeckEditing(NAME, true));
+  const frame = editFrame();
+  await ready(frame);
+  await select(frame);
+  await act(async () => typeInto(askInput(), "shorter"));
+  await act(async () => press(askInput(), "Enter"));
+  const status = () => host.querySelector('[data-testid="ask-status"]')?.textContent ?? "";
+  expect(status()).toContain("superchat is editing…");
+  expect(host.querySelector('[data-testid="ask-box"]')?.textContent).toContain(
+    "You asked: shorter",
+  );
+  // Stop is there while it works.
+  expect(control("Stop")).not.toBeNull();
+
+  await view.rerender(2, FIXTURE_DECK.replace("Launch", "Go")); // superchat saved a version
+  expect(status()).toContain("Updated · version 2");
+  expect(control("Undo").disabled).toBe(false);
+  const undo = [...host.querySelectorAll('[data-testid="ask-status"] button')].find(
+    (b) => b.textContent === "Undo",
+  ) as HTMLButtonElement;
+  await act(async () => undo.click());
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(10);
+  });
+  expect(edits.at(-1)?.patches).toEqual([{ kind: "set-full-source", source: FIXTURE_DECK }]);
+  expect(edits.at(-1)?.baseVersion).toBe(2);
+});
+
+it("a turn that ends without a new version shows superchat's reply", async () => {
+  await mount();
+  await act(async () => setDeckEditing(NAME, true));
+  artifactsApi.listVersions.mockResolvedValueOnce([{ version: 1 }]);
+  chats.transcript.mockResolvedValueOnce({
+    messages: [
+      { role: "user", blocks: [{ kind: "text", text: "ask" }] },
+      { role: "bot", blocks: [{ kind: "text", text: "That title is already short." }] },
+    ],
+  });
+  await act(async () => typeInto(askInput(), "shorter"));
+  await act(async () => press(askInput(), "Enter"));
+  await act(async () => {
+    for (const listener of family.listeners)
+      listener({ type: "turnDone", chatId: "bot-1", status: "completed" });
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(6000);
+  });
+  expect(host.querySelector('[data-testid="ask-status"]')?.textContent).toBe(
+    "That title is already short.",
+  );
+});
+
+it("Stop interrupts the Muse", async () => {
+  await mount();
+  await act(async () => setDeckEditing(NAME, true));
+  await act(async () => typeInto(askInput(), "shorter"));
+  await act(async () => press(askInput(), "Enter"));
+  const stop = [...host.querySelectorAll('[data-testid="ask-status"] button')].find(
+    (b) => b.textContent === "Stop",
+  ) as HTMLButtonElement;
+  await act(async () => stop.click());
+  expect(chats.interrupt).toHaveBeenCalledWith({ botId: "bot-1" });
+  expect(host.querySelector('[data-testid="ask-status"]')).toBeNull();
+});
+
+it("without a Muse to ask there is no ask box", async () => {
+  await mount({ botId: null });
+  await act(async () => setDeckEditing(NAME, true));
+  expect(host.querySelector('[data-testid="ask-box"]')).toBeNull();
 });
