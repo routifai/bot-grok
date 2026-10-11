@@ -14,14 +14,12 @@ import { QUIET_BUTTON } from "../ui";
 
 export function LibrarySheet({
   botId,
-  botName,
   open,
   onClose,
   onNewApp,
   onSendIdea,
 }: {
   botId: string;
-  botName: string;
   open: boolean;
   onClose: () => void;
   onNewApp: () => void;
@@ -75,13 +73,7 @@ export function LibrarySheet({
             ref={scroller}
             className="rk-scroll -mx-1 flex min-h-0 flex-1 flex-col overflow-y-auto px-1"
           >
-            <LibraryScreen
-              embedded
-              botId={botId}
-              botName={botName}
-              onSendIdea={onSendIdea}
-              onOpenArtifact={openFile}
-            />
+            <LibraryScreen botId={botId} onSendIdea={onSendIdea} onOpenArtifact={openFile} />
           </div>
         ) : null}
       </div>
@@ -205,7 +197,6 @@ function FilesSheet({
  */
 export function DockSheets({
   botId,
-  botName,
   sheet,
   onClose,
   filesRefreshKey,
@@ -214,7 +205,6 @@ export function DockSheets({
   onOpenFolderChat,
 }: {
   botId: string;
-  botName: string;
   sheet: DockKey | null;
   onClose: () => void;
   filesRefreshKey: number;
@@ -237,7 +227,6 @@ export function DockSheets({
       />
       <LibrarySheet
         botId={botId}
-        botName={botName}
         open={sheet === "apps"}
         onClose={onClose}
         onNewApp={() => {

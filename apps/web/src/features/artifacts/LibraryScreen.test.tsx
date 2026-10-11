@@ -109,7 +109,7 @@ async function renderLibrary(onSendIdea: (text: string) => void = vi.fn()) {
   document.body.append(container);
   const root = createRoot(container);
   await act(async () => {
-    root.render(<LibraryScreen botId="bot-1" onSendIdea={onSendIdea} />);
+    root.render(<LibraryScreen botId="bot-1" onSendIdea={onSendIdea} onOpenArtifact={vi.fn()} />);
   });
   return {
     container,
@@ -389,7 +389,7 @@ it("in a dock sheet, shows one compact search beside the filter chips", async ()
   document.body.append(container);
   const root = createRoot(container);
   await act(async () => {
-    root.render(<LibraryScreen botId="bot-1" embedded />);
+    root.render(<LibraryScreen botId="bot-1" onOpenArtifact={vi.fn()} />);
   });
   try {
     await act(async () => {

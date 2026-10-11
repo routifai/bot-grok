@@ -13,7 +13,8 @@ vi.mock("@lingui/react/macro", () => ({
   }),
 }));
 
-import { DeckRail, resetDeckRail } from "./DeckRail";
+import { resetNavigatorFrame } from "../artifacts/editor/NavigatorFrame";
+import { DeckRail } from "./DeckRail";
 import { FIXTURE_DECK } from "./deck-fixture";
 import { parseDeckSlides } from "./deck-model";
 
@@ -23,7 +24,7 @@ beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 });
 afterEach(() => {
-  resetDeckRail();
+  resetNavigatorFrame();
   document.body.innerHTML = "";
 });
 

@@ -123,7 +123,6 @@ function usePageEditor({
         text: target.text,
         style: target.computed,
         where: target.where,
-        note: "",
       })),
     }).block;
   }, [targets, head, title, whole, t]);

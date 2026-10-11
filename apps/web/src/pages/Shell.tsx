@@ -740,7 +740,6 @@ export function ShellPage() {
       {active ? (
         <DockSheets
           botId={active.id}
-          botName={active.name}
           sheet={dockSheet}
           onClose={() => setDockSheet(null)}
           filesRefreshKey={filesRefreshKey}

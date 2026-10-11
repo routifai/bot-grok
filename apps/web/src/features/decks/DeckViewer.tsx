@@ -229,7 +229,6 @@ function useDeckEditor({
         slide: target.slide,
         text: target.text,
         style: target.computed,
-        note: "",
       })),
     }).block;
   }, [targets, head, title, active, t]);

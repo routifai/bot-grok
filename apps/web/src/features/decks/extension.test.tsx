@@ -96,7 +96,7 @@ function KindActions({ kind, artifact }: { kind: ArtifactEditorKind; artifact: A
 }
 
 function Panel({ artifact }: { artifact: Artifact }) {
-  const parts = decksExtension.usePanel({ artifact, bytes: SOURCE, openUrl: "blob:deck" });
+  const parts = decksExtension.usePanel({ artifact, bytes: SOURCE });
   const kind = decksExtension.editor?.(artifact) ?? null;
   return (
     <div>

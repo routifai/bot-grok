@@ -120,7 +120,6 @@ const NO_PANEL_PARTS: PanelParts = {
   overlay: null,
   overflow: null,
   wide: false,
-  expanded: false,
   holdsEscape: false,
   hasOverflow: false,
 };

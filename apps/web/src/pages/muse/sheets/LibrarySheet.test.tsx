@@ -100,7 +100,6 @@ async function openFromLibrary() {
       <ArtifactRegistryProvider value={[decksExtension]}>
         <LibrarySheet
           botId="bot-1"
-          botName="Muse"
           open
           onClose={onClose}
           onNewApp={() => {}}

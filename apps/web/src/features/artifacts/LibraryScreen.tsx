@@ -14,16 +14,7 @@ import type { ArtifactKind } from "../../lib/artifact-kind";
 import { artifactKind, KIND_ORDER, kindFacetLabel } from "../../lib/artifact-kind";
 import { decodeArtifactBase64, downloadArtifactBytes } from "../../lib/artifact-open";
 import { rpc } from "../../lib/rpc";
-import { LibraryGlyph } from "../../pages/muse/chrome/SuperchatGlyphs";
-import { SuperchatTile } from "../../pages/muse/chrome/SuperchatTile";
-import {
-  EmptyState,
-  MuseScreen,
-  MuseWideCenter,
-  ScreenHeader,
-  ScreenHero,
-} from "../../pages/muse/ui";
-import { ArtifactPreviewDialog } from "./library/ArtifactPreviewDialog";
+import { EmptyState } from "../../pages/muse/ui";
 import { LibraryGrid, LibrarySkeletonGrid } from "./library/LibraryGrid";
 import { type FilterChip, FilterChips, LibrarySearchField } from "./library/LibraryToolbar";
 import type { ArtifactSummary } from "./library/types";
@@ -49,25 +40,19 @@ const LIBRARY_SUGGESTIONS = [
 export function LibraryScreen({
   botId,
   onSendIdea,
-  embedded = false,
   onOpenArtifact,
 }: {
   botId: string;
-  botName?: string;
   /** Starts a Conversation with a suggestion from the empty state. */
   onSendIdea?: (text: string) => void;
-  /** Inside a dock sheet: no screen chrome or hero, just the toolbar and the grid. */
-  embedded?: boolean;
-  /** Opens a file where the host shows it (the dock sheet swaps the grid for the editor);
-   * without it the file opens in a dialog. */
-  onOpenArtifact?: (artifactId: string) => void;
+  /** Opens a file where the host shows it (the dock sheet swaps the grid for the editor). */
+  onOpenArtifact: (artifactId: string) => void;
 }) {
   const { t } = useLingui();
   const [items, setItems] = useState<ArtifactSummary[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [selectedKind, setSelectedKind] = useState<Facet>("all");
-  const [openArtifactId, setOpenArtifactId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<ArtifactSummary | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -155,7 +140,6 @@ export function LibraryScreen({
     try {
       await rpc.artifacts.remove({ artifactId: pendingDelete.id });
       setItems((current) => current?.filter((entry) => entry.id !== pendingDelete.id) ?? current);
-      if (openArtifactId === pendingDelete.id) setOpenArtifactId(null);
       setPendingDelete(null);
     } catch (error) {
       setDeleteError(error instanceof Error ? error.message : t`Could not delete this.`);
@@ -204,24 +188,22 @@ export function LibraryScreen({
       ) : (
         <LibraryGrid
           items={filtered ?? []}
-          onOpen={(item) => (onOpenArtifact ?? setOpenArtifactId)(item.id)}
+          onOpen={(item) => onOpenArtifact(item.id)}
           onDownload={(item) => void handleDownload(item)}
           onDelete={setPendingDelete}
         />
       )}
     </>
   );
-  const dialogs = (
-    <>
-      {openArtifactId ? (
-        <ArtifactPreviewDialog
-          artifactId={openArtifactId}
-          onOpenChange={(open) => {
-            if (!open) setOpenArtifactId(null);
-          }}
-        />
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-5" data-testid="library-embedded">
+      {total > 0 ? (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5">
+          <LibrarySearchField value={query} onChange={setQuery} className="flex-1" />
+          {kindControl}
+        </div>
       ) : null}
-
+      {content}
       {pendingDelete ? (
         <AlertDialog
           open
@@ -261,62 +243,6 @@ export function LibraryScreen({
           </AlertDialogContent>
         </AlertDialog>
       ) : null}
-    </>
-  );
-
-  if (embedded) {
-    return (
-      <div className="flex min-h-0 flex-1 flex-col gap-5" data-testid="library-embedded">
-        {total > 0 ? (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5">
-            <LibrarySearchField value={query} onChange={setQuery} className="flex-1" />
-            {kindControl}
-          </div>
-        ) : null}
-        {content}
-        {dialogs}
-      </div>
-    );
-  }
-
-  return (
-    <MuseScreen
-      header={
-        <ScreenHeader
-          title={t`Library`}
-          dragRegion
-          actions={
-            <>
-              {total > 0 ? (
-                <LibrarySearchField
-                  value={query}
-                  onChange={setQuery}
-                  className="hidden w-[240px] sm:block"
-                />
-              ) : null}
-            </>
-          }
-        />
-      }
-    >
-      <MuseWideCenter className="min-h-full">
-        <ScreenHero
-          tile={
-            <SuperchatTile tone="indigo" size={44}>
-              <LibraryGlyph />
-            </SuperchatTile>
-          }
-          title={<Trans>Library</Trans>}
-          subtitle={<Trans>Everything I made for you.</Trans>}
-          action={total > 0 ? (kindControl ?? undefined) : undefined}
-        />
-        {total > 0 ? (
-          <LibrarySearchField value={query} onChange={setQuery} className="mb-4 sm:hidden" />
-        ) : null}
-        {content}
-      </MuseWideCenter>
-
-      {dialogs}
-    </MuseScreen>
+    </div>
   );
 }

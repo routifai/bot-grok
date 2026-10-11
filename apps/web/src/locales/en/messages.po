@@ -824,9 +824,6 @@ msgstr "Enter to send · Shift+Enter for a new line"
 msgid "Enter to send · Shift+Enter for a new line · superchat changes only what you selected"
 msgstr "Enter to send · Shift+Enter for a new line · superchat changes only what you selected"
 
-msgid "Everything I made for you."
-msgstr "Everything I made for you."
-
 msgid "Exit full screen"
 msgstr "Exit full screen"
 

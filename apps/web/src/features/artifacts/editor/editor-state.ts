@@ -18,7 +18,6 @@ const subscribe = (listener: () => void) => {
 /** Whether the file is in edit mode (select, type, style) rather than viewing / running. */
 export const useArtifactEditing = (key: string): boolean =>
   useSyncExternalStore(subscribe, () => editing.get(key) ?? false);
-export const readArtifactEditing = (key: string): boolean => editing.get(key) ?? false;
 export function setArtifactEditing(key: string, on: boolean): void {
   if ((editing.get(key) ?? false) === on) return;
   editing.set(key, on);

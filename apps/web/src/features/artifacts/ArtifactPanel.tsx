@@ -40,7 +40,7 @@ export function ArtifactPanel({
   // Any kind with an editor takes the room it can while it is being edited.
   const editable = !!useArtifactEditorKind(ready?.artifact);
   const editing = useArtifactEditing(ready?.artifact.name ?? "") && editable;
-  const room = { wide: panel.wide || editable, expanded: panel.expanded || editing };
+  const room = { wide: panel.wide || editable, expanded: editing };
   const layout = rowWidth === null ? null : artifactPanelLayout(rowWidth, room);
   const overlay = layout?.mode === "overlay";
   const splitWidth = layout?.mode === "split" ? layout.width : undefined;

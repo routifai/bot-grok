@@ -1,6 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
 import { cn } from "@superchat/ui-web";
-import { NavigatorFrame, resetNavigatorFrame } from "../artifacts/editor/NavigatorFrame";
+import { NavigatorFrame } from "../artifacts/editor/NavigatorFrame";
 import { DeckThumb } from "./DeckThumb";
 import type { DeckSlide } from "./deck-model";
 
@@ -77,6 +77,3 @@ export function DeckRail({
     </NavigatorFrame>
   );
 }
-
-/** Test helper. */
-export const resetDeckRail = resetNavigatorFrame;

@@ -51,8 +51,8 @@ export function DockSheet({
       >
         <DialogTitle className="sr-only">{title}</DialogTitle>
         <DialogDescription className="sr-only">{title}</DialogDescription>
-        {/* Hidden while a dialog opened from the sheet (a Library preview) is on top: that
-            dialog's own close is the one to use, so only one close shows. */}
+        {/* Hidden while a dialog opened from the sheet is on top: that dialog's own close is
+            the one to use, so only one close shows. */}
         {bare ? null : (
           <button
             type="button"

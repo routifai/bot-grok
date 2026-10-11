@@ -31,8 +31,6 @@ export type AskElement = {
   style: Record<string, string>;
   /** Set when the element has no id: its place in the page (`main > form > button`). */
   where?: string;
-  /** What the person wants changed about this element (their own words, trusted). */
-  note: string;
 };
 
 const STYLE_KEYS = [
@@ -105,8 +103,6 @@ export function buildElementAsk(input: {
       `<element ${id}${slide} label="${sanitizeField(el.label, 80)}">`,
       el.text ? `text: "${sanitizeField(el.text, 600)}"` : "",
       style ? `style: ${style}` : "",
-      // The person's own words: trusted, kept line-structured but fenced inside the element.
-      el.note.trim() ? `request: ${el.note.trim().replace(/\r?\n/g, " ").slice(0, 600)}` : "",
       "</element>",
     ];
     return lines.filter(Boolean).join("\n");
