@@ -135,7 +135,7 @@ export async function editOmnigentDeck(
       error?: { message?: string };
     } | null;
     const message = body?.error?.message ?? "The deck changed.";
-    throw new OmnigentDeckConflictError(message, /^The deck changed since/.test(message));
+    throw new OmnigentDeckConflictError(message, /^The (deck|page) changed since/.test(message));
   }
   await throwOnError(response, "edit deck", config.secrets);
   return (await response.json()) as OmnigentArtifact;

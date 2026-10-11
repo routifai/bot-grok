@@ -76,6 +76,10 @@ msgstr "{days}d ago"
 msgid "{hours}h ago"
 msgstr "{hours}h ago"
 
+#. placeholder {0}: shown?.version ?? version
+msgid "{kindLabel} · version {0}"
+msgstr "{kindLabel} · version {0}"
+
 msgid "{minutes}m ago"
 msgstr "{minutes}m ago"
 
@@ -235,6 +239,9 @@ msgstr "API key"
 msgid "API keys"
 msgstr "API keys"
 
+msgid "App"
+msgstr "App"
+
 msgid "Appearance"
 msgstr "Appearance"
 
@@ -282,6 +289,15 @@ msgstr "Ask superchat about {label}"
 
 msgid "Ask superchat instead"
 msgstr "Ask superchat instead"
+
+msgid "Ask superchat to change this app…"
+msgstr "Ask superchat to change this app…"
+
+msgid "Ask superchat to change this file…"
+msgstr "Ask superchat to change this file…"
+
+msgid "Ask superchat to change this page…"
+msgstr "Ask superchat to change this page…"
 
 msgid "Ask superchat to change this slide…"
 msgstr "Ask superchat to change this slide…"
@@ -349,6 +365,12 @@ msgstr "Box"
 
 msgid "Budget"
 msgstr "Budget"
+
+msgid "by superchat"
+msgstr "by superchat"
+
+msgid "by you"
+msgstr "by you"
 
 msgid "Can't reach the server."
 msgstr "Can't reach the server."
@@ -612,6 +634,9 @@ msgstr "Couldn't read that selection."
 msgid "Couldn’t read the workspace."
 msgstr "Couldn’t read the workspace."
 
+msgid "Couldn't restore. Try again"
+msgstr "Couldn't restore. Try again"
+
 msgid "Couldn't run"
 msgstr "Couldn't run"
 
@@ -674,6 +699,9 @@ msgstr "Decided"
 
 msgid "Decisions"
 msgstr "Decisions"
+
+msgid "Deck"
+msgstr "Deck"
 
 msgid "Decks"
 msgstr "Decks"
@@ -916,6 +944,9 @@ msgstr "From {sourceLabel} · {0}"
 msgid "From a fork:"
 msgstr "From a fork:"
 
+msgid "Full screen"
+msgstr "Full screen"
+
 msgid "Fullscreen"
 msgstr "Fullscreen"
 
@@ -948,6 +979,9 @@ msgstr "Hide activity"
 
 msgid "Hide hidden files"
 msgstr "Hide hidden files"
+
+msgid "Hide layers"
+msgstr "Hide layers"
 
 msgid "Hide slides"
 msgstr "Hide slides"
@@ -1029,6 +1063,9 @@ msgstr "Knows our conversation"
 
 msgid "Later"
 msgstr "Later"
+
+msgid "Layers"
+msgstr "Layers"
 
 msgid "Letter spacing"
 msgstr "Letter spacing"
@@ -1325,9 +1362,6 @@ msgstr "Open {title}"
 msgid "Open as side chat"
 msgstr "Open as side chat"
 
-msgid "Open full screen"
-msgstr "Open full screen"
-
 msgid "Open in new tab"
 msgstr "Open in new tab"
 
@@ -1355,6 +1389,9 @@ msgstr "p. {0}"
 
 msgid "Padding"
 msgstr "Padding"
+
+msgid "Page"
+msgstr "Page"
 
 msgid "Pages"
 msgstr "Pages"
@@ -1504,6 +1541,9 @@ msgstr "Reflection"
 msgid "Refresh files"
 msgstr "Refresh files"
 
+msgid "Reload"
+msgstr "Reload"
+
 msgid "Remove"
 msgstr "Remove"
 
@@ -1570,6 +1610,12 @@ msgstr "Restore"
 msgid "Restore {title}"
 msgstr "Restore {title}"
 
+msgid "Restore this version"
+msgstr "Restore this version"
+
+msgid "restored"
+msgstr "restored"
+
 msgid "Restyles every slide; your content stays as it is."
 msgstr "Restyles every slide; your content stays as it is."
 
@@ -1581,6 +1627,12 @@ msgstr "Retry now"
 
 msgid "Revoke"
 msgstr "Revoke"
+
+msgid "Run"
+msgstr "Run"
+
+msgid "Run again"
+msgstr "Run again"
 
 msgid "Run now"
 msgstr "Run now"
@@ -1690,6 +1742,9 @@ msgstr "Show hidden files"
 
 msgid "Show in Files"
 msgstr "Show in Files"
+
+msgid "Show layers"
+msgstr "Show layers"
 
 msgid "Show less"
 msgstr "Show less"
@@ -1900,8 +1955,8 @@ msgstr "This deletes all {0} versions of this. This can't be undone."
 msgid "This file is not valid UTF-8 text."
 msgstr "This file is not valid UTF-8 text."
 
-msgid "This isn't the latest version of the deck. Open the latest to edit it."
-msgstr "This isn't the latest version of the deck. Open the latest to edit it."
+msgid "This isn't the latest version. Open the latest to edit it."
+msgstr "This isn't the latest version. Open the latest to edit it."
 
 msgid "This message can’t be forked. Pick another message, or ask in a side chat."
 msgstr "This message can’t be forked. Pick another message, or ask in a side chat."
@@ -1911,6 +1966,9 @@ msgstr "This model isn't available — pick another."
 
 msgid "This month"
 msgstr "This month"
+
+msgid "This part of the page has no stable name in the file, so it can't be changed by hand."
+msgstr "This part of the page has no stable name in the file, so it can't be changed by hand."
 
 msgid "This week"
 msgstr "This week"
@@ -1963,11 +2021,11 @@ msgstr "Updated — v{0}"
 msgid "Updated · version {0}"
 msgstr "Updated · version {0}"
 
-#. placeholder {0}: state.arrived.version
+#. placeholder {0}: content.arrived.version
 msgid "Updated by superchat · v{0}"
 msgstr "Updated by superchat · v{0}"
 
-#. placeholder {0}: state.arrived.version
+#. placeholder {0}: content.arrived.version
 msgid "Updated by you · v{0}"
 msgstr "Updated by you · v{0}"
 
@@ -1998,14 +2056,6 @@ msgstr "Username"
 msgid "Username (optional)"
 msgstr "Username (optional)"
 
-#. placeholder {0}: entry.version
-msgid "v{0}"
-msgstr "v{0}"
-
-#. placeholder {0}: entry.version
-msgid "v{0} (latest)"
-msgstr "v{0} (latest)"
-
 msgid "Vault"
 msgstr "Vault"
 
@@ -2017,8 +2067,11 @@ msgid "Version {0}"
 msgstr "Version {0}"
 
 #. placeholder {0}: entry.version
-msgid "Version {0} (latest)"
-msgstr "Version {0} (latest)"
+msgid "Version {0} · latest"
+msgstr "Version {0} · latest"
+
+msgid "Versions"
+msgstr "Versions"
 
 msgid "View"
 msgstr "View"
@@ -2074,6 +2127,12 @@ msgstr "When I need a decision or an answer, it'll show up here."
 
 msgid "Who can open it"
 msgstr "Who can open it"
+
+msgid "Whole file"
+msgstr "Whole file"
+
+msgid "Whole page"
+msgstr "Whole page"
 
 msgid "Whole workspace"
 msgstr "Whole workspace"

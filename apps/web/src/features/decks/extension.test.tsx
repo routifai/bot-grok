@@ -54,8 +54,9 @@ vi.mock("@superchat/ui-web", async (importOriginal) => {
   };
 });
 
+import type { ArtifactEditorKind } from "../artifacts";
 import { FIXTURE_DECK } from "./deck-fixture";
-import { requestDeckPresent, resetDeckUi, setDeckEditing } from "./deck-ui-state";
+import { requestDeckPresent, resetDeckUi } from "./deck-ui-state";
 import { decksExtension } from "./extension";
 
 i18n.loadAndActivate({ locale: "en", messages: {} });
@@ -76,15 +77,32 @@ const deck = file("launch.deck.html");
 
 const SOURCE = new TextEncoder().encode("<html></html>");
 
+/** A deck's header actions, as the editor shell gets them from the deck kind. */
+function KindActions({ kind, artifact }: { kind: ArtifactEditorKind; artifact: Artifact }) {
+  const useEditor = kind.useEditor;
+  const parts = useEditor({
+    artifact,
+    bytes: SOURCE,
+    editing: false,
+    setEditing: () => {},
+    focusAsk: () => {},
+  });
+  return (
+    <div data-testid="actions">
+      {parts.actions}
+      <span data-testid="owns-download">{String(!!parts.ownsDownload)}</span>
+    </div>
+  );
+}
+
 function Panel({ artifact }: { artifact: Artifact }) {
   const parts = decksExtension.usePanel({ artifact, bytes: SOURCE, openUrl: "blob:deck" });
+  const kind = decksExtension.editor?.(artifact) ?? null;
   return (
     <div>
-      <div data-testid="actions">{parts.actions}</div>
-      <div data-testid="overflow">{parts.overflow}</div>
+      {kind ? <KindActions kind={kind} artifact={artifact} /> : null}
       <div data-testid="below">{parts.below}</div>
-      <span data-testid="hide">{String(!!parts.hideDefaults)}</span>
-      <span data-testid="expanded">{String(!!parts.expanded)}</span>
+      <span data-testid="wide">{String(!!parts.wide)}</span>
     </div>
   );
 }
@@ -130,28 +148,24 @@ it("draws a cover for HTML decks and PowerPoint files only", () => {
   ).not.toBeNull();
 });
 
-it("asks the panel for the room while a deck is in edit mode and gives it back after", async () => {
+it("opens decks in the editor as the deck kind, and asks for a wide panel", async () => {
+  expect(decksExtension.editor?.(deck)?.id).toBe("deck");
+  expect(decksExtension.editor?.(file("page.html"))).toBeNull();
   const c = await mount(deck);
-  const expanded = () => c.querySelector('[data-testid="expanded"]')?.textContent;
-  expect(expanded()).toBe("false");
-  await act(async () => setDeckEditing(deck.name, true));
-  expect(expanded()).toBe("true");
-  await act(async () => setDeckEditing(deck.name, false));
-  expect(expanded()).toBe("false");
+  expect(c.querySelector('[data-testid="wide"]')?.textContent).toBe("true");
 });
 
 it("leaves non-deck headers alone", async () => {
   const c = await mount(file("page.html"));
   expect(buttons(c)).toEqual([]);
-  expect(c.querySelector('[data-testid="hide"]')?.textContent).toBe("false");
+  expect(c.querySelector('[data-testid="wide"]')?.textContent).toBe("false");
 });
 
-it("has Edit, Theme, Present and exactly one Download menu with the three formats", async () => {
+it("has Theme, Present and exactly one Download menu with the three formats", async () => {
   const c = await mount(deck);
-  expect(c.querySelector('[data-testid="hide"]')?.textContent).toBe("true");
+  expect(c.querySelector('[data-testid="owns-download"]')?.textContent).toBe("true");
   expect(downloads(c)).toHaveLength(1);
   expect(buttons(c).map((b) => b.textContent)).toEqual([
-    "Edit",
     "Theme",
     "Present",
     "Download",
@@ -159,12 +173,7 @@ it("has Edit, Theme, Present and exactly one Download menu with the three format
     "PDF",
     "HTML (source)",
   ]);
-  expect(c.querySelector("a")?.textContent).toBe("Open in new tab");
-  expect(c.querySelector("a")?.getAttribute("href")).toBe("blob:deck");
   expect(c.textContent).not.toContain("Export to");
-  expect(item(c, "Edit").getAttribute("aria-pressed")).toBe("false");
-  await act(async () => item(c, "Edit").click());
-  expect(item(c, "Edit").getAttribute("aria-pressed")).toBe("true");
 });
 
 it("Present asks the viewer to present", async () => {
@@ -267,7 +276,8 @@ it("previews PowerPoint files and only widens their panel", async () => {
     decksExtension.view?.({ artifact: file("notes.txt", "text/plain"), bytes, fallback }),
   ).toBeNull();
   expect(decksExtension.card(pptx)).toBeNull();
+  expect(decksExtension.editor?.(pptx)).toBeNull();
   const c = await mount(pptx);
   expect(buttons(c)).toEqual([]);
-  expect(c.querySelector('[data-testid="hide"]')?.textContent).toBe("false");
+  expect(c.querySelector('[data-testid="wide"]')?.textContent).toBe("true");
 });

@@ -7,7 +7,7 @@ import { type Browser, chromium, type Page } from "@playwright/test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { SandboxedHtmlViewer } from "../../../components/SandboxedHtmlViewer";
+import { SandboxedHtmlViewer } from "../../../../components/SandboxedHtmlViewer";
 import { injectEditBridge } from "./bridge-script";
 
 const NONCE = "0123456789abcdef0123456789abcdef";
@@ -117,7 +117,11 @@ describe("edit bridge (Chromium)", () => {
     const page = await open();
     await page.click('[data-superchat-id="cover-meta"]');
     await page.keyboard.press("Shift+ArrowRight");
-    expect(await last(page, "superchat:edit-key")).toMatchObject({ action: "nudge", dx: 10, dy: 0 });
+    expect(await last(page, "superchat:edit-key")).toMatchObject({
+      action: "nudge",
+      dx: 10,
+      dy: 0,
+    });
     expect(await activeIndex(page)).toBe(0);
     await page.keyboard.press("Delete");
     expect(await last(page, "superchat:edit-key")).toMatchObject({ action: "delete" });
@@ -159,7 +163,10 @@ describe("edit bridge (Chromium)", () => {
       ),
     );
     await page.evaluate(() =>
-      window.postMessage({ type: "superchat:edit-select", v: 2, nonce: "x", ids: ["cover-title"] }, "*"),
+      window.postMessage(
+        { type: "superchat:edit-select", v: 2, nonce: "x", ids: ["cover-title"] },
+        "*",
+      ),
     );
     await page.waitForTimeout(100);
     expect(await msgs(page, "superchat:edit-selection")).toHaveLength(0);
@@ -202,7 +209,9 @@ describe("edit bridge (Chromium)", () => {
     });
     await page.goto("http://host.test/");
     await page.waitForFunction(() =>
-      (window as unknown as { __msgs: Msg[] }).__msgs.some((m) => m.type === "superchat:edit-ready"),
+      (window as unknown as { __msgs: Msg[] }).__msgs.some(
+        (m) => m.type === "superchat:edit-ready",
+      ),
     );
     const inner = page.frameLocator("iframe").frameLocator("iframe");
     await inner.locator('[data-superchat-id="cover-title"]').click();
@@ -214,10 +223,59 @@ describe("edit bridge (Chromium)", () => {
         { type: "superchat:edit-select", v: 1, nonce: "wrong-wrong-wrong", ids: [] },
         "*",
       );
-      outer?.postMessage({ type: "superchat:edit-select", v: 1, nonce: n, ids: ["cover-lead"] }, "*");
+      outer?.postMessage(
+        { type: "superchat:edit-select", v: 1, nonce: n, ids: ["cover-lead"] },
+        "*",
+      );
     }, NONCE);
     await page.waitForTimeout(150);
     expect((await targets(page)).map((t) => t.id)).toEqual(["cover-lead"]);
+    await page.close();
+  });
+
+  it("page mode: any element is a target; one without an id is selectable, never typed into", async () => {
+    if (!browser) return;
+    const PAGE = `<!doctype html><html><head><title>t</title></head><body>
+<main data-superchat-id="main"><form data-superchat-id="add-form">
+<button type="button" data-superchat-id="add-button"><span>Add</span></button></form>
+<ul></ul></main>
+<script>document.querySelector("ul").innerHTML = "<li>Coffee 4.50</li>";</script>
+</body></html>`;
+    const page = await browser.newPage({ viewport: { width: 800, height: 600 } });
+    await page.addInitScript(() => {
+      const w = window as unknown as { __msgs: unknown[] };
+      w.__msgs = [];
+      window.addEventListener("message", (e) => w.__msgs.push(e.data));
+    });
+    await page.route("http://page.test/", (route) =>
+      route.fulfill({ contentType: "text/html", body: injectEditBridge(PAGE, NONCE, "page") }),
+    );
+    await page.goto("http://page.test/");
+    await page.waitForFunction(() =>
+      (window as unknown as { __msgs: Msg[] }).__msgs.some(
+        (m) => m.type === "superchat:edit-ready",
+      ),
+    );
+    // A click on the label's inner span selects the button around it, by its id.
+    await page.click("button span");
+    expect((await targets(page))[0]).toMatchObject({
+      id: "add-button",
+      tag: "button",
+      editable: true,
+      slide: 1,
+    });
+    expect((await targets(page))[0]?.where).toContain('form[data-superchat-id="add-form"]');
+    // The list item the app drew has no id: a path id, not editable by hand.
+    await page.click("li");
+    const item = (await targets(page))[0];
+    expect(item?.id).toMatch(/^~\d+(\.\d+)*$/);
+    expect(item).toMatchObject({ tag: "li", editable: false, text: "Coffee 4.50" });
+    await page.dblclick("li");
+    expect(await page.getAttribute("li", "contenteditable")).toBeNull();
+    // The host can select it again by that path (a new frame keeps the selection).
+    await host(page, { type: "superchat:edit-select", ids: [] });
+    await host(page, { type: "superchat:edit-select", ids: [item?.id] });
+    expect((await targets(page)).map((t) => t.id)).toEqual([item?.id]);
     await page.close();
   });
 });

@@ -1,8 +1,8 @@
 import { MousePointerClick, Table2 } from "lucide-react";
 import type { ReactNode } from "react";
 
-const ICONS = { sheet: Table2, deck: MousePointerClick } as const;
-const TEST_IDS = { sheet: "sheet-ask-chip", deck: "deck-ask-chip" } as const;
+const ICONS = { sheet: Table2, element: MousePointerClick } as const;
+const TEST_IDS = { sheet: "sheet-ask-chip", element: "element-ask-chip" } as const;
 
 /** The compact chip for something attached to a message ("Sales!C2:C8 · 7 cells", "Slide 2 ·
  * Heading"): in the composer (with a remove button) and in the transcript above a sent message. */

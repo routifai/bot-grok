@@ -1,52 +1,22 @@
-import { t } from "@lingui/core/macro";
 import { type Artifact, isDeckArtifactName } from "@superchat/contracts";
-import { DropdownMenuItem } from "@superchat/ui-web";
-import { ExternalLink } from "lucide-react";
 import type { ArtifactExtension, ArtifactPanelArgs, ArtifactPanelParts } from "../artifacts";
 import { DeckCover } from "./DeckCover";
-import { useDeckExport } from "./DeckExport";
-import { DeckHeaderActions } from "./DeckHeaderActions";
-import { DeckViewer } from "./DeckViewer";
-import { useDeckEditing, useDeckThemeOpen } from "./deck-ui-state";
+import { DeckPreview, deckEditorKind } from "./DeckViewer";
+import { useDeckThemeOpen } from "./deck-ui-state";
 import { PptxPreview } from "./PptxPreview";
 import { isPptxArtifact } from "./pptx-normalize";
 
-/** The header of a deck: Edit, Present and one Download menu, plus Open in new tab in `⋯`
- * (Publish… joins it from the apps extension). Replaces the panel's default buttons. */
-function useDecksPanel({ artifact, bytes, openUrl }: ArtifactPanelArgs): ArtifactPanelParts {
+/** A deck needs room for its rail and stage; the Theme gallery takes Escape while it is open. */
+function useDecksPanel({ artifact }: ArtifactPanelArgs): ArtifactPanelParts {
   const deck: Artifact | undefined =
     artifact && isDeckArtifactName(artifact.name) ? artifact : undefined;
-  const { state, run, cancel } = useDeckExport(deck?.id);
-  // Editing wants the slide as big as it can be: the panel widens, and goes back afterwards.
-  const editing = useDeckEditing(deck?.name ?? "");
   const themeOpen = useDeckThemeOpen(deck?.name ?? "");
-  // A PowerPoint file keeps the panel's own Download and full-screen buttons; it only needs room.
   if (!deck) return { wide: !!artifact && isPptxArtifact(artifact) };
-  return {
-    wide: true,
-    expanded: editing,
-    holdsEscape: themeOpen,
-    hideDefaults: true,
-    actions: (
-      <DeckHeaderActions
-        deckKey={deck.name}
-        state={state}
-        onExport={run}
-        onCancel={cancel}
-        source={bytes ? { name: deck.name, mimeType: deck.mimeType, bytes } : undefined}
-      />
-    ),
-    overflow: openUrl ? (
-      <DropdownMenuItem render={<a href={openUrl} target="_blank" rel="noreferrer noopener" />}>
-        <ExternalLink />
-        {t`Open in new tab`}
-      </DropdownMenuItem>
-    ) : null,
-  };
+  return { wide: true, holdsEscape: themeOpen };
 }
 
-/** Opens slide decks (HTML files named `*.deck.html`) in the deck viewer, and PowerPoint files
- * (`.pptx`, such as the Muse's native-chart decks) in a read-only preview. */
+/** Opens slide decks (HTML files named `*.deck.html`) in the artifact editor as the deck kind,
+ * and PowerPoint files (`.pptx`, such as the Muse's native-chart decks) in a read-only preview. */
 export const decksExtension: ArtifactExtension = {
   usePanel: useDecksPanel,
   // The Library already labels a deck "Deck" (lib/artifact-kind).
@@ -60,21 +30,12 @@ export const decksExtension: ArtifactExtension = {
         onMeta={artifact.onMeta}
       />
     ) : null,
-  view: ({ artifact, bytes, onEdited, fallback }) => {
-    if (isPptxArtifact(artifact)) return <PptxPreview bytes={bytes} fallback={fallback} />;
-    if (!isDeckArtifactName(artifact.name)) return null;
-    const html = new TextDecoder("utf-8").decode(bytes);
-    // Keyed by the file, not the version: a new version keeps the slide, the mode and the
-    // selection instead of starting the viewer over.
-    return (
-      <DeckViewer
-        key={artifact.name}
-        html={html}
-        title={artifact.name}
-        artifact={{ id: artifact.id, version: artifact.version }}
-        onEdited={onEdited}
-        botId={artifact.botId}
-      />
-    );
-  },
+  // Where the editor shell is not (a Computer file's preview): a deck still reads as a deck.
+  view: ({ artifact, bytes, fallback }) =>
+    isPptxArtifact(artifact) ? (
+      <PptxPreview bytes={bytes} fallback={fallback} />
+    ) : isDeckArtifactName(artifact.name) ? (
+      <DeckPreview html={new TextDecoder("utf-8").decode(bytes)} title={artifact.name} />
+    ) : null,
+  editor: (artifact) => (isDeckArtifactName(artifact.name) ? deckEditorKind : null),
 };

@@ -6,6 +6,10 @@ export { ArtifactFileCard as ReplyArtifactFileCard } from "./cards/ArtifactFileC
 export { PanelOverflowMenu } from "./PanelOverflowMenu";
 export {
   type ArtifactCardParts,
+  type ArtifactEditorArgs,
+  type ArtifactEditorHistory,
+  type ArtifactEditorKind,
+  type ArtifactEditorParts,
   type ArtifactExtension,
   type ArtifactInlineArgs,
   type ArtifactPanelArgs,

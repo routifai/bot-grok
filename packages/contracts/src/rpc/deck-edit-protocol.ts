@@ -1,9 +1,9 @@
 import * as z from "zod";
 
-// The postMessage protocol between the deck viewer (host) and the edit bridge injected into the
-// sandboxed deck frame. Every message carries `v` and the per-frame `nonce`; the host also checks
-// `event.source`. The bridge talks to `window.parent` only, and only the `superchat:` types cross the
-// sandbox shell's relay.
+// The postMessage protocol between the artifact editor (host) and the edit bridge injected into a
+// sandboxed HTML frame (a deck, or any page). Every message carries `v` and the per-frame `nonce`;
+// the host also checks `event.source`. The bridge talks to `window.parent` only, and only the
+// `superchat:` types cross the sandbox shell's relay.
 
 export const DECK_EDIT_PROTOCOL_VERSION = 1;
 
@@ -31,6 +31,8 @@ export const DeckEditTargetSchema = z.object({
   computed: StyleMap,
   href: Str(2048).nullable(),
   alt: Str(1024).nullable(),
+  /** A page element's place (`main > form > button`), for asking about one with no id. */
+  where: Str(300).optional(),
 });
 export type DeckEditTarget = z.infer<typeof DeckEditTargetSchema>;
 

@@ -7,11 +7,12 @@ import type {
   DeckPatch,
 } from "@superchat/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { rpc } from "../../../lib/rpc";
-import { registerDeckFlush, takeDeckVersionEdit } from "../deck-ui-state";
+import { rpc } from "../../../../lib/rpc";
+import { registerEditorFlush, takeOwnVersion } from "../editor-state";
 import { type CommitOutcome, Committer } from "./committer";
 import {
   isInexact,
+  isPathId,
   isStale,
   readTranslate,
   type StyleChanges,
@@ -20,13 +21,15 @@ import {
 } from "./edit-model";
 
 /** The call the editor makes; the API by default (a fake in tests). */
-export type DeckEditSource = (input: {
+export type HtmlEditSource = (input: {
   artifactId: string;
   baseVersion: number;
   patches: DeckPatch[];
 }) => Promise<Pick<Artifact, "id" | "version">>;
 
-const defaultSource: DeckEditSource = (input) => rpc.decks.edit(input);
+// The engine's HTML patch route (`PATCH /v1/artifacts/{id}/edit`), which decks introduced and
+// every HTML page now shares.
+const defaultSource: HtmlEditSource = (input) => rpc.decks.edit(input);
 
 export type EditNotice = { kind: "stale" | "inexact" | "failed"; message: string };
 
@@ -37,14 +40,17 @@ const HISTORY_MAX = 50;
 export type PostToFrame = (message: Record<string, unknown>) => void;
 
 /**
- * The deck editor's brain: what is selected, how changes become saved versions, and undo / redo.
+ * The HTML editor's brain (a deck, a page, a mini app): what is selected, how changes become
+ * saved versions, and undo / redo. It stays mounted while the file is open, so its history is the
+ * file's one undo whether or not edit mode is on (an ask from the view, a Theme switch).
  * Every change shows at once in the frame (a preview) and is saved as a `manual` version through
  * one `Committer`; undo and redo save the earlier source back as a new version, so history is
  * always version-aware and a change from elsewhere ends it (the older sources would clobber it),
  * except the one superchat makes when asked from this editor, which Undo can step back over.
  */
-export function useDeckEditor({
-  deckKey,
+export function useHtmlEditor({
+  fileKey,
+  active,
   artifactId,
   version,
   html,
@@ -52,15 +58,17 @@ export function useDeckEditor({
   post,
   source = defaultSource,
 }: {
-  /** The deck's file name: where outside edits and the flush hook are registered. */
-  deckKey: string;
+  /** The file name: where outside edits and the flush hook are registered. */
+  fileKey: string;
+  /** Edit mode is on (the bridge frame is up). Leaving it saves what is staged. */
+  active: boolean;
   artifactId: string;
   version: number;
   /** The source of the version on screen. */
   html: string;
   onEdited?: (artifactId: string) => void;
   post: PostToFrame;
-  source?: DeckEditSource;
+  source?: HtmlEditSource;
 }) {
   const [targets, setTargets] = useState<DeckEditTarget[]>([]);
   const [theme, setTheme] = useState<DeckEditTheme | null>(null);
@@ -97,7 +105,7 @@ export function useDeckEditor({
     if (version === seen.current.version) return;
     const before = seen.current.html;
     let kind = own.current.get(version);
-    if (!kind && takeDeckVersionEdit(deckKey, version)) {
+    if (!kind && takeOwnVersion(fileKey, version)) {
       kind = "edit"; // the Theme gallery's switch: Undo steps back over it
       saved.current = { id: artifactId, version };
     } else if (!kind && expectAsk.current) {
@@ -118,9 +126,17 @@ export function useDeckEditor({
       saved.current = { id: artifactId, version };
     }
     seen.current = { version, html };
-  }, [artifactId, version, html, deckKey]);
+  }, [artifactId, version, html, fileKey]);
 
   const save = useCallback(async (patches: DeckPatch[]): Promise<CommitOutcome> => {
+    // An element the bridge could only address by its place in the page has no id in the file:
+    // the engine would refuse it, so say so here and offer superchat instead.
+    if (patches.some((p) => "id" in p && isPathId(p.id))) {
+      const message = "no stable id; ask Superchat instead";
+      setNotice({ kind: "inexact", message });
+      setReloadKey((n) => n + 1);
+      return { ok: false, message };
+    }
     const base = saved.current;
     const kind: Kind = patches.some((p) => p.kind === "set-full-source") ? intent.current : "edit";
     intent.current = "edit";
@@ -154,15 +170,23 @@ export function useDeckEditor({
   }, []);
 
   const committer = useMemo(() => new Committer(save), [save]);
-  // Leaving edit mode (or the deck) saves whatever is still staged.
+  // Closing the file saves whatever is still staged; so does leaving edit mode, which also ends
+  // the selection (there is no frame to show it in).
   useEffect(() => () => void committer.commit(), [committer]);
+  useEffect(() => {
+    if (active) return;
+    void committer.commit();
+    setTargets([]);
+    setTextEditing(false);
+    selectedIds.current = [];
+  }, [active, committer]);
   useEffect(
     () =>
-      registerDeckFlush(deckKey, async () => {
+      registerEditorFlush(fileKey, async () => {
         await committer.commit();
         return saved.current;
       }),
-    [deckKey, committer],
+    [fileKey, committer],
   );
 
   const preview = useCallback((patches: readonly DeckPatch[]) => {
@@ -301,5 +325,10 @@ export function useDeckEditor({
       expectAsk.current = on;
     },
     finishText: () => postRef.current({ type: "superchat:edit-text-finish", commit: true }),
+    /** Select these elements (a layer picked in the navigator); kept for a frame not yet up. */
+    select: (ids: string[]) => {
+      selectedIds.current = ids;
+      postRef.current({ type: "superchat:edit-select", ids });
+    },
   };
 }

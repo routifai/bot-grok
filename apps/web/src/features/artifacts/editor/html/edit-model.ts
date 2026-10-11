@@ -52,8 +52,18 @@ export function firstFamily(value: string | undefined): string {
   return (value ?? "").split(",")[0]?.replace(/^["'\s]+|["'\s]+$/g, "") ?? "";
 }
 
-/** Human label of a target for the handle and the panel: `Slide 2 · Heading`. */
-export function targetLabel(target: DeckEditTarget, words: Record<string, string>): string {
+/** An id the bridge made from an element's place in a page because it has no
+ * `data-superchat-id`: good for selecting and asking, never for a hand edit (the engine refuses it,
+ * since a place is not a stable address). */
+export const isPathId = (id: string): boolean => id.startsWith("~");
+
+/** Human label of a target for the handle and the panel: `Slide 2 · Heading` in a deck,
+ * `Heading` in a page (`inDeck` false). */
+export function targetLabel(
+  target: DeckEditTarget,
+  words: Record<string, string>,
+  inDeck = true,
+): string {
   if (target.kind === "slide") return `${words.slide ?? "Slide"} ${target.slide}`;
   const tag = /^h[1-6]$/.test(target.tag)
     ? (words.heading ?? "Heading")
@@ -61,10 +71,12 @@ export function targetLabel(target: DeckEditTarget, words: Record<string, string
       ? (words.image ?? "Image")
       : target.kind === "link"
         ? (words.link ?? "Link")
-        : target.kind === "text"
-          ? (words.text ?? "Text")
-          : (words.box ?? "Box");
-  return `${words.slide ?? "Slide"} ${target.slide} · ${tag}`;
+        : !inDeck
+          ? target.tag // a page's elements are many kinds of thing: its tag says which
+          : target.kind === "text"
+            ? (words.text ?? "Text")
+            : (words.box ?? "Box");
+  return inDeck ? `${words.slide ?? "Slide"} ${target.slide} · ${tag}` : tag;
 }
 
 /** What a target showed for the changed properties, for the engine's "you changed X" wording. */
@@ -120,4 +132,5 @@ export function previewOf(patch: DeckPatch): { id: string; style: StyleChanges }
 
 /** A patch the engine's reply says it will not apply exactly (the "ask Superchat instead" 409). */
 export const isInexact = (message: string): boolean => /ask Superchat instead/i.test(message);
-export const isStale = (message: string): boolean => /^the deck changed since/i.test(message);
+export const isStale = (message: string): boolean =>
+  /^the (deck|page) changed since/i.test(message);

@@ -13,7 +13,7 @@ import {
 import { Check, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { type RefObject, useEffect, useState } from "react";
 import { loadDeckThemeSample } from "../../lib/deck-themes";
-import { DeckViewer } from "./DeckViewer";
+import { DeckPreview } from "./DeckViewer";
 
 /** At most this many themes show as one row of names; more flip with arrows. */
 const NAMED_SWITCH_MAX = 5;
@@ -155,7 +155,7 @@ export function DeckThemePreview({
         </header>
         <div className="min-h-0 flex-1">
           {ready && theme ? (
-            <DeckViewer key={theme.id} html={sample.html} title={`${theme.id}.sample.deck.html`} />
+            <DeckPreview key={theme.id} html={sample.html} title={`${theme.id}.sample.deck.html`} />
           ) : failed === themeId ? (
             <p className="grid h-full place-items-center text-[13px] text-muted-foreground">
               {t`Couldn't load this look. Try again in a moment.`}

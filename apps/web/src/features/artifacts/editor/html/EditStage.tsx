@@ -2,29 +2,30 @@
 import { type DeckEditFromFrame, DeckEditFromFrameSchema } from "@superchat/contracts";
 import { cn } from "@superchat/ui-web";
 import { type MutableRefObject, useCallback, useEffect, useRef, useState } from "react";
-import { SandboxedHtmlViewer } from "../../../components/SandboxedHtmlViewer";
-import { postDeckNavigation, readDeckEvent } from "../deck-model";
-import { injectEditBridge, makeEditNonce } from "./bridge-script";
+import { SandboxedHtmlViewer } from "../../../../components/SandboxedHtmlViewer";
+import { type BridgeMode, injectEditBridge, makeEditNonce } from "./bridge-script";
 
 type Frame = { key: string; source: string; html: string; nonce: string };
 
-const makeFrame = (source: string): Frame => {
+const makeFrame = (source: string, mode: BridgeMode): Frame => {
   const nonce = makeEditNonce();
-  return { key: nonce, source, html: injectEditBridge(source, nonce), nonce };
+  return { key: nonce, source, html: injectEditBridge(source, nonce, mode), nonce };
 };
 
 /**
- * The deck with the edit bridge. A new source (a saved edit, Superchat's change, an undo) loads into a
- * second, hidden frame first and replaces the visible one only when its bridge reports ready, on
- * the same slide and with the same selection, so nothing flickers or jumps. Messages count only
+ * The file with the edit bridge (a deck, a page). A new source (a saved edit, superchat's change,
+ * an undo) loads into a second, hidden frame first and replaces the visible one only when its
+ * bridge reports ready, in the same place and with the same selection, so nothing flickers or
+ * jumps. Messages count only
  * when they come from one of our frames' window AND carry that frame's nonce; the host posts the
  * same way.
  */
 export function EditStage({
   html,
   title,
+  mode = "deck",
   reloadKey,
-  active,
+  place,
   selectedIds,
   frameRef,
   onMessage,
@@ -34,10 +35,14 @@ export function EditStage({
 }: {
   html: string;
   title: string;
+  /** What the bridge selects: a deck's slide elements, or any element of a page. */
+  mode?: BridgeMode;
   /** Bumped to reload the frame from the source (a preview that was not saved). */
   reloadKey: number;
-  /** The slide to show in a new frame. */
-  active: number;
+  /** Puts a new frame where the person was (a deck: on the slide on screen). Called with the
+   * frame's window once its bridge is ready, and with `foreign` for each message the frame sends
+   * outside the edit protocol (a deck's own "ready"). */
+  place?: (frame: Window | null | undefined, foreign?: unknown) => void;
   /** The ids to select again in a new frame. */
   selectedIds: MutableRefObject<string[]>;
   /** The frame the host navigates; follows the visible one. */
@@ -49,12 +54,14 @@ export function EditStage({
   /** Receives the function that posts to the visible frame. */
   postRef: MutableRefObject<(message: Record<string, unknown>) => void>;
 }) {
-  const [frames, setFrames] = useState<Frame[]>(() => [makeFrame(html)]);
+  const [frames, setFrames] = useState<Frame[]>(() => [makeFrame(html, mode)]);
   const [shownKey, setShownKey] = useState(() => frames[0]?.key ?? "");
   const elements = useRef(new Map<string, HTMLIFrameElement>());
   const wanted = useRef({ source: html, reloadKey });
-  const activeRef = useRef(active);
-  activeRef.current = active;
+  const placeRef = useRef(place);
+  placeRef.current = place;
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
   const onMessageRef = useRef(onMessage);
   onMessageRef.current = onMessage;
   const onReadyRef = useRef(onReady);
@@ -66,7 +73,7 @@ export function EditStage({
   useEffect(() => {
     if (wanted.current.source === html && wanted.current.reloadKey === reloadKey) return;
     wanted.current = { source: html, reloadKey };
-    const next = makeFrame(html);
+    const next = makeFrame(html, modeRef.current);
     setFrames((current) => [...current.filter((f) => f.key === shownKeyRef.current), next]);
   }, [html, reloadKey]);
   const shownKeyRef = useRef(shownKey);
@@ -96,21 +103,13 @@ export function EditStage({
       if (!frame) return;
       const parsed = DeckEditFromFrameSchema.safeParse(event.data);
       if (!parsed.success || parsed.data.nonce !== frame.nonce) {
-        // The deck's own protocol: the frame is ready to be put on its slide.
-        if (readDeckEvent(event.data)?.kind === "ready") {
-          postDeckNavigation(elements.current.get(key)?.contentWindow, {
-            action: "go",
-            index: activeRef.current,
-          });
-        }
+        // The file's own protocol (a deck's "ready"): the kind decides.
+        placeRef.current?.(elements.current.get(key)?.contentWindow, event.data);
         return;
       }
       const message = parsed.data;
       if (message.type === "superchat:edit-ready") {
-        postDeckNavigation(elements.current.get(key)?.contentWindow, {
-          action: "go",
-          index: activeRef.current,
-        });
+        placeRef.current?.(elements.current.get(key)?.contentWindow);
         post(key, { type: "superchat:edit-select", ids: selectedIds.current });
         post(key, { type: "superchat:edit-chip-inset", left: chipInsetRef.current });
         if (key !== shownKeyRef.current) {

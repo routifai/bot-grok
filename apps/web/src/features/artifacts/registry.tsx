@@ -1,5 +1,6 @@
 import type { Artifact } from "@superchat/contracts";
 import { createContext, Fragment, type ReactNode, useContext } from "react";
+import type { AskChip } from "./ask/AskBox";
 
 /**
  * What a capability built on artifacts (apps, sheets) adds to the artifact surfaces without the
@@ -22,11 +23,8 @@ export interface ArtifactPanelParts {
   expanded?: boolean;
   /** True while an overlay should take Escape instead of closing the panel. */
   holdsEscape?: boolean;
-  /** `DropdownMenuItem`s for the header's `⋯` menu (shown only when some extension adds one). */
+  /** `DropdownMenuItem`s for the header's `⋯` menu. */
   overflow?: ReactNode;
-  /** The extension draws its own Download / Open in new tab / full screen controls, so the
-   * panel leaves its defaults out (a deck: one Download menu, Present, `⋯`). */
-  hideDefaults?: boolean;
 }
 
 /** What `usePanel` is given about the file being shown. */
@@ -69,6 +67,83 @@ export interface ArtifactExtension {
   result?(props: ArtifactResultArgs): ReactNode | null;
   /** The Library thumbnail for this file, or null to leave it to the default preview. */
   thumbnail?(artifact: ArtifactThumbnailArgs): ReactNode | null;
+  /** The editor kind for this file (a deck, a page), or null: the file then opens in the same
+   * editor shell read-only, with its `view` (or the default preview) on the stage. */
+  editor?(artifact: Artifact): ArtifactEditorKind | null;
+}
+
+/**
+ * One kind of file in the artifact editor (`editor/ArtifactEditor`). The shell owns the frame —
+ * header (title, "<Kind> · version N" menu, Edit toggle, actions, `⋯`, close), the edit toolbar
+ * (undo, redo, ask, done), the ask box and the responsive layout — and the kind fills the slots.
+ * `useEditor` is called as a hook for as long as the file is open (the shell remounts it when the
+ * kind changes), so it can keep the file's edit history across edit mode on and off.
+ */
+export interface ArtifactEditorKind {
+  /** Stable per kind ("deck", "page"). */
+  id: string;
+  useEditor(args: ArtifactEditorArgs): ArtifactEditorParts;
+}
+
+export interface ArtifactEditorArgs {
+  artifact: Artifact;
+  bytes: Uint8Array;
+  /** Edit mode (select, type, style) rather than viewing / running. */
+  editing: boolean;
+  setEditing: (on: boolean) => void;
+  /** A version was saved from the editor: show it. */
+  onEdited?: (artifactId: string) => void;
+  /** Puts the keyboard in the ask box (an "Ask superchat instead"). */
+  focusAsk: () => void;
+}
+
+export interface ArtifactEditorParts {
+  /** What the header calls this file: "Deck", "App", "Page". */
+  label: string;
+  stage: ReactNode;
+  /** The left column (a deck's slides, a page's layers); collapsible. */
+  navigator?: ReactNode;
+  /** The right column, shown in edit mode. */
+  inspector?: ReactNode;
+  /** Header buttons after Edit (a deck: Theme, Present, Download; a page: Run). */
+  actions?: ReactNode;
+  /** `DropdownMenuItem`s for the header's `⋯` menu. */
+  overflow?: ReactNode;
+  /** The kind draws its own Download (a deck's export menu), so the shell leaves its own out. */
+  ownsDownload?: boolean;
+  /** Between the stage and the ask box (a deck's slide navigation). */
+  footer?: ReactNode;
+  /** Over the ask box (a save that failed). */
+  notice?: ReactNode;
+  /** The file can be edited: the shell shows Edit, the edit toolbar and the inspector. */
+  editable: boolean;
+  /** The file's one undo: the toolbar, ⌘Z and the ask box's "Updated · Undo" all use it. */
+  history?: ArtifactEditorHistory;
+  ask: {
+    /** The selection, as chips in the ask box. */
+    chips: readonly AskChip[];
+    onRemoveChip?: (id: string) => void;
+    placeholder: string;
+    /** The request block for what is selected (or on screen) right now. */
+    contextBlock: () => string;
+    /** Bumped to focus the ask box (the selection chip's own Ask). */
+    focusRequest?: number;
+  };
+}
+
+export interface ArtifactEditorHistory {
+  canUndo: boolean;
+  canRedo: boolean;
+  /** A save is in flight. */
+  saving: boolean;
+  undo: () => Promise<void>;
+  redo: () => Promise<void>;
+  /** Saves what is staged; before an ask, so superchat works on it. */
+  flush: () => Promise<void>;
+  /** The next outside version is superchat's answer to an ask from here (Undo steps over it). */
+  expectAsk: (on: boolean) => void;
+  /** The newest version this editor saved (may not be on screen yet). */
+  headVersion: () => number;
 }
 
 export interface ArtifactInlineArgs {
@@ -120,8 +195,18 @@ export function useArtifactPanelParts(
     holdsEscape: parts.some((part) => part.holdsEscape),
     overflow: slot((part) => part.overflow),
     hasOverflow: parts.some((part) => !!part.overflow),
-    hideDefaults: parts.some((part) => part.hideDefaults),
   };
+}
+
+/** The editor kind for a file: the first extension that has one. */
+export function useArtifactEditorKind(artifact: Artifact | undefined): ArtifactEditorKind | null {
+  const extensions = useArtifactExtensions();
+  if (!artifact) return null;
+  for (const extension of extensions) {
+    const kind = extension.editor?.(artifact);
+    if (kind) return kind;
+  }
+  return null;
 }
 
 /** Every extension's card parts for one artifact. */

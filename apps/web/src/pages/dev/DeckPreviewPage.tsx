@@ -1,10 +1,9 @@
 import { cn } from "@superchat/ui-web";
 import { useEffect, useState } from "react";
 import { artifactPanelWidth } from "../../features/artifacts/ArtifactPanel";
-import { DeckHeaderActions } from "../../features/decks/DeckHeaderActions";
+import { useArtifactEditing } from "../../features/artifacts/editor/editor-state";
+import sample from "../../features/artifacts/editor/html/sample-deck.txt?raw";
 import { DeckViewer } from "../../features/decks/DeckViewer";
-import { useDeckEditing } from "../../features/decks/deck-ui-state";
-import sample from "../../features/decks/edit/sample-deck.txt?raw";
 import { setDeckThemeSources } from "../../lib/deck-themes";
 
 const NAME = "sample.deck.html";
@@ -24,14 +23,14 @@ type DevWindow = Window & {
 };
 
 /**
- * Dev-only route (`/dev/deck`, gated by `import.meta.env.DEV` in App.tsx): the deck viewer in the
- * artifact panel's width with the panel's real header buttons, the engine replaced by a recorder
+ * Dev-only route (`/dev/deck`, gated by `import.meta.env.DEV` in App.tsx): the deck in the
+ * artifact editor shell at the panel's width, the engine replaced by a recorder
  * (`window.__deckEdits`), so selecting, editing and switching themes can be driven in a real
  * browser without a session or engine. A test may hand it a kit-built deck, the theme dictionary
  * and a restyle function (`window.__deckSetHtml`, `__deckThemes`, `__deckRestyle`).
  */
 export function DeckPreviewPage() {
-  const editing = useDeckEditing(NAME);
+  const editing = useArtifactEditing(NAME);
   const [version, setVersion] = useState(1);
   const [html, setHtml] = useState(sample);
   // Read at call time: a run exposes the function after the page has loaded.
@@ -63,20 +62,10 @@ export function DeckPreviewPage() {
           artifactPanelWidth({ wide: true, expanded: editing }),
         )}
       >
-        <header className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2.5">
-          <div className="min-w-0 flex-1 truncate text-[14px] font-medium">{NAME}</div>
-          <DeckHeaderActions
-            deckKey={NAME}
-            state={{ kind: "idle" }}
-            onExport={() => undefined}
-            onCancel={() => undefined}
-            source={undefined}
-          />
-          <span data-testid="dev-version" className="text-[12px]">
-            v{version}
-          </span>
-        </header>
-        <div className="min-h-0 flex-1">
+        <span data-testid="dev-version" className="sr-only">
+          v{version}
+        </span>
+        <div className="flex min-h-0 flex-1 flex-col">
           <DeckViewer
             html={html}
             title={NAME}

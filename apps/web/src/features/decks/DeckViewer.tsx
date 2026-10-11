@@ -1,8 +1,30 @@
 import { useLingui } from "@lingui/react/macro";
+import type { Artifact } from "@superchat/contracts";
 import { Button, cn } from "@superchat/ui-web";
 import { ChevronLeft, ChevronRight, Maximize2, Minimize2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { SandboxedHtmlViewer } from "../../components/SandboxedHtmlViewer";
+import type { ArtifactEditorArgs, ArtifactEditorKind, ArtifactEditorParts } from "../artifacts";
+import { ArtifactEditorView } from "../artifacts/editor/ArtifactEditor";
+import { EditStage } from "../artifacts/editor/html/EditStage";
+import { targetLabel } from "../artifacts/editor/html/edit-model";
+import { EditNoticeBanner, StylePanel } from "../artifacts/editor/html/StylePanel";
+import {
+  type HtmlEditSource,
+  type PostToFrame,
+  useHtmlEditor,
+} from "../artifacts/editor/html/useHtmlEditor";
+import { buildElementAsk, buildSlideAsk } from "../artifacts/editor/html-ask";
+import { useDeckExport } from "./DeckExport";
+import { DeckHeaderActions } from "./DeckHeaderActions";
 import { DeckRail } from "./DeckRail";
 import { DeckThemePicker, type DeckThemeSource, type DeckThemesSource } from "./DeckThemePicker";
 import {
@@ -11,14 +33,7 @@ import {
   postDeckNavigation,
   readDeckEvent,
 } from "./deck-model";
-import {
-  setDeckThemeOpen,
-  useDeckEditing,
-  useDeckPresentRequest,
-  useDeckThemeOpen,
-} from "./deck-ui-state";
-import { DeckEditor } from "./edit/DeckEditor";
-import type { DeckEditSource } from "./edit/useDeckEditor";
+import { setDeckThemeOpen, useDeckPresentRequest, useDeckThemeOpen } from "./deck-ui-state";
 
 const BAR_HIDE_MS = 2500;
 
@@ -27,39 +42,36 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }
 
+/** Where a deck's edits, theme dictionary and current theme come from: the API by default, a
+ * recorder on the dev page and fakes in tests. */
+export type DeckSources = {
+  edit?: HtmlEditSource;
+  themes?: DeckThemesSource;
+  theme?: DeckThemeSource;
+};
+const DeckSourcesContext = createContext<DeckSources>({});
+
 /**
- * A deck in the artifact panel: the sandboxed HTML on a stage (the deck scales itself to the
- * frame), previous / next, a rail of live thumbnails and a full screen present mode. The deck
- * keeps its own navigation state; the host only sends `superchat:slide` commands and mirrors the
- * `superchat:slide-state` it hears back.
+ * A deck in the artifact editor: the sandboxed HTML on the stage (the deck scales itself to the
+ * frame) with previous / next and full screen present mode, the slide rail as the navigator, the
+ * edit bridge and style inspector in edit mode, and Theme / Present / Download in the header. The
+ * deck keeps its own navigation state; the stage only sends `superchat:slide` commands and
+ * mirrors the `superchat:slide-state` it hears back.
  */
-export function DeckViewer({
-  html,
-  title,
+function useDeckEditor({
   artifact,
+  bytes,
+  editing,
   onEdited,
-  editSource,
-  themesSource,
-  themeSource,
-  botId,
-}: {
-  html: string;
-  title: string;
-  /** The saved file on screen; without it the deck cannot be edited. */
-  artifact?: { id: string; version: number };
-  onEdited?: (artifactId: string) => void;
-  editSource?: DeckEditSource;
-  /** Where the Theme gallery gets the theme dictionary (the API by default). */
-  themesSource?: DeckThemesSource;
-  /** Where the gallery reads the theme the deck is on (the API by default). */
-  themeSource?: DeckThemeSource;
-  /** The Muse that owns the deck: edit mode can ask superchat to change it. */
-  botId?: string | null;
-}) {
+  focusAsk,
+}: ArtifactEditorArgs): ArtifactEditorParts {
   const { t } = useLingui();
+  const sources = useContext(DeckSourcesContext);
+  const title = artifact.name;
+  const html = useMemo(() => new TextDecoder("utf-8").decode(bytes), [bytes]);
   const slides = useMemo(() => parseDeckSlides(html), [html]);
   const frame = useRef<HTMLIFrameElement | null>(null);
-  const container = useRef<HTMLDivElement>(null);
+  const container = useRef<HTMLElement>(null);
   const [active, setActive] = useState(0);
   const [count, setCount] = useState(slides.length);
   const activeRef = useRef(0);
@@ -67,8 +79,8 @@ export function DeckViewer({
   const [presenting, setPresenting] = useState(false);
   const [barVisible, setBarVisible] = useState(true);
   const barTimer = useRef<number | undefined>(undefined);
-  const editing = useDeckEditing(title);
   const themeOpen = useDeckThemeOpen(title);
+  const exporter = useDeckExport(artifact.id);
   // The gallery is a hidden state while presenting and must not outlive the deck on screen.
   useEffect(() => {
     if (presenting) setDeckThemeOpen(title, false);
@@ -76,6 +88,20 @@ export function DeckViewer({
   useEffect(() => () => setDeckThemeOpen(title, false), [title]);
   const presentRequest = useDeckPresentRequest(title);
   const handledPresent = useRef(presentRequest);
+
+  const postRef = useRef<PostToFrame>(() => {});
+  const post = useCallback<PostToFrame>((message) => postRef.current(message), []);
+  const editMode = editing && !presenting;
+  const editor = useHtmlEditor({
+    fileKey: title,
+    active: editMode,
+    artifactId: artifact.id,
+    version: artifact.version,
+    html,
+    onEdited,
+    post,
+    source: sources.edit,
+  });
 
   useEffect(() => {
     setCount(slides.length);
@@ -105,6 +131,11 @@ export function DeckViewer({
     postDeckNavigation(frame.current?.contentWindow, nav);
   }, []);
   const goTo = useCallback((index: number) => navigate({ action: "go", index }), [navigate]);
+  // A new edit frame is put on the slide on screen (once its bridge, or the deck, is ready).
+  const place = useCallback((win: Window | null | undefined, foreign?: unknown) => {
+    if (foreign !== undefined && readDeckEvent(foreign)?.kind !== "ready") return;
+    postDeckNavigation(win, { action: "go", index: activeRef.current });
+  }, []);
 
   const canFullscreen = typeof document !== "undefined" && !!document.fullscreenEnabled;
   const togglePresent = useCallback(() => {
@@ -130,7 +161,7 @@ export function DeckViewer({
       if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
       if (isTypingTarget(event.target)) return;
       // A dialog the keyboard is in (a theme preview over this deck) owns the keys, unless it is
-      // this viewer's own (the Theme gallery) or holds this viewer (the preview's deck).
+      // this deck's own (the Theme gallery) or holds this deck (the preview's deck).
       const dialog = (event.target as Element | null)?.closest?.('[role="dialog"]');
       const own = container.current;
       if (dialog && own && !dialog.contains(own) && !own.contains(dialog)) return;
@@ -167,9 +198,44 @@ export function DeckViewer({
     return () => window.clearTimeout(barTimer.current);
   }, [presenting, revealBar]);
 
+  // Ask superchat: the selection, else the slide on screen.
+  const words = {
+    slide: t`Slide`,
+    heading: t`Heading`,
+    text: t`Text`,
+    image: t`Image`,
+    link: t`Link`,
+    box: t`Box`,
+  };
+  const { targets, head } = editor;
+  const contextBlock = useCallback(() => {
+    const at = head.current;
+    if (!targets.length) {
+      return buildSlideAsk({
+        artifactId: at.id,
+        name: title,
+        version: at.version,
+        slide: active + 1,
+      }).block;
+    }
+    return buildElementAsk({
+      artifactId: at.id,
+      name: title,
+      version: at.version,
+      noun: (n) => t`${n} elements`,
+      elements: targets.map((target) => ({
+        id: target.id,
+        label: targetLabel(target, words),
+        slide: target.slide,
+        text: target.text,
+        style: target.computed,
+        note: "",
+      })),
+    }).block;
+  }, [targets, head, title, active, t]);
+
   const showBar = !presenting || barVisible;
   const last = Math.max(0, count - 1);
-
   const bar = (
     <div
       className={cn(
@@ -218,51 +284,203 @@ export function DeckViewer({
       ) : null}
     </div>
   );
-  const editor =
-    editing && artifact && !presenting ? (
-      <DeckEditor
-        artifact={artifact}
-        html={html}
-        title={title}
-        active={active}
-        frameRef={frame}
-        bar={bar}
-        onEdited={onEdited}
-        source={editSource}
-        botId={botId}
-      />
-    ) : null;
 
-  return (
+  const stage = (
     <section
       ref={container}
       data-testid="deck-viewer"
       aria-label={title}
       onMouseMove={presenting ? revealBar : undefined}
-      className={cn("relative flex h-full min-h-0 bg-background", presenting && "bg-black")}
-    >
-      {presenting ? null : <DeckRail html={html} slides={slides} active={active} onSelect={goTo} />}
-      {editor ? (
-        editor
-      ) : (
-        <div className="relative flex min-w-0 flex-1 flex-col">
-          <div className="relative min-h-0 flex-1">
-            <SandboxedHtmlViewer html={html} title={title} relay frameRef={frame} />
-          </div>
-          {bar}
-        </div>
+      className={cn(
+        "relative flex h-full min-h-0 flex-col bg-background",
+        presenting && "bg-black",
       )}
-      {themeOpen && artifact && !presenting ? (
+    >
+      <div className="relative min-h-0 flex-1">
+        {editMode ? (
+          <EditStage
+            html={html}
+            title={title}
+            reloadKey={editor.reloadKey}
+            place={place}
+            selectedIds={editor.selectedIds}
+            frameRef={frame}
+            postRef={postRef}
+            onMessage={editor.onFrameMessage}
+          />
+        ) : (
+          <SandboxedHtmlViewer html={html} title={title} relay frameRef={frame} />
+        )}
+      </div>
+      {bar}
+      {themeOpen && !presenting ? (
         <DeckThemePicker
           deckKey={title}
           frameRef={frame}
-          artifact={artifact}
+          artifact={{ id: artifact.id, version: artifact.version }}
           onEdited={onEdited}
-          themesSource={themesSource}
-          themeSource={themeSource}
-          editSource={editSource}
+          themesSource={sources.themes}
+          themeSource={sources.theme}
+          editSource={sources.edit}
         />
       ) : null}
     </section>
+  );
+
+  const selected = targets.length > 0;
+  return {
+    label: t`Deck`,
+    editable: true,
+    stage,
+    navigator: presenting ? null : (
+      <DeckRail html={html} slides={slides} active={active} onSelect={goTo} />
+    ),
+    inspector: (
+      <StylePanel
+        targets={targets}
+        theme={editor.theme}
+        slideCount={editor.theme?.slideCount ?? 0}
+        onStyle={(changes, mode) => editor.applyStyle(changes, mode)}
+        onAttributes={editor.setAttributes}
+        onCommit={() => {
+          editor.finishText();
+          void editor.flush();
+        }}
+        onClose={() => editor.select([])}
+        onRemove={editor.remove}
+        onDuplicate={editor.duplicate}
+        onAsk={focusAsk}
+      />
+    ),
+    notice:
+      editMode && editor.notice ? (
+        <EditNoticeBanner
+          notice={editor.notice}
+          canAsk={!!artifact.botId && selected}
+          onAsk={focusAsk}
+          onDismissNotice={editor.dismissNotice}
+        />
+      ) : null,
+    actions: (
+      <DeckHeaderActions
+        deckKey={title}
+        state={exporter.state}
+        onExport={exporter.run}
+        onCancel={exporter.cancel}
+        source={{ name: artifact.name, mimeType: artifact.mimeType, bytes }}
+      />
+    ),
+    ownsDownload: true,
+    history: {
+      canUndo: editor.canUndo,
+      canRedo: editor.canRedo,
+      saving: editor.saving,
+      undo: editor.undo,
+      redo: editor.redo,
+      flush: editor.flush,
+      expectAsk: editor.expectAsk,
+      headVersion: () => editor.head.current.version,
+    },
+    ask: {
+      chips: targets.map((target) => ({
+        id: target.id,
+        label:
+          target.kind === "slide" ? targetLabel(target, words) : `${target.tag} · ${target.id}`,
+        detail: targetLabel(target, words),
+      })),
+      onRemoveChip: (id: string) => editor.select(targets.map((x) => x.id).filter((x) => x !== id)),
+      placeholder: selected
+        ? t`Ask superchat to change this…`
+        : t`Ask superchat to change this slide…`,
+      contextBlock,
+      focusRequest: editor.askRequest,
+    },
+  };
+}
+
+const noop = () => {};
+
+/** A deck that is not a saved file as one (the dev page, a theme's sample, tests). */
+function previewArtifact(
+  at: { id: string; version: number },
+  name: string,
+  bytes: Uint8Array,
+  botId: string | null,
+): Artifact {
+  return {
+    id: at.id,
+    version: at.version,
+    name,
+    mimeType: "text/html",
+    botId,
+    groupId: null,
+    runId: null,
+    description: null,
+    size: bytes.byteLength,
+    createdAt: "",
+  };
+}
+
+/** A deck where the editor shell is not (a Computer file's preview): its rail and stage only,
+ * read-only. */
+export function DeckPreview({ html, title }: { html: string; title: string }) {
+  const bytes = useMemo(() => new TextEncoder().encode(html), [html]);
+  const artifact = previewArtifact({ id: "preview", version: 1 }, title, bytes, null);
+  const parts = useDeckEditor({
+    artifact,
+    bytes,
+    editing: false,
+    setEditing: noop,
+    focusAsk: noop,
+  });
+  return (
+    <div className="flex h-full min-h-0 bg-background">
+      {parts.navigator}
+      <div className="min-w-0 flex-1">{parts.stage}</div>
+    </div>
+  );
+}
+
+/** Slide decks (HTML files named `*.deck.html`) in the artifact editor. */
+export const deckEditorKind: ArtifactEditorKind = {
+  id: "deck",
+  useEditor: useDeckEditor,
+};
+
+/**
+ * One deck in the editor shell without the version machinery: the dev page and tests, with
+ * their own edit / theme sources.
+ */
+export function DeckViewer({
+  html,
+  title,
+  artifact = { id: "preview", version: 1 },
+  onEdited,
+  editSource,
+  themesSource,
+  themeSource,
+  botId = null,
+}: {
+  html: string;
+  title: string;
+  /** The saved file on screen (its id and version, for edits). */
+  artifact?: { id: string; version: number };
+  onEdited?: (artifactId: string) => void;
+  editSource?: HtmlEditSource;
+  themesSource?: DeckThemesSource;
+  themeSource?: DeckThemeSource;
+  /** The Muse that owns the deck: the ask box asks it. */
+  botId?: string | null;
+}) {
+  const bytes = useMemo(() => new TextEncoder().encode(html), [html]);
+  const sources = useMemo(
+    () => ({ edit: editSource, themes: themesSource, theme: themeSource }),
+    [editSource, themesSource, themeSource],
+  );
+  const file = previewArtifact(artifact, title, bytes, botId);
+  return (
+    <DeckSourcesContext.Provider value={sources}>
+      <ArtifactEditorView artifact={file} bytes={bytes} kind={deckEditorKind} onEdited={onEdited} />
+    </DeckSourcesContext.Provider>
   );
 }

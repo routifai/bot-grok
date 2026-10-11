@@ -50,6 +50,7 @@ export function LibraryScreen({
   botId,
   onSendIdea,
   embedded = false,
+  onOpenArtifact,
 }: {
   botId: string;
   botName?: string;
@@ -57,6 +58,9 @@ export function LibraryScreen({
   onSendIdea?: (text: string) => void;
   /** Inside a dock sheet: no screen chrome or hero, just the toolbar and the grid. */
   embedded?: boolean;
+  /** Opens a file where the host shows it (the dock sheet swaps the grid for the editor);
+   * without it the file opens in a dialog. */
+  onOpenArtifact?: (artifactId: string) => void;
 }) {
   const { t } = useLingui();
   const [items, setItems] = useState<ArtifactSummary[] | null>(null);
@@ -200,7 +204,7 @@ export function LibraryScreen({
       ) : (
         <LibraryGrid
           items={filtered ?? []}
-          onOpen={(item) => setOpenArtifactId(item.id)}
+          onOpen={(item) => (onOpenArtifact ?? setOpenArtifactId)(item.id)}
           onDownload={(item) => void handleDownload(item)}
           onDelete={setPendingDelete}
         />

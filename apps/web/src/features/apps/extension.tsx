@@ -9,6 +9,7 @@ import { Button, DropdownMenuItem } from "@superchat/ui-web";
 import { useEffect, useState } from "react";
 import { rpc } from "../../lib/rpc";
 import type { ArtifactExtension, ArtifactPanelParts } from "../artifacts";
+import { isPageArtifact, pageEditorKind } from "./PageEditor";
 import { PublishDialog, PublishedBar, PublishedPill, viewsText } from "./PublishApp";
 
 /** The artifact panel's publish controls: pill, Publish button, address bar and dialog. */
@@ -54,7 +55,7 @@ function useAppsPanel({
       <DropdownMenuItem onClick={() => setPublishing(true)}>{publishLabel}</DropdownMenuItem>
     ) : null,
     actions: quiet ? null : (
-      <Button size="sm" onClick={() => setPublishing(true)}>
+      <Button size="sm" variant="secondary" onClick={() => setPublishing(true)}>
         {publishLabel}
       </Button>
     ),
@@ -92,6 +93,7 @@ function PublishedBadge() {
 
 export const appsExtension: ArtifactExtension = {
   usePanel: useAppsPanel,
+  editor: (artifact) => (isPageArtifact(artifact) ? pageEditorKind : null),
   card: (artifact) =>
     artifact.publish
       ? { meta: viewsText(artifact.publish.stats), badge: <PublishedBadge /> }

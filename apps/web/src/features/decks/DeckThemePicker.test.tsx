@@ -15,14 +15,9 @@ vi.mock("@lingui/react/macro", () => ({
 }));
 
 import { setDeckThemeSources } from "../../lib/deck-themes";
+import { registerEditorFlush, takeOwnVersion } from "../artifacts/editor/editor-state";
 import { DeckThemePicker, resetDeckThemeCache } from "./DeckThemePicker";
-import {
-  registerDeckFlush,
-  resetDeckUi,
-  setDeckThemeOpen,
-  takeDeckVersionEdit,
-  useDeckThemeOpen,
-} from "./deck-ui-state";
+import { resetDeckUi, setDeckThemeOpen, useDeckThemeOpen } from "./deck-ui-state";
 
 i18n.loadAndActivate({ locale: "en", messages: {} });
 
@@ -151,7 +146,9 @@ it("returns focus to the header's Theme button when it closes from the keyboard"
 
 it("says upfront that a hand-made deck is on no theme and sends nothing when a card is used", async () => {
   const { container, editSource } = await mount({ current: null });
-  expect(container.textContent).toContain("This deck isn't on a theme. Ask superchat to restyle it.");
+  expect(container.textContent).toContain(
+    "This deck isn't on a theme. Ask superchat to restyle it.",
+  );
   expect(container.querySelector('[role="radio"][aria-checked="true"]')).toBeNull();
   await act(async () => card(container, "nord").click());
   expect(editSource).not.toHaveBeenCalled();
@@ -167,7 +164,7 @@ it("picking a theme sends one set-theme patch on the shown version, and Undo put
   });
   expect(onEdited).toHaveBeenCalledWith("v2");
   // no editor is mounted, so nothing is kept for its history
-  expect(takeDeckVersionEdit(KEY, 2)).toBe(false);
+  expect(takeOwnVersion(KEY, 2)).toBe(false);
   // the panel adopts the new version; the engine says it is on Nord
   await render(2, "nord");
   expect(card(container, "nord").getAttribute("aria-checked")).toBe("true");
@@ -185,9 +182,9 @@ it("picking a theme sends one set-theme patch on the shown version, and Undo put
 
 it("hands a saved version to a mounted editor's undo history", async () => {
   const { container } = await mount();
-  registerDeckFlush(KEY, async () => ({ id: "v1", version: 1 }));
+  registerEditorFlush(KEY, async () => ({ id: "v1", version: 1 }));
   await act(async () => card(container, "nord").click());
-  expect(takeDeckVersionEdit(KEY, 2)).toBe(true);
+  expect(takeOwnVersion(KEY, 2)).toBe(true);
 });
 
 it("keeps the keyboard on the card while a pick saves", async () => {
@@ -226,7 +223,7 @@ it("moves the keyboard into the gallery even when the deck's theme can't be read
 
 it("saves what the editor still has staged first and builds on its version", async () => {
   const { container, editSource } = await mount();
-  registerDeckFlush(KEY, async () => ({ id: "v5", version: 5 }));
+  registerEditorFlush(KEY, async () => ({ id: "v5", version: 5 }));
   await act(async () => card(container, "nord").click());
   expect(editSource).toHaveBeenCalledWith({
     artifactId: "v5",

@@ -6,12 +6,22 @@
 // (no attributes or classes are written to the deck), multi-select, keyboard nudge, and no
 // drag / guides / brand-kit / link-preview handling.
 //
-// Runs inside the sandboxed deck frame (srcdoc, no same-origin). __SUPERCHAT_NONCE__ is replaced by
-// the host before injection. It must be the first script of the document, so its capture
+// Page mode (any HTML page or mini app, __SUPERCHAT_MODE__ = "page"): every element of the body
+// is a target; one without a data-superchat-id gets a "~" path id (child indexes from <body>),
+// which is good for selecting and asking superchat but never for a hand edit (it is no stable
+// address, so the host and the engine refuse it).
+//
+// Runs inside the sandboxed frame (srcdoc, no same-origin). __SUPERCHAT_NONCE__ and
+// __SUPERCHAT_MODE__ are replaced by the host before injection. It must be the first script of the document, so its capture
 // listeners run before the deck's own click and key handlers and can stop them.
 (() => {
   var NONCE = "__SUPERCHAT_NONCE__";
+  var PAGE = "__SUPERCHAT_MODE__" === "page";
   var V = 1;
+  // Inline runs and icon parts: a click on one means the element around it.
+  var INLINE =
+    /^(span|strong|em|b|i|u|s|small|mark|code|sup|sub|abbr|svg|path|g|use|circle|rect|line|polyline|polygon|ellipse)$/i;
+  var NOT_TARGET = /^(script|style|head|meta|link|title|br|template|noscript)$/i;
   var layer = null;
   var selected = [];
   var hovered = null;
@@ -35,14 +45,85 @@
   function slides() {
     return Array.prototype.slice.call(document.querySelectorAll("section.slide, .slide"));
   }
+  function inLayer(el) {
+    return !!layer && (el === layer || layer.contains(el));
+  }
+  function stableId(el) {
+    return el.getAttribute("data-superchat-id");
+  }
+  // A page element's place: its child index under each ancestor up to <body>.
+  function pathOf(el) {
+    var parts = [];
+    var cur = el;
+    while (cur && cur !== document.body) {
+      var parent = cur.parentElement;
+      if (!parent) return "";
+      parts.unshift(Array.prototype.indexOf.call(parent.children, cur));
+      cur = parent;
+    }
+    return "~" + parts.join(".");
+  }
+  function idOf(el) {
+    return stableId(el) || pathOf(el);
+  }
+  function findById(id) {
+    if (PAGE && id.charAt(0) === "~") {
+      var cur = document.body;
+      var parts = id.slice(1).split(".");
+      for (var i = 0; i < parts.length && cur; i++) cur = cur.children[Number(parts[i])] || null;
+      return cur && cur !== document.body ? cur : null;
+    }
+    return document.querySelector('[data-superchat-id="' + esc(id) + '"]');
+  }
+  // Where a page element sits, for superchat when it has no id: `main > form#add > button`.
+  function whereOf(el) {
+    var out = [];
+    var cur = el;
+    for (var i = 0; i < 4 && cur && cur !== document.body; i++) {
+      var tag = cur.tagName.toLowerCase();
+      var sid = stableId(cur);
+      out.unshift(
+        sid ? tag + '[data-superchat-id="' + sid + '"]' : cur.id ? tag + "#" + cur.id : tag,
+      );
+      cur = cur.parentElement;
+    }
+    return out.join(" > ").slice(0, 300);
+  }
+  // Text can be typed in place only where the file can take it back exactly.
+  function canType(el) {
+    return (
+      isLeaf(el) && kindOf(el) !== "slide" && kindOf(el) !== "image" && (!PAGE || !!stableId(el))
+    );
+  }
   function isTarget(el) {
-    if (!el || el.nodeType !== 1 || !el.hasAttribute("data-superchat-id")) return false;
+    if (!el || el.nodeType !== 1) return false;
     if (el === document.body || el === document.documentElement) return false;
+    if (PAGE) {
+      return (
+        !inLayer(el) &&
+        !NOT_TARGET.test(el.tagName) &&
+        document.body.contains(el) &&
+        idOf(el).length <= 120
+      );
+    }
+    if (!el.hasAttribute("data-superchat-id")) return false;
     var slide = slideOf(el);
     return !!slide && slide.classList.contains("active");
   }
   function closestTarget(node) {
     var el = node && node.nodeType === 1 ? node : node && node.parentElement;
+    if (PAGE) {
+      if (!el || inLayer(el)) return null;
+      while (
+        el &&
+        el.parentElement &&
+        el.parentElement !== document.body &&
+        !stableId(el) &&
+        (INLINE.test(el.tagName) || el.ownerSVGElement || !isTarget(el))
+      )
+        el = el.parentElement;
+      return isTarget(el) ? el : null;
+    }
     while (el && el !== document.documentElement) {
       if (isTarget(el)) return el;
       el = el.parentElement;
@@ -139,6 +220,7 @@
     return out;
   }
   function slideNumber(el) {
+    if (PAGE) return 1;
     var s = slideOf(el) || el;
     return Math.max(1, slides().indexOf(s) + 1);
   }
@@ -150,13 +232,13 @@
     var sc = stageScale();
     var r = el.getBoundingClientRect();
     var kind = kindOf(el);
-    return {
-      id: el.getAttribute("data-superchat-id"),
+    var target = {
+      id: idOf(el),
       kind: kind,
       tag: el.tagName.toLowerCase(),
       slide: slideNumber(el),
       text: isLeaf(el) ? readText(el).slice(0, 4000) : null,
-      editable: isLeaf(el) && kind !== "image" && kind !== "slide",
+      editable: canType(el),
       rect: {
         x: Math.round((r.left - sc.l) / sc.s),
         y: Math.round((r.top - sc.t) / sc.s),
@@ -168,6 +250,8 @@
       href: el.tagName === "A" ? el.getAttribute("href") : null,
       alt: el.tagName === "IMG" ? el.getAttribute("alt") : null,
     };
+    if (PAGE) target.where = whereOf(el);
+    return target;
   }
   function themeOf() {
     var colors = [];
@@ -200,7 +284,11 @@
         }
       }
     }
-    return { colors: colors.slice(0, 64), fonts: fonts.slice(0, 16), slideCount: slides().length };
+    return {
+      colors: colors.slice(0, 64),
+      fonts: fonts.slice(0, 16),
+      slideCount: PAGE ? 0 : slides().length,
+    };
   }
 
   // ---- overlay ------------------------------------------------------------------------------
@@ -231,7 +319,12 @@
   function labelOf(el) {
     var t = kindOf(el);
     var word = t === "slide" ? "Slide " + slideNumber(el) : el.tagName.toLowerCase();
-    return word + " · " + el.getAttribute("data-superchat-id");
+    var name = stableId(el);
+    if (!name) {
+      name = (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 24);
+      if (!name) return word;
+    }
+    return word + " · " + name;
   }
   // Where the label chip goes: above the selection, else below it, at its left or right end, the
   // first spot that stays on screen and covers no other text of the slide.
@@ -306,7 +399,7 @@
     var l = ensureLayer();
     var list = [];
     var keep = selected.filter(
-      (el) => isVisible(el) && slideOf(el) && slideOf(el).classList.contains("active"),
+      (el) => isVisible(el) && (PAGE || (slideOf(el) && slideOf(el).classList.contains("active"))),
     );
     if (keep.length !== selected.length) {
       selected = keep;
@@ -361,7 +454,7 @@
   function selectIds(ids) {
     var els = [];
     ids.forEach((id) => {
-      var el = document.querySelector('[data-superchat-id="' + esc(id) + '"]');
+      var el = findById(id);
       if (el && isTarget(el)) els.push(el);
     });
     setSelection(els, false);
@@ -405,7 +498,7 @@
       sel.removeAllRanges();
       sel.addRange(range);
     } catch (e) {}
-    send({ type: "superchat:edit-text-session", id: el.getAttribute("data-superchat-id"), active: true });
+    send({ type: "superchat:edit-text-session", id: idOf(el), active: true });
     repaint();
   }
   function finishEdit(commit) {
@@ -420,12 +513,12 @@
     else if (text !== s.before) {
       send({
         type: "superchat:edit-text-commit",
-        id: el.getAttribute("data-superchat-id"),
+        id: idOf(el),
         text: text,
         before: s.before,
       });
     }
-    send({ type: "superchat:edit-text-session", id: el.getAttribute("data-superchat-id"), active: false });
+    send({ type: "superchat:edit-text-session", id: idOf(el), active: false });
     try {
       window.getSelection().removeAllRanges();
       document.body.focus({ preventScroll: true });
@@ -467,7 +560,7 @@
     stop(e, true);
     if (!el) return;
     if (selected.length !== 1 || selected[0] !== el) setSelection([el], false);
-    if (isLeaf(el) && kindOf(el) !== "slide") startEdit(el, { x: e.clientX, y: e.clientY });
+    if (canType(el)) startEdit(el, { x: e.clientX, y: e.clientY });
   }
   function swallow(e) {
     if (e.target && e.target.closest && e.target.closest("[data-superchat-edit-ask]")) return;
@@ -520,12 +613,7 @@
       stop(e, true);
       return setSelection([], false);
     }
-    if (
-      k === "Enter" &&
-      selected.length === 1 &&
-      isLeaf(selected[0]) &&
-      kindOf(selected[0]) !== "slide"
-    ) {
+    if (k === "Enter" && selected.length === 1 && canType(selected[0])) {
       stop(e, true);
       return startEdit(selected[0], null);
     }
@@ -559,7 +647,7 @@
       if (editing) finishEdit(true);
       selectIds(d.ids);
     } else if (d.type === "superchat:edit-preview" && typeof d.id === "string" && d.style) {
-      var el = document.querySelector('[data-superchat-id="' + esc(d.id) + '"]');
+      var el = findById(d.id);
       if (!el) return;
       Object.keys(d.style).forEach((prop) => {
         if (!/^[a-z-]{1,64}$/.test(prop)) return;

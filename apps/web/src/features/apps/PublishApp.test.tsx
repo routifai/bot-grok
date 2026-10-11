@@ -103,7 +103,9 @@ it("publishes an app from the panel: dialog, audience, then the Published bar", 
   const view = await mount(<ArtifactPanel artifactId="h1" title="Todo" onClose={() => {}} />);
   await tick();
   expect(view.querySelector("[data-testid=published-pill]")).toBeNull();
-  expect(byText(view, "Open full screen")).toBeTruthy();
+  // The page opens in the editor: Edit, then Run and Publish.
+  expect(byText(view, "Edit")).toBeTruthy();
+  expect(view.querySelector("[data-testid=page-run]")).not.toBeNull();
 
   await act(async () => byText(view, "Publish…")?.click());
   const dialog = document.querySelector("[data-testid=publish-dialog]") as HTMLElement;
@@ -152,7 +154,7 @@ it("a non-app file offers no publish controls", async () => {
   const view = await mount(<ArtifactPanel artifactId="m1" onClose={() => {}} />);
   await tick();
   expect(byText(view, "Publish…")).toBeUndefined();
-  expect(byText(view, "Open full screen")).toBeUndefined();
+  expect(byText(view, "Edit")).toBeUndefined();
 });
 
 const libraryArtifact = (mimeType: string, name: string, publish: unknown = null) => ({
@@ -164,19 +166,20 @@ const libraryArtifact = (mimeType: string, name: string, publish: unknown = null
   publish,
 });
 const dialogButtons = () => [...document.querySelectorAll<HTMLElement>("button")];
-const dialogByText = (text: string) => dialogButtons().find((b) => b.textContent?.trim() === text);
+const dialogByText = (text: string) =>
+  dialogButtons().find((b) => b.textContent?.trim() === text || b.ariaLabel === text);
 
-it("the Library dialog offers Publish and full screen for an HTML artifact", async () => {
+it("the file dialog offers Edit, Publish and Download for an HTML artifact", async () => {
   api.listVersions.mockResolvedValue([{ id: "a1", version: 3, name: "dog.html", createdAt: "" }]);
   api.getById.mockResolvedValue(libraryArtifact("text/html", "dog.html"));
   await mount(<ArtifactPreviewDialog artifactId="a1" onOpenChange={() => {}} />);
   await tick();
   expect(dialogByText("Publish…")).toBeTruthy();
-  expect(dialogByText("Open full screen")).toBeTruthy();
+  expect(dialogByText("Edit")).toBeTruthy();
   expect(dialogByText("Download")).toBeTruthy();
 });
 
-it("the Library dialog shows the Published bar for a published app", async () => {
+it("the file dialog shows the Published bar for a published app", async () => {
   api.listVersions.mockResolvedValue([]);
   api.getById.mockResolvedValue(
     libraryArtifact("text/html", "dog.html", {
@@ -194,12 +197,12 @@ it("the Library dialog shows the Published bar for a published app", async () =>
   expect(dialogByText("Publish settings")).toBeTruthy();
 });
 
-it("the Library dialog offers no Publish for a non-HTML artifact", async () => {
+it("the file dialog offers no Publish for a non-HTML artifact", async () => {
   api.listVersions.mockResolvedValue([]);
   api.getById.mockResolvedValue(libraryArtifact("text/markdown", "n.md"));
   await mount(<ArtifactPreviewDialog artifactId="a1" onOpenChange={() => {}} />);
   await tick();
   expect(dialogByText("Download")).toBeTruthy();
   expect(dialogByText("Publish…")).toBeUndefined();
-  expect(dialogByText("Open full screen")).toBeUndefined();
+  expect(dialogByText("Edit")).toBeUndefined();
 });

@@ -6,6 +6,7 @@ import { AlignCenter, AlignLeft, AlignRight, Copy, Italic, Trash2, X } from "luc
 import { useState } from "react";
 import {
   firstFamily,
+  isPathId,
   num,
   px,
   readTranslate,
@@ -23,7 +24,7 @@ import {
   Section,
   SliderField,
 } from "./fields";
-import type { EditNotice } from "./useDeckEditor";
+import type { EditNotice } from "./useHtmlEditor";
 
 const WEIGHTS = [300, 400, 500, 600, 700, 800] as const;
 
@@ -38,14 +39,18 @@ export type StylePanelProps = {
   onClose: () => void;
   onRemove: () => void;
   onDuplicate: () => void;
+  /** Labels without slide numbers (a page). */
+  inDeck?: boolean;
+  /** Focuses the ask box (offered for what cannot be changed by hand). */
+  onAsk?: () => void;
 };
 
 /**
- * The compact inspector of the deck editor: what the selection looks like and controls that
- * change it. It exists only while something is selected and floats over the stage's end edge, so
- * the slide never gives up room to it. Fonts and colours come from the deck's own theme, so a
- * change stays on the deck's palette; everything else is plain CSS the engine writes into the
- * element's inline style.
+ * The compact inspector of the HTML editor (a deck, a page): what the selection looks like and
+ * controls that change it. Fonts and colours come from the file's own theme tokens, so a change
+ * stays on its palette; everything else is plain CSS the engine writes into the element's inline
+ * style. An element with no stable id (a page element the bridge addresses by its place) cannot be
+ * changed by hand; the inspector says so and offers superchat.
  */
 export function StylePanel(props: StylePanelProps) {
   const { t } = useLingui();
@@ -62,7 +67,11 @@ export function StylePanel(props: StylePanelProps) {
   const isSlide = targets.length > 0 && targets.every((target) => target.kind === "slide");
   const hasText = targets.some((target) => target.kind === "text" || target.kind === "link");
   if (!primary) return <EmptyInspector theme={props.theme} />;
-  const title = targets.length > 1 ? t`${targets.length} elements` : targetLabel(primary, words);
+  const title =
+    targets.length > 1
+      ? t`${targets.length} elements`
+      : targetLabel(primary, words, props.inDeck ?? true);
+  const unstable = targets.some((target) => isPathId(target.id));
 
   return (
     <aside
@@ -77,7 +86,9 @@ export function StylePanel(props: StylePanelProps) {
             {title}
           </div>
           {targets.length === 1 ? (
-            <div className="truncate text-[11px] text-muted-foreground">{primary.id}</div>
+            <div className="truncate text-[11px] text-muted-foreground">
+              {isPathId(primary.id) ? (primary.where ?? "") : primary.id}
+            </div>
           ) : null}
         </div>
         {/* Only the narrow layout's sheet needs its own close; the column clears by clicking away. */}
@@ -92,6 +103,31 @@ export function StylePanel(props: StylePanelProps) {
           <X />
         </Button>
       </header>
+      {unstable ? (
+        <div data-testid="style-panel-unstable" className="flex flex-col gap-2.5 px-4 pb-4">
+          <p className="text-[12px] text-muted-foreground">
+            {t`This part of the page has no stable name in the file, so it can't be changed by hand.`}
+          </p>
+          {props.onAsk ? (
+            <Button size="sm" variant="outline" onClick={props.onAsk}>
+              {t`Ask superchat instead`}
+            </Button>
+          ) : null}
+        </div>
+      ) : (
+        <StyleControls {...props} primary={primary} isSlide={isSlide} hasText={hasText} />
+      )}
+    </aside>
+  );
+}
+
+function StyleControls(
+  props: StylePanelProps & { primary: DeckEditTarget; isSlide: boolean; hasText: boolean },
+) {
+  const { t } = useLingui();
+  const { primary, isSlide, hasText } = props;
+  return (
+    <>
       <div className="flex items-center gap-1 px-4 pb-3">
         <Button variant="ghost" size="sm" onClick={props.onDuplicate}>
           <Copy />
@@ -113,11 +149,11 @@ export function StylePanel(props: StylePanelProps) {
       {primary.kind === "link" || primary.kind === "image" ? (
         <AttributeSection key={primary.id} {...props} primary={primary} />
       ) : null}
-    </aside>
+    </>
   );
 }
 
-/** The inspector with nothing selected: what to do, and the deck's palette to see. The column is
+/** The inspector with nothing selected: what to do, and the file's palette to see. The column is
  * reserved for the whole edit session, so a selection never moves the stage. */
 function EmptyInspector({ theme }: { theme: DeckEditTheme | null }) {
   const { t } = useLingui();
@@ -171,7 +207,7 @@ export function EditNoticeBanner({
     notice.kind === "inexact"
       ? t`That change can't be made exactly by hand.`
       : notice.kind === "stale"
-        ? t`This isn't the latest version of the deck. Open the latest to edit it.`
+        ? t`This isn't the latest version. Open the latest to edit it.`
         : t`Couldn't save that change.`;
   return (
     <div

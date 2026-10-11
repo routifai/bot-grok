@@ -6,30 +6,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@superchat/ui-web";
-import {
-  Check,
-  ChevronDown,
-  Download,
-  Loader2,
-  Palette,
-  Pencil,
-  Presentation,
-  X,
-} from "lucide-react";
+import { Check, ChevronDown, Download, Loader2, Palette, Presentation, X } from "lucide-react";
 import { downloadArtifactBytes } from "../../lib/artifact-open";
 import type { DeckExportFormat, ExportState } from "./DeckExport";
 import { THEME_BUTTON_ATTR } from "./DeckThemePicker";
-import {
-  requestDeckPresent,
-  setDeckEditing,
-  setDeckThemeOpen,
-  useDeckEditing,
-  useDeckThemeOpen,
-} from "./deck-ui-state";
+import { requestDeckPresent, setDeckThemeOpen, useDeckThemeOpen } from "./deck-ui-state";
 
-/** The deck panel's right-hand header controls: Edit (first, the one
- * to find), Theme, Present and one Download menu. Progress,
- * failure and the "added to your Library" note all show on the Download button itself. */
+/** A deck's actions in the editor header, after the shell's Edit: Theme, Present and one
+ * Download menu. Progress, failure and the "added to your Library" note all show on the
+ * Download button itself. */
 export function DeckHeaderActions({
   deckKey,
   state,
@@ -37,7 +22,7 @@ export function DeckHeaderActions({
   onCancel,
   source,
 }: {
-  /** The deck's file name: the key edit mode and present requests are stored under. */
+  /** The deck's file name: the key the Theme gallery and present requests are stored under. */
   deckKey: string;
   state: ExportState;
   onExport: (format: DeckExportFormat) => void;
@@ -46,7 +31,6 @@ export function DeckHeaderActions({
   source: { name: string; mimeType: string; bytes: Uint8Array } | undefined;
 }) {
   const { t } = useLingui();
-  const editing = useDeckEditing(deckKey);
   const themeOpen = useDeckThemeOpen(deckKey);
   const working = state.kind === "working";
 
@@ -65,15 +49,6 @@ export function DeckHeaderActions({
 
   return (
     <>
-      <Button
-        variant={editing ? "default" : "secondary"}
-        size="sm"
-        aria-pressed={editing}
-        onClick={() => setDeckEditing(deckKey, !editing)}
-      >
-        <Pencil size={13} />
-        {t`Edit`}
-      </Button>
       <Button
         variant={themeOpen ? "default" : "secondary"}
         size="sm"

@@ -49,6 +49,16 @@ afterEach(() => {
 });
 
 const b64 = (text: string) => btoa(text);
+
+/** Opens a Base UI menu from its trigger (it opens on press). */
+async function openMenu(root: ParentNode, selector: string) {
+  const trigger = root.querySelector(selector) as HTMLElement;
+  await act(async () => {
+    trigger.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0 }));
+    trigger.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    trigger.click();
+  });
+}
 const tick = () => act(async () => {});
 
 async function mount(node: React.ReactNode) {
@@ -76,11 +86,12 @@ it("closes on Escape and the close button, and switches versions in place", asyn
   await tick();
   expect(view.textContent).toContain("Plan");
   expect(view.querySelector("[data-testid=body]")?.textContent).toBe("second");
-  const picker = view.querySelector("select") as HTMLSelectElement;
-  await act(async () => {
-    picker.value = "a1";
-    picker.dispatchEvent(new Event("change", { bubbles: true }));
-  });
+  expect(view.textContent).toContain("version 2");
+  await openMenu(view, "[data-testid=version-menu]");
+  const older = [...document.querySelectorAll<HTMLElement>("[data-testid=version-item]")].find(
+    (item) => item.textContent?.startsWith("Version 1"),
+  );
+  await act(async () => older?.click());
   await tick();
   expect(view.querySelector("[data-testid=body]")?.textContent).toBe("first");
   await act(async () => {
@@ -173,7 +184,11 @@ it("full screen toggles the panel and Escape leaves it before closing", async ()
   await tick();
   const panel = view.querySelector("[data-testid=artifact-panel]") as HTMLElement;
   expect(panel.className).toContain("md:relative");
-  await act(async () => byText(view, "Open full screen")?.click());
+  await openMenu(view, "[data-testid=panel-overflow]");
+  const item = [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find(
+    (el) => el.textContent === "Full screen",
+  );
+  await act(async () => item?.click());
   expect(panel.className).not.toContain("md:relative");
   await act(async () => {
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
