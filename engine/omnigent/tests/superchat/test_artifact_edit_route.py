@@ -12,6 +12,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
+import omnigent.superchat.decks  # noqa: F401  (installs the set-theme restyler)
 from omnigent.errors import OmnigentError
 from omnigent.stores.artifact_store.local import LocalArtifactStore
 from omnigent.superchat import prompt_prefix

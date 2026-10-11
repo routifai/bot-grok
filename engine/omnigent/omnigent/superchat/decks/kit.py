@@ -116,7 +116,9 @@ def theme_gallery() -> list[dict[str, str]]:
 #: The sample slides a theme preview shows (``data-superchat-id`` of each, in order): the cover, an
 #: agenda, figures, a chart, a table, a quote and the close. All of it is made-up sample content.
 PREVIEW_SLIDES = ("cover", "agenda", "numbers", "trend", "teams", "voice", "decision")
-_SECTION_RE = re.compile(r'\s*<section\b[^>]*\bdata-superchat-id="([a-z0-9-]+)".*?</section>', re.S)
+_SECTION_RE = re.compile(
+    r'\s*<section\b[^>]*\bdata-superchat-id="([a-z0-9-]+)".*?</section>', re.S
+)
 
 
 @cache
@@ -490,3 +492,27 @@ def restyle_deck(document: str, template_id: str) -> str:
     )
     fonts = _only(_FONTS_RE, out)
     return out[: fonts.start()] + _fonts_block(template_id) + out[fonts.end() :]
+
+
+def restyle_for_patch(source: str, theme: str) -> tuple[str, str]:
+    """The ``set-theme`` hand edit: ``(new source, summary)``; installed into artifacts' patches.
+
+    :raises ValueError: For an unknown theme.
+    :raises AmbiguousEdit: When this deck can't be restyled exactly.
+    """
+    from omnigent.superchat.artifacts.patches import AmbiguousEdit
+
+    template = templates().get(theme)
+    if template is None:
+        raise ValueError(f"Unknown theme '{theme}'")
+    before = deck_theme_id(source)
+    if before == theme:
+        return source, ""
+    try:
+        new = restyle_deck(source, theme)
+    except KitError as exc:
+        raise AmbiguousEdit(
+            f"Can't apply that edit exactly: {exc}; ask Superchat instead."
+        ) from exc
+    was = templates()[before].name if before else "a custom look"
+    return new, f"switched the theme to {template.name} (was {was})"

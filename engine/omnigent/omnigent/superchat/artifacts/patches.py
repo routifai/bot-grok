@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import html
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from typing import Annotated, Literal
@@ -573,21 +574,25 @@ def _apply_duplicate(doc: _Doc, patch: DuplicateElement) -> tuple[str, str]:
     return new_src, f"{doc.where(node)}: duplicated"
 
 
-def _apply_set_theme(doc: _Doc, patch: SetTheme) -> tuple[str, str]:
-    from omnigent.superchat.decks import kit
+#: How a ``set-theme`` patch restyles a deck: ``(source, theme id) -> (new source, summary)``.
+#: Themes belong to the decks capability, which installs this (``decks/feature.py``); raise
+#: ``ValueError`` for an unknown theme and ``AmbiguousEdit`` when the deck can't be restyled.
+_theme_restyler: Callable[[str, str], tuple[str, str]] | None = None
 
-    template = kit.templates().get(patch.theme)
-    if template is None:
-        raise InvalidPatch(f"Unknown theme '{patch.theme}'")
-    before = kit.deck_theme_id(doc.source)
-    if before == patch.theme:
-        return doc.source, ""
+
+def set_theme_restyler(restyle: Callable[[str, str], tuple[str, str]]) -> None:
+    """Install how ``set-theme`` restyles a deck (called by the decks capability)."""
+    global _theme_restyler
+    _theme_restyler = restyle
+
+
+def _apply_set_theme(doc: _Doc, patch: SetTheme) -> tuple[str, str]:
+    if _theme_restyler is None:
+        raise InvalidPatch("Themes are not available")
     try:
-        new = kit.restyle_deck(doc.source, patch.theme)
-    except kit.KitError as exc:
-        raise _ambiguous(str(exc)) from exc
-    was = kit.templates()[before].name if before else "a custom look"
-    return new, f"switched the theme to {template.name} (was {was})"
+        return _theme_restyler(doc.source, patch.theme)
+    except ValueError as exc:
+        raise InvalidPatch(str(exc)) from exc
 
 
 _RISKY_RE = re.compile(r"<\s*(?:script|iframe|object|embed|form|base)\b", re.I)

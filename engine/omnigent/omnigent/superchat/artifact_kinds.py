@@ -30,3 +30,12 @@ def kind_for_name(name: str) -> str | None:
     ext = posixpath.splitext(name)[1].lstrip(".").lower()
     ext = _ALIASES.get(ext, ext)
     return ext if ext in KIND_MIME else None
+
+
+#: The file-name suffix that marks an HTML artifact as a deck.
+DECK_SUFFIX = ".deck.html"
+
+
+def is_deck_name(name: str) -> bool:
+    """True when an artifact file name marks a deck (``*.deck.html``, any case)."""
+    return name.lower().endswith(DECK_SUFFIX) and len(name) > len(DECK_SUFFIX)

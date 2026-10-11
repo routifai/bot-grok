@@ -1,6 +1,6 @@
 """``PATCH /v1/artifacts/{id}/edit``: hand edits of an HTML file, saved as a ``manual`` version.
 
-A deck or any HTML page or mini app takes the same patches (``decks/patches.py``; a page has no
+A deck or any HTML page or mini app takes the same patches (``artifacts/patches.py``; a page has no
 slides and no theme, so ``set-theme`` is refused for it). The engine applies them to the version
 it names and stores the result as a new version tagged ``manual``. A stale ``base_version`` is an
 ``artifact_stale`` 409 the editor reloads from; a patch that cannot be applied exactly is a
@@ -18,17 +18,16 @@ from pydantic import BaseModel, Field
 
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.server.auth import AuthProvider
-from omnigent.superchat.artifact_kinds import MAX_ARTIFACT_BYTES
-from omnigent.superchat.artifacts.routes import artifact_to_response, load_artifact, request_owner
-from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore, VersionConflictError
-from omnigent.superchat.decks.names import is_deck_name
-from omnigent.superchat.decks.patches import (
+from omnigent.superchat.artifact_kinds import MAX_ARTIFACT_BYTES, is_deck_name
+from omnigent.superchat.artifacts.patches import (
     MAX_PATCHES,
     AmbiguousEdit,
     InvalidPatch,
     Patch,
     apply_patches,
 )
+from omnigent.superchat.artifacts.routes import artifact_to_response, load_artifact, request_owner
+from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore, VersionConflictError
 
 #: Sent with ``ErrorCode.ARTIFACT_STALE``; the web keys off the code, never this text.
 STALE_MESSAGE = "The file changed since you opened it, so the latest version is showing now."

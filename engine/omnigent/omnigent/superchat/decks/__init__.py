@@ -7,8 +7,13 @@ panel's Export buttons), ``feature`` (registration). Sits on top of artifacts.
 
 from __future__ import annotations
 
+from omnigent.superchat.artifacts.patches import set_theme_restyler
 from omnigent.superchat.decks.feature import DECKS_FEATURE
+from omnigent.superchat.decks.kit import restyle_for_patch
 from omnigent.superchat.decks.names import DECK_SUFFIX, deck_stem, is_deck_name
+
+# A deck's theme is the decks capability's; artifacts' hand-edit patches call into it.
+set_theme_restyler(restyle_for_patch)
 
 FEATURE = DECKS_FEATURE
 

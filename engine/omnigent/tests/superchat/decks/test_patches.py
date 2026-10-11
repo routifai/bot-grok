@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from omnigent.superchat.decks import kit
-from omnigent.superchat.decks.patches import (
+import omnigent.superchat.decks  # noqa: F401  (installs the set-theme restyler)
+from omnigent.superchat.artifacts.patches import (
     AmbiguousEdit,
     DuplicateElement,
     InvalidPatch,
@@ -17,6 +17,7 @@ from omnigent.superchat.decks.patches import (
     SetTheme,
     apply_patches,
 )
+from omnigent.superchat.decks import kit
 
 DOC = """<!doctype html>
 <html><head><style>.a{color:red}</style></head><body>
@@ -56,7 +57,10 @@ def test_set_text_replaces_only_the_inner_span() -> None:
 
 def test_set_text_through_single_wrapper_keeps_the_run() -> None:
     new, _ = run([SetText(kind="set-text", id="sub", text="Other")])
-    assert '<h2 data-superchat-id="sub"><span data-superchat-id="sub-in" class="k">Other</span></h2>' in new
+    assert (
+        '<h2 data-superchat-id="sub"><span data-superchat-id="sub-in" class="k">Other</span></h2>'
+        in new
+    )
 
 
 def test_set_text_with_line_breaks_keeps_br() -> None:

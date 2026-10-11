@@ -1,14 +1,13 @@
-"""The deck marker: a deck is an HTML artifact whose file name ends with ``.deck.html``."""
+"""The deck marker: a deck is an HTML artifact whose file name ends with ``.deck.html``.
+
+The marker itself lives in ``artifact_kinds`` (artifacts edit decks too); re-exported here.
+"""
 
 from __future__ import annotations
 
-#: The file-name suffix that marks an artifact as a deck.
-DECK_SUFFIX = ".deck.html"
+from omnigent.superchat.artifact_kinds import DECK_SUFFIX, is_deck_name
 
-
-def is_deck_name(name: str) -> bool:
-    """True when an artifact file name marks a deck (``*.deck.html``, any case)."""
-    return name.lower().endswith(DECK_SUFFIX) and len(name) > len(DECK_SUFFIX)
+__all__ = ["DECK_SUFFIX", "deck_stem", "is_deck_name"]
 
 
 def deck_stem(name: str) -> str:
