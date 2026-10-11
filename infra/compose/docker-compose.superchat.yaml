@@ -117,8 +117,10 @@ services:
   omnigent:
     image: superchat/engine:local
     build: !override
-      context: ../../../../infra/omnigent
-      dockerfile: Dockerfile
+      # The repo root: the image also builds apps/web, which the engine serves.
+      context: ../../../..
+      dockerfile: infra/omnigent/Dockerfile
+      args: *build-args
       # Built first under the "build" profile (scripts/setup.sh), so `up` never lists it.
       additional_contexts:
         omnigent-server: docker-image://superchat/omnigent-server:local
@@ -150,6 +152,8 @@ services:
       - "host.docker.internal:host-gateway"
     ports: !override
       - "${SUPERCHAT_ENGINE_BIND:-127.0.0.1}:${SUPERCHAT_ENGINE_PORT:-8012}:8000"
+      # The web, served by the engine: a temporary separate port, so it runs beside the app (5173).
+      - "127.0.0.1:${SUPERCHAT_WEB_PORT_ENGINE:-5180}:8000"
     volumes:
       # The engine starts each person's Computer. The socket is the Docker VM's for Docker Desktop
       # and colima alike; DOCKER_SOCKET_PATH overrides it (e.g. rootless Docker). Never mounted
