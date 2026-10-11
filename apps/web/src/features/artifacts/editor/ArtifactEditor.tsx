@@ -12,7 +12,6 @@ import {
   Download,
   ExternalLink,
   Maximize2,
-  MessageSquare,
   Minimize2,
   Pencil,
   Redo2,
@@ -436,15 +435,6 @@ function LoadedEditor({
           >
             <Redo2 />
           </Button>
-          {ask.available ? (
-            <>
-              <span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />
-              <Button variant="ghost" size="sm" className="rounded-full" onClick={props.focusAsk}>
-                <MessageSquare />
-                {t`Ask superchat`}
-              </Button>
-            </>
-          ) : null}
           <Button size="sm" className="ms-1 rounded-full" onClick={() => setEditing(false)}>
             <Check />
             {t`Done`}

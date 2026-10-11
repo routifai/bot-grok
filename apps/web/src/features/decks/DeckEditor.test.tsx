@@ -420,18 +420,18 @@ it("a new version keeps the selection by selecting the same ids in the new frame
   expect(host.querySelector('[data-testid="deck-edit-frame-next"]')).toBeNull();
 });
 
-it("the floating toolbar's Ask focuses the ask box, with or without a selection; Done leaves edit mode", async () => {
+it("the floating toolbar has undo, redo and Done (the ask box is always there); Done leaves edit mode", async () => {
   await mount();
   await act(async () => setArtifactEditing(KEY, true));
   const toolbar = host.querySelector('[data-testid="editor-toolbar"]') as HTMLElement;
   expect(toolbar.getAttribute("role")).toBe("toolbar");
-  const button = (text: string) =>
-    [...toolbar.querySelectorAll("button")].find((b) => b.textContent === text);
-  expect(button("Ask superchat")?.disabled).toBe(false);
-  await act(async () => button("Ask superchat")?.click());
-  expect(document.activeElement).toBe(askInput());
+  const labels = [...toolbar.querySelectorAll("button")].map(
+    (b) => b.getAttribute("aria-label") ?? b.textContent,
+  );
+  expect(labels).toEqual(["Undo", "Redo", "Done"]);
+  expect(askInput()).toBeTruthy();
 
-  await act(async () => button("Done")?.click());
+  await act(async () => [...toolbar.querySelectorAll("button")].at(-1)?.click());
   expect(host.querySelector('[data-testid="editor-toolbar"]')).toBeNull();
 });
 
