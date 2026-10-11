@@ -1,8 +1,5 @@
 import { ATTACHMENT_ALLOWED_MIME_TYPES } from "@superchat/contracts";
 
-/** Identity colour for bots the roster no longer knows about. */
-export const FALLBACK_BOT_COLOR = "#85858A";
-
 /** Where a Muse attachment is before its message can go: written to the Computer, waiting for a
  * sleeping Computer to wake, read there (converted, indexed), ready, or failed. Absent for chats
  * that do not read files first. */
