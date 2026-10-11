@@ -27,7 +27,6 @@ export type ArtifactPublish = z.infer<typeof ArtifactPublishSchema>;
 export const ArtifactSchema = z.object({
   id: Id,
   botId: Id.nullable(),
-  groupId: Id.nullable(),
   runId: Id.nullable(),
   name: z.string(),
   description: z.string().nullable(),

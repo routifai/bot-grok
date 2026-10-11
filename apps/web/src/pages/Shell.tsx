@@ -1,6 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
 import type { Bot, ChatSummary, ThreadMessage } from "@superchat/contracts";
-import { userVisibleMessages } from "@superchat/core";
 import { AvatarStyleProvider } from "@superchat/ui-web";
 import type { ReactNode } from "react";
 import {
@@ -316,11 +315,9 @@ export function ShellPage() {
   const forkOverlayOpen = Boolean(forks.thread || forks.ask);
   const transcriptMessages = useMemo(
     () =>
-      userVisibleMessages(
-        museTranscript.pendingMessage
-          ? [...(museTranscript.messages ?? []), museTranscript.pendingMessage]
-          : (museTranscript.messages ?? []),
-      ),
+      museTranscript.pendingMessage
+        ? [...(museTranscript.messages ?? []), museTranscript.pendingMessage]
+        : (museTranscript.messages ?? []),
     [museTranscript.messages, museTranscript.pendingMessage],
   );
   // An empty Conversation is a start page: the greeting, the composer centered under it, and

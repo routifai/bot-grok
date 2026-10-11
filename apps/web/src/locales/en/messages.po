@@ -123,10 +123,6 @@ msgstr "{unloaded, plural, one {# fork in earlier history} other {# forks in ear
 msgid "{working, plural, one {Working on # thing} other {Working on # things}}"
 msgstr "{working, plural, one {Working on # thing} other {Working on # things}}"
 
-#. placeholder {0}: mention.name
-msgid "@{0}"
-msgstr "@{0}"
-
 msgid "••••{hint} · Checked {checked}"
 msgstr "••••{hint} · Checked {checked}"
 
@@ -1101,9 +1097,6 @@ msgstr "Maximize"
 msgid "Memory"
 msgstr "Memory"
 
-msgid "Mentions"
-msgstr "Mentions"
-
 msgid "Menu"
 msgstr "Menu"
 
@@ -1521,10 +1514,6 @@ msgstr "Remove {0}"
 #. placeholder {0}: folder || t`Whole workspace`
 msgid "Remove folder {0}"
 msgstr "Remove folder {0}"
-
-#. placeholder {0}: mention.name
-msgid "Remove mention {0}"
-msgstr "Remove mention {0}"
 
 msgid "Remove selection"
 msgstr "Remove selection"

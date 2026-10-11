@@ -82,7 +82,6 @@ const file = (id: string, name: string, mimeType: string, text: string) => ({
   name,
   mimeType,
   botId: "bot-1",
-  groupId: null,
   runId: null,
   description: name === "tracker.html" ? "Expense tracker" : null,
   size: text.length,

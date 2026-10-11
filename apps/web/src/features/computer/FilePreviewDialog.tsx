@@ -62,7 +62,6 @@ export function FilePreviewDialog({
           artifact: {
             id: path,
             botId,
-            groupId: null,
             runId: null,
             name: file.name,
             description: null,
@@ -104,7 +103,6 @@ export function FilePreviewDialog({
                   : ({
                       id: path,
                       botId,
-                      groupId: null,
                       runId: null,
                       name: file.name,
                       description: null,

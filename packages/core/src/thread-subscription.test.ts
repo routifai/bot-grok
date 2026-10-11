@@ -6,7 +6,6 @@ const head = { threadId: "thread", cursor: 10 };
 function event(seq: number): ProductEvent {
   return {
     id: `event-${seq}`,
-    spaceId: "space",
     threadId: "thread",
     botId: "bot",
     seq,

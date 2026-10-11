@@ -53,7 +53,6 @@ function artifact(name: string, id: string, createdAt = new Date().toISOString()
   return {
     id,
     botId: null,
-    groupId: null,
     runId: null,
     name,
     description: null,

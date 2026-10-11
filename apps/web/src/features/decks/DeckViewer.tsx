@@ -400,7 +400,6 @@ function previewArtifact(
     name,
     mimeType: "text/html",
     botId,
-    groupId: null,
     runId: null,
     description: null,
     size: bytes.byteLength,

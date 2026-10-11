@@ -44,7 +44,6 @@ function toArtifact(item: OmnigentArtifact, botId: string | null): Artifact {
     publish: item.publish ? toPublish(item.publish) : null,
     id: item.id,
     botId,
-    groupId: null,
     runId: null,
     name: item.name,
     description: item.title,

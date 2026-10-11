@@ -4,11 +4,9 @@ import type { Bot, ThreadMessage, WorkspaceAttachment } from "@superchat/contrac
 import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_COUNT } from "@superchat/contracts";
 import {
   attachmentsForThread,
-  type ComposerMention,
   inferAttachmentMimeType,
   isIngestableAttachmentMimeType,
   promptTextForWorkspaceAttachments,
-  resolveComposerSendPlan,
 } from "@superchat/core";
 import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { notifyAsksChanged } from "../../../features/approvals";
@@ -293,7 +291,7 @@ export function useComposerSend({
   /** Resolves `true` only when the message (or its routine action) really went out; every other
    * path resolves `false` so the composer gives the person's words back. */
   const sendMessage = useCallback(
-    async (text: string, mentions: ComposerMention[] = []): Promise<boolean> => {
+    async (text: string): Promise<boolean> => {
       const botTarget = activeBotId.current;
       if (!botTarget || sending) return false;
       setFollowSignal((current) => current + 1);
@@ -301,20 +299,13 @@ export function useComposerSend({
       const folders = pendingFolders.filter((f) => f.threadKey === botTarget).map((f) => f.path);
       // A file still being read (or one that failed) holds the message back; Send is disabled.
       if (attachmentsBlockSend(attachments)) return false;
-      const plan = resolveComposerSendPlan({
-        text,
-        mentions,
-        hasAttachments: attachments.length > 0 || folders.length > 0,
-      });
-      if (plan.isNoOp) return false;
+      const trimmed = text.trim();
+      if (!trimmed && attachments.length === 0 && folders.length === 0) return false;
       // The first real message closes the first-run welcome for good (muse/intro),
       // wherever it was sent from — the composer directly, or a welcome card's "Try it".
       markFirstRunSeen(userId, "welcome");
-      if (plan.shouldSend) {
-        const permissionRequest = requestBrowserNotificationPermission();
-        if (permissionRequest) void permissionRequest.then(flushPendingBrowserNotifications);
-      }
-      const trimmed = plan.trimmed;
+      const permissionRequest = requestBrowserNotificationPermission();
+      if (permissionRequest) void permissionRequest.then(flushPendingBrowserNotifications);
       setSending(true);
       setSendError(null);
       const sentFiles = () => {
@@ -329,10 +320,6 @@ export function useComposerSend({
       };
       let showing = false;
       try {
-        if (!plan.shouldSend) {
-          sentFiles();
-          return true;
-        }
         const workspaceAttachments: WorkspaceAttachment[] = [];
         let uploaded = 0;
         for (const pending of attachments) {

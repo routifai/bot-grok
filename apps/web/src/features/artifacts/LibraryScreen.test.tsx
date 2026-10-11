@@ -78,7 +78,6 @@ function artifact(overrides: {
   return {
     id: overrides.id,
     botId: "bot-1",
-    groupId: null,
     runId: null,
     name: overrides.name,
     description: overrides.description ?? null,

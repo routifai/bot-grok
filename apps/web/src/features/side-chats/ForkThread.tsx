@@ -1,6 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import type { MessageFork, ThreadMessage } from "@superchat/contracts";
-import { userVisibleMessages } from "@superchat/core";
 import { Button, cn, Spinner } from "@superchat/ui-web";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
@@ -166,10 +165,7 @@ export function ForkThread({
   const canFork = Boolean(lineage && parentIsConversation) && status !== "archived";
   const writable = status !== "archived" && !thread.readOnly;
 
-  const messages = useMemo(
-    () => userVisibleMessages(thread.shown, { includePeerReceipts: true }),
-    [thread.shown],
-  );
+  const messages = thread.shown;
   const lastRole = messages.at(-1)?.role;
   const working = status === "live" && lastRole === "user";
   const shownMessages = useMemo(() => {

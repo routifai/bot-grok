@@ -1,4 +1,3 @@
-import { BOT_AVATAR_SHAPE_COUNT } from "@superchat/contracts";
 import { describe, expect, it } from "vitest";
 import {
   SHIPPED_BOT_AVATAR_SHAPE_KEYS,
@@ -8,7 +7,7 @@ import {
 
 describe("shipped bot avatar shapes", () => {
   it("keeps the same eight shapes the parser encodes", () => {
-    expect(SHIPPED_BOT_AVATAR_SHAPE_KEYS).toHaveLength(BOT_AVATAR_SHAPE_COUNT);
+    expect(SHIPPED_BOT_AVATAR_SHAPE_KEYS).toHaveLength(8);
     expect(shippedBotAvatarShapePath(3)).toBe(SHIPPED_BOT_AVATAR_SHAPES.tablet);
     expect(shippedBotAvatarShapePath(3)).not.toBe(shippedBotAvatarShapePath(0));
     expect(shippedBotAvatarShapePath(11)).toBe(shippedBotAvatarShapePath(3));

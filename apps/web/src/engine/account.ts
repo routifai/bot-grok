@@ -92,10 +92,5 @@ export const accountRouter = {
   },
   bots: {
     list: os.bots.list.handler(async () => [await museBot()]),
-    get: os.bots.get.handler(async ({ input }) => {
-      const bot = await museBot();
-      if (bot.id !== input.botId) throw new ORPCError("NOT_FOUND", { message: "Muse not found" });
-      return bot;
-    }),
   },
 };

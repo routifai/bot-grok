@@ -45,7 +45,6 @@ import { appsExtension } from "./extension";
 const base = {
   id: "a-1",
   botId: "bot-1",
-  groupId: null,
   runId: null,
   name: "todo.html",
   description: null,

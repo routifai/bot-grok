@@ -47,7 +47,6 @@ const title: DeckEditTarget = {
 const deck = {
   id: DECK_ID,
   botId: "bot-1",
-  groupId: null,
   runId: null,
   name: NAME,
   description: "Tea",

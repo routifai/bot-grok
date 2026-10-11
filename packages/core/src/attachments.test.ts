@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   AttachmentValidationError,
   attachmentReferenceLine,
-  attachmentsForBot,
   blocksToAgentHistoryText,
   decodeAttachmentBase64,
   inferAttachmentMimeType,
@@ -104,30 +103,6 @@ describe("attachment helpers", () => {
       messages[0],
     );
   });
-
-  it("selects pending attachments only for their originating bot", () => {
-    const attachments = [
-      { id: "one", botId: "bot-one" },
-      { id: "two", botId: "bot-two" },
-    ];
-    expect(attachmentsForBot(attachments, "bot-two")).toEqual([attachments[1]]);
-    expect(attachmentsForBot(attachments, undefined)).toEqual([]);
-  });
-});
-
-describe("peer message history", () => {
-  it("keeps attribution so a later turn knows a bot spoke, not the user", () => {
-    expect(
-      blocksToAgentHistoryText([
-        { kind: "bot_message_received", fromBotId: "b_1", fromBotName: "Researcher", text: "hi" },
-      ]),
-    ).toBe("[from Researcher] hi");
-    expect(
-      blocksToAgentHistoryText([
-        { kind: "bot_message_sent", toBotId: "b_2", toBotName: "Analyst", text: "chart it" },
-      ]),
-    ).toBe("[to Analyst] chart it");
-  });
 });
 
 describe("workspace attachment references", () => {
@@ -182,10 +157,11 @@ describe("workspace attachment references", () => {
   });
 
   it("round-trips attached folders before files, the whole workspace included", () => {
-    const text = promptTextForWorkspaceAttachments("compare them", [refs[1] as never], [
-      "documents/q3-sales",
-      "",
-    ]);
+    const text = promptTextForWorkspaceAttachments(
+      "compare them",
+      [refs[1] as never],
+      ["documents/q3-sales", ""],
+    );
     expect(text.split("\n")[0]).toBe("Attached folder in your workspace: documents/q3-sales/");
     expect(parseAttachmentReferences(text)).toEqual({
       attachments: [refs[1]],

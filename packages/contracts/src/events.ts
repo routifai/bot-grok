@@ -32,19 +32,10 @@ export const ProductEventType = z.enum([
   "agent.tool.completed",
   "effect.reconciled",
   "usage.recorded",
-  "bot.spawned",
-  "bot.updated",
-  "bot.archived",
-  "bot.deleted",
-  "group.created",
-  "group.updated",
-  "group.handoff",
 ]);
 export type ProductEventType = z.infer<typeof ProductEventType>;
 
 export const MessageRole = z.enum(["user", "bot", "system"]);
-export const BotMessageIntent = z.enum(["request", "result", "question", "status", "fyi"]);
-export type BotMessageIntent = z.infer<typeof BotMessageIntent>;
 
 export const MAX_CHART_DATA_ROWS = 5_000;
 
@@ -245,52 +236,11 @@ export const MessageBlock = z.discriminatedUnion("kind", [
     name: z.string(),
     size: z.number().int().nonnegative(),
   }),
-  z.object({
-    kind: z.literal("handoff"),
-    fromBotId: Id,
-    toBotId: Id,
-    text: z.string(),
-    /** Links ownership transfers in one user-started group turn. */
-    hop: z.number().int().positive().optional(),
-  }),
-  z.object({
-    /** A group-chat message delivered into a member bot's own thread. */
-    kind: z.literal("channel_message"),
-    provider: z.string(),
-    /** Per-message network when a provider spans multiple transports. */
-    transport: z.string().optional(),
-    channelId: Id,
-    fromAddress: z.string(),
-    fromLabel: z.string(),
-    text: z.string(),
-    hop: z.number().int().nonnegative().optional(),
-  }),
-  z.object({
-    /** Shown in the sending bot's own chat, so the user can see what it sent. */
-    kind: z.literal("bot_message_sent"),
-    toBotId: Id,
-    toBotName: z.string(),
-    text: z.string(),
-    intent: BotMessageIntent.optional(),
-  }),
-  z.object({
-    /** Delivered into the receiving bot's own chat as the prompt that woke it. */
-    kind: z.literal("bot_message_received"),
-    fromBotId: Id,
-    fromBotName: z.string(),
-    text: z.string(),
-    intent: BotMessageIntent.optional(),
-    /** Sender-thread echo this delivery answers, when applicable. */
-    returnToMessageId: Id.optional(),
-    /** Links in a bot-started chain; absent when a person started it. */
-    hop: z.number().int().nonnegative().optional(),
-  }),
 ]);
 export type MessageBlock = z.infer<typeof MessageBlock>;
 
 export const ProductEventSchema = z.object({
   id: Id,
-  spaceId: Id,
   threadId: Id,
   botId: Id,
   seq: z.number().int().nonnegative(),
@@ -335,11 +285,3 @@ export const ThreadMessageSchema = z.object({
   delivered: z.literal("queued").optional(),
 });
 export type ThreadMessage = z.infer<typeof ThreadMessageSchema>;
-
-export function canReactToThreadMessage(message: Pick<ThreadMessage, "id" | "blocks">): boolean {
-  return (
-    !message.id.startsWith("progress:") &&
-    !message.id.startsWith("subagent:") &&
-    !message.blocks.some((block) => block.kind === "channel_message")
-  );
-}

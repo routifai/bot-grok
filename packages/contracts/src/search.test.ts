@@ -20,39 +20,10 @@ describe("search contracts", () => {
     expect(SearchHitSchema.parse(parsed.hits[0]).kind).toBe("message");
   });
 
-  it("accepts group thread hits", () => {
-    const parsed = SearchQueryOutputSchema.parse({
-      hits: [
-        {
-          kind: "message",
-          groupId: "group-1",
-          groupName: "Squad",
-          title: "Squad",
-          snippet: "found it",
-          messageId: "msg-1",
-          seq: 3,
-        },
-      ],
-    });
-    expect(parsed.hits[0]?.groupId).toBe("group-1");
-    expect(parsed.hits[0]?.botId).toBeUndefined();
-  });
-
-  it("rejects hits with both or neither target id", () => {
+  it("rejects a hit without its Muse", () => {
     expect(() =>
       SearchHitSchema.parse({
         kind: "message",
-        title: "x",
-        snippet: "y",
-      }),
-    ).toThrow();
-    expect(() =>
-      SearchHitSchema.parse({
-        kind: "message",
-        botId: "bot-1",
-        botName: "Scout",
-        groupId: "group-1",
-        groupName: "Squad",
         title: "x",
         snippet: "y",
       }),

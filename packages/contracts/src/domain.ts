@@ -65,7 +65,6 @@ export const RunSchema = z.object({
     "follow_up",
     "reaction",
     "spawn",
-    "bot_message",
     "webhook",
     "messaging",
     "cloud_agent",

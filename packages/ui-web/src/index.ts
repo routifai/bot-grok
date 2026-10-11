@@ -45,7 +45,6 @@ export * from "./components/ui/tabs.js";
 export * from "./components/ui/textarea.js";
 export * from "./components/ui/toggle.js";
 export * from "./components/ui/tooltip.js";
-export { GroupAvatar, type GroupAvatarMember, type GroupAvatarProps } from "./group-avatar.js";
 export { cn } from "./lib/utils.js";
 export { ModelThinkingOptions } from "./model-thinking-options.js";
 export { type LiveMuseFaceProps, LiveMuseFaceProvider } from "./muse-face.js";

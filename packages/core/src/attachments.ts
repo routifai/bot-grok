@@ -112,13 +112,6 @@ export function blocksToAgentHistoryText(blocks: MessageBlock[]): string {
       if (block.kind === "file") {
         return `[file: ${block.name} (${block.mimeType}, ${block.size} bytes)]`;
       }
-      // Keep attribution on peer messages: without it a later turn cannot tell
-      // which lines came from another bot rather than the user.
-      if (block.kind === "bot_message_received") return `[from ${block.fromBotName}] ${block.text}`;
-      if (block.kind === "bot_message_sent") return `[to ${block.toBotName}] ${block.text}`;
-      if (block.kind === "handoff") {
-        return `[handoff ${block.fromBotId} -> ${block.toBotId}] ${block.text}`;
-      }
       if ("text" in block && typeof block.text === "string") return block.text;
       return "";
     })
@@ -181,14 +174,6 @@ export function attachmentsForThread<T extends { threadKey: string }>(
 ): T[] {
   if (!threadKey) return [];
   return attachments.filter((attachment) => attachment.threadKey === threadKey);
-}
-
-export function attachmentsForBot<T extends { botId: string }>(
-  attachments: readonly T[],
-  botId: string | undefined,
-): T[] {
-  if (!botId) return [];
-  return attachments.filter((attachment) => attachment.botId === botId);
 }
 
 export function userTurnMessageForRun<

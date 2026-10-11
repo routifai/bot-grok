@@ -54,7 +54,6 @@ const page = (version = 1): Artifact => ({
   name: NAME,
   mimeType: "text/html",
   botId: "bot-1",
-  groupId: null,
   runId: null,
   description: "Expense tracker",
   size: PAGE.length,
