@@ -2022,6 +2022,9 @@ class SessionSuperchat(BaseModel):
     :param seed_item_id: The item a with-context Side Chat's own messages start after.
     :param anchor_item_id: A Fork's anchor: the message it started from (ADR 0010).
     :param project: The Project the session has open, or ``None``.
+    :param folder: The working directory relative to the workspace, e.g. ``"reports/q3"``;
+        ``None`` at the workspace root.
+    :param workspace_chosen: The person chose this folder themselves (the Muse keeps it).
     """
 
     kind: Literal["super", "side", "helper"] | None = None
@@ -2030,6 +2033,8 @@ class SessionSuperchat(BaseModel):
     seed_item_id: str | None = None
     anchor_item_id: str | None = None
     project: SessionProject | None = None
+    folder: str | None = None
+    workspace_chosen: bool = False
 
 
 class SessionResponse(BaseModel):

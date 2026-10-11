@@ -247,6 +247,8 @@ async def test_session_read_carries_kind_root_and_project(
         "seed_item_id": None,
         "anchor_item_id": None,
         "project": None,
+        "folder": None,
+        "workspace_chosen": False,
     }
     agent_id = muse["agent_id"]
     side = store.create_conversation(
@@ -255,7 +257,13 @@ async def test_session_read_carries_kind_root_and_project(
         host_id="f" * 32,
         workspace="/home/u/workspace/projects/q3-deck",
     )
-    store.set_labels(side.id, {"omnigent.project.name": "Q3 board deck"})
+    store.set_labels(
+        side.id,
+        {
+            "omnigent.project.name": "Q3 board deck",
+            "omnigent.superchat.workspace.chosen": "person",
+        },
+    )
     SqlAlchemyPermissionStore(store.storage_location).grant("alice@example.com", side.id, 4)
     side_view = (await client.get(f"/v1/sessions/{side.id}", headers=ALICE)).json()
     assert side_view["superchat"] == {
@@ -265,6 +273,8 @@ async def test_session_read_carries_kind_root_and_project(
         "seed_item_id": None,
         "anchor_item_id": None,
         "project": {"slug": "q3-deck", "name": "Q3 board deck"},
+        "folder": "projects/q3-deck",
+        "workspace_chosen": True,
     }
     helper = store.create_conversation(
         kind="sub_agent", agent_id=agent_id, parent_conversation_id=side.id, title="Job"

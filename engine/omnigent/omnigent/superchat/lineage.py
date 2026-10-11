@@ -1,4 +1,4 @@
-"""Where a session sits in a Super Chat family: its kind, root, parent, seed and open Project.
+"""Where a session sits in a Super Chat family: kind, root, parent, seed, open Project and folder.
 
 Shared by the transcript route and the session snapshot (``GET /v1/sessions/{id}``), so a client
 holding only a session id can tell a Super Chat from a Side Chat or a Helper without its own map.
@@ -16,7 +16,8 @@ from omnigent.entities import Conversation
 from omnigent.stores import ConversationStore
 from omnigent.stores.conversation_store import SIDE_CHAT_LABEL_KEY, side_chat_parent_id
 from omnigent.superchat.feature import is_helper, is_super_chat
-from omnigent.superchat.projects.card import project_slug_from_workspace
+from omnigent.superchat.projects.card import project_slug_from_workspace, workspace_folder
+from omnigent.superchat.projects.choice import chosen_by_person
 
 _MAX_HELPER_HOPS = 8
 
@@ -165,4 +166,9 @@ def session_superchat(
     lineage = session_lineage(conv_store, conversation, helper_root=root)
     if lineage["kind"] is None:
         return None
-    return {**lineage, "project": open_project(conversation)}
+    return {
+        **lineage,
+        "project": open_project(conversation),
+        "folder": workspace_folder(conversation.workspace),
+        "workspace_chosen": chosen_by_person(conversation.labels),
+    }

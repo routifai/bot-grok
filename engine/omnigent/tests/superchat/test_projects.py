@@ -21,7 +21,13 @@ from omnigent.superchat.feature import HandlerCtx, ToolManagerCtx
 from omnigent.superchat.features import FEATURE_HANDLERS
 from omnigent.superchat.projects import FEATURE
 from omnigent.superchat.projects.block import MAX_LISTED, open_project_slug, projects_block
-from omnigent.superchat.projects.card import list_cards, parse_card, read_card
+from omnigent.superchat.projects.card import list_cards, parse_card, read_card, workspace_folder
+from omnigent.superchat.projects.choice import (
+    WORKSPACE_CHOSEN_LABEL_KEY,
+    WORKSPACE_MOVED_LABEL_KEY,
+    chosen_by_person,
+    deliver_person_move,
+)
 from omnigent.superchat.projects.handlers import handle_open_project
 
 CHAT = {CONTEXT_MODE_LABEL: SUPERSIDE_CHAT_MODE_VALUE}
@@ -209,16 +215,34 @@ async def test_turn_prefix_without_projects_has_no_block(home: Path) -> None:
 
 
 class _Server:
-    """Records ``PUT /v1/sessions/{id}/workspace`` and answers with a canned status."""
+    """Records ``PUT /v1/sessions/{id}/workspace`` and answers with a canned status.
 
-    def __init__(self, status: int = 200, body: dict[str, Any] | None = None) -> None:
+    ``GET /v1/sessions/{id}`` returns ``labels``; ``PATCH`` label writes land in ``patches``.
+    """
+
+    def __init__(
+        self,
+        status: int = 200,
+        body: dict[str, Any] | None = None,
+        labels: dict[str, str] | None = None,
+    ) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.patches: list[tuple[str, dict[str, Any]]] = []
         self.status = status
         self.body = body or {}
+        self.labels = dict(labels or {})
 
     async def put(self, url: str, *, json: dict[str, Any], timeout: float) -> httpx.Response:
         self.calls.append((url, json))
         return httpx.Response(self.status, json=self.body)
+
+    async def get(self, url: str, **_: Any) -> httpx.Response:
+        return httpx.Response(200, json={"id": "conv_1", "labels": self.labels})
+
+    async def patch(self, url: str, *, json: dict[str, Any], timeout: float) -> httpx.Response:
+        self.patches.append((url, json))
+        self.labels.update(json["labels"])
+        return httpx.Response(200, json={})
 
 
 def _ctx(server: _Server | None) -> HandlerCtx:
@@ -271,6 +295,71 @@ async def test_open_project_reports_the_servers_refusal(home: Path) -> None:
 async def test_open_project_needs_server_access(home: Path) -> None:
     out = json.loads(await handle_open_project(_ctx(None), {"slug": None}))
     assert "server access" in out["error"]
+
+
+# ── the person's choice ────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("slug", ["q3-deck", None])
+async def test_open_project_keeps_the_folder_the_person_chose(
+    home: Path, slug: str | None
+) -> None:
+    _card(home, "q3-deck")
+    server = _Server(labels={WORKSPACE_CHOSEN_LABEL_KEY: "person"})
+    out = json.loads(await handle_open_project(_ctx(server), {"slug": slug}))
+    assert server.calls == []
+    assert out["opened"] is None
+    assert "person chose" in out["refused"]
+
+
+async def test_a_cleared_choice_lets_open_project_move_again(home: Path) -> None:
+    _card(home, "q3-deck")
+    server = _Server(labels={WORKSPACE_CHOSEN_LABEL_KEY: ""})
+    out = json.loads(await handle_open_project(_ctx(server), {"slug": "q3-deck"}))
+    assert out["opened"] == "q3-deck"
+    assert len(server.calls) == 1
+
+
+async def test_the_person_move_note_is_told_once(home: Path) -> None:
+    server = _Server(labels={WORKSPACE_MOVED_LABEL_KEY: "/home/u/workspace/reports"})
+    assert await deliver_person_move(server, "conv_1") == [  # type: ignore[arg-type]
+        "The person moved this chat to /home/u/workspace/reports."
+    ]
+    assert server.patches == [("/v1/sessions/conv_1", {"labels": {WORKSPACE_MOVED_LABEL_KEY: ""}})]
+    assert await deliver_person_move(server, "conv_1") == []  # type: ignore[arg-type]
+    assert await deliver_person_move(None, "conv_1") == []
+
+
+async def test_the_person_move_note_reaches_the_turn_prefix(home: Path) -> None:
+    server = _Server(labels={WORKSPACE_MOVED_LABEL_KEY: "/home/u/workspace/reports"})
+    blocks = await prompt_prefix.turn_prefix_blocks(server, "conv_1", home)  # type: ignore[arg-type]
+    assert "The person moved this chat to /home/u/workspace/reports." in blocks
+
+
+@pytest.mark.parametrize(
+    ("labels", "chosen"),
+    [({WORKSPACE_CHOSEN_LABEL_KEY: "person"}, True), ({WORKSPACE_CHOSEN_LABEL_KEY: ""}, False)],
+)
+def test_chosen_by_person_reads_the_mark(labels: dict[str, str], chosen: bool) -> None:
+    assert chosen_by_person(labels) is chosen
+    assert chosen_by_person(None) is False
+
+
+@pytest.mark.parametrize(
+    ("workspace", "folder"),
+    [
+        ("/home/u/workspace", None),
+        ("/home/u/workspace/", None),
+        ("/home/u/workspace/reports/q3", "reports/q3"),
+        ("/home/u/workspace/projects/q3-deck/", "projects/q3-deck"),
+        ("/tmp/elsewhere", None),
+        (None, None),
+    ],
+)
+def test_workspace_folder_is_relative_to_the_workspace(
+    workspace: str | None, folder: str | None
+) -> None:
+    assert workspace_folder(workspace) == folder
 
 
 # ── registration ───────────────────────────────────────────────────────────

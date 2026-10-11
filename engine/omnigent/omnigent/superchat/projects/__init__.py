@@ -3,8 +3,10 @@
 A Project is a folder with a ``PROJECT.md`` card (see ``card``). Each turn the runner lists the
 cards (``block``); the Muse picks one and calls ``open_project`` (``handlers``), which moves the
 session's working directory through the generic ``PUT /v1/sessions/{id}/workspace`` route.
-Layout: ``card`` (read cards), ``block`` (the per-turn list), ``tools`` (tool def), ``handlers``
-(runner side), ``feature`` (registration). Nothing scans or indexes in the background.
+The person may choose a chat's folder themselves (``choice``); their choice wins over
+``open_project``. Layout: ``card`` (read cards), ``block`` (the per-turn list), ``tools`` (tool
+def), ``handlers`` (runner side), ``choice`` (the person's mark), ``feature`` (registration).
+Nothing scans or indexes in the background.
 """
 
 from __future__ import annotations

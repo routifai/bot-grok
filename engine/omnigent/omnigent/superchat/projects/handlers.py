@@ -16,6 +16,7 @@ from omnigent.superchat.projects.card import (
     read_card,
     workspace_root,
 )
+from omnigent.superchat.projects.choice import person_chose_workspace
 
 
 def _refusal_detail(resp: httpx.Response) -> str:
@@ -59,6 +60,14 @@ async def handle_open_project(ctx: HandlerCtx, args: dict[str, Any]) -> str:
     """
     if ctx.server_client is None or not ctx.conversation_id:
         return error("open_project requires server access")
+    if await person_chose_workspace(ctx.server_client, ctx.conversation_id):
+        return json.dumps(
+            {
+                "opened": None,
+                "refused": "The person chose this chat's folder, so it stays where it is. "
+                "Tell them which Project fits and let them move the chat themselves.",
+            }
+        )
     slug = args.get("slug")
     if slug is None:
         failure = await _set_workspace(ctx, str(workspace_root()))

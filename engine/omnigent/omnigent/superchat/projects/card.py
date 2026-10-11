@@ -19,6 +19,8 @@ _HEAD_BYTES = 4096
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 #: A working directory inside a Project: ``.../workspace/projects/<slug>`` (or a folder under it).
 _PROJECT_DIR_RE = re.compile(r"/workspace/projects/([a-z0-9][a-z0-9_-]{0,63})(?:/|$)")
+#: The Muse's workspace in a working directory: ``.../workspace`` and what follows it.
+_WORKSPACE_DIR_RE = re.compile(r"/workspace(?:/(.*?))?/*$")
 _FRONT_MATTER_RE = re.compile(r"\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.DOTALL)
 
 
@@ -41,6 +43,12 @@ def project_slug_from_workspace(workspace: str | None) -> str | None:
     """The Project a working directory is in (or under), or ``None`` at the workspace root."""
     match = _PROJECT_DIR_RE.search(workspace or "")
     return match.group(1) if match else None
+
+
+def workspace_folder(workspace: str | None) -> str | None:
+    """A working directory relative to the workspace (``"reports/q3"``); ``None`` at its root."""
+    match = _WORKSPACE_DIR_RE.search(workspace or "")
+    return (match.group(1) or None) if match else None
 
 
 @dataclass(frozen=True)
