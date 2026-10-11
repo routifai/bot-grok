@@ -16,7 +16,8 @@ vi.mock("@lingui/react/macro", () => ({
       parts.reduce((out, part, i) => out + part + (v[i] ?? ""), ""),
   }),
 }));
-const decks = vi.hoisted(() => ({
+const artifacts = vi.hoisted(() => ({
+  listVersions: vi.fn(),
   edit: vi.fn(async (input: { baseVersion: number }) => ({
     id: `p${input.baseVersion + 1}`,
     version: input.baseVersion + 1,
@@ -27,7 +28,7 @@ const chats = vi.hoisted(() => ({
   interrupt: vi.fn(),
   transcript: vi.fn(),
 }));
-vi.mock("../../lib/rpc", () => ({ rpc: { decks, chats, artifacts: { listVersions: vi.fn() } } }));
+vi.mock("../../lib/rpc", () => ({ rpc: { chats, artifacts } }));
 vi.mock("../../lib/family-stream", () => ({ watchFamily: () => () => {} }));
 
 import { ArtifactEditorView } from "../artifacts/editor/ArtifactEditor";
@@ -84,7 +85,7 @@ beforeEach(() => {
     "URL",
     Object.assign(URL, { createObjectURL: () => "blob:x", revokeObjectURL: () => {} }),
   );
-  decks.edit.mockClear();
+  artifacts.edit.mockClear();
   chats.send.mockClear();
   host = document.createElement("div");
   document.body.append(host);
@@ -183,7 +184,7 @@ it("select the Add button: inspector and chip; typing a new label saves a manual
     before: "Add",
   });
   await act(async () => vi.advanceTimersByTimeAsync(COMMIT_DEBOUNCE_MS));
-  expect(decks.edit).toHaveBeenCalledWith({
+  expect(artifacts.edit).toHaveBeenCalledWith({
     artifactId: "p1",
     baseVersion: 1,
     patches: [{ kind: "set-text", id: "add-button", text: "Save" }],
@@ -210,7 +211,7 @@ it("an element with no id is asked about by its place, never patched by hand", a
   // A key press in the frame (delete) is refused here, without calling the engine.
   await fromFrame(frame, { type: "superchat:edit-key", action: "delete" });
   await act(async () => vi.advanceTimersByTimeAsync(COMMIT_DEBOUNCE_MS));
-  expect(decks.edit).not.toHaveBeenCalled();
+  expect(artifacts.edit).not.toHaveBeenCalled();
   expect(host.querySelector('[data-testid="deck-edit-notice"]')).not.toBeNull();
 
   const box = host.querySelector('textarea[aria-label="Ask superchat"]') as HTMLTextAreaElement;

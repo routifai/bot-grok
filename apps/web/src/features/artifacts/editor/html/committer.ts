@@ -1,4 +1,4 @@
-import type { DeckPatch } from "@superchat/contracts";
+import type { HtmlPatch } from "@superchat/contracts";
 import { coalescePatches } from "./edit-model";
 
 /** How long staged patches wait for more changes before they become one save. */
@@ -13,25 +13,25 @@ export type CommitOutcome = { ok: true } | { ok: false; message: string };
  * version the last one produced; changes made meanwhile go out in the next one.
  */
 export class Committer {
-  private queue: DeckPatch[] = [];
+  private queue: HtmlPatch[] = [];
   private timer: ReturnType<typeof setTimeout> | undefined;
   private flight: Promise<void> = Promise.resolve();
   private disposed = false;
 
   constructor(
-    private readonly save: (patches: DeckPatch[]) => Promise<CommitOutcome>,
+    private readonly save: (patches: HtmlPatch[]) => Promise<CommitOutcome>,
     private readonly debounceMs: number = COMMIT_DEBOUNCE_MS,
   ) {}
 
   /** Wait for more changes, then save them together. */
-  stage(patches: readonly DeckPatch[]): void {
+  stage(patches: readonly HtmlPatch[]): void {
     this.queue.push(...patches);
     clearTimeout(this.timer);
     this.timer = setTimeout(() => void this.flush(), this.debounceMs);
   }
 
   /** Save the queue plus `patches` now. Resolves when everything queued so far is saved. */
-  commit(patches: readonly DeckPatch[] = []): Promise<void> {
+  commit(patches: readonly HtmlPatch[] = []): Promise<void> {
     this.queue.push(...patches);
     return this.flush();
   }

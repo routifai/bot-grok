@@ -234,7 +234,10 @@ it("saves what the editor still has staged first and builds on its version", asy
 
 it("words a refusal for people, never the engine's text", async () => {
   const stale = vi.fn(async () => {
-    throw new Error("The deck changed since you opened it, so the latest version is showing now.");
+    throw Object.assign(new Error("refused"), {
+      code: "CONFLICT",
+      data: { code: "artifact_stale" },
+    });
   });
   const a = await mount({ editSource: stale });
   await act(async () => card(a.container, "nord").click());
@@ -242,7 +245,7 @@ it("words a refusal for people, never the engine's text", async () => {
     "The deck changed since you opened it. Try again.",
   );
   const inexact = vi.fn(async () => {
-    throw new Error("Can't apply that edit exactly: ask Superchat instead.");
+    throw Object.assign(new Error("refused"), { code: "CONFLICT", data: { code: "conflict" } });
   });
   const b = await mount({ editSource: inexact });
   await act(async () => card(b.container, "nord").click());

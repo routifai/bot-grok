@@ -1,19 +1,17 @@
 import { ORPCError } from "@orpc/server";
 import {
-  editOmnigentDeck,
   exportOmnigentDeck,
   getOmnigentDeckTheme,
   getOmnigentDeckThemeSample,
   listOmnigentDeckThemes,
   OmnigentApiError,
-  OmnigentDeckConflictError,
 } from "@superchat/adapters/omnigent/browser";
 import { artifactNotFound, toArtifact } from "./artifact-shape";
 import { engineClient, NO_EMAIL } from "./client";
 import { os } from "./context";
 
-/** `decks.*`: a `.deck.html` themed, hand-edited as source patches and exported to PowerPoint or
- * PDF in the person's Computer. */
+/** `decks.*`: a `.deck.html` themed and exported to PowerPoint or PDF in the person's Computer
+ * (hand edits are `artifacts.edit`). */
 export const decksRouter = {
   decks: {
     theme: os.decks.theme.handler(async ({ input }) => {
@@ -40,30 +38,6 @@ export const decksRouter = {
       try {
         return { html: await getOmnigentDeckThemeSample(engineClient(), NO_EMAIL, input.themeId) };
       } catch (error) {
-        return artifactNotFound(error);
-      }
-    }),
-    // A stale base and a patch the engine will not apply exactly are both CONFLICT; the message
-    // tells the web which (it reloads, or says "ask Superchat instead").
-    edit: os.decks.edit.handler(async ({ input }) => {
-      try {
-        const created = await editOmnigentDeck(
-          engineClient(),
-          NO_EMAIL,
-          input.artifactId,
-          input.baseVersion,
-          input.patches,
-        );
-        return toArtifact(created, null);
-      } catch (error) {
-        if (error instanceof OmnigentDeckConflictError) {
-          throw new ORPCError("CONFLICT", { message: error.message });
-        }
-        if (error instanceof OmnigentApiError && error.code === "invalid_input") {
-          throw new ORPCError("BAD_REQUEST", {
-            message: error.detail ?? "That edit isn't allowed.",
-          });
-        }
         return artifactNotFound(error);
       }
     }),

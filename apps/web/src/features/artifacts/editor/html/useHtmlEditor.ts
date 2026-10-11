@@ -4,16 +4,15 @@ import type {
   DeckEditFromFrame,
   DeckEditTarget,
   DeckEditTheme,
-  DeckPatch,
+  HtmlPatch,
 } from "@superchat/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { rpc } from "../../../../lib/rpc";
 import { registerEditorFlush, takeOwnVersion } from "../editor-state";
 import { type CommitOutcome, Committer } from "./committer";
 import {
-  isInexact,
+  editConflict,
   isPathId,
-  isStale,
   readTranslate,
   type StyleChanges,
   stylePatches,
@@ -24,12 +23,11 @@ import {
 export type HtmlEditSource = (input: {
   artifactId: string;
   baseVersion: number;
-  patches: DeckPatch[];
+  patches: HtmlPatch[];
 }) => Promise<Pick<Artifact, "id" | "version">>;
 
-// The engine's HTML patch route (`PATCH /v1/artifacts/{id}/edit`), which decks introduced and
-// every HTML page now shares.
-const defaultSource: HtmlEditSource = (input) => rpc.decks.edit(input);
+// The engine's HTML patch route (`PATCH /v1/artifacts/{id}/edit`): a deck or any HTML page.
+const defaultSource: HtmlEditSource = (input) => rpc.artifacts.edit(input);
 
 export type EditNotice = { kind: "stale" | "inexact" | "failed"; message: string };
 
@@ -128,7 +126,7 @@ export function useHtmlEditor({
     seen.current = { version, html };
   }, [artifactId, version, html, fileKey]);
 
-  const save = useCallback(async (patches: DeckPatch[]): Promise<CommitOutcome> => {
+  const save = useCallback(async (patches: HtmlPatch[]): Promise<CommitOutcome> => {
     // An element the bridge could only address by its place in the page has no id in the file:
     // the engine would refuse it, so say so here and offer superchat instead.
     if (patches.some((p) => "id" in p && isPathId(p.id))) {
@@ -154,14 +152,7 @@ export function useHtmlEditor({
       return { ok: true };
     } catch (failure) {
       const message = failure instanceof Error ? failure.message : "";
-      const code = (failure as { code?: unknown })?.code;
-      if (code === "CONFLICT" && isInexact(message)) {
-        setNotice({ kind: "inexact", message });
-      } else if (code === "CONFLICT" || isStale(message)) {
-        setNotice({ kind: "stale", message });
-      } else {
-        setNotice({ kind: "failed", message });
-      }
+      setNotice({ kind: editConflict(failure) ?? "failed", message });
       setReloadKey((n) => n + 1); // the preview no longer matches the source: show the source
       return { ok: false, message };
     } finally {
@@ -189,7 +180,7 @@ export function useHtmlEditor({
     [fileKey, committer],
   );
 
-  const preview = useCallback((patches: readonly DeckPatch[]) => {
+  const preview = useCallback((patches: readonly HtmlPatch[]) => {
     for (const patch of patches) {
       if (patch.kind === "set-style")
         postRef.current({ type: "superchat:edit-preview", id: patch.id, style: patch.style });
@@ -216,7 +207,7 @@ export function useHtmlEditor({
 
   const setAttributes = useCallback(
     (attributes: { href?: string | null; alt?: string | null }) => {
-      const patches: DeckPatch[] = targetsRef.current.map((t) => ({
+      const patches: HtmlPatch[] = targetsRef.current.map((t) => ({
         kind: "set-attributes",
         id: t.id,
         attributes,

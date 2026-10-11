@@ -51,7 +51,6 @@ def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]
 def _install(app: FastAPI, deps: InstallDeps) -> None:
     from omnigent.runtime import get_artifact_store
     from omnigent.superchat.artifacts import SqlAlchemyArtifactStore
-    from omnigent.superchat.decks.edit_routes import create_deck_edit_router
     from omnigent.superchat.decks.routes import create_decks_router
 
     if deps.scheduled_task_store is None:
@@ -64,11 +63,6 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
             runner_router=deps.runner_router,
             auth_provider=deps.auth_provider,
         ),
-        prefix="/v1",
-        tags=["decks"],
-    )
-    app.include_router(
-        create_deck_edit_router(store, auth_provider=deps.auth_provider),
         prefix="/v1",
         tags=["decks"],
     )

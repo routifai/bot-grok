@@ -194,6 +194,8 @@ class ErrorCode:
         caller's Super Chat, so it cannot create one (HTTP 503).
     :cvar MUSE_ALREADY_SET: The caller already has a different Super Chat in
         this tenant, so another cannot be adopted (HTTP 409).
+    :cvar ARTIFACT_STALE: A hand edit named a version of a saved file that is no longer the
+        newest (HTTP 409): the editor reloads the latest and the person edits again.
     :cvar MUSE_TENANT_MISMATCH: The session to adopt belongs to another
         tenant than the caller's (HTTP 409).
     :cvar NOT_A_SUPER_CHAT: The session is not a Super Chat root (a side
@@ -282,6 +284,7 @@ class ErrorCode:
     SUPERCHAT_NOT_CONFIGURED = "superchat_not_configured"
     MUSE_ALREADY_SET = "muse_already_set"
     MUSE_TENANT_MISMATCH = "muse_tenant_mismatch"
+    ARTIFACT_STALE = "artifact_stale"
     NOT_A_SUPER_CHAT = "not_a_super_chat"
     FORK_ANCHOR_INVALID = "fork_anchor_invalid"
     FORK_TOO_DEEP = "fork_too_deep"
@@ -336,6 +339,7 @@ _CODE_TO_HTTP_STATUS: dict[str, int] = {
     ErrorCode.SUPERCHAT_NOT_CONFIGURED: 503,
     ErrorCode.MUSE_ALREADY_SET: 409,
     ErrorCode.MUSE_TENANT_MISMATCH: 409,
+    ErrorCode.ARTIFACT_STALE: 409,
     ErrorCode.NOT_A_SUPER_CHAT: 422,
     ErrorCode.FORK_ANCHOR_INVALID: 422,
     ErrorCode.FORK_TOO_DEEP: 422,
@@ -387,6 +391,7 @@ _CODE_TO_CATEGORY: dict[str, ErrorCategory] = {
     ErrorCode.SUPERCHAT_NOT_CONFIGURED: ErrorCategory.CONFIG,
     ErrorCode.MUSE_ALREADY_SET: ErrorCategory.USER,
     ErrorCode.MUSE_TENANT_MISMATCH: ErrorCategory.USER,
+    ErrorCode.ARTIFACT_STALE: ErrorCategory.USER,
     ErrorCode.NOT_A_SUPER_CHAT: ErrorCategory.USER,
     ErrorCode.FORK_ANCHOR_INVALID: ErrorCategory.USER,
     ErrorCode.FORK_TOO_DEEP: ErrorCategory.USER,
@@ -443,6 +448,7 @@ _CODE_TO_IMPACT: dict[str, ErrorImpact] = {
     ErrorCode.SUPERCHAT_NOT_CONFIGURED: ErrorImpact.BLOCKING,
     ErrorCode.MUSE_ALREADY_SET: ErrorImpact.BENIGN,
     ErrorCode.MUSE_TENANT_MISMATCH: ErrorImpact.BENIGN,
+    ErrorCode.ARTIFACT_STALE: ErrorImpact.BENIGN,
     ErrorCode.NOT_A_SUPER_CHAT: ErrorImpact.BENIGN,
     ErrorCode.FORK_ANCHOR_INVALID: ErrorImpact.BENIGN,
     ErrorCode.FORK_TOO_DEEP: ErrorImpact.BENIGN,
@@ -494,6 +500,7 @@ _CODE_TO_PHASE: dict[str, ErrorPhase] = {
     ErrorCode.SUPERCHAT_NOT_CONFIGURED: ErrorPhase.REQUEST,
     ErrorCode.MUSE_ALREADY_SET: ErrorPhase.REQUEST,
     ErrorCode.MUSE_TENANT_MISMATCH: ErrorPhase.REQUEST,
+    ErrorCode.ARTIFACT_STALE: ErrorPhase.REQUEST,
     ErrorCode.NOT_A_SUPER_CHAT: ErrorPhase.REQUEST,
     ErrorCode.FORK_ANCHOR_INVALID: ErrorPhase.REQUEST,
     ErrorCode.FORK_TOO_DEEP: ErrorPhase.REQUEST,

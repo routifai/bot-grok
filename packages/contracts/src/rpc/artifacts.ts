@@ -60,6 +60,36 @@ export const ArtifactWithContentSchema = ArtifactSchema.extend({
 });
 export type ArtifactWithContent = z.infer<typeof ArtifactWithContentSchema>;
 
+const ElementId = z.string().min(1).max(128);
+
+/** One source patch of an HTML file (a deck, a page), applied by the engine on `data-superchat-id`
+ * (same shape on the wire). `set-theme` is a deck's only. */
+export const HtmlPatchSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("set-text"), id: ElementId, text: z.string().max(20_000) }),
+  z.object({
+    kind: z.literal("set-style"),
+    id: ElementId,
+    /** Kebab-case CSS property -> value; null removes the declaration. */
+    style: z.record(z.string().regex(/^[a-z-]{1,64}$/), z.string().max(512).nullable()),
+    /** What the editor showed before, only to word "you changed X" (never written to the file). */
+    before: z.record(z.string().regex(/^[a-z-]{1,64}$/), z.string().max(200)).optional(),
+  }),
+  z.object({
+    kind: z.literal("set-attributes"),
+    id: ElementId,
+    attributes: z.object({
+      href: z.string().max(2048).nullable().optional(),
+      alt: z.string().max(1024).nullable().optional(),
+    }),
+  }),
+  z.object({ kind: z.literal("remove-element"), id: ElementId }),
+  z.object({ kind: z.literal("duplicate-element"), id: ElementId }),
+  /** Swap the whole theme (tokens, theme CSS, fonts); the slides are untouched. */
+  z.object({ kind: z.literal("set-theme"), theme: z.string().min(1).max(60) }),
+  z.object({ kind: z.literal("set-full-source"), source: z.string().min(1).max(25_000_000) }),
+]);
+export type HtmlPatch = z.infer<typeof HtmlPatchSchema>;
+
 export const artifactsContract = {
   artifacts: {
     list: oc.input(botId).output(z.array(ArtifactSchema)),
@@ -82,5 +112,17 @@ export const artifactsContract = {
     remove: oc.input(z.object({ artifactId: Id })).output(z.object({ ok: z.literal(true) })),
     /** Makes this earlier version (its id) the newest again, as a new `restore` version. */
     restore: oc.input(z.object({ artifactId: Id })).output(ArtifactSchema),
+    /** Hand edits of an HTML file as source patches: a new `manual` version. CONFLICT with
+     * `data.code` `artifact_stale` when `baseVersion` is no longer the newest, `conflict` when the
+     * engine cannot apply a patch exactly (ask Superchat instead). */
+    edit: oc
+      .input(
+        z.object({
+          artifactId: Id,
+          baseVersion: z.number().int().min(1),
+          patches: z.array(HtmlPatchSchema).min(1).max(200),
+        }),
+      )
+      .output(ArtifactSchema),
   },
 };

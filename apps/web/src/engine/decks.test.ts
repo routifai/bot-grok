@@ -74,61 +74,6 @@ describe("deck export", () => {
   });
 });
 
-describe("deck edit", () => {
-  const patches = [{ kind: "set-text" as const, id: "title", text: "B" }];
-
-  it("patches and returns the new manual version", async () => {
-    const fetchMock = vi.fn(async (url: URL, init?: RequestInit) => {
-      expect(url.pathname).toBe("/v1/artifacts/a1/edit");
-      expect(init?.method).toBe("PATCH");
-      return json({ ...row, id: "a3", version: 2 });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    const created = await call(decksRouter.decks.edit, {
-      artifactId: "a1",
-      baseVersion: 1,
-      patches,
-    });
-    expect(created).toMatchObject({ id: "a3" });
-    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
-      base_version: 1,
-      patches,
-    });
-  });
-
-  it("maps a 409 to CONFLICT with the engine's words", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        json(
-          {
-            error: {
-              code: "conflict",
-              message: "Can't apply that edit exactly: ask Superchat instead",
-            },
-          },
-          409,
-        ),
-      ),
-    );
-    await expect(
-      call(decksRouter.decks.edit, { artifactId: "a1", baseVersion: 1, patches }),
-    ).rejects.toMatchObject({
-      code: "CONFLICT",
-      message: expect.stringContaining("ask Superchat"),
-    });
-  });
-
-  it("sends a set-theme patch as an ordinary edit", async () => {
-    const themePatches = [{ kind: "set-theme" as const, theme: "nord" }];
-    const fetchMock = vi.fn(async () => json({ ...row, id: "a3", version: 2 }));
-    vi.stubGlobal("fetch", fetchMock);
-    await call(decksRouter.decks.edit, { artifactId: "a1", baseVersion: 1, patches: themePatches });
-    const init = (fetchMock.mock.calls as unknown as [URL, RequestInit][])[0]?.[1];
-    expect(JSON.parse(String(init?.body)).patches).toEqual(themePatches);
-  });
-});
-
 describe("deck themes", () => {
   it("lists the dictionary in the web's shape", async () => {
     vi.stubGlobal(

@@ -45,6 +45,7 @@ def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]
 
 def _install(app: FastAPI, deps: InstallDeps) -> None:
     from omnigent.runtime import get_artifact_store
+    from omnigent.superchat.artifacts.edit_routes import create_html_edit_router
     from omnigent.superchat.artifacts.routes import create_artifacts_router
     from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore
 
@@ -64,6 +65,12 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
             permission_store=deps.permission_store,
             auth_provider=deps.auth_provider,
         ),
+        prefix="/v1",
+        tags=["artifacts"],
+    )
+    # After the artifacts router, as before: hand edits of an HTML file (a deck, a page).
+    app.include_router(
+        create_html_edit_router(store, auth_provider=deps.auth_provider),
         prefix="/v1",
         tags=["artifacts"],
     )

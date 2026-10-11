@@ -16,10 +16,10 @@ from omnigent.errors import OmnigentError
 from omnigent.stores.artifact_store.local import LocalArtifactStore
 from omnigent.superchat import prompt_prefix
 from omnigent.superchat.artifact_kinds import KIND_MIME
+from omnigent.superchat.artifacts.edit_routes import create_html_edit_router
 from omnigent.superchat.artifacts.routes import create_artifacts_router
 from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore
 from omnigent.superchat.artifacts.writeback import deliver_manual_edits
-from omnigent.superchat.decks.edit_routes import create_deck_edit_router
 
 _SESSION = uuid.uuid4().hex
 H = {"x-user": "alice"}
@@ -42,7 +42,7 @@ def env(db_uri: str, tmp_path: Path):
 
     @app.exception_handler(OmnigentError)
     async def _h(_: Request, exc: OmnigentError) -> JSONResponse:
-        return JSONResponse({"error": exc.message}, status_code=exc.http_status)
+        return JSONResponse({"error": exc.message, "code": exc.code}, status_code=exc.http_status)
 
     class _Convs:
         pass
@@ -51,7 +51,7 @@ def env(db_uri: str, tmp_path: Path):
         create_artifacts_router(store, conversation_store=_Convs(), auth_provider=_Auth()),  # type: ignore[arg-type]
         prefix="/v1",
     )
-    app.include_router(create_deck_edit_router(store, auth_provider=_Auth()), prefix="/v1")
+    app.include_router(create_html_edit_router(store, auth_provider=_Auth()), prefix="/v1")
     return store, TestClient(app)
 
 
@@ -120,14 +120,15 @@ def test_stale_base_is_a_409(env) -> None:
     v1 = _save(store)
     assert _edit(client, v1.id).status_code == 200
     stale = _edit(client, v1.id, base=1)
-    assert stale.status_code == 409 and "changed since you opened" in stale.json()["error"]
+    assert stale.status_code == 409 and stale.json()["code"] == "artifact_stale"
 
 
 def test_ambiguous_patch_is_a_409_ask_superchat(env) -> None:
     store, client = env
     v1 = _save(store)
     resp = _edit(client, v1.id, patches=[{"kind": "remove-element", "id": "missing"}])
-    assert resp.status_code == 409 and resp.json()["error"].endswith("ask Superchat instead.")
+    assert resp.status_code == 409 and resp.json()["code"] == "conflict"
+    assert resp.json()["error"].endswith("ask Superchat instead.")
     assert len(store.versions(v1)) == 1
 
 
@@ -166,7 +167,7 @@ def test_a_page_is_edited_with_the_same_patches(env) -> None:
     )
 
 
-def test_a_page_has_no_theme_and_its_stale_message_says_page(env) -> None:
+def test_a_page_has_no_theme_and_goes_stale_like_a_deck(env) -> None:
     store, client = env
     v1 = _save(store, name="tracker.html", data=PAGE.encode())
     theme = _edit(client, v1.id, patches=[{"kind": "set-theme", "theme": "x"}])
@@ -178,7 +179,7 @@ def test_a_page_has_no_theme_and_its_stale_message_says_page(env) -> None:
         == 200
     )
     stale = _edit(client, v1.id, base=1, patches=[{"kind": "set-text", "id": "main", "text": "C"}])
-    assert stale.status_code == 409 and stale.json()["error"].startswith("The page changed since")
+    assert stale.status_code == 409 and stale.json()["code"] == "artifact_stale"
 
 
 def test_an_id_the_bridge_made_up_is_refused(env) -> None:

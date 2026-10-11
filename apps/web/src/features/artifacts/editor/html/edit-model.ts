@@ -1,5 +1,5 @@
 // Portions modified from nexu-io/open-design apps/web/src/edit-mode/source-patches.ts@802708f, Apache-2.0; changes: style/translate helpers only; patch application is in the engine.
-import type { DeckEditTarget, DeckPatch } from "@superchat/contracts";
+import type { DeckEditTarget, HtmlPatch } from "@superchat/contracts";
 
 // Pure helpers for the deck editor: colour and length reading, translate handling for the
 // position nudge, how style changes become patches, and how neighbouring patches coalesce.
@@ -94,7 +94,7 @@ function shownBefore(target: DeckEditTarget | undefined, props: string[]): Recor
 export function stylePatches(
   targets: readonly DeckEditTarget[],
   changes: StyleChanges,
-): DeckPatch[] {
+): HtmlPatch[] {
   return targets.map((target) => ({
     kind: "set-style" as const,
     id: target.id,
@@ -105,8 +105,8 @@ export function stylePatches(
 
 /** Merges neighbouring `set-style` patches on one id (later wins) so a slider drag is one patch;
  * every other kind keeps its order. */
-export function coalescePatches(patches: readonly DeckPatch[]): DeckPatch[] {
-  const out: DeckPatch[] = [];
+export function coalescePatches(patches: readonly HtmlPatch[]): HtmlPatch[] {
+  const out: HtmlPatch[] = [];
   for (const patch of patches) {
     const prev = out[out.length - 1];
     if (patch.kind === "set-style" && prev?.kind === "set-style" && prev.id === patch.id) {
@@ -126,11 +126,14 @@ export function coalescePatches(patches: readonly DeckPatch[]): DeckPatch[] {
 }
 
 /** The preview a patch implies in the live frame (style patches only). */
-export function previewOf(patch: DeckPatch): { id: string; style: StyleChanges } | null {
+export function previewOf(patch: HtmlPatch): { id: string; style: StyleChanges } | null {
   return patch.kind === "set-style" ? { id: patch.id, style: patch.style } : null;
 }
 
-/** A patch the engine's reply says it will not apply exactly (the "ask Superchat instead" 409). */
-export const isInexact = (message: string): boolean => /ask Superchat instead/i.test(message);
-export const isStale = (message: string): boolean =>
-  /^the (deck|page) changed since/i.test(message);
+/** Why the engine refused a hand edit (`artifacts.edit`): the file moved on since the editor
+ * opened it ("stale"), or a patch it will not apply exactly ("inexact": ask superchat instead). */
+export function editConflict(error: unknown): "stale" | "inexact" | null {
+  const failure = error as { code?: unknown; data?: { code?: unknown } } | null;
+  if (failure?.code !== "CONFLICT") return null;
+  return failure.data?.code === "artifact_stale" ? "stale" : "inexact";
+}

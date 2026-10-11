@@ -1,12 +1,12 @@
 import { useLingui } from "@lingui/react/macro";
-import type { Artifact, DeckPatch, DeckTheme } from "@superchat/contracts";
+import type { Artifact, DeckTheme, HtmlPatch } from "@superchat/contracts";
 import { Button, cn } from "@superchat/ui-web";
 import { Check, Expand, Undo2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type DeckThemesSource, loadDeckThemes, resetDeckThemeCache } from "../../lib/deck-themes";
 import { rpc } from "../../lib/rpc";
 import { flushEditorEdits, noteOwnVersion } from "../artifacts/editor/editor-state";
-import { isInexact, isStale } from "../artifacts/editor/html/edit-model";
+import { editConflict } from "../artifacts/editor/html/edit-model";
 import type { HtmlEditSource } from "../artifacts/editor/html/useHtmlEditor";
 import { DeckThemePreview } from "./DeckThemePreview";
 import { setDeckThemeOpen } from "./deck-ui-state";
@@ -18,7 +18,7 @@ export type DeckThemeSource = (artifactId: string) => Promise<string | null>;
 
 const defaultCurrent: DeckThemeSource = async (artifactId) =>
   (await rpc.decks.theme({ artifactId })).theme;
-const defaultEdit: HtmlEditSource = (input) => rpc.decks.edit(input);
+const defaultEdit: HtmlEditSource = (input) => rpc.artifacts.edit(input);
 
 /** The data-attribute the header's Theme button carries: a click on it is not an "outside" click
  * (it toggles the gallery itself) and focus returns to it when the gallery closes. */
@@ -188,15 +188,15 @@ export function DeckThemePicker({
   };
 
   const failure = (cause: unknown): string => {
-    const message = cause instanceof Error ? cause.message : "";
-    if (isInexact(message))
+    const conflict = editConflict(cause);
+    if (conflict === "inexact")
       return t`This deck can't be restyled by hand. Ask superchat to restyle it.`;
-    if (isStale(message)) return t`The deck changed since you opened it. Try again.`;
+    if (conflict === "stale") return t`The deck changed since you opened it. Try again.`;
     return t`Couldn't switch the theme.`;
   };
 
   const send = async (
-    patches: DeckPatch[],
+    patches: HtmlPatch[],
     onDone: (created: Pick<Artifact, "id" | "version">) => void,
   ) => {
     setError(null);

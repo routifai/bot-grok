@@ -1,7 +1,7 @@
 // biome-ignore-all lint: a plain ES5-style script that runs inside the sandboxed deck frame
 // Portions modified from nexu-io/open-design apps/web/src/edit-mode/bridge.ts@802708f, Apache-2.0;
 // changes: rewritten for Superchat decks. The nonce is baked in and checked on every message together
-// with event.source, messages are the superchat:edit-* protocol (see deck-edit-protocol.ts), targets are
+// with event.source, messages are the superchat:edit-* protocol (see artifact-edit-protocol.ts), targets are
 // `data-superchat-id` elements on the active slide only, selection chrome is a separate overlay layer
 // (no attributes or classes are written to the deck), multi-select, keyboard nudge, and no
 // drag / guides / brand-kit / link-preview handling.
