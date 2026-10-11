@@ -232,17 +232,11 @@ export function ForksPreviewPage() {
               messages={messages}
               olderCursor={null}
               loadingOlder={false}
-              answerableAskMessageId={null}
               running={false}
-              workingBots={[]}
               onLoadOlder={noop}
-              onOpenBot={noop}
               onAnswer={noopAsync}
-              onReact={noopAsync}
-              onJumpToMessage={noop}
               onOpenPeerMessages={noop}
               peerBot={() => undefined}
-              onBotChanged={noopAsync}
               voiceReady={false}
               speakingMessageId={null}
               onSpeak={noop}

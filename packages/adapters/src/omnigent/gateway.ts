@@ -325,8 +325,8 @@ export function buildTurnInput(prompt: string, steeringTexts: string[]): string 
  * `POST /v1/me/muse/adopt`, so the person keeps it. The row remembers the adoption
  * (`engineAdoptedAt`) and then simply mirrors what the engine answers.
  */
-async function resolveMuseSession(
-  deps: OmnigentGatewayDeps,
+export async function resolveMuseSession(
+  deps: Pick<OmnigentGatewayDeps, "prisma">,
   client: OmnigentClientConfig,
   email: string,
   botId: string,

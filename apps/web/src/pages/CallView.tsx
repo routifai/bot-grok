@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { ThreadMessage, ThreadSnapshot } from "@superchat/contracts";
+import type { ThreadMessage } from "@superchat/contracts";
 import { isSecretAskBlock, narrateTool, speechFromBlocks, spokenDecision } from "@superchat/core";
 import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from "@superchat/ui-web";
 import { useEffect, useRef, useState } from "react";
@@ -8,22 +8,23 @@ import { speaker } from "../lib/tts";
 
 type Phase = "listening" | "thinking" | "speaking";
 
+/** The Conversation as the call sees it: its messages and whether a reply is being written. */
+export type CallConversation = { messages: readonly ThreadMessage[]; running: boolean };
+
 export function CallView({
   botId,
   botName,
   transcribe,
-  snapshot,
+  conversation,
   onSend,
-  onFollowUp,
   onAnswer,
   onClose,
 }: {
   botId: string;
   botName: string;
   transcribe: boolean;
-  snapshot: ThreadSnapshot | null;
+  conversation: CallConversation;
   onSend: (text: string) => Promise<unknown>;
-  onFollowUp: (text: string) => Promise<void>;
   onAnswer: (message: ThreadMessage, text: string) => Promise<void>;
   onClose: () => void;
 }) {
@@ -36,8 +37,8 @@ export function CallView({
   const spokenMessage = useRef<string | null>(null);
   const narrated = useRef(new Set<string>());
   const closing = useRef(false);
-  const snapshotRef = useRef(snapshot);
-  snapshotRef.current = snapshot;
+  const conversationRef = useRef(conversation);
+  conversationRef.current = conversation;
   const askPromptRef = useRef(t`Say yes or no, or answer in a sentence.`);
   askPromptRef.current = t`Say yes or no, or answer in a sentence.`;
   const secretPromptRef = useRef(t`Hang up first, then enter the code on screen.`);
@@ -63,7 +64,7 @@ export function CallView({
 
   async function listen() {
     if (closing.current) return;
-    if (pendingSecretAsk(snapshotRef.current)) {
+    if (pendingSecretAsk(conversationRef.current.messages)) {
       dictation.stop("cancel");
       setCallPhase("listening");
       setHeard("");
@@ -89,8 +90,8 @@ export function CallView({
       return;
     }
     dictation.stop("submit");
-    const current = snapshotRef.current;
-    if (pendingSecretAsk(current)) {
+    const current = conversationRef.current;
+    if (pendingSecretAsk(current.messages)) {
       setHeard("");
       setCaption("");
       setError(t`Hang up, then enter the code on screen.`);
@@ -98,14 +99,11 @@ export function CallView({
     }
     setHeard(text);
     setCallPhase("thinking");
-    const askId = latestAskId(current);
-    const askMessage = current?.messages.find((message) => message.id === askId);
+    const askMessage = openAskMessage(current.messages);
     try {
       if (askMessage) {
         const decision = spokenDecision(text);
         await onAnswer(askMessage, decision ?? text);
-      } else if (current?.run && ["running", "queued", "leased"].includes(current.run.status)) {
-        await onFollowUp(text);
       } else {
         await onSend(text);
       }
@@ -131,7 +129,7 @@ export function CallView({
     });
     const unsubDictation = dictation.subscribe((state) => {
       if (state.status === "listening") {
-        setHeard(pendingSecretAsk(snapshotRef.current) ? "" : state.transcript);
+        setHeard(pendingSecretAsk(conversationRef.current.messages) ? "" : state.transcript);
       }
       if (state.error) setError(state.error);
     });
@@ -162,7 +160,7 @@ export function CallView({
 
   useEffect(() => {
     if (closing.current || phaseRef.current === "listening") return;
-    const messages = snapshot?.messages ?? [];
+    const { messages, running } = conversation;
     const lastBot = [...messages].reverse().find((message) => message.role === "bot");
     if (lastBot && lastBot.id !== spokenMessage.current) {
       const text = speechFromBlocks(lastBot.blocks);
@@ -186,15 +184,13 @@ export function CallView({
         );
         return;
       }
-      const runActive =
-        snapshot?.run && ["running", "queued", "leased"].includes(snapshot.run.status);
-      if (!runActive) {
+      if (!running) {
         spokenMessage.current = lastBot.id;
         void listen();
         return;
       }
     }
-    if (snapshot?.run && ["running", "queued", "leased"].includes(snapshot.run.status)) {
+    if (running) {
       const phrases: string[] = [];
       let lastKey = "";
       for (const message of messages) {
@@ -216,13 +212,13 @@ export function CallView({
         void speaker.speak(phrases.join(". "), { botId, messageId: `narrate:${lastKey}` });
       }
     }
-  }, [snapshot, botId]);
+  }, [conversation, botId]);
 
   useEffect(() => {
-    if (!pendingSecretAsk(snapshot)) return;
+    if (!pendingSecretAsk(conversation.messages)) return;
     dictation.stop("cancel");
     setHeard("");
-  }, [snapshot]);
+  }, [conversation]);
 
   return (
     <Dialog
@@ -271,24 +267,17 @@ export function CallView({
   );
 }
 
-function pendingSecretAsk(snapshot: ThreadSnapshot | null) {
-  const askId = latestAskId(snapshot);
-  const askMessage = snapshot?.messages.find((message) => message.id === askId);
-  return askMessage?.blocks.some(
+function pendingSecretAsk(messages: readonly ThreadMessage[]) {
+  return openAskMessage(messages)?.blocks.some(
     (block) => block.kind === "ask" && isSecretAskBlock(block) && block.status !== "answered",
   );
 }
 
-function latestAskId(snapshot: ThreadSnapshot | null): string | null {
-  if (snapshot?.run?.status !== "waiting_input") return null;
-  for (let index = snapshot.messages.length - 1; index >= 0; index -= 1) {
-    const message = snapshot.messages[index];
-    if (message?.runId !== snapshot.run.id) continue;
-    if (message.blocks.some((block) => block.kind === "ask" && block.status !== "answered")) {
-      return message.id;
-    }
-  }
-  return null;
+/** The latest message holding an ask the person has not answered. */
+function openAskMessage(messages: readonly ThreadMessage[]): ThreadMessage | undefined {
+  return messages.findLast((message) =>
+    message.blocks.some((block) => block.kind === "ask" && block.status !== "answered"),
+  );
 }
 
 function speakableProgress(text: string): string | null {

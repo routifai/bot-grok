@@ -19,7 +19,6 @@ vi.mock("@lingui/react/macro", () => {
   };
 });
 
-import { MODEL_ERROR_COPY } from "@superchat/core";
 import { Composer } from "./Composer";
 
 vi.stubGlobal(
@@ -32,7 +31,7 @@ vi.stubGlobal(
 );
 
 async function render(
-  runError: string | null,
+  failure: { id: string; code: string } | null,
   onSend: (text: string) => Promise<boolean | undefined> = async () => undefined,
 ) {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -41,25 +40,18 @@ async function render(
   const root = createRoot(host);
   await act(async () => {
     root.render(
-      <Composer
-        museMode
-        running={false}
-        sending={false}
-        runError={runError}
-        runErrorId="run-1"
-        onSend={onSend}
-      />,
+      <Composer museMode running={false} sending={false} failure={failure} onSend={onSend} />,
     );
   });
   return { host, cleanup: () => act(async () => root.unmount()) };
 }
 
-it("offers Add your API key and Raise budget on the failed turn, opening Settings > Models", async () => {
+it("offers Add your API key and Raise budget on the failed reply, opening Settings > Models", async () => {
   const opened: unknown[] = [];
   const listener = (event: Event) => opened.push((event as CustomEvent<unknown>).detail);
   window.addEventListener("superchat:open-settings", listener);
   try {
-    const key = await render(MODEL_ERROR_COPY.model_key_required);
+    const key = await render({ id: "m1", code: "model_key_required" });
     const keyButton = key.host.querySelector(
       '[data-testid="composer-error-action"]',
     ) as HTMLElement;
@@ -67,7 +59,7 @@ it("offers Add your API key and Raise budget on the failed turn, opening Setting
     await act(async () => keyButton.click());
     await key.cleanup();
 
-    const budget = await render(MODEL_ERROR_COPY.model_budget_exhausted);
+    const budget = await render({ id: "m2", code: "model_budget_exhausted" });
     const budgetButton = budget.host.querySelector(
       '[data-testid="composer-error-action"]',
     ) as HTMLElement;
@@ -81,8 +73,11 @@ it("offers Add your API key and Raise budget on the failed turn, opening Setting
 });
 
 it("shows the paused-account and unsupported-model notes without a fix button", async () => {
-  for (const copy of [MODEL_ERROR_COPY.account_suspended, MODEL_ERROR_COPY.model_not_supported]) {
-    const view = await render(copy);
+  for (const [code, copy] of [
+    ["account_suspended", "Your account is paused. Contact your admin."],
+    ["model_not_supported", "This model isn't available — pick another."],
+  ] as const) {
+    const view = await render({ id: code, code });
     expect(view.host.querySelector('[data-testid="composer-error"]')?.textContent).toContain(copy);
     expect(view.host.querySelector('[data-testid="composer-error-action"]')).toBeNull();
     await view.cleanup();

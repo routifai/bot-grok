@@ -33,21 +33,22 @@ Code lives in feature files: oRPC routers in `apps/api/src/routers/` (for exampl
 
 | Screen | oRPC | Omnigent |
 |---|---|---|
-| Conversation: send | existing run path (`runTurnOnOmnigent`) | `POST /v1/sessions/{super}/events` + `/stream` |
-| Conversation: read, incl. Muse speaks first (Helper Results) | `chats.transcript({botId})`, refetched on `chats.watch` | `GET /v1/sessions/{super}/transcript` + `GET /v1/sessions/{super}/family/stream` |
+| Conversation: send (a message sent mid-turn is steered in or queued by the engine) | `chats.send({botId, text?, attachments?, folders?})` | `POST /v1/sessions/{super}/events` (`message`; images as `input_image` parts) |
+| Conversation: stop | `chats.interrupt({botId})` | `POST /v1/sessions/{super}/events` (`interrupt`) |
+| Conversation: read and whether it is working, incl. Muse speaks first (Helper Results) | `chats.transcript({botId})` (`running`), refetched on `chats.watch` | `GET /v1/sessions/{super}/transcript` + `GET /v1/sessions/{super}/family/stream` |
 | Sidebar Chat List | `chats.list({botId})` | `GET /v1/sessions/{super}/related_chats` |
 | "+ New side chat" first send | `chats.createSide({botId, start, text})` | `POST /v1/sessions/{super}/side_chats` |
 | "Knows our conversation" hover | `chats.summaryPreview({botId})` | `GET /v1/sessions/{super}/context_summary` |
 | Side chat / Helper messages | `chats.transcript({botId, chatId})` | `GET /v1/sessions/{chatId}/transcript` |
 | Side chat send | `chats.send({chatId, text})` | `POST /v1/sessions/{chatId}/events` |
-| Chat viewed (clears its unread dot) | `chats.markRead({botId, chatId?})` | `POST /v1/sessions/{chatId}/read` `{item_id?}`; emits `chats.changed` |
+| Chat viewed (clears its unread dot; the Conversation without `chatId`) | `chats.markRead({botId, chatId?})` | `POST /v1/sessions/{chatId}/read` `{item_id?}`; emits `chats.changed` |
 | Clear conversation | `chats.reset({botId})` | `POST /v1/sessions/{super}/reset` |
 | Show earlier messages | `chats.transcript({botId, beforeReset: true})` | `GET /v1/sessions/{super}/transcript?before_reset=true` |
 | Search | `search.query` (hits carry `chatId` for a side chat) | `GET /v1/sessions/{super}/items/search?query=…&scope=family` |
 | Activity panel | `activities.list({botId, before?, limit?})` | `GET /v1/sessions/{super}/activities` |
 | Memory tab | `memory.profile({botId})` | `GET /v1/sessions/{super}/memory/profile` |
 | Activity / Helper detail | `activities.get({botId, activityId})` | `GET /v1/sessions/{super}/activities/{id}` |
-| Computer status | thread snapshot `computer` | `GET /v1/sessions/{super}/computer` |
+| Computer status | `computer.status({botId})` | `GET /v1/sessions/{super}/computer` |
 
 `ChatSummary` (contracts `muse.ts`) maps from `related_chats`:
 `id`, `title`, `start` (`with_context` → `withContext`), `summary` (the seed

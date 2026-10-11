@@ -1,6 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
 import type { MuseState, Run, ThreadMessage } from "@superchat/contracts";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { notifyAsksChanged, useAsks } from "../../../features/approvals";
 import { useComputerLaunch } from "../../../features/computer/useComputerLaunch";
 import { currentToolName, deriveMuseState, museActivityLabel } from "./museState";
@@ -47,6 +47,34 @@ export function waitingKey(
   return [...waiting, ...open].join(",");
 }
 
+/** The engine only says a chat is running, not since when: the first time it was seen running is
+ * remembered here (outliving the pane), so switching to another chat and back keeps the timer. */
+const turnStarts = new Map<string, number>();
+
+/** The turn in flight in a chat, as the live-state surfaces (`useMuseLiveState`) read a run:
+ * none while idle. `key` names the chat for the remembered start. */
+export function useTurnRuns(key: string, running: boolean): MuseLiveRun[] {
+  const runs = useMemo<MuseLiveRun[]>(() => {
+    if (!running) return [];
+    let startedAtMs = turnStarts.get(key);
+    if (startedAtMs === undefined) {
+      startedAtMs = Date.now();
+      turnStarts.set(key, startedAtMs);
+    }
+    return [{ id: key, status: "running", startedAtMs }];
+  }, [running, key]);
+  useEffect(() => {
+    if (!running) turnStarts.delete(key);
+  }, [running, key]);
+  return runs;
+}
+
+/** The message the Muse is writing now: what comes after the person's last one, if anything. */
+function liveMessage(messages: readonly ThreadMessage[] | undefined): ThreadMessage | undefined {
+  const last = messages?.at(-1);
+  return last && last.role !== "user" ? last : undefined;
+}
+
 function activeRunFor(runs: readonly MuseLiveRun[]): MuseLiveRun | undefined {
   return (
     runs.find((run) => run.status === "running") ??
@@ -81,9 +109,7 @@ export function useMuseLiveState({
   const busy = state === "thinking" || state === "working";
   const launch = useComputerLaunch(botId, busy);
   const activeRun = activeRunFor(runs);
-  const activityMessage = activeRun
-    ? messages?.find((message) => message.id === `progress:${activeRun.id}`)
-    : undefined;
+  const activityMessage = activeRun ? liveMessage(messages) : undefined;
   // While the Computer is starting nothing else is happening, so say that instead of "Thinking…".
   const starting = busy && launch !== undefined && launch.stage !== "failed";
   const label = starting

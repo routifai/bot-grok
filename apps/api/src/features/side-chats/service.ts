@@ -12,6 +12,7 @@ import {
   getOmnigentSession,
   getOmnigentTranscript,
   getOmnigentWorkingProject,
+  interruptOmnigentSession,
   listOmnigentRelatedChats,
   mapRelatedChatToSummary,
   mapSideChatCreateToSummary,
@@ -25,8 +26,10 @@ import {
   omnigentClientFor,
   omnigentSuperChatConfigFromEnv,
   postOmnigentMessage,
+  readTurnImages,
   resetOmnigentSession,
   resolveChatOwnership,
+  resolveMuseSession,
   setOmnigentSessionWorkspace,
   sideChatStartToWire,
   streamOmnigentFamily,
@@ -40,12 +43,18 @@ import {
   FORK_TOO_DEEP,
   type SideChatStart,
   type ThreadMessagePage,
+  type WorkspaceAttachment,
 } from "@superchat/contracts";
+import { promptTextForWorkspaceAttachments } from "@superchat/core";
 import type { PrismaClient } from "@superchat/db";
 import { getLogger } from "@superchat/logging";
 import { ORPCError } from "@orpc/server";
 import { syncEngineTimezone } from "../../engine-timezone.js";
 import { onSuperChat } from "../../omnigent-errors.js";
+import {
+  validateWorkspaceAttachments,
+  validateWorkspaceFolders,
+} from "../../workspace-attachments.js";
 
 export interface ChatsDeps {
   prisma: PrismaClient;
@@ -89,6 +98,23 @@ async function requireSuperChatSessionId(
     throw new ORPCError("NOT_FOUND", { message: "This Muse has no Conversation yet" });
   }
   return session.omnigentSessionId;
+}
+
+/** The Muse's Conversation for a message: the engine finds it or creates it (a new Muse has none
+ * until its first message), and the row the other capabilities find it by is kept in step. */
+async function museSessionForSend(
+  deps: ChatsDeps,
+  actor: Actor,
+  client: OmnigentClientConfig,
+  email: string,
+  botId: string,
+): Promise<string> {
+  const bot = await deps.prisma.bot.findFirst({
+    where: { id: botId, spaceId: actor.spaceId, userId: actor.userId },
+    select: { id: true },
+  });
+  if (!bot) throw new ORPCError("NOT_FOUND", { message: "Muse not found" });
+  return resolveMuseSession(deps, client, email, botId);
 }
 
 /** Every Super Chat the actor owns, for the ownership rule (docs/super-chat/WIRING.md): a bare
@@ -488,19 +514,65 @@ export async function resetConversation(
   return { ok: true as const };
 }
 
+/**
+ * `chats.send`: the person's message to a Side Chat (`chatId`) or, without it, the Muse's
+ * Conversation (`botId`). Attached files are already in the workspace: the message carries one
+ * reference line each (the same lines the Conversation shows back as chips) and any image goes
+ * to the model as an image. The engine owns delivery: a message sent while a turn runs is
+ * steered into it or queued behind it.
+ */
 export async function sendToChat(
   deps: ChatsDeps,
   actor: Actor,
-  input: { chatId: string; text: string },
+  input: {
+    botId?: string;
+    chatId?: string;
+    text?: string;
+    attachments?: WorkspaceAttachment[];
+    folders?: string[];
+  },
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<{ ok: true }> {
   const client = requireClient(env, actor);
   const email = await actorEmail(deps, actor);
-  const superChats = await ownedSuperChats(deps, actor);
-  const ownership = await resolveChatOwnership(client, email, superChats, input.chatId);
-  if (!ownership) throw new ORPCError("NOT_FOUND", { message: "Chat not found" });
+  let sessionId: string;
+  if (input.chatId) {
+    const superChats = await ownedSuperChats(deps, actor);
+    const ownership = await resolveChatOwnership(client, email, superChats, input.chatId);
+    if (!ownership) throw new ORPCError("NOT_FOUND", { message: "Chat not found" });
+    sessionId = input.chatId;
+  } else if (input.botId) {
+    sessionId = await museSessionForSend(deps, actor, client, email, input.botId);
+  } else {
+    throw new ORPCError("BAD_REQUEST", { message: "Name a chat or a Muse." });
+  }
+  const text = promptTextForWorkspaceAttachments(
+    input.text,
+    validateWorkspaceAttachments(input.attachments ?? []),
+    validateWorkspaceFolders(input.folders ?? []),
+  );
+  if (!text) throw new ORPCError("BAD_REQUEST", { message: "Nothing to send." });
   await syncEngineTimezone(deps.prisma, actor, env);
+  const images = await readTurnImages(client, email, sessionId, text);
   // A Helper is read-only: the engine refuses the post (`helper_read_only`).
-  await onSuperChat(postOmnigentMessage(client, email, input.chatId, input.text));
+  await onSuperChat(
+    images.length
+      ? postOmnigentMessage(client, email, sessionId, text, images)
+      : postOmnigentMessage(client, email, sessionId, text),
+  );
+  return { ok: true as const };
+}
+
+/** `chats.interrupt`: stops the turn running in the Muse's Conversation. */
+export async function interruptConversation(
+  deps: ChatsDeps,
+  actor: Actor,
+  input: { botId: string },
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<{ ok: true }> {
+  const client = requireClient(env, actor);
+  const email = await actorEmail(deps, actor);
+  const sessionId = await requireSuperChatSessionId(deps, actor, input.botId);
+  await onSuperChat(interruptOmnigentSession(client, email, sessionId));
   return { ok: true as const };
 }

@@ -465,8 +465,6 @@ function ThreadReply({
           <MessageHoverActions
             message={message}
             side={user ? "start" : "end"}
-            onReact={noopAsync}
-            conversational={false}
             onFork={canFork ? onFork : undefined}
           />
         )}
@@ -488,11 +486,9 @@ function ThreadReply({
               artifactTarget={artifactTarget}
               message={message}
               canAnswer={false}
-              onOpenBot={noop}
               onOpenPeerMessages={noop}
               onAnswer={noopAsync}
               peerBot={NOT_LIVE_BOT}
-              onBotChanged={noopAsync}
               voiceReady={false}
               speaking={false}
               onSpeak={noop}

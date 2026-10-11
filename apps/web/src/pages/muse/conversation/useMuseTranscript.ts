@@ -1,13 +1,18 @@
 import type { ThreadMessage } from "@superchat/contracts";
-import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { watchFamily } from "../../../lib/family-stream";
 import { rpc } from "../../../lib/rpc";
-import { mergeNewestTranscriptPage } from "./museTranscript";
+import { mergeNewestTranscriptPage, optimisticMessage, userCount } from "./museTranscript";
 
 /** Events arrive in bursts (a reply, a Helper starting): read the page once per burst. */
 const REFRESH_THROTTLE_MS = 150;
 /** How far back a search jump may page (50 messages a page). */
 const MAX_REVEAL_PAGES = 40;
+/** A reply the engine never starts to write must not leave the working row up forever. */
+const REPLY_WAIT_MAX_MS = 3 * 60 * 1000;
+/** While a reply is expected the stream is the signal; this reads anyway, for a stream that is
+ * down (a Muse's first message opens its Conversation, which the stream could not join before). */
+const REPLY_POLL_MS = 5_000;
 
 type Loaded = {
   threadId: string;
@@ -17,6 +22,8 @@ type Loaded = {
   reset: boolean;
   /** The history from before the reset is shown (and paged with `beforeReset`). */
   earlier: boolean;
+  /** The engine is writing a reply right now. */
+  running: boolean;
 };
 
 /**
@@ -25,6 +32,10 @@ type Loaded = {
  * sent mid-turn is steered in or queued (`messageDelivery`), when a Side Chat or
  * Helper starts (`chatsChanged`), when it is cleared (`chatReset`), and after a reconnect. `refresh()` is for the caller's own
  * moments the stream has no event for (the person's send being recorded).
+ *
+ * It also owns what a send needs to look instant: `beginSend` shows the person's message at once
+ * (dropped when the transcript has it, or on `failSend`) and holds the Conversation as running
+ * until the engine has answered. The Conversation is marked read while it is in view.
  */
 export function useMuseTranscript(
   botId: string | undefined,
@@ -32,6 +43,11 @@ export function useMuseTranscript(
 ) {
   const [loaded, setLoaded] = useState<(Loaded & { botId: string }) | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  /** Sent but not yet in the transcript; shown at once, dropped when it arrives. */
+  const [pending, setPending] = useState<{ text: string; base: number } | null>(null);
+  const pendingRef = useRef<{ text: string; base: number } | null>(null);
+  /** A reply is expected: from send until the engine has answered and gone idle. */
+  const [waiting, setWaiting] = useState(false);
   const loadedRef = useRef<(Loaded & { botId: string }) | null>(null);
   const generation = useRef(0);
   const throttle = useRef<number | undefined>(undefined);
@@ -50,13 +66,23 @@ export function useMuseTranscript(
       if (current !== generation.current) return;
       const prev = loadedRef.current?.botId === botId ? loadedRef.current : null;
       const merged = mergeNewestTranscriptPage(prev, page);
+      const running = Boolean(page.running);
       commit({
         botId,
         ...merged,
+        running,
         reset: Boolean(page.reset),
         // The earlier history stays only while the merge kept it (the first message is unchanged).
         earlier: Boolean(prev?.earlier && merged.messages[0]?.id === prev.messages[0]?.id),
       });
+      if (pendingRef.current && userCount(merged.messages) > pendingRef.current.base) {
+        pendingRef.current = null;
+        setPending(null);
+      }
+      // A message not recorded yet is still being answered, even before the engine says it runs.
+      if (!running && !pendingRef.current && page.messages.at(-1)?.role !== "user") {
+        setWaiting(false);
+      }
     } catch {
       // Keep what is shown; the next event or send reads again. A Muse with no Conversation
       // yet simply shows none.
@@ -68,6 +94,7 @@ export function useMuseTranscript(
           olderCursor: null,
           reset: false,
           earlier: false,
+          running: false,
         });
       }
     }
@@ -81,9 +108,38 @@ export function useMuseTranscript(
     }, REFRESH_THROTTLE_MS);
   }, [read]);
 
+  const awaiting = waiting || Boolean(loaded?.running);
+  useEffect(() => {
+    if (!awaiting) return;
+    const timer = window.setInterval(refresh, REPLY_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [awaiting, refresh]);
+
+  // Looking at the Conversation reads it: on opening, when a reply lands while it is in view,
+  // and when the person comes back to the window.
+  const markSeen = useCallback(() => {
+    if (!botId || document.visibilityState !== "visible" || !document.hasFocus()) return;
+    void rpc.chats.markRead({ botId }).catch(() => undefined);
+  }, [botId]);
+  const markSeenRef = useRef(markSeen);
+  markSeenRef.current = markSeen;
+  useEffect(() => {
+    const onBack = () => markSeenRef.current();
+    onBack();
+    window.addEventListener("focus", onBack);
+    document.addEventListener("visibilitychange", onBack);
+    return () => {
+      window.removeEventListener("focus", onBack);
+      document.removeEventListener("visibilitychange", onBack);
+    };
+  }, [botId]);
+
   useEffect(() => {
     generation.current += 1;
     commit(null);
+    pendingRef.current = null;
+    setPending(null);
+    setWaiting(false);
     if (!botId) return;
     firstRead.current = read();
     let connected = false;
@@ -93,7 +149,10 @@ export function useMuseTranscript(
         event.type === "turnDone" ||
         event.type === "messageDelivery"
       ) {
-        if (event.chatId === loadedRef.current?.threadId) refresh();
+        if (event.chatId === loadedRef.current?.threadId) {
+          if (event.type === "messageDone") markSeenRef.current();
+          refresh();
+        }
       } else if (event.type === "chatReset") {
         if (event.chatId === loadedRef.current?.threadId) {
           // Nothing loaded survives a clear: read the Conversation afresh.
@@ -114,6 +173,27 @@ export function useMuseTranscript(
       stop();
     };
   }, [botId, commit, read, refresh]);
+
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = window.setTimeout(() => setWaiting(false), REPLY_WAIT_MAX_MS);
+    return () => window.clearTimeout(timer);
+  }, [waiting]);
+
+  /** The person's message is on its way: show it at once and hold the Conversation as running. */
+  const beginSend = useCallback((text: string) => {
+    const next = { text, base: userCount(loadedRef.current?.messages ?? null) };
+    pendingRef.current = next;
+    setPending(next);
+    setWaiting(true);
+  }, []);
+
+  /** The send did not go through: nothing is pending or awaited. */
+  const failSend = useCallback(() => {
+    pendingRef.current = null;
+    setPending(null);
+    setWaiting(false);
+  }, []);
 
   const loadOlder = useCallback(async () => {
     const current = loadedRef.current;
@@ -201,11 +281,22 @@ export function useMuseTranscript(
   );
 
   const forBot = loaded?.botId === botId ? loaded : null;
+  const threadId = forBot?.threadId || null;
+  const pendingMessage = useMemo(
+    () => (pending ? optimisticMessage(threadId ?? "", pending.text) : null),
+    [pending, threadId],
+  );
   return {
     /** `null` until the first page has been read. */
     messages: forBot?.messages ?? null,
     /** The Conversation's engine id, or `null` until it is read. */
-    threadId: forBot?.threadId || null,
+    threadId,
+    /** The person's message sent but not yet in the transcript. */
+    pendingMessage,
+    /** A reply is being written, or is expected for the message just sent. */
+    running: Boolean(forBot?.running) || pending !== null || waiting,
+    beginSend,
+    failSend,
     /** The cursor of the next older page, or `null` when this is the start. */
     olderCursor: forBot?.olderCursor ?? null,
     loadingOlder,

@@ -19,13 +19,7 @@ export function SidePanelHeader({
   return (
     <div className="mb-4 flex items-center justify-between">
       <span className="text-[13.5px] text-muted-foreground">
-        {panel === "settings" ? (
-          <Trans>Settings</Trans>
-        ) : active ? (
-          active.status
-        ) : (
-          <Trans>Group</Trans>
-        )}
+        {panel === "settings" ? <Trans>Settings</Trans> : active?.status}
       </span>
       <Button
         variant="ghost"

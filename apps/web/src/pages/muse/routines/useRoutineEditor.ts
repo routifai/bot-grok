@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import type { Bot, Routine, ThreadSnapshot } from "@superchat/contracts";
+import type { Bot, Routine } from "@superchat/contracts";
 import { cronFromPreset } from "@superchat/core";
 import {
   type Dispatch,
@@ -27,14 +27,14 @@ export function useRoutineEditor({
   setPanel,
   panel,
   setBots,
-  refreshThread,
+  refreshRoutines,
 }: {
   active: Bot | undefined;
   activeBotId: MutableRefObject<string | undefined>;
   panel: Panel;
   setPanel: Dispatch<SetStateAction<Panel>>;
   setBots: Dispatch<SetStateAction<Bot[]>>;
-  refreshThread: (id: string, signal?: AbortSignal) => Promise<ThreadSnapshot>;
+  refreshRoutines: (botId: string) => Promise<void>;
 }) {
   const { t } = useLingui();
   const [routineDraft, setRoutineDraft] = useState<RoutineDraftState>(emptyRoutineDraft());
@@ -176,7 +176,7 @@ export function useRoutineEditor({
     if (routineSaveRequest.current !== saveRequest || activeBotId.current !== targetBotId) {
       return;
     }
-    await refreshThread(targetBotId).catch(() => undefined);
+    await refreshRoutines(targetBotId).catch(() => undefined);
   }
 
   async function testRunRoutine() {
@@ -190,7 +190,7 @@ export function useRoutineEditor({
     setRoutineError(null);
     try {
       await rpc.routines.testRun({ routineId: targetRoutine.id });
-      await refreshThread(targetBotId);
+      await refreshRoutines(targetBotId);
     } catch (error) {
       if (activeBotId.current === targetBotId) {
         setRoutineError(error instanceof Error ? error.message : t`Could not run routine`);
@@ -214,7 +214,7 @@ export function useRoutineEditor({
     setDeleteRoutineTarget(null);
     setEditingRoutine((current) => (current?.id === target.id ? null : current));
     if (activeBotId.current !== target.botId) return;
-    await refreshThread(target.botId);
+    await refreshRoutines(target.botId);
     if (activeBotId.current === target.botId) setPanel(null);
   }
 

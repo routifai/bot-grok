@@ -7,6 +7,7 @@ import {
   createSideChat,
   getChatProject,
   getChatTranscript,
+  interruptConversation,
   listChats,
   markChatRead,
   resetConversation,
@@ -57,6 +58,9 @@ export function sideChatsRouter(c: RouterContext) {
       }),
       send: museOnly.chats.send.handler(({ context, input }) =>
         sendToChat(deps, context.actor, input),
+      ),
+      interrupt: museOnly.chats.interrupt.handler(({ context, input }) =>
+        interruptConversation(deps, context.actor, input),
       ),
       project: museOnly.chats.project.handler(({ context, input }) =>
         getChatProject(deps, context.actor, input),

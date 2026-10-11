@@ -1,6 +1,6 @@
 import type { ThreadMessage } from "@superchat/contracts";
 import { describe, expect, it } from "vitest";
-import { foldFailureRuns, isFailureNote } from "./failureNotes";
+import { foldFailureRuns, isFailureNote, latestModelFailure } from "./failureNotes";
 
 let seq = 0;
 function message(role: ThreadMessage["role"], blocks: ThreadMessage["blocks"]): ThreadMessage {
@@ -82,5 +82,22 @@ describe("foldFailureRuns", () => {
 
   it("returns nothing for nothing", () => {
     expect(foldFailureRuns([])).toEqual([]);
+  });
+});
+
+describe("latestModelFailure", () => {
+  it("names the latest reply when it failed for a model-layer reason", () => {
+    const failed = failure("model_key_required");
+    expect(latestModelFailure([ask("hi"), failed])).toEqual({
+      id: failed.id,
+      code: "model_key_required",
+    });
+  });
+
+  it("is gone once anything follows the failure, and for other failures", () => {
+    expect(latestModelFailure([failure("model_key_required"), ask("retry")])).toBeNull();
+    expect(latestModelFailure([ask("hi"), failure("sandbox_unavailable")])).toBeNull();
+    expect(latestModelFailure([ask("hi"), reply("Done.")])).toBeNull();
+    expect(latestModelFailure([])).toBeNull();
   });
 });

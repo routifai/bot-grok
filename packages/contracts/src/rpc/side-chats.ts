@@ -1,5 +1,6 @@
 import { eventIterator, oc } from "@orpc/contract";
 import * as z from "zod";
+import { ATTACHMENT_MAX_COUNT, WorkspaceAttachmentSchema } from "../attachments.js";
 import { ThreadMessagePageSchema } from "../domain.js";
 import { Id } from "../ids.js";
 
@@ -148,9 +149,32 @@ export const sideChatsContract = {
     reset: oc.input(z.object({ botId: Id })).output(z.object({ ok: z.literal(true) })),
     /** The Muse's live family stream: ids only, refetch what changed. */
     watch: oc.input(z.object({ botId: Id })).output(eventIterator(FamilyEventSchema)),
+    /** Sends the person's message to a Side Chat (`chatId`) or, without it, the Muse's
+     * Conversation (`botId`). Files are already in the workspace (`files.uploadAttachment`); the
+     * engine queues or steers a message sent while a turn runs. */
     send: oc
-      .input(z.object({ chatId: Id, text: z.string().min(1) }))
+      .input(
+        z
+          .object({
+            botId: Id.optional(),
+            chatId: Id.optional(),
+            text: z.string().optional(),
+            attachments: z.array(WorkspaceAttachmentSchema).max(ATTACHMENT_MAX_COUNT).optional(),
+            /** Workspace folders (relative, as the Files browser lists them) the message points at. */
+            folders: z.array(z.string().max(1024)).max(5).optional(),
+          })
+          .refine((input) => input.chatId || input.botId, "Name a chat or a Muse")
+          .refine(
+            (input) =>
+              (input.text?.trim() ?? "") ||
+              (input.attachments?.length ?? 0) > 0 ||
+              (input.folders?.length ?? 0) > 0,
+            "Write a message or attach something",
+          ),
+      )
       .output(z.object({ ok: z.literal(true) })),
+    /** Stops the turn running in the Muse's Conversation; messages waiting behind it are cancelled. */
+    interrupt: oc.input(z.object({ botId: Id })).output(z.object({ ok: z.literal(true) })),
     /** Side Chats archive themselves after the chosen days idle (`null`: never). */
     archiving: oc.input(z.object({ botId: Id })).output(ArchivingSchema),
     updateArchiving: oc

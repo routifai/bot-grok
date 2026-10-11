@@ -11,6 +11,9 @@ const {
   getOmnigentWorkingProject,
   getOmnigentTranscript,
   postOmnigentMessage,
+  interruptOmnigentSession,
+  readTurnImages,
+  resolveMuseSession,
   markOmnigentRead,
   resetOmnigentSession,
   omnigentClientConfigFromEnv,
@@ -25,6 +28,9 @@ const {
   getOmnigentWorkingProject: vi.fn(),
   getOmnigentTranscript: vi.fn(),
   postOmnigentMessage: vi.fn(),
+  interruptOmnigentSession: vi.fn(),
+  readTurnImages: vi.fn(),
+  resolveMuseSession: vi.fn(),
   markOmnigentRead: vi.fn(),
   resetOmnigentSession: vi.fn(),
   omnigentClientConfigFromEnv: vi.fn(),
@@ -50,6 +56,9 @@ vi.mock("@superchat/adapters", async (importOriginal) => {
     getOmnigentWorkingProject,
     getOmnigentTranscript,
     postOmnigentMessage,
+    interruptOmnigentSession,
+    readTurnImages,
+    resolveMuseSession,
     markOmnigentRead,
     resetOmnigentSession,
     omnigentClientConfigFromEnv,
@@ -68,6 +77,7 @@ const {
   createSideChat,
   getChatProject,
   getChatTranscript,
+  interruptConversation,
   markChatRead,
   resetConversation,
   sendToChat,
@@ -618,10 +628,128 @@ describe("getChatProject", () => {
   });
 });
 
+describe("sendToChat and interruptConversation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    omnigentClientConfigFromEnv.mockReturnValue(CLIENT);
+    readTurnImages.mockResolvedValue([]);
+    resolveMuseSession.mockResolvedValue("conv_super");
+  });
+
+  it("sends to the Muse's Conversation, which the engine finds or creates, when no chat is named", async () => {
+    await sendToChat(depsFor(), actor, { botId: "bot-1", text: "  hello  " }, ENV);
+    expect(resolveMuseSession).toHaveBeenCalledWith(
+      expect.anything(),
+      BOUND,
+      "person@example.test",
+      "bot-1",
+    );
+    expect(postOmnigentMessage).toHaveBeenCalledWith(
+      BOUND,
+      "person@example.test",
+      "conv_super",
+      "hello",
+    );
+  });
+
+  it("writes a reference line per attached file and folder, then the caption", async () => {
+    await sendToChat(
+      depsFor(),
+      actor,
+      {
+        botId: "bot-1",
+        text: "summarise",
+        attachments: [
+          {
+            path: "your_files/uploads/a.pdf",
+            name: "a.pdf",
+            mimeType: "application/pdf",
+            size: 12,
+          },
+        ],
+        folders: ["projects/x"],
+      },
+      ENV,
+    );
+    expect(postOmnigentMessage).toHaveBeenCalledWith(
+      BOUND,
+      "person@example.test",
+      "conv_super",
+      [
+        "Attached folder in your workspace: projects/x/",
+        "Attached file in your workspace: your_files/uploads/a.pdf (application/pdf, 12 bytes)",
+        "",
+        "summarise",
+      ].join("\n"),
+    );
+  });
+
+  it("hands attached images to the model as images", async () => {
+    readTurnImages.mockResolvedValue([{ mimeType: "image/png", dataBase64: "AAAA" }]);
+    await sendToChat(
+      depsFor(),
+      actor,
+      {
+        botId: "bot-1",
+        attachments: [
+          { path: "your_files/uploads/p.png", name: "p.png", mimeType: "image/png", size: 3 },
+        ],
+      },
+      ENV,
+    );
+    expect(postOmnigentMessage).toHaveBeenCalledWith(
+      BOUND,
+      "person@example.test",
+      "conv_super",
+      "Attached file in your workspace: your_files/uploads/p.png (image/png, 3 bytes)",
+      [{ mimeType: "image/png", dataBase64: "AAAA" }],
+    );
+  });
+
+  it("refuses a file outside the uploads folder and an empty message", async () => {
+    await expect(
+      sendToChat(
+        depsFor(),
+        actor,
+        {
+          botId: "bot-1",
+          attachments: [{ path: "secrets/k.txt", name: "k.txt", mimeType: "text/plain", size: 1 }],
+        },
+        ENV,
+      ),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(
+      sendToChat(depsFor(), actor, { botId: "bot-1", text: " " }, ENV),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(postOmnigentMessage).not.toHaveBeenCalled();
+  });
+
+  it("refuses a Muse that is not the person's before asking the engine", async () => {
+    const deps = depsFor({ bot: { findFirst: vi.fn(async () => null) } });
+    await expect(
+      sendToChat(deps, actor, { botId: "bot-9", text: "hi" }, ENV),
+    ).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
+    expect(resolveMuseSession).not.toHaveBeenCalled();
+    expect(postOmnigentMessage).not.toHaveBeenCalled();
+  });
+
+  it("interrupts the Conversation's running turn", async () => {
+    await interruptConversation(depsFor(), actor, { botId: "bot-1" }, ENV);
+    expect(interruptOmnigentSession).toHaveBeenCalledWith(
+      BOUND,
+      "person@example.test",
+      "conv_super",
+    );
+  });
+});
+
 describe("Helpers", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     omnigentClientConfigFromEnv.mockReturnValue(CLIENT);
+    readTurnImages.mockResolvedValue([]);
     resolveChatOwnership.mockResolvedValue({
       kind: "helper",
       superSessionId: "conv_super",

@@ -176,10 +176,6 @@ function SessionApp() {
           />
           <Route path="/app" element={user ? <ShellPage /> : <Navigate to="/sign-in" replace />} />
           <Route
-            path="/app/g/:groupId"
-            element={user ? <ShellPage /> : <Navigate to="/sign-in" replace />}
-          />
-          <Route
             path="/app/artifacts"
             element={user ? <ArtifactsPage /> : <Navigate to="/sign-in" replace />}
           />

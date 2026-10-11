@@ -1,4 +1,4 @@
-import type { Bot, ThreadMessage, ThreadSnapshot, VoiceStatus } from "@superchat/contracts";
+import type { Bot, ThreadMessage, VoiceStatus } from "@superchat/contracts";
 import { speechFromBlocks } from "@superchat/core";
 import { type MutableRefObject, useCallback, useEffect, useRef, useState } from "react";
 import { rpc } from "../../../lib/rpc";
@@ -7,12 +7,16 @@ import { speaker } from "../../../lib/tts";
 /** Voice status and text-to-speech: which message is speaking, and auto-speak of new replies. */
 export function useVoice({
   active,
-  snapshot,
+  messages,
+  running,
   callOpen,
   activeBotId,
 }: {
   active: Bot | undefined;
-  snapshot: ThreadSnapshot | null;
+  /** The Conversation's messages; `null` until they are read. */
+  messages: readonly ThreadMessage[] | null;
+  /** A reply is being written. */
+  running: boolean;
   callOpen: boolean;
   activeBotId: MutableRefObject<string | undefined>;
 }) {
@@ -34,8 +38,8 @@ export function useVoice({
   }, []);
 
   useEffect(() => {
-    if (!active || !snapshot || snapshot.botId !== active.id) return;
-    const lastBot = [...snapshot.messages].reverse().find((message) => message.role === "bot");
+    if (!active || !messages) return;
+    const lastBot = messages.findLast((message) => message.role === "bot");
     if (autoSpokenBotId.current !== active.id) {
       autoSpokenBotId.current = active.id;
       autoSpoken.current = lastBot?.id ?? null;
@@ -45,20 +49,13 @@ export function useVoice({
       autoSpoken.current = lastBot?.id ?? null;
       return;
     }
-    if (snapshot.run && ["running", "queued", "leased"].includes(snapshot.run.status)) return;
+    if (running) return;
     if (!lastBot || lastBot.id === autoSpoken.current) return;
     const text = speechFromBlocks(lastBot.blocks);
     if (!text) return;
     autoSpoken.current = lastBot.id;
     void speaker.speak(text, { botId: active.id, messageId: lastBot.id });
-  }, [
-    snapshot?.messages,
-    snapshot?.run?.status,
-    snapshot?.botId,
-    active?.autoSpeak,
-    active?.id,
-    callOpen,
-  ]);
+  }, [messages, running, active?.autoSpeak, active?.id, callOpen]);
 
   const speakingMessageIdRef = useRef(speakingMessageId);
   speakingMessageIdRef.current = speakingMessageId;

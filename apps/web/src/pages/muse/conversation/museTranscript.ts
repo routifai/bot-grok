@@ -1,7 +1,5 @@
 import type { ThreadMessage, ThreadMessagePage } from "@superchat/contracts";
 
-const epochSeconds = (iso: string) => Math.floor(new Date(iso).getTime() / 1000);
-
 /** The newest transcript page merged into what is loaded. Older pages already loaded stay when
  * the new page overlaps them; otherwise (a long gap) the new page stands alone. */
 export function mergeNewestTranscriptPage(
@@ -25,21 +23,20 @@ export function mergeNewestTranscriptPage(
   };
 }
 
-/** The person's messages Superchat has accepted that the engine's transcript does not show yet: the
- * send is acknowledged at once, the engine records it a moment later. Anything not newer than
- * the transcript's last message *of the person's* is already in it (the engine stamps whole
- * seconds). The Muse's own work (tool calls, replies) keeps landing meanwhile and must not hide a
- * message sent during it, so only the person's messages count; a window with none falls back to
- * the last message of any kind. */
-export function pendingUserMessages(
-  accepted: readonly ThreadMessage[],
-  transcript: readonly ThreadMessage[],
-): ThreadMessage[] {
-  const last = transcript.findLast((message) => message.role === "user") ?? transcript.at(-1);
-  const lastSeconds = last ? epochSeconds(last.createdAt) : -1;
-  return accepted.filter(
-    (message) => message.role === "user" && epochSeconds(message.createdAt) > lastSeconds,
-  );
+/** How many messages of the person's the transcript holds. */
+export const userCount = (messages: readonly ThreadMessage[] | null) =>
+  messages?.filter((message) => message.role === "user").length ?? 0;
+
+/** What the person just sent, shown before the engine has recorded it. */
+export function optimisticMessage(chatId: string, text: string): ThreadMessage {
+  return {
+    id: "optimistic",
+    threadId: chatId,
+    seq: Number.MAX_SAFE_INTEGER,
+    role: "user",
+    blocks: [{ kind: "text", text }],
+    createdAt: new Date().toISOString(),
+  };
 }
 
 /** A quoted passage as a markdown blockquote above what the person wrote. */
@@ -50,47 +47,4 @@ export function quotedMessageText(quote: string, text: string): string {
     .map((line) => `> ${line}`.trimEnd())
     .join("\n");
   return text ? `${block}\n\n${text}` : block;
-}
-
-/** The block kinds the engine's transcript itself produces (plus the legacy reply shapes Superchat
- * once stored). A Superchat thread row made only of these is a copy of engine content. */
-const ENGINE_BLOCK_KINDS: ReadonlySet<string> = new Set([
-  "text",
-  "reply_card",
-  "helper",
-  "error",
-  "progress",
-  "steps",
-  "file",
-  "image",
-]);
-
-/**
- * The Conversation as shown: the engine's transcript, plus Superchat's own thread rows, by time.
- *
- * These rows are Superchat-owned, not engine behaviour: cards and notices Superchat writes into the
- * Muse's thread itself (an app-connect card, a messaging notice, a
- * Muse-to-Muse marker). The engine knows nothing of them, so they are layered in here, purely
- * for display. Superchat's copies of the person's messages and of replies are left out (the
- * transcript is the source), except a message accepted but not yet recorded by the engine.
- */
-export function conversationMessages(
-  engine: readonly ThreadMessage[],
-  superchatThread: readonly ThreadMessage[],
-): ThreadMessage[] {
-  // Rows older than what is loaded wait until "Load earlier" reaches them.
-  const from = engine[0] ? epochSeconds(engine[0].createdAt) : Number.NEGATIVE_INFINITY;
-  const superchatOwned = superchatThread.filter(
-    (message) =>
-      message.blocks.some((block) => !ENGINE_BLOCK_KINDS.has(block.kind)) &&
-      epochSeconds(message.createdAt) >= from,
-  );
-  const extra = new Map<string, ThreadMessage>();
-  for (const message of [...superchatOwned, ...pendingUserMessages(superchatThread, engine)]) {
-    extra.set(message.id, message);
-  }
-  // Array.sort is stable: on a tie the engine's message stays first.
-  return [...engine, ...extra.values()].sort(
-    (a, b) => epochSeconds(a.createdAt) - epochSeconds(b.createdAt),
-  );
 }

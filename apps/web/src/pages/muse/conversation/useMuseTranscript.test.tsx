@@ -5,7 +5,9 @@ import { act, type RefObject } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-const api = vi.hoisted(() => ({ chats: { transcript: vi.fn() } }));
+const api = vi.hoisted(() => ({
+  chats: { transcript: vi.fn(), markRead: vi.fn(async () => ({ ok: true })) },
+}));
 const family = vi.hoisted(() => ({ listener: null as ((event: FamilyEvent) => void) | null }));
 vi.mock("../../../lib/rpc", () => ({ rpc: api }));
 vi.mock("../../../lib/family-stream", () => ({
@@ -17,17 +19,17 @@ vi.mock("../../../lib/family-stream", () => ({
 
 import { useMuseTranscript } from "./useMuseTranscript";
 
-const message = (id: string): ThreadMessage => ({
+const message = (id: string, role: ThreadMessage["role"] = "user"): ThreadMessage => ({
   id,
   threadId: "conv",
   seq: 0,
-  role: "user",
+  role,
   blocks: [{ kind: "text", text: id }],
   createdAt: "2026-10-03T10:00:00.000Z",
 });
 const page = (ids: string[], extra: Partial<ThreadMessagePage> = {}): ThreadMessagePage => ({
   threadId: "conv",
-  messages: ids.map(message),
+  messages: ids.map((id) => message(id)),
   olderCursor: null,
   ...extra,
 });
@@ -43,6 +45,7 @@ const roots: Root[] = [];
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   api.chats.transcript.mockReset();
+  api.chats.markRead.mockClear();
   family.listener = null;
   vi.useFakeTimers();
 });
@@ -128,4 +131,96 @@ it("reads again when the engine says how a message sent mid-turn was taken", asy
     await vi.advanceTimersByTimeAsync(200);
   });
   expect(api.chats.transcript).toHaveBeenCalledTimes(2);
+});
+
+it("is running while the engine says a reply is being written, and idle after", async () => {
+  api.chats.transcript.mockResolvedValueOnce(page(["a"], { running: true }));
+  await mountHook();
+  expect(latest.running).toBe(true);
+
+  api.chats.transcript.mockResolvedValueOnce({
+    ...page(["a"]),
+    messages: [message("a"), message("b", "bot")],
+  });
+  await act(async () => {
+    family.listener?.({ type: "turnDone", chatId: "conv", status: "completed" });
+    await vi.advanceTimersByTimeAsync(200);
+  });
+  expect(latest.running).toBe(false);
+});
+
+it("shows a sent message at once and keeps the Conversation running until the reply is in", async () => {
+  api.chats.transcript.mockResolvedValueOnce(page([]));
+  await mountHook();
+  expect(latest.running).toBe(false);
+
+  await act(async () => latest.beginSend("hello"));
+  expect(latest.pendingMessage?.blocks).toEqual([{ kind: "text", text: "hello" }]);
+  expect(latest.running).toBe(true);
+
+  // The engine has recorded the message but not started: the pending copy gives way, the row stays.
+  api.chats.transcript.mockResolvedValueOnce(page(["m1"]));
+  await act(async () => {
+    family.listener?.({ type: "messageDelivery", chatId: "conv", itemId: "m1" });
+    await vi.advanceTimersByTimeAsync(200);
+  });
+  expect(latest.pendingMessage).toBeNull();
+  expect(latest.running).toBe(true);
+
+  api.chats.transcript.mockResolvedValueOnce({
+    ...page(["m1"]),
+    messages: [message("m1"), message("m2", "bot")],
+  });
+  await act(async () => {
+    family.listener?.({ type: "messageDone", chatId: "conv", itemId: "m2" });
+    await vi.advanceTimersByTimeAsync(200);
+  });
+  expect(latest.running).toBe(false);
+});
+
+it("takes a message back when the send fails", async () => {
+  api.chats.transcript.mockResolvedValueOnce(page(["a"]));
+  await mountHook();
+  await act(async () => latest.beginSend("hello"));
+  await act(async () => latest.failSend());
+  expect(latest.pendingMessage).toBeNull();
+  expect(latest.running).toBe(false);
+});
+
+it("reads on a timer only while a reply is expected, whatever the stream does", async () => {
+  api.chats.transcript.mockResolvedValue(page(["a"]));
+  await mountHook();
+  expect(api.chats.transcript).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(20_000);
+  });
+  expect(api.chats.transcript).toHaveBeenCalledTimes(1);
+
+  await act(async () => latest.beginSend("hello"));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(5_500);
+  });
+  expect(api.chats.transcript).toHaveBeenCalledTimes(2);
+});
+
+it("marks the Conversation read when a reply lands while it is in view", async () => {
+  vi.spyOn(document, "hasFocus").mockReturnValue(true);
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  api.chats.transcript.mockResolvedValue(page(["a"]));
+  await mountHook();
+  expect(api.chats.markRead).toHaveBeenCalledWith({ botId: "bot-1" });
+  api.chats.markRead.mockClear();
+  await act(async () => {
+    family.listener?.({ type: "messageDone", chatId: "conv", itemId: "b" });
+    await vi.advanceTimersByTimeAsync(200);
+  });
+  expect(api.chats.markRead).toHaveBeenCalledTimes(1);
+
+  vi.spyOn(document, "hasFocus").mockReturnValue(false);
+  api.chats.markRead.mockClear();
+  await act(async () => {
+    family.listener?.({ type: "messageDone", chatId: "conv", itemId: "c" });
+    await vi.advanceTimersByTimeAsync(200);
+  });
+  expect(api.chats.markRead).not.toHaveBeenCalled();
 });

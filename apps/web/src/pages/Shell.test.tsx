@@ -59,13 +59,23 @@ vi.mock("../lib/auth", () => ({
   },
 }));
 
+/** What the engine's Conversation answers; the other calls never resolve. */
+const engine = vi.hoisted(() => ({
+  transcript: vi.fn(),
+  send: vi.fn(),
+  interrupt: vi.fn(),
+}));
+
 vi.mock("../lib/rpc", () => {
   function pendingRpc(): unknown {
     const target = () => new Promise(() => undefined);
     return new Proxy(target, { get: () => pendingRpc() });
   }
+  const chats = new Proxy(engine as Record<string, unknown>, {
+    get: (target, key) => (typeof key === "string" && key in target ? target[key] : pendingRpc()),
+  });
   return {
-    rpc: pendingRpc(),
+    rpc: new Proxy({}, { get: (_target, key) => (key === "chats" ? chats : pendingRpc()) }),
     selectedSpaceId: () => null,
     selectSpace: () => true,
     clearSpaceSelection: () => undefined,
@@ -111,7 +121,6 @@ vi.mock("@superchat/ui-web", () => {
     DropdownMenuContent: Passthrough,
     DropdownMenuItem: (props: ComponentProps<"div">) => <div {...props} />,
     DropdownMenuTrigger: Passthrough,
-    GroupAvatar: () => <span data-testid="group-avatar" />,
     Sheet: ({ open, children }: { open?: boolean; children?: ReactNode }) =>
       open ? <>{children}</> : null,
     SheetContent: Passthrough,
@@ -161,10 +170,6 @@ vi.mock("../features/computer/ComputerMaintenanceActions", () => ({
 vi.mock("../features/computer/ComputerUpdateProgress", () => ({ ComputerUpdateProgress: Stub }));
 vi.mock("../components/MessageHoverMetadata", () => ({ MessageHoverMetadata: Stub }));
 vi.mock("./muse/sheets/DockSheets", () => ({ DockSheets: Stub }));
-vi.mock("./GroupPanel", () => ({
-  GroupSettings: Stub,
-  memberName: () => "",
-}));
 vi.mock("../features/computer/HostComputerPrompt", () => ({ HostComputerPrompt: Stub }));
 vi.mock("./RoutineEditor", () => ({
   RoutineEditor: Stub,
@@ -182,8 +187,6 @@ vi.mock("./shell/dialogs", () => ({
   DeleteItemDialog: Stub,
 }));
 vi.mock("./shell/message-cards", () => ({
-  ChoiceCard: Stub,
-  AppConnectCard: Stub,
   McpApprovalCard: Stub,
   ChartBlockView: Stub,
   ArtifactImage: Stub,
@@ -271,7 +274,6 @@ async function renderShell(initialBootstrap: ReturnType<typeof bootstrap>) {
           <Routes>
             <Route path="/app" element={<ShellPage />} />
             <Route path="/app/:botId" element={<ShellPage />} />
-            <Route path="/app/g/:groupId" element={<ShellPage />} />
           </Routes>
         </MemoryRouter>
       </I18nProvider>,
@@ -291,6 +293,12 @@ async function renderShell(initialBootstrap: ReturnType<typeof bootstrap>) {
   };
 }
 
+beforeEach(() => {
+  engine.transcript.mockReset().mockImplementation(() => new Promise(() => undefined));
+  engine.send.mockReset().mockResolvedValue({ ok: true });
+  engine.interrupt.mockReset().mockResolvedValue({ ok: true });
+});
+
 it("shows the conversation chrome: the dock, Chats instead of a sidebar, no Goals, Feed or Ideas", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const page = await renderShell(bootstrap({ me: me() }));
@@ -309,6 +317,104 @@ it("shows the conversation chrome: the dock, Chats instead of a sidebar, no Goal
     for (const gone of ["Goals", "Feed", "Ideas", "Superchat"]) expect(text).not.toContain(gone);
     expect(page.container.querySelector('[data-testid="bots-sidebar"]')).toBeNull();
     expect(page.container.querySelector('[data-testid="create-menu-trigger"]')).toBeNull();
+  } finally {
+    await page.cleanup();
+  }
+});
+
+const turn = [
+  {
+    id: "m1",
+    threadId: "conv",
+    seq: 1,
+    role: "user",
+    blocks: [{ kind: "text", text: "find the invoice" }],
+    createdAt: "2026-10-10T10:00:00.000Z",
+  },
+];
+
+it("shows the Muse working from the engine's transcript, and Stop interrupts the engine", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  engine.transcript.mockResolvedValue({
+    threadId: "conv",
+    messages: turn,
+    olderCursor: null,
+    running: true,
+  });
+  const page = await renderShell(bootstrap());
+  try {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(engine.transcript).toHaveBeenCalledWith({ botId: "bot-1" });
+    expect(page.container.querySelector('[data-testid="muse-live-row"]')).toBeTruthy();
+    const stop = page.container.querySelector('button[aria-label="Stop"]') as HTMLElement;
+    expect(stop).toBeTruthy();
+    await act(async () => stop.click());
+    expect(engine.interrupt).toHaveBeenCalledWith({ botId: "bot-1" });
+  } finally {
+    await page.cleanup();
+  }
+});
+
+it("shows no working row and no Stop when the engine is idle", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  engine.transcript.mockResolvedValue({
+    threadId: "conv",
+    messages: [
+      ...turn,
+      { ...turn[0], id: "m2", role: "bot", blocks: [{ kind: "text", text: "Found it." }] },
+    ],
+    olderCursor: null,
+    running: false,
+  });
+  const page = await renderShell(bootstrap());
+  try {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(page.container.querySelector('[data-testid="muse-live-row"]')).toBeNull();
+    expect(page.container.querySelector('button[aria-label="Stop"]')).toBeNull();
+    expect(page.container.textContent).toContain("find the invoice");
+  } finally {
+    await page.cleanup();
+  }
+});
+
+it("sends to the engine's Conversation and shows the message at once", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  engine.transcript.mockResolvedValue({
+    threadId: "conv",
+    messages: turn,
+    olderCursor: null,
+    running: false,
+  });
+  engine.send.mockImplementation(() => new Promise(() => undefined));
+  const page = await renderShell(bootstrap());
+  try {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    const box = page.container.querySelector("textarea") as HTMLTextAreaElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(
+        box,
+        "and the receipt?",
+      );
+      box.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      box.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    expect(engine.send).toHaveBeenCalledWith({
+      botId: "bot-1",
+      text: "and the receipt?",
+      attachments: undefined,
+      folders: undefined,
+    });
+    // The engine has not recorded it yet, and the person already sees it.
+    expect(page.container.textContent).toContain("and the receipt?");
+    expect(page.container.querySelector('[data-testid="muse-live-row"]')).toBeTruthy();
   } finally {
     await page.cleanup();
   }

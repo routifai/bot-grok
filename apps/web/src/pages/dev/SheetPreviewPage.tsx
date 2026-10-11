@@ -52,10 +52,8 @@ export function SheetPreviewPage() {
             canAnswer={false}
             message={message}
             onAnswer={async () => undefined}
-            onOpenBot={() => undefined}
             onOpenPeerMessages={() => undefined}
             peerBot={() => undefined}
-            onBotChanged={async () => undefined}
             voiceReady={false}
             speaking={false}
             onSpeak={() => undefined}

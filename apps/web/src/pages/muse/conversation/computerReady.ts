@@ -3,11 +3,49 @@ import type { ComputerStatus } from "@superchat/contracts";
 /** How long a step waits for a Computer that is starting (the managed launch window). */
 export const COMPUTER_LAUNCH_WINDOW_MS = 120_000;
 
-/** The Computer's status as the thread's event stream reports it. Nothing here polls: a step that
- * has to wait for the Computer waits for the next status event. */
+/** The Computer's status as a step that waits on it sees it: it changes only while a step listens. */
 export interface ComputerFeed {
   current(): ComputerStatus | null;
   subscribe(listener: (status: ComputerStatus | null) => void): () => void;
+}
+
+/** How often a waiting step reads the Computer's status. */
+const COMPUTER_STATUS_POLL_MS = 3_000;
+
+/** A feed that reads the Computer's status (at once, then every few seconds) only while someone
+ * is subscribed, so nothing polls while no step is waiting. */
+export function pollingComputerFeed(
+  read: () => Promise<ComputerStatus | null>,
+  intervalMs: number = COMPUTER_STATUS_POLL_MS,
+): ComputerFeed {
+  let latest: ComputerStatus | null = null;
+  let timer: ReturnType<typeof setInterval> | undefined;
+  const listeners = new Set<(status: ComputerStatus | null) => void>();
+  const poll = () =>
+    void read().then(
+      (status) => {
+        latest = status;
+        for (const listener of listeners) listener(status);
+      },
+      () => undefined,
+    );
+  return {
+    current: () => latest,
+    subscribe(listener) {
+      listeners.add(listener);
+      if (listeners.size === 1) {
+        poll();
+        timer = setInterval(poll, intervalMs);
+      }
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size === 0) {
+          clearInterval(timer);
+          timer = undefined;
+        }
+      };
+    },
+  };
 }
 
 /** Up: running, its runner connected (or not known to be missing), and no launch in progress. */

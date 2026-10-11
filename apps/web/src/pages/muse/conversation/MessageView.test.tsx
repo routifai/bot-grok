@@ -32,20 +32,16 @@ vi.mock("../../../components/ai/CollaborationMarker", () => ({ CollaborationMark
 vi.mock("../../../components/CloudAgentCard", () => ({ CloudAgentCard: () => null }));
 vi.mock("../../../components/cards/ReplyCard", () => ({ ReplyCardBlockView: () => null }));
 vi.mock("../../shell/message-cards", () => ({
-  AppConnectCard: () => null,
   ArtifactImage: () => null,
   CanvasBlockView: () => null,
   ChartBlockView: () => null,
-  ChoiceCard: () => null,
   McpApprovalCard: () => null,
 }));
 vi.mock("../intro", () => ({ FirstRunHint: () => null }));
 vi.mock("./HelperTracker", () => ({ HelperTracker: () => null }));
 vi.mock("@superchat/ui-web", () => ({
-  BotAvatar: () => null,
   Button: () => null,
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
-  resolvePersonaColorDef: () => ({}),
 }));
 
 const filesRead = vi.hoisted(() => vi.fn());
@@ -83,11 +79,8 @@ async function mount(message: ThreadMessage): Promise<HTMLElement> {
         canAnswer={false}
         message={message}
         onAnswer={async () => undefined}
-        onOpenBot={() => undefined}
         onOpenPeerMessages={() => undefined}
         peerBot={() => undefined}
-        onJumpToMessage={() => undefined}
-        onBotChanged={async () => undefined}
         voiceReady={false}
         speaking={false}
         onSpeak={() => undefined}

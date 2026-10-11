@@ -51,10 +51,6 @@ msgstr "{0} (over 10 MiB)"
 msgid "{0} {unitLabel}"
 msgstr "{0} {unitLabel}"
 
-#. placeholder {0}: block.name
-msgid "{0} connection"
-msgstr "{0} connection"
-
 #. placeholder {0}: bot.name
 msgid "{0} default"
 msgstr "{0} default"
@@ -158,9 +154,6 @@ msgstr "{unloaded, plural, one {# fork in earlier history} other {# forks in ear
 msgid "{working, plural, one {Working on # thing} other {Working on # things}}"
 msgstr "{working, plural, one {Working on # thing} other {Working on # things}}"
 
-msgid "{workingBotName} is working"
-msgstr "{workingBotName} is working"
-
 #. placeholder {0}: mention.name
 msgid "@{0}"
 msgstr "@{0}"
@@ -173,9 +166,6 @@ msgstr "••••{hint} · Needs attention"
 
 msgid "1 cell"
 msgstr "1 cell"
-
-msgid "A bit of everything"
-msgstr "A bit of everything"
 
 msgid "A Conversation on the Superchat Computer stays there."
 msgstr "A Conversation on the Superchat Computer stays there."
@@ -467,14 +457,8 @@ msgstr "Archive {title}"
 msgid "Archive side chats"
 msgstr "Archive side chats"
 
-msgid "archived"
-msgstr "archived"
-
 msgid "Archived"
 msgstr "Archived"
-
-msgid "Archived. Chat, memory, and files kept."
-msgstr "Archived. Chat, memory, and files kept."
 
 msgid "Arguments"
 msgstr "Arguments"
@@ -564,9 +548,6 @@ msgstr "Attachment"
 msgid "Authorization code or callback URL"
 msgstr "Authorization code or callback URL"
 
-msgid "Authorization timed out. Please try again."
-msgstr "Authorization timed out. Please try again."
-
 msgid "Authorize"
 msgstr "Authorize"
 
@@ -612,9 +593,6 @@ msgstr "Bearer token"
 msgid "Bold"
 msgstr "Bold"
 
-msgid "bot"
-msgstr "bot"
-
 msgid "Bot"
 msgstr "Bot"
 
@@ -630,9 +608,6 @@ msgstr "Bots"
 
 msgid "Bots act without asking by default. Add an exception only when you want to review a type of action first."
 msgstr "Bots act without asking by default. Add an exception only when you want to review a type of action first."
-
-msgid "Bots are working"
-msgstr "Bots are working"
 
 msgid "Box"
 msgstr "Box"
@@ -931,9 +906,6 @@ msgstr "Could not approve this person."
 msgid "Could not approve this server"
 msgstr "Could not approve this server"
 
-msgid "Could not authorize this app"
-msgstr "Could not authorize this app"
-
 msgid "Could not change password"
 msgstr "Could not change password"
 
@@ -1023,9 +995,6 @@ msgstr "Could not disconnect this voice provider"
 
 msgid "Could not disconnect."
 msgstr "Could not disconnect."
-
-msgid "Could not dismiss"
-msgstr "Could not dismiss"
 
 #. placeholder {0}: props.name
 msgid "Could not download {0}. Try again."
@@ -1133,9 +1102,6 @@ msgstr "Could not remove"
 msgid "Could not remove connector"
 msgstr "Could not remove connector"
 
-msgid "Could not remove group"
-msgstr "Could not remove group"
-
 msgid "Could not remove rule"
 msgstr "Could not remove rule"
 
@@ -1172,9 +1138,6 @@ msgstr "Could not save"
 msgid "Could not save Auto Review"
 msgstr "Could not save Auto Review"
 
-msgid "Could not save group"
-msgstr "Could not save group"
-
 msgid "Could not save model"
 msgstr "Could not save model"
 
@@ -1201,9 +1164,6 @@ msgstr "Could not save the budget."
 
 msgid "Could not save this automation."
 msgstr "Could not save this automation."
-
-msgid "Could not save this choice"
-msgstr "Could not save this choice"
 
 msgid "Could not save this day"
 msgstr "Could not save this day"
@@ -1252,9 +1212,6 @@ msgstr "Could not update agent access"
 
 msgid "Could not update computer"
 msgstr "Could not update computer"
-
-msgid "Could not update reaction"
-msgstr "Could not update reaction"
 
 msgid "Could not upload this."
 msgstr "Could not upload this."
@@ -1408,9 +1365,6 @@ msgstr "Day of the month"
 msgid "Day of the week"
 msgstr "Day of the week"
 
-msgid "Day-to-day work"
-msgstr "Day-to-day work"
-
 msgid "days"
 msgstr "days"
 
@@ -1465,17 +1419,11 @@ msgstr "Delete {0}"
 msgid "Delete {0}?"
 msgstr "Delete {0}?"
 
-msgid "Delete group"
-msgstr "Delete group"
-
 msgid "Delete memories too"
 msgstr "Delete memories too"
 
 msgid "Delete this skill?"
 msgstr "Delete this skill?"
-
-msgid "deleted"
-msgstr "deleted"
 
 msgid "Deleting…"
 msgstr "Deleting…"
@@ -1580,9 +1528,6 @@ msgstr "e.g. Hivenet Agent, Presales, Timesheets bot"
 
 msgid "Earlier"
 msgstr "Earlier"
-
-msgid "Earlier message"
-msgstr "Earlier message"
 
 msgid "Edit"
 msgstr "Edit"
@@ -1845,9 +1790,6 @@ msgstr "Got it"
 msgid "Group"
 msgstr "Group"
 
-msgid "Group settings"
-msgstr "Group settings"
-
 msgid "Group updates"
 msgstr "Group updates"
 
@@ -1971,9 +1913,6 @@ msgstr "In progress"
 msgid "Inbox"
 msgstr "Inbox"
 
-msgid "Inbox & email"
-msgstr "Inbox & email"
-
 msgid "Inbox filter"
 msgstr "Inbox filter"
 
@@ -2042,17 +1981,6 @@ msgstr "Its Muses, memory and Computer are removed for good."
 
 msgid "Jump to latest"
 msgstr "Jump to latest"
-
-msgid "Jump to replied message"
-msgstr "Jump to replied message"
-
-#. placeholder {0}: accessibleReplyExcerpt(message.replyQuote)
-msgid "Jump to replied message: “{0}”"
-msgstr "Jump to replied message: “{0}”"
-
-#. placeholder {0}: accessibleReplyExcerpt(previewMessageText(replyPreview))
-msgid "Jump to replied message: {0}"
-msgstr "Jump to replied message: {0}"
 
 msgid "just now"
 msgstr "just now"
@@ -2240,9 +2168,6 @@ msgstr "Medium"
 
 msgid "Meet superchat."
 msgstr "Meet superchat."
-
-msgid "Members ({GROUP_MEMBER_MIN}–{GROUP_MEMBER_MAX})"
-msgstr "Members ({GROUP_MEMBER_MIN}–{GROUP_MEMBER_MAX})"
 
 msgid "Memory"
 msgstr "Memory"
@@ -2706,9 +2631,6 @@ msgstr "Open work"
 msgid "OpenAI-compatible server URL"
 msgstr "OpenAI-compatible server URL"
 
-msgid "Opened its thread."
-msgstr "Opened its thread."
-
 msgid "Opening chat…"
 msgstr "Opening chat…"
 
@@ -2925,12 +2847,6 @@ msgstr "Raise budget"
 msgid "Ran"
 msgstr "Ran"
 
-msgid "React"
-msgstr "React"
-
-msgid "Reactions"
-msgstr "Reactions"
-
 msgid "Read replies aloud"
 msgstr "Read replies aloud"
 
@@ -3034,9 +2950,6 @@ msgstr "Remove skill {0}"
 msgid "Remove webhook"
 msgstr "Remove webhook"
 
-msgid "Removed with chat, computer, and memory."
-msgstr "Removed with chat, computer, and memory."
-
 msgid "Removed, but list refresh failed"
 msgstr "Removed, but list refresh failed"
 
@@ -3089,9 +3002,6 @@ msgstr "Report"
 
 msgid "Research"
 msgstr "Research"
-
-msgid "Research & writing"
-msgstr "Research & writing"
 
 msgid "Research something for me"
 msgstr "Research something for me"
@@ -3303,9 +3213,6 @@ msgstr "Sections"
 
 msgid "See summary"
 msgstr "See summary"
-
-msgid "Select a bot"
-msgstr "Select a bot"
 
 msgid "Send"
 msgstr "Send"
@@ -3600,9 +3507,6 @@ msgstr "superchat"
 
 msgid "Superchat Computer"
 msgstr "Superchat Computer"
-
-msgid "superchat couldn't start. Try again in a moment."
-msgstr "superchat couldn't start. Try again in a moment."
 
 msgid "superchat is working"
 msgstr "superchat is working"
@@ -3974,9 +3878,6 @@ msgstr "Waiting for sign-in…"
 msgid "Waiting on you"
 msgstr "Waiting on you"
 
-msgid "Waiting…"
-msgstr "Waiting…"
-
 msgid "Webhook"
 msgstr "Webhook"
 
@@ -4006,9 +3907,6 @@ msgstr "What can superchat <0>build with you?</0>"
 
 msgid "What can you do?"
 msgstr "What can you do?"
-
-msgid "What do you want me on first?"
-msgstr "What do you want me on first?"
 
 msgid "What do you want to look at?"
 msgstr "What do you want to look at?"

@@ -24,6 +24,7 @@ import { LoadingState } from "../../components/ai/primitives";
 import { ReplyCardSendProvider } from "../../components/cards/context";
 import { type ChatProject, ProjectChip, useChatProject } from "../../pages/muse/chrome/ProjectChip";
 import { RestoreButton } from "../../pages/muse/chrome/RestoreButton";
+import { optimisticMessage, userCount } from "../../pages/muse/conversation/museTranscript";
 
 /** The Side Chat session's wire: what it needs from `chats.*`, kept as an explicit shape
  * (not the `rpc` client) so the dev fixture page can supply fakes instead. */
@@ -156,18 +157,6 @@ export function SideChatSession({
       onRestored={onRestored}
     />
   );
-}
-
-/** What the person just sent, shown before the engine has recorded it. */
-function optimisticMessage(chatId: string, text: string): ThreadMessage {
-  return {
-    id: "optimistic",
-    threadId: chatId,
-    seq: Number.MAX_SAFE_INTEGER,
-    role: "user",
-    blocks: [{ kind: "text", text }],
-    createdAt: new Date().toISOString(),
-  };
 }
 
 /** A calm inline note under the message that did not go through. */
@@ -380,9 +369,6 @@ function DraftSideChat({
 const REPLY_WAIT_MAX_MS = 3 * 60 * 1000;
 /** A reply's message can land just before the chat stops being live: look once more. */
 const SETTLE_RECHECK_MS = 1500;
-
-const userCount = (messages: ThreadMessage[] | null) =>
-  messages?.filter((message) => message.role === "user").length ?? 0;
 
 /** The chat a session reads: enough of a `ChatSummary` (a fork's stub carries no more). */
 export type SideChatRef = Pick<ChatSummary, "id" | "live" | "unread" | "archived">;

@@ -7,9 +7,9 @@ import {
   isToolActivityBlock,
   parseAttachmentReferences,
 } from "@superchat/core";
-import { BotAvatar, cn, resolvePersonaColorDef } from "@superchat/ui-web";
+import { cn } from "@superchat/ui-web";
 import { Folder } from "lucide-react";
-import { memo, useMemo } from "react";
+import { memo } from "react";
 import { CollaborationMarker } from "../../../components/ai/CollaborationMarker";
 import { CloudAgentCard } from "../../../components/CloudAgentCard";
 import { ComposerAttachmentChip } from "../../../components/ComposerAttachmentChip";
@@ -21,11 +21,9 @@ import type { ArtifactTarget } from "../../../lib/artifact-open";
 import { splitComposerAttachments } from "../../../lib/composer-attachments";
 import { messageProviderLabel } from "../../../lib/messaging";
 import {
-  AppConnectCard,
   ArtifactImage,
   CanvasBlockView,
   ChartBlockView,
-  ChoiceCard,
   McpApprovalCard,
 } from "../../shell/message-cards";
 import { FirstRunHint } from "../intro";
@@ -38,7 +36,6 @@ import {
 } from "./FailureNote";
 import { FoldedText } from "./FoldedText";
 import { HelperTracker } from "./HelperTracker";
-import { accessibleReplyExcerpt, previewMessageText } from "./messageText";
 import { FALLBACK_BOT_COLOR } from "./shared";
 
 /** Muse mode only: one quiet line for a tool-activity block (docs/muse/DESIGN.md "Conversation"). */
@@ -67,15 +64,8 @@ export const MessageView = memo(function MessageView({
   canAnswer,
   message,
   onAnswer,
-  onOpenBot,
   onOpenPeerMessages,
-  speakerName,
-  memberName,
   peerBot,
-  replyPreview,
-  replyToMessageId,
-  onJumpToMessage,
-  onBotChanged,
   voiceReady,
   speaking,
   onSpeak,
@@ -87,15 +77,8 @@ export const MessageView = memo(function MessageView({
   canAnswer: boolean;
   message: ThreadMessage;
   onAnswer: (message: ThreadMessage, text: string, username?: string) => Promise<void>;
-  onOpenBot: (botId: string) => void;
   onOpenPeerMessages: (peer: { peerBotId: string; peerBotName: string }) => void;
-  speakerName?: string;
-  memberName?: (botId: string | undefined) => string | undefined;
   peerBot: (botId: string) => { color: string; status?: string } | undefined;
-  replyPreview?: ThreadMessage;
-  replyToMessageId?: string;
-  onJumpToMessage?: (messageId: string) => void;
-  onBotChanged: () => Promise<void>;
   voiceReady: boolean;
   speaking: boolean;
   onSpeak: () => void;
@@ -120,122 +103,55 @@ export const MessageView = memo(function MessageView({
   const visibleNarrationBlocks = message.blocks.filter(
     (block) => museMode || !isToolActivityBlock(block),
   );
-  const parentJumpId = replyPreview?.id ?? replyToMessageId;
-  const speakerBot = message.botId ? peerBot?.(message.botId) : undefined;
-  const speakerColorDef = useMemo(
-    () => resolvePersonaColorDef(message.botId ?? "bot", speakerBot?.color),
-    [message.botId, speakerBot?.color],
-  );
-  const messageContext = (
-    <>
-      {speakerName ? (
-        <div
-          className="mb-1.5 flex items-center gap-2 text-[13px] font-semibold tracking-tight"
-          dir="auto"
-          style={{ color: speakerColorDef.light }}
-        >
-          <BotAvatar
-            color={speakerBot?.color ?? FALLBACK_BOT_COLOR}
-            identity={message.botId}
-            size={22}
-          />
-          {speakerName}
-        </div>
-      ) : null}
-      {parentJumpId ? (
-        <button
-          type="button"
-          data-testid="reply-parent-preview"
-          // Name the action and a short excerpt; a bare action label would
-          // hide the quote, and an unbounded quote can be thousands of chars.
-          aria-label={
-            message.replyQuote
-              ? t`Jump to replied message: “${accessibleReplyExcerpt(message.replyQuote)}”`
-              : replyPreview
-                ? t`Jump to replied message: ${accessibleReplyExcerpt(previewMessageText(replyPreview))}`
-                : t`Jump to replied message`
-          }
-          onClick={() => onJumpToMessage?.(parentJumpId)}
-          className="mb-2 block max-w-[74%] truncate rounded-[14px] border border-border bg-background px-3 py-2 text-start text-[12.5px] text-muted-foreground hover:border-border hover:text-foreground/75"
-          dir="auto"
-        >
-          {message.replyQuote
-            ? `“${message.replyQuote}”`
-            : replyPreview
-              ? previewMessageText(replyPreview)
-              : t`Earlier message`}
-        </button>
-      ) : null}
-    </>
-  );
   if (isNarration) {
     if (visibleNarrationBlocks.length === 0) return null;
     return (
-      <>
-        {messageContext}
-        <div className="flex w-fit max-w-full justify-start">
-          <div
-            data-testid="message-bot-bubble"
-            className={cn(
-              "max-w-full space-y-2.5",
-              museMode
-                ? "muse-reply text-[15px] leading-[1.47] tracking-[-0.24px] text-foreground"
-                : "rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90",
-            )}
-            dir="auto"
-          >
-            {visibleNarrationBlocks.map((block, i) => {
-              if (block.kind === "text" || (block.kind === "progress" && !block.activity)) {
-                return (
-                  <div
-                    key={i}
-                    data-quote-message-id={block.kind === "text" ? quoteMessageId : undefined}
-                  >
-                    <ChatMarkdown streaming={block.kind === "progress"}>{block.text}</ChatMarkdown>
-                  </div>
-                );
-              }
-              if (museMode && isToolActivityBlock(block)) {
-                return <ToolActivityStep key={i} block={block} />;
-              }
-              return null;
-            })}
-            {!isLive && voiceReady && message.blocks.some((block) => block.kind === "text") ? (
-              <button
-                type="button"
-                aria-label={speaking ? t`Stop speaking` : t`Speak this reply`}
-                onClick={onSpeak}
-                className="text-[12px] text-muted-foreground hover:text-foreground"
-              >
-                {speaking ? <Trans>Stop</Trans> : <Trans>Speak</Trans>}
-              </button>
-            ) : null}
-          </div>
+      <div className="flex w-fit max-w-full justify-start">
+        <div
+          data-testid="message-bot-bubble"
+          className={cn(
+            "max-w-full space-y-2.5",
+            museMode
+              ? "muse-reply text-[15px] leading-[1.47] tracking-[-0.24px] text-foreground"
+              : "rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90",
+          )}
+          dir="auto"
+        >
+          {visibleNarrationBlocks.map((block, i) => {
+            if (block.kind === "text" || (block.kind === "progress" && !block.activity)) {
+              return (
+                <div
+                  key={i}
+                  data-quote-message-id={block.kind === "text" ? quoteMessageId : undefined}
+                >
+                  <ChatMarkdown streaming={block.kind === "progress"}>{block.text}</ChatMarkdown>
+                </div>
+              );
+            }
+            if (museMode && isToolActivityBlock(block)) {
+              return <ToolActivityStep key={i} block={block} />;
+            }
+            return null;
+          })}
+          {!isLive && voiceReady && message.blocks.some((block) => block.kind === "text") ? (
+            <button
+              type="button"
+              aria-label={speaking ? t`Stop speaking` : t`Speak this reply`}
+              onClick={onSpeak}
+              className="text-[12px] text-muted-foreground hover:text-foreground"
+            >
+              {speaking ? <Trans>Stop</Trans> : <Trans>Speak</Trans>}
+            </button>
+          ) : null}
         </div>
-      </>
+      </div>
     );
   }
   return (
     <>
-      {messageContext}
       {message.blocks.map((block, i) => {
         if (isToolActivityBlock(block)) {
           return museMode ? <ToolActivityStep key={i} block={block} /> : null;
-        }
-        if (block.kind === "handoff") {
-          const from = memberName?.(block.fromBotId) ?? t`bot`;
-          const to = memberName?.(block.toBotId) ?? t`bot`;
-          return (
-            <div
-              key={i}
-              className="flex items-center justify-center gap-2 py-1 text-[13.5px] text-muted-foreground"
-            >
-              <span>
-                ↪ {to} ← {from}
-              </span>
-              <span>{block.text}</span>
-            </div>
-          );
         }
         if (block.kind === "bot_message_sent" || block.kind === "bot_message_received") {
           const sent = block.kind === "bot_message_sent";
@@ -330,58 +246,6 @@ export const MessageView = memo(function MessageView({
                   </ChatMarkdown>
                 </div>
               ) : null}
-            </div>
-          );
-        }
-        if (block.kind === "child_bot") {
-          const removed = block.status === "deleted" || block.status === "archived";
-          return (
-            <button
-              key={i}
-              type="button"
-              disabled={removed}
-              onClick={() => onOpenBot(block.botId)}
-              className="w-[min(340px,90%)] rounded-[18px] border border-border bg-muted px-[18px] py-4 text-start disabled:opacity-60"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[15px] font-medium text-foreground" dir="auto">
-                  {block.name}
-                </span>
-                <span
-                  className={`rounded-full px-[11px] py-1 text-[13px] ${
-                    removed ? "bg-destructive/15 text-destructive" : "bg-success/15 text-success"
-                  }`}
-                >
-                  {block.status === "archived" ? (
-                    <Trans>archived</Trans>
-                  ) : block.status === "deleted" ? (
-                    <Trans>deleted</Trans>
-                  ) : (
-                    <Trans>bot</Trans>
-                  )}
-                </span>
-              </div>
-              <div className="mt-2 text-[14.5px] leading-[1.5] text-foreground/75" dir="auto">
-                {removed
-                  ? block.status === "archived"
-                    ? t`Archived. Chat, memory, and files kept.`
-                    : t`Removed with chat, computer, and memory.`
-                  : block.title || t`Opened its thread.`}
-              </div>
-            </button>
-          );
-        }
-        if (block.kind === "choice") {
-          const botId = "botId" in artifactTarget ? artifactTarget.botId : message.botId;
-          if (!botId) return null;
-          return <ChoiceCard key={i} botId={botId} block={block} onBotChanged={onBotChanged} />;
-        }
-        if (block.kind === "app_connect") {
-          const botId = "botId" in artifactTarget ? artifactTarget.botId : message.botId;
-          if (!botId) return null;
-          return (
-            <div key={i} className="flex justify-start py-1">
-              <AppConnectCard botId={botId} block={block} />
             </div>
           );
         }

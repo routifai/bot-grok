@@ -1,8 +1,8 @@
 import { i18n } from "@lingui/core";
 import { useLingui } from "@lingui/react/macro";
-import type { MessageReaction, ThreadMessage } from "@superchat/contracts";
-import { isPeerReceiptBlocks, isToolActivityBlock, projectMessageReactions } from "@superchat/core";
-import { cn, type GroupAvatarMember } from "@superchat/ui-web";
+import type { ThreadMessage } from "@superchat/contracts";
+import { isPeerReceiptBlocks, isToolActivityBlock } from "@superchat/core";
+import { cn } from "@superchat/ui-web";
 import { ArrowDown } from "lucide-react";
 import {
   type ComponentProps,
@@ -16,7 +16,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { ActiveBotGlyph } from "../../../components/ai/CollaborationMarker";
 import {
   ReplyCardBotProvider,
   ReplyCardSendProvider,
@@ -89,21 +88,14 @@ const TranscriptView = memo(function Transcript({
   messages,
   olderCursor,
   loadingOlder,
-  answerableAskMessageId,
   running,
-  workingBots,
   onLoadOlder,
   onShowEarlier,
-  onOpenBot,
   onAnswer,
   onReply,
   onQuote,
-  onReact,
-  onJumpToMessage,
   onOpenPeerMessages,
-  memberName,
   peerBot,
-  onBotChanged,
   voiceReady,
   speakingMessageId,
   onSpeak,
@@ -113,11 +105,11 @@ const TranscriptView = memo(function Transcript({
 }: {
   museMode?: boolean;
   /** Muse mode: the face shown beside the Muse's replies. */
-  museFace?: { color: string; identity: string };
+  museFace: { color: string; identity: string };
   /** Muse mode: the Muse's own name, for first-run hint copy (`FirstRunHint`). */
   botDisplayName?: string;
-  /** Muse mode: the active bot's live runs, for the gutter face and bottom-of-transcript row. */
-  museRuns?: readonly MuseLiveRun[];
+  /** Muse mode: the turn in flight, for the gutter face and bottom-of-transcript row. */
+  museRuns: readonly MuseLiveRun[];
   /** Rendered at the top of the scrolling column, before the messages. */
   leading?: ReactNode;
   /** Rendered at the bottom of the scrolling column, after the messages. */
@@ -131,23 +123,16 @@ const TranscriptView = memo(function Transcript({
   messages: ThreadMessage[];
   olderCursor: number | string | null;
   loadingOlder: boolean;
-  answerableAskMessageId: string | null;
   running: boolean;
-  workingBots: GroupAvatarMember[];
   onLoadOlder: () => void | Promise<void>;
   /** The Conversation was cleared and its earlier history can be shown (the Muse only). */
   onShowEarlier?: () => void | Promise<void>;
-  onOpenBot: (botId: string) => void;
   onAnswer: (message: ThreadMessage, text: string, username?: string) => Promise<void>;
   /** Without reply/quote handlers (a Side Chat has no reply threads) those actions are hidden. */
   onReply?: (message: ThreadMessage) => void;
   onQuote?: (message: ThreadMessage, quote: string) => void;
-  onReact: (message: ThreadMessage, reaction: MessageReaction) => Promise<void>;
-  onJumpToMessage: (messageId: string) => void;
   onOpenPeerMessages: (peer: { peerBotId: string; peerBotName: string }) => void;
-  memberName?: (botId: string | undefined) => string | undefined;
   peerBot: (botId: string) => { color: string; status?: string } | undefined;
-  onBotChanged: () => Promise<void>;
   voiceReady: boolean;
   speakingMessageId: string | null;
   onSpeak: (message: ThreadMessage) => void;
@@ -160,8 +145,8 @@ const TranscriptView = memo(function Transcript({
 }) {
   const { t } = useLingui();
   const { label: museLiveLabel, runStartedAt } = useMuseLiveState({
-    botId: museFace?.identity ?? "",
-    runs: museRuns ?? [],
+    botId: museFace.identity,
+    runs: museRuns,
     messages,
   });
   const [atEnd, setAtEnd] = useState(true);
@@ -174,7 +159,6 @@ const TranscriptView = memo(function Transcript({
     () => new Map(messages.map((message) => [message.id, message])),
     [messages],
   );
-  const reactionView = useMemo(() => projectMessageReactions(messages), [messages]);
   // Muse: failed replies in a row read as one "3 failed attempts" line (failureNotes.ts).
   // Charts in a row (a dashboard reply) read as one set across the column.
   const group = useTranscriptGroup();
@@ -182,17 +166,12 @@ const TranscriptView = memo(function Transcript({
     () =>
       foldGroupRuns(
         museMode
-          ? foldFailureRuns(reactionView.visibleMessages)
-          : reactionView.visibleMessages.map((message) => ({ kind: "message", message })),
+          ? foldFailureRuns(messages)
+          : messages.map((message) => ({ kind: "message", message })),
         group,
       ),
-    [museMode, reactionView.visibleMessages, group],
+    [museMode, messages, group],
   );
-  const workingBotName = workingBots.length === 1 ? workingBots[0]?.name : undefined;
-  const workingLabel =
-    workingBotName != null && workingBotName !== ""
-      ? t`${workingBotName} is working`
-      : t`Bots are working`;
   const [quoteDraft, setQuoteDraft] = useState<{
     message: ThreadMessage;
     text: string;
@@ -480,7 +459,6 @@ const TranscriptView = memo(function Transcript({
           if (!museMode && !message.blocks.some((block) => !isToolActivityBlock(block)))
             return null;
           const peerReceipt = isPeerReceiptBlocks(message.blocks);
-          const messageReactions = reactionView.reactions.get(message.id);
           return (
             <div
               key={message.id}
@@ -531,8 +509,6 @@ const TranscriptView = memo(function Transcript({
                         ) : undefined
                       }
                       onReply={onReply}
-                      onReact={onReact}
-                      conversational={!museMode}
                       onFork={
                         onFork && message.forks !== undefined && forkAnchorFor(message, messages)
                           ? (clicked) => {
@@ -549,30 +525,10 @@ const TranscriptView = memo(function Transcript({
                     botDisplayName={botDisplayName}
                     artifactTarget={artifactTarget}
                     message={message}
-                    canAnswer={
-                      message.id === answerableAskMessageId ||
-                      Boolean(museMode && hasOpenMuseAsk(message))
-                    }
-                    onOpenBot={onOpenBot}
+                    canAnswer={Boolean(museMode && hasOpenMuseAsk(message))}
                     onOpenPeerMessages={onOpenPeerMessages}
                     onAnswer={onAnswer}
-                    speakerName={
-                      peerReceipt
-                        ? undefined
-                        : message.role === "bot"
-                          ? memberName?.(message.botId)
-                          : undefined
-                    }
-                    memberName={memberName}
                     peerBot={peerBot}
-                    replyPreview={
-                      message.replyToMessageId
-                        ? messageById.get(message.replyToMessageId)
-                        : undefined
-                    }
-                    replyToMessageId={message.replyToMessageId}
-                    onJumpToMessage={onJumpToMessage}
-                    onBotChanged={onBotChanged}
                     voiceReady={voiceReady}
                     speaking={speakingMessageId === message.id}
                     onSpeak={() => onSpeak(message)}
@@ -586,25 +542,6 @@ const TranscriptView = memo(function Transcript({
                 </div>
               </div>
               {peerReceipt ? null : renderUnder?.(message)}
-              {!peerReceipt && messageReactions ? (
-                <div
-                  data-testid="message-reactions"
-                  className={cn(
-                    "mt-1 flex flex-wrap gap-1",
-                    message.role === "user" && "justify-end",
-                  )}
-                >
-                  {[...messageReactions].map(([emoji, count]) => (
-                    <span
-                      key={emoji}
-                      className="rounded-full border border-border bg-muted px-2 py-0.5 text-xs"
-                    >
-                      {emoji}
-                      {count > 1 ? ` ${count}` : ""}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
             </div>
           );
         })}
@@ -617,13 +554,9 @@ const TranscriptView = memo(function Transcript({
                 block.kind === "progress" && !isToolActivityBlock(block) && Boolean(block.text),
             ),
         ) ? (
-          museMode && museFace ? (
-            museLiveLabel ? (
-              <WorkingRow label={museLiveLabel} startedAt={runStartedAt} />
-            ) : null
-          ) : (
-            <ActiveBotGlyph bots={workingBots} label={workingLabel} />
-          )
+          museLiveLabel ? (
+            <WorkingRow label={museLiveLabel} startedAt={runStartedAt} />
+          ) : null
         ) : null}
         {trailing}
       </div>

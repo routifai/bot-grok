@@ -4,23 +4,11 @@ import type {
   ChatSummary,
   Connection,
   ConnectionCatalogItem,
-  Group,
   Routine,
   ThreadMessage,
-  ThreadSnapshot,
 } from "@superchat/contracts";
-import {
-  buildComposerMentionOptions,
-  isActive,
-  latestAnswerableAskMessageId,
-  userVisibleMessages,
-} from "@superchat/core";
-import {
-  AvatarStyleProvider,
-  Button,
-  GroupAvatar,
-  type GroupAvatarMember,
-} from "@superchat/ui-web";
+import { buildComposerMentionOptions, userVisibleMessages } from "@superchat/core";
+import { AvatarStyleProvider, Button } from "@superchat/ui-web";
 import { Plus } from "lucide-react";
 import type { ReactNode } from "react";
 import {
@@ -35,7 +23,6 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { AppRail } from "../components/AppRail";
 import {
   flyOrb,
   type OrbFlight,
@@ -55,7 +42,6 @@ import { ChartGallery, chartsExtension, isChartMessage } from "../features/chart
 import { ComputerUpdateProgress } from "../features/computer/ComputerUpdateProgress";
 import { FolderPicker } from "../features/computer/FolderPicker";
 import { HostComputerPrompt } from "../features/computer/HostComputerPrompt";
-import { useComputerStore } from "../features/computer/useComputerStore";
 import { DeckThemeChoice, decksExtension } from "../features/decks";
 import { knowledgeExtension } from "../features/knowledge";
 import { ConversationModelPicker } from "../features/models";
@@ -79,8 +65,7 @@ import { authClient } from "../lib/auth";
 import { watchFamily } from "../lib/family-stream";
 import { markAfterPaint, markOnce } from "../lib/performance";
 import { rpc } from "../lib/rpc";
-import { activeThreadRuns } from "../lib/thread-events";
-import { memberName } from "./GroupPanel";
+import type { CallConversation } from "./CallView";
 import { ChatsPopover } from "./muse/chrome/ChatsPopover";
 import { ContourGround } from "./muse/chrome/ContourGround";
 import { ConversationActivity } from "./muse/chrome/ConversationActivity";
@@ -93,19 +78,18 @@ import {
 import { Home } from "./muse/chrome/Home";
 import { HomeActivity } from "./muse/chrome/HomeActivity";
 import { museMode } from "./muse/chrome/museMode";
-import { BotSettingsPanel, GroupSettingsPanel } from "./muse/chrome/PanelForms";
+import { BotSettingsPanel } from "./muse/chrome/PanelForms";
 import { type ChatProject, ProjectChip, useChatProject } from "./muse/chrome/ProjectChip";
 import type { Panel } from "./muse/chrome/panel";
 import { SidePanelHeader } from "./muse/chrome/SidePanelHeader";
 import { useBotRoster } from "./muse/chrome/useBotRoster";
 import { useBrowserNotifications } from "./muse/chrome/useBrowserNotifications";
 import { useCreateBot } from "./muse/chrome/useCreateBot";
-import type { MuseLiveRun } from "./muse/chrome/useMuseLiveState";
+import { type MuseLiveRun, useTurnRuns } from "./muse/chrome/useMuseLiveState";
 import { useReplyAlerts } from "./muse/chrome/useReplyAlerts";
 import { useVoice } from "./muse/chrome/useVoice";
 import { ClearConversationHost } from "./muse/conversation/ClearConversationHost";
 import { Composer } from "./muse/conversation/Composer";
-import { conversationMessages as layerConversation } from "./muse/conversation/museTranscript";
 import { FALLBACK_BOT_COLOR } from "./muse/conversation/shared";
 import { Transcript } from "./muse/conversation/Transcript";
 import {
@@ -115,8 +99,7 @@ import {
 import { useComposerSend } from "./muse/conversation/useComposerSend";
 import { useDockTransition } from "./muse/conversation/useDockTransition";
 import { useMuseTranscript } from "./muse/conversation/useMuseTranscript";
-import { useThreadState } from "./muse/conversation/useThreadState";
-import { useThreadSync } from "./muse/conversation/useThreadSync";
+import { useTranscriptScroll } from "./muse/conversation/useTranscriptScroll";
 import { RoutinePanel } from "./muse/routines/RoutinePanel";
 import { useRoutineEditor } from "./muse/routines/useRoutineEditor";
 import { IntegrationOverlays } from "./muse/settings/IntegrationOverlays";
@@ -149,10 +132,10 @@ function SuperchatPresence({
 }: {
   botId: string;
   runs: readonly MuseLiveRun[];
-  messages: readonly ThreadMessage[] | undefined;
+  messages: readonly ThreadMessage[] | null;
   children: ReactNode;
 }) {
-  const { orb } = useSuperchatWork({ botId, runs, messages });
+  const { orb } = useSuperchatWork({ botId, runs, messages: messages ?? undefined });
   return <SuperchatPresenceProvider state={orb}>{children}</SuperchatPresenceProvider>;
 }
 
@@ -178,19 +161,11 @@ const CHART_RUNS: TranscriptGroup = {
 
 export function ShellPage() {
   const { t } = useLingui();
-  const { botId, groupId } = useParams();
+  const { botId } = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  // Mirrors searchParams for effects that only need to read it once on run,
-  // not re-run on every unrelated query-param change (e.g. the SSE subscribe
-  // effect below, which should only restart when the active bot changes).
-  const searchParamsRef = useRef(searchParams);
-  searchParamsRef.current = searchParams;
   const session = authClient.useSession();
   const userId = session.data?.user.id;
-  const { snapshot, snapshotRef, commitSnapshot, updateSnapshot } = useThreadState();
-  const computerStore = useComputerStore();
-  const { commitComputer } = computerStore;
 
   const [panel, setPanel] = useState<Panel>(null);
   const [peerConversation, setPeerConversation] = useState<{
@@ -209,44 +184,16 @@ export function ShellPage() {
       connectionId?: string;
     }>
   >([]);
-  const bootstrappedThread = useRef<ThreadSnapshot | null>(null);
-  const {
-    bots,
-    setBots,
-    groups,
-    setGroups,
-    botsRef,
-    initialBotsLoaded,
-    bootstrapMe,
-    setBootstrapMe,
-    refreshBots,
-    manuallyUnread,
-    markBotReadIfVisible,
-  } = useBotRoster({
-    botId,
-    groupId,
-    navigate,
-    onBootstrapThread: (thread, routines) => {
-      bootstrappedThread.current = thread;
-      commitSnapshot(thread);
-      commitComputer(thread.computer ?? null);
-      setRoutines(routines);
-      setRoutinesBotId(thread.botId ?? null);
-      markOnce("rk:renderer:bots-response");
-      markOnce("rk:renderer:thread-response");
-    },
-  });
+  const { bots, setBots, botsRef, initialBotsLoaded, bootstrapMe, setBootstrapMe, refreshBots } =
+    useBotRoster({ botId, navigate });
 
   const settings = useShellSettings(session.data?.user);
   const { messagingProviders, openSettings, setUsage } = settings;
   const [callOpen, setCallOpen] = useState(false);
 
-  const [clearTarget, setClearTarget] = useState<
-    { kind: "bot"; chat: Bot } | { kind: "group"; chat: Group } | null
-  >(null);
+  const [clearTarget, setClearTarget] = useState<Bot | null>(null);
 
-  const inGroup = Boolean(groupId);
-  const active = inGroup ? undefined : (bots.find((b) => b.id === botId) ?? bots[0]);
+  const active = bots.find((b) => b.id === botId) ?? bots[0];
   // The dock place open as a sheet, if any.
   const [dockSheet, setDockSheet] = useState<DockKey | null>(null);
   const [folderPickerOpen, setFolderPickerOpen] = useState(false);
@@ -301,51 +248,25 @@ export function ShellPage() {
   );
   /** Below `md` the Muse sidebar is an off-canvas drawer opened from the main header. */
   const [_navOpen, _setNavOpen] = useState(false);
-  const activeGroup = groups.find((group) => group.id === groupId);
-  const activeBotId = useRef<string | undefined>(inGroup ? undefined : active?.id);
-  activeBotId.current = inGroup ? undefined : active?.id;
-  const activeGroupId = useRef<string | undefined>(groupId);
-  activeGroupId.current = groupId;
+  const activeBotId = useRef<string | undefined>(active?.id);
+  activeBotId.current = active?.id;
   const { flushPendingBrowserNotifications, notifyBrowserForEvent } =
     useBrowserNotifications(botsRef);
-  const {
-    scrollRequest,
-    clearScrollRequest,
-    messageScroll,
-    loadingOlder,
-    terminalRunReceipts,
-    refreshThread,
-    refreshGroupThread,
-    refreshThreadRef,
-    refreshGroupThreadRef,
-    jumpToMessage,
-    loadOlder,
-    jumpToReplyMessage,
-    scrollToMessage,
-    resetThreadHistory,
-  } = useThreadSync({
-    target: { active, activeGroup, groupId, inGroup, activeBotId, activeGroupId },
-    thread: { snapshot, snapshotRef, commitSnapshot, updateSnapshot },
-    computerStore,
-    roster: { botsRef, setGroups, refreshBots, manuallyUnread, markBotReadIfVisible },
-    notifyBrowserForEvent,
-    lists: { setRoutines, setRoutinesBotId },
-    searchParamsRef,
-    bootstrappedThread,
-  });
+  const { messageScroll, scrollRequest, clearScrollRequest, scrollToMessage } =
+    useTranscriptScroll();
+  const refreshRoutines = useCallback(async (id: string) => {
+    const rows = await rpc.routines.list({ botId: id });
+    if (activeBotId.current !== id) return;
+    setRoutines(rows);
+    setRoutinesBotId(id);
+  }, []);
+  useEffect(() => {
+    if (active?.id) void refreshRoutines(active.id).catch(() => undefined);
+  }, [active?.id, refreshRoutines]);
 
   useEffect(() => {
     const messageId = searchParams.get("m");
     const routineId = searchParams.get("routine");
-    if (inGroup && groupId && messageId) {
-      void jumpToMessage({ groupId, messageId }).finally(() => {
-        // Keep expandedHistoryThread; only strip the jump URL so refresh does not remount.
-        const next = new URLSearchParams(searchParams);
-        next.delete("m");
-        setSearchParams(next, { replace: true });
-      });
-      return;
-    }
     if (!active) return;
     if (routineId && routinesBotId === active.id) {
       const routine = routines.find((item) => item.id === routineId);
@@ -362,7 +283,7 @@ export function ShellPage() {
       setSearchParams(next, { replace: true });
     }
     const chatParam = searchParams.get("chat");
-    if (chatParam && museMode && !inGroup) {
+    if (chatParam) {
       // A hit in a side chat: open it (waiting for the list), then drop the jump URL.
       if (chatList.state.status === "loading") return;
       const chat =
@@ -394,44 +315,20 @@ export function ShellPage() {
     }
     if (messageId) {
       // The Muse's Conversation is the engine's transcript: page back to the hit, then scroll.
-      const jump =
-        museMode && !inGroup
-          ? revealMessageRef.current(messageId).then((found) => {
-              if (found) scrollToMessage(messageId);
-            })
-          : jumpToMessage({ botId: active.id, messageId });
-      void jump.finally(() => {
-        const next = new URLSearchParams(searchParams);
-        next.delete("m");
-        setSearchParams(next, { replace: true });
-      });
+      void revealMessageRef
+        .current(messageId)
+        .then((found) => {
+          if (found) scrollToMessage(messageId);
+        })
+        .finally(() => {
+          const next = new URLSearchParams(searchParams);
+          next.delete("m");
+          setSearchParams(next, { replace: true });
+        });
     }
-  }, [
-    active?.id,
-    groupId,
-    inGroup,
-    routines,
-    routinesBotId,
-    searchParams,
-    setSearchParams,
-    chatList.state,
-  ]);
+  }, [active?.id, routines, routinesBotId, searchParams, setSearchParams, chatList.state]);
   const revealMessageRef = useRef<(messageId: string) => Promise<boolean>>(async () => false);
   const openForkRef = useRef<(target: ForkThreadTarget) => void>(() => undefined);
-  const activeSnapshot = inGroup
-    ? snapshot?.groupId === groupId
-      ? snapshot
-      : null
-    : snapshot?.botId === active?.id
-      ? snapshot
-      : null;
-  const currentRuns = activeThreadRuns(activeSnapshot);
-  const answerableAskMessageId = latestAnswerableAskMessageId(activeSnapshot);
-  const workingRuns = currentRuns.filter((run) =>
-    ["running", "queued", "leased"].includes(run.status),
-  );
-  const transcriptRunning = workingRuns.length > 0;
-  const composerRunning = currentRuns.some((run) => isActive(run.status));
   // Bumps each time a turn finishes, so the Files view follows the Muse's work.
   const [filesRefreshKey, setFilesRefreshKey] = useState(0);
   // The Project folder to show in the Files tab, set by the "Working in" chip.
@@ -448,29 +345,25 @@ export function ShellPage() {
     active?.id ?? "",
     filesRefreshKey,
   );
+  // The Muse's Conversation is the engine's transcript (ADR 0009), and so is whether it is working.
+  const museTranscript = useMuseTranscript(active?.id, messageScroll);
+  const running = museTranscript.running;
+  const turnRuns = useTurnRuns(`conversation:${active?.id}`, running);
   const wasRunningRef = useRef(false);
   useEffect(() => {
-    if (wasRunningRef.current && !composerRunning) setFilesRefreshKey((key) => key + 1);
-    wasRunningRef.current = composerRunning;
-  }, [composerRunning]);
-  // The Muse's Conversation is the engine's transcript (ADR 0009); Superchat's thread only supplies
-  // the person's message from the moment it is accepted until the transcript shows it. A group
-  // thread is still Superchat's own.
-  const museTranscript = useMuseTranscript(
-    museMode && !inGroup ? active?.id : undefined,
-    messageScroll,
-  );
+    if (wasRunningRef.current && !running) setFilesRefreshKey((key) => key + 1);
+    wasRunningRef.current = running;
+  }, [running]);
   useReplyAlerts({
-    bot: museMode && !inGroup ? active : undefined,
+    bot: active,
     conversationId: museTranscript.threadId,
     notifyBrowserForEvent,
-    refreshBots,
   });
   const readTranscript = museTranscript.refresh;
   revealMessageRef.current = museTranscript.reveal;
   const forks = useForkView({
     chatList: chatList.state,
-    messages: museMode && !inGroup ? museTranscript.messages : null,
+    messages: museTranscript.messages,
     scrollRef: messageScroll,
     reveal: museTranscript.reveal,
     scrollToMessage,
@@ -485,26 +378,17 @@ export function ShellPage() {
   useEffect(() => {
     resetForks();
   }, [active?.id, resetForks]);
-  const forksView = museMode && !inGroup && forks.view === "forks";
+  const forksView = forks.view === "forks";
   const forkOverlayOpen = Boolean(forks.thread || forks.ask);
-  const runsKey = currentRuns.map((run) => `${run.id}:${run.status}`).join(",");
-  // The engine records the person's message when a run starts and the reply when it ends, and
-  // the stream only announces replies: read again on each run change.
-  const seenRunsKey = useRef(runsKey);
-  useEffect(() => {
-    if (seenRunsKey.current === runsKey) return;
-    seenRunsKey.current = runsKey;
-    readTranscript();
-  }, [runsKey, readTranscript]);
-  const conversationMessages = useMemo(() => {
-    const fromEngine = museTranscript.messages;
-    if (!museMode || inGroup) return activeSnapshot?.messages ?? [];
-    if (!fromEngine) return [];
-    return layerConversation(fromEngine, activeSnapshot?.messages ?? []);
-  }, [museTranscript.messages, inGroup, activeSnapshot?.messages]);
   const transcriptMessages = useMemo(
-    () => userVisibleMessages(conversationMessages, { includePeerReceipts: true }),
-    [conversationMessages],
+    () =>
+      userVisibleMessages(
+        museTranscript.pendingMessage
+          ? [...(museTranscript.messages ?? []), museTranscript.pendingMessage]
+          : (museTranscript.messages ?? []),
+        { includePeerReceipts: true },
+      ),
+    [museTranscript.messages, museTranscript.pendingMessage],
   );
   // An empty Conversation is a start page: the greeting, the composer centered under it, and
   // a few suggestions; the composer glides down to its dock once the first message lands.
@@ -512,10 +396,10 @@ export function ShellPage() {
     !forksView &&
     conversationLayout({
       museMode,
-      hasMuse: Boolean(active) && !inGroup,
+      hasMuse: Boolean(active),
       loaded: museTranscript.messages !== null,
       messageCount: transcriptMessages.length,
-      running: transcriptRunning,
+      running,
     }) === "start";
   // The start page stays on screen until the orb's flight begins: `shownStart` follows
   // `startPage`, but leaving it runs through flyOrb (a View Transition, a FLIP, or a cut under
@@ -541,9 +425,7 @@ export function ShellPage() {
     });
   }, [startPage, shownStart]);
   // The greeting landing shows only while the Conversation has never had a message.
-  const showHome = Boolean(
-    museMode && active && shownStart && !activeChat && !forks.thread && !forks.ask,
-  );
+  const showHome = Boolean(active && shownStart && !activeChat && !forks.thread && !forks.ask);
   const composerDock = useRef<HTMLDivElement>(null);
   // A View Transition already glides the composer (`superchat-composer`); the FLIP is the fallback.
   useDockTransition(composerDock, shownStart, () => orbFlight.current === "view-transition");
@@ -552,50 +434,31 @@ export function ShellPage() {
     startPage: shownStart,
     sidebarVisible: false,
   });
-  const conversationSnapshot = useMemo(
-    () => (activeSnapshot ? { ...activeSnapshot, messages: conversationMessages } : null),
-    [activeSnapshot, conversationMessages],
-  );
   const { voiceStatus, setVoiceStatus, speakingMessageId, speakMessage } = useVoice({
     active,
-    snapshot: conversationSnapshot,
+    messages: museTranscript.messages,
+    running,
     callOpen,
     activeBotId,
   });
+  const callConversation = useMemo<CallConversation>(
+    () => ({ messages: museTranscript.messages ?? [], running }),
+    [museTranscript.messages, running],
+  );
   const transcriptArtifactTarget = useMemo<ArtifactTarget>(
-    () => (inGroup ? { groupId: groupId ?? "" } : { botId: active?.id ?? "" }),
-    [active?.id, groupId, inGroup],
+    () => ({ botId: active?.id ?? "" }),
+    [active?.id],
   );
-  const transcriptMembers = activeSnapshot?.members ?? activeGroup?.members;
   const resolveTranscriptBot = useCallback(
-    (botId: string) => {
-      const bot = bots.find((candidate) => candidate.id === botId);
-      if (bot) return bot;
-      return transcriptMembers?.find((member) => member.botId === botId);
-    },
-    [bots, transcriptMembers],
-  );
-  const workingBots: GroupAvatarMember[] = workingRuns.map((run) => {
-    const bot = resolveTranscriptBot(run.botId);
-    return {
-      botId: run.botId,
-      color: bot?.color ?? FALLBACK_BOT_COLOR,
-      name: bot?.name,
-      status: run.status,
-    };
-  });
-  const resolveTranscriptMemberName = useCallback(
-    (botId: string | undefined) => memberName(transcriptMembers, botId),
-    [transcriptMembers],
+    (botId: string) => bots.find((candidate) => candidate.id === botId),
+    [bots],
   );
   const composerMentionTargets = useMemo(
     () =>
       buildComposerMentionOptions({
         query: "",
-        includeEveryone: inGroup,
-        currentGroupId: groupId,
-        bots: bots.map((bot) => ({ id: bot.id, name: bot.name, color: bot.color })),
-        groups: groups.map((group) => ({ id: group.id, name: group.name })),
+        bots: [],
+        groups: [],
         routines: mentionRoutines.map((routine) => ({
           id: routine.id,
           name: routine.name,
@@ -605,13 +468,10 @@ export function ShellPage() {
         })),
         connectors: mentionConnectors,
       }),
-    [bots, groupId, groups, inGroup, mentionConnectors, mentionRoutines],
+    [mentionConnectors, mentionRoutines],
   );
   const shellReady =
-    initialBotsLoaded &&
-    (inGroup
-      ? Boolean(activeGroup && activeSnapshot)
-      : bots.length === 0 || Boolean(active && activeSnapshot));
+    initialBotsLoaded && (bots.length === 0 || Boolean(active && museTranscript.messages));
 
   const mentionBotsKey = useMemo(
     () => bots.map((bot) => `${bot.id}:${bot.name}`).join(","),
@@ -690,7 +550,7 @@ export function ShellPage() {
       markOnce("rk:renderer:bots-committed");
       markAfterPaint("rk:renderer:bots-painted");
     }
-    if (active && snapshot?.botId === active.id) {
+    if (active && museTranscript.messages) {
       markOnce("rk:renderer:thread-committed");
       markAfterPaint("rk:renderer:thread-painted");
     }
@@ -698,18 +558,9 @@ export function ShellPage() {
       markOnce("rk:renderer:shell-ready");
       markAfterPaint("rk:renderer:shell-painted");
     }
-  }, [active, initialBotsLoaded, shellReady, snapshot?.botId]);
+  }, [active, initialBotsLoaded, shellReady, museTranscript.messages]);
 
-  const openBot = useCallback((id: string) => navigate(`/app/${id}`), [navigate]);
-  const { createBot, cancelFocusPrompt, focusPromptBotIdRef } = useCreateBot({
-    botsRef,
-    setBots,
-    navigate,
-    setPanel,
-    refreshBots,
-    activeBotId,
-    activeId: active?.id,
-  });
+  const { createBot } = useCreateBot({ setBots, navigate, setPanel, refreshBots });
   const {
     activePendingAttachments,
     activePendingFolders,
@@ -717,8 +568,8 @@ export function ShellPage() {
     removeFolder,
     setReplyTarget,
     setReplyQuote,
-    activeReplyTarget,
-    activeReplyQuote,
+    replyTarget,
+    replyQuote,
     clearReply,
     sending,
     sendError,
@@ -728,34 +579,28 @@ export function ShellPage() {
     uploadStatus,
     fileInputRef,
     followSignal,
-    displayedRunError,
-    displayedRunErrorId,
-    handleRunErrorPresented,
+    failure,
     dismissComposerError,
     answerMessage,
-    reactToMessage,
     onAttachmentPick,
     removeAttachment,
     retryAttachment,
     sendMessage,
     sendCardReply,
-    followUpMessage,
     stopRun,
   } = useComposerSend({
-    target: { active, groupId, inGroup, activeBotId, activeGroupId },
+    active,
+    activeBotId,
     userId,
-    museMode,
-    activeSnapshot,
-    threadOps: { terminalRunReceipts, refreshThreadRef, refreshGroupThreadRef, updateSnapshot },
-    roster: { botsRef, refreshBots },
+    messages: transcriptMessages,
+    transcript: museTranscript,
+    botsRef,
     flushPendingBrowserNotifications,
-    computerStore,
-    focusPrompt: { cancelFocusPrompt, focusPromptBotIdRef },
   });
-  const replyTargetName = activeReplyTarget
-    ? activeReplyTarget.role === "user"
+  const replyTargetName = replyTarget
+    ? replyTarget.role === "user"
       ? t`You`
-      : (resolveTranscriptMemberName(activeReplyTarget.botId) ?? active?.name ?? t`Bot`)
+      : (active?.name ?? t`Bot`)
     : undefined;
   const startChat = useCallback(
     (input: { send?: string; seed?: string }) => {
@@ -771,7 +616,7 @@ export function ShellPage() {
     panel,
     setPanel,
     setBots,
-    refreshThread,
+    refreshRoutines,
   });
   const {
     setRoutineDraft,
@@ -786,20 +631,18 @@ export function ShellPage() {
 
   const composerEl = (
     <Composer
-      key={inGroup ? `group:${groupId}` : `bot:${active?.id}`}
+      key={`bot:${active?.id}`}
       museMode={museMode}
-      activeName={inGroup ? (activeGroup?.name ?? activeSnapshot?.groupName) : active?.name}
-      running={composerRunning}
+      activeName={active?.name}
+      running={running}
       pendingAttachments={activePendingAttachments}
       pendingFolders={activePendingFolders}
-      onAttachFolder={museMode && active && !inGroup ? () => setFolderPickerOpen(true) : undefined}
+      onAttachFolder={active ? () => setFolderPickerOpen(true) : undefined}
       onRemoveFolder={removeFolder}
       attachmentNotice={attachmentNotice}
       uploadStatus={uploadStatus}
       sendError={sendError}
-      runError={displayedRunError}
-      runErrorId={displayedRunErrorId}
-      onRunErrorPresented={handleRunErrorPresented}
+      failure={failure}
       onDismissError={dismissComposerError}
       sending={sending}
       fileInputRef={fileInputRef}
@@ -813,7 +656,7 @@ export function ShellPage() {
       onSeedConsumed={() => setComposerSeed(null)}
       onStop={stopRun}
       onVoice={
-        !inGroup && active
+        active
           ? () => {
               if (!voiceStatus?.ready) {
                 openSettings("voice");
@@ -823,8 +666,8 @@ export function ShellPage() {
             }
           : undefined
       }
-      replyTarget={activeReplyTarget}
-      replyQuote={activeReplyQuote}
+      replyTarget={replyTarget}
+      replyQuote={replyQuote}
       replyTargetName={replyTargetName}
       onClearReply={clearReply}
       mentionTargets={composerMentionTargets}
@@ -832,7 +675,7 @@ export function ShellPage() {
       onSlashOpen={refreshAgentSkills}
       onSlashAction={(action) => {
         if (action === "chat-settings") {
-          setPanel(inGroup ? "group-settings" : "settings");
+          setPanel("settings");
           return;
         }
         if (action === "settings-general") {
@@ -851,56 +694,51 @@ export function ShellPage() {
   );
 
   // The superchat top bar: the Project, the fork switch, the model and Chats.
-  const superchatTopBar =
-    museMode && active ? (
-      <div className="app-drag relative z-10 flex h-[84px] min-w-0 shrink-0 items-center gap-3 ps-4 pe-4 md:ps-0 md:pe-6">
-        <SuperchatLogo className="md:hidden" />
-        {conversationProject ? (
-          <span className="app-no-drag hidden md:inline-flex">
-            <ProjectChip project={conversationProject} onOpen={openProjectFiles} />
-          </span>
-        ) : null}
-        <span className="min-w-0 flex-1" />
-        <div className="app-no-drag flex shrink-0 items-center gap-2">
-          <ConversationModelPicker botId={active.id} />
-          <ChatsPopover
-            botId={active.id}
-            state={chatList.state}
-            forks={forks.rows}
-            current={!activeChat && !forks.thread}
-            activeChatId={activeChat && activeChat !== "draft" ? activeChat.id : null}
-            onOpenConversation={() => {
-              forks.reset();
-              setActiveChat(null);
-            }}
-            onOpenChat={setActiveChat}
-            onNewDraft={() => setActiveChat("draft")}
-            onOpenFork={(row) => {
-              setActiveChat(null);
-              forks.openRow(row);
-            }}
-            onShowForks={(filter) => {
-              setActiveChat(null);
-              forks.showForks(filter);
-            }}
-            onChanged={() => {
-              chatList.refresh();
-              readTranscript();
-            }}
-          />
-        </div>
+  const superchatTopBar = active ? (
+    <div className="app-drag relative z-10 flex h-[84px] min-w-0 shrink-0 items-center gap-3 ps-4 pe-4 md:ps-0 md:pe-6">
+      <SuperchatLogo className="md:hidden" />
+      {conversationProject ? (
+        <span className="app-no-drag hidden md:inline-flex">
+          <ProjectChip project={conversationProject} onOpen={openProjectFiles} />
+        </span>
+      ) : null}
+      <span className="min-w-0 flex-1" />
+      <div className="app-no-drag flex shrink-0 items-center gap-2">
+        <ConversationModelPicker botId={active.id} />
+        <ChatsPopover
+          botId={active.id}
+          state={chatList.state}
+          forks={forks.rows}
+          current={!activeChat && !forks.thread}
+          activeChatId={activeChat && activeChat !== "draft" ? activeChat.id : null}
+          onOpenConversation={() => {
+            forks.reset();
+            setActiveChat(null);
+          }}
+          onOpenChat={setActiveChat}
+          onNewDraft={() => setActiveChat("draft")}
+          onOpenFork={(row) => {
+            setActiveChat(null);
+            forks.openRow(row);
+          }}
+          onShowForks={(filter) => {
+            setActiveChat(null);
+            forks.showForks(filter);
+          }}
+          onChanged={() => {
+            chatList.refresh();
+            readTranscript();
+          }}
+        />
       </div>
-    ) : null;
+    </div>
+  ) : null;
 
   const shell = (
     <div
       data-testid="shell-root"
       data-ready={shellReady}
-      className={
-        museMode
-          ? "superchat-window relative flex h-full min-w-0 flex-1 overflow-hidden text-foreground"
-          : "relative flex h-full min-w-0 overflow-hidden bg-background text-foreground/90"
-      }
+      className="superchat-window relative flex h-full min-w-0 flex-1 overflow-hidden text-foreground"
     >
       {showHome && active ? (
         <Home
@@ -911,36 +749,25 @@ export function ShellPage() {
           recent={<HomeActivity botId={active.id} hideWhenEmpty />}
         />
       ) : null}
-      <ComputerUpdateProgress
-        onCompleted={() => {
-          if (active) void refreshThread(active.id);
-        }}
-      />
+      <ComputerUpdateProgress onCompleted={readTranscript} />
       {bootstrapMe !== undefined ? (
         <HostComputerPrompt initialMe={bootstrapMe ?? undefined} />
       ) : null}
-      {museMode && active && !showHome ? <ContourGround /> : null}
-      {museMode && active && !showHome ? (
+      {active && !showHome ? <ContourGround /> : null}
+      {active && !showHome ? (
         <SuperchatLogo className="absolute start-8 top-7 z-20 hidden md:inline-flex" />
       ) : null}
-      {museMode && active && !showHome ? (
+      {active && !showHome ? (
         <div className="relative z-10 hidden w-[96px] shrink-0 flex-col items-center justify-between pt-24 pb-6 md:flex">
           <span />
           <ConnectedDock botId={active.id} active={dockSheet} onSelect={setDockSheet} />
           <SettingsButton onClick={() => openSettings("general")} />
         </div>
       ) : null}
-      {museMode || active ? null : <AppRail active="bots" />}
 
-      <main
-        className={
-          museMode
-            ? "relative z-10 flex min-w-0 flex-1 flex-col"
-            : "flex min-w-0 flex-1 flex-col bg-background"
-        }
-      >
-        {museMode && activeChat ? superchatTopBar : null}
-        {museMode && active && activeChat ? (
+      <main className="relative z-10 flex min-w-0 flex-1 flex-col">
+        {activeChat ? superchatTopBar : null}
+        {active && activeChat ? (
           <div className="flex min-h-0 flex-1">
             <div className={MUSE_CONTENT_PANE}>
               <SideChatSession
@@ -968,42 +795,12 @@ export function ShellPage() {
             {chatArtifacts.panel}
           </div>
         ) : (
-          <div className={museMode && active ? "flex min-h-0 flex-1" : "contents"}>
-            <div className={museMode && active ? MUSE_CONTENT_PANE : "contents"}>
+          <div className={active ? "flex min-h-0 flex-1" : "contents"}>
+            <div className={active ? MUSE_CONTENT_PANE : "contents"}>
               {/* Behind a fork's thread view or "lift and ask", the Conversation is out of reach. */}
               <div className="contents" inert={forkOverlayOpen || undefined}>
-                {museMode && active ? (
-                  superchatTopBar
-                ) : museMode ? null : (
-                  <div className="app-drag flex items-center justify-between border-b border-sidebar-border px-3 py-[17px] md:px-[22px]">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <button
-                        type="button"
-                        data-testid="bot-settings-trigger"
-                        onClick={() => setPanel(inGroup ? "group-settings" : "settings")}
-                        className="app-no-drag flex min-w-0 items-center gap-3"
-                      >
-                        {inGroup ? (
-                          <GroupAvatar
-                            members={activeSnapshot?.members ?? activeGroup?.members ?? []}
-                            size={26}
-                          />
-                        ) : null}
-                        <span className="min-w-0">
-                          <span
-                            className="block truncate text-[16px] font-medium text-foreground"
-                            dir="auto"
-                          >
-                            {inGroup
-                              ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
-                              : (active?.name ?? t`Select a bot`)}
-                          </span>
-                        </span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {!active && !activeGroup && initialBotsLoaded ? (
+                {superchatTopBar}
+                {!active && initialBotsLoaded ? (
                   <div className="grid flex-1 place-items-center">
                     <Button onClick={() => setPanel("create")}>
                       <Plus size={16} aria-hidden="true" />
@@ -1027,35 +824,26 @@ export function ShellPage() {
                   />
                 ) : shownStart ? (
                   <EmptyConversationLead personName={bootstrapMe?.name ?? ""} />
-                ) : (
+                ) : active ? (
                   <Transcript
-                    key={activeSnapshot?.threadId}
+                    key={museTranscript.threadId ?? active.id}
                     museMode={museMode}
-                    botDisplayName={active?.name}
+                    botDisplayName={active.name}
                     followSignal={followSignal}
-                    museFace={active ? { color: active.color, identity: active.id } : undefined}
-                    museRuns={currentRuns}
+                    museFace={{ color: active.color, identity: active.id }}
+                    museRuns={turnRuns}
                     scrollRef={messageScroll}
                     scrollRequest={scrollRequest}
                     onScrollRequestHandled={clearScrollRequest}
                     artifactTarget={transcriptArtifactTarget}
                     messages={transcriptMessages}
-                    olderCursor={
-                      museMode && !inGroup
-                        ? museTranscript.olderCursor
-                        : (activeSnapshot?.olderCursor ?? null)
-                    }
-                    loadingOlder={museMode && !inGroup ? museTranscript.loadingOlder : loadingOlder}
-                    answerableAskMessageId={answerableAskMessageId}
-                    running={transcriptRunning}
-                    workingBots={workingBots}
-                    onLoadOlder={museMode && !inGroup ? museTranscript.loadOlder : loadOlder}
+                    olderCursor={museTranscript.olderCursor}
+                    loadingOlder={museTranscript.loadingOlder}
+                    running={running}
+                    onLoadOlder={museTranscript.loadOlder}
                     onShowEarlier={
-                      museMode && !inGroup && museTranscript.canShowEarlier
-                        ? museTranscript.showEarlier
-                        : undefined
+                      museTranscript.canShowEarlier ? museTranscript.showEarlier : undefined
                     }
-                    onOpenBot={openBot}
                     onAnswer={answerMessage}
                     onSendCard={sendCardReply}
                     onReply={(message) => {
@@ -1066,47 +854,37 @@ export function ShellPage() {
                       setReplyTarget(message);
                       setReplyQuote(quote);
                     }}
-                    onReact={reactToMessage}
-                    onJumpToMessage={jumpToReplyMessage}
                     onOpenPeerMessages={(peer) => {
                       setPeerConversation(peer);
                     }}
-                    memberName={resolveTranscriptMemberName}
                     peerBot={resolveTranscriptBot}
-                    onBotChanged={refreshBots}
                     voiceReady={Boolean(voiceStatus?.ready)}
                     speakingMessageId={speakingMessageId}
                     onSpeak={speakMessage}
-                    trailing={
-                      museMode && active ? (
-                        <ApprovalCards botId={active.id} chatId={null} />
-                      ) : undefined
-                    }
-                    onFork={museMode && !inGroup ? forks.startAsk : undefined}
-                    renderUnder={museMode && !inGroup ? forks.renderUnder : undefined}
+                    trailing={<ApprovalCards botId={active.id} chatId={null} />}
+                    onFork={forks.startAsk}
+                    renderUnder={forks.renderUnder}
                     aside={
-                      museMode && !inGroup ? (
-                        <ForkGutter
-                          scrollRef={messageScroll}
-                          messages={transcriptMessages}
-                          forks={forks.rows}
-                          onJump={forks.jump}
-                          onLoadEarlier={
-                            museTranscript.canShowEarlier
-                              ? museTranscript.showEarlier
-                              : museTranscript.loadOlder
-                          }
-                        />
-                      ) : undefined
+                      <ForkGutter
+                        scrollRef={messageScroll}
+                        messages={transcriptMessages}
+                        forks={forks.rows}
+                        onJump={forks.jump}
+                        onLoadEarlier={
+                          museTranscript.canShowEarlier
+                            ? museTranscript.showEarlier
+                            : museTranscript.loadOlder
+                        }
+                      />
                     }
                   />
-                )}
-                {active || activeGroup ? (
+                ) : null}
+                {active ? (
                   // Kept mounted under the Forks list so a half-written message survives.
                   <div
                     ref={composerDock}
                     hidden={forksView || undefined}
-                    style={{ viewTransitionName: museMode ? "superchat-composer" : undefined }}
+                    style={{ viewTransitionName: "superchat-composer" }}
                   >
                     {showHome ? null : composerEl}
                   </div>
@@ -1115,7 +893,7 @@ export function ShellPage() {
                   <EmptyConversationSuggestions onSend={(text) => void sendMessage(text)} />
                 ) : null}
               </div>
-              {museMode && active && forks.ask ? (
+              {active && forks.ask ? (
                 <ForkAsk
                   botId={active.id}
                   wire={forkWire}
@@ -1129,7 +907,7 @@ export function ShellPage() {
                   }}
                 />
               ) : null}
-              {museMode && active && forks.thread && !forks.ask ? (
+              {active && forks.thread && !forks.ask ? (
                 <ForkThread
                   key={forks.thread.chat.id}
                   bot={{ id: active.id, name: active.name, color: active.color }}
@@ -1156,8 +934,8 @@ export function ShellPage() {
                 />
               ) : null}
             </div>
-            {museMode && active ? chatArtifacts.panel : null}
-            {museMode && active && !chatArtifacts.isOpen ? (
+            {active ? chatArtifacts.panel : null}
+            {active && !chatArtifacts.isOpen ? (
               <div className="pointer-events-none absolute end-5 bottom-24 z-20 hidden md:block xl:bottom-6 [&>*]:pointer-events-auto">
                 <ConversationActivity botId={active.id} />
               </div>
@@ -1166,7 +944,7 @@ export function ShellPage() {
         )}
       </main>
 
-      {museMode && active ? (
+      {active ? (
         <FolderPicker
           botId={active.id}
           open={folderPickerOpen}
@@ -1174,7 +952,7 @@ export function ShellPage() {
           onPick={attachFolder}
         />
       ) : null}
-      {museMode && active ? (
+      {active ? (
         <DockSheets
           botId={active.id}
           botName={active.name}
@@ -1194,36 +972,17 @@ export function ShellPage() {
       <aside
         data-testid="side-panel"
         data-panel={panel ?? "closed"}
-        className={`absolute inset-y-0 end-0 z-20 flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-150 ease-out md:relative ${
-          museMode ? "superchat-glass" : "bg-background"
-        } ${
-          panel && (active || activeGroup || panel === "create")
-            ? museMode
-              ? // Muse: an inset panel like <main>.
-                "w-full max-w-[400px] md:m-2 md:w-[400px] md:max-w-none"
-              : "w-full max-w-[384px] border-s border-sidebar-border md:w-[384px] md:max-w-none"
+        className={`superchat-glass absolute inset-y-0 end-0 z-20 flex min-h-0 shrink-0 flex-col overflow-hidden transition-[width] duration-150 ease-out md:relative ${
+          panel && (active || panel === "create")
+            ? // An inset panel like <main>.
+              "w-full max-w-[400px] md:m-2 md:w-[400px] md:max-w-none"
             : "pointer-events-none w-0"
         }`}
       >
-        {panel && (active || activeGroup || panel === "create") ? (
-          <div
-            className={`rk-scroll h-full w-full overflow-y-auto px-5 py-[17px] ${
-              museMode ? "md:w-[400px]" : "md:w-[384px]"
-            }`}
-          >
-            {panel !== "routine" && panel !== "create" && panel !== "group-settings" ? (
+        {panel && (active || panel === "create") ? (
+          <div className="rk-scroll h-full w-full overflow-y-auto px-5 py-[17px] md:w-[400px]">
+            {panel !== "routine" && panel !== "create" ? (
               <SidePanelHeader panel={panel} setPanel={setPanel} active={active} />
-            ) : null}
-            {panel === "group-settings" && activeGroup ? (
-              <GroupSettingsPanel
-                activeGroup={activeGroup}
-                bots={bots}
-                groups={groups}
-                setGroups={setGroups}
-                setPanel={setPanel}
-                refreshBots={refreshBots}
-                refreshGroupThread={refreshGroupThread}
-              />
             ) : null}
             {panel === "create" ? (
               <CreateBotForm
@@ -1236,7 +995,7 @@ export function ShellPage() {
                 active={active}
                 skillsSection={<SkillsSection onSkillsChange={setAgentSkills} />}
                 refreshBots={refreshBots}
-                onClear={() => setClearTarget({ kind: "bot", chat: active })}
+                onClear={() => setClearTarget(active)}
               />
             ) : null}
             {panel === "routine" && active ? (
@@ -1254,13 +1013,9 @@ export function ShellPage() {
       <Suspense fallback={null}>
         {clearTarget ? (
           <ClearConversationHost
-            clearTarget={clearTarget}
+            bot={clearTarget}
             onClose={() => setClearTarget(null)}
-            active={active}
-            activeGroup={activeGroup}
-            resetThreadHistory={resetThreadHistory}
-            updateSnapshot={updateSnapshot}
-            refreshBots={refreshBots}
+            onCleared={readTranscript}
           />
         ) : null}
 
@@ -1305,9 +1060,8 @@ export function ShellPage() {
             botId={active.id}
             botName={active.name}
             transcribe={Boolean(voiceStatus?.transcribe)}
-            snapshot={conversationSnapshot}
+            conversation={callConversation}
             onSend={sendMessage}
-            onFollowUp={followUpMessage}
             onAnswer={answerMessage}
             onClose={() => setCallOpen(false)}
           />
@@ -1322,26 +1076,22 @@ export function ShellPage() {
         <ArtifactRegistryProvider value={ARTIFACT_EXTENSIONS}>
           <TranscriptGroupProvider value={CHART_RUNS}>
             <AskPreviewsProvider value={ASK_PREVIEWS}>
-              {museMode ? (
-                // The window ground around Superchat's rounded content window.
-                <div className="muse-wash pt-safe pb-safe ps-safe pe-safe flex h-full md:p-2">
-                  {active ? (
-                    <OrbHomeProvider home={orbHome}>
-                      <SuperchatPresence
-                        botId={active.id}
-                        runs={currentRuns}
-                        messages={activeSnapshot?.messages}
-                      >
-                        {shell}
-                      </SuperchatPresence>
-                    </OrbHomeProvider>
-                  ) : (
-                    shell
-                  )}
-                </div>
-              ) : (
-                shell
-              )}
+              {/* The window ground around Superchat's rounded content window. */}
+              <div className="muse-wash pt-safe pb-safe ps-safe pe-safe flex h-full md:p-2">
+                {active ? (
+                  <OrbHomeProvider home={orbHome}>
+                    <SuperchatPresence
+                      botId={active.id}
+                      runs={turnRuns}
+                      messages={museTranscript.messages}
+                    >
+                      {shell}
+                    </SuperchatPresence>
+                  </OrbHomeProvider>
+                ) : (
+                  shell
+                )}
+              </div>
             </AskPreviewsProvider>
           </TranscriptGroupProvider>
         </ArtifactRegistryProvider>

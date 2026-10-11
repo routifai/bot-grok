@@ -1,23 +1,19 @@
 // @vitest-environment jsdom
 
-import type { Bot, ComputerStatus } from "@superchat/contracts";
 import { ORPCError } from "@orpc/client";
+import type { Bot, ComputerStatus, ThreadMessage } from "@superchat/contracts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-/** The Computer status stream the composer listens to, driven by the tests. */
+/** The Computer status the composer waits on, driven by the tests. */
 const computerBus = (() => {
   const listeners = new Set<(status: ComputerStatus | null) => void>();
-  const computerRef = { current: null as ComputerStatus | null };
+  let current: ComputerStatus | null = null;
   return {
-    store: {
-      computerRef,
-      commitComputer: (next: ComputerStatus | null) => {
-        computerRef.current = next;
-        for (const listener of listeners) listener(next);
-      },
-      onComputerChange: (listener: (status: ComputerStatus | null) => void) => {
+    feed: {
+      current: () => current,
+      subscribe: (listener: (status: ComputerStatus | null) => void) => {
         listeners.add(listener);
         return () => {
           listeners.delete(listener);
@@ -25,11 +21,12 @@ const computerBus = (() => {
       },
     },
     emit(status: Partial<ComputerStatus> | null) {
-      this.store.commitComputer(status as ComputerStatus | null);
+      current = status as ComputerStatus | null;
+      for (const listener of listeners) listener(current);
     },
     reset() {
       listeners.clear();
-      computerRef.current = null;
+      current = null;
     },
   };
 })();
@@ -38,18 +35,22 @@ const UP = { state: "running", runnerReady: true } as const;
 
 const api = vi.hoisted(() => ({
   files: { uploadAttachment: vi.fn(), ingestAttachment: vi.fn() },
-  artifacts: { create: vi.fn() },
-  threads: { send: vi.fn() },
+  chats: { send: vi.fn(), interrupt: vi.fn() },
+  asks: { answer: vi.fn() },
   routines: { testRun: vi.fn() },
 }));
 vi.mock("../../../lib/rpc", () => ({ rpc: api }));
-vi.mock("react-router-dom", () => ({ useNavigate: () => vi.fn() }));
+vi.mock("./computerReady", async (orig) => ({
+  ...(await orig<typeof import("./computerReady")>()),
+  pollingComputerFeed: () => computerBus.feed,
+}));
 vi.mock("react-dom/client", async (orig) =>
   (await import("../../../test/i18n")).withI18nRoot(
     await orig<typeof import("react-dom/client")>(),
   ),
 );
-vi.mock("../../../features/approvals", () => ({ notifyAsksChanged: vi.fn() }));
+const notifyAsksChanged = vi.hoisted(() => vi.fn());
+vi.mock("../../../features/approvals", () => ({ notifyAsksChanged }));
 vi.mock("../../../lib/browser-notifications", () => ({
   requestBrowserNotificationPermission: () => null,
 }));
@@ -61,31 +62,20 @@ const BOT = "b".repeat(32);
 const roots: Root[] = [];
 let latest: ReturnType<typeof useComposerSend>;
 
+const botRef = { current: BOT as string | undefined };
+const transcript = { beginSend: vi.fn(), failSend: vi.fn(), refresh: vi.fn() };
+let shown: ThreadMessage[] = [];
+
 function Harness() {
-  const ref = { current: BOT as string | undefined };
-  const groupRef = { current: undefined as string | undefined };
   latest = useComposerSend({
-    target: {
-      active: { id: BOT, notifyOnFinish: false } as Bot,
-      groupId: undefined,
-      inGroup: false,
-      activeBotId: ref,
-      activeGroupId: groupRef,
-    },
+    active: { id: BOT, notifyOnFinish: false } as Bot,
+    activeBotId: botRef,
     userId: "u1",
-    museMode: true,
-    activeSnapshot: null,
-    threadOps: {
-      terminalRunReceipts: { current: new Map() } as never,
-      refreshThreadRef: { current: async () => undefined } as never,
-      refreshGroupThreadRef: { current: async () => undefined } as never,
-      updateSnapshot: () => undefined,
-    },
-    roster: { botsRef: { current: [] }, refreshBots: async () => undefined },
+    messages: shown,
+    transcript,
+    botsRef: { current: [] },
     flushPendingBrowserNotifications: () => undefined,
-    computerStore: computerBus.store,
-    focusPrompt: { cancelFocusPrompt: () => undefined, focusPromptBotIdRef: { current: null } },
-  } as never);
+  });
   return null;
 }
 
@@ -97,6 +87,7 @@ async function pickFiles(...files: [string, string, string][]) {
 }
 
 beforeEach(() => {
+  shown = [];
   computerBus.reset();
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.stubGlobal(
@@ -115,8 +106,12 @@ beforeEach(() => {
     pages: 2,
     chars: 40,
   }));
-  api.artifacts.create.mockReset();
-  api.threads.send.mockReset().mockResolvedValue({ runId: "r1", taskId: "t1" });
+  transcript.beginSend.mockReset();
+  transcript.failSend.mockReset();
+  transcript.refresh.mockReset();
+  api.chats.interrupt.mockReset().mockResolvedValue({ ok: true });
+  api.asks.answer.mockReset().mockResolvedValue({ ok: true });
+  api.chats.send.mockReset().mockResolvedValue({ ok: true });
 });
 afterEach(async () => {
   for (const root of roots.splice(0)) await act(async () => root.unmount());
@@ -130,7 +125,7 @@ async function mount() {
 }
 
 const settled = () => act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
-const statuses = () => latest.pendingAttachments.map((a) => a.status);
+const statuses = () => latest.activePendingAttachments.map((a) => a.status);
 
 it("uploads and reads each attachment when it is picked, then sends them as workspace attachments", async () => {
   await mount();
@@ -150,13 +145,13 @@ it("uploads and reads each attachment when it is picked, then sends them as work
   ]);
   await act(async () => latest.sendMessage("read these"));
   expect(api.files.uploadAttachment).toHaveBeenCalledTimes(2); // not uploaded again at send
-  expect(api.artifacts.create).not.toHaveBeenCalled();
-  const sent = api.threads.send.mock.calls[0]?.[0];
+  const sent = api.chats.send.mock.calls[0]?.[0];
+  expect(sent).toMatchObject({ botId: BOT, text: "read these" });
   expect(sent.attachments).toEqual([
     expect.objectContaining({ path: "your_files/uploads/2026-10-09/a.pdf", name: "a.pdf" }),
     expect.objectContaining({ path: "your_files/uploads/2026-10-09/b.pdf", name: "b.pdf" }),
   ]);
-  expect(latest.pendingAttachments).toHaveLength(0);
+  expect(latest.activePendingAttachments).toHaveLength(0);
 });
 
 it("goes uploading, reading, ready, and holds the message back until then", async () => {
@@ -189,7 +184,7 @@ it("goes uploading, reading, ready, and holds the message back until then", asyn
   await settled();
   expect(statuses()).toEqual(["reading"]);
   expect(await act(async () => latest.sendMessage("hi"))).toBe(false);
-  expect(api.threads.send).not.toHaveBeenCalled();
+  expect(api.chats.send).not.toHaveBeenCalled();
   await act(async () => release());
   await settled();
   expect(statuses()).toEqual(["ready"]);
@@ -244,7 +239,7 @@ it("shows a calm error on the chip when the Computer never comes up, and retries
       await vi.advanceTimersByTimeAsync(125_000);
     });
     expect(statuses()).toEqual(["error"]);
-    expect(latest.pendingAttachments[0]?.error).toBe(
+    expect(latest.activePendingAttachments[0]?.error).toBe(
       "Your Computer is starting. Try again in a moment.",
     );
     expect(api.files.uploadAttachment).toHaveBeenCalledTimes(1);
@@ -255,7 +250,7 @@ it("shows a calm error on the chip when the Computer never comes up, and retries
       mimeType: "application/pdf",
       size: 3,
     });
-    const failed = latest.pendingAttachments[0] as never;
+    const failed = latest.activePendingAttachments[0] as never;
     await act(async () => latest.retryAttachment(failed));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(50);
@@ -272,13 +267,13 @@ it("keeps the draft and the file when reading fails, and lets the person retry o
   await pickFiles(["a.pdf", "aaa", "application/pdf"]);
   await settled();
   expect(statuses()).toEqual(["error"]);
-  expect(latest.pendingAttachments[0]?.error).toBeTruthy();
-  await act(async () => latest.retryAttachment(latest.pendingAttachments[0] as never));
+  expect(latest.activePendingAttachments[0]?.error).toBeTruthy();
+  await act(async () => latest.retryAttachment(latest.activePendingAttachments[0] as never));
   await settled();
   expect(statuses()).toEqual(["ready"]);
   expect(api.files.uploadAttachment).toHaveBeenCalledTimes(1); // the retry only reads again
-  await act(async () => latest.removeAttachment(latest.pendingAttachments[0] as never));
-  expect(latest.pendingAttachments).toHaveLength(0);
+  await act(async () => latest.removeAttachment(latest.activePendingAttachments[0] as never));
+  expect(latest.activePendingAttachments).toHaveLength(0);
 });
 
 it("sends an image without reading it", async () => {
@@ -323,9 +318,9 @@ it("cancels the wait and the read when the chip is removed", async () => {
   await pickFiles(["a.pdf", "aaa", "application/pdf"]);
   await settled();
   expect(signal?.aborted).toBe(false);
-  await act(async () => latest.removeAttachment(latest.pendingAttachments[0] as never));
+  await act(async () => latest.removeAttachment(latest.activePendingAttachments[0] as never));
   expect(signal?.aborted).toBe(true);
-  expect(latest.pendingAttachments).toHaveLength(0);
+  expect(latest.activePendingAttachments).toHaveLength(0);
 });
 
 it("cancels the wait for a starting Computer when the person leaves the chat", async () => {
@@ -349,7 +344,7 @@ it("says a slow read is slow, not that the Computer is starting", async () => {
   await pickFiles(["a.pdf", "aaa", "application/pdf"]);
   await settled();
   expect(statuses()).toEqual(["error"]);
-  expect(latest.pendingAttachments[0]?.error).toBe(
+  expect(latest.activePendingAttachments[0]?.error).toBe(
     "Reading a.pdf is taking too long. Try again in a moment.",
   );
 });
@@ -358,10 +353,10 @@ it("gives every picked attachment its own id, even for identical files picked to
   await mount();
   await pickFiles(["a.pdf", "aaa", "application/pdf"], ["a.pdf", "aaa", "application/pdf"]);
   await settled();
-  const ids = latest.pendingAttachments.map((a) => a.id);
+  const ids = latest.activePendingAttachments.map((a) => a.id);
   expect(new Set(ids).size).toBe(2);
   await pickFiles(["a.pdf", "aaa", "application/pdf"]);
-  expect(new Set(latest.pendingAttachments.map((a) => a.id)).size).toBe(3);
+  expect(new Set(latest.activePendingAttachments.map((a) => a.id)).size).toBe(3);
 });
 
 it("decides a starting Computer by the error code, not by words in the message", async () => {
@@ -372,7 +367,7 @@ it("decides a starting Computer by the error code, not by words in the message",
   await pickFiles(["a.pdf", "aaa", "application/pdf"]);
   await settled();
   expect(statuses()).toEqual(["error"]);
-  expect(latest.pendingAttachments[0]?.error).not.toContain("Your Computer is starting");
+  expect(latest.activePendingAttachments[0]?.error).not.toContain("Your Computer is starting");
 });
 
 it("does not wait for an 'up' event that already happened", async () => {
@@ -390,4 +385,107 @@ it("does not wait for an 'up' event that already happened", async () => {
   await settled();
   expect(statuses()).toEqual(["ready"]);
   expect(api.files.uploadAttachment).toHaveBeenCalledTimes(2);
+});
+
+it("shows the message at once as the engine will record it, sends it, and reads the Conversation", async () => {
+  await mount();
+  await pickFiles(["a.pdf", "aaa", "application/pdf"]);
+  await settled();
+  expect(await act(async () => latest.sendMessage("read this"))).toBe(true);
+  expect(transcript.beginSend).toHaveBeenCalledWith(
+    "Attached file in your workspace: your_files/uploads/2026-10-09/a.pdf (application/pdf, 3 bytes)\n\nread this",
+  );
+  expect(api.chats.send).toHaveBeenCalledWith({
+    botId: BOT,
+    text: "read this",
+    attachments: [expect.objectContaining({ name: "a.pdf" })],
+    folders: undefined,
+  });
+  expect(transcript.refresh).toHaveBeenCalled();
+  expect(transcript.failSend).not.toHaveBeenCalled();
+});
+
+it("sends a quote as text and workspace folders as pointers", async () => {
+  await mount();
+  await act(async () => latest.attachFolder("projects/q3"));
+  await act(async () => {
+    latest.setReplyTarget({ id: "m1", role: "bot" } as never);
+    latest.setReplyQuote("the fee is 2%");
+  });
+  expect(await act(async () => latest.sendMessage("why?"))).toBe(true);
+  expect(api.chats.send).toHaveBeenCalledWith({
+    botId: BOT,
+    text: "> the fee is 2%\n\nwhy?",
+    attachments: undefined,
+    folders: ["projects/q3"],
+  });
+  expect(latest.activePendingFolders).toEqual([]);
+});
+
+it("retries a failed send once, quietly", async () => {
+  vi.useFakeTimers();
+  try {
+    await mount();
+    api.chats.send.mockRejectedValueOnce(new Error("down")).mockResolvedValueOnce({ ok: true });
+    let sent: Promise<boolean> | undefined;
+    await act(async () => {
+      sent = latest.sendMessage("hello");
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+    expect(await sent).toBe(true);
+    expect(api.chats.send).toHaveBeenCalledTimes(2);
+    expect(latest.sendError).toBeNull();
+    expect(transcript.failSend).not.toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("takes the message back and reports it when the retry fails too", async () => {
+  vi.useFakeTimers();
+  try {
+    await mount();
+    api.chats.send.mockRejectedValue(new Error("down"));
+    let sent: Promise<boolean> | undefined;
+    await act(async () => {
+      sent = latest.sendMessage("hello");
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+    expect(await sent).toBe(false);
+    expect(api.chats.send).toHaveBeenCalledTimes(2);
+    expect(transcript.failSend).toHaveBeenCalledTimes(1);
+    expect(latest.sendError).toBeTruthy();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("stops the running turn on the engine and reads the Conversation again", async () => {
+  await mount();
+  await act(async () => latest.stopRun());
+  expect(api.chats.interrupt).toHaveBeenCalledWith({ botId: BOT });
+  expect(transcript.refresh).toHaveBeenCalled();
+});
+
+it("answers an ask on the engine", async () => {
+  await mount();
+  await act(async () => latest.answerMessage({ id: "ask-1", runId: "r1" } as never, "yes"));
+  expect(api.asks.answer).toHaveBeenCalledWith({ askId: "ask-1", runId: "r1", answer: "yes" });
+  expect(notifyAsksChanged).toHaveBeenCalledWith(BOT);
+});
+
+it("offers the composer note for a reply that failed for a model-layer reason, until dismissed", async () => {
+  const failed: ThreadMessage = {
+    id: "m9",
+    threadId: "conv",
+    seq: 9,
+    role: "bot",
+    blocks: [{ kind: "error", code: "model_key_required" }],
+    createdAt: "2026-10-10T10:00:00.000Z",
+  };
+  shown = [failed];
+  await mount();
+  expect(latest.failure).toEqual({ id: "m9", code: "model_key_required" });
+  await act(async () => latest.dismissComposerError());
+  expect(latest.failure).toBeNull();
 });

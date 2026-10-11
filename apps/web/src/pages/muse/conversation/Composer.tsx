@@ -4,7 +4,6 @@ import {
   type ComposerMention,
   clampMentionHighlightIndex,
   mentionChipKey,
-  modelErrorCode,
   resolveMentionPickerKey,
   SLASH_ACTIONS,
   type SlashActionId,
@@ -53,8 +52,8 @@ import {
   useComposerAttachTarget,
   withComposerAttachments,
 } from "../../../lib/composer-attachments";
-import { requestOpenSettings } from "../../../lib/open-settings";
 import { isFileDrag, isFilePaste } from "../../../lib/pending-attachments";
+import { useFailureNoteAction, useFailureNoteText } from "./FailureNote";
 import { MentionChipIcon, MentionOptionIcon } from "./MentionIcons";
 import { previewMessageText } from "./messageText";
 import {
@@ -78,9 +77,7 @@ export const Composer = memo(function Composer({
   attachmentNotice,
   uploadStatus,
   sendError,
-  runError,
-  runErrorId,
-  onRunErrorPresented,
+  failure,
   onDismissError,
   sending,
   fileInputRef,
@@ -115,9 +112,8 @@ export const Composer = memo(function Composer({
   /** Progress while attachments are written to the Computer ("Uploading 2 of 3"). */
   uploadStatus?: string | null;
   sendError?: string | null;
-  runError?: string | null;
-  runErrorId?: string | null;
-  onRunErrorPresented?: (runId: string) => void;
+  /** The latest reply failed for a model-layer reason the person can fix (a key, a budget). */
+  failure?: { id: string; code: string } | null;
   onDismissError?: () => void;
   sending: boolean;
   /** Without an attachment handler (a Side Chat sends text only) there is no attach control. */
@@ -159,19 +155,14 @@ export const Composer = memo(function Composer({
   // "reply" text, while an explicit cancel must keep "Reply cancelled".
   const replyAnnouncementKind = useRef<"reply" | "cancelled" | null>(null);
   const prevReplyTarget = useRef<ThreadMessage | null>(null);
-  const runErrorRef = useRef<HTMLDivElement>(null);
-  const presentedRunErrorIdRef = useRef<string | null>(null);
   const mentionListboxId = useId();
   const dragDepth = useRef(0);
   const [draggingFiles, setDraggingFiles] = useState(false);
   // A failed turn the person can fix themselves: the note offers where (Settings > Models).
-  const failureCode = !sendError && runError ? modelErrorCode(runError) : null;
-  const fixLabel =
-    failureCode === "model_key_required"
-      ? t`Add your API key`
-      : failureCode === "model_budget_exhausted"
-        ? t`Raise budget`
-        : null;
+  const failureText = useFailureNoteText();
+  const failureAction = useFailureNoteAction();
+  const failureNote = failure ? failureText(failure.code) : null;
+  const fix = failure ? failureAction(failure.code) : null;
   const canSend =
     draft.trim().length > 0 ||
     selectedSkill !== null ||
@@ -180,40 +171,6 @@ export const Composer = memo(function Composer({
     pendingFolders.length > 0;
   // A file still being read, or one that failed, holds Send until it is ready, removed or retried.
   const attachmentsPending = attachmentsBlockSend(pendingAttachments);
-
-  useEffect(() => {
-    if (!runError || !runErrorId) return;
-    const currentRunErrorId = runErrorId;
-    let frame = 0;
-    function recordIfPresented() {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const element = runErrorRef.current;
-        if (!element || document.visibilityState !== "visible") return;
-        const rect = element.getBoundingClientRect();
-        const topElement = document.elementFromPoint(
-          rect.left + rect.width / 2,
-          rect.top + rect.height / 2,
-        );
-        if (topElement && (topElement === element || element.contains(topElement))) {
-          if (presentedRunErrorIdRef.current === currentRunErrorId) return;
-          presentedRunErrorIdRef.current = currentRunErrorId;
-          onRunErrorPresented?.(currentRunErrorId);
-        }
-      });
-    }
-    recordIfPresented();
-    const observer = new MutationObserver(recordIfPresented);
-    observer.observe(document.body, { childList: true, subtree: true });
-    document.addEventListener("transitionend", recordIfPresented);
-    document.addEventListener("visibilitychange", recordIfPresented);
-    return () => {
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-      document.removeEventListener("transitionend", recordIfPresented);
-      document.removeEventListener("visibilitychange", recordIfPresented);
-    };
-  }, [onRunErrorPresented, runError, runErrorId]);
 
   useLayoutEffect(() => {
     const el = textareaRef.current;
@@ -474,22 +431,21 @@ export const Composer = memo(function Composer({
       <div role="status" data-testid="composer-announcement" className="sr-only">
         {replyAnnouncement}
       </div>
-      {sendError || runError ? (
+      {sendError || failureNote ? (
         <div
-          ref={runErrorRef}
           role="alert"
           data-testid="composer-error"
           className="mb-3 flex items-center gap-2 rounded-[14px] border border-destructive/40 bg-destructive/10 px-4 py-2 text-[13px] text-destructive"
         >
-          <span className="min-w-0 flex-1">{sendError ?? runError}</span>
-          {fixLabel ? (
+          <span className="min-w-0 flex-1">{sendError ?? failureNote}</span>
+          {!sendError && fix ? (
             <button
               type="button"
               data-testid="composer-error-action"
-              onClick={() => requestOpenSettings("models")}
+              onClick={fix.onClick}
               className="shrink-0 rounded-md px-1 py-0.5 font-medium underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
             >
-              {fixLabel}
+              {fix.label}
             </button>
           ) : null}
           <button

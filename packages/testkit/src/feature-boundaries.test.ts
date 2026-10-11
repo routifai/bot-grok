@@ -191,13 +191,9 @@ const BASELINE: readonly string[] = [
   "web:pages/muse/chrome/MuseSidebar.tsx -> side-chats",
   "web:pages/muse/conversation/MessageHoverActions.tsx -> side-chats",
   "web:pages/muse/conversation/Transcript.tsx -> side-chats",
-  // The conversation's hooks keep the Computer's store, screen link and launch stage in step with
-  // the thread (read the screen link, show "Starting your Computer", mirror the store into the
-  // panel header); goes away when the conversation moves into its folder and takes the Computer
-  // as an injected store.
+  // The Muse's live state shows "Starting your Computer" from the launch stage; goes away when the
+  // conversation moves into its folder and takes the Computer as an injected store.
   "web:pages/muse/chrome/useMuseLiveState.ts -> computer",
-  "web:pages/muse/conversation/useComposerSend.ts -> computer",
-  "web:pages/muse/conversation/useThreadSync.ts -> computer",
 ];
 
 const REPO = fileURLToPath(new URL("../../../", import.meta.url));

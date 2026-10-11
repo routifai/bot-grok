@@ -5,18 +5,14 @@ import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-/** The Computer status stream the composer listens to, driven by the tests. */
+/** The Computer status the composer waits on, driven by the tests. */
 const computerBus = (() => {
   const listeners = new Set<(status: ComputerStatus | null) => void>();
-  const computerRef = { current: null as ComputerStatus | null };
+  let current: ComputerStatus | null = null;
   return {
-    store: {
-      computerRef,
-      commitComputer: (next: ComputerStatus | null) => {
-        computerRef.current = next;
-        for (const listener of listeners) listener(next);
-      },
-      onComputerChange: (listener: (status: ComputerStatus | null) => void) => {
+    feed: {
+      current: () => current,
+      subscribe: (listener: (status: ComputerStatus | null) => void) => {
         listeners.add(listener);
         return () => {
           listeners.delete(listener);
@@ -24,11 +20,12 @@ const computerBus = (() => {
       },
     },
     emit(status: Partial<ComputerStatus> | null) {
-      this.store.commitComputer(status as ComputerStatus | null);
+      current = status as ComputerStatus | null;
+      for (const listener of listeners) listener(current);
     },
     reset() {
       listeners.clear();
-      computerRef.current = null;
+      current = null;
     },
   };
 })();
@@ -36,12 +33,15 @@ const STARTING = { state: "booting", launch: { stage: "starting" } } as const;
 
 const api = vi.hoisted(() => ({
   files: { uploadAttachment: vi.fn(), ingestAttachment: vi.fn() },
-  artifacts: { create: vi.fn() },
-  threads: { send: vi.fn() },
+  chats: { send: vi.fn(), interrupt: vi.fn() },
+  asks: { answer: vi.fn() },
   routines: { testRun: vi.fn() },
 }));
 vi.mock("../../../lib/rpc", () => ({ rpc: api }));
-vi.mock("react-router-dom", () => ({ useNavigate: () => vi.fn() }));
+vi.mock("./computerReady", async (orig) => ({
+  ...(await orig<typeof import("./computerReady")>()),
+  pollingComputerFeed: () => computerBus.feed,
+}));
 vi.mock("react-dom/client", async (orig) =>
   (await import("../../../test/i18n")).withI18nRoot(
     await orig<typeof import("react-dom/client")>(),
@@ -73,34 +73,21 @@ import { useComposerSend } from "./useComposerSend";
 
 const BOT = "b".repeat(32);
 const botRef = { current: BOT as string | undefined };
-const groupRef = { current: undefined as string | undefined };
 const roots: Root[] = [];
 let latest: ReturnType<typeof useComposerSend>;
+const transcript = { beginSend: vi.fn(), failSend: vi.fn(), refresh: vi.fn() };
 
 /** The real hook wired to the real Composer, the way Shell does it. */
 function Wired() {
   latest = useComposerSend({
-    target: {
-      active: { id: BOT, notifyOnFinish: false } as Bot,
-      groupId: undefined,
-      inGroup: false,
-      activeBotId: botRef,
-      activeGroupId: groupRef,
-    },
+    active: { id: BOT, notifyOnFinish: false } as Bot,
+    activeBotId: botRef,
     userId: "u1",
-    museMode: true,
-    activeSnapshot: null,
-    threadOps: {
-      terminalRunReceipts: { current: new Map() } as never,
-      refreshThreadRef: { current: async () => undefined } as never,
-      refreshGroupThreadRef: { current: async () => undefined } as never,
-      updateSnapshot: () => undefined,
-    },
-    roster: { botsRef: { current: [] }, refreshBots: async () => undefined },
+    messages: [],
+    transcript,
+    botsRef: { current: [] },
     flushPendingBrowserNotifications: () => undefined,
-    computerStore: computerBus.store,
-    focusPrompt: { cancelFocusPrompt: () => undefined, focusPromptBotIdRef: { current: null } },
-  } as never);
+  });
   return (
     <Composer
       museMode
@@ -155,7 +142,7 @@ beforeEach(() => {
     pages: 2,
     chars: 40,
   });
-  api.threads.send.mockReset().mockResolvedValue({ runId: "r1", taskId: "t1" });
+  api.chats.send.mockReset().mockResolvedValue({ ok: true });
 });
 afterEach(async () => {
   for (const root of roots.splice(0)) await act(async () => root.unmount());
@@ -183,12 +170,12 @@ for (const how of ["Enter", "Send button"] as const) {
     else await click(host);
     expect(api.files.uploadAttachment).toHaveBeenCalledTimes(1);
     expect(api.files.ingestAttachment).toHaveBeenCalledTimes(1);
-    expect(api.threads.send).toHaveBeenCalledTimes(1);
-    expect(api.threads.send.mock.calls[0]?.[0]).toMatchObject({
+    expect(api.chats.send).toHaveBeenCalledTimes(1);
+    expect(api.chats.send.mock.calls[0]?.[0]).toMatchObject({
       botId: BOT,
       text: "what is the Northwind fee?",
     });
-    expect(latest.pendingAttachments).toHaveLength(0);
+    expect(latest.activePendingAttachments).toHaveLength(0);
     expect(box.value).toBe("");
   });
 }
@@ -202,7 +189,7 @@ it("gives the draft back when sendMessage returns early without sending", async 
   } finally {
     botRef.current = BOT;
   }
-  expect(api.threads.send).not.toHaveBeenCalled();
+  expect(api.chats.send).not.toHaveBeenCalled();
   expect(box.value).toBe("keep me");
   expect(host.textContent).toContain("vendor-review.pdf");
 });
@@ -222,7 +209,7 @@ it("shows Reading on the chip and keeps Send disabled until the file is ready", 
   const sendButton = host.querySelector('button[aria-label="Send"]') as HTMLButtonElement;
   expect(sendButton.disabled).toBe(true);
   await press(box);
-  expect(api.threads.send).not.toHaveBeenCalled();
+  expect(api.chats.send).not.toHaveBeenCalled();
   expect(box.value).toBe("what is the fee?");
   await act(async () => release());
   await settle();
