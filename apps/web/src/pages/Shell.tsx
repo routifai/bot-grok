@@ -575,6 +575,10 @@ export function ShellPage() {
                 onReplied={chatList.refresh}
                 onClose={() => setActiveChat(null)}
                 onShowFolder={showFolderInFiles}
+                onShowAsFork={(chat) => {
+                  setActiveChat(null);
+                  forks.openChat(chat);
+                }}
                 onRestored={() =>
                   setActiveChat((current) =>
                     current && current !== "draft" ? { ...current, archived: false } : current,

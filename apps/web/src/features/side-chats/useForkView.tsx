@@ -73,25 +73,48 @@ export function useForkView({
     [openFork],
   );
 
-  /** A fork from the sidebar or the All forks list: over its message, scrolled into place. */
+  /** A fork over its message, scrolled into place. */
+  const openOver = useCallback(
+    (chat: ForkThreadTarget["chat"], anchorItemId: string | null | undefined) => {
+      const anchor = messages?.find((message) => message.id === anchorItemId) ?? null;
+      openFork({ chat, anchor });
+      // An anchor further back is paged in by the thread view once it knows the anchor is in
+      // the Conversation (`revealAnchor`), not here: a fork of a fork's anchor is not.
+      if (anchor) scrollToMessage(anchor.id);
+    },
+    [messages, openFork, scrollToMessage],
+  );
+
+  /** A fork from the sidebar or the All forks list. */
   const openRow = useCallback(
-    (row: ForkRow) => {
-      const anchor = messages?.find((message) => message.id === row.anchorItemId) ?? null;
-      openFork({
-        chat: {
+    (row: ForkRow) =>
+      openOver(
+        {
           id: row.chatId,
           title: row.title,
           live: row.status === "live",
           unread: row.unread,
           archived: row.status === "archived",
         },
-        anchor,
-      });
-      // An anchor further back is paged in by the thread view once it knows the anchor is in
-      // the Conversation (`revealAnchor`), not here: a fork of a fork's anchor is not.
-      if (anchor) scrollToMessage(anchor.id);
-    },
-    [messages, openFork, scrollToMessage],
+        row.anchorItemId,
+      ),
+    [openOver],
+  );
+
+  /** A fork opened as a full-size side chat, shown as a fork again ("Show as fork"). */
+  const openChat = useCallback(
+    (chat: ChatSummary) =>
+      openOver(
+        {
+          id: chat.id,
+          title: chat.title,
+          live: chat.live,
+          unread: Boolean(chat.unread),
+          archived: chat.archived,
+        },
+        chat.anchorItemId,
+      ),
+    [openOver],
   );
 
   /** The open fork's anchor is in the Conversation but not loaded: page back to it. */
@@ -176,6 +199,7 @@ export function useForkView({
     thread,
     openFork,
     openRow,
+    openChat,
     closeThread,
     markRestored,
     startAsk,

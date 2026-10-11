@@ -17,7 +17,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@superchat/ui-web";
-import { ChevronRight, X } from "lucide-react";
+import { ChevronRight, GitFork, X } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingState } from "../../components/ai/primitives";
@@ -122,6 +122,7 @@ export function SideChatSession({
   onReplied,
   onClose,
   onShowFolder,
+  onShowAsFork,
   onRestored,
   focusMessageId,
   folder,
@@ -140,6 +141,8 @@ export function SideChatSession({
   onClose: () => void;
   /** Show a workspace folder in Files (the "Working in" chip). */
   onShowFolder?: (folder: string) => void;
+  /** A chat that started as a fork goes back to its fork view, over its message. */
+  onShowAsFork?: (chat: ChatSummary) => void;
   /** The archived chat was restored: the caller shows it as an open chat (not archived). */
   onRestored?: () => void;
   /** A search hit: scroll to this message once the chat has loaded. */
@@ -178,6 +181,7 @@ export function SideChatSession({
       onReplied={onReplied}
       onClose={onClose}
       onShowFolder={onShowFolder}
+      onShowAsFork={onShowAsFork}
       onRestored={onRestored}
     />
   );
@@ -219,10 +223,13 @@ export function SendFailureNote({
 function SessionHeader({
   title,
   meta,
+  actions,
   onClose,
 }: {
   title: string;
   meta?: ReactNode;
+  /** Quiet actions before the close button. */
+  actions?: ReactNode;
   onClose: () => void;
 }) {
   const { t } = useLingui();
@@ -234,6 +241,7 @@ function SessionHeader({
         </div>
         {meta}
       </div>
+      {actions}
       <button
         type="button"
         onClick={onClose}
@@ -596,6 +604,7 @@ function ExistingSideChat({
   onReplied,
   onClose,
   onShowFolder,
+  onShowAsFork,
   onRestored,
 }: {
   bot: SideChatBot;
@@ -609,6 +618,7 @@ function ExistingSideChat({
   onReplied?: () => void;
   onClose: () => void;
   onShowFolder?: (folder: string) => void;
+  onShowAsFork?: (chat: ChatSummary) => void;
   onRestored?: () => void;
 }) {
   const { t } = useLingui();
@@ -661,6 +671,19 @@ function ExistingSideChat({
     <div className="relative flex h-full min-h-0 w-full flex-col">
       <SessionHeader
         title={chat.title}
+        actions={
+          chat.anchorItemId && onShowAsFork ? (
+            <button
+              type="button"
+              data-testid="show-as-fork"
+              onClick={() => onShowAsFork(chat)}
+              className="app-no-drag pointer-events-auto inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-[13px] text-ink-2 transition-colors hover:bg-selection hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+            >
+              <GitFork size={15} strokeWidth={1.75} aria-hidden />
+              <Trans>Show as fork</Trans>
+            </button>
+          ) : undefined
+        }
         meta={
           chat.archived || mover || (project && onShowFolder) ? (
             <div className="mt-1 flex items-center gap-2">

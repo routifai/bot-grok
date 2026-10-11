@@ -31,6 +31,9 @@ msgstr "Projects"
 msgid "Search folders"
 msgstr "Search folders"
 
+msgid "Show as fork"
+msgstr "Show as fork"
+
 msgid "Show in Files"
 msgstr "Show in Files"
 
