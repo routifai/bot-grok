@@ -4,11 +4,14 @@ import { SandboxedHtmlViewer } from "../../components/SandboxedHtmlViewer";
 import { KIND_ICON } from "../../lib/artifact-kind";
 import { decodeArtifactBase64 } from "../../lib/artifact-open";
 import { rpc } from "../../lib/rpc";
+import { postDeckNavigation, readDeckEvent } from "./deck-model";
 import { pptxForPreview } from "./pptx-normalize";
 
 /** The deck's own fit() leaves a 32px margin, so a 1952x1112 frame lays the stage out at 1:1. */
 const FRAME_W = 1952;
 const FRAME_H = 1112;
+const MARGIN = 16;
+const SLIDE_W = FRAME_W - 2 * MARGIN;
 
 /** Fetched decks by id and version, so a Library and a transcript share one download. */
 const bytesCache = new Map<string, Promise<Uint8Array>>();
@@ -119,20 +122,34 @@ function HtmlFirstSlide({
   onDrawn: () => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
+  const frame = useRef<HTMLIFrameElement>(null);
   const width = useWidth(box);
   const html = useMemo(() => new TextDecoder("utf-8").decode(bytes), [bytes]);
+  // Like the viewer's rail: once the deck says it is ready, park it on its first slide.
   useEffect(() => {
-    if (width) onDrawn();
-  }, [width, onDrawn]);
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== frame.current?.contentWindow) return;
+      if (readDeckEvent(event.data)?.kind !== "ready") return;
+      postDeckNavigation(frame.current?.contentWindow, { action: "go", index: 0 });
+      onDrawn();
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [onDrawn]);
   return (
     <div ref={box} className="h-full w-full">
       {width ? (
         <div
           aria-hidden="true"
           className="origin-top-left"
-          style={{ width: FRAME_W, height: FRAME_H, transform: `scale(${width / FRAME_W})` }}
+          style={{
+            width: FRAME_W,
+            height: FRAME_H,
+            // Crop the deck's own margin so the slide fills the card.
+            transform: `scale(${width / SLIDE_W}) translate(${-MARGIN}px, ${-MARGIN}px)`,
+          }}
         >
-          <SandboxedHtmlViewer html={html} title={title} decorative />
+          <SandboxedHtmlViewer html={html} title={title} relay decorative frameRef={frame} />
         </div>
       ) : null}
     </div>

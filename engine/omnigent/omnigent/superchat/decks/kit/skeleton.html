@@ -238,6 +238,11 @@
         }
         var sw = window.innerWidth;
         var sh = window.innerHeight;
+        // A frame can run this before it is laid out (0x0): fit once it has a size.
+        if (!sw || !sh) {
+          requestAnimationFrame(fit);
+          return;
+        }
         var pad = 32;
         var s = Math.min((sw - pad) / 1920, (sh - pad) / 1080);
         if (!isFinite(s) || s <= 0) s = 1;
