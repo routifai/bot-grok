@@ -37,7 +37,6 @@ import {
   clearComposerAttachments,
   setComposerAttachment,
   useComposerAttachments,
-  useComposerAttachTarget,
   withComposerAttachments,
 } from "../../../lib/composer-attachments";
 import { isFileDrag, isFilePaste } from "../../../lib/pending-attachments";
@@ -118,7 +117,6 @@ export const Composer = memo(function Composer({
 }) {
   const { t } = useLingui();
   const [draft, setDraft] = useState("");
-  useComposerAttachTarget();
   const attachments = useComposerAttachments();
   const [slashQuery, setSlashQuery] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);

@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 
 // What a surface (a sheet range, a deck element) attaches to the person's next message: one slot
 // per kind, shown as a chip above the composer and sent as a fenced block ahead of their text. A
@@ -11,7 +11,6 @@ type Split = { label: string; rest: string };
 type Parser = (text: string) => Split | null;
 
 let attachments: readonly ComposerAttachment[] = [];
-let composers = 0;
 const parsers = new Map<string, Parser>();
 const listeners = new Set<() => void>();
 const emit = () => {
@@ -36,24 +35,6 @@ export const clearComposerAttachments = (): void => {
 
 export const useComposerAttachments = (): readonly ComposerAttachment[] =>
   useSyncExternalStore(subscribe, () => attachments);
-
-export const useComposerAttachment = (kind: string): ComposerAttachment | null =>
-  useSyncExternalStore(subscribe, () => attachments.find((a) => a.kind === kind) ?? null);
-
-/** Registers a mounted composer, so a surface only offers "Ask Superchat" when there is one to ask in. */
-export function useComposerAttachTarget(): void {
-  useEffect(() => {
-    composers += 1;
-    emit();
-    return () => {
-      composers -= 1;
-      emit();
-    };
-  }, []);
-}
-
-export const useComposerAttachAvailable = (): boolean =>
-  useSyncExternalStore(subscribe, () => composers > 0);
 
 /** The message as sent: every attachment block first, then what the person wrote. */
 export function withComposerAttachments(
