@@ -185,6 +185,36 @@ describe("runTurnOnOmnigent", () => {
     expect(postOmnigentMessage).toHaveBeenCalled();
   });
 
+  it("re-sends the turn once when the engine answers wrong_replica", async () => {
+    postOmnigentMessage.mockRejectedValueOnce(new OmnigentApiError("400", "wrong_replica"));
+    streamOmnigentSession.mockReturnValue(
+      eventsFrom([
+        { type: "session.status", data: { status: "running" } },
+        {
+          type: "response.completed",
+          response: {
+            output: [
+              {
+                type: "message",
+                role: "assistant",
+                content: [{ type: "output_text", text: "Hi" }],
+              },
+            ],
+          },
+        },
+      ]),
+    );
+
+    const result = await runTurnOnOmnigent(
+      { prisma: fakePrisma(), events: fakeEvents(), ...DEPS_BASE },
+      "run-1",
+      "worker-1",
+    );
+
+    expect(result).toBe(true);
+    expect(postOmnigentMessage).toHaveBeenCalledTimes(2);
+  });
+
   it("claims, resolves the Muse on the engine, posts the turn, and finalizes on response.completed", async () => {
     streamOmnigentSession.mockReturnValue(
       eventsFrom([
