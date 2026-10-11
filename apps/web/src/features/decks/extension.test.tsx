@@ -116,6 +116,20 @@ it("views and badges only decks", () => {
   expect(decksExtension.card(deck)).toBeNull();
 });
 
+it("draws a cover for HTML decks and PowerPoint files only", () => {
+  const args = (name: string, mimeType: string) => ({ id: "a1", name, mimeType });
+  expect(decksExtension.thumbnail?.(args("page.html", "text/html"))).toBeNull();
+  expect(decksExtension.thumbnail?.(args(deck.name, deck.mimeType))).not.toBeNull();
+  expect(
+    decksExtension.thumbnail?.(
+      args(
+        "plan.pptx",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      ),
+    ),
+  ).not.toBeNull();
+});
+
 it("asks the panel for the room while a deck is in edit mode and gives it back after", async () => {
   const c = await mount(deck);
   const expanded = () => c.querySelector('[data-testid="expanded"]')?.textContent;

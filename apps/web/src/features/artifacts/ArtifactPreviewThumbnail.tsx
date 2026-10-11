@@ -48,6 +48,21 @@ export function hasLivePreview(
   );
 }
 
+/** The thumbnail an extension draws for this artifact (a chart, a deck), or null. */
+export function useCustomThumbnail(artifact: PreviewableArtifact): ReactNode | null {
+  const extensions = useArtifactExtensions();
+  for (const extension of extensions) {
+    const node = extension.thumbnail?.({
+      id: artifact.id,
+      name: artifact.name,
+      mimeType: artifact.mimeType,
+      version: artifact.version,
+    });
+    if (node) return node;
+  }
+  return null;
+}
+
 function cacheKey(artifact: PreviewableArtifact): string {
   return artifact.version !== undefined ? `${artifact.id}:${artifact.version}` : artifact.id;
 }
@@ -178,18 +193,7 @@ export function ArtifactPreviewThumbnail({
   }, [bytes, kind, onHeading]);
 
   const Icon = KIND_ICON[kind];
-  const extensions = useArtifactExtensions();
-  const custom = extensions
-    .map(
-      (extension) =>
-        extension.thumbnail?.({
-          id: artifact.id,
-          name: artifact.name,
-          mimeType: artifact.mimeType,
-          version: artifact.version,
-        }) ?? null,
-    )
-    .find((node) => node !== null);
+  const custom = useCustomThumbnail(artifact);
 
   return (
     <div ref={ref} className="grid h-full w-full place-items-center">

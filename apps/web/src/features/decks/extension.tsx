@@ -3,6 +3,7 @@ import { type Artifact, isDeckArtifactName } from "@superchat/contracts";
 import { DropdownMenuItem } from "@superchat/ui-web";
 import { ExternalLink } from "lucide-react";
 import type { ArtifactExtension, ArtifactPanelArgs, ArtifactPanelParts } from "../artifacts";
+import { DeckCover } from "./DeckCover";
 import { useDeckExport } from "./DeckExport";
 import { DeckHeaderActions } from "./DeckHeaderActions";
 import { DeckViewer } from "./DeckViewer";
@@ -50,6 +51,10 @@ export const decksExtension: ArtifactExtension = {
   usePanel: useDecksPanel,
   // The Library already labels a deck "Deck" (lib/artifact-kind).
   card: () => null,
+  thumbnail: (artifact) =>
+    isDeckArtifactName(artifact.name) || isPptxArtifact(artifact) ? (
+      <DeckCover id={artifact.id} name={artifact.name} version={artifact.version} />
+    ) : null,
   view: ({ artifact, bytes, onEdited, fallback }) => {
     if (isPptxArtifact(artifact)) return <PptxPreview bytes={bytes} fallback={fallback} />;
     if (!isDeckArtifactName(artifact.name)) return null;

@@ -26,7 +26,11 @@ import {
   fetchArtifactBytes,
 } from "../../lib/artifact-open";
 import { useObjectUrl } from "../../lib/use-object-url";
-import { ArtifactPreviewThumbnail, hasLivePreview } from "./ArtifactPreviewThumbnail";
+import {
+  ArtifactPreviewThumbnail,
+  hasLivePreview,
+  useCustomThumbnail,
+} from "./ArtifactPreviewThumbnail";
 
 type ArtifactFileCardProps = {
   target: ArtifactTarget;
@@ -56,6 +60,13 @@ export function ArtifactFileCard(props: ArtifactFileCardProps) {
   const [heading, setHeading] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const kind = artifactKind(props.mimeType, props.name);
+  const artifact = {
+    id: props.artifactId,
+    mimeType: props.mimeType,
+    size: props.size,
+    name: props.name,
+  };
+  const customThumbnail = useCustomThumbnail(artifact);
 
   async function startDownload() {
     setDownloadError(null);
@@ -71,12 +82,6 @@ export function ArtifactFileCard(props: ArtifactFileCardProps) {
     // a quiet meta line, then its actions in one row. Kinds the dialog can't show download.
     const openable = previewable || isAttachmentImageMimeType(props.mimeType);
     const open = () => (openable ? setPreviewOpen(true) : void startDownload());
-    const artifact = {
-      id: props.artifactId,
-      mimeType: props.mimeType,
-      size: props.size,
-      name: props.name,
-    };
     return (
       <>
         <MediaTile
@@ -85,7 +90,7 @@ export function ArtifactFileCard(props: ArtifactFileCardProps) {
           brand={kind === "document" ? t`Report` : kindLabel(kind)}
           title={heading ?? readableFileName(props.name)}
           art={
-            hasLivePreview(artifact) ? (
+            hasLivePreview(artifact) || customThumbnail ? (
               <MediaFrame>
                 <ArtifactPreviewThumbnail artifact={artifact} onHeading={setHeading} />
               </MediaFrame>
