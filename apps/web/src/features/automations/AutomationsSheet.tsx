@@ -12,14 +12,17 @@ import {
   Textarea,
 } from "@superchat/ui-web";
 import { Ellipsis, Play, Plus } from "lucide-react";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import { formatRelativeTime } from "../../lib/relative-time";
 import { rpc } from "../../lib/rpc";
 import { DockSheet, DockSheetHeader } from "../../pages/muse/chrome/DockSheet";
 import { EmptyState, PRIMARY_BUTTON, QUIET_BUTTON } from "../../pages/muse/ui";
 import { CardSkeletonList } from "../../pages/muse/ui/CardSkeleton";
+import { ActivityRunById } from "../activity";
+import { LivePageRow } from "./LivePageRow";
 import { describeSchedule, WEEKDAYS } from "./schedule";
 import { type AutomationsWire, useAutomations } from "./useAutomations";
+import { useLivePageRows } from "./useLivePageRows";
 
 const FIELD =
   "min-h-11 w-full rounded-xl border border-glass-line bg-black/20 px-3.5 text-[14px] text-foreground placeholder:text-ink-2";
@@ -390,12 +393,16 @@ export function AutomationsSheet({
   open,
   onClose,
   wire,
+  renderPage,
 }: {
   botId: string;
   open: boolean;
   onClose: () => void;
   /** Dev previews pass their own; the app uses the live RPC. */
   wire?: AutomationsWire;
+  /** Shows a live page (or one of its versions) in place of the list; the host brings the
+   * artifact editor. Without it a page title is not a link. */
+  renderPage?: (page: { artifactId: string; back: () => void; close: () => void }) => ReactNode;
 }) {
   const { t } = useLingui();
   const { state, systemJobs, create, setEnabled, runNow, remove } = useAutomations(
@@ -403,6 +410,10 @@ export function AutomationsSheet({
     open,
     wire,
   );
+  const livePages = useLivePageRows(open);
+  const [openPageId, setOpenPageId] = useState<string | null>(null);
+  const [openRunChat, setOpenRunChat] = useState<string | null>(null);
+  const closeRun = useCallback(() => setOpenRunChat(null), []);
   const [creating, setCreating] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -423,60 +434,92 @@ export function AutomationsSheet({
           ? "h-auto w-[min(620px,calc(100%-1.5rem))] md:w-[min(620px,calc(100%-9rem))]"
           : undefined
       }
+      bare={openPageId !== null}
+      onEscape={() => {
+        if (openPageId === null) return false;
+        setOpenPageId(null);
+        return true;
+      }}
       onClose={() => {
         setCreating(false);
+        setOpenPageId(null);
         onClose();
       }}
     >
-      <DockSheetHeader
-        title={creating ? t`New automation` : t`Automations`}
-        subtitle={
-          creating
-            ? t`Pick a time and I'll do this for you.`
-            : t`Things I do for you on a schedule.`
-        }
-      >
-        {creating ? null : (
-          <button type="button" className={PRIMARY_BUTTON} onClick={() => setCreating(true)}>
-            <Plus size={16} aria-hidden="true" className="me-1.5" />
-            <Trans>New automation</Trans>
-          </button>
-        )}
-      </DockSheetHeader>
-      <div className="rk-scroll flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-        {creating ? (
-          <NewAutomationForm
-            botId={botId}
-            onCancel={() => setCreating(false)}
-            onSubmit={async (input) => {
-              await create(input);
-              setCreating(false);
-            }}
-          />
-        ) : state.status === "loading" ? (
-          <CardSkeletonList count={3} />
-        ) : state.status === "error" ? (
-          <p className="py-10 text-[14px] text-destructive">{state.message}</p>
-        ) : state.automations.length === 0 ? (
-          <EmptyState headline={t`No automations yet`}>
-            {t`Create one and I'll run it on its own, every day, week or month.`}
-          </EmptyState>
-        ) : (
-          <ul className="flex flex-col gap-3" data-testid="automation-list">
-            {state.automations.map((automation) => (
-              <AutomationRow
-                key={automation.id}
-                automation={automation}
-                onToggle={(on) => act(() => setEnabled(automation.id, on))}
-                onRun={() => act(() => runNow(automation.id))}
-                onDelete={() => act(() => remove(automation.id))}
-              />
-            ))}
-          </ul>
-        )}
-        {creating ? null : <SystemSection jobs={systemJobs} />}
-        {actionError ? <p className="text-[13.5px] text-destructive">{actionError}</p> : null}
+      <div className={openPageId ? "hidden" : "contents"}>
+        <DockSheetHeader
+          title={creating ? t`New automation` : t`Automations`}
+          subtitle={
+            creating
+              ? t`Pick a time and I'll do this for you.`
+              : t`Things I do for you on a schedule.`
+          }
+        >
+          {creating ? null : (
+            <button type="button" className={PRIMARY_BUTTON} onClick={() => setCreating(true)}>
+              <Plus size={16} aria-hidden="true" className="me-1.5" />
+              <Trans>New automation</Trans>
+            </button>
+          )}
+        </DockSheetHeader>
+        <div className="rk-scroll flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+          {creating ? (
+            <NewAutomationForm
+              botId={botId}
+              onCancel={() => setCreating(false)}
+              onSubmit={async (input) => {
+                await create(input);
+                setCreating(false);
+              }}
+            />
+          ) : state.status === "loading" ? (
+            <CardSkeletonList count={3} />
+          ) : state.status === "error" ? (
+            <p className="py-10 text-[14px] text-destructive">{state.message}</p>
+          ) : state.automations.length === 0 && !livePages.pages?.length ? (
+            <EmptyState headline={t`No automations yet`}>
+              {t`Create one and I'll run it on its own, every day, week or month.`}
+            </EmptyState>
+          ) : (
+            <ul className="flex flex-col gap-3" data-testid="automation-list">
+              {livePages.pages?.map((page) => (
+                <LivePageRow
+                  key={page.taskId}
+                  page={page}
+                  botId={botId}
+                  onOpenPage={(artifactId) => renderPage && setOpenPageId(artifactId)}
+                  onOpenRun={setOpenRunChat}
+                  onResume={() => act(() => livePages.resume(page.artifactId))}
+                />
+              ))}
+              {state.automations.map((automation) => (
+                <AutomationRow
+                  key={automation.id}
+                  automation={automation}
+                  onToggle={(on) => act(() => setEnabled(automation.id, on))}
+                  onRun={() => act(() => runNow(automation.id))}
+                  onDelete={() => act(() => remove(automation.id))}
+                />
+              ))}
+            </ul>
+          )}
+          {creating ? null : <SystemSection jobs={systemJobs} />}
+          {actionError ? <p className="text-[13.5px] text-destructive">{actionError}</p> : null}
+        </div>
       </div>
+      {open && openPageId && renderPage
+        ? renderPage({
+            artifactId: openPageId,
+            back: () => setOpenPageId(null),
+            close: () => {
+              setOpenPageId(null);
+              onClose();
+            },
+          })
+        : null}
+      {openRunChat ? (
+        <ActivityRunById botId={botId} chatId={openRunChat} onClose={closeRun} />
+      ) : null}
     </DockSheet>
   );
 }

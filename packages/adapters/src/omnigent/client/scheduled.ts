@@ -105,6 +105,35 @@ export async function patchOmnigentScheduledTask(
   return (await response.json()) as OmnigentScheduledTask;
 }
 
+/** One run of a scheduled task (`GET /v1/scheduled-tasks/{id}/runs`); times are epoch seconds.
+ * `conversation_id` is the session the run created (a Helper's own chat). */
+export interface OmnigentScheduledTaskRun {
+  id: string;
+  scheduled_task_id: string;
+  /** `scheduled`, `running`, `succeeded`, `failed` or `skipped`. */
+  status: string;
+  scheduled_at: number | null;
+  fired_at: number | null;
+  finished_at: number | null;
+  conversation_id: string | null;
+  error_code: string | null;
+}
+
+/** `GET /v1/scheduled-tasks/{id}/runs?limit=` — the newest runs first. */
+export async function listOmnigentScheduledTaskRuns(
+  config: OmnigentClientConfig,
+  email: string,
+  id: string,
+  limit = 20,
+): Promise<OmnigentScheduledTaskRun[]> {
+  const url = scheduledTaskUrl(config, id, "/runs");
+  url.searchParams.set("limit", String(limit));
+  const response = await fetch(url, { headers: omnigentHeaders(config, email) });
+  await throwOnError(response, "list scheduled task runs", config.secrets);
+  const body = (await response.json()) as { runs?: OmnigentScheduledTaskRun[] };
+  return body.runs ?? [];
+}
+
 /** `POST /v1/scheduled-tasks/{id}/run` — fire now (202, fire-and-forget). */
 export async function runOmnigentScheduledTask(
   config: OmnigentClientConfig,

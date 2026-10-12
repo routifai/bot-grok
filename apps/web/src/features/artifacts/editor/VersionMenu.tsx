@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@superchat/ui-web";
 import { Check, ChevronDown, History } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { formatRelativeTime } from "../../../lib/relative-time";
 import { isHandOrigin } from "./editor-state";
 
@@ -26,6 +26,7 @@ export function VersionMenu({
   shownId,
   onPick,
   onRestore,
+  note,
 }: {
   kindLabel: string;
   /** The version on screen, for before (or without) the version list. */
@@ -36,13 +37,15 @@ export function VersionMenu({
   onPick: (versionId: string) => void;
   /** Restores the version on screen; resolves when the new version is saved. */
   onRestore: () => Promise<void>;
+  /** A quiet line at the bottom of the menu, from an extension. */
+  note?: ReactNode;
 }) {
   const { t } = useLingui();
   const [restoring, setRestoring] = useState(false);
   const [failed, setFailed] = useState(false);
   const shown = versions.find((entry) => entry.id === shownId) ?? versions[0];
   const label = t`${kindLabel} · version ${shown?.version ?? version}`;
-  if (versions.length < 2) {
+  if (versions.length < 2 && !note) {
     return (
       <span data-testid="version-label" className="shrink-0 text-[12px] text-muted-foreground">
         {label}
@@ -116,6 +119,17 @@ export function VersionMenu({
               <History size={14} aria-hidden="true" />
               {failed ? t`Couldn't restore. Try again` : t`Restore this version`}
             </DropdownMenuItem>
+          </>
+        ) : null}
+        {note ? (
+          <>
+            <DropdownMenuSeparator />
+            <p
+              data-testid="version-note"
+              className="px-2 py-1.5 text-[11.5px] text-muted-foreground"
+            >
+              {note}
+            </p>
           </>
         ) : null}
       </DropdownMenuContent>

@@ -14,6 +14,7 @@ msgstr ""
 "Plural-Forms: \n"
 
 #. placeholder {0}: applied.length
+#. placeholder {0}: status.changes
 msgid "{0, plural, one {# change} other {# changes}}"
 msgstr "{0, plural, one {# change} other {# changes}}"
 
@@ -421,6 +422,9 @@ msgstr "Chat with the workspace"
 msgid "Chats"
 msgstr "Chats"
 
+msgid "Checked · nothing new"
+msgstr "Checked · nothing new"
+
 msgid "Checking…"
 msgstr "Checking…"
 
@@ -533,6 +537,9 @@ msgstr "Could not load Memory"
 
 msgid "Could not load models."
 msgstr "Could not load models."
+
+msgid "Could not load the runs."
+msgstr "Could not load the runs."
 
 msgid "Could not load this file."
 msgstr "Could not load this file."
@@ -848,6 +855,11 @@ msgstr "failed"
 msgid "Failed"
 msgstr "Failed"
 
+#. placeholder {0}: newestReason ?? plainCode(run.errorCode) ?? t`it did not finish`
+#. placeholder {0}: status.reason
+msgid "Failed · {0}"
+msgstr "Failed · {0}"
+
 msgid "Failed to send message"
 msgstr "Failed to send message"
 
@@ -985,6 +997,9 @@ msgstr "Hide sheets"
 msgid "Hide slides"
 msgstr "Hide slides"
 
+msgid "Hide the runs"
+msgstr "Hide the runs"
+
 msgid "How often"
 msgstr "How often"
 
@@ -1033,6 +1048,9 @@ msgstr "Isolated preview"
 msgid "Isolated preview — no access to your account"
 msgstr "Isolated preview — no access to your account"
 
+msgid "it did not finish"
+msgstr "it did not finish"
+
 msgid "It gets its own web address. It runs on its own, separate from superchat, and can't see your conversations or files."
 msgstr "It gets its own web address. It runs on its own, separate from superchat, and can't see your conversations or files."
 
@@ -1060,11 +1078,18 @@ msgstr "Just you, signed in"
 msgid "Keep updated"
 msgstr "Keep updated"
 
+msgid "Keeps {title} updated"
+msgstr "Keeps {title} updated"
+
 msgid "Kind"
 msgstr "Kind"
 
 msgid "Knows our conversation"
 msgstr "Knows our conversation"
+
+#. placeholder {0}: whenText(live.checkedAt)
+msgid "Last checked {0} · nothing new"
+msgstr "Last checked {0} · nothing new"
 
 msgid "Layers"
 msgstr "Layers"
@@ -1102,6 +1127,15 @@ msgstr "List"
 
 msgid "Live"
 msgstr "Live"
+
+msgid "Live · paused"
+msgstr "Live · paused"
+
+msgid "Live · update failed"
+msgstr "Live · update failed"
+
+msgid "Live page"
+msgstr "Live page"
 
 msgid "Load earlier"
 msgstr "Load earlier"
@@ -1250,6 +1284,9 @@ msgstr "No matches"
 msgid "No matches."
 msgstr "No matches."
 
+msgid "No runs yet."
+msgstr "No runs yet."
+
 msgid "No sign-in needed"
 msgstr "No sign-in needed"
 
@@ -1355,6 +1392,9 @@ msgstr "Open loops"
 msgid "Open questions"
 msgstr "Open questions"
 
+msgid "Open run"
+msgstr "Open run"
+
 msgid "Open what's waiting on you"
 msgstr "Open what's waiting on you"
 
@@ -1394,6 +1434,13 @@ msgstr "Paragraph"
 
 msgid "Password"
 msgstr "Password"
+
+msgid "Paused"
+msgstr "Paused"
+
+#. placeholder {0}: status.failures
+msgid "Paused after {0} failed runs"
+msgstr "Paused after {0} failed runs"
 
 msgid "PDF"
 msgstr "PDF"
@@ -1607,6 +1654,9 @@ msgstr "restored"
 msgid "Restyles every slide; your content stays as it is."
 msgstr "Restyles every slide; your content stays as it is."
 
+msgid "Resume"
+msgstr "Resume"
+
 msgid "Retry"
 msgstr "Retry"
 
@@ -1630,6 +1680,9 @@ msgstr "running"
 
 msgid "Running"
 msgstr "Running"
+
+msgid "Running…"
+msgstr "Running…"
 
 msgid "Save"
 msgstr "Save"
@@ -1759,6 +1812,9 @@ msgstr "Show sheets"
 msgid "Show slides"
 msgstr "Show slides"
 
+msgid "Show the runs"
+msgstr "Show the runs"
+
 #. placeholder {0}: sheet.rows.length
 msgid "Showing the first {0} rows"
 msgstr "Showing the first {0} rows"
@@ -1771,6 +1827,9 @@ msgstr "Sign-in for {host}"
 
 msgid "Size"
 msgstr "Size"
+
+msgid "Skipped"
+msgstr "Skipped"
 
 #. placeholder {0}: skipped.join(", ")
 msgid "Skipped {0}"
@@ -2059,6 +2118,9 @@ msgstr "Updated by superchat · v{0}"
 msgid "Updated by you · v{0}"
 msgstr "Updated by you · v{0}"
 
+msgid "Updated the page"
+msgstr "Updated the page"
+
 msgid "Updates daily"
 msgstr "Updates daily"
 
@@ -2108,6 +2170,7 @@ msgid "Vault"
 msgstr "Vault"
 
 #. placeholder {0}: entry.version
+#. placeholder {0}: version.version
 msgid "Version {0}"
 msgstr "Version {0}"
 
@@ -2136,6 +2199,9 @@ msgstr "Wait for superchat to finish, then clear."
 
 msgid "Waiting on you"
 msgstr "Waiting on you"
+
+msgid "Waiting to start"
+msgstr "Waiting to start"
 
 msgid "Week"
 msgstr "Week"
@@ -2172,6 +2238,9 @@ msgstr "What to update"
 
 msgid "What we talked about"
 msgstr "What we talked about"
+
+msgid "When {files} changes"
+msgstr "When {files} changes"
 
 msgid "When I need a decision or an answer, it'll show up here."
 msgstr "When I need a decision or an answer, it'll show up here."

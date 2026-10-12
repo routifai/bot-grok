@@ -36,7 +36,12 @@ export function ArtifactPanel({
   const [fullScreen, setFullScreen] = useState(false);
   const [element, setElement] = useState<HTMLElement | null>(null);
   const rowWidth = useParentWidth(element);
-  const panel = useArtifactPanelParts({ artifact: ready?.artifact, title, bytes: ready?.bytes });
+  const panel = useArtifactPanelParts({
+    artifact: ready?.artifact,
+    title,
+    bytes: ready?.bytes,
+    newestVersion: state.versions[0] ?? null,
+  });
   // Any kind with an editor takes the room it can while it is being edited.
   const editable = !!useArtifactEditorKind(ready?.artifact);
   const editing = useArtifactEditing(ready ? artifactKey(ready.artifact) : "") && editable;

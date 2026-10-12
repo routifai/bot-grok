@@ -7,6 +7,7 @@ import { ORPCError } from "@orpc/server";
 import {
   createOmnigentScheduledTask,
   deleteOmnigentScheduledTask,
+  listOmnigentScheduledTaskRuns,
   listOmnigentScheduledTasks,
   listOmnigentSystemJobs,
   type OmnigentScheduledTask,
@@ -137,6 +138,19 @@ export const automationsRouter = {
         }),
       );
     }),
+    runs: os.automations.runs.handler(async ({ input }) =>
+      (await listOmnigentScheduledTaskRuns(engineClient(), NO_EMAIL, input.id, input.limit)).map(
+        (run) => ({
+          id: run.id,
+          status: run.status,
+          scheduledAt: iso(run.scheduled_at),
+          firedAt: iso(run.fired_at),
+          finishedAt: iso(run.finished_at),
+          errorCode: run.error_code,
+          chatId: run.conversation_id,
+        }),
+      ),
+    ),
     run: os.automations.run.handler(async ({ input }) => {
       await owned(input.id);
       await runOmnigentScheduledTask(engineClient(), NO_EMAIL, input.id);

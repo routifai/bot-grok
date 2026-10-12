@@ -2,7 +2,13 @@ import { useLingui } from "@lingui/react/macro";
 import type { Artifact } from "@superchat/contracts";
 import { Checkbox, Label } from "@superchat/ui-web";
 import { useEffect, useState } from "react";
-import type { ArtifactExtension, ArtifactPanelArgs, ArtifactPanelParts } from "../artifacts";
+import type {
+  ArtifactCardParts,
+  ArtifactExtension,
+  ArtifactPanelArgs,
+  ArtifactPanelParts,
+  LibraryFacet,
+} from "../artifacts";
 import {
   artifactKey,
   focusArtifactPart,
@@ -11,9 +17,10 @@ import {
 import { LiveBar, whenText } from "./LiveBar";
 import { LiveSettings } from "./LiveSettings";
 import { canBeLive, useLive } from "./useLive";
+import { type LivePageHealth, livePageHealth, useLivePages } from "./useLivePages";
 
 /** The artifact panel's live parts: tag, "Keep updated" button, and the update bar. */
-function useLivePanel({ artifact }: ArtifactPanelArgs): ArtifactPanelParts {
+function useLivePanel({ artifact, newestVersion }: ArtifactPanelArgs): ArtifactPanelParts {
   const { t } = useLingui();
   const api = useLive(artifact);
   const { live } = api;
@@ -44,6 +51,13 @@ function useLivePanel({ artifact }: ArtifactPanelArgs): ArtifactPanelParts {
         {t`Live`}
       </span>
     ) : null,
+    versionNote:
+      live?.checkedAt &&
+      newestVersion &&
+      live.lastUpdate?.version !== newestVersion.version &&
+      live.checkedAt * 1000 > Date.parse(newestVersion.createdAt)
+        ? t`Last checked ${whenText(live.checkedAt)} · nothing new`
+        : null,
     actions: <LiveSettings api={api} live={live} />,
     below: live ? (
       <LiveBar
@@ -56,6 +70,40 @@ function useLivePanel({ artifact }: ArtifactPanelArgs): ArtifactPanelParts {
       />
     ) : null,
   };
+}
+
+/** The Library tag of a live page: "Live", "Live · update failed" or "Live · paused". */
+function useLiveCard(artifact: Artifact): ArtifactCardParts | null {
+  const { t } = useLingui();
+  const pages = useLivePages();
+  const page = pages?.find((entry) => entry.artifactId === artifact.id);
+  if (!page) return null;
+  const health = livePageHealth(page);
+  const label: Record<LivePageHealth, string> = {
+    ok: t`Live`,
+    failed: t`Live · update failed`,
+    paused: t`Live · paused`,
+  };
+  return {
+    badge: (
+      <span
+        data-testid="live-badge"
+        data-health={health}
+        className={`inline-flex shrink-0 items-center rounded-full bg-popover/85 px-2 py-0.5 text-[11px] font-medium backdrop-blur-sm ${health === "ok" ? "text-foreground" : "text-destructive"}`}
+      >
+        {label[health]}
+      </span>
+    ),
+  };
+}
+
+/** The Library's "Live" filter chip, once at least one page is live. */
+function useLiveFacet(): LibraryFacet | null {
+  const { t } = useLingui();
+  const pages = useLivePages();
+  if (!pages?.length) return null;
+  const ids = new Set(pages.map((page) => page.artifactId));
+  return { value: "live", label: t`Live`, matches: (artifact) => ids.has(artifact.id) };
 }
 
 /** In the publish dialog: the published copy follows updates (only for a page that is live). */
@@ -93,6 +141,8 @@ function FollowUpdates({
 export const liveExtension: ArtifactExtension = {
   usePanel: useLivePanel,
   card: () => null,
+  useCard: useLiveCard,
+  useLibraryFacet: useLiveFacet,
   publishOptions: (artifact, register) =>
     canBeLive(artifact) ? <FollowUpdates artifact={artifact} register={register} /> : null,
 };

@@ -26,7 +26,11 @@ export function LibraryArtifactView({
   const { t } = useLingui();
   const state = useArtifactContent(artifactId);
   const ready = state.status === "ready" ? state : null;
-  const panel = useArtifactPanelParts({ artifact: ready?.artifact, bytes: ready?.bytes });
+  const panel = useArtifactPanelParts({
+    artifact: ready?.artifact,
+    bytes: ready?.bytes,
+    newestVersion: state.versions[0] ?? null,
+  });
   useEffect(() => onHoldsEscape?.(panel.holdsEscape), [onHoldsEscape, panel.holdsEscape]);
   return (
     <div data-testid="library-artifact" className="flex min-h-0 flex-1 flex-col">

@@ -5,3 +5,4 @@ export { ActivityPanel, GROUP_LABEL } from "./ActivityPanel";
 export type { ActivityWire } from "./ActivityRunDialog";
 export { type ActivitiesState, LIVE_ACTIVITY_WIRE, useActivities } from "./useActivities";
 export { useSuperchatWork } from "./useSuperchatWork";
+export { ActivityRunById } from "./ActivityRunById";

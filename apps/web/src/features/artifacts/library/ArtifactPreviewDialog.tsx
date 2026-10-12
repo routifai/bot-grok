@@ -21,7 +21,11 @@ export function ArtifactPreviewDialog({
   const [fullScreen, setFullScreen] = useState(false);
   const ready = state.status === "ready" ? state : null;
   // Same registry parts as the side panel, so apps and sheets add their controls here too.
-  const panel = useArtifactPanelParts({ artifact: ready?.artifact, bytes: ready?.bytes });
+  const panel = useArtifactPanelParts({
+    artifact: ready?.artifact,
+    bytes: ready?.bytes,
+    newestVersion: state.versions[0] ?? null,
+  });
 
   return (
     <Dialog

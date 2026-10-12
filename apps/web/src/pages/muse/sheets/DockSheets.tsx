@@ -235,7 +235,14 @@ export function DockSheets({
         }}
         onSendIdea={sendAndClose}
       />
-      <AutomationsSheet botId={botId} open={sheet === "automations"} onClose={onClose} />
+      <AutomationsSheet
+        botId={botId}
+        open={sheet === "automations"}
+        onClose={onClose}
+        renderPage={({ artifactId, back, close }) => (
+          <LibraryArtifactView artifactId={artifactId} onBack={back} onClose={close} />
+        )}
+      />
       <FilesSheet
         botId={botId}
         open={sheet === "files"}

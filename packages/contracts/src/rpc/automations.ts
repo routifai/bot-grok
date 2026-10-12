@@ -50,6 +50,21 @@ export const SystemJobSchema = z.object({
 });
 export type SystemJob = z.infer<typeof SystemJobSchema>;
 
+/** One run of an Automation (the engine's scheduled task run). */
+export const AutomationRunSchema = z.object({
+  id: Id,
+  /** `scheduled`, `running`, `succeeded`, `failed` or `skipped`. */
+  status: z.string(),
+  /** ISO timestamps; `null` when the run has not fired or finished. */
+  scheduledAt: z.string().nullable(),
+  firedAt: z.string().nullable(),
+  finishedAt: z.string().nullable(),
+  errorCode: z.string().nullable(),
+  /** The Helper's own chat, the same id as its Activity (`null` when the run never started one). */
+  chatId: z.string().nullable(),
+});
+export type AutomationRun = z.infer<typeof AutomationRunSchema>;
+
 const botInput = z.object({ botId: Id });
 const automationInput = z.object({ botId: Id, id: Id });
 const text = {
@@ -88,6 +103,10 @@ export const automationsContract = {
         }),
       )
       .output(AutomationSchema),
+    /** The newest runs of an Automation or a live page's update, newest first. */
+    runs: oc
+      .input(z.object({ botId: Id, id: Id, limit: z.number().int().min(1).max(50).optional() }))
+      .output(z.array(AutomationRunSchema)),
     /** Fire now (fire-and-forget on the engine). */
     run: oc.input(automationInput).output(z.object({ ok: z.literal(true) })),
     remove: oc.input(automationInput).output(z.object({ ok: z.literal(true) })),

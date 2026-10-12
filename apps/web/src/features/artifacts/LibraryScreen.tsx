@@ -18,8 +18,10 @@ import { EmptyState } from "../../pages/muse/ui";
 import { LibraryGrid, LibrarySkeletonGrid } from "./library/LibraryGrid";
 import { type FilterChip, FilterChips, LibrarySearchField } from "./library/LibraryToolbar";
 import type { ArtifactSummary } from "./library/types";
+import { useArtifactLibraryFacets } from "./registry";
 
-type Facet = ArtifactKind | "published" | "private" | "all";
+// An extension's own chip ("live") is any other string.
+type Facet = ArtifactKind | "published" | "private" | "all" | (string & {});
 
 const LIST_PAGE_SIZE = 60;
 // Safety net against an unbounded fetch loop; a Library this size is not realistic.
@@ -96,13 +98,21 @@ export function LibraryScreen({
     return counts;
   }, [items]);
 
+  const extraFacets = useArtifactLibraryFacets();
+  const extraCounts = useMemo(
+    () => extraFacets.map((facet) => (items ?? []).filter((item) => facet.matches(item)).length),
+    [extraFacets, items],
+  );
   const publishedCount = useMemo(() => items?.filter((item) => item.publish).length ?? 0, [items]);
 
   const filtered = useMemo(() => {
     if (!items) return null;
     const needle = query.trim().toLowerCase();
     return items.filter((item) => {
-      if (selectedKind === "published") {
+      const extra = extraFacets.find((facet) => facet.value === selectedKind);
+      if (extra) {
+        if (!extra.matches(item)) return false;
+      } else if (selectedKind === "published") {
         if (!item.publish) return false;
       } else if (selectedKind === "private") {
         if (item.publish) return false;
@@ -118,7 +128,7 @@ export function LibraryScreen({
         (item.description?.toLowerCase().includes(needle) ?? false)
       );
     });
-  }, [items, query, selectedKind]);
+  }, [items, query, selectedKind, extraFacets]);
 
   async function handleDownload(item: ArtifactSummary) {
     try {
@@ -161,6 +171,11 @@ export function LibraryScreen({
     ...(publishedCount > 0
       ? [{ value: "published" as const, label: t`Published`, count: publishedCount }]
       : []),
+    ...extraFacets.flatMap((facet, index) =>
+      (extraCounts[index] ?? 0) > 0
+        ? [{ value: facet.value, label: facet.label, count: extraCounts[index] ?? 0 }]
+        : [],
+    ),
   ];
   // A filter earns its place only when one of its choices shows less than "All" does.
   const kindControl = facets.some((facet) => facet.value !== "all" && facet.count < total) ? (

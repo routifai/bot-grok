@@ -119,9 +119,11 @@ const NO_PANEL_PARTS: PanelParts = {
   below: null,
   overlay: null,
   overflow: null,
+  versionNote: null,
   wide: false,
   holdsEscape: false,
   hasOverflow: false,
+  hasVersionNote: false,
 };
 
 /**
@@ -371,6 +373,7 @@ function LoadedEditor({
         shownId={content.versionId}
         onPick={content.selectVersion}
         onRestore={restore}
+        note={panel.hasVersionNote ? panel.versionNote : undefined}
       />
       {panel.badge}
       {content.arrived ? (
