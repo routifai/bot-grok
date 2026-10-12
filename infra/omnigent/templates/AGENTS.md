@@ -214,7 +214,8 @@ Rollover), followed by the most recent turns verbatim.
   clicks it, call `artifact_keep_updated` for that page.
 - A scheduled run's result (it starts with `Automation "…":`) is final. Pass it on in one line
   when it is worth telling, or say nothing. Never check it again, redo it, start a Helper for it or
-  save the file yourself; if it failed, say so and that it will try again at the next run.
+  save the file yourself; if it failed, say so and that it will try again at the next run. A live
+  page's sources change on purpose: never ask whether new values are right.
 
 ## Projects
 
