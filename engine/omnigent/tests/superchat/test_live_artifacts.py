@@ -216,16 +216,55 @@ def test_unplaced_counts_even_next_to_applied_changes_and_a_clean_run_clears_it(
     assert state["misses"] == 0 and state["open_issue"] is None
 
 
-def test_published_copy_stays_pinned_unless_it_follows_updates(env) -> None:
+def _published(env: Any) -> int:
+    return env.artifacts.publication_for(env.first).published_version
+
+
+def _held(env: Any) -> dict[str, Any] | None:
+    return env.service.live.get(_SESSION, "prices.html").state["held"]
+
+
+def test_published_copy_follows_updates_by_default_or_stays_pinned(env) -> None:
     env.artifacts.publish(env.first, audience="link")
     _save(env, [{"id": "btc", "after": "Bitcoin: 120"}])
-    assert env.artifacts.publication_for(env.first).published_version == 1
+    pub = env.artifacts.publication_for(env.first)
+    assert (pub.published_version, pub.audience, _held(env)) == (2, "link", None)
     live = env.service.live.get(_SESSION, "prices.html")
-    live.follow_publish = True
+    live.follow_publish = False
     env.service.live.save(live)
     _save(env, [{"id": "btc", "after": "Bitcoin: 130"}])
-    pub = env.artifacts.publication_for(env.first)
-    assert pub.published_version == 3 and pub.audience == "link"
+    assert (_published(env), _held(env)) == (2, None)
+
+
+def test_an_update_with_unplaced_changes_is_held_until_the_person_publishes_it(env) -> None:
+    env.artifacts.publish(env.first, audience="link")
+    out = _save(env, [{"id": "nope", "after": "x"}, {"id": "btc", "after": "Bitcoin: 120"}])
+    assert out["held"] is True and _published(env) == 1
+    assert _held(env) == {"version": 2, "reason": "unplaced"}
+    env.service.publish_held(_head(env))
+    assert (_published(env), _held(env)) == (2, None)
+    with pytest.raises(OmnigentError):
+        env.service.publish_held(_head(env))
+
+
+def test_an_update_next_to_suggestions_is_held_and_accepting_keeps_it_held(env) -> None:
+    env.artifacts.publish(env.first, audience="link")
+    _save(env, [{"id": "btc", "after": "Bitcoin: 120"}])
+    _hand_edit(env, b"Bitcoin: 120", b"Bitcoin: mine")
+    _save(env, [{"id": "btc", "after": "Bitcoin: 130"}, {"id": "eth", "after": "Ethereum: 11"}])
+    assert _held(env) == {"version": 4, "reason": "suggestions"} and _published(env) == 2
+    created = env.service.accept(_head(env), "btc")
+    assert _held(env) == {"version": created.version, "reason": "suggestions"}
+    assert _published(env) == 2
+
+
+def test_an_update_over_unpublished_hand_edits_is_held_and_undoing_it_clears_that(env) -> None:
+    env.artifacts.publish(env.first, audience="link")
+    _hand_edit(env, b"Ethereum: 10", b"Ethereum: ten")
+    _save(env, [{"id": "btc", "after": "Bitcoin: 120"}])
+    assert _held(env) == {"version": 3, "reason": "edits"} and _published(env) == 1
+    env.service.undo(_head(env))
+    assert _held(env) is None and _published(env) == 1
 
 
 def test_undo_restores_the_version_before_and_rejects_what_it_wrote(env) -> None:

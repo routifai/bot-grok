@@ -54,8 +54,11 @@ Terms are in `CONTEXT.md` (Automation, Live page, Live sheet).
 
 ## Publishing
 
-- A published live page follows updates by default; an update with suggestions, unplaced changes
-  or a failure is held back and asks the person first. Hand edits still need a manual publish.
+- A published live page follows updates by default (a setting in the publish dialog). An update
+  is held back when it has suggestions or changes it could not place, or when it sits on hand
+  edits the person has not published: the page says "Published copy not updated" with why, and
+  Publish. A failed run makes no version, so nothing is published. Hand edits still need a manual
+  publish; publishing from the dialog also clears a held update.
 
 ## Known limits
 

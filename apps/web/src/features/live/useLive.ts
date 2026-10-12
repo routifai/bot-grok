@@ -93,6 +93,11 @@ export function useLive(artifact: Artifact | undefined) {
         setLive(await rpc.live.reset({ artifactId }));
         return true;
       }),
+    publish: () =>
+      act(async (artifactId) => {
+        setLive(await rpc.live.publish({ artifactId }));
+        return true;
+      }),
     run: () =>
       act(async (artifactId) => {
         await rpc.live.run({ artifactId });

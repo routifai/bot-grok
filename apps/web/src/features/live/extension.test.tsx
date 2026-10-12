@@ -6,7 +6,13 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-const api = vi.hoisted(() => ({ get: vi.fn(), save: vi.fn(), undo: vi.fn(), accept: vi.fn() }));
+const api = vi.hoisted(() => ({
+  get: vi.fn(),
+  save: vi.fn(),
+  undo: vi.fn(),
+  accept: vi.fn(),
+  publish: vi.fn(),
+}));
 vi.mock("../../lib/rpc", () => ({ rpc: { live: api } }));
 
 import type { Artifact } from "@superchat/contracts";
@@ -32,6 +38,7 @@ const live = {
   followPublish: false,
   onChange: true,
   note: "",
+  held: null,
   checkedAt: 100,
   openIssue: "Could not place these changes on the page: x",
   lastUpdate: {
@@ -122,4 +129,15 @@ it("undo asks the engine", async () => {
   );
   await act(async () => undo?.click());
   expect(api.undo).toHaveBeenCalledWith({ artifactId: "a1" });
+});
+
+it("a held update says why the published copy did not take it, and Publish publishes it", async () => {
+  api.get.mockResolvedValue({ ...live, held: { version: 3, reason: "edits" } });
+  api.publish.mockResolvedValue({ ...live, held: null });
+  await show(page);
+  expect(byTest("live-held")?.textContent).toContain("Published copy not updated.");
+  expect(byTest("live-held")?.textContent).toContain("edits of yours that are not published");
+  await act(async () => byTest("live-held")?.querySelector("button")?.click());
+  expect(api.publish).toHaveBeenCalledWith({ artifactId: "a1" });
+  expect(byTest("live-held")).toBeNull();
 });

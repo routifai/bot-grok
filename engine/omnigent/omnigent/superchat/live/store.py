@@ -26,7 +26,9 @@ def new_state() -> dict[str, Any]:
     ``failures``: failed runs in a row; ``last_failure``: ``{at, reason}`` of the latest;
     ``on_change``: start an update when a source file changes in the Computer (a setting, kept here
     so the table stays as it is); ``note``: the person's own "what to update" text, read by
-    every run.
+    every run; ``held``: ``{version, reason}`` of an update the published copy did not take
+    (``suggestions``, ``unplaced`` or ``edits``: hand edits since the last publish), until the
+    person publishes it.
     """
     return {
         "written": {},
@@ -40,6 +42,7 @@ def new_state() -> dict[str, Any]:
         "checked_at": None,
         "on_change": True,
         "note": "",
+        "held": None,
     }
 
 
@@ -53,7 +56,7 @@ class Live:
     task_id: str
     sources: list[str] = field(default_factory=list)
     tell: str = "notable"
-    follow_publish: bool = False
+    follow_publish: bool = True
     state: dict[str, Any] = field(default_factory=new_state)
 
 

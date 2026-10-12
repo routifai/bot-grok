@@ -287,6 +287,9 @@ class LiveService:
             raise _stale()
         plan, created = self._apply(live, head, changes)
         state = live.state
+        if created is not None:
+            unusual = "suggestions" if plan.suggestions else "unplaced" if plan.unplaced else None
+            self._follow(live, created, base=head.version, hold=unusual)
         state["misses"] = state["misses"] + 1 if plan.unplaced else 0
         state["open_issue"] = (
             "Could not place these changes on the page: " + ", ".join(plan.unplaced)
@@ -305,6 +308,9 @@ class LiveService:
             "unplaced": plan.unplaced,
             "removed": plan.removed,
             "declined": plan.declined,
+            "held": bool(
+                created and state["held"] and state["held"]["version"] == created.version
+            ),
             "tell": live.tell,
         }
 
@@ -323,8 +329,12 @@ class LiveService:
             live.state["rejected"].append([change["id"], change["after"]])
             live.state["written"].pop(change["id"], None)
         last["applied"] = []
+        held = live.state["held"]
+        if held and held["version"] == head.version:
+            live.state["held"] = None  # the published copy never took the update
+        else:
+            self._follow(live, created, base=head.version)
         self.live.save(live)
-        self._follow(live, created)
         return created
 
     def accept(self, item: Artifact, element_id: str) -> Artifact:
@@ -340,8 +350,20 @@ class LiveService:
         _, created = self._apply(live, head, [change], "took the source's value")
         if created is None:
             raise _err("That part of the page can no longer be changed", ErrorCode.CONFLICT)
+        held = live.state["held"]
+        self._follow(live, created, base=head.version, hold=held and held["reason"])
         self.live.save(live)
         return created
+
+    def publish_held(self, item: Artifact) -> None:
+        """Publish the newest version for an update the published copy held back."""
+        live, head = self.need(item)
+        pub = self.artifacts.publication_for(head)
+        if not live.state["held"] or pub is None:
+            raise _err("No update is waiting to be published", ErrorCode.CONFLICT)
+        self.artifacts.publish(head, audience=pub.audience, version=head.version)
+        live.state["held"] = None
+        self.live.save(live)
 
     def _apply(
         self, live: Live, head: Artifact, changes: list[dict[str, Any]], summary: str = ""
@@ -360,7 +382,6 @@ class LiveService:
         if created is not None:
             last = {"version": created.version, "applied": plan.applied, "at": now_epoch()}
             state["last_update"] = {**last, "suggestions": suggestions}
-            self._follow(live, created)
         elif suggestions != kept:
             last = state["last_update"] or {"version": None, "applied": [], "at": now_epoch()}
             state["last_update"] = {**last, "suggestions": suggestions}
@@ -386,11 +407,24 @@ class LiveService:
         except VersionConflictError as exc:
             raise _stale() from exc
 
-    def _follow(self, live: Live, created: Artifact) -> None:
-        """Republish (same audience) when the published copy follows updates."""
+    def _follow(
+        self, live: Live, created: Artifact, *, base: int, hold: str | None = None
+    ) -> None:
+        """Republish (same audience) when the published copy follows updates.
+
+        An unusual update (``hold``: it has suggestions or unplaced changes) is held back, and so
+        is one on top of hand edits the person has not published (``base``, the version it was
+        made from, is not the published one): the person publishes it from the page.
+        """
         pub = self.artifacts.publication_for(created)
-        if live.follow_publish and pub is not None:
-            self.artifacts.publish(created, audience=pub.audience, version=created.version)
+        if not live.follow_publish or pub is None:
+            return
+        reason = hold or ("edits" if pub.published_version != base else None)
+        if reason:
+            live.state["held"] = {"version": created.version, "reason": reason}
+            return
+        self.artifacts.publish(created, audience=pub.audience, version=created.version)
+        live.state["held"] = None
 
 
 def _stale() -> OmnigentError:

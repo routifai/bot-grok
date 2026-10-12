@@ -1054,6 +1054,9 @@ msgstr "it did not finish"
 msgid "It gets its own web address. It runs on its own, separate from superchat, and can't see your conversations or files."
 msgstr "It gets its own web address. It runs on its own, separate from superchat, and can't see your conversations or files."
 
+msgid "It includes edits of yours that are not published."
+msgstr "It includes edits of yours that are not published."
+
 msgid "It starts fresh, with only what superchat knows about you."
 msgstr "It starts fresh, with only what superchat knows about you."
 
@@ -1527,6 +1530,9 @@ msgstr "Publish {name}?"
 msgid "Publish settings"
 msgstr "Publish settings"
 
+msgid "Publish this version"
+msgstr "Publish this version"
+
 msgid "Publish…"
 msgstr "Publish…"
 
@@ -1535,6 +1541,9 @@ msgstr "Published"
 
 msgid "Published copy follows updates"
 msgstr "Published copy follows updates"
+
+msgid "Published copy not updated."
+msgstr "Published copy not updated."
 
 msgid "Pull request"
 msgstr "Pull request"
@@ -1843,6 +1852,12 @@ msgstr "Slide rail"
 
 msgid "Slides"
 msgstr "Slides"
+
+msgid "Some changes could not be placed on the page."
+msgstr "Some changes could not be placed on the page."
+
+msgid "Some parts you changed differ from the source."
+msgstr "Some parts you changed differ from the source."
 
 msgid "Something went wrong before it could start."
 msgstr "Something went wrong before it could start."

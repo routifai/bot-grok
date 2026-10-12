@@ -75,9 +75,10 @@ def create_live_router(
     """Build the live artifacts router, mounted with ``prefix="/v1"``.
 
     Settings (``GET``/``PUT /artifacts/{id}/live``): ``rrule`` (schedule), ``sources``, ``tell``,
-    ``follow_publish``, ``note`` (what to update) and ``on_change`` (default true: also update
-    ~2 minutes after a source file changes in the Computer). The Computer's file watcher uses
-    ``GET /live/watch`` and ``POST /live/changed`` with its launch token
+    ``follow_publish`` (default true; an unusual update is ``held`` until
+    ``POST .../live/publish``), ``note`` (what to update) and ``on_change`` (default true: also
+    update ~2 minutes after a source file changes in the Computer). The Computer's file watcher
+    uses ``GET /live/watch`` and ``POST /live/changed`` with its launch token
     (``Authorization: Bearer <host_id>:<token>``).
     """
     router = APIRouter()
@@ -98,6 +99,11 @@ def create_live_router(
         # Like request_owner: the single local person's rows are stored unowned.
         return None if host.user_id in (None, RESERVED_USER_LOCAL) else host.user_id
 
+    def _held(item: Artifact, held: dict[str, Any] | None) -> dict[str, Any] | None:
+        """The held update, unless the person has since published it (or a newer version)."""
+        pub = service.artifacts.publication_for(item) if held else None
+        return held if held and pub and pub.published_version < held["version"] else None
+
     def _describe(item: Artifact) -> dict[str, Any]:
         live = service.live.get(item.parent_session_id, item.name)
         if live is None:
@@ -115,6 +121,7 @@ def create_live_router(
                 "follow_publish": live.follow_publish,
                 "on_change": live.state["on_change"],
                 "note": live.state["note"],
+                "held": _held(item, live.state["held"]),
                 **{
                     k: live.state[k]
                     for k in (
@@ -252,6 +259,13 @@ def create_live_router(
         item = await _page(request, artifact_id)
         created = await asyncio.to_thread(service.accept, item, element_id)
         return artifact_to_response(created, versions=created.version)
+
+    @router.post("/artifacts/{artifact_id}/live/publish")
+    async def publish_live(request: Request, artifact_id: str) -> dict[str, Any]:
+        """Publish the update the published copy held back (same audience)."""
+        item = await _page(request, artifact_id)
+        await asyncio.to_thread(service.publish_held, item)
+        return await asyncio.to_thread(_describe, item)
 
     @router.get("/artifacts/{artifact_id}/live/context")
     async def live_context(request: Request, artifact_id: str) -> dict[str, Any]:

@@ -35,6 +35,14 @@ export const LiveSchema = z.object({
   onChange: z.boolean(),
   /** The person's own words on what to update, read by every run. */
   note: z.string(),
+  /** An update the published copy held back (it has suggestions, changes that could not be
+   * placed, or sits on unpublished hand edits) until the person publishes it. */
+  held: z
+    .object({
+      version: z.number().int(),
+      reason: z.enum(["suggestions", "unplaced", "edits"]),
+    })
+    .nullable(),
   /** Epoch seconds. */
   checkedAt: z.number().nullable(),
   openIssue: z.string().nullable(),
@@ -110,6 +118,8 @@ export const liveContract = {
     reset: oc.input(target).output(LiveSchema.nullable()),
     /** Update now. */
     run: oc.input(target).output(z.object({ ok: z.literal(true) })),
+    /** Publish the update the published copy held back. */
+    publish: oc.input(target).output(LiveSchema.nullable()),
     /** Undo the newest update (only while it is still the newest version). */
     undo: oc.input(target).output(newVersion),
     /** Take the source's value for a part the person had changed. */

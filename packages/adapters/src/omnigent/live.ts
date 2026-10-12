@@ -22,6 +22,10 @@ export interface OmnigentLiveSuggestion {
   source: string | null;
 }
 
+/** Why an update was not published: it has suggestions, changes it could not place, or it sits on
+ * hand edits the person has not published. */
+export type OmnigentLiveHeldReason = "suggestions" | "unplaced" | "edits";
+
 export interface OmnigentLive {
   task_id: string;
   rrule: string | null;
@@ -34,6 +38,8 @@ export interface OmnigentLive {
   follow_publish: boolean;
   on_change: boolean;
   note: string;
+  /** An update the published copy held back until the person publishes it. */
+  held: { version: number; reason: OmnigentLiveHeldReason } | null;
   checked_at: number | null;
   open_issue: string | null;
   last_update: {
@@ -133,6 +139,23 @@ export async function resetOmnigentLive(
     "POST",
     "/reset",
     "start live page fresh",
+  );
+  return body.live;
+}
+
+/** `POST /v1/artifacts/{id}/live/publish` — publish the update the published copy held back. */
+export async function publishOmnigentLive(
+  config: OmnigentClientConfig,
+  email: string,
+  id: string,
+): Promise<OmnigentLive | null> {
+  const body = await send<{ live: OmnigentLive | null }>(
+    config,
+    email,
+    id,
+    "POST",
+    "/publish",
+    "publish the held update",
   );
   return body.live;
 }

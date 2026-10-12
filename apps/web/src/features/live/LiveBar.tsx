@@ -20,7 +20,8 @@ const clip = (text: string) => {
 
 /**
  * Under the header: what the newest update changed (a chip per part, undo, "Show changes"), the
- * parts the person changed that the source disagrees with, and an open issue as one quiet line.
+ * parts the person changed that the source disagrees with, an update the published copy held
+ * back (with Publish), and an open issue as one quiet line.
  */
 export function LiveBar({
   live,
@@ -42,7 +43,15 @@ export function LiveBar({
   const update = newest ? live.lastUpdate : null;
   const applied = update?.applied ?? [];
   const suggestions = live.lastUpdate?.suggestions ?? [];
-  if (!applied.length && !suggestions.length && !live.openIssue) return null;
+  const held = live.held;
+  if (!applied.length && !suggestions.length && !live.openIssue && !held) return null;
+  const heldWhy = held
+    ? {
+        suggestions: t`Some parts you changed differ from the source.`,
+        unplaced: t`Some changes could not be placed on the page.`,
+        edits: t`It includes edits of yours that are not published.`,
+      }[held.reason]
+    : null;
   return (
     <div
       data-testid="live-bar"
@@ -91,6 +100,16 @@ export function LiveBar({
           </Button>
         </div>
       ))}
+      {held ? (
+        <div data-testid="live-held" className="flex items-center gap-2">
+          <span className="min-w-0 flex-1 truncate">
+            <span className="font-medium">{t`Published copy not updated.`}</span> {heldWhy}
+          </span>
+          <Button variant="ghost" size="sm" onClick={() => void api.publish()}>
+            {t`Publish this version`}
+          </Button>
+        </div>
+      ) : null}
       {live.openIssue ? (
         <p data-testid="live-issue" className="text-muted-foreground">
           {live.openIssue}

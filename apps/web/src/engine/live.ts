@@ -8,6 +8,7 @@ import {
   listOmnigentLivePages,
   type OmnigentLive,
   type OmnigentLivePage,
+  publishOmnigentLive,
   putOmnigentLive,
   resetOmnigentLive,
   runOmnigentLive,
@@ -28,6 +29,7 @@ export function toLive(live: OmnigentLive): Live {
     followPublish: live.follow_publish,
     onChange: live.on_change,
     note: live.note,
+    held: live.held,
     checkedAt: live.checked_at,
     openIssue: live.open_issue,
     lastUpdate: live.last_update && {
@@ -100,6 +102,12 @@ export const liveRouter = {
     }),
     reset: os.live.reset.handler(async ({ input }) => {
       const live = await resetOmnigentLive(engineClient(), NO_EMAIL, input.artifactId).catch(
+        notFound,
+      );
+      return live && toLive(live);
+    }),
+    publish: os.live.publish.handler(async ({ input }) => {
+      const live = await publishOmnigentLive(engineClient(), NO_EMAIL, input.artifactId).catch(
         notFound,
       );
       return live && toLive(live);

@@ -8,6 +8,7 @@ const api = vi.hoisted(() => ({
   undo: vi.fn(),
   accept: vi.fn(),
   reset: vi.fn(),
+  publish: vi.fn(),
 }));
 
 vi.mock("@superchat/adapters/omnigent/browser", async (importOriginal) => ({
@@ -19,6 +20,7 @@ vi.mock("@superchat/adapters/omnigent/browser", async (importOriginal) => ({
   undoOmnigentLive: api.undo,
   acceptOmnigentLive: api.accept,
   resetOmnigentLive: api.reset,
+  publishOmnigentLive: api.publish,
 }));
 vi.mock("./client", () => ({
   engineClient: () => "client",
@@ -41,6 +43,7 @@ const row = (over: Record<string, unknown> = {}) => ({
   follow_publish: true,
   on_change: true,
   note: "prices only",
+  held: null,
   checked_at: 100,
   open_issue: null,
   last_update: {
@@ -69,6 +72,16 @@ describe("live router", () => {
     });
     api.get.mockResolvedValue(null);
     expect(await call(liveRouter.live.get, { artifactId })).toBeNull();
+  });
+
+  it("publishes a held update and passes the held reason through", async () => {
+    api.get.mockResolvedValue(row({ held: { version: 3, reason: "unplaced" } }));
+    expect(await call(liveRouter.live.get, { artifactId })).toMatchObject({
+      held: { version: 3, reason: "unplaced" },
+    });
+    api.publish.mockResolvedValue(row());
+    expect(await call(liveRouter.live.publish, { artifactId })).toMatchObject({ held: null });
+    expect(api.publish).toHaveBeenCalledWith("client", "", artifactId);
   });
 
   it("starts fresh and keeps the note", async () => {

@@ -325,3 +325,25 @@ def test_the_local_computer_watches_unowned_pages(env) -> None:
     client = TestClient(app)
     watch = client.get("/v1/live/watch", headers={"authorization": "Bearer h1:t"})
     assert watch.json() == {"paths": ["your_files/tea.csv"]}
+
+
+def test_a_held_update_shows_in_the_settings_and_publishes_from_its_route(env) -> None:
+    page = _page(env)
+    _put(env, page.id)
+    base = f"/v1/artifacts/{page.id}/live"
+    assert env.client.post(f"{base}/publish", headers=ALICE).status_code == 409
+    env.artifacts.publish(page, audience="link")
+    changes = [{"id": "nope", "after": "x"}, {"id": "btc", "after": "Bitcoin: 150"}]
+    body = {"base_version": 1, "changes": changes}
+    assert env.client.post(f"{base}/save", json=body, headers=ALICE).json()["held"] is True
+    live = env.client.get(base, headers=ALICE).json()["live"]
+    assert live["held"] == {"version": 2, "reason": "unplaced"} and live["follow_publish"]
+    done = env.client.post(f"{base}/publish", headers=ALICE)
+    assert done.status_code == 200 and done.json()["live"]["held"] is None
+    assert env.artifacts.publication_for(page).published_version == 2
+    # Published from the dialog instead: the held update no longer shows either.
+    again = [{"id": "nope", "after": "x"}, {"id": "btc", "after": "Bitcoin: 160"}]
+    env.client.post(f"{base}/save", json={"base_version": 2, "changes": again}, headers=ALICE)
+    assert env.client.get(base, headers=ALICE).json()["live"]["held"]["version"] == 3
+    env.artifacts.publish(page, audience="link")
+    assert env.client.get(base, headers=ALICE).json()["live"]["held"] is None
