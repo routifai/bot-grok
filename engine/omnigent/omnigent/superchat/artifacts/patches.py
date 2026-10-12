@@ -324,6 +324,19 @@ class _Doc:
         return {a.value for n in self.root.walk() if (a := n.attr("data-superchat-id"))}
 
 
+def read_text(source: bytes, element_id: str) -> str | None:
+    """The plain text of an element (whitespace collapsed), or ``None`` when the file has none.
+
+    :raises AmbiguousEdit: when the id is used twice or sits in markup that is not closed cleanly.
+    """
+    doc = _Doc.load(source.decode("utf-8", "replace"))
+    if element_id not in doc.ids():
+        return None
+    node = doc.find(element_id)
+    inner = doc.source[node.open_end : node.close_start] if node.close_start is not None else ""
+    return " ".join(_plain(re.sub(r"<br\s*/?>", " ", inner)).split())
+
+
 def _splice(source: str, start: int, end: int, new: str) -> str:
     return source[:start] + new + source[end:]
 

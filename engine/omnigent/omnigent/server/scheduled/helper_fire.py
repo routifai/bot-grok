@@ -73,6 +73,16 @@ def build_retry(
     return retry
 
 
+#: ``task kind -> hook`` returning the epoch seconds a task's run should wait until (or ``None``).
+#: A feature registers one for its own kind; it is consulted next to the owner's quiet hours.
+_FIRE_DEFERRALS: dict[str, Callable[[ScheduledTask], float | None]] = {}
+
+
+def register_fire_deferral(kind: str, hook: Callable[[ScheduledTask], float | None]) -> None:
+    """Make a parent-bound task of ``kind`` wait while ``hook(task)`` names a time in the future."""
+    _FIRE_DEFERRALS[kind] = hook
+
+
 def _quiet_window_end(prefs: OwnerPreferences, now: float) -> float | None:
     """Epoch seconds the owner's quiet window ends, or ``None`` when ``now`` is outside it.
 
@@ -167,6 +177,7 @@ async def _run_parent_bound_fire(
     * proactivity ``off`` -> ``proactivity_off`` (skipped).
     * inside the owner's quiet hours -> ``quiet_hours_deferred``; one re-fire is
       armed for the end of the window.
+    * a registered per-kind hook asks to wait -> ``task_deferred``; one re-fire is armed.
     * another parent-bound run of the owner in flight -> ``owner_busy_deferred``
       (re-fire in 5 minutes, up to 3 times), then ``owner_busy`` (skipped).
 
@@ -219,6 +230,24 @@ async def _run_parent_bound_fire(
                 if armed
                 else ""
             ),
+        )
+        return
+
+    hook = _FIRE_DEFERRALS.get(task.kind or "")
+    wait_until = await asyncio.to_thread(hook, task) if hook is not None else None
+    if wait_until is not None and wait_until > now:
+        armed = _schedule_refire(
+            deps,
+            task.workspace_id,
+            task.id,
+            fire_dispatch,
+            delay_s=wait_until - now,
+            attempt=attempt,
+            deferrals=deferrals,
+        )
+        await skip(
+            "task_deferred" if armed else "task_busy",
+            "the task asked to wait" + ("; re-fire when it is over" if armed else ""),
         )
         return
 

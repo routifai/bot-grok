@@ -11,7 +11,7 @@ when the person saved). For every hand-edited version the server still lists as 
 
 A failed write is not acked: the next turn retries, and the note says the file was not updated.
 Generic over artifact kinds: sheets cell edits and the deck editor both save ``origin="manual"``
-versions, and this one pass delivers them all.
+versions, and this one pass delivers them all (a live update's ``update`` version too).
 """
 
 from __future__ import annotations
@@ -65,9 +65,12 @@ def write_bytes_idempotent(target: Path, data: bytes) -> bool:
     return True
 
 
-def _note(name: str, first: int, last: int, summaries: list[str], *, written: bool) -> str:
+def _note(
+    name: str, first: int, last: int, summaries: list[str], *, written: bool, by_hand: bool = True
+) -> str:
     detail = " ".join("; ".join(s for s in summaries if s).split())
-    text = f"The person edited {name} by hand (v{first - 1} → v{last})"
+    who = "The person edited {} by hand" if by_hand else "{} was refreshed from its sources"
+    text = f"{who.format(name)} (v{first - 1} → v{last})"
     text += f": {detail}." if detail else "."
     text += f" Treat v{last} as current."
     if not written:
@@ -132,6 +135,7 @@ async def deliver_manual_edits(
                 head["version"],
                 [str(i.get("edit_summary") or "") for i in items],
                 written=written,
+                by_hand=any(i.get("origin") != "update" for i in items),
             )
         )
         if written or not head.get("source_path"):

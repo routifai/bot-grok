@@ -37,6 +37,8 @@ _CREATE_ATTEMPTS = 5
 AUDIENCES = ("owner", "org", "link")
 #: Versions the person made (by hand, or by restoring an earlier one) that the Muse is told about.
 HAND_ORIGINS = ("manual", "restore")
+#: Versions written back to the Computer's workspace file: the hand ones plus a live update's.
+WRITEBACK_ORIGINS = (*HAND_ORIGINS, "update")
 #: A repeat open by the same viewer within this many seconds is not counted again.
 VIEW_DEDUPE_SECONDS = 30
 _SLUG_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"
@@ -131,7 +133,7 @@ class Artifact:
     :param published: Whether the deliverable is published (filled from its publication).
     :param created_at: Epoch seconds.
     :param updated_at: Epoch seconds of the last change, or ``None``.
-    :param origin: ``"ai"``, ``"manual"`` or ``"restore"``.
+    :param origin: ``"ai"``, ``"manual"``, ``"restore"`` or ``"update"`` (a live update).
     :param parent_version_id: Id of the version this one derives from, if any.
     :param source_path: Computer workspace path the file came from / is written back to.
     :param edit_summary: Short human text of a manual edit.
@@ -301,7 +303,7 @@ class SqlAlchemyArtifactStore:
         return group[0] if group else None
 
     def pending_manual(self, *, user_id: str | None, parent_session_id: str) -> list[Artifact]:
-        """Hand-made (manual, restore) versions not yet written back / announced, oldest first."""
+        """Hand-made and live-update versions not yet written back / announced, oldest first."""
         with self._session("list_pending_manual_artifacts") as session:
             stmt = (
                 select(SqlArtifact)
@@ -309,7 +311,7 @@ class SqlAlchemyArtifactStore:
                     SqlArtifact.workspace_id == current_workspace_id(),
                     _owner_clause(user_id),
                     SqlArtifact.parent_session_id == parent_session_id,
-                    SqlArtifact.origin.in_(HAND_ORIGINS),
+                    SqlArtifact.origin.in_(WRITEBACK_ORIGINS),
                     SqlArtifact.delivered_at.is_(None),
                 )
                 .order_by(SqlArtifact.created_at, SqlArtifact.version)

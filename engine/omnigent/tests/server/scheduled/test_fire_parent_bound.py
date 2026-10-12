@@ -250,6 +250,26 @@ async def test_quiet_hours_defers_to_window_end() -> None:
     assert conv_store.created == []
 
 
+async def test_registered_kind_hook_defers_the_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(helper_fire._FIRE_DEFERRALS, "waits", lambda _task: time.time() + 600)
+    store = _Store({"task_1": _bound_task(kind="waits")})
+    conv_store = _ParentConversationStore(_Parent())
+    await _fire(store, conv_store, _ok_launch)
+    assert store.runs[0]["status"] == "skipped"
+    assert store.runs[0]["error_code"] == "task_deferred"
+    assert (0, "task_1") in fire_mod._REFIRES
+    assert conv_store.created == []
+
+
+async def test_registered_kind_hook_with_nothing_to_wait_for_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(helper_fire._FIRE_DEFERRALS, "waits", lambda _task: None)
+    store = _Store({"task_1": _bound_task(kind="waits")})
+    await _fire(store, _ParentConversationStore(_Parent()), _ok_launch)
+    assert store.runs[0]["status"] == "running"
+
+
 def test_quiet_window_end_crossing_midnight() -> None:
     prefs = OwnerPreferences(
         "u", quiet_start="22:00", quiet_end="07:00", timezone="America/Toronto"

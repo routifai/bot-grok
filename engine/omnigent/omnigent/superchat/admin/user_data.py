@@ -74,6 +74,7 @@ USER_DATA: dict[str, Rule] = {
     "suggestions": Direct(),
     "artifacts": Direct(),
     "artifact_publications": Direct(),
+    "artifact_live": Direct(),
     "objectives": Direct(),
     "memory_claims": Direct(),
     "memory_upkeep_runs": Direct(),

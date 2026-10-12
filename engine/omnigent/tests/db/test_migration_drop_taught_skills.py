@@ -17,14 +17,15 @@ def _tables(engine: sa.Engine) -> set[str]:
     return set(sa.inspect(engine).get_table_names())
 
 
-def test_drop_migration_is_the_head_and_round_trips(tmp_path: Path) -> None:
+def test_drop_migration_round_trips(tmp_path: Path) -> None:
     uri = f"sqlite:///{tmp_path / 'drop.db'}"
     engine = get_or_create_engine(uri)
     config = _build_alembic_config(uri)
     with engine.begin() as connection:
         config.attributes["connection"] = connection
         command.upgrade(config, "head")
-        assert ScriptDirectory.from_config(config).get_heads() == [REVISION]
+        script = ScriptDirectory.from_config(config)
+        assert REVISION in {rev.revision for rev in script.walk_revisions()}
     assert not TABLES & _tables(engine)
 
     with engine.begin() as connection:
