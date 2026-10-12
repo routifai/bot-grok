@@ -82,6 +82,41 @@ def register_fire_deferral(kind: str, hook: Callable[[ScheduledTask], float | No
     _FIRE_DEFERRALS[kind] = hook
 
 
+#: Kinds whose due runs are never dropped for "busy": they queue (re-fire every
+#: ``_OWNER_BUSY_DEFER_S``) and run up to ``fire._max_concurrent()`` at once per owner, after the
+#: parent Conversation's own turn.
+_QUEUED_KINDS = frozenset({"live_artifact", "automation"})
+
+#: ``task kind -> hook(task, failure)`` called once per finished run (``failure`` is the plain
+#: reason, ``None`` on success); may return a note to post in the parent Conversation.
+_RUN_OUTCOMES: dict[str, Callable[[ScheduledTask, str | None], str | None]] = {}
+
+
+def register_run_outcome(
+    kind: str, hook: Callable[[ScheduledTask, str | None], str | None]
+) -> None:
+    """Tell ``hook`` how each run of a ``kind`` task ended; a returned note is posted."""
+    _RUN_OUTCOMES[kind] = hook
+
+
+def report_run_outcome(conversation_store: Any, task: ScheduledTask, failure: str | None) -> bool:
+    """Blocking: pass a finished run to its kind's hook and post the note it returns.
+
+    :returns: ``True`` when a note was posted.
+    """
+    hook = _RUN_OUTCOMES.get(task.kind or "")
+    if hook is None or task.parent_session_id is None:
+        return False
+    try:
+        note = hook(task, failure)
+        if note:
+            _append_note(conversation_store, task.parent_session_id, note)
+    except Exception:
+        _logger.exception("scheduled fire: run outcome hook failed for task %s", task.id)
+        return False
+    return bool(note)
+
+
 def _quiet_window_end(prefs: OwnerPreferences, now: float) -> float | None:
     """Epoch seconds the owner's quiet window ends, or ``None`` when ``now`` is outside it.
 
@@ -151,13 +186,13 @@ def _schedule_refire(
     return True
 
 
-async def _owner_has_proactive_run_in_flight(deps: FireDeps, task: ScheduledTask) -> bool:
-    """Whether any parent-bound task of this owner has a run still ``running``."""
+async def _owner_runs_in_flight(deps: FireDeps, task: ScheduledTask) -> int:
+    """How many runs of this owner's parent-bound tasks are still ``running``."""
     owned = await asyncio.to_thread(deps.scheduled_task_store.list, owner_user_id=task.user_id)
     ids = [t.id for t in owned if t.user_id == task.user_id and t.parent_session_id is not None]
     running = await asyncio.to_thread(deps.scheduled_task_store.list_running_runs_for_tasks, ids)
     live = await asyncio.to_thread(force_fail_stale_runs, deps.scheduled_task_store, running)
-    return any(r.status == "running" for r in live)
+    return sum(r.status == "running" for r in live)
 
 
 async def _run_parent_bound_fire(
@@ -178,7 +213,9 @@ async def _run_parent_bound_fire(
       armed for the end of the window.
     * a registered per-kind hook asks to wait -> ``task_deferred``; one re-fire is armed.
     * another parent-bound run of the owner in flight -> ``owner_busy_deferred``
-      (re-fire in 5 minutes, up to 3 times), then ``owner_busy`` (skipped).
+      (re-fire in 5 minutes, up to 3 times), then ``owner_busy`` (skipped). Queued kinds
+      (:data:`_QUEUED_KINDS`) are never dropped: they re-fire until fewer than
+      ``fire._max_concurrent()`` of the owner's runs are in flight and the parent's turn is idle.
 
     A failed launch records a ``failed`` run and arms one retry 10 minutes later
     (``attempt`` 2), unless the owner's proactivity is ``low``.
@@ -248,16 +285,33 @@ async def _run_parent_bound_fire(
         return
 
     owner_key = (task.workspace_id, owner)
-    if owner_key in fire._OWNER_LAUNCHING or await _owner_has_proactive_run_in_flight(deps, task):
-        if deferrals < fire._MAX_OWNER_BUSY_DEFERRALS and _schedule_refire(
-            deps,
-            task.workspace_id,
-            task.id,
-            fire_dispatch,
-            delay_s=fire._OWNER_BUSY_DEFER_S,
-            attempt=attempt,
-            deferrals=deferrals + 1,
-        ):
+    queued = task.kind in _QUEUED_KINDS
+    if queued:
+        parent = await asyncio.to_thread(
+            deps.conversation_store.get_conversation, task.parent_session_id
+        )
+        # The Conversation goes first: wait (without using up a deferral) while its turn runs.
+        parent_turn = getattr(parent, "live_status", None) == "running"
+        busy = parent_turn or (
+            fire._OWNER_LAUNCHING.get(owner_key, 0) + await _owner_runs_in_flight(deps, task)
+            >= fire._max_concurrent()
+        )
+    else:
+        busy = owner_key in fire._OWNER_LAUNCHING or await _owner_runs_in_flight(deps, task) > 0
+    if busy:
+        if queued or deferrals < fire._MAX_OWNER_BUSY_DEFERRALS:
+            armed = _schedule_refire(
+                deps,
+                task.workspace_id,
+                task.id,
+                fire_dispatch,
+                delay_s=fire._OWNER_BUSY_DEFER_S,
+                attempt=attempt,
+                deferrals=deferrals if queued else deferrals + 1,
+            )
+        else:
+            armed = False
+        if armed:
             await skip(
                 "owner_busy_deferred",
                 f"another proactive run is in flight; re-fire in {fire._OWNER_BUSY_DEFER_S}s",
@@ -266,7 +320,7 @@ async def _run_parent_bound_fire(
             await skip("owner_busy", "another proactive run is in flight")
         return
 
-    fire._OWNER_LAUNCHING.add(owner_key)
+    fire._OWNER_LAUNCHING[owner_key] = fire._OWNER_LAUNCHING.get(owner_key, 0) + 1
     try:
         await _launch_helper(
             deps,
@@ -277,7 +331,10 @@ async def _run_parent_bound_fire(
             retry=prefs.proactivity != "low",
         )
     finally:
-        fire._OWNER_LAUNCHING.discard(owner_key)
+        if fire._OWNER_LAUNCHING[owner_key] <= 1:
+            del fire._OWNER_LAUNCHING[owner_key]
+        else:
+            fire._OWNER_LAUNCHING[owner_key] -= 1
 
 
 _DEFAULT_FAILURE_REASON = "it could not be started"
@@ -333,9 +390,6 @@ async def _post_failure_note(deps: FireDeps, task: ScheduledTask, reason: str) -
     A calm system item rather than a Result wake: the wake would need the parent's runner,
     which is the thing that was down.
     """
-    from omnigent.entities import ErrorData, NewConversationItem
-    from omnigent.server.routes._sessions.helpers import _publish_external_conversation_item
-
     assert task.parent_session_id is not None
     again = "I'll try again at the next scheduled time."
     try:
@@ -351,26 +405,35 @@ async def _post_failure_note(deps: FireDeps, task: ScheduledTask, reason: str) -
         again = "It has no more scheduled runs."
     message = f"Your {task.name} couldn't run: {reason}. {again}"
     try:
-        persisted = await asyncio.to_thread(
-            deps.conversation_store.append,
-            task.parent_session_id,
-            [
-                NewConversationItem(
-                    type="error",
-                    response_id=fire._new_id(),
-                    data=ErrorData(
-                        source="execution",
-                        code="scheduled_run_failed",
-                        message=message,
-                        level="info",
-                    ),
-                )
-            ],
+        await asyncio.to_thread(
+            _append_note, deps.conversation_store, task.parent_session_id, message
         )
-        if persisted:
-            _publish_external_conversation_item(task.parent_session_id, persisted[0])
     except Exception:
         _logger.exception("scheduled fire: could not post the failure note for task %s", task.id)
+
+
+def _append_note(conversation_store: Any, parent_session_id: str, message: str) -> None:
+    """Blocking: put a calm system item in the parent Conversation and publish it."""
+    from omnigent.entities import ErrorData, NewConversationItem
+    from omnigent.server.routes._sessions.helpers import _publish_external_conversation_item
+
+    persisted = conversation_store.append(
+        parent_session_id,
+        [
+            NewConversationItem(
+                type="error",
+                response_id=fire._new_id(),
+                data=ErrorData(
+                    source="execution",
+                    code="scheduled_run_failed",
+                    message=message,
+                    level="info",
+                ),
+            )
+        ],
+    )
+    if persisted:
+        _publish_external_conversation_item(parent_session_id, persisted[0])
 
 
 # How long a scheduled Helper run waits for its parent's Computer to wake and its runner connect.
@@ -459,7 +522,11 @@ async def _launch_helper(
             attempt=attempt,
         )
         if not retry_armed:
-            await _post_failure_note(deps, task, reason)
+            noted = await asyncio.to_thread(
+                report_run_outcome, deps.conversation_store, task, reason
+            )
+            if not noted:
+                await _post_failure_note(deps, task, reason)
 
     assert task.parent_session_id is not None and task.agent_type is not None
     parent = await asyncio.to_thread(

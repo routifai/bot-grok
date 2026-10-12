@@ -27,6 +27,8 @@ LIVE_TASK_KIND = "live_artifact"
 DEFER_SECONDS = 600
 #: Runs in a row with changes they cannot place before the schedule pauses.
 MAX_MISSES = 2
+#: Failed runs in a row before the schedule pauses.
+MAX_FAILURES = 3
 
 
 def task_prompt(name: str) -> str:
@@ -122,7 +124,7 @@ class LiveService:
         live.sources = live.sources if sources is None else sources
         live.tell = tell or live.tell
         live.follow_publish = live.follow_publish if follow_publish is None else follow_publish
-        live.state.update(misses=0, open_issue=None)
+        live.state.update(misses=0, open_issue=None, failures=0, last_failure=None)
         self.live.save(live)
         return live
 
@@ -147,6 +149,31 @@ class LiveService:
         )
         hand = group and group[0].origin in HAND_ORIGINS
         return group[0].created_at + DEFER_SECONDS if hand else None
+
+    def on_run_outcome(self, task: Any, failure: str | None) -> str | None:
+        """The fire path's hook: count failed runs in a row, reset on success. The third pauses the
+        schedule and returns the one note for the Conversation."""
+        live = self.live.by_task(task.id)
+        if live is None:
+            return None
+        state = live.state
+        if failure is None:
+            if state["failures"] or state["last_failure"]:
+                state.update(failures=0, last_failure=None)
+                self.live.save(live)
+            return None
+        state["failures"] += 1
+        state["last_failure"] = {"at": now_epoch(), "reason": failure}
+        pause = state["failures"] == MAX_FAILURES
+        if pause:
+            self._sync(self.tasks.update(live.task_id, state="paused"))
+        self.live.save(live)
+        if not pause:
+            return None
+        return (
+            f'The updates to "{live.name}" are paused: {MAX_FAILURES} updates in a row failed '
+            f"({failure}). Save the page's live settings again to resume."
+        )
 
     def need(self, item: Artifact) -> tuple[Live, Artifact]:
         """The live row and the newest version, or a 404 when the page is not live."""

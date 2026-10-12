@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -88,13 +89,25 @@ _RUNNER_CONNECT_TIMEOUT_S = 30.0
 # and the backoff / attempt cap for the single retry after a failed fire.
 _OWNER_BUSY_DEFER_S = 300
 _MAX_OWNER_BUSY_DEFERRALS = 3
+# Kinds that queue instead of dropping when busy, and run up to this many at once per owner.
+_MAX_CONCURRENT_ENV = "OMNIGENT_AUTOMATION_MAX_CONCURRENT"
+_DEFAULT_MAX_CONCURRENT = 3
 _RETRY_BACKOFF_S = 600
 _MAX_ATTEMPTS = 2
 
-# (workspace_id, owner) with a parent-bound fire in its launch phase; closes the
+
+def _max_concurrent() -> int:
+    """Queued-kind runs one owner may have at once (``OMNIGENT_AUTOMATION_MAX_CONCURRENT``)."""
+    try:
+        return max(1, int(os.environ.get(_MAX_CONCURRENT_ENV, _DEFAULT_MAX_CONCURRENT)))
+    except ValueError:
+        return _DEFAULT_MAX_CONCURRENT
+
+
+# (workspace_id, owner) -> parent-bound fires in their launch phase; closes the
 # gap before a started run is visible as ``running`` in the store.
 # custom-lint: disable-next=workspace-scoped-cache -- keys carry the workspace id
-_OWNER_LAUNCHING: set[tuple[int, str]] = set()
+_OWNER_LAUNCHING: dict[tuple[int, str], int] = {}
 
 # One pending deferred/retry re-fire per task: (workspace_id, task_id) -> handle.
 # custom-lint: disable-next=workspace-scoped-cache -- keys carry the workspace id

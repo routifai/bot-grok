@@ -310,6 +310,70 @@ async def test_owner_busy_defers_then_skips() -> None:
     assert not fire_mod._REFIRES
 
 
+def _running(*task_ids: str) -> list[ScheduledTaskRun]:
+    now = int(time.time())
+    return [
+        ScheduledTaskRun(f"r{i}", t, "running", now, fired_at=now) for i, t in enumerate(task_ids)
+    ]
+
+
+async def test_busy_never_drops_a_live_page_run() -> None:
+    store = _Store({"task_1": _bound_task(kind="live_artifact")})
+    store.running = _running(*(f"t{i}" for i in range(3)))
+    store._rows.update({f"t{i}": _bound_task(id=f"t{i}") for i in range(3)})
+    conv_store = _ParentConversationStore(_Parent())
+    deps = _deps(store, conversation_store=conv_store)
+    await fire_mod._run_parent_bound_fire(
+        deps,
+        _bound_task(kind="live_artifact"),
+        fire_mod._build_fire_dispatch(deps, _ok_launch),
+        int(time.time()),
+        attempt=1,
+        deferrals=fire_mod._MAX_OWNER_BUSY_DEFERRALS + 5,
+    )
+    assert store.runs[-1]["error_code"] == "owner_busy_deferred"
+    assert (0, "task_1") in fire_mod._REFIRES and conv_store.created == []
+
+
+async def test_cap_lets_live_runs_overlap_up_to_the_limit() -> None:
+    rows = {f"t{i}": _bound_task(id=f"t{i}") for i in range(3)}
+    store = _Store({"task_1": _bound_task(kind="live_artifact"), **rows})
+    conv_store = _ParentConversationStore(_Parent())
+    store.running = _running("t0", "t1")
+    await _fire(store, conv_store, _ok_launch)
+    assert len(conv_store.created) == 1  # two running, the cap is three: room for this one
+    store.running = _running("t0", "t1", "t2")
+    await _fire(store, conv_store, _ok_launch)
+    assert len(conv_store.created) == 1 and store.runs[-1]["error_code"] == "owner_busy_deferred"
+
+
+async def test_live_run_waits_while_the_conversation_has_a_turn_running() -> None:
+    store = _Store({"task_1": _bound_task(kind="live_artifact")})
+    parent = _Parent()
+    parent.live_status = "running"  # type: ignore[attr-defined]
+    conv_store = _ParentConversationStore(parent)
+    await _fire(store, conv_store, _ok_launch)
+    assert store.runs[0]["error_code"] == "owner_busy_deferred" and conv_store.created == []
+
+
+def test_run_outcome_hook_note_is_posted_once_in_the_conversation() -> None:
+    conv_store = _ParentConversationStore(_Parent())
+    seen: list[Any] = []
+
+    def hook(task: Any, failure: str | None) -> str | None:
+        seen.append(failure)
+        return "paused" if failure else None
+
+    helper_fire.register_run_outcome("live_artifact", hook)
+    try:
+        task = _bound_task(kind="live_artifact")
+        assert not helper_fire.report_run_outcome(conv_store, task, None)
+        assert helper_fire.report_run_outcome(conv_store, task, "boom")
+    finally:
+        helper_fire._RUN_OUTCOMES.pop("live_artifact")
+    assert seen == [None, "boom"] and len(conv_store.appended["conv_parent"]) == 1
+
+
 async def test_failed_launch_schedules_one_retry() -> None:
     store = _Store({"task_1": _bound_task()})
     conv_store = _ParentConversationStore(_Parent())

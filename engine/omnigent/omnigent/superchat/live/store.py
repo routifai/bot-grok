@@ -22,7 +22,8 @@ def new_state() -> dict[str, Any]:
 
     ``written``: ``{element id: text the last update wrote}``; ``rejected``: ``[[id, value]]``
     the person undid; ``facts``: what the sources said last time; ``last_update``:
-    ``{version, applied, suggestions, at}``; ``misses``: runs in a row with unplaced changes.
+    ``{version, applied, suggestions, at}``; ``misses``: runs in a row with unplaced changes;
+    ``failures``: failed runs in a row; ``last_failure``: ``{at, reason}`` of the latest.
     """
     return {
         "written": {},
@@ -31,6 +32,8 @@ def new_state() -> dict[str, Any]:
         "last_update": None,
         "open_issue": None,
         "misses": 0,
+        "failures": 0,
+        "last_failure": None,
         "checked_at": None,
     }
 

@@ -184,6 +184,29 @@ def test_changes_that_cannot_be_placed_pause_the_schedule_at_the_second_run(env)
     assert live.state["misses"] == 0 and env.service.tasks.get(live.task_id).state == "active"
 
 
+def test_three_failed_runs_in_a_row_pause_and_post_one_note_and_success_resets(env) -> None:
+    live = env.service.live.get(_SESSION, "prices.html")
+    task = env.service.tasks.get(live.task_id)
+    assert env.service.on_run_outcome(task, "your Computer didn't start") is None
+    assert env.service.on_run_outcome(task, None) is None  # a success starts the count again
+    state = env.service.live.get(_SESSION, "prices.html").state
+    assert state["failures"] == 0 and state["last_failure"] is None
+    assert env.service.on_run_outcome(task, "a") is None
+    assert env.service.on_run_outcome(task, "b") is None
+    assert env.service.tasks.get(live.task_id).state == "active"
+    note = env.service.on_run_outcome(task, "c")
+    assert "paused" in note and "(c)" in note and "live settings" in note
+    state = env.service.live.get(_SESSION, "prices.html").state
+    assert state["failures"] == 3 and state["last_failure"]["reason"] == "c"
+    assert env.service.tasks.get(live.task_id).state == "paused"
+    assert ("update", "paused") in env.scheduler.calls
+    assert env.service.on_run_outcome(task, "d") is None  # one note only
+    env.service.upsert(env.first, rrule="FREQ=DAILY;BYHOUR=9;BYMINUTE=0")
+    state = env.service.live.get(_SESSION, "prices.html").state
+    assert state["failures"] == 0 and state["last_failure"] is None
+    assert env.service.tasks.get(live.task_id).state == "active"
+
+
 def test_unplaced_counts_even_next_to_applied_changes_and_a_clean_run_clears_it(env) -> None:
     _save(env, [{"id": "nope", "after": "x"}, {"id": "btc", "after": "Bitcoin: 121"}])
     state = env.service.live.get(_SESSION, "prices.html").state

@@ -106,6 +106,10 @@ def test_put_get_delete_lifecycle(env) -> None:
         env.client.get(f"/v1/artifacts/{page.id}/live", headers=ALICE).json()["live"]["tell"]
         == "every"
     )
+    assert (live["failures"], live["last_failure"]) == (0, None)
+    env.service.on_run_outcome(task, "it broke")
+    seen = env.client.get(f"/v1/artifacts/{page.id}/live", headers=ALICE).json()["live"]
+    assert seen["failures"] == 1 and seen["last_failure"]["reason"] == "it broke"
     assert env.client.delete(f"/v1/artifacts/{page.id}/live", headers=ALICE).json() == {
         "deleted": True
     }

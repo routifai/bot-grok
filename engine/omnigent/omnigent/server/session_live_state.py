@@ -247,13 +247,20 @@ def persist_scheduled_run_completion(
             # Not a scheduled fire, or its run is already terminal — nothing to
             # do. This is the common case (interactive sessions).
             return
-        store.update_run(
+        done = store.update_run(
             run.id,
             status=run_status,
             finished_at=int(time.time()),
             error=error,
             error_code=error_code,
         )
+        if done is not None:
+            from omnigent.server.scheduled.helper_fire import report_run_outcome
+
+            task = store.get(run.scheduled_task_id)
+            if task is not None:
+                failed = "its update did not finish" if run_status == "failed" else None
+                report_run_outcome(_store, task, failed)
 
     submit("scheduled_run_completion", _transition)
 

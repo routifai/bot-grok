@@ -78,7 +78,16 @@ def create_live_router(
                 "sources": live.sources,
                 "tell": live.tell,
                 "follow_publish": live.follow_publish,
-                **{k: live.state[k] for k in ("checked_at", "open_issue", "last_update")},
+                **{
+                    k: live.state[k]
+                    for k in (
+                        "checked_at",
+                        "open_issue",
+                        "last_update",
+                        "failures",
+                        "last_failure",
+                    )
+                },
             }
         }
 
