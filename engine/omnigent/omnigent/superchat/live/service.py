@@ -15,6 +15,7 @@ from omnigent.db.db_models import current_workspace_id
 from omnigent.db.utils import now_epoch
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.server.auth import RESERVED_USER_LOCAL
+from omnigent.superchat.artifacts.parts import PartEditor, part_editor
 from omnigent.superchat.artifacts.store import (
     HAND_ORIGINS,
     Artifact,
@@ -50,23 +51,25 @@ _FORGOTTEN = (
 )
 
 
-def task_prompt(name: str) -> str:
+def task_prompt(name: str, kind: str = "html") -> str:
     """The fixed instruction a live artifact's scheduled run starts with."""
+    what = "page" if kind == "html" else "sheet"
     return (
-        f'Update the live page "{name}" from its sources.\n'
+        f'Update the live {what} "{name}" from its sources.\n'
         f'1. Call live_update_context with name "{name}".\n'
         "2. Read each source in the Computer: open a web page in the browser, read a file with "
         "code. Work out every number with code, never guess one. If there are no sources, infer "
-        "them from the page and this chat and pass them as sources when you save.\n"
-        "3. Call live_update_save once with only the facts that differ from what the page shows "
-        "(element id, new text, source) and the facts you read; no changes when nothing differs. "
-        "If it says the page changed, start again at step 1.\n"
+        f"them from the {what} and this chat and pass them as sources when you save.\n"
+        f"3. Call live_update_save once with only the facts that differ from what the {what} "
+        "shows (part id as `ids` in the context says, new text, source) and the facts you read; "
+        f"no changes when nothing differs. If it says the {what} changed, start again at step "
+        "1.\n"
         "4. End with a one-line Result that follows the tell rule live_update_save returned and "
         "names each change as what it is, before → after ('Saffron chai $18.25 → $19.50').\n"
         "Also follow the `note` live_update_context returned: it is the person's own words on "
         "what to update and what to leave alone, and it wins over your own judgment.\n"
-        "If you cannot finish, say why in the Result and add that the page stays as it is until "
-        "the next run: the update is yours, nobody should redo it by hand or in chat."
+        f"If you cannot finish, say why in the Result and add that the {what} stays as it is "
+        "until the next run: the update is yours, nobody should redo it by hand or in chat."
     )
 
 
@@ -135,7 +138,7 @@ class LiveService:
             task = self.tasks.create(
                 scheduled_task_id=uuid.uuid4().hex,
                 name=f"Keep {item.title or item.name} up to date",
-                prompt=task_prompt(item.name),
+                prompt=task_prompt(item.name, item.kind),
                 rrule=rrule,
                 user_id=item.user_id,
                 agent_id=parent.agent_id,
@@ -146,7 +149,7 @@ class LiveService:
             )
         else:
             task = self.tasks.update(
-                task.id, rrule=rrule, state="active", prompt=task_prompt(item.name)
+                task.id, rrule=rrule, state="active", prompt=task_prompt(item.name, item.kind)
             )
         self._sync(task)
         live = live or Live(item.parent_session_id, item.name, item.user_id, task.id)
@@ -281,12 +284,14 @@ class LiveService:
     def context(self, item: Artifact) -> dict[str, Any]:
         """What a run needs before it reads the sources."""
         live, head = self.need(item)
+        editor = _editor(head)
         return {
             "sources": live.sources,
             "facts": live.state["facts"],
             "note": live.state["note"],
             "version": head.version,
-            "source": self.artifacts.read(head).decode("utf-8", "replace"),
+            "source": editor.describe(self.artifacts.read(head)),
+            "ids": editor.ids,
         }
 
     def save(
@@ -387,7 +392,7 @@ class LiveService:
     ) -> tuple[Plan, Artifact | None]:
         """Plan ``changes`` on ``head``, store one version, update the state in memory."""
         state = live.state
-        plan = plan_changes(self.artifacts.read(head), changes, state)
+        plan = plan_changes(self.artifacts.read(head), changes, state, _editor(head))
         created = None
         if plan.applied:
             count = len(plan.applied)
@@ -442,6 +447,13 @@ class LiveService:
             return
         self.artifacts.publish(created, audience=pub.audience, version=created.version)
         live.state["held"] = None
+
+
+def _editor(item: Artifact) -> PartEditor:
+    editor = part_editor(item.kind, item.name)
+    if editor is None:
+        raise _err("Only a page or a sheet can be kept updated", ErrorCode.INVALID_INPUT)
+    return editor
 
 
 def _stale() -> OmnigentError:

@@ -16,20 +16,21 @@ SETTINGS_TOOL_NAME = "artifact_live_settings"
 SUPER_CHAT_TOOL_NAMES = (KEEP_TOOL_NAME, STOP_TOOL_NAME, SETTINGS_TOOL_NAME)
 HELPER_TOOL_NAMES = (CONTEXT_TOOL_NAME, SAVE_TOOL_NAME)
 
-_PAGE = {"type": "string", "description": "The page's file name in this chat, e.g. 'prices.html'."}
+_PAGE = {"type": "string", "description": "The file's name in this chat, e.g. 'prices.html'."}
 _SOURCES = {
     "type": "array",
     "items": {"type": "string"},
-    "description": "Web page URLs or Computer file paths the page's facts come from.",
+    "description": "Web page URLs or Computer file paths the facts come from.",
 }
 
 
 class KeepUpdatedTool(ArtifactTool):
     _NAME = KEEP_TOOL_NAME
     _DESC = (
-        "Keep a saved HTML page up to date: on the schedule, a Helper re-reads the page's "
-        "sources and changes only the parts that show source facts. Calling it again for the "
-        "same page changes the schedule. Without sources, the first run infers them."
+        "Keep a saved HTML page or a sheet (CSV, XLSX) up to date: on the schedule, a Helper "
+        "re-reads its sources and changes only the parts (a page's elements, a sheet's cells) "
+        "that show source facts. Calling it again for the same file changes the schedule. "
+        "Without sources, the first run infers them."
     )
     _PROPERTIES = {
         "name": _PAGE,
@@ -68,7 +69,7 @@ class KeepUpdatedTool(ArtifactTool):
 
 class StopUpdatingTool(ArtifactTool):
     _NAME = STOP_TOOL_NAME
-    _DESC = "Stop keeping a page updated. The page and its versions stay as they are."
+    _DESC = "Stop keeping a page or sheet updated. The file and its versions stay as they are."
     _PROPERTIES = {"name": _PAGE}
     _REQUIRED = ("name",)
 
@@ -76,9 +77,9 @@ class StopUpdatingTool(ArtifactTool):
 class LiveSettingsTool(ArtifactTool):
     _NAME = SETTINGS_TOOL_NAME
     _DESC = (
-        "Read how a page is kept updated: schedule, update-on-file-change, sources, note, when "
-        "it tells the person, last run, failures, whether it is paused and the last update. "
-        "Read it before changing a page's setup with artifact_keep_updated."
+        "Read how a page or sheet is kept updated: schedule, update-on-file-change, sources, "
+        "note, when it tells the person, last run, failures, whether it is paused and the last "
+        "update. Read it before changing the setup with artifact_keep_updated."
     )
     _PROPERTIES = {"name": _PAGE}
     _REQUIRED = ("name",)
@@ -87,8 +88,9 @@ class LiveSettingsTool(ArtifactTool):
 class UpdateContextTool(ArtifactTool):
     _NAME = CONTEXT_TOOL_NAME
     _DESC = (
-        "Start of a live page update: returns the page's sources, the person's note, the facts "
-        "read last time, the newest version number and the page's HTML source."
+        "Start of a live update: returns the file's sources, the person's note, the facts read "
+        "last time, the newest version number, `source` (a page's HTML, a sheet's cells as "
+        "'B3: value') and `ids` (what a part id is for this file)."
     )
     _PROPERTIES = {"name": _PAGE}
     _REQUIRED = ("name",)
@@ -97,9 +99,10 @@ class UpdateContextTool(ArtifactTool):
 class UpdateSaveTool(ArtifactTool):
     _NAME = SAVE_TOOL_NAME
     _DESC = (
-        "Finish a live page update. `changes` holds only facts that differ from what the page "
-        "shows, by the data-superchat-id of the element holding each; leave it empty when "
-        "nothing differs. Parts the person edited come back as `suggestions` instead of being "
+        "Finish a live update. `changes` holds only facts that differ from what the file "
+        "shows, each by its part id (see `ids` in the context: an element's data-superchat-id, "
+        "or a cell like B3); leave it empty when nothing differs. "
+        "Parts the person edited come back as `suggestions` instead of being "
         "overwritten; `declined` lists values the person undid before, left as they are on "
         "purpose. `held` true: the page itself is updated as usual, only its "
         "published copy was not, until the person presses Publish on the page; add exactly that "
@@ -119,7 +122,10 @@ class UpdateSaveTool(ArtifactTool):
             "items": {
                 "type": "object",
                 "properties": {
-                    "id": {"type": "string", "description": "The element's data-superchat-id."},
+                    "id": {
+                        "type": "string",
+                        "description": "The part id: an element's data-superchat-id, or a cell.",
+                    },
                     "after": {"type": "string", "description": "The new text."},
                     "source": {"type": "string", "description": "The source it came from."},
                     "notable": {"type": "boolean", "description": "Worth telling the person."},

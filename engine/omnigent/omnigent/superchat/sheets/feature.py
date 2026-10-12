@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from omnigent.superchat.feature import Feature, InstallDeps, ToolManagerCtx
+from omnigent.superchat.sheets import parts as _parts  # noqa: F401  (registers the cell editor)
 
 if TYPE_CHECKING:
     from fastapi import FastAPI

@@ -48,6 +48,18 @@ export function parseRange(text: string): CellRange | null {
   return normalizeRange(a, b);
 }
 
+/** A cell as a live update names it: `B3`, or `Sheet2!B3` (`sheet` is null without a name). */
+export function parseCellId(id: string): { sheet: string | null; r: number; c: number } | null {
+  const at = id.lastIndexOf("!");
+  const range = parseRange(id.slice(at + 1).toUpperCase());
+  if (!range || range.r0 !== range.r1 || range.c0 !== range.c1) return null;
+  return {
+    sheet: at > 0 ? id.slice(0, at).replace(/^'|'$/g, "") : null,
+    r: range.r0,
+    c: range.c0,
+  };
+}
+
 export const rangeCellCount = (range: CellRange): number =>
   (range.r1 - range.r0 + 1) * (range.c1 - range.c0 + 1);
 

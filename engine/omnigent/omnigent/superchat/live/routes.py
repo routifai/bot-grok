@@ -16,13 +16,13 @@ from pydantic import BaseModel, ConfigDict, Field
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.server.auth import RESERVED_USER_LOCAL, AuthProvider
 from omnigent.server.scheduled.rrule import RRuleValidationError, validate_rrule
-from omnigent.superchat.artifact_kinds import is_deck_name
 from omnigent.superchat.artifacts import (
     Artifact,
     artifact_to_response,
     load_artifact,
     request_owner,
 )
+from omnigent.superchat.artifacts.parts import part_editor
 from omnigent.superchat.live.service import LiveService
 
 #: A web page URL or a Computer file path a page's facts come from.
@@ -216,8 +216,10 @@ def create_live_router(
     async def put_live(request: Request, artifact_id: str, body: LiveBody) -> dict[str, Any]:
         """Keep the page updated on a schedule (create or change it)."""
         item = await _page(request, artifact_id)
-        if item.kind != "html" or is_deck_name(item.name):
-            raise OmnigentError("Only a page can be kept updated", code=ErrorCode.INVALID_INPUT)
+        if part_editor(item.kind, item.name) is None:
+            raise OmnigentError(
+                "Only a page or a sheet can be kept updated", code=ErrorCode.INVALID_INPUT
+            )
         try:
             validate_rrule(body.rrule)
         except RRuleValidationError as exc:

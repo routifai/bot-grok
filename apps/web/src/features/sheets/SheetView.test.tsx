@@ -26,7 +26,12 @@ vi.mock("@lingui/react/macro", () => ({
   }),
 }));
 
-import { resetEditorState } from "../artifacts/editor/editor-state";
+import {
+  artifactKey,
+  focusArtifactPart,
+  resetEditorState,
+  setArtifactMarked,
+} from "../artifacts/editor/editor-state";
 import { resetNavigatorFrame } from "../artifacts/editor/NavigatorFrame";
 import { SheetView } from "./SheetView";
 
@@ -445,4 +450,20 @@ it("Undo steps back over superchat's answer to an ask from here", async () => {
     baseVersion: 3,
     edits: [{ sheet: "Sales", row: 1, col: 2, value: 64000 }],
   });
+});
+
+it("marks the cells a live update changed and goes to the one its chip asks for", async () => {
+  const two = tableOf("a2", 2);
+  two.sheets.push({ ...structuredClone(two.sheets[0]!), name: "By region" });
+  api.table.mockResolvedValue(two);
+  api.listVersions.mockResolvedValue([ver("a2", 2)]);
+  const view = await mount(<SheetView artifact={artifact} />);
+  const key = artifactKey({ botId: undefined as never, name: artifact.name });
+  await act(async () => setArtifactMarked(key, ["C2", "By region!A3", "not a cell"]));
+  expect(at(view, 1, 2).dataset.marked).toBe("true");
+  expect(at(view, 2, 0).dataset.marked).toBeUndefined(); // that one is on the other sheet
+  await act(async () => focusArtifactPart(key, "By region!A3"));
+  expect(grid(view).getAttribute("aria-label")).toBe("By region");
+  expect(at(view, 2, 0).dataset.marked).toBe("true");
+  expect(at(view, 2, 0).className).toContain("ring-2");
 });

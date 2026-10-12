@@ -22,6 +22,7 @@ import {
   ArtifactPreview,
 } from "../artifacts";
 import { ArtifactEditorView } from "../artifacts/editor/ArtifactEditor";
+import { artifactKey, useArtifactFocus, useArtifactMarked } from "../artifacts/editor/editor-state";
 import { buildFileAsk } from "../artifacts/editor/html-ask";
 import { NavigatorFrame } from "../artifacts/editor/NavigatorFrame";
 import { createEvaluator } from "./formula-eval";
@@ -38,6 +39,7 @@ import {
   inRange,
   isNumeric,
   normalizeRange,
+  parseCellId,
   parseDraft,
   rangeCellCount,
   rangeLabel,
@@ -293,6 +295,32 @@ function useSheetEditor({
   );
 
   const selection: CellRange = useMemo(() => normalizeRange(anchor, head), [anchor, head]);
+
+  // Cells another capability marks (what a live update changed) and asks to be shown (its chip).
+  const fileKey = artifactKey(artifact);
+  const markedIds = useArtifactMarked(fileKey);
+  const firstSheet = table?.sheets[0]?.name ?? "";
+  const marked = useMemo(() => {
+    const here = new Set<string>();
+    for (const id of markedIds) {
+      const at = parseCellId(id);
+      if (at && (at.sheet ?? firstSheet) === sheetName) here.add(`${at.r}:${at.c}`);
+    }
+    return here;
+  }, [markedIds, firstSheet, sheetName]);
+  const wanted = useArtifactFocus(fileKey);
+  const shownFocus = useRef(wanted?.n ?? 0);
+  useEffect(() => {
+    if (!wanted || wanted.n === shownFocus.current || !table) return;
+    shownFocus.current = wanted.n;
+    const at = parseCellId(wanted.id);
+    const index = at?.sheet ? table.sheets.findIndex((entry) => entry.name === at.sheet) : 0;
+    if (!at || index < 0) return;
+    setSheetIndex(index);
+    setAnchor({ r: at.r, c: at.c });
+    setHead({ r: at.r, c: at.c });
+    setPicked(true);
+  }, [wanted, table]);
 
   // --- saving -------------------------------------------------------------------------------
 
@@ -648,13 +676,18 @@ function useSheetEditor({
               data-r={r}
               data-c={c}
               data-selected={selected || undefined}
+              data-marked={marked.has(`${r}:${c}`) || undefined}
               onDoubleClick={() => {
                 if (editOn) setEditing({ r, c, draft: cellSource(value) });
               }}
               className={[
                 "relative cursor-cell truncate border-e border-b border-border px-2.5 text-[13px]",
                 isNumeric(value) ? "text-right tabular-nums" : "text-left",
-                isFrozen ? "sticky z-[5] bg-muted font-medium" : "bg-card",
+                isFrozen
+                  ? "sticky z-[5] bg-muted font-medium"
+                  : marked.has(`${r}:${c}`)
+                    ? "bg-accent underline decoration-primary/50 underline-offset-2"
+                    : "bg-card",
                 shown.muted ? "text-muted-foreground" : "text-foreground",
                 selected && !active ? "bg-primary/10" : "",
                 active ? "ring-2 ring-ring ring-inset" : "",

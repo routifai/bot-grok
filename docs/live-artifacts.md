@@ -4,6 +4,16 @@ A page (HTML artifact) that keeps itself up to date: an Automation re-reads the 
 changes only the parts that show source facts. Live sheets follow the same rules for cells.
 Terms are in `CONTEXT.md` (Automation, Live page, Live sheet).
 
+## Pages and sheets
+
+A page's parts are its elements (`data-superchat-id`); a sheet's (CSV, XLSX) are its cells (`B3`,
+or `Sheet2!B3` in a workbook with several sheets). Each kind registers how its parts are read and
+written (`artifacts/parts.py`; sheets in `sheets/parts.py`), and every rule below applies to both.
+For a sheet: `12.5` and `12.50` are the same value, a new source row is written in the first empty
+row, a number stays a number in an XLSX, and a cell holding a formula is never written (it comes
+back as unplaced). The sheet marks the changed cells and a chip goes to its cell. Sheets are not
+published, and the "Keep this page updated" chip is offered for pages only.
+
 ## Rules
 
 - Trigger: a source file changing in the Computer (debounced ~2 minutes), the schedule as a safety
@@ -67,6 +77,7 @@ Terms are in `CONTEXT.md` (Automation, Live page, Live sheet).
 - One engine process: the scheduler's timers are per process, so two engine replicas would fire
   every run twice. A per-run database lease is needed before scaling out.
 - No per-Automation cost yet; no admin view; documents and decks cannot be live.
+- A live sheet's run sees the first 400 rows of each sheet.
 
 ## Build order
 
@@ -78,4 +89,4 @@ Terms are in `CONTEXT.md` (Automation, Live page, Live sheet).
 4. File-change trigger from the Computer.
 5. Published copy follows updates, holding back unusual ones.
 6. Dynamic cap from the Computer's load; 1 while chatting.
-7. Live sheets.
+7. Live sheets (cells as parts).

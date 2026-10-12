@@ -141,3 +141,10 @@ it("a held update says why the published copy did not take it, and Publish publi
   expect(api.publish).toHaveBeenCalledWith({ artifactId: "a1" });
   expect(byTest("live-held")).toBeNull();
 });
+
+it("a sheet can be kept updated like a page", async () => {
+  api.get.mockResolvedValue(null);
+  await show({ ...page, name: "teas.csv", mimeType: "text/csv" });
+  expect(api.get).toHaveBeenCalledWith({ artifactId: "a1" });
+  expect(byTest("live-settings")?.textContent).toBe("Keep updated");
+});

@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from omnigent.superchat.artifacts.patches import PatchError, SetText, apply_patches, read_text
+from omnigent.superchat.artifacts.parts import PartEditor, PartError
 
 #: Most update runs a Computer takes at once, however idle it is.
 MAX_ROOM = 6
@@ -27,10 +27,6 @@ def room_for(mem_free: float | None, load: float | None) -> int:
     return max(1, min(MAX_ROOM, round(MAX_ROOM * min(memory, cpu))))
 
 
-def _norm(text: str) -> str:
-    return " ".join(text.split())
-
-
 @dataclass
 class Plan:
     """The outcome of one run, before anything is stored."""
@@ -46,8 +42,11 @@ class Plan:
     declined: list[str] = field(default_factory=list)
 
 
-def plan_changes(data: bytes, changes: list[dict[str, Any]], state: dict[str, Any]) -> Plan:
-    """Decide what each ``{id, after, source?, notable?}`` does to the newest bytes ``data``."""
+def plan_changes(
+    data: bytes, changes: list[dict[str, Any]], state: dict[str, Any], editor: PartEditor
+) -> Plan:
+    """Decide what each ``{id, after, source?, notable?}`` does to the newest bytes ``data``;
+    ``editor`` reads and writes the file's parts (a page's elements, a sheet's cells)."""
     plan = Plan(data, dict(state["written"]), list(state["rejected"]))
     for change in changes:
         ident, after, source = str(change["id"]), str(change["after"]), change.get("source")
@@ -55,24 +54,22 @@ def plan_changes(data: bytes, changes: list[dict[str, Any]], state: dict[str, An
             plan.declined.append(ident)
             continue
         try:
-            current = read_text(plan.data, ident)
-        except PatchError:
+            current = editor.read(plan.data, ident)
+        except PartError:
             plan.unplaced.append(ident)
             continue
         if current is None:  # the person deleted a part an update wrote, or the id is wrong
             (plan.removed if ident in plan.written else plan.unplaced).append(ident)
-        elif _norm(current) == _norm(after):
+        elif editor.same(current, after):
             plan.written[ident] = after
-        elif ident in plan.written and _norm(current) != _norm(plan.written[ident]):
+        elif ident in plan.written and not editor.same(current, plan.written[ident]):
             plan.suggestions.append(
                 {"id": ident, "yours": current, "source_value": after, "source": source}
             )
         else:
             try:
-                plan.data, _ = apply_patches(
-                    plan.data, [SetText(kind="set-text", id=ident, text=after)]
-                )
-            except PatchError:
+                plan.data = editor.write(plan.data, ident, after)
+            except PartError:
                 plan.unplaced.append(ident)
                 continue
             notable = bool(change.get("notable"))

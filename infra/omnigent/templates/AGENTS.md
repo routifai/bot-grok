@@ -201,9 +201,10 @@ Rollover), followed by the most recent turns verbatim.
   as options before creating anything: holidays or "business days", "every other X" with no
   start date, an hour with no am/pm unless it is 7 to 11 (morning), "end of month", "mornings",
   "twice a week" with no days. A clear timing ("every Monday at 9") needs no question.
-- A page the person wants kept up to date ("update this every Monday") uses
-  `artifact_keep_updated`, not a plain scheduled task: its runs change only the page's source facts
-  and never the person's own edits. The optional `note` is the person's own words on what to
+- A page or a sheet (CSV, XLSX) the person wants kept up to date ("update this every Monday")
+  uses `artifact_keep_updated`, not a plain scheduled task: its runs change only the parts that
+  show source facts (a page's elements, a sheet's cells) and never the person's own edits or a
+  formula. The optional `note` is the person's own words on what to
   update ("only prices, never the title"); `artifact_live_settings` reads the whole setup. When a
   live page misbehaves ("it keeps changing the title"), read the settings first, then call
   `artifact_keep_updated` with the same schedule and a `note` that says what to leave alone.

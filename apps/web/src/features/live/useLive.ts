@@ -4,9 +4,14 @@ import { useCallback, useEffect, useState } from "react";
 import { rpc } from "../../lib/rpc";
 import { useVisiblePoll } from "../../lib/use-visible-poll";
 
-/** Only an HTML page that is not a deck can be kept updated. */
+/** A sheet (CSV, XLSX) is kept updated cell by cell. */
+export const isLiveSheet = (file: { name: string }): boolean => /\.(csv|xlsx)$/i.test(file.name);
+
+/** An HTML page that is not a deck, or a sheet, can be kept updated. */
 export const canBeLive = (artifact: Artifact | undefined): artifact is Artifact =>
-  !!artifact && artifact.mimeType === "text/html" && !isDeckArtifactName(artifact.name);
+  !!artifact &&
+  (isLiveSheet(artifact) ||
+    (artifact.mimeType === "text/html" && !isDeckArtifactName(artifact.name)));
 
 export type LiveSettingsInput = {
   schedule: AutomationSchedule;

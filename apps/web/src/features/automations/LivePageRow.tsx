@@ -66,7 +66,7 @@ function RunLine({
           : bad
             ? t`Failed · ${newestReason ?? plainCode(run.errorCode) ?? t`it did not finish`}`
             : version
-              ? (version.editSummary?.trim() ?? t`Updated the page`)
+              ? (version.editSummary?.trim() ?? t`Updated`)
               : t`Checked · nothing new`;
   return (
     <li data-testid="live-run" className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5">
@@ -189,7 +189,7 @@ export function LivePageRow({
               {t`Keeps ${title} updated`}
             </button>
             <span className="shrink-0 rounded-full bg-selection px-2 py-0.5 text-[11px] text-ink-2">
-              {t`Live page`}
+              {/\.(csv|xlsx)$/i.test(page.name) ? t`Live sheet` : t`Live page`}
             </span>
           </span>
           <span className="text-[13px] text-ink-2">{trigger}</span>

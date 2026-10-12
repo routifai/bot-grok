@@ -127,6 +127,13 @@ def test_only_html_pages_and_valid_schedules_are_accepted(env) -> None:
     assert _put(env, page.id, rrule="nonsense").status_code == 400
     assert _put(env, page.id, sources=[""]).status_code == 422
     assert _put(env, page.id, rrule=RRULE, tell="loud").status_code == 422
+    # A sheet can be kept updated like a page (its cells are the parts).
+    import omnigent.superchat.sheets.parts  # noqa: F401
+
+    sheet = _page(env, "teas.csv", b"tea,price\nSencha,12.50\n")
+    assert _put(env, sheet.id).status_code == 200
+    ctx = env.client.get(f"/v1/artifacts/{sheet.id}/live/context", headers=ALICE).json()
+    assert ctx["source"] == "A1: tea | B1: price\nA2: Sencha | B2: 12.50"
 
 
 def test_another_owner_gets_a_404_everywhere(env) -> None:

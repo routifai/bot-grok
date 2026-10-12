@@ -48,7 +48,7 @@ export function LiveBar({
   const heldWhy = held
     ? {
         suggestions: t`Some parts you changed differ from the source.`,
-        unplaced: t`Some changes could not be placed on the page.`,
+        unplaced: t`Some changes could not be placed.`,
         edits: t`It includes edits of yours that are not published.`,
       }[held.reason]
     : null;

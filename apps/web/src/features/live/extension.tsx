@@ -16,7 +16,7 @@ import {
 } from "../artifacts/editor/editor-state";
 import { LiveBar, whenText } from "./LiveBar";
 import { LiveSettings } from "./LiveSettings";
-import { canBeLive, useLive } from "./useLive";
+import { canBeLive, isLiveSheet, useLive } from "./useLive";
 import { type LivePageHealth, livePageHealth, useLivePages } from "./useLivePages";
 
 /** The artifact panel's live parts: tag, "Keep updated" button, and the update bar. */
@@ -144,5 +144,7 @@ export const liveExtension: ArtifactExtension = {
   useCard: useLiveCard,
   useLibraryFacet: useLiveFacet,
   publishOptions: (artifact, register) =>
-    canBeLive(artifact) ? <FollowUpdates artifact={artifact} register={register} /> : null,
+    canBeLive(artifact) && !isLiveSheet(artifact) ? (
+      <FollowUpdates artifact={artifact} register={register} />
+    ) : null,
 };

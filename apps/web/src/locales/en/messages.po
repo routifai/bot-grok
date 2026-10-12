@@ -1140,6 +1140,9 @@ msgstr "Live · update failed"
 msgid "Live page"
 msgstr "Live page"
 
+msgid "Live sheet"
+msgstr "Live sheet"
+
 msgid "Load earlier"
 msgstr "Load earlier"
 
@@ -1853,8 +1856,8 @@ msgstr "Slide rail"
 msgid "Slides"
 msgstr "Slides"
 
-msgid "Some changes could not be placed on the page."
-msgstr "Some changes could not be placed on the page."
+msgid "Some changes could not be placed."
+msgstr "Some changes could not be placed."
 
 msgid "Some parts you changed differ from the source."
 msgstr "Some parts you changed differ from the source."
@@ -2112,6 +2115,9 @@ msgstr "Update when"
 msgid "updated"
 msgstr "updated"
 
+msgid "Updated"
+msgstr "Updated"
+
 #. placeholder {0}: superseded.version
 msgid "Updated — v{0}"
 msgstr "Updated — v{0}"
@@ -2132,9 +2138,6 @@ msgstr "Updated by superchat · v{0}"
 #. placeholder {0}: content.arrived.version
 msgid "Updated by you · v{0}"
 msgstr "Updated by you · v{0}"
-
-msgid "Updated the page"
-msgstr "Updated the page"
 
 msgid "Updates daily"
 msgstr "Updates daily"
