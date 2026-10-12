@@ -14,7 +14,7 @@ from fastapi import APIRouter, Body, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnigent.errors import ErrorCode, OmnigentError
-from omnigent.server.auth import AuthProvider
+from omnigent.server.auth import RESERVED_USER_LOCAL, AuthProvider
 from omnigent.server.scheduled.rrule import RRuleValidationError, validate_rrule
 from omnigent.superchat.artifact_kinds import is_deck_name
 from omnigent.superchat.artifacts import (
@@ -95,7 +95,8 @@ def create_live_router(
         if host is None:
             raise OmnigentError("unauthenticated", code=ErrorCode.UNAUTHORIZED)
         service.loop = asyncio.get_running_loop()
-        return host.user_id
+        # Like request_owner: the single local person's rows are stored unowned.
+        return None if host.user_id in (None, RESERVED_USER_LOCAL) else host.user_id
 
     def _describe(item: Artifact) -> dict[str, Any]:
         live = service.live.get(item.parent_session_id, item.name)

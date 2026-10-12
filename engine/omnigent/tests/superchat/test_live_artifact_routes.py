@@ -302,3 +302,26 @@ def test_note_and_start_fresh_routes(env) -> None:
         ).status_code
         == 404
     )
+
+
+def test_the_local_computer_watches_unowned_pages(env) -> None:
+    # Single-user mode: rows are unowned while the Computer's token names the local person.
+    from omnigent.server.auth import RESERVED_USER_LOCAL
+
+    local = {"x-user": RESERVED_USER_LOCAL}
+    page = _page(env, user=None)  # type: ignore[arg-type]
+    body = {"rrule": RRULE, "sources": ["your_files/tea.csv"]}
+    assert env.client.put(f"/v1/artifacts/{page.id}/live", json=body, headers=local).is_success
+
+    class _Hosts:
+        def resolve_launch_token(self, host_id: str, token: str) -> Any:
+            return SimpleNamespace(user_id=RESERVED_USER_LOCAL)
+
+    app = FastAPI()
+    app.include_router(
+        create_live_router(env.service, auth_provider=_Auth(), host_store=lambda: _Hosts()),  # type: ignore[arg-type]
+        prefix="/v1",
+    )
+    client = TestClient(app)
+    watch = client.get("/v1/live/watch", headers={"authorization": "Bearer h1:t"})
+    assert watch.json() == {"paths": ["your_files/tea.csv"]}
