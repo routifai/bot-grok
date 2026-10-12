@@ -89,7 +89,7 @@ function useLiveCard(artifact: Artifact): ArtifactCardParts | null {
       <span
         data-testid="live-badge"
         data-health={health}
-        className={`inline-flex shrink-0 items-center rounded-full bg-popover/85 px-2 py-0.5 text-[11px] font-medium backdrop-blur-sm ${health === "ok" ? "text-foreground" : "text-destructive"}`}
+        className={`inline-flex shrink-0 items-center rounded-full bg-popover/85 px-2 py-0.5 text-[11px] font-medium shadow-xs ring-1 ring-border backdrop-blur-sm ${health === "ok" ? "text-foreground" : "text-destructive"}`}
       >
         {label[health]}
       </span>
