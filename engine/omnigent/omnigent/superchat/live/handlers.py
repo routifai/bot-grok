@@ -11,12 +11,14 @@ from omnigent.superchat.live.tools import (
     HELPER_TOOL_NAMES,
     KEEP_TOOL_NAME,
     SAVE_TOOL_NAME,
+    SETTINGS_TOOL_NAME,
     STOP_TOOL_NAME,
 )
 
 #: ``tool -> (method, path after /live, body keys taken from the arguments)``.
 _CALLS = {
-    KEEP_TOOL_NAME: ("PUT", "", ("rrule", "sources", "tell", "on_change")),
+    KEEP_TOOL_NAME: ("PUT", "", ("rrule", "sources", "tell", "on_change", "note")),
+    SETTINGS_TOOL_NAME: ("GET", "", ()),
     STOP_TOOL_NAME: ("DELETE", "", ()),
     CONTEXT_TOOL_NAME: ("GET", "/context", ()),
     SAVE_TOOL_NAME: ("POST", "/save", ("base_version", "changes", "facts", "sources")),

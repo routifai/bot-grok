@@ -25,7 +25,8 @@ def new_state() -> dict[str, Any]:
     ``{version, applied, suggestions, at}``; ``misses``: runs in a row with unplaced changes;
     ``failures``: failed runs in a row; ``last_failure``: ``{at, reason}`` of the latest;
     ``on_change``: start an update when a source file changes in the Computer (a setting, kept here
-    so the table stays as it is).
+    so the table stays as it is); ``note``: the person's own "what to update" text, read by
+    every run.
     """
     return {
         "written": {},
@@ -38,6 +39,7 @@ def new_state() -> dict[str, Any]:
         "last_failure": None,
         "checked_at": None,
         "on_change": True,
+        "note": "",
     }
 
 

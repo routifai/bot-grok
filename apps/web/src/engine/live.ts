@@ -5,12 +5,15 @@ import {
   acceptOmnigentLive,
   deleteOmnigentLive,
   getOmnigentLive,
+  listOmnigentLivePages,
   type OmnigentLive,
+  type OmnigentLivePage,
   putOmnigentLive,
+  resetOmnigentLive,
   runOmnigentLive,
   undoOmnigentLive,
 } from "@superchat/adapters/omnigent/browser";
-import type { Live } from "@superchat/contracts";
+import type { Live, LivePage } from "@superchat/contracts";
 import { notFound } from "./artifacts";
 import { rruleToSchedule, scheduleToRrule } from "./automations";
 import { engineClient, NO_EMAIL } from "./client";
@@ -23,6 +26,8 @@ export function toLive(live: OmnigentLive): Live {
     sources: live.sources,
     tell: live.tell,
     followPublish: live.follow_publish,
+    onChange: live.on_change,
+    note: live.note,
     checkedAt: live.checked_at,
     openIssue: live.open_issue,
     lastUpdate: live.last_update && {
@@ -34,6 +39,24 @@ export function toLive(live: OmnigentLive): Live {
       })),
       at: live.last_update.at,
     },
+  };
+}
+
+export function toLivePage(page: OmnigentLivePage): LivePage {
+  return {
+    artifactId: page.artifact_id,
+    name: page.name,
+    title: page.title,
+    taskId: page.task_id,
+    schedule: page.rrule ? rruleToSchedule(page.rrule) : null,
+    onChange: page.on_change,
+    sources: page.sources,
+    checkedAt: page.checked_at,
+    failures: page.failures,
+    lastFailure: page.last_failure,
+    paused: page.paused,
+    openIssue: page.open_issue,
+    lastUpdate: page.last_update,
   };
 }
 
@@ -53,12 +76,33 @@ export const liveRouter = {
         ...(input.sources ? { sources: input.sources } : {}),
         ...(input.tell ? { tell: input.tell } : {}),
         ...(input.followPublish === undefined ? {} : { follow_publish: input.followPublish }),
+        ...(input.onChange === undefined ? {} : { on_change: input.onChange }),
+        ...(input.note === undefined ? {} : { note: input.note }),
+      }).catch(notFound);
+      return live && toLive(live);
+    }),
+    pages: os.live.pages.handler(async () =>
+      (await listOmnigentLivePages(engineClient(), NO_EMAIL)).map(toLivePage),
+    ),
+    resume: os.live.resume.handler(async ({ input }) => {
+      const current = await getOmnigentLive(engineClient(), NO_EMAIL, input.artifactId).catch(
+        notFound,
+      );
+      if (!current?.rrule) return current && toLive(current);
+      const live = await putOmnigentLive(engineClient(), NO_EMAIL, input.artifactId, {
+        rrule: current.rrule,
       }).catch(notFound);
       return live && toLive(live);
     }),
     stop: os.live.stop.handler(async ({ input }) => {
       await deleteOmnigentLive(engineClient(), NO_EMAIL, input.artifactId).catch(notFound);
       return ok;
+    }),
+    reset: os.live.reset.handler(async ({ input }) => {
+      const live = await resetOmnigentLive(engineClient(), NO_EMAIL, input.artifactId).catch(
+        notFound,
+      );
+      return live && toLive(live);
     }),
     run: os.live.run.handler(async ({ input }) => {
       await runOmnigentLive(engineClient(), NO_EMAIL, input.artifactId).catch(notFound);

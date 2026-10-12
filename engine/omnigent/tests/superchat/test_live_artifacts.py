@@ -15,7 +15,7 @@ from omnigent.stores.artifact_store.local import LocalArtifactStore
 from omnigent.stores.scheduled_task_store.sqlalchemy_store import SqlAlchemyScheduledTaskStore
 from omnigent.superchat.artifact_kinds import KIND_MIME
 from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore
-from omnigent.superchat.live.service import LiveService
+from omnigent.superchat.live.service import LiveService, task_prompt
 from omnigent.superchat.live.store import SqlAlchemyLiveStore
 
 _SESSION = uuid.uuid4().hex
@@ -302,6 +302,7 @@ def test_tool_schemas_are_valid_json_schema() -> None:
     for tool in (
         tools.KeepUpdatedTool(),
         tools.StopUpdatingTool(),
+        tools.LiveSettingsTool(),
         tools.UpdateContextTool(),
         tools.UpdateSaveTool(),
     ):
@@ -374,3 +375,30 @@ def test_a_paused_page_is_not_started_by_a_change(env) -> None:
 
     asyncio.run(scenario())
     assert fired == []
+
+
+def test_note_is_kept_given_to_runs_and_cleared_by_empty_text(env) -> None:
+    assert env.service.context(_head(env))["note"] == ""
+    _file_page(env, note="  only prices, never the title ")
+    assert env.service.context(_head(env))["note"] == "only prices, never the title"
+    _file_page(env, tell="every")
+    assert env.service.context(_head(env))["note"] == "only prices, never the title"
+    _file_page(env, note="")
+    assert env.service.context(_head(env))["note"] == ""
+    assert "note" in task_prompt("prices.html")
+
+
+def test_start_fresh_forgets_what_updates_wrote_and_keeps_settings(env) -> None:
+    _file_page(env, note="prices only", sources=["your_files/tea.csv"], tell="every")
+    _save(env, [{"id": "btc", "after": "Bitcoin: 120"}])
+    live = env.service.live.get(_SESSION, "prices.html")
+    live.state["rejected"].append(["eth", "x"])
+    live.state["failures"] = 2
+    env.service.live.save(live)
+    env.service.reset(_head(env))
+    live = env.service.live.get(_SESSION, "prices.html")
+    state = live.state
+    assert (state["written"], state["facts"], state["rejected"]) == ({}, {}, [])
+    assert (state["last_update"], state["failures"], state["misses"]) == (None, 0, 0)
+    assert state["note"] == "prices only" and state["on_change"] is True
+    assert live.sources == ["your_files/tea.csv"] and live.tell == "every"

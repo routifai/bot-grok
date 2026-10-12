@@ -32,6 +32,8 @@ export interface OmnigentLive {
   sources: string[];
   tell: OmnigentLiveTell;
   follow_publish: boolean;
+  on_change: boolean;
+  note: string;
   checked_at: number | null;
   open_issue: string | null;
   last_update: {
@@ -47,6 +49,8 @@ export interface OmnigentLiveSettings {
   sources?: string[];
   tell?: OmnigentLiveTell;
   follow_publish?: boolean;
+  on_change?: boolean;
+  note?: string;
 }
 
 function liveUrl(config: OmnigentClientConfig, id: string, suffix = ""): URL {
@@ -116,6 +120,23 @@ export async function deleteOmnigentLive(
   await send(config, email, id, "DELETE", "", "stop live updates");
 }
 
+/** `POST /v1/artifacts/{id}/live/reset` — start fresh; the settings stay. */
+export async function resetOmnigentLive(
+  config: OmnigentClientConfig,
+  email: string,
+  id: string,
+): Promise<OmnigentLive | null> {
+  const body = await send<{ live: OmnigentLive | null }>(
+    config,
+    email,
+    id,
+    "POST",
+    "/reset",
+    "start live page fresh",
+  );
+  return body.live;
+}
+
 /** `POST /v1/artifacts/{id}/live/run` — update now. */
 export async function runOmnigentLive(
   config: OmnigentClientConfig,
@@ -144,4 +165,36 @@ export async function acceptOmnigentLive(
   return send(config, email, id, "POST", "/accept", "accept source value", {
     element_id: elementId,
   });
+}
+
+/** One live page in `GET /v1/me/live-pages`; `artifact_id` is its newest version. Times are epoch
+ * seconds. */
+export interface OmnigentLivePage {
+  artifact_id: string;
+  name: string;
+  title: string | null;
+  parent_session_id: string;
+  task_id: string;
+  rrule: string | null;
+  paused: boolean;
+  on_change: boolean;
+  sources: string[];
+  checked_at: number | null;
+  failures: number;
+  last_failure: { at: number; reason: string } | null;
+  open_issue: string | null;
+  last_update: { version: number | null; at: number | null; changes: number } | null;
+}
+
+/** `GET /v1/me/live-pages` — every live page of the caller, in one call. */
+export async function listOmnigentLivePages(
+  config: OmnigentClientConfig,
+  email: string,
+): Promise<OmnigentLivePage[]> {
+  const response = await fetch(new URL("/v1/me/live-pages", config.baseUrl), {
+    headers: omnigentHeaders(config, email),
+  });
+  await throwOnError(response, "list live pages", config.secrets);
+  const body = (await response.json()) as { pages?: OmnigentLivePage[] };
+  return body.pages ?? [];
 }

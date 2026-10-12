@@ -7,6 +7,7 @@ const api = vi.hoisted(() => ({
   run: vi.fn(),
   undo: vi.fn(),
   accept: vi.fn(),
+  reset: vi.fn(),
 }));
 
 vi.mock("@superchat/adapters/omnigent/browser", async (importOriginal) => ({
@@ -17,6 +18,7 @@ vi.mock("@superchat/adapters/omnigent/browser", async (importOriginal) => ({
   runOmnigentLive: api.run,
   undoOmnigentLive: api.undo,
   acceptOmnigentLive: api.accept,
+  resetOmnigentLive: api.reset,
 }));
 vi.mock("./client", () => ({
   engineClient: () => "client",
@@ -37,6 +39,8 @@ const row = (over: Record<string, unknown> = {}) => ({
   sources: ["https://example.com"],
   tell: "notable",
   follow_publish: true,
+  on_change: true,
+  note: "prices only",
   checked_at: 100,
   open_issue: null,
   last_update: {
@@ -58,11 +62,21 @@ describe("live router", () => {
       schedule: { frequency: "weekly", time: "08:00", weekday: 0 },
       active: true,
       followPublish: true,
+      onChange: true,
+      note: "prices only",
       checkedAt: 100,
       lastUpdate: { suggestions: [{ id: "name", sourceValue: "B", yours: "A" }] },
     });
     api.get.mockResolvedValue(null);
     expect(await call(liveRouter.live.get, { artifactId })).toBeNull();
+  });
+
+  it("starts fresh and keeps the note", async () => {
+    api.reset.mockResolvedValue(row({ last_update: null }));
+    expect(await call(liveRouter.live.reset, { artifactId })).toMatchObject({
+      note: "prices only",
+      lastUpdate: null,
+    });
   });
 
   it("saves the schedule as an RRULE and only the fields given", async () => {

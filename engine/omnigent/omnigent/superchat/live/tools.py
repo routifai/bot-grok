@@ -1,7 +1,7 @@
 """Live artifact tools (schema only; the runner calls the engine's routes).
 
-Super Chat: ``artifact_keep_updated`` / ``artifact_stop_updating``. Helper (the scheduled run):
-``live_update_context`` / ``live_update_save``.
+Super Chat: ``artifact_keep_updated`` / ``artifact_stop_updating`` / ``artifact_live_settings``.
+Helper (the scheduled run): ``live_update_context`` / ``live_update_save``.
 """
 
 from __future__ import annotations
@@ -12,7 +12,8 @@ KEEP_TOOL_NAME = "artifact_keep_updated"
 STOP_TOOL_NAME = "artifact_stop_updating"
 CONTEXT_TOOL_NAME = "live_update_context"
 SAVE_TOOL_NAME = "live_update_save"
-SUPER_CHAT_TOOL_NAMES = (KEEP_TOOL_NAME, STOP_TOOL_NAME)
+SETTINGS_TOOL_NAME = "artifact_live_settings"
+SUPER_CHAT_TOOL_NAMES = (KEEP_TOOL_NAME, STOP_TOOL_NAME, SETTINGS_TOOL_NAME)
 HELPER_TOOL_NAMES = (CONTEXT_TOOL_NAME, SAVE_TOOL_NAME)
 
 _PAGE = {"type": "string", "description": "The page's file name in this chat, e.g. 'prices.html'."}
@@ -52,6 +53,15 @@ class KeepUpdatedTool(ArtifactTool):
                 "Default: true."
             ),
         },
+        "note": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": (
+                "The person's own words on what to update and what to leave alone, e.g. 'only "
+                "prices, never the title'. Every run follows it. Empty text clears it; leave it "
+                "out to keep the current one."
+            ),
+        },
     }
     _REQUIRED = ("name", "rrule")
 
@@ -63,11 +73,22 @@ class StopUpdatingTool(ArtifactTool):
     _REQUIRED = ("name",)
 
 
+class LiveSettingsTool(ArtifactTool):
+    _NAME = SETTINGS_TOOL_NAME
+    _DESC = (
+        "Read how a page is kept updated: schedule, update-on-file-change, sources, note, when "
+        "it tells the person, last run, failures, whether it is paused and the last update. "
+        "Read it before changing a page's setup with artifact_keep_updated."
+    )
+    _PROPERTIES = {"name": _PAGE}
+    _REQUIRED = ("name",)
+
+
 class UpdateContextTool(ArtifactTool):
     _NAME = CONTEXT_TOOL_NAME
     _DESC = (
-        "Start of a live page update: returns the page's sources, the facts read last time, "
-        "the newest version number and the page's HTML source."
+        "Start of a live page update: returns the page's sources, the person's note, the facts "
+        "read last time, the newest version number and the page's HTML source."
     )
     _PROPERTIES = {"name": _PAGE}
     _REQUIRED = ("name",)

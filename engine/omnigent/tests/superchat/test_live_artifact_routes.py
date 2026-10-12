@@ -228,7 +228,9 @@ def test_tools_are_offered_by_role() -> None:
         return [t.name() for t in LIVE_FEATURE.tools(labels, ToolManagerCtx())]
 
     chat = {CONTEXT_MODE_LABEL: SUPERSIDE_CHAT_MODE_VALUE}
-    assert names(chat) == ["artifact_keep_updated", "artifact_stop_updating"]
+    assert names(chat) == [
+        "artifact_keep_updated", "artifact_stop_updating", "artifact_live_settings",
+    ]  # fmt: skip
     assert names({**chat, SUBAGENT_LABEL_KEY: "worker"}) == [
         "live_update_context", "live_update_save",
     ]  # fmt: skip
@@ -276,3 +278,27 @@ def test_on_change_is_a_setting_and_the_computer_routes_need_its_launch_token(en
     body = {"paths": ["your_files/tea.csv"]}
     assert client.post("/v1/live/changed", json=body, headers=good).json() == {"pages": 1}
     assert armed == [(_SESSION, "prices.html")]
+
+
+def test_note_and_start_fresh_routes(env) -> None:
+    page = _page(env)
+    live = _put(env, page.id, note="prices only").json()["live"]
+    assert live["note"] == "prices only"
+    assert _put(env, page.id, note="x" * 1001).status_code == 422
+    base = f"/v1/artifacts/{page.id}/live"
+    ctx = env.client.get(f"{base}/context", headers=ALICE).json()
+    assert ctx["note"] == "prices only"
+    body = {
+        "base_version": 1,
+        "changes": [{"id": "btc", "after": "Bitcoin: 9"}],
+        "facts": {"s": 1},
+    }
+    env.client.post(f"{base}/save", json=body, headers=ALICE)
+    fresh = env.client.post(f"{base}/reset", headers=ALICE).json()["live"]
+    assert fresh["note"] == "prices only" and fresh["last_update"] is None
+    assert (
+        env.client.post(
+            f"/v1/artifacts/{_page(env, 'b.html').id}/live/reset", headers=ALICE
+        ).status_code
+        == 404
+    )

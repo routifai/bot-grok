@@ -29,6 +29,7 @@ RISK: dict[str, str | None] = {
     "artifact_delete": "delete",
     "artifact_keep_updated": None,
     "artifact_list": None,
+    "artifact_live_settings": None,
     "artifact_publish": "post",
     "artifact_save": None,
     "artifact_stop_updating": None,

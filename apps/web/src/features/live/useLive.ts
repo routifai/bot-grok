@@ -12,6 +12,8 @@ export type LiveSettingsInput = {
   schedule: AutomationSchedule;
   sources: string[];
   tell: LiveTell;
+  onChange?: boolean;
+  note?: string;
 };
 
 const CHECK_MS = 3_000;
@@ -84,6 +86,11 @@ export function useLive(artifact: Artifact | undefined) {
       act(async (artifactId) => {
         await rpc.live.stop({ artifactId });
         setLive(null);
+        return true;
+      }),
+    reset: () =>
+      act(async (artifactId) => {
+        setLive(await rpc.live.reset({ artifactId }));
         return true;
       }),
     run: () =>

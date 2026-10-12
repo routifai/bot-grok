@@ -39,6 +39,7 @@ class LiveBody(BaseModel):
     tell: Literal["notable", "every", "never"] | None = None
     follow_publish: bool | None = None
     on_change: bool | None = None
+    note: str | None = Field(default=None, max_length=1000)
 
 
 class ChangedBody(BaseModel):
@@ -74,9 +75,10 @@ def create_live_router(
     """Build the live artifacts router, mounted with ``prefix="/v1"``.
 
     Settings (``GET``/``PUT /artifacts/{id}/live``): ``rrule`` (schedule), ``sources``, ``tell``,
-    ``follow_publish`` and ``on_change`` (default true: also update ~2 minutes after a source file
-    changes in the Computer). The Computer's file watcher uses ``GET /live/watch`` and
-    ``POST /live/changed`` with its launch token (``Authorization: Bearer <host_id>:<token>``).
+    ``follow_publish``, ``note`` (what to update) and ``on_change`` (default true: also update
+    ~2 minutes after a source file changes in the Computer). The Computer's file watcher uses
+    ``GET /live/watch`` and ``POST /live/changed`` with its launch token
+    (``Authorization: Bearer <host_id>:<token>``).
     """
     router = APIRouter()
 
@@ -111,6 +113,7 @@ def create_live_router(
                 "tell": live.tell,
                 "follow_publish": live.follow_publish,
                 "on_change": live.state["on_change"],
+                "note": live.state["note"],
                 **{
                     k: live.state[k]
                     for k in (
@@ -145,6 +148,49 @@ def create_live_router(
             service.arm(key)
         return {"pages": len(keys)}
 
+    def _pages(owner: str | None) -> list[dict[str, Any]]:
+        newest = {
+            (item.parent_session_id, item.name): item
+            for item, _ in service.artifacts.list_latest(user_id=owner, limit=1000)
+        }
+        pages = []
+        for live in service.live.of_user(owner):
+            item = newest.get((live.parent_session_id, live.name))
+            task = service.tasks.get(live.task_id)
+            if item is None:
+                continue
+            state = live.state
+            pages.append(
+                {
+                    "artifact_id": item.id,
+                    "name": item.name,
+                    "title": item.title,
+                    "parent_session_id": live.parent_session_id,
+                    "task_id": live.task_id,
+                    "rrule": task.rrule if task else None,
+                    "paused": task is None or task.state != "active",
+                    "on_change": state["on_change"],
+                    "sources": live.sources,
+                    "checked_at": state["checked_at"],
+                    "failures": state["failures"],
+                    "last_failure": state["last_failure"],
+                    "open_issue": state["open_issue"],
+                    "last_update": state["last_update"]
+                    and {
+                        "version": state["last_update"].get("version"),
+                        "at": state["last_update"].get("at"),
+                        "changes": len(state["last_update"].get("applied") or []),
+                    },
+                }
+            )
+        return pages
+
+    @router.get("/me/live-pages")
+    async def my_live_pages(request: Request) -> dict[str, Any]:
+        """Every live page of the caller in one call (Automations list, Library badges)."""
+        owner = request_owner(request, auth_provider)
+        return {"pages": await asyncio.to_thread(_pages, owner)}
+
     @router.get("/artifacts/{artifact_id}/live")
     async def get_live(request: Request, artifact_id: str) -> dict[str, Any]:
         """The page's live settings and what the last update did, or ``{"live": null}``."""
@@ -169,6 +215,13 @@ def create_live_router(
         """Stop updating: the schedule and the row go, the versions stay."""
         item = await _page(request, artifact_id)
         return {"deleted": await asyncio.to_thread(service.remove, item)}
+
+    @router.post("/artifacts/{artifact_id}/live/reset")
+    async def reset_live(request: Request, artifact_id: str) -> dict[str, Any]:
+        """Start fresh: forget what the updates wrote and declined; keep the settings."""
+        item = await _page(request, artifact_id)
+        await asyncio.to_thread(service.reset, item)
+        return await asyncio.to_thread(_describe, item)
 
     @router.post("/artifacts/{artifact_id}/live/run", status_code=202)
     async def run_live(request: Request, artifact_id: str) -> dict[str, Any]:

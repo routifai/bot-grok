@@ -25,7 +25,7 @@ def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]
     from omnigent.superchat.live import tools
 
     if is_super_chat(labels):
-        return [tools.KeepUpdatedTool(), tools.StopUpdatingTool()]
+        return [tools.KeepUpdatedTool(), tools.StopUpdatingTool(), tools.LiveSettingsTool()]
     if is_helper(labels):
         return [tools.UpdateContextTool(), tools.UpdateSaveTool()]
     return []

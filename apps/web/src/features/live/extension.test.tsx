@@ -30,6 +30,8 @@ const live = {
   sources: [],
   tell: "notable",
   followPublish: false,
+  onChange: true,
+  note: "",
   checkedAt: 100,
   openIssue: "Could not place these changes on the page: x",
   lastUpdate: {
@@ -79,7 +81,7 @@ it("shows the tag, the update bar, a chip that focuses its part, and the open is
   await show(page);
   expect(byTest("live-tag")?.textContent).toBe("Live");
   expect(byTest("live-tag")?.getAttribute("title")).toMatch(/^Updated /);
-  expect(byTest("live-settings")?.textContent).toBe("Updates weekly");
+  expect(byTest("live-settings")?.textContent).toBe("Updates when file changes");
   expect(byTest("live-bar")?.textContent).toContain("1 change");
   expect(byTest("live-suggestion")?.textContent).toContain("Source says B, you wrote A");
   expect(byTest("live-issue")?.textContent).toContain("Could not place");

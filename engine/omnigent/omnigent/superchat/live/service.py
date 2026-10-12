@@ -20,7 +20,7 @@ from omnigent.superchat.artifacts.store import (
     VersionConflictError,
 )
 from omnigent.superchat.live.logic import Plan, plan_changes
-from omnigent.superchat.live.store import Live, SqlAlchemyLiveStore
+from omnigent.superchat.live.store import Live, SqlAlchemyLiveStore, new_state
 
 LIVE_TASK_KIND = "live_artifact"
 #: A hand edit this recent holds the next run back: the person is still working on the page.
@@ -31,6 +31,19 @@ MAX_MISSES = 2
 MAX_FAILURES = 3
 #: A source file must stay quiet this long before its page updates (a burst of saves is one run).
 CHANGE_DEBOUNCE_SECONDS = 120.0
+
+
+#: State an update remembers (the rest, sources, schedule and note, is the person's settings).
+_FORGOTTEN = (
+    "written",
+    "facts",
+    "rejected",
+    "last_update",
+    "open_issue",
+    "misses",
+    "failures",
+    "last_failure",
+)
 
 
 def task_prompt(name: str) -> str:
@@ -46,6 +59,8 @@ def task_prompt(name: str) -> str:
         "If it says the page changed, start again at step 1.\n"
         "4. End with a one-line Result that follows the tell rule live_update_save returned and "
         "names each change as what it is, before → after ('Saffron chai $18.25 → $19.50').\n"
+        "Also follow the `note` live_update_context returned: it is the person's own words on "
+        "what to update and what to leave alone, and it wins over your own judgment.\n"
         "If you cannot finish, say why in the Result and add that the page stays as it is until "
         "the next run: the update is yours, nobody should redo it by hand or in chat."
     )
@@ -101,6 +116,7 @@ class LiveService:
         tell: str | None = None,
         follow_publish: bool | None = None,
         on_change: bool | None = None,
+        note: str | None = None,
     ) -> Live:
         """Make the page live, or change its schedule; setting it again resumes a paused one."""
         live = self.live.get(item.parent_session_id, item.name)
@@ -134,6 +150,8 @@ class LiveService:
         live.follow_publish = live.follow_publish if follow_publish is None else follow_publish
         if on_change is not None:
             live.state["on_change"] = on_change
+        if note is not None:
+            live.state["note"] = note.strip()
         live.state.update(misses=0, open_issue=None, failures=0, last_failure=None)
         self.live.save(live)
         return live
@@ -148,6 +166,14 @@ class LiveService:
         self._on_scheduler(lambda scheduler: scheduler.remove(task_id))
         self.live.delete(item.parent_session_id, item.name)
         return True
+
+    def reset(self, item: Artifact) -> Live:
+        """Start fresh: forget what the updates wrote and declined, keep the settings."""
+        live, _ = self.need(item)
+        fresh = new_state()
+        live.state.update({k: fresh[k] for k in _FORGOTTEN})
+        self.live.save(live)
+        return live
 
     def watched(self, user_id: str | None) -> list[str]:
         """File paths whose change starts an update (what the Computer polls)."""
@@ -241,6 +267,7 @@ class LiveService:
         return {
             "sources": live.sources,
             "facts": live.state["facts"],
+            "note": live.state["note"],
             "version": head.version,
             "source": self.artifacts.read(head).decode("utf-8", "replace"),
         }

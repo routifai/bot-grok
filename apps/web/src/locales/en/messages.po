@@ -136,6 +136,9 @@ msgstr "••••{hint} · Needs attention"
 msgid "1 cell"
 msgstr "1 cell"
 
+msgid "A file below changes"
+msgstr "A file below changes"
+
 msgid "About you"
 msgstr "About you"
 
@@ -145,14 +148,14 @@ msgstr "Account"
 msgid "Activity"
 msgstr "Activity"
 
+msgid "Add a file"
+msgstr "Add a file"
+
 msgid "Add a key in Settings to choose a model."
 msgstr "Add a key in Settings to choose a model."
 
 msgid "Add a key to choose a model."
 msgstr "Add a key to choose a model."
-
-msgid "Add a source"
-msgstr "Add a source"
 
 msgid "Add key"
 msgstr "Add key"
@@ -213,6 +216,9 @@ msgstr "Always allow this tool"
 
 msgid "Always allowed"
 msgstr "Always allowed"
+
+msgid "And every"
+msgstr "And every"
 
 msgid "Answer"
 msgstr "Answer"
@@ -417,9 +423,6 @@ msgstr "Chats"
 
 msgid "Checking…"
 msgstr "Checking…"
-
-msgid "Checks"
-msgstr "Checks"
 
 msgid "Choose where this chat works"
 msgstr "Choose where this chat works"
@@ -670,6 +673,9 @@ msgstr "Dashboard"
 msgid "Dashboard unavailable"
 msgstr "Dashboard unavailable"
 
+msgid "Day"
+msgstr "Day"
+
 msgid "Day of the month"
 msgstr "Day of the month"
 
@@ -772,6 +778,9 @@ msgstr "Download {title}"
 msgid "Duplicate"
 msgstr "Duplicate"
 
+msgid "e.g. only the prices; leave the title as it is"
+msgstr "e.g. only the prices; leave the title as it is"
+
 msgid "Earlier"
 msgstr "Earlier"
 
@@ -855,8 +864,14 @@ msgstr "Failed."
 msgid "File"
 msgstr "File"
 
+msgid "File in your Computer"
+msgstr "File in your Computer"
+
 msgid "Files"
 msgstr "Files"
+
+msgid "Files it reads"
+msgstr "Files it reads"
 
 msgid "Fill"
 msgstr "Fill"
@@ -1139,6 +1154,9 @@ msgstr "Model for this chat"
 
 msgid "Models"
 msgstr "Models"
+
+msgid "Month"
+msgstr "Month"
 
 msgid "Monthly"
 msgstr "Monthly"
@@ -1526,15 +1544,15 @@ msgstr "Remove"
 msgid "Remove {0}"
 msgstr "Remove {0}"
 
+msgid "Remove file"
+msgstr "Remove file"
+
 #. placeholder {0}: folder || t`Whole workspace`
 msgid "Remove folder {0}"
 msgstr "Remove folder {0}"
 
 msgid "Remove selection"
 msgstr "Remove selection"
-
-msgid "Remove source"
-msgstr "Remove source"
 
 msgid "Repeat"
 msgstr "Repeat"
@@ -1811,6 +1829,9 @@ msgstr "Spacing"
 msgid "Spent this month"
 msgstr "Spent this month"
 
+msgid "Start fresh"
+msgstr "Start fresh"
+
 #. placeholder {0}: botDisplayName ?? "superchat"
 msgid "Start it, and {0} works on it in the background."
 msgstr "Start it, and {0} works on it in the background."
@@ -1826,6 +1847,9 @@ msgstr "Starting the Computer…"
 
 msgid "Starting your Computer…"
 msgstr "Starting your Computer…"
+
+msgid "Starts fresh at the next update"
+msgstr "Starts fresh at the next update"
 
 msgid "Status"
 msgstr "Status"
@@ -2008,6 +2032,9 @@ msgstr "Unsupported file type: {0}"
 msgid "Update now"
 msgstr "Update now"
 
+msgid "Update when"
+msgstr "Update when"
+
 msgid "updated"
 msgstr "updated"
 
@@ -2043,6 +2070,9 @@ msgstr "Updates on a schedule"
 
 msgid "Updates weekly"
 msgstr "Updates weekly"
+
+msgid "Updates when file changes"
+msgstr "Updates when file changes"
 
 msgid "Upload"
 msgstr "Upload"
@@ -2107,8 +2137,8 @@ msgstr "Wait for superchat to finish, then clear."
 msgid "Waiting on you"
 msgstr "Waiting on you"
 
-msgid "Web address or file path"
-msgstr "Web address or file path"
+msgid "Week"
+msgstr "Week"
 
 msgid "Weekly"
 msgstr "Weekly"
@@ -2136,6 +2166,9 @@ msgstr "What I do on my own, in the background."
 
 msgid "What should superchat do?"
 msgstr "What should superchat do?"
+
+msgid "What to update"
+msgstr "What to update"
 
 msgid "What we talked about"
 msgstr "What we talked about"
