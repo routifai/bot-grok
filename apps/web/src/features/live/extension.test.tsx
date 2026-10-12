@@ -83,6 +83,7 @@ it("shows the tag, the update bar, a chip that focuses its part, and the open is
   expect(byTest("live-bar")?.textContent).toContain("1 change");
   expect(byTest("live-suggestion")?.textContent).toContain("Source says B, you wrote A");
   expect(byTest("live-issue")?.textContent).toContain("Could not place");
+  expect(byTest("live-chip")?.textContent).toBe("1 → 2");
   await act(async () => byTest("live-chip")?.click());
   expect(focus).toHaveBeenCalledWith(artifactKey(page), "total");
 });

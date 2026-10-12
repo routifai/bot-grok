@@ -12,10 +12,10 @@ export const whenText = (epochSeconds: number): string =>
     minute: "2-digit",
   });
 
-/** "total-revenue" -> "Total revenue". */
-const humanize = (id: string) => {
-  const words = id.replace(/[-_]+/g, " ").trim();
-  return words ? words.charAt(0).toUpperCase() + words.slice(1) : id;
+/** A changed value as a chip shows it: short, one line. */
+const clip = (text: string) => {
+  const one = text.replace(/\s+/g, " ").trim();
+  return one.length > 24 ? `${one.slice(0, 23)}…` : one;
 };
 
 /**
@@ -64,7 +64,7 @@ export function LiveBar({
                 onClick={() => onPick(change.id)}
                 className="rounded-full bg-accent px-2 py-0.5 text-[12px] text-foreground outline-none hover:bg-accent/70 focus-visible:ring-2 focus-visible:ring-ring"
               >
-                {humanize(change.id)}
+                {`${clip(change.before)} → ${clip(change.after)}`}
               </button>
             ))}
           </span>

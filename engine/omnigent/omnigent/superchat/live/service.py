@@ -40,7 +40,8 @@ def task_prompt(name: str) -> str:
         "3. Call live_update_save once with only the facts that differ from what the page shows "
         "(element id, new text, source) and the facts you read; no changes when nothing differs. "
         "If it says the page changed, start again at step 1.\n"
-        "4. End with a one-line Result that follows the tell rule live_update_save returned.\n"
+        "4. End with a one-line Result that follows the tell rule live_update_save returned and "
+        "names each change as what it is, before → after ('Saffron chai $18.25 → $19.50').\n"
         "If you cannot finish, say why in the Result and add that the page stays as it is until "
         "the next run: the update is yours, nobody should redo it by hand or in chat."
     )
@@ -112,7 +113,9 @@ class LiveService:
                 kind=LIVE_TASK_KIND,
             )
         else:
-            task = self.tasks.update(task.id, rrule=rrule, state="active")
+            task = self.tasks.update(
+                task.id, rrule=rrule, state="active", prompt=task_prompt(item.name)
+            )
         self._sync(task)
         live = live or Live(item.parent_session_id, item.name, item.user_id, task.id)
         live.task_id = task.id
