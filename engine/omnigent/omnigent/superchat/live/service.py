@@ -5,6 +5,7 @@ Blocking: callers run them in a thread. Rules: ``docs/live-artifacts.md``.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import Callable
 from typing import Any
@@ -65,9 +66,19 @@ class LiveService:
         self.conversations = conversations
         self._scheduler = scheduler
 
+    #: The server's event loop, noted by the routes: the scheduler's timers live on it, and the
+    #: service runs in worker threads.
+    loop: asyncio.AbstractEventLoop | None = None
+
+    def _on_scheduler(self, call: Callable[[Any], None]) -> None:
+        """Run ``call(scheduler)`` on the event loop. Skipped without one: the fire path re-reads
+        the task, so a stale timer never runs a paused or deleted task."""
+        if (scheduler := self._scheduler()) is None or self.loop is None:
+            return
+        self.loop.call_soon_threadsafe(call, scheduler)
+
     def _sync(self, task: Any) -> None:
-        if (scheduler := self._scheduler()) is not None:
-            scheduler.update(task)
+        self._on_scheduler(lambda scheduler: scheduler.update(task))
 
     def upsert(
         self,
@@ -116,8 +127,8 @@ class LiveService:
         if live is None:
             return False
         self.tasks.delete(live.task_id)
-        if (scheduler := self._scheduler()) is not None:
-            scheduler.remove(live.task_id)
+        task_id = live.task_id
+        self._on_scheduler(lambda scheduler: scheduler.remove(task_id))
         self.live.delete(item.parent_session_id, item.name)
         return True
 

@@ -56,6 +56,8 @@ def env(db_uri: str, tmp_path: Path):
     service = LiveService(
         artifacts, SqlAlchemyLiveStore(db_uri), tasks, _Convs(), lambda: scheduler
     )
+    # The routes note the server loop; here scheduler calls run at once.
+    service.loop = SimpleNamespace(call_soon_threadsafe=lambda call, *args: call(*args))
     first = artifacts.create(
         user_id=None, parent_session_id=_SESSION, name="prices.html", title="Prices",
         kind="html", mime=KIND_MIME["html"], data=PAGE, source_path="/ws/prices.html",

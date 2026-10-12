@@ -83,6 +83,7 @@ def create_live_router(
         }
 
     async def _page(request: Request, artifact_id: str) -> Artifact:
+        service.loop = asyncio.get_running_loop()
         return await load_artifact(
             service.artifacts, request_owner(request, auth_provider), artifact_id
         )

@@ -107,6 +107,7 @@ function SettingsForm({
         <div className="flex gap-2">
           {schedule.frequency === "weekly" ? (
             <NativeSelect
+              className="shrink-0"
               aria-label={t`Day of the week`}
               value={schedule.weekday ?? 0}
               onChange={(event) =>
@@ -122,6 +123,7 @@ function SettingsForm({
           ) : null}
           {schedule.frequency === "monthly" ? (
             <NativeSelect
+              className="shrink-0"
               aria-label={t`Day of the month`}
               value={schedule.monthDay ?? 1}
               onChange={(event) =>
@@ -136,6 +138,7 @@ function SettingsForm({
             </NativeSelect>
           ) : null}
           <Input
+            className="min-w-0 flex-1"
             type="time"
             aria-label={t`Time`}
             value={schedule.time}
