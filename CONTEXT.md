@@ -84,6 +84,18 @@ _Avoid_: macro, recording, playbook
 Everything the Muse has made for the person (pages, documents, files), from the Conversation and every Goal log, in one place, with the Skills it has kept.
 _Avoid_: files, artifacts, attachments, gallery
 
+**Automation**:
+Work the Muse does on its own, on a schedule the person set or when a file it watches changes, without being asked each time. Each run is done by a Helper and reported as an Activity.
+_Avoid_: job, cron, scheduled task, routine
+
+**Live page**:
+A page in the Library that keeps itself up to date: an Automation re-reads the page's Sources and changes only the parts that show their facts, following the person's own note on what to update. Shown as "Live"; turned on with "Keep updated". The person can change, reset, or stop it from the page or by asking the Muse.
+_Avoid_: live artifact, auto-update, refreshing page
+
+**Live sheet**:
+A sheet in the Library kept up to date the same way as a Live page: its Automation changes only the cells that show its Sources' facts and leaves the person's own cells alone.
+_Avoid_: live spreadsheet, auto-sheet
+
 **Check-in**:
 A scheduled moment when the Muse reaches out about a Goal (a short nudge or question) without doing work on it. Set per Goal, e.g. "weekdays 07:30".
 _Avoid_: reminder, ping, status update
@@ -95,6 +107,10 @@ _Avoid_: autonomy level, frequency, aggressiveness
 ## Relationships
 
 - A person has exactly one **Muse**
+- A **Live page** is exactly one **Automation**, whose job is updating that one page
+- Every **Automation** a person has, **Live pages** included, is listed in one place with how its last run went
+- Several **Automations** may run at once while the **Computer** has room; one that is due is queued, never skipped, and the **Conversation** always goes first
+- A failed run shows where the **Automation** is listed; after three failed runs in a row it pauses and says why in the **Conversation**, once
 - A **Muse** starts zero or more **Helpers**; a **Helper** belongs to exactly one **Muse** and never outlives the work it was started for
 - A person has zero or more **Goals**; each **Goal** has an ordered plan of one or more **Tasks**
 - A **Task** belongs to exactly one **Goal**; there are no standalone **Tasks**
