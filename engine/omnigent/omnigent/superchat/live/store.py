@@ -23,7 +23,9 @@ def new_state() -> dict[str, Any]:
     ``written``: ``{element id: text the last update wrote}``; ``rejected``: ``[[id, value]]``
     the person undid; ``facts``: what the sources said last time; ``last_update``:
     ``{version, applied, suggestions, at}``; ``misses``: runs in a row with unplaced changes;
-    ``failures``: failed runs in a row; ``last_failure``: ``{at, reason}`` of the latest.
+    ``failures``: failed runs in a row; ``last_failure``: ``{at, reason}`` of the latest;
+    ``on_change``: start an update when a source file changes in the Computer (a setting, kept here
+    so the table stays as it is).
     """
     return {
         "written": {},
@@ -35,6 +37,7 @@ def new_state() -> dict[str, Any]:
         "failures": 0,
         "last_failure": None,
         "checked_at": None,
+        "on_change": True,
     }
 
 
@@ -90,6 +93,17 @@ class SqlAlchemyLiveStore:
                 )
             ).scalar_one_or_none()
             return _to_entity(row) if row is not None else None
+
+    def of_user(self, user_id: str | None) -> list[Live]:
+        """Every live page of one owner."""
+        with self._session("select_artifact_live_of_user") as session:
+            rows = session.execute(
+                select(SqlArtifactLive).where(
+                    SqlArtifactLive.workspace_id == current_workspace_id(),
+                    SqlArtifactLive.user_id == user_id,
+                )
+            ).scalars()
+            return [_to_entity(row) for row in rows]
 
     def save(self, live: Live) -> None:
         """Insert or replace the row."""

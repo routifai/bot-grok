@@ -7,6 +7,7 @@ owner's rows 404); in single-user mode the rows are unowned and so is the lookup
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Body, Request
@@ -37,6 +38,13 @@ class LiveBody(BaseModel):
     sources: Sources | None = None
     tell: Literal["notable", "every", "never"] | None = None
     follow_publish: bool | None = None
+    on_change: bool | None = None
+
+
+class ChangedBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    paths: Sources
 
 
 class Change(BaseModel):
@@ -58,10 +66,34 @@ class SaveBody(BaseModel):
 
 
 def create_live_router(
-    service: LiveService, *, auth_provider: AuthProvider | None = None
+    service: LiveService,
+    *,
+    auth_provider: AuthProvider | None = None,
+    host_store: Callable[[], Any] | None = None,
 ) -> APIRouter:
-    """Build the live artifacts router, mounted with ``prefix="/v1"``."""
+    """Build the live artifacts router, mounted with ``prefix="/v1"``.
+
+    Settings (``GET``/``PUT /artifacts/{id}/live``): ``rrule`` (schedule), ``sources``, ``tell``,
+    ``follow_publish`` and ``on_change`` (default true: also update ~2 minutes after a source file
+    changes in the Computer). The Computer's file watcher uses ``GET /live/watch`` and
+    ``POST /live/changed`` with its launch token (``Authorization: Bearer <host_id>:<token>``).
+    """
     router = APIRouter()
+
+    async def _computer_owner(request: Request) -> str | None:
+        """The owner of the Computer whose launch token the request carries (else 401)."""
+        auth = request.headers.get("authorization", "")
+        host_id, _, token = (auth[7:] if auth.lower().startswith("bearer ") else "").partition(":")
+        store = host_store() if host_store else None
+        host = (
+            await asyncio.to_thread(store.resolve_launch_token, host_id, token.strip())
+            if host_id and token and store
+            else None
+        )
+        if host is None:
+            raise OmnigentError("unauthenticated", code=ErrorCode.UNAUTHORIZED)
+        service.loop = asyncio.get_running_loop()
+        return host.user_id
 
     def _describe(item: Artifact) -> dict[str, Any]:
         live = service.live.get(item.parent_session_id, item.name)
@@ -78,6 +110,7 @@ def create_live_router(
                 "sources": live.sources,
                 "tell": live.tell,
                 "follow_publish": live.follow_publish,
+                "on_change": live.state["on_change"],
                 **{
                     k: live.state[k]
                     for k in (
@@ -96,6 +129,21 @@ def create_live_router(
         return await load_artifact(
             service.artifacts, request_owner(request, auth_provider), artifact_id
         )
+
+    @router.get("/live/watch")
+    async def live_watch(request: Request) -> dict[str, Any]:
+        """File paths to watch: sources of this owner's pages that update on change."""
+        owner = await _computer_owner(request)
+        return {"paths": await asyncio.to_thread(service.watched, owner)}
+
+    @router.post("/live/changed", status_code=202)
+    async def live_changed(request: Request, body: ChangedBody) -> dict[str, Any]:
+        """Source files changed: start each affected page's update after the debounce."""
+        owner = await _computer_owner(request)
+        keys = await asyncio.to_thread(service.changed, owner, body.paths)
+        for key in keys:
+            service.arm(key)
+        return {"pages": len(keys)}
 
     @router.get("/artifacts/{artifact_id}/live")
     async def get_live(request: Request, artifact_id: str) -> dict[str, Any]:

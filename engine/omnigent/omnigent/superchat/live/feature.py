@@ -49,10 +49,13 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
         deps.conversation_store,
         lambda: getattr(app.state, "scheduled_task_scheduler", None),
     )
+    service.run_now = lambda: getattr(app.state, "scheduled_task_run_now", None)
     register_fire_deferral(LIVE_TASK_KIND, service.defer_until)
     register_run_outcome(LIVE_TASK_KIND, service.on_run_outcome)
     ON_GROUP_DELETED["live"] = service.remove
-    router = create_live_router(service, auth_provider=deps.auth_provider)
+    router = create_live_router(
+        service, auth_provider=deps.auth_provider, host_store=lambda: app.state.host_store
+    )
     app.include_router(router, prefix="/v1", tags=["artifacts"])
 
 

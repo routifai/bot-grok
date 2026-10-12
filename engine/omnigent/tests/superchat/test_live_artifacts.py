@@ -306,3 +306,71 @@ def test_tool_schemas_are_valid_json_schema() -> None:
         tools.UpdateSaveTool(),
     ):
         Draft202012Validator.check_schema(tool.get_schema()["function"]["parameters"])
+
+
+def _file_page(env: Any, **kw: Any) -> None:
+    env.service.upsert(env.first, rrule="FREQ=DAILY;BYHOUR=8;BYMINUTE=0", **kw)
+
+
+def test_watched_lists_file_sources_of_pages_that_update_on_change(env) -> None:
+    _file_page(env, sources=["https://example.com", "your_files/tea.csv"])
+    assert env.service.watched(None) == ["your_files/tea.csv"]
+    _file_page(env, on_change=False)
+    assert env.service.watched(None) == []
+    assert env.service.changed(None, ["your_files/tea.csv"]) == []
+
+
+def test_changed_matches_sources_and_ignores_the_pages_own_file(env) -> None:
+    _file_page(env, sources=["your_files/tea.csv", "out/prices.html"])
+    key = (_SESSION, "prices.html")
+    assert env.service.changed(None, ["your_files/tea.csv"]) == [key]
+    assert env.service.changed(None, ["out/prices.html"]) == []
+    assert env.service.changed(None, ["other.csv"]) == []
+
+
+def test_a_burst_of_changes_is_one_run_and_a_running_page_is_looked_at_again(env) -> None:
+    import asyncio
+
+    _file_page(env, sources=["your_files/tea.csv"])
+    task = env.service.tasks.get(env.service.live.get(_SESSION, "prices.html").task_id)
+    fired: list[str] = []
+    answers = [False, True]  # the first start finds a run going
+
+    async def run_now(_workspace: int, task_id: str) -> bool:
+        fired.append(task_id)
+        return answers.pop(0)
+
+    async def scenario() -> None:
+        env.service.loop = asyncio.get_running_loop()
+        env.service.run_now = lambda: run_now
+        env.service.debounce = 0.05
+        key = (_SESSION, "prices.html")
+        for _ in range(3):
+            env.service.arm(key)
+            await asyncio.sleep(0.02)
+        await asyncio.sleep(0.03)
+        assert fired == []  # still inside the debounce
+        await asyncio.sleep(0.15)
+        assert fired == [task.id, task.id]  # one run, tried again once it was free
+
+    asyncio.run(scenario())
+
+
+def test_a_paused_page_is_not_started_by_a_change(env) -> None:
+    import asyncio
+
+    _file_page(env, sources=["your_files/tea.csv"])
+    live = env.service.live.get(_SESSION, "prices.html")
+    env.service.tasks.update(live.task_id, state="paused")
+    fired: list[str] = []
+
+    async def run_now(_workspace: int, task_id: str) -> bool:
+        fired.append(task_id)
+        return True
+
+    async def scenario() -> None:
+        env.service.run_now = lambda: run_now
+        await env.service._fire((_SESSION, "prices.html"))
+
+    asyncio.run(scenario())
+    assert fired == []

@@ -16,7 +16,7 @@ from omnigent.superchat.live.tools import (
 
 #: ``tool -> (method, path after /live, body keys taken from the arguments)``.
 _CALLS = {
-    KEEP_TOOL_NAME: ("PUT", "", ("rrule", "sources", "tell")),
+    KEEP_TOOL_NAME: ("PUT", "", ("rrule", "sources", "tell", "on_change")),
     STOP_TOOL_NAME: ("DELETE", "", ()),
     CONTEXT_TOOL_NAME: ("GET", "/context", ()),
     SAVE_TOOL_NAME: ("POST", "/save", ("base_version", "changes", "facts", "sources")),

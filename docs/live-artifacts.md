@@ -8,7 +8,10 @@ Terms are in `CONTEXT.md` (Automation, Live page, Live sheet).
 
 - Trigger: a source file changing in the Computer (debounced ~2 minutes), the schedule as a safety
   net (`kind="live_artifact"` scheduled task, parent = the page's chat, Helper type `worker`), and
-  "Update now".
+  "Update now". The Computer polls the modified time of the sources of live pages (every ~30 s,
+  `runner/live/`, nothing is seen while it sleeps) and reports changes to the engine, which debounces
+  per page and starts the run; a run already going is looked at again after another debounce.
+  `on_change` (default true) turns it off per page.
 - Sources: files in the person's Computer for now (no web). If none are given, the first run
   infers them from the page and the chat and saves them.
 - An update works on the newest version and changes facts by `data-superchat-id` only

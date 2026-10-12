@@ -45,6 +45,13 @@ class KeepUpdatedTool(ArtifactTool):
             "enum": ["notable", "every", "never"],
             "description": "When a run is worth telling the person. Default: notable.",
         },
+        "on_change": {
+            "type": "boolean",
+            "description": (
+                "Also update a couple of minutes after a source file changes in the Computer. "
+                "Default: true."
+            ),
+        },
     }
     _REQUIRED = ("name", "rrule")
 

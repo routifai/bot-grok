@@ -243,3 +243,36 @@ def test_deleting_the_page_drops_its_live_row_and_task(env, monkeypatch) -> None
     assert env.client.delete(f"/v1/artifacts/{page.id}", headers=ALICE).status_code == 200
     assert env.service.live.get(_SESSION, "prices.html") is None
     assert env.service.tasks.get(task_id) is None
+
+
+def test_on_change_is_a_setting_and_the_computer_routes_need_its_launch_token(env) -> None:
+    page = _page(env)
+    live = _put(env, page.id, sources=["your_files/tea.csv"]).json()["live"]
+    assert live["on_change"] is True
+    assert _put(env, page.id, on_change=False).json()["live"]["on_change"] is False
+    assert _put(env, page.id, on_change=True).json()["live"]["on_change"] is True
+
+    app = FastAPI()
+    seen: list[tuple[str, str]] = []
+
+    class _Hosts:
+        def resolve_launch_token(self, host_id: str, token: str) -> Any:
+            seen.append((host_id, token))
+            return SimpleNamespace(user_id="alice") if token == "good" else None
+
+    app.include_router(
+        create_live_router(env.service, auth_provider=_Auth(), host_store=lambda: _Hosts()),  # type: ignore[arg-type]
+        prefix="/v1",
+    )
+    client = TestClient(app, raise_server_exceptions=False)
+    good = {"authorization": "Bearer h1:good"}
+    assert (
+        client.get("/v1/live/watch", headers={"authorization": "Bearer h1:bad"}).status_code != 200
+    )
+    assert client.get("/v1/live/watch").status_code != 200
+    assert client.get("/v1/live/watch", headers=good).json() == {"paths": ["your_files/tea.csv"]}
+    armed: list[tuple[str, str]] = []
+    env.service.arm = armed.append  # type: ignore[method-assign]
+    body = {"paths": ["your_files/tea.csv"]}
+    assert client.post("/v1/live/changed", json=body, headers=good).json() == {"pages": 1}
+    assert armed == [(_SESSION, "prices.html")]

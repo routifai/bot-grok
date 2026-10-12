@@ -29,6 +29,8 @@ DEFER_SECONDS = 600
 MAX_MISSES = 2
 #: Failed runs in a row before the schedule pauses.
 MAX_FAILURES = 3
+#: A source file must stay quiet this long before its page updates (a burst of saves is one run).
+CHANGE_DEBOUNCE_SECONDS = 120.0
 
 
 def task_prompt(name: str) -> str:
@@ -70,6 +72,11 @@ class LiveService:
         self.tasks = tasks
         self.conversations = conversations
         self._scheduler = scheduler
+        #: Returns the scheduler's ``run_now(workspace_id, task_id)``, or ``None``.
+        self.run_now: Callable[[], Any | None] = lambda: None
+        self.debounce = CHANGE_DEBOUNCE_SECONDS
+        self._timers: dict[tuple[str, str], asyncio.TimerHandle] = {}
+        self._fires: set[asyncio.Task[None]] = set()
 
     #: The server's event loop, noted by the routes: the scheduler's timers live on it, and the
     #: service runs in worker threads.
@@ -93,6 +100,7 @@ class LiveService:
         sources: list[str] | None = None,
         tell: str | None = None,
         follow_publish: bool | None = None,
+        on_change: bool | None = None,
     ) -> Live:
         """Make the page live, or change its schedule; setting it again resumes a paused one."""
         live = self.live.get(item.parent_session_id, item.name)
@@ -124,6 +132,8 @@ class LiveService:
         live.sources = live.sources if sources is None else sources
         live.tell = tell or live.tell
         live.follow_publish = live.follow_publish if follow_publish is None else follow_publish
+        if on_change is not None:
+            live.state["on_change"] = on_change
         live.state.update(misses=0, open_issue=None, failures=0, last_failure=None)
         self.live.save(live)
         return live
@@ -138,6 +148,48 @@ class LiveService:
         self._on_scheduler(lambda scheduler: scheduler.remove(task_id))
         self.live.delete(item.parent_session_id, item.name)
         return True
+
+    def watched(self, user_id: str | None) -> list[str]:
+        """File paths whose change starts an update (what the Computer polls)."""
+        lives = self.live.of_user(user_id)
+        return sorted(
+            {s for v in lives if v.state["on_change"] for s in v.sources if "://" not in s}
+        )
+
+    def changed(self, user_id: str | None, paths: list[str]) -> list[tuple[str, str]]:
+        """Pages to update because a source in ``paths`` changed (never the page's own file)."""
+        hit = set(paths)
+        return [
+            (v.parent_session_id, v.name)
+            for v in self.live.of_user(user_id)
+            if v.state["on_change"]
+            and hit & {s for s in v.sources if s.rsplit("/", 1)[-1] != v.name}
+        ]
+
+    def arm(self, key: tuple[str, str]) -> None:
+        """(Re)start the page's debounce on the event loop; at the end its update starts."""
+        loop = self.loop
+        if loop is None:
+            return
+        if (old := self._timers.pop(key, None)) is not None:
+            old.cancel()
+        self._timers[key] = loop.call_later(self.debounce, self._spawn, key)
+
+    def _spawn(self, key: tuple[str, str]) -> None:
+        self._timers.pop(key, None)
+        task = asyncio.ensure_future(self._fire(key))
+        self._fires.add(task)
+        task.add_done_callback(self._fires.discard)
+
+    async def _fire(self, key: tuple[str, str]) -> None:
+        """Start the update; if one is running, look again after another debounce."""
+        live = await asyncio.to_thread(self.live.get, *key)
+        task = await asyncio.to_thread(self.tasks.get, live.task_id) if live else None
+        run_now = self.run_now()
+        if live is None or task is None or task.state != "active" or run_now is None:
+            return
+        if not await run_now(task.workspace_id, task.id):
+            self.arm(key)
 
     def defer_until(self, task: Any) -> float | None:
         """The fire path's hook: a recent hand edit holds the run back until it is old enough."""
