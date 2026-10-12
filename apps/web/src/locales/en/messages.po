@@ -1088,10 +1088,6 @@ msgstr "List"
 msgid "Live"
 msgstr "Live"
 
-#. placeholder {0}: whenText(updatedAt)
-msgid "Live · updated {0}"
-msgstr "Live · updated {0}"
-
 msgid "Load earlier"
 msgstr "Load earlier"
 
@@ -2024,6 +2020,7 @@ msgid "Updated · version {0}"
 msgstr "Updated · version {0}"
 
 #. placeholder {0}: whenText(update.at)
+#. placeholder {0}: whenText(updatedAt)
 msgid "Updated {0}"
 msgstr "Updated {0}"
 

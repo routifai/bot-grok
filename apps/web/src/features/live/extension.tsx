@@ -36,8 +36,12 @@ function useLivePanel({ artifact }: ArtifactPanelArgs): ArtifactPanelParts {
   const updatedAt = live?.lastUpdate?.at ?? live?.checkedAt;
   return {
     badge: live ? (
-      <span data-testid="live-tag" className="shrink-0 text-[12px] text-muted-foreground">
-        {updatedAt ? t`Live · updated ${whenText(updatedAt)}` : t`Live`}
+      <span
+        data-testid="live-tag"
+        className="shrink-0 text-[12px] text-muted-foreground"
+        title={updatedAt ? t`Updated ${whenText(updatedAt)}` : undefined}
+      >
+        {t`Live`}
       </span>
     ) : null,
     actions: <LiveSettings api={api} live={live} />,

@@ -194,6 +194,12 @@ Rollover), followed by the most recent turns verbatim.
   as options before creating anything: holidays or "business days", "every other X" with no
   start date, an hour with no am/pm unless it is 7 to 11 (morning), "end of month", "mornings",
   "twice a week" with no days. A clear timing ("every Monday at 9") needs no question.
+- A page the person wants kept up to date ("update this every Monday") uses
+  `artifact_keep_updated`, not a plain scheduled task: its runs change only the page's source facts
+  and never the person's own edits.
+- A scheduled run's result (it starts with `Automation "…":`) is final. Pass it on in one line
+  when it is worth telling, or say nothing. Never check it again, redo it, start a Helper for it or
+  save the file yourself; if it failed, say so and that it will try again at the next run.
 
 ## Projects
 

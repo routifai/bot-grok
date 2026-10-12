@@ -77,7 +77,8 @@ it("shows the tag, the update bar, a chip that focuses its part, and the open is
   api.get.mockResolvedValue(live);
   const focus = vi.spyOn(state, "focusArtifactPart");
   await show(page);
-  expect(byTest("live-tag")?.textContent).toMatch(/^Live · updated /);
+  expect(byTest("live-tag")?.textContent).toBe("Live");
+  expect(byTest("live-tag")?.getAttribute("title")).toMatch(/^Updated /);
   expect(byTest("live-settings")?.textContent).toBe("Updates weekly");
   expect(byTest("live-bar")?.textContent).toContain("1 change");
   expect(byTest("live-suggestion")?.textContent).toContain("Source says B, you wrote A");
