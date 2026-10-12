@@ -72,7 +72,9 @@ class UpdateSaveTool(ArtifactTool):
         "Finish a live page update. `changes` holds only facts that differ from what the page "
         "shows, by the data-superchat-id of the element holding each; leave it empty when "
         "nothing differs. Parts the person edited come back as `suggestions` instead of being "
-        "overwritten. The answer's `tell`: 'never' means nothing worth telling in your Result; "
+        "overwritten; `declined` lists values the person undid before, left as they are on "
+        "purpose. "
+        "The answer's `tell`: 'never' means nothing worth telling in your Result; "
         "'notable' means only notable changes, suggestions and unplaced changes; 'every' means "
         "one line about what changed."
     )

@@ -152,7 +152,8 @@ def test_rejected_value_is_skipped_until_the_source_says_something_else(env) -> 
     live = env.service.live.get(_SESSION, "prices.html")
     live.state["rejected"] = [["btc", "Bitcoin: 120"]]
     env.service.live.save(live)
-    assert _save(env, [{"id": "btc", "after": "Bitcoin: 120"}])["version"] is None
+    skipped = _save(env, [{"id": "btc", "after": "Bitcoin: 120"}])
+    assert skipped["version"] is None and skipped["declined"] == ["btc"]
     assert _text(env, "btc") == "Bitcoin: 100"
     assert _save(env, [{"id": "btc", "after": "Bitcoin: 125"}])["version"] == 2
     assert env.service.live.get(_SESSION, "prices.html").state["rejected"] == []
@@ -210,7 +211,8 @@ def test_undo_restores_the_version_before_and_rejects_what_it_wrote(env) -> None
     assert restored.origin == "restore" and _text(env, "btc") == "Bitcoin: 100"
     state = env.service.live.get(_SESSION, "prices.html").state
     assert state["rejected"] == [["btc", "Bitcoin: 120"]] and "btc" not in state["written"]
-    assert _save(env, [{"id": "btc", "after": "Bitcoin: 120"}])["version"] is None
+    skipped = _save(env, [{"id": "btc", "after": "Bitcoin: 120"}])
+    assert skipped["version"] is None and skipped["declined"] == ["btc"]
     with pytest.raises(OmnigentError) as exc:
         env.service.undo(_head(env))
     assert exc.value.code == ErrorCode.CONFLICT

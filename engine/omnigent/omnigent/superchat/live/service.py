@@ -198,6 +198,7 @@ class LiveService:
             "suggestions": plan.suggestions,
             "unplaced": plan.unplaced,
             "removed": plan.removed,
+            "declined": plan.declined,
             "tell": live.tell,
         }
 

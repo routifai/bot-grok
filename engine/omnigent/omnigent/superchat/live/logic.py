@@ -27,6 +27,8 @@ class Plan:
     suggestions: list[dict[str, Any]] = field(default_factory=list)
     unplaced: list[str] = field(default_factory=list)
     removed: list[str] = field(default_factory=list)
+    #: Values the person undid before: left as they are.
+    declined: list[str] = field(default_factory=list)
 
 
 def plan_changes(data: bytes, changes: list[dict[str, Any]], state: dict[str, Any]) -> Plan:
@@ -35,6 +37,7 @@ def plan_changes(data: bytes, changes: list[dict[str, Any]], state: dict[str, An
     for change in changes:
         ident, after, source = str(change["id"]), str(change["after"]), change.get("source")
         if [ident, after] in plan.rejected:
+            plan.declined.append(ident)
             continue
         try:
             current = read_text(plan.data, ident)
