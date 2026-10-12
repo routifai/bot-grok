@@ -60,11 +60,7 @@ def env(db_uri: str, tmp_path: Path):
         user_id=None, parent_session_id=_SESSION, name="prices.html", title="Prices",
         kind="html", mime=KIND_MIME["html"], data=PAGE, source_path="/ws/prices.html",
     )  # fmt: skip
-    service.upsert(
-        first, rrule="FREQ=DAILY;BYHOUR=8;BYMINUTE=0", timezone="UTC",
-        sources=[{"ref": "https://example.com", "label": "Example"}],
-        tell=None, follow_publish=None,
-    )  # fmt: skip
+    service.upsert(first, rrule="FREQ=DAILY;BYHOUR=8;BYMINUTE=0", sources=["https://example.com"])
     return SimpleNamespace(artifacts=artifacts, service=service, scheduler=scheduler, first=first)
 
 
@@ -161,7 +157,7 @@ def test_rejected_value_is_skipped_until_the_source_says_something_else(env) -> 
 
 
 def test_nothing_changed_makes_no_version(env) -> None:
-    out = env.service.checked(_head(env), {"https://example.com": {"hash": "x", "values": {}}})
+    out = _save(env, [], facts={"https://example.com": {"hash": "x", "values": {}}})
     assert out["version"] is None and _head(env).version == 1
     state = env.service.live.get(_SESSION, "prices.html").state
     assert state["facts"]["https://example.com"]["hash"] == "x" and state["checked_at"]
@@ -180,11 +176,16 @@ def test_changes_that_cannot_be_placed_pause_the_schedule_at_the_second_run(env)
     assert env.service.tasks.get(live.task_id).state == "paused"
     assert ("update", "paused") in env.scheduler.calls
     assert _head(env).version == 1
+    env.service.upsert(env.first, rrule="FREQ=DAILY;BYHOUR=9;BYMINUTE=0")
+    live = env.service.live.get(_SESSION, "prices.html")
+    assert live.state["misses"] == 0 and env.service.tasks.get(live.task_id).state == "active"
 
 
-def test_a_placed_update_clears_the_issue(env) -> None:
-    _save(env, [{"id": "nope", "after": "x"}])
-    _save(env, [{"id": "btc", "after": "Bitcoin: 121"}])
+def test_unplaced_counts_even_next_to_applied_changes_and_a_clean_run_clears_it(env) -> None:
+    _save(env, [{"id": "nope", "after": "x"}, {"id": "btc", "after": "Bitcoin: 121"}])
+    state = env.service.live.get(_SESSION, "prices.html").state
+    assert state["misses"] == 1 and "nope" in state["open_issue"]
+    _save(env, [])
     state = env.service.live.get(_SESSION, "prices.html").state
     assert state["misses"] == 0 and state["open_issue"] is None
 
@@ -220,22 +221,16 @@ def test_undo_is_refused_once_the_person_edited_after_the_update(env) -> None:
         env.service.undo(_head(env))
 
 
-def test_context_defers_while_the_person_is_editing(env) -> None:
-    assert env.service.context(_head(env))["defer"] is False
-    _hand_edit(env, b"Ethereum: 10", b"Ethereum: 11")
-    ctx = env.service.context(_head(env))
-    assert ctx["defer"] is True and ctx["version"] == 2
-    assert ctx["sources"][0]["ref"] == "https://example.com" and "Ethereum: 11" in ctx["source"]
+def test_a_recent_hand_edit_defers_the_run(env) -> None:
     task = env.service.tasks.get(env.service.live.get(_SESSION, "prices.html").task_id)
-    assert env.service.defer_until(task) > time.time()
-
-
-def test_an_old_hand_edit_and_an_update_do_not_defer(env) -> None:
+    assert env.service.defer_until(task) is None
     _hand_edit(env, b"Ethereum: 10", b"Ethereum: 11")
-    old = SimpleNamespace(origin="manual", created_at=int(time.time()) - 3600)
-    assert env.service._defer_end(old) is None  # type: ignore[arg-type]
+    assert env.service.defer_until(task) > time.time()
+    ctx = env.service.context(_head(env))
+    assert ctx["version"] == 2 and ctx["sources"] == ["https://example.com"]
+    assert "Ethereum: 11" in ctx["source"]
     _save(env, [{"id": "btc", "after": "Bitcoin: 120"}])
-    assert env.service.context(_head(env))["defer"] is False
+    assert env.service.defer_until(task) is None
 
 
 def test_stale_base_version_is_a_409(env) -> None:
@@ -247,21 +242,23 @@ def test_stale_base_version_is_a_409(env) -> None:
 
 
 def test_inferred_sources_are_saved(env) -> None:
-    _save(env, [], sources=[{"ref": "/ws/data.csv", "label": "data"}])
-    assert env.service.live.get(_SESSION, "prices.html").sources[0]["ref"] == "/ws/data.csv"
+    _save(env, [], sources=["/ws/data.csv"])
+    assert env.service.live.get(_SESSION, "prices.html").sources == ["/ws/data.csv"]
 
 
 def test_setting_the_schedule_again_changes_the_task_and_stop_removes_it(env) -> None:
     live = env.service.live.get(_SESSION, "prices.html")
-    again = env.service.upsert(
-        env.first, rrule="FREQ=WEEKLY;BYDAY=MO;BYHOUR=8;BYMINUTE=0", timezone=None,
-        sources=None, tell="never", follow_publish=True,
-    )  # fmt: skip
+    rrule = "FREQ=WEEKLY;BYDAY=MO;BYHOUR=8;BYMINUTE=0"
+    again = env.service.upsert(env.first, rrule=rrule, tell="never", follow_publish=True)
     task = env.service.tasks.get(again.task_id)
     assert again.task_id == live.task_id and task.rrule.startswith("FREQ=WEEKLY")
     assert task.kind == "live_artifact" and task.agent_type == "worker"
     assert task.parent_session_id == _SESSION and "prices.html" in task.prompt
-    assert (again.tell, again.follow_publish) == ("never", True)
+    assert (again.tell, again.follow_publish, again.sources) == (
+        "never",
+        True,
+        ["https://example.com"],
+    )
     assert env.service.remove(env.first) is True
     assert env.service.tasks.get(live.task_id) is None
     assert env.service.live.get(_SESSION, "prices.html") is None

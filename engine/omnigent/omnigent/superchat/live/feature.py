@@ -1,11 +1,10 @@
-"""Registration of live artifacts (tools, routes, the fire-path hook)."""
+"""Registration of live artifacts: tools, routes, the fire-path hook and the delete hook."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
-from omnigent.server.scheduled.helper_fire import register_fire_deferral
 from omnigent.superchat.feature import (
     Feature,
     InstallDeps,
@@ -14,7 +13,6 @@ from omnigent.superchat.feature import (
     is_super_chat,
 )
 from omnigent.superchat.live.handlers import handle_live_tool
-from omnigent.superchat.live.service import LIVE_TASK_KIND
 from omnigent.superchat.live.tools import HELPER_TOOL_NAMES, SUPER_CHAT_TOOL_NAMES
 
 if TYPE_CHECKING:
@@ -24,27 +22,21 @@ if TYPE_CHECKING:
 
 
 def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]:
-    """The schedule tools for the Super Chat; the update tools for its Helpers."""
-    from omnigent.superchat.live.tools import (
-        KeepUpdatedTool,
-        StopUpdatingTool,
-        UpdateCheckedTool,
-        UpdateContextTool,
-        UpdateSaveTool,
-    )
+    from omnigent.superchat.live import tools
 
     if is_super_chat(labels):
-        return [KeepUpdatedTool(), StopUpdatingTool()]
+        return [tools.KeepUpdatedTool(), tools.StopUpdatingTool()]
     if is_helper(labels):
-        return [UpdateContextTool(), UpdateSaveTool(), UpdateCheckedTool()]
+        return [tools.UpdateContextTool(), tools.UpdateSaveTool()]
     return []
 
 
 def _install(app: FastAPI, deps: InstallDeps) -> None:
     from omnigent.runtime import get_artifact_store
-    from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore
+    from omnigent.server.scheduled.helper_fire import register_fire_deferral
+    from omnigent.superchat.artifacts.store import ON_GROUP_DELETED, SqlAlchemyArtifactStore
     from omnigent.superchat.live.routes import create_live_router
-    from omnigent.superchat.live.service import LiveService
+    from omnigent.superchat.live.service import LIVE_TASK_KIND, LiveService
     from omnigent.superchat.live.store import SqlAlchemyLiveStore
 
     if deps.scheduled_task_store is None:
@@ -58,16 +50,9 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
         lambda: getattr(app.state, "scheduled_task_scheduler", None),
     )
     register_fire_deferral(LIVE_TASK_KIND, service.defer_until)
-    app.include_router(
-        create_live_router(
-            service,
-            conversation_store=deps.conversation_store,
-            permission_store=deps.permission_store,
-            auth_provider=deps.auth_provider,
-        ),
-        prefix="/v1",
-        tags=["artifacts"],
-    )
+    ON_GROUP_DELETED["live"] = service.remove
+    router = create_live_router(service, auth_provider=deps.auth_provider)
+    app.include_router(router, prefix="/v1", tags=["artifacts"])
 
 
 LIVE_FEATURE = Feature(

@@ -1869,18 +1869,10 @@ class SqlArtifactPublication(OmnigentBase):
 
 class SqlArtifactLive(OmnigentBase):
     """
-    SQLAlchemy model for the ``artifact_live`` table.
+    SQLAlchemy model for the ``artifact_live`` table: one row per live page (an artifact group).
 
-    One row per *live* deliverable (an artifact group: ``parent_session_id`` + ``name``) that
-    keeps itself up to date on a schedule. Presence of the row means "live"; the schedule is the
-    scheduled task ``task_id`` (no DB foreign key).
-
-    :param user_id: Owner identity; ``None`` in single-user mode.
-    :param task_id: The scheduled task that fires the update.
-    :param sources: JSON list of ``{"ref", "label"}`` the page's facts come from.
-    :param tell: Whether a run's Result is worth telling: ``"notable"``, ``"every"`` or ``"never"``.
-    :param follow_publish: Whether each update republishes a published copy.
-    :param state: JSON object with what the updates remember (see ``superchat/live/state.py``).
+    The schedule is the scheduled task ``task_id``; ``sources`` is a JSON list of web page URLs
+    or Computer file paths; ``state`` is what the updates remember (``superchat/live/store.py``).
     """
 
     __tablename__ = "artifact_live"

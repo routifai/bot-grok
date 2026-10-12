@@ -73,13 +73,12 @@ def build_retry(
     return retry
 
 
-#: ``task kind -> hook`` returning the epoch seconds a task's run should wait until (or ``None``).
-#: A feature registers one for its own kind; it is consulted next to the owner's quiet hours.
+#: ``task kind -> hook(task)``: epoch seconds the task's run should wait until, or ``None``.
 _FIRE_DEFERRALS: dict[str, Callable[[ScheduledTask], float | None]] = {}
 
 
 def register_fire_deferral(kind: str, hook: Callable[[ScheduledTask], float | None]) -> None:
-    """Make a parent-bound task of ``kind`` wait while ``hook(task)`` names a time in the future."""
+    """Make a parent-bound task of ``kind`` wait while ``hook(task)`` is in the future."""
     _FIRE_DEFERRALS[kind] = hook
 
 
@@ -236,7 +235,7 @@ async def _run_parent_bound_fire(
     hook = _FIRE_DEFERRALS.get(task.kind or "")
     wait_until = await asyncio.to_thread(hook, task) if hook is not None else None
     if wait_until is not None and wait_until > now:
-        armed = _schedule_refire(
+        _schedule_refire(
             deps,
             task.workspace_id,
             task.id,
@@ -245,10 +244,7 @@ async def _run_parent_bound_fire(
             attempt=attempt,
             deferrals=deferrals,
         )
-        await skip(
-            "task_deferred" if armed else "task_busy",
-            "the task asked to wait" + ("; re-fire when it is over" if armed else ""),
-        )
+        await skip("task_deferred", "the task asked to wait")
         return
 
     owner_key = (task.workspace_id, owner)

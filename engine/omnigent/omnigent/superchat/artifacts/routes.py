@@ -28,7 +28,7 @@ from omnigent.superchat.artifact_kinds import (
 )
 from omnigent.superchat.artifacts.patches import name_elements
 from omnigent.superchat.artifacts.store import (
-    HAND_ORIGINS,
+    WRITEBACK_ORIGINS,
     Artifact,
     Publication,
     SqlAlchemyArtifactStore,
@@ -130,9 +130,14 @@ def _refuse_unseen_manual_edit(
     """
     group = store.versions_of(user_id=owner, parent_session_id=session_id, name=name)
     head = group[0] if group else None
-    if head is not None and head.origin in HAND_ORIGINS and head.delivered_at is None:
+    if head is not None and head.origin in WRITEBACK_ORIGINS and head.delivered_at is None:
+        who = (
+            f"{name} was refreshed from its sources"
+            if head.origin == "update"
+            else f"The person edited {name} by hand"
+        )
         raise OmnigentError(
-            f"The person edited {name} by hand (v{head.version}); read the workspace file "
+            f"{who} (v{head.version}); read the workspace file "
             "again and apply your change on top of their edits before saving.",
             code=ErrorCode.CONFLICT,
         )

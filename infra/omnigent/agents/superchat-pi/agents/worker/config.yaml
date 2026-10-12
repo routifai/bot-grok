@@ -51,7 +51,6 @@ tools:
     - artifact_list
     - live_update_context
     - live_update_save
-    - live_update_checked
     - files_search
     - files_vsearch
     - files_query

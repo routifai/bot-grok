@@ -6,6 +6,7 @@ again in the same Conversation adds a version instead of a new file.
 
 from __future__ import annotations
 
+import logging
 import re
 import secrets
 import time
@@ -44,6 +45,10 @@ VIEW_DEDUPE_SECONDS = 30
 _SLUG_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"
 _SLUG_STEM_MAX = 40
 _VIEWER_KEY_MAX = 64
+#: ``feature name -> hook(item)`` run after a deliverable is deleted, so a feature built on
+#: artifacts can drop its own rows without this module importing it.
+ON_GROUP_DELETED: dict[str, Callable[[Artifact], None]] = {}
+_logger = logging.getLogger(__name__)
 
 
 class VersionConflictError(Exception):
@@ -605,4 +610,9 @@ class SqlAlchemyArtifactStore:
         blobs = self._blob_store()
         for version in group:
             blobs.delete(version.blob_key)
+        for name, hook in ON_GROUP_DELETED.items():
+            try:
+                hook(item)
+            except Exception:  # the deliverable is gone either way
+                _logger.exception("artifact delete hook %s failed", name)
         return len(group)
