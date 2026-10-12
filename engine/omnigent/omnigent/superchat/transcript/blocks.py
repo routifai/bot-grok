@@ -20,6 +20,9 @@ out. The rules a client would otherwise copy:
   Helper rows and citation chips it would have carried move to the turn's last text. A short
   text (under :data:`NOTE_WORDS` words) that more work follows is a working note even while it
   is the turn's last text so far (a turn still running): it is not a message either;
+* the person's latest turn that made a page from a data file (a ``.csv``, ``.xlsx``… named in
+  their message or the turn's calls) and showed no chips ends with one "Keep this page updated
+  when <file> changes" chip;
 * one ``call_id`` is one block, however often the call repeats;
 * an ``error`` item is an ``error`` block carrying its code, never its text; the code is read
   through ``public_error_code`` so legacy rows (exception names, old codes) show the closed set.
@@ -30,6 +33,7 @@ Wording stays with the client: nothing here is copy.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -37,8 +41,12 @@ from omnigent.context.attachments import strip_legacy_attachment_context
 from omnigent.entities.conversation import is_system_notice_text
 from omnigent.inner.executor import ENDS_TURN_TOOLS
 from omnigent.runtime.public_error_codes import public_error_code
-from omnigent.superchat.artifact_kinds import KIND_MIME
-from omnigent.superchat.cards.tools import CARD_TOOL_NAME
+from omnigent.superchat.artifact_kinds import KIND_MIME, is_deck_name
+from omnigent.superchat.cards.tools import (
+    CARD_TOOL_NAME,
+    FOLLOW_UP_MAX_CHARS,
+    build_follow_ups,
+)
 from omnigent.superchat.helpers.tools import START_HELPER_TOOL_NAME
 
 VAULT_REQUEST_TOOL_NAME = "vault_request_secret"
@@ -434,4 +442,62 @@ def project_items(
                     blocks.append(citations)
                 cited = []
             messages.append(_message(item, role, blocks))
+    _offer_keep_updated(items, messages)
     return messages
+
+
+#: A file with one of these endings holds data a page can show (and so can go stale).
+_DATA_FILE = re.compile(r"[\w.-]+\.(?:csv|tsv|xlsx|xls|json|parquet)\b", re.IGNORECASE)
+
+
+def _new_page(block: Mapping[str, Any]) -> bool:
+    """Whether *block* shows a page made this turn: a first version, or a Helper's file card."""
+    if block.get("type") == "file":
+        name, version = block.get("name"), block.get("version")
+    elif block.get("type") == "card" and block["card"].get("card") == "file":
+        name, version = block["card"]["data"].get("name"), None
+    else:
+        return False
+    return (
+        isinstance(name, str)
+        and name.lower().endswith(".html")
+        and not is_deck_name(name)
+        and version in (None, 1)
+    )
+
+
+def _offer_keep_updated(items: list[Item], messages: list[dict[str, Any]]) -> None:
+    """Add the "Keep this page updated" chip to the person's latest turn when it made a page from
+    a data file and showed no chips of its own.
+
+    The engine offers it instead of the Muse, which forgets it at the end of long turns. Chips
+    show on the latest answer only, so the offer is gone after the person's next message.
+    """
+    asked = next(
+        (i for i in range(len(messages) - 1, -1, -1) if messages[i]["role"] == "user"), -1
+    )
+    turn = messages[asked + 1 :]
+    blocks = [block for message in turn for block in message["blocks"]]
+    if (
+        asked < 0
+        or not turn
+        or turn[-1]["role"] != "assistant"
+        or not any(_new_page(block) for block in blocks)
+        or any(b.get("type") == "card" and b["card"].get("card") == "follow_ups" for b in blocks)
+    ):
+        return
+    start = next(i for i, item in enumerate(items) if item.get("id") == messages[asked]["id"])
+    said = [item_text(items[start])] + [
+        str(item.get("arguments") or "")
+        for item in items[start + 1 :]
+        if item.get("type") == "function_call"
+    ]
+    found = next((m.group(0) for text in said for m in _DATA_FILE.finditer(text)), None)
+    if found is None:
+        return
+    offer = f"Keep this page updated when {found} changes"
+    if len(offer) > FOLLOW_UP_MAX_CHARS:
+        offer = "Keep this page updated when the file changes"
+    payload = _card_payload(build_follow_ups({"suggestions": [offer]}))
+    if payload:
+        turn[-1]["blocks"].append({"type": "card", "card_id": None, "card": payload})

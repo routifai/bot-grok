@@ -287,6 +287,77 @@ def test_artifact_save_becomes_a_file_block_and_secret_request_a_secure_entry() 
     ]
 
 
+def _page_turn(ask: str, saved: dict[str, Any], *extra: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        _msg("u1", "user", ask),
+        *extra,
+        _call("s1", "artifact_save", "ks", {"path": "/w/your_files/p.html"}),
+        _out("so", "ks", saved),
+        _msg("m1", "assistant", "Here is your page with every price from the file."),
+    ]
+
+
+_PAGE = {"type": "artifact", "id": "art_p", "name": "p.html", "kind": "html", "version": 1}
+
+
+def _chips(message: dict[str, Any]) -> list[str]:
+    return [
+        s
+        for b in message["blocks"]
+        if b["type"] == "card" and b["card"]["card"] == "follow_ups"
+        for s in b["card"]["data"]["suggestions"]
+    ]
+
+
+def test_a_page_made_from_a_data_file_ends_with_the_keep_updated_chip() -> None:
+    read = _call("r1", "sys_os_read", "kr", {"path": "/w/your_files/tea-prices.csv"})
+    messages = project_items(_page_turn("Make a page of my teas", _PAGE, read))
+    assert _chips(messages[-1]) == ["Keep this page updated when tea-prices.csv changes"]
+    # A Helper's page (shown with a file card) named in the person's own message counts too.
+    card = {"type": "card", "card": "file", "data": {"name": "p.html"}, "fallback": "p"}
+    items = [
+        _msg("u1", "user", "Make a page from your_files/hours.xlsx"),
+        _call("c1", "render_card", "kc"),
+        _out("co", "kc", card),
+        _msg("m1", "assistant", "Your page is in the Library with all the hours."),
+    ]
+    assert _chips(project_items(items)[-1]) == ["Keep this page updated when hours.xlsx changes"]
+
+
+@pytest.mark.parametrize(
+    ("ask", "saved"),
+    [
+        ("Make a landing page", _PAGE),  # no data file: a static page
+        ("Fix the page from prices.csv", {**_PAGE, "version": 3}),  # not a new page
+        ("Make a deck from prices.csv", {**_PAGE, "name": "p.deck.html"}),
+    ],
+)
+def test_no_keep_updated_chip_for_static_pages_edits_or_decks(ask: str, saved: dict) -> None:
+    assert _chips(project_items(_page_turn(ask, saved))[-1]) == []
+
+
+def test_keep_updated_chip_only_on_the_latest_turn_and_never_beside_the_muses_chips() -> None:
+    items = [
+        *_page_turn("Make a page from prices.csv", _PAGE),
+        _msg("u2", "user", "thanks"),
+        _msg("m2", "assistant", "Glad it helps, tell me if anything else should change."),
+    ]
+    assert [_chips(m) for m in project_items(items)] == [[], [], [], [], []]
+    chips = _call("f1", "suggest_follow_ups", "kf", {"suggestions": ["Add a chart"]})
+    chips_out = _out(
+        "fo",
+        "kf",
+        {
+            "type": "card",
+            "card": "follow_ups",
+            "data": {"suggestions": ["Add a chart"]},
+            "fallback": "- Add a chart",
+        },
+    )
+    own = [*_page_turn("Make a page from prices.csv", _PAGE), chips, chips_out]
+    assert [c for m in project_items(own) for c in _chips(m)] == ["Add a chart"]
+
+
 @pytest.mark.parametrize(
     ("stored", "public"),
     [

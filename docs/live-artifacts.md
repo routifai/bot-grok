@@ -47,8 +47,10 @@ Terms are in `CONTEXT.md` (Automation, Live page, Live sheet).
 
 ## Offering
 
-- The Muse offers "Keep this page updated" once, as a follow-up chip, only when it judges the page
-  will go stale. It never turns updates on by itself.
+- The engine offers "Keep this page updated when <file> changes" as a follow-up chip on the turn
+  that made a page from a data file (csv, xlsx, json…), unless the Muse showed chips of its own.
+  Chips show on the latest answer only, so the offer goes away with the next message. Nothing
+  turns updates on by itself. (The Muse alone forgot the offer at the end of long turns.)
 
 ## Publishing
 
