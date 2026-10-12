@@ -380,7 +380,6 @@ function useDeckEditor({
         ? t`Ask superchat to change this…`
         : t`Ask superchat to change this slide…`,
       contextBlock,
-      focusRequest: editor.askRequest,
     },
   };
 }

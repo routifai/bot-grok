@@ -66,8 +66,6 @@ export const DeckEditFromFrameSchema = z.discriminatedUnion("type", [
     text: Str(20_000),
     before: Str(20_000),
   }),
-  /** The "Ask Superchat" button on the selection chrome was pressed. */
-  z.object({ type: z.literal("superchat:edit-ask"), ...Base }),
   z.object({
     type: z.literal("superchat:edit-key"),
     ...Base,

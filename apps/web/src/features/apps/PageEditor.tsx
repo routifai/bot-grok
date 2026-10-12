@@ -253,7 +253,6 @@ function usePageEditor({
           ? t`Ask superchat to change this app…`
           : t`Ask superchat to change this page…`,
       contextBlock,
-      focusRequest: editor.askRequest,
     },
   };
 }

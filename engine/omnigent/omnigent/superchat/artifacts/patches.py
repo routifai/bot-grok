@@ -1,10 +1,10 @@
 """Deterministic source patches for a deck: what the editor's controls turn into.
 
-Every patch finds its element by ``data-superchat-id`` in the file's own HTML (stdlib ``html.parser``
-gives each tag's exact offset) and rewrites only that element's span, so every byte outside it
-is untouched. Anything that cannot be done exactly (a duplicate id, an element the parser had to
-close for the author, mixed text and tags) is refused with :class:`AmbiguousEdit`: the person is
-told to ask Superchat instead of getting a guess.
+Every patch finds its element by ``data-superchat-id`` in the file's own HTML (stdlib
+``html.parser`` gives each tag's exact offset) and rewrites only that element's span, so every
+byte outside it is untouched. Anything that cannot be done exactly (a duplicate id, an element
+the parser had to close for the author, mixed text and tags) is refused with
+:class:`AmbiguousEdit`: the person is told to ask Superchat instead of getting a guess.
 
 Patch kinds (the wire shape, ``kind`` discriminates): ``set-text``, ``set-style``,
 ``set-attributes`` (``href`` on ``<a>``, ``alt`` on ``<img>``), ``remove-element``,
@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import html
 import re
+import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
@@ -618,6 +619,82 @@ def _apply_full_source(doc: _Doc, patch: SetFullSource) -> tuple[str, str]:
     if dup:
         raise _ambiguous(f'"{dup[0]}" would be used more than once')
     return new, "restored an earlier state of the file"
+
+
+# --------------------------------------------------------------------------------------------
+# Naming a saved page
+# --------------------------------------------------------------------------------------------
+
+# What a person may want to change by hand: text holders by their words, boxes by their class.
+_TEXT_TAGS = frozenset(
+    {"h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "a", "button", "label", "blockquote"}
+    | {"figcaption", "caption", "summary", "td", "th", "dt", "dd"}
+)
+_BOX_TAGS = frozenset(
+    {"section", "header", "footer", "nav", "main", "article", "aside", "figure", "img", "svg"}
+)
+_NO_NAMES_INSIDE = frozenset({"head", "script", "style", "svg", "template", "noscript", "select"})
+
+
+def _slug(text: str, words: int) -> str:
+    plain = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()
+    return "-".join(re.findall(r"[a-z0-9]+", plain)[:words])[:40].strip("-")
+
+
+def name_elements(source: bytes) -> bytes:
+    """Give each element a person may edit by hand a ``data-superchat-id`` when it has none.
+
+    Names come from the element's words (``h3-arches``) or class (``card-arches``), so saving the
+    same page again names it the same way. Bytes outside the inserted attributes are untouched;
+    a file that isn't UTF-8 comes back as it was.
+    """
+    try:
+        text = source.decode("utf-8")
+    except UnicodeDecodeError:
+        return source
+    root = _parse(text)
+    taken = {a.value for n in root.walk() if (a := n.attr("data-superchat-id"))}
+    inserts: list[tuple[int, str]] = []
+
+    def visit(node: _Node) -> None:
+        for child in node.children:
+            if child.irregular:
+                continue
+            if child.attr("data-superchat-id") is None:
+                base = _base_name(text, child)
+                if base:
+                    name, n = base, 1
+                    while name in taken:
+                        n += 1
+                        name = f"{base}-{n}"
+                    taken.add(name)
+                    end = child.open_end - (
+                        2 if text[child.open_end - 2 : child.open_end] == "/>" else 1
+                    )
+                    inserts.append((end, f' data-superchat-id="{name}"'))
+            if child.tag not in _NO_NAMES_INSIDE:
+                visit(child)
+
+    visit(root)
+    for at, attr in reversed(inserts):
+        text = text[:at] + attr + text[at:]
+    return text.encode("utf-8") if inserts else source
+
+
+def _base_name(source: str, node: _Node) -> str | None:
+    inner = source[node.open_end : node.close_start] if node.close_start else ""
+    words = html.unescape(re.sub(r"<[^>]*>", " ", inner))
+    if node.tag in _TEXT_TAGS:
+        if not words.strip():
+            return None
+        return f"{node.tag}-{_slug(words, 4)}".rstrip("-")
+    if node.tag in _BOX_TAGS or (node.tag == "div" and node.classes()):
+        kind = _slug(sorted(node.classes())[0], 3) if node.classes() else node.tag
+        if node.tag == "img":
+            alt = node.attr("alt")
+            words = alt.value if alt else ""
+        return "-".join(p for p in (kind or node.tag, _slug(words, 2)) if p)
+    return None
 
 
 _APPLY = {

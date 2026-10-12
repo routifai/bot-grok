@@ -20,7 +20,13 @@ from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.server.auth import LEVEL_OWNER, RESERVED_USER_LOCAL, AuthProvider
 from omnigent.server.routes._auth_helpers import require_access, require_user
 from omnigent.stores import ConversationStore, PermissionStore
-from omnigent.superchat.artifact_kinds import KIND_MIME, MAX_ARTIFACT_BYTES, kind_for_name
+from omnigent.superchat.artifact_kinds import (
+    KIND_MIME,
+    MAX_ARTIFACT_BYTES,
+    is_deck_name,
+    kind_for_name,
+)
+from omnigent.superchat.artifacts.patches import name_elements
 from omnigent.superchat.artifacts.store import (
     HAND_ORIGINS,
     Artifact,
@@ -185,6 +191,9 @@ def create_artifacts_router(
         await asyncio.to_thread(
             _refuse_unseen_manual_edit, store, owner, parent_session_id, clean_name
         )
+        if kind == "html" and not is_deck_name(clean_name):
+            # A page is editable by hand only where it has ids; don't leave that to the author.
+            data = await asyncio.to_thread(name_elements, data)
         item = await asyncio.to_thread(
             store.create,
             user_id=owner,

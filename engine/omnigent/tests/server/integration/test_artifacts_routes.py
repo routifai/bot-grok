@@ -52,10 +52,12 @@ async def env(
 async def test_versions_content_and_delete(env: tuple[httpx.AsyncClient, str]) -> None:
     client, chat = env
     url = f"/v1/artifacts?parent_session_id={chat}&name=report.html"
-    first = (await client.post(url, content=b"<h1>one</h1>")).json()
-    second = (await client.post(url, content=b"<h1>two</h1>")).json()
+    # Already named, so the engine stores the bytes as sent.
+    one, two = b'<h1 data-superchat-id="t">one</h1>', b'<h1 data-superchat-id="t">two</h1>'
+    first = (await client.post(url, content=one)).json()
+    second = (await client.post(url, content=two)).json()
     assert (first["version"], second["version"]) == (1, 2)
-    assert second["kind"] == "html" and second["size"] == 12
+    assert second["kind"] == "html" and second["size"] == len(two)
 
     listed = (await client.get(f"/v1/artifacts?parent_session_id={chat}")).json()["artifacts"]
     assert [(a["id"], a["versions"]) for a in listed] == [(second["id"], 2)]
@@ -64,12 +66,12 @@ async def test_versions_content_and_delete(env: tuple[httpx.AsyncClient, str]) -
     assert [v["version"] for v in meta["all_versions"]] == [2, 1]
 
     latest = await client.get(f"/v1/artifacts/{second['id']}/content")
-    assert latest.content == b"<h1>two</h1>"
+    assert latest.content == two
     assert latest.headers["content-type"].startswith("text/html")
     assert "sandbox allow-scripts" in latest.headers["content-security-policy"]
     assert latest.headers["content-disposition"].startswith("inline")
     old = await client.get(f"/v1/artifacts/{second['id']}/content?version=1&download=true")
-    assert old.content == b"<h1>one</h1>"
+    assert old.content == one
     assert old.headers["content-disposition"].startswith("attachment")
 
     assert (await client.delete(f"/v1/artifacts/{first['id']}")).json()["versions_removed"] == 2

@@ -321,7 +321,8 @@
     var word = t === "slide" ? "Slide " + slideNumber(el) : el.tagName.toLowerCase();
     var name = stableId(el);
     if (!name) {
-      name = (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 24);
+      // innerText keeps the breaks between blocks: "Arches Horseshoe…", not "ArchesHorseshoe…".
+      name = (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 24);
       if (!name) return word;
     }
     return word + " · " + name;
@@ -372,25 +373,14 @@
   function chip(rect, text, el) {
     var c = document.createElement("div");
     var spot = chipSpot(rect, el);
-    var name = document.createElement("span");
-    name.textContent = text;
-    name.style.cssText =
-      "max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
-    var ask = document.createElement("button");
-    ask.type = "button";
-    ask.setAttribute("data-superchat-edit-ask", "");
-    ask.textContent = "Ask Superchat";
-    ask.style.cssText =
-      "pointer-events:auto;cursor:pointer;border:0;border-radius:4px;padding:2px 6px;font:inherit;" +
-      "background:rgba(255,255,255,.22);color:#fff";
-    c.appendChild(name);
-    c.appendChild(ask);
+    c.textContent = text;
     c.style.cssText =
-      "position:absolute;display:flex;align-items:center;gap:8px;left:" +
+      "position:absolute;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" +
+      "left:" +
       spot.left +
       "px;top:" +
       spot.top +
-      "px;padding:3px 4px 3px 8px;border-radius:6px;background:#0a84ff;color:#fff;" +
+      "px;padding:3px 8px;border-radius:6px;background:#0a84ff;color:#fff;" +
       "box-shadow:0 1px 4px rgba(0,0,0,.25)";
     return c;
   }
@@ -535,10 +525,6 @@
   }
   function onClick(e) {
     if (e.button !== undefined && e.button !== 0) return;
-    if (e.target && e.target.closest && e.target.closest("[data-superchat-edit-ask]")) {
-      stop(e, true);
-      return send({ type: "superchat:edit-ask" });
-    }
     if (editing && editing.el.contains(e.target)) return stop(e, false);
     stop(e, true);
     var el = closestTarget(e.target);
@@ -563,7 +549,6 @@
     if (canType(el)) startEdit(el, { x: e.clientX, y: e.clientY });
   }
   function swallow(e) {
-    if (e.target && e.target.closest && e.target.closest("[data-superchat-edit-ask]")) return;
     if (editing && editing.el.contains(e.target)) return;
     // The deck refocuses itself on mousedown and navigates on click; neither may run in edit mode.
     e.stopImmediatePropagation();

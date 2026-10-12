@@ -435,16 +435,6 @@ it("the floating toolbar has undo, redo and Done (the ask box is always there); 
   expect(host.querySelector('[data-testid="editor-toolbar"]')).toBeNull();
 });
 
-it("the selection chip's Ask (a bridge message) focuses the ask box", async () => {
-  await mount();
-  await act(async () => setArtifactEditing(KEY, true));
-  const frame = editFrame();
-  await ready(frame);
-  await select(frame);
-  await fromFrame(frame, { type: "superchat:edit-ask" });
-  expect(document.activeElement).toBe(askInput());
-});
-
 it("sends the hard-scope element request and the person's words to the Muse's Conversation", async () => {
   await mount();
   await act(async () => setArtifactEditing(KEY, true));
@@ -565,6 +555,8 @@ it("an ask answered without a version does not adopt a later unrelated version i
 
   await view.rerender(2, FIXTURE_DECK.replace("Launch", "Other")); // someone else's version
   expect(control("Undo").disabled).toBe(true);
+  // The reply no longer describes what is on screen.
+  expect(host.querySelector('[data-testid="ask-status"]')).toBeNull();
 });
 
 it("Stop interrupts the Muse", async () => {

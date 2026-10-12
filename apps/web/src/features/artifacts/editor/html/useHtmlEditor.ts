@@ -77,7 +77,6 @@ export function useHtmlEditor({
   const [reloadKey, setReloadKey] = useState(0);
   const [undoStack, setUndoStack] = useState<string[]>([]);
   const [redoStack, setRedoStack] = useState<string[]>([]);
-  const [askRequest, setAskRequest] = useState(0);
 
   const undoStackRef = useRef(undoStack);
   undoStackRef.current = undoStack;
@@ -296,9 +295,6 @@ export function useHtmlEditor({
         case "superchat:edit-text-commit":
           void committer.commit([{ kind: "set-text", id: message.id, text: message.text }]);
           break;
-        case "superchat:edit-ask":
-          setAskRequest((n) => n + 1);
-          break;
         case "superchat:edit-key":
           if (message.action === "undo") void undo();
           else if (message.action === "redo") void redo();
@@ -319,7 +315,6 @@ export function useHtmlEditor({
     textEditing,
     reloadKey,
     selectedIds,
-    askRequest,
     head: saved,
     history,
     applyStyle,

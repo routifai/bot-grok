@@ -61,11 +61,14 @@ export function useArtifactAsk({
   const artifactId = artifact?.id ?? "";
   const version = artifact?.version ?? 0;
 
-  // A newer version on screen while asking is the answer.
+  // A newer version on screen while asking is the answer. After a reply, a later version may be
+  // anyone's (a Helper's, a hand edit): the reply is stale, so the line clears.
   useEffect(() => {
     const current = statusRef.current;
     if ((current.kind === "editing" || current.kind === "sending") && version > base.current) {
       setStatus({ kind: "updated", asked: current.asked, version });
+    } else if (current.kind === "replied" && version > base.current) {
+      setStatus({ kind: "idle" });
     }
   }, [version]);
 

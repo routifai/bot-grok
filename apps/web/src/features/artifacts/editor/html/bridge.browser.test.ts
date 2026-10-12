@@ -178,17 +178,6 @@ describe("edit bridge (Chromium)", () => {
     await page.close();
   });
 
-  it("the Ask Superchat button on the selection chrome reports itself and keeps the selection", async () => {
-    if (!browser) return;
-    const page = await open();
-    await page.click('[data-superchat-id="cover-lead"]');
-    await page.click("[data-superchat-edit-ask]");
-    expect((await msgs(page, "superchat:edit-ask")).length).toBe(1);
-    expect((await targets(page)).map((t) => t.id)).toEqual(["cover-lead"]);
-    expect(await activeIndex(page)).toBe(0);
-    await page.close();
-  });
-
   it("works through the real sandbox shell: nested frames, the relay and the nonce", async () => {
     if (!browser) return;
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });

@@ -95,7 +95,11 @@ def test_local_user_restores_an_earlier_version(env) -> None:
     body = restored.json()
     assert (body["version"], body["origin"]) == (3, "restore")
     item = store.get(body["id"], user_id=None)
-    assert item is not None and item.user_id is None and store.read(item) == b"<p>one</p>"
+    assert (
+        item is not None
+        and item.user_id is None
+        and store.read(item) == b'<p data-superchat-id="p-one">one</p>'
+    )
 
 
 def test_restore_over_a_version_that_arrived_meanwhile_is_a_409(
