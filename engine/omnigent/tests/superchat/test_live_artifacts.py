@@ -266,3 +266,18 @@ def test_setting_the_schedule_again_changes_the_task_and_stop_removes_it(env) ->
     assert env.service.live.get(_SESSION, "prices.html") is None
     assert env.service.remove(env.first) is False
     assert len(env.artifacts.versions(env.first)) == 1
+
+
+def test_tool_schemas_are_valid_json_schema() -> None:
+    # A provider rejects the whole turn when one tool's input schema is invalid.
+    from jsonschema import Draft202012Validator
+
+    from omnigent.superchat.live import tools
+
+    for tool in (
+        tools.KeepUpdatedTool(),
+        tools.StopUpdatingTool(),
+        tools.UpdateContextTool(),
+        tools.UpdateSaveTool(),
+    ):
+        Draft202012Validator.check_schema(tool.get_schema()["function"]["parameters"])

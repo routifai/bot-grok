@@ -15,7 +15,7 @@ SAVE_TOOL_NAME = "live_update_save"
 SUPER_CHAT_TOOL_NAMES = (KEEP_TOOL_NAME, STOP_TOOL_NAME)
 HELPER_TOOL_NAMES = (CONTEXT_TOOL_NAME, SAVE_TOOL_NAME)
 
-_NAME = {"type": "string", "description": "The page's file name in this chat, e.g. 'prices.html'."}
+_PAGE = {"type": "string", "description": "The page's file name in this chat, e.g. 'prices.html'."}
 _SOURCES = {
     "type": "array",
     "items": {"type": "string"},
@@ -31,7 +31,7 @@ class KeepUpdatedTool(ArtifactTool):
         "same page changes the schedule. Without sources, the first run infers them."
     )
     _PROPERTIES = {
-        "name": _NAME,
+        "name": _PAGE,
         "rrule": {
             "type": "string",
             "description": (
@@ -52,7 +52,7 @@ class KeepUpdatedTool(ArtifactTool):
 class StopUpdatingTool(ArtifactTool):
     _NAME = STOP_TOOL_NAME
     _DESC = "Stop keeping a page updated. The page and its versions stay as they are."
-    _PROPERTIES = {"name": _NAME}
+    _PROPERTIES = {"name": _PAGE}
     _REQUIRED = ("name",)
 
 
@@ -62,7 +62,7 @@ class UpdateContextTool(ArtifactTool):
         "Start of a live page update: returns the page's sources, the facts read last time, "
         "the newest version number and the page's HTML source."
     )
-    _PROPERTIES = {"name": _NAME}
+    _PROPERTIES = {"name": _PAGE}
     _REQUIRED = ("name",)
 
 
@@ -77,7 +77,7 @@ class UpdateSaveTool(ArtifactTool):
         "one line about what changed."
     )
     _PROPERTIES = {
-        "name": _NAME,
+        "name": _PAGE,
         "base_version": {
             "type": "integer",
             "description": "The version live_update_context returned.",
