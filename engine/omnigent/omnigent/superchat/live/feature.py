@@ -33,7 +33,11 @@ def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]
 
 def _install(app: FastAPI, deps: InstallDeps) -> None:
     from omnigent.runtime import get_artifact_store
-    from omnigent.server.scheduled.helper_fire import register_fire_deferral, register_run_outcome
+    from omnigent.server.scheduled.helper_fire import (
+        register_fire_deferral,
+        register_room,
+        register_run_outcome,
+    )
     from omnigent.superchat.artifacts.store import ON_GROUP_DELETED, SqlAlchemyArtifactStore
     from omnigent.superchat.live.routes import create_live_router
     from omnigent.superchat.live.service import LIVE_TASK_KIND, LiveService
@@ -52,6 +56,7 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
     service.run_now = lambda: getattr(app.state, "scheduled_task_run_now", None)
     register_fire_deferral(LIVE_TASK_KIND, service.defer_until)
     register_run_outcome(LIVE_TASK_KIND, service.on_run_outcome)
+    register_room(service.room)
     ON_GROUP_DELETED["live"] = service.remove
     router = create_live_router(
         service, auth_provider=deps.auth_provider, host_store=lambda: app.state.host_store

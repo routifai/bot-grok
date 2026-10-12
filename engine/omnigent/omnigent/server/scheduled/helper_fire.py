@@ -83,9 +83,19 @@ def register_fire_deferral(kind: str, hook: Callable[[ScheduledTask], float | No
 
 
 #: Kinds whose due runs are never dropped for "busy": they queue (re-fire every
-#: ``_OWNER_BUSY_DEFER_S``) and run up to ``fire._max_concurrent()`` at once per owner, after the
-#: parent Conversation's own turn.
+#: ``_OWNER_BUSY_DEFER_S``) and run up to ``fire._max_concurrent()`` at once per owner (one at a
+#: time while the parent Conversation's own turn runs).
 _QUEUED_KINDS = frozenset({"live_artifact", "automation"})
+
+#: ``hook(task)``: how many queued runs the owner's Computer has room for now, or ``None`` when
+#: nobody measured it lately.
+_ROOM: list[Callable[[ScheduledTask], int | None]] = []
+
+
+def register_room(hook: Callable[[ScheduledTask], int | None]) -> None:
+    """Let ``hook`` size the owner's cap on queued runs from their Computer's load."""
+    _ROOM[:] = [hook]
+
 
 #: ``task kind -> hook(task, failure)`` called once per finished run (``failure`` is the plain
 #: reason, ``None`` on success); may return a note to post in the parent Conversation.
@@ -290,11 +300,12 @@ async def _run_parent_bound_fire(
         parent = await asyncio.to_thread(
             deps.conversation_store.get_conversation, task.parent_session_id
         )
-        # The Conversation goes first: wait (without using up a deferral) while its turn runs.
+        # The Conversation goes first: one run at a time while its turn runs.
         parent_turn = getattr(parent, "live_status", None) == "running"
-        busy = parent_turn or (
+        cap = 1 if parent_turn else fire._max_concurrent(_ROOM[0](task) if _ROOM else None)
+        busy = (
             fire._OWNER_LAUNCHING.get(owner_key, 0) + await _owner_runs_in_flight(deps, task)
-            >= fire._max_concurrent()
+            >= cap
         )
     else:
         busy = owner_key in fire._OWNER_LAUNCHING or await _owner_runs_in_flight(deps, task) > 0

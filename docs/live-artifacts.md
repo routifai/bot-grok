@@ -28,9 +28,11 @@ Terms are in `CONTEXT.md` (Automation, Live page, Live sheet).
 
 ## Running
 
-- Several Automations may run at once while the Computer has room: a fixed cap of 3 first, then a
-  cap that follows the Computer's free memory and load (never more than ~6), and 1 while the
-  person is chatting. A run that is due is queued, never dropped.
+- Several Automations may run at once while the Computer has room. The Computer reports its free
+  memory share and its load per CPU every ~30 s (with the file watcher's call); the tighter of the
+  two gives a cap of 1 to 6. Without a report in the last 2 minutes (the Computer just woke) the
+  cap is 3; `OMNIGENT_AUTOMATION_MAX_CONCURRENT` fixes it when set. While the person's own turn
+  runs, one at a time. A run that is due is queued, never dropped.
 - A failed run (after its retry) shows "Last update failed · Retry" on the page and a mark in the
   Automations list. Three failed runs in a row pause the Automation and post one note in the
   Conversation with the reason and Resume. The note comes from the engine, not the Muse.

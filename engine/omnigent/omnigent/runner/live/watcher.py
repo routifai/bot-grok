@@ -3,14 +3,17 @@
 A thread of the runner in a managed Computer. Every ``INTERVAL_SECONDS`` it asks the engine which
 files to watch (``GET /v1/live/watch``: only the sources of live pages, never the whole disk),
 looks at their modified time and size, and posts the ones that changed (``POST /v1/live/changed``).
-The engine debounces and starts the update. The first look at a file only records it, so a restart
-starts nothing; nothing is seen while the Computer sleeps (the schedule is the safety net). Files
+With the same call it says how busy the Computer is (free memory share, load per CPU), which sizes
+how many update runs the engine starts at once. The engine debounces and starts the update. The
+first look at a file only records it, so a restart starts nothing; nothing is seen while the
+Computer sleeps (the schedule is the safety net). Files
 change here without going through the engine (the AI or a shell writes them), which is why this
 polls the disk instead of listening to uploads. Rules: ``docs/live-artifacts.md``.
 """
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import threading
@@ -34,6 +37,34 @@ def stamp_of(path: Path) -> Stamp:
     except OSError:
         return None
     return stat.st_mtime_ns, stat.st_size
+
+
+def _number(path: str) -> int | None:
+    try:
+        return int(Path(path).read_text().strip())
+    except (OSError, ValueError):  # no such file, or "max"
+        return None
+
+
+def read_load() -> dict[str, float]:
+    """``mem_free`` (share of memory free: the container's limit when it has one, else the
+    machine's) and ``load`` (one-minute load per CPU); a reading it cannot take is left out."""
+    out: dict[str, float] = {}
+    limit, used = _number("/sys/fs/cgroup/memory.max"), _number("/sys/fs/cgroup/memory.current")
+    if limit and used is not None:
+        out["mem_free"] = round(max(0.0, 1 - used / limit), 3)
+    else:
+        try:
+            info = dict(
+                line.split(":", 1) for line in Path("/proc/meminfo").read_text().splitlines()
+            )
+            total, free = (int(info[k].split()[0]) for k in ("MemTotal", "MemAvailable"))
+            out["mem_free"] = round(free / total, 3)
+        except (OSError, KeyError, ValueError, ZeroDivisionError):
+            pass
+    with contextlib.suppress(OSError):
+        out["load"] = round(os.getloadavg()[0] / (os.cpu_count() or 1), 3)
+    return out
 
 
 class SourceWatcher:
@@ -89,7 +120,8 @@ class SourceWatcher:
             timeout=15.0,
             transport=self._transport,
         ) as client:
-            watched = client.get("/v1/live/watch").raise_for_status().json()["paths"]
+            reply = client.get("/v1/live/watch", params=read_load()).raise_for_status()
+            watched = reply.json()["paths"]
             changed = self.moved(watched)
             if changed:
                 client.post("/v1/live/changed", json={"paths": changed}).raise_for_status()

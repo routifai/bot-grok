@@ -96,12 +96,17 @@ _RETRY_BACKOFF_S = 600
 _MAX_ATTEMPTS = 2
 
 
-def _max_concurrent() -> int:
-    """Queued-kind runs one owner may have at once (``OMNIGENT_AUTOMATION_MAX_CONCURRENT``)."""
+def _max_concurrent(measured: int | None = None) -> int:
+    """Queued-kind runs one owner may have at once.
+
+    ``OMNIGENT_AUTOMATION_MAX_CONCURRENT`` fixes it when set; else ``measured`` (what the owner's
+    Computer has room for right now), else the default.
+    """
     try:
-        return max(1, int(os.environ.get(_MAX_CONCURRENT_ENV, _DEFAULT_MAX_CONCURRENT)))
-    except ValueError:
-        return _DEFAULT_MAX_CONCURRENT
+        fixed = int(os.environ[_MAX_CONCURRENT_ENV])
+    except (KeyError, ValueError):
+        return max(1, measured) if measured is not None else _DEFAULT_MAX_CONCURRENT
+    return max(1, fixed)
 
 
 # (workspace_id, owner) -> parent-bound fires in their launch phase; closes the

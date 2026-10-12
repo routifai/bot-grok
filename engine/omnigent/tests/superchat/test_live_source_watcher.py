@@ -55,3 +55,24 @@ def test_a_failed_report_is_sent_again_next_pass(tmp_path: Path) -> None:
         watcher.poll()
     watcher._transport = _watcher(tmp_path, ["tea.csv"], posted)._transport
     assert watcher.poll() == ["tea.csv"]
+
+
+def test_the_poll_carries_the_computers_load(tmp_path: Path, monkeypatch) -> None:
+    from omnigent.runner.live import watcher as watcher_mod
+
+    seen: list[dict[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(dict(request.url.params))
+        return httpx.Response(200, json={"paths": []})
+
+    monkeypatch.setattr(watcher_mod, "read_load", lambda: {"mem_free": 0.42, "load": 0.8})
+    SourceWatcher(
+        lambda: "http://engine", lambda: "host:tok", tmp_path,
+        transport=httpx.MockTransport(handler),
+    ).poll()  # fmt: skip
+    assert seen == [{"mem_free": "0.42", "load": "0.8"}]
+    # A real reading: each value in range, a reading it cannot take simply left out.
+    real = watcher_mod.read_load()
+    assert set(real) <= {"mem_free", "load"}
+    assert all(v >= 0 for v in real.values()) and real.get("mem_free", 0) <= 1

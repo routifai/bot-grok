@@ -11,6 +11,21 @@ from typing import Any
 
 from omnigent.superchat.artifacts.patches import PatchError, SetText, apply_patches, read_text
 
+#: Most update runs a Computer takes at once, however idle it is.
+MAX_ROOM = 6
+
+
+def room_for(mem_free: float | None, load: float | None) -> int:
+    """How many runs a Computer has room for: 1 to :data:`MAX_ROOM`.
+
+    ``mem_free`` is the share of its memory still free (0 to 1) and ``load`` its one-minute load
+    per CPU; the tighter of the two decides, and a load of 1.5 per CPU or more leaves room for one.
+    A reading it could not take does not count against it.
+    """
+    memory = 1.0 if mem_free is None else min(max(mem_free, 0.0), 1.0)
+    cpu = 1.0 if load is None else 1.0 - min(max(load, 0.0) / 1.5, 1.0)
+    return max(1, min(MAX_ROOM, round(MAX_ROOM * min(memory, cpu))))
+
 
 def _norm(text: str) -> str:
     return " ".join(text.split())

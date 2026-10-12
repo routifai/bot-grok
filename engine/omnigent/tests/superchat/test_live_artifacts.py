@@ -441,3 +441,26 @@ def test_start_fresh_forgets_what_updates_wrote_and_keeps_settings(env) -> None:
     assert (state["last_update"], state["failures"], state["misses"]) == (None, 0, 0)
     assert state["note"] == "prices only" and state["on_change"] is True
     assert live.sources == ["your_files/tea.csv"] and live.tell == "every"
+
+
+def test_room_follows_the_tighter_of_memory_and_load() -> None:
+    from omnigent.superchat.live.logic import room_for
+
+    assert room_for(1.0, 0.0) == 6 and room_for(None, None) == 6
+    assert room_for(0.5, 0.2) == 3  # half the memory free
+    assert room_for(0.9, 1.0) == 2  # a busy CPU decides
+    assert room_for(0.05, 0.0) == 1 and room_for(0.9, 3.0) == 1 and room_for(-1.0, None) == 1
+
+
+def test_a_computers_load_report_sizes_its_owners_room_until_it_goes_stale(
+    env, monkeypatch
+) -> None:
+    from omnigent.superchat.live import service as service_mod
+
+    task = env.service.tasks.get(env.service.live.get(_SESSION, "prices.html").task_id)
+    assert env.service.room(task) is None  # nobody reported yet
+    env.service.note_load(None, 0.5, 0.1)
+    assert env.service.room(task) == 3
+    clock = service_mod.time.monotonic()
+    monkeypatch.setattr(service_mod.time, "monotonic", lambda: clock + 121)
+    assert env.service.room(task) is None

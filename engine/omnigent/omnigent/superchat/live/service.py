@@ -6,10 +6,12 @@ Blocking: callers run them in a thread. Rules: ``docs/live-artifacts.md``.
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from collections.abc import Callable
 from typing import Any
 
+from omnigent.db.db_models import current_workspace_id
 from omnigent.db.utils import now_epoch
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.server.auth import RESERVED_USER_LOCAL
@@ -19,7 +21,7 @@ from omnigent.superchat.artifacts.store import (
     SqlAlchemyArtifactStore,
     VersionConflictError,
 )
-from omnigent.superchat.live.logic import Plan, plan_changes
+from omnigent.superchat.live.logic import Plan, plan_changes, room_for
 from omnigent.superchat.live.store import Live, SqlAlchemyLiveStore, new_state
 
 LIVE_TASK_KIND = "live_artifact"
@@ -31,6 +33,8 @@ MAX_MISSES = 2
 MAX_FAILURES = 3
 #: A source file must stay quiet this long before its page updates (a burst of saves is one run).
 CHANGE_DEBOUNCE_SECONDS = 120.0
+#: A Computer reports its load every ~30 s; older than this, nobody knows its room.
+LOAD_FRESH_SECONDS = 120.0
 
 
 #: State an update remembers (the rest, sources, schedule and note, is the person's settings).
@@ -91,6 +95,8 @@ class LiveService:
         self.run_now: Callable[[], Any | None] = lambda: None
         self.debounce = CHANGE_DEBOUNCE_SECONDS
         self._timers: dict[tuple[str, str], asyncio.TimerHandle] = {}
+        #: owner -> (room, monotonic time): what their Computer last said it has room for.
+        self._room: dict[tuple[int, str | None], tuple[int, float]] = {}
         self._fires: set[asyncio.Task[None]] = set()
 
     #: The server's event loop, noted by the routes: the scheduler's timers live on it, and the
@@ -174,6 +180,17 @@ class LiveService:
         live.state.update({k: fresh[k] for k in _FORGOTTEN})
         self.live.save(live)
         return live
+
+    def note_load(self, user_id: str | None, mem_free: float | None, load: float | None) -> None:
+        """The owner's Computer reported its free memory share and load per CPU."""
+        key = (current_workspace_id(), user_id)
+        self._room[key] = (room_for(mem_free, load), time.monotonic())
+
+    def room(self, task: Any) -> int | None:
+        """Runs the task owner's Computer has room for, or ``None`` without a fresh report."""
+        owner = None if task.user_id == RESERVED_USER_LOCAL else task.user_id
+        room, at = self._room.get((task.workspace_id, owner), (0, 0.0))
+        return room if room and time.monotonic() - at < LOAD_FRESH_SECONDS else None
 
     def watched(self, user_id: str | None) -> list[str]:
         """File paths whose change starts an update (what the Computer polls)."""

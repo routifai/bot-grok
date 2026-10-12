@@ -142,9 +142,17 @@ def create_live_router(
         )
 
     @router.get("/live/watch")
-    async def live_watch(request: Request) -> dict[str, Any]:
-        """File paths to watch: sources of this owner's pages that update on change."""
+    async def live_watch(
+        request: Request, mem_free: float | None = None, load: float | None = None
+    ) -> dict[str, Any]:
+        """File paths to watch: sources of this owner's pages that update on change.
+
+        The Computer also says how busy it is (``mem_free``: share of memory free, ``load``:
+        load per CPU), which sizes how many of the owner's runs go at once.
+        """
         owner = await _computer_owner(request)
+        if mem_free is not None or load is not None:
+            service.note_load(owner, mem_free, load)
         return {"paths": await asyncio.to_thread(service.watched, owner)}
 
     @router.post("/live/changed", status_code=202)

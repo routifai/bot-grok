@@ -273,6 +273,11 @@ def test_on_change_is_a_setting_and_the_computer_routes_need_its_launch_token(en
     )
     assert client.get("/v1/live/watch").status_code != 200
     assert client.get("/v1/live/watch", headers=good).json() == {"paths": ["your_files/tea.csv"]}
+    # The same call carries the Computer's load, which sizes its owner's room for runs.
+    task = SimpleNamespace(workspace_id=0, user_id="alice")
+    assert env.service.room(task) is None
+    assert client.get("/v1/live/watch?mem_free=0.5&load=0.1", headers=good).is_success
+    assert env.service.room(task) == 3
     armed: list[tuple[str, str]] = []
     env.service.arm = armed.append  # type: ignore[method-assign]
     body = {"paths": ["your_files/tea.csv"]}
