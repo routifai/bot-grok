@@ -8,7 +8,11 @@ import {
 import { Button, DropdownMenuItem } from "@superchat/ui-web";
 import { useEffect, useState } from "react";
 import { rpc } from "../../lib/rpc";
-import type { ArtifactExtension, ArtifactPanelParts } from "../artifacts";
+import {
+  type ArtifactExtension,
+  type ArtifactPanelParts,
+  useArtifactPublishOptions,
+} from "../artifacts";
 import { isPageArtifact, pageEditorKind } from "./PageEditor";
 import { PublishDialog, PublishedBar, PublishedPill, viewsText } from "./PublishApp";
 
@@ -26,6 +30,8 @@ function useAppsPanel({
   useEffect(() => {
     setPublish(artifact?.publish ?? null);
   }, [artifact]);
+
+  const options = useArtifactPublishOptions(artifact);
 
   const app = artifact?.mimeType === "text/html" ? artifact : undefined;
   if (!app) return {};
@@ -72,6 +78,7 @@ function useAppsPanel({
         current={publish}
         onClose={() => setPublishing(false)}
         onConfirm={publishWith}
+        options={options}
       />
     ) : null,
     holdsEscape: publishing,

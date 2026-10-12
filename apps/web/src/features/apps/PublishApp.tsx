@@ -23,7 +23,8 @@ import {
   RadioGroupItem,
 } from "@superchat/ui-web";
 import { Check, Copy } from "lucide-react";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import type { RegisterPublishSave } from "../artifacts";
 
 const AUDIENCES: ArtifactPublishAudience[] = ["owner", "org", "link"];
 
@@ -164,24 +165,33 @@ export function PublishDialog({
   current,
   onClose,
   onConfirm,
+  options,
 }: {
   name: string;
   /** The existing publication when this edits its settings. */
   current: ArtifactPublish | null;
   onClose: () => void;
   onConfirm: (audience: ArtifactPublishAudience) => Promise<void>;
+  /** Extra fields from other capabilities; they save when the person confirms. */
+  options?: (register: RegisterPublishSave) => ReactNode;
 }) {
   const { t } = useLingui();
   const labels = useAudienceLabels();
   const [audience, setAudience] = useState<ArtifactPublishAudience>(current?.audience ?? "owner");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const saves = useRef(new Set<() => Promise<void>>());
+  const register: RegisterPublishSave = (save) => {
+    saves.current.add(save);
+    return () => void saves.current.delete(save);
+  };
 
   async function submit() {
     setBusy(true);
     setError(null);
     try {
       await onConfirm(audience);
+      await Promise.all([...saves.current].map((save) => save()));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : t`Could not publish this.`);
       setBusy(false);
@@ -221,6 +231,7 @@ export function PublishDialog({
             ))}
           </RadioGroup>
         </fieldset>
+        {options?.(register)}
         <div className="truncate font-mono text-[12px] text-muted-foreground" dir="ltr">
           {current ? appAddress(current.urlPath) : `${window.location.host}/apps/…`}
         </div>

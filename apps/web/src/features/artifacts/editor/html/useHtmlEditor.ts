@@ -329,9 +329,9 @@ export function useHtmlEditor({
     onFrameMessage,
     finishText: () => postRef.current({ type: "superchat:edit-text-finish", commit: true }),
     /** Select these elements (a layer picked in the navigator); kept for a frame not yet up. */
-    select: (ids: string[]) => {
+    select: (ids: string[], scroll = false) => {
       selectedIds.current = ids;
-      postRef.current({ type: "superchat:edit-select", ids });
+      postRef.current({ type: "superchat:edit-select", ids, ...(scroll ? { scroll } : {}) });
     },
   };
 }

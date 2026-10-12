@@ -70,3 +70,29 @@ export function resetEditorState(): void {
   flushers.clear();
   notify();
 }
+
+// Parts of a page a capability wants marked (the parts a live update changed) and the one part it
+// wants brought into view. The page editor reads both; the capability sets them, so neither
+// imports the other.
+const marked = new Map<string, readonly string[]>();
+const NONE: readonly string[] = [];
+const focused = new Map<string, { id: string; n: number }>();
+
+/** The `data-superchat-id`s to mark in the file's page. */
+export const useArtifactMarked = (key: string): readonly string[] =>
+  useSyncExternalStore(subscribe, () => marked.get(key) ?? NONE);
+export function setArtifactMarked(key: string, ids: readonly string[]): void {
+  const now = marked.get(key) ?? NONE;
+  if (now.length === ids.length && now.every((id, index) => id === ids[index])) return;
+  if (ids.length) marked.set(key, ids);
+  else marked.delete(key);
+  notify();
+}
+
+/** The part asked to be shown (selected and scrolled to); `n` makes a repeat request new. */
+export const useArtifactFocus = (key: string): { id: string; n: number } | undefined =>
+  useSyncExternalStore(subscribe, () => focused.get(key));
+export function focusArtifactPart(key: string, id: string): void {
+  focused.set(key, { id, n: (focused.get(key)?.n ?? 0) + 1 });
+  notify();
+}

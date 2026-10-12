@@ -10,6 +10,7 @@ import { computerContract } from "./rpc/computer.js";
 import { dailyNotesContract } from "./rpc/daily-notes.js";
 import { decksContract } from "./rpc/decks.js";
 import { knowledgeContract } from "./rpc/knowledge.js";
+import { liveContract } from "./rpc/live.js";
 import { memoryContract } from "./rpc/memory.js";
 import { engineModelsContract } from "./rpc/models.js";
 import { museContract } from "./rpc/muse.js";
@@ -31,6 +32,7 @@ export const appContract = {
   ...decksContract,
   ...engineModelsContract,
   ...knowledgeContract,
+  ...liveContract,
   ...memoryContract,
   ...museContract,
   ...sheetsContract,

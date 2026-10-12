@@ -1,2 +1,2 @@
 export { AutomationsSheet } from "./AutomationsSheet";
-export { describeSchedule } from "./schedule";
+export { describeSchedule, WEEKDAYS } from "./schedule";

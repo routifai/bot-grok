@@ -19,6 +19,7 @@ export * from "./rpc/charts.js";
 export * from "./rpc/computer.js";
 export * from "./rpc/decks.js";
 export * from "./rpc/knowledge.js";
+export * from "./rpc/live.js";
 export * from "./rpc/models.js";
 export * from "./rpc/sheets.js";
 export * from "./rpc/side-chats.js";

@@ -631,6 +631,8 @@
     if (d.type === "superchat:edit-select" && Array.isArray(d.ids)) {
       if (editing) finishEdit(true);
       selectIds(d.ids);
+      var first = d.scroll && d.ids[0] && findById(d.ids[0]);
+      if (first) first.scrollIntoView({ block: "center", behavior: "smooth" });
     } else if (d.type === "superchat:edit-preview" && typeof d.id === "string" && d.style) {
       var el = findById(d.id);
       if (!el) return;

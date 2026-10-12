@@ -33,6 +33,7 @@ import { FolderPicker } from "../features/computer/FolderPicker";
 import { DeckThemeChoice, decksExtension } from "../features/decks";
 import { documentsExtension } from "../features/documents";
 import { knowledgeExtension } from "../features/knowledge";
+import { liveExtension } from "../features/live";
 import { ConversationModelPicker } from "../features/models";
 import { useChatPlace, WorkInChip } from "../features/projects/WorkIn";
 import { sheetsExtension } from "../features/sheets";
@@ -117,6 +118,7 @@ const ARTIFACT_EXTENSIONS = [
   documentsExtension,
   chartsExtension,
   knowledgeExtension,
+  liveExtension,
 ];
 
 /** Ask cards whose options preview a capability's things, drawn by that capability. */

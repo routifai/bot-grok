@@ -18,7 +18,9 @@ export {
   type ArtifactResultArgs,
   type ArtifactThumbnailArgs,
   type ArtifactViewProps,
+  type RegisterPublishSave,
   useArtifactCardParts,
   useArtifactExtensions,
   useArtifactPanelParts,
+  useArtifactPublishOptions,
 } from "./registry";

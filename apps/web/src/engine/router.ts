@@ -12,6 +12,7 @@ import { dailyNotesRouter } from "./daily-notes";
 import { decksRouter } from "./decks";
 import { filesRouter } from "./files";
 import { knowledgeRouter } from "./knowledge";
+import { liveRouter } from "./live";
 import { memoryRouter } from "./memory";
 import { engineModelsRouter } from "./models";
 import { museRouter } from "./muse";
@@ -35,6 +36,7 @@ export const router = os.router({
   ...engineModelsRouter,
   ...filesRouter,
   ...knowledgeRouter,
+  ...liveRouter,
   ...memoryRouter,
   ...museRouter,
   ...searchRouter,

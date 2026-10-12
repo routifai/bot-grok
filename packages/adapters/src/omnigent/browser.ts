@@ -9,6 +9,7 @@ export * from "./client.js";
 export * from "./daily-notes.js";
 export * from "./decks.js";
 export * from "./knowledge.js";
+export * from "./live.js";
 export * from "./memory.js";
 export * from "./projects.js";
 export * from "./redact.js";

@@ -2,12 +2,13 @@ import { useLingui } from "@lingui/react/macro";
 import { type Artifact, isDeckArtifactName } from "@superchat/contracts";
 import { Button, cn } from "@superchat/ui-web";
 import { Lock, Play, RotateCcw } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SandboxedHtmlViewer } from "../../components/SandboxedHtmlViewer";
 import type { ArtifactEditorArgs, ArtifactEditorKind, ArtifactEditorParts } from "../artifacts";
-import { artifactKey } from "../artifacts/editor/editor-state";
+import { artifactKey, useArtifactFocus, useArtifactMarked } from "../artifacts/editor/editor-state";
 import { EditStage } from "../artifacts/editor/html/EditStage";
 import { isPathId, targetLabel } from "../artifacts/editor/html/edit-model";
+import { markParts, tokenColor } from "../artifacts/editor/html/mark-parts";
 import { EditNoticeBanner, StylePanel } from "../artifacts/editor/html/StylePanel";
 import { type PostToFrame, useHtmlEditor } from "../artifacts/editor/html/useHtmlEditor";
 import { buildElementAsk, buildFileAsk } from "../artifacts/editor/html-ask";
@@ -79,13 +80,17 @@ function usePageEditor({
   const title = artifact.name;
   const html = useMemo(() => new TextDecoder("utf-8").decode(bytes), [bytes]);
   const app = isAppHtml(html);
+  const fileKey = artifactKey(artifact);
+  const marked = useArtifactMarked(fileKey);
+  const markColor = marked.length ? tokenColor("--link") : "";
+  const shown = useMemo(() => markParts(html, marked, markColor), [html, marked, markColor]);
   const layers = useMemo(() => pageLayers(html), [html]);
   const frame = useRef<HTMLIFrameElement | null>(null);
   const postRef = useRef<PostToFrame>(() => {});
   const post = useCallback<PostToFrame>((message) => postRef.current(message), []);
   const [runKey, setRunKey] = useState(0);
   const editor = useHtmlEditor({
-    fileKey: artifactKey(artifact),
+    fileKey,
     active: editing,
     artifactId: artifact.id,
     version: artifact.version,
@@ -132,6 +137,24 @@ function usePageEditor({
     editor.select([id]);
     if (!editing) setEditing(true);
   };
+  // A part asked for by another capability (an update's change chip): select it and scroll to it.
+  const wanted = useArtifactFocus(fileKey);
+  const handled = useRef(wanted?.n ?? 0);
+  const scrollTo = useRef<string | null>(null);
+  const selectEditor = editor.select;
+  useEffect(() => {
+    if (!wanted || wanted.n === handled.current) return;
+    handled.current = wanted.n;
+    scrollTo.current = editing ? null : wanted.id;
+    selectEditor([wanted.id], true);
+    setEditing(true);
+  }, [wanted, editing, selectEditor, setEditing]);
+  // The edit frame opens after the request: scroll once it is ready.
+  const onStageReady = useCallback(() => {
+    if (!scrollTo.current) return;
+    postRef.current({ type: "superchat:edit-select", ids: [scrollTo.current], scroll: true });
+    scrollTo.current = null;
+  }, []);
   const selected = targets.length > 0;
   const shownIds = new Set(targets.map((target) => target.id));
 
@@ -139,17 +162,18 @@ function usePageEditor({
     <div data-testid="page-stage" className="relative h-full bg-background">
       {editing ? (
         <EditStage
-          html={html}
+          html={shown}
           title={title}
           mode="page"
           reloadKey={editor.reloadKey}
+          onReady={onStageReady}
           selectedIds={editor.selectedIds}
           frameRef={frame}
           postRef={postRef}
           onMessage={editor.onFrameMessage}
         />
       ) : (
-        <SandboxedHtmlViewer key={runKey} html={html} title={title} frameRef={frame} />
+        <SandboxedHtmlViewer key={runKey} html={shown} title={title} frameRef={frame} />
       )}
       <Lock
         size={12}

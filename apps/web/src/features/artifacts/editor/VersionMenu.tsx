@@ -52,11 +52,13 @@ export function VersionMenu({
   const latest = versions[0];
   const older = !!shown && !!latest && shown.id !== latest.id;
   const origin = (entry: ArtifactVersion) =>
-    !isHandOrigin(entry.origin)
-      ? t`by superchat`
-      : entry.origin === "restore"
-        ? t`restored`
-        : t`by you`;
+    entry.origin === "update"
+      ? t`updated`
+      : !isHandOrigin(entry.origin)
+        ? t`by superchat`
+        : entry.origin === "restore"
+          ? t`restored`
+          : t`by you`;
 
   return (
     <DropdownMenu>

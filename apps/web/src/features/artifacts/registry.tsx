@@ -64,7 +64,12 @@ export interface ArtifactExtension {
   /** The editor kind for this file (a deck, a page), or null: the file then opens in the same
    * editor shell read-only, with its `view` (or the default preview) on the stage. */
   editor?(artifact: Artifact): ArtifactEditorKind | null;
+  /** A field for the publish dialog. `register` hands the dialog a save to run when the person
+   * confirms; it returns the unregister. */
+  publishOptions?(artifact: Artifact, register: RegisterPublishSave): ReactNode;
 }
+
+export type RegisterPublishSave = (save: () => Promise<void>) => () => void;
 
 /**
  * One kind of file in the artifact editor (`editor/ArtifactEditor`). The shell owns the frame —
@@ -201,6 +206,19 @@ export function useArtifactEditorKind(artifact: Artifact | undefined): ArtifactE
     if (kind) return kind;
   }
   return null;
+}
+
+/** The publish dialog's extra fields from every extension, given the dialog's `register`. */
+export function useArtifactPublishOptions(
+  artifact: Artifact | undefined,
+): (register: RegisterPublishSave) => ReactNode {
+  const extensions = useArtifactExtensions();
+  return (register) =>
+    artifact
+      ? extensions.map((extension, index) => (
+          <Fragment key={index}>{extension.publishOptions?.(artifact, register)}</Fragment>
+        ))
+      : null;
 }
 
 /** Every extension's card parts for one artifact. */
