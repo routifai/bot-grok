@@ -192,29 +192,28 @@ function SettingsForm({
       </div>
 
       {api.error ? <p className="text-[13px] text-destructive">{api.error}</p> : null}
-      <div className="flex flex-wrap items-center gap-2">
-        {live ? (
-          <>
-            <Button variant="ghost" size="sm" disabled={busy} onClick={() => void done(api.run)}>
-              {t`Update now`}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-destructive hover:text-destructive"
-              disabled={busy}
-              onClick={() => void done(api.stop)}
-            >
-              {t`Stop updating`}
-            </Button>
-          </>
-        ) : null}
-        <span className="flex-1" />
+      {live ? (
+        <div className="-mx-2 flex items-center gap-1">
+          <Button variant="ghost" size="sm" disabled={busy} onClick={() => void done(api.run)}>
+            {t`Update now`}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-destructive hover:text-destructive"
+            disabled={busy}
+            onClick={() => void done(api.stop)}
+          >
+            {t`Stop updating`}
+          </Button>
+        </div>
+      ) : null}
+      <div className="flex items-center justify-end gap-2">
         <Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>
           {t`Cancel`}
         </Button>
         <Button size="sm" disabled={busy} onClick={() => void done(() => api.save(input()))}>
-          {t`Keep updated`}
+          {live ? t`Save` : t`Keep updated`}
         </Button>
       </div>
     </div>

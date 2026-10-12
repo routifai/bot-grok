@@ -40,7 +40,9 @@ def task_prompt(name: str) -> str:
         "3. Call live_update_save once with only the facts that differ from what the page shows "
         "(element id, new text, source) and the facts you read; no changes when nothing differs. "
         "If it says the page changed, start again at step 1.\n"
-        "4. End with a one-line Result that follows the tell rule live_update_save returned."
+        "4. End with a one-line Result that follows the tell rule live_update_save returned.\n"
+        "If you cannot finish, say why in the Result and add that the page stays as it is until "
+        "the next run: the update is yours, nobody should redo it by hand or in chat."
     )
 
 
