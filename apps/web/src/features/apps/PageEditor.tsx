@@ -229,10 +229,7 @@ function usePageEditor({
         slideCount={0}
         onStyle={(changes, mode) => editor.applyStyle(changes, mode)}
         onAttributes={editor.setAttributes}
-        onCommit={() => {
-          editor.finishText();
-          void editor.flush();
-        }}
+        onCommit={() => void editor.history.finish?.()}
         onClose={() => editor.select([])}
         onRemove={editor.remove}
         onDuplicate={editor.duplicate}

@@ -51,6 +51,9 @@ const calls: string[] = [];
 const flush = vi.fn(async () => {
   calls.push("flush");
 });
+const finish = vi.fn(async () => {
+  calls.push("finish");
+});
 const fakeKind: ArtifactEditorKind = {
   id: "fake",
   useEditor: ({ editing }) => ({
@@ -65,6 +68,7 @@ const fakeKind: ArtifactEditorKind = {
       undo,
       redo: async () => {},
       flush,
+      finish,
       expectAsk: () => {},
       headVersion: () => 0,
     },
@@ -239,7 +243,13 @@ it("Edit turns on the toolbar and the inspector; Done turns them off; one undo f
   await act(async () => (view.querySelector('[aria-label="Undo"]') as HTMLElement).click());
   expect(undo).toHaveBeenCalledTimes(1);
 
+  // A save that fails while leaving keeps edit mode (its notice shows there).
+  finish.mockRejectedValueOnce(new Error("save failed"));
   await act(async () => button(view, "Done")?.click());
+  expect(view.querySelector('[data-testid="stage"]')?.textContent).toBe("editing");
+  // Done first ends and saves a text edit still in progress.
+  await act(async () => button(view, "Done")?.click());
+  expect(finish).toHaveBeenCalledTimes(2);
   expect(view.querySelector('[data-testid="editor-toolbar"]')).toBeNull();
   expect(view.querySelector('[data-testid="stage"]')?.textContent).toBe("viewing");
   await act(async () =>

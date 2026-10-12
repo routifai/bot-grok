@@ -201,6 +201,20 @@ export function useHtmlEditor({
   );
 
   const flush = useCallback(() => committer.commit(), [committer]);
+  // A text edit in the frame, and who waits for it to end (`finish`).
+  const textOpen = useRef(false);
+  const textEnded = useRef<(() => void) | null>(null);
+  /** Ends a text edit in progress (the frame sends its text first), then saves everything. */
+  const finish = useCallback(async () => {
+    if (textOpen.current) {
+      await new Promise<void>((resolve) => {
+        textEnded.current = resolve;
+        postRef.current({ type: "superchat:edit-text-finish", commit: true });
+        setTimeout(resolve, 1_000); // a frame that never answers
+      });
+    }
+    await committer.commit();
+  }, [committer]);
   const setExpectAsk = useCallback((on: boolean) => {
     expectAsk.current = on;
   }, []);
@@ -272,10 +286,11 @@ export function useHtmlEditor({
       undo,
       redo,
       flush,
+      finish,
       expectAsk: setExpectAsk,
       headVersion: () => saved.current.version,
     }),
-    [canUndo, canRedo, saving, undo, redo, flush, setExpectAsk],
+    [canUndo, canRedo, saving, undo, redo, flush, finish, setExpectAsk],
   );
 
   /** The bridge's messages (already validated and nonce-checked by the stage). */
@@ -291,6 +306,8 @@ export function useHtmlEditor({
           break;
         case "superchat:edit-text-session":
           setTextEditing(message.active);
+          textOpen.current = message.active;
+          if (!message.active) textEnded.current?.();
           break;
         case "superchat:edit-text-commit":
           void committer.commit([{ kind: "set-text", id: message.id, text: message.text }]);

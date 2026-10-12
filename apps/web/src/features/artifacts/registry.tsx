@@ -156,6 +156,8 @@ export interface ArtifactEditorHistory {
   redo: () => Promise<void>;
   /** Saves what is staged; before an ask, so superchat works on it. */
   flush: () => Promise<void>;
+  /** Ends a text edit still in progress and saves it with the rest (before leaving edit mode). */
+  finish?: () => Promise<void>;
   /** The next outside version is superchat's answer to an ask from here (Undo steps over it). */
   expectAsk: (on: boolean) => void;
   /** The newest version this editor saved (may not be on screen yet). */

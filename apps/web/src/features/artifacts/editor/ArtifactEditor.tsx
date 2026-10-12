@@ -261,6 +261,13 @@ function LoadedEditor({
   const { t } = useLingui();
   const url = useObjectUrl(bytes, artifact.mimeType);
   const { history } = parts;
+  // Leaving edit mode first saves a text edit still in progress; a failed save stays in edit mode
+  // with its notice.
+  const leaveEditing = () =>
+    void (history?.finish?.() ?? Promise.resolve()).then(
+      () => setEditing(false),
+      () => {},
+    );
   const botId = artifact.botId;
   const ask = useArtifactAsk({
     artifact: botId
@@ -320,7 +327,7 @@ function LoadedEditor({
           size="sm"
           aria-pressed={editing}
           data-testid="editor-edit"
-          onClick={() => setEditing(!editing)}
+          onClick={() => (editing ? leaveEditing() : setEditing(true))}
         >
           <Pencil size={13} />
           {t`Edit`}
@@ -375,7 +382,11 @@ function LoadedEditor({
         onRestore={restore}
         note={panel.hasVersionNote ? panel.versionNote : undefined}
       />
-      {panel.badge}
+      {panel.badge ? (
+        // Tags ("Published", "Live") give way first when the header is narrow; the bars below
+        // still say both.
+        <span className="flex shrink-0 items-center gap-2 @max-[18rem]:hidden">{panel.badge}</span>
+      ) : null}
       {content.arrived ? (
         <span
           data-testid="artifact-arrived"
@@ -431,7 +442,7 @@ function LoadedEditor({
           >
             <Redo2 />
           </Button>
-          <Button size="sm" className="ms-1 rounded-full" onClick={() => setEditing(false)}>
+          <Button size="sm" className="ms-1 rounded-full" onClick={leaveEditing}>
             <Check />
             {t`Done`}
           </Button>
@@ -534,12 +545,12 @@ function EditorFrame({
     <div data-testid="artifact-editor" className="flex min-h-0 min-w-0 flex-1 flex-col">
       <header className="flex min-w-0 shrink-0 items-center gap-1.5 border-b border-border px-4 py-2.5">
         {leading}
-        <div className="flex min-w-0 flex-1 items-center gap-2">
+        <div className="@container flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           <h2
             data-testid="artifact-editor-title"
             title={fileName}
             dir="auto"
-            className="min-w-0 truncate text-[14px] font-semibold"
+            className="min-w-16 truncate text-[14px] font-semibold"
           >
             {heading}
           </h2>
