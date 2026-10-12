@@ -92,8 +92,18 @@ export function useLive(artifact: Artifact | undefined) {
         setWaiting({ since: live?.checkedAt ?? null });
         return true;
       }),
-    // The new version arrives through the open page's version poll.
-    undo: () => act((artifactId) => rpc.live.undo({ artifactId })),
-    accept: (elementId: string) => act((artifactId) => rpc.live.accept({ artifactId, elementId })),
+    // The new version arrives through the open page's version poll; the bar updates at once.
+    undo: () =>
+      act(async (artifactId) => {
+        const saved = await rpc.live.undo({ artifactId });
+        setLive(await rpc.live.get({ artifactId }));
+        return saved;
+      }),
+    accept: (elementId: string) =>
+      act(async (artifactId) => {
+        const saved = await rpc.live.accept({ artifactId, elementId });
+        setLive(await rpc.live.get({ artifactId }));
+        return saved;
+      }),
   };
 }
