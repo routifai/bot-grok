@@ -30,6 +30,13 @@ from omnigent.entities.daily_note import (
 )
 
 LOCAL_OWNER = "local"
+# A pass holds the note's lease this long; a crashed pass is retried once it has expired.
+PASS_LEASE_SECONDS = 1800
+PASS_COLUMNS = ("finalized_at", "dreamed_at", "people_at")
+
+
+def _lease_free(row: SqlDailyNote, now: int) -> bool:
+    return row.claimed_at is None or row.claimed_at <= now - PASS_LEASE_SECONDS
 
 
 def _to_entity(row: SqlDailyNote) -> DailyNote:
@@ -55,6 +62,7 @@ def _to_entity(row: SqlDailyNote) -> DailyNote:
         updated_at=row.updated_at,
         dreamed_at=row.dreamed_at,
         people_at=row.people_at,
+        claimed_at=row.claimed_at,
     )
 
 
@@ -178,35 +186,41 @@ class SqlAlchemyDailyNoteStore:
         return claimed
 
     def claim_finalize(self, owner: str, note_date: str) -> bool:
-        """Mark the day finalized once; ``False`` when it already was."""
-        claimed = False
-
-        def mutate(row: SqlDailyNote) -> None:
-            nonlocal claimed
-            if row.finalized_at is None:
-                row.finalized_at = now_epoch()
-                claimed = True
-
-        self._write(owner, note_date, "daily_note_finalize", mutate)
-        return claimed
+        """Take the lease for the finalizing pass; ``False`` when done or another pass holds it."""
+        return self._claim(owner, note_date, "finalized_at")
 
     def claim_pass(self, owner: str, note_date: str, column: str) -> bool:
-        """Mark a nightly pass (``dreamed_at`` or ``people_at``) started once for the day."""
+        """Take the lease for a nightly pass (``dreamed_at`` or ``people_at``) of the day."""
         if column not in ("dreamed_at", "people_at"):
             raise ValueError(column)
+        return self._claim(owner, note_date, column)
+
+    def _claim(self, owner: str, note_date: str, column: str) -> bool:
         claimed = False
 
         def mutate(row: SqlDailyNote) -> None:
             nonlocal claimed
-            if getattr(row, column) is None:
-                setattr(row, column, now_epoch())
+            now = now_epoch()
+            if getattr(row, column) is None and _lease_free(row, now):
+                row.claimed_at = now
                 claimed = True
 
         self._write(owner, note_date, f"daily_note_claim_{column}", mutate)
         return claimed
 
+    def complete_pass(self, owner: str, note_date: str, column: str) -> None:
+        """Mark a pass done (one of :data:`PASS_COLUMNS`) and free the lease."""
+        if column not in PASS_COLUMNS:
+            raise ValueError(column)
+
+        def mutate(row: SqlDailyNote) -> None:
+            setattr(row, column, now_epoch())
+            row.claimed_at = None
+
+        self._write(owner, note_date, f"daily_note_complete_{column}", mutate)
+
     def pending_nightly(self, *, finalized_after: int, finalized_before: int) -> list[DailyNote]:
-        """Finalized notes (in the window) still missing the Dreaming or People pass."""
+        """Finalized notes (in the window) with content still missing a Dreaming or People pass."""
         with self._session("list_daily_notes_nightly") as session:
             stmt = (
                 select(SqlDailyNote)
@@ -221,7 +235,8 @@ class SqlAlchemyDailyNoteStore:
                 .order_by(SqlDailyNote.note_date)
                 .limit(200)
             )
-            return [_to_entity(r) for r in session.execute(stmt).scalars().all()]
+            notes = [_to_entity(r) for r in session.execute(stmt).scalars().all()]
+            return [n for n in notes if any(text.strip() for text in n.sections.values())]
 
     def pending_finalize(self, *, limit: int = 200) -> list[DailyNote]:
         """Unfinalized notes that had at least one pass and a chat to run in, oldest first."""

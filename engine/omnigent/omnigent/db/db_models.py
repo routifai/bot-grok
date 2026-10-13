@@ -1944,7 +1944,7 @@ class SqlDailyNote(OmnigentBase):
     :param edited_by_person: ``True`` once the person edited any section.
     :param parent_session_id: The Super Chat the day's passes ran for (no DB foreign key).
     :param quiet_passes: Quiet-moment passes started for this owner on this day.
-    :param finalized_at: Epoch seconds of the nightly finalizing pass, or ``None``.
+    :param finalized_at: Epoch seconds the nightly finalizing pass succeeded, or ``None``.
     """
 
     __tablename__ = "daily_notes"
@@ -1964,9 +1964,12 @@ class SqlDailyNote(OmnigentBase):
     parent_session_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
     quiet_passes: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     finalized_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # Epoch seconds the nightly Dreaming / People passes started for this day.
+    # Epoch seconds the nightly Dreaming / People passes succeeded for this day.
     dreamed_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
     people_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Epoch seconds a finalize / Dreaming / People pass took the lease; the done markers above
+    # are set only when a pass succeeded.
+    claimed_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[int] = mapped_column(Integer, nullable=False)
     updated_at: Mapped[int] = mapped_column(Integer, nullable=False)
 

@@ -70,3 +70,5 @@ tools:
   # model (CONTEXT.md "Sub-agent Type").
   agents:
     - worker
+    # System-started only (daily-note passes): no Helper role, so start_helper never picks it.
+    - notes

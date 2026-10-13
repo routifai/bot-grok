@@ -32,9 +32,10 @@ class DailyNote:
     :param edited_by_person: ``True`` once the person edited any section.
     :param parent_session_id: The Super Chat the day's passes ran for, or ``None``.
     :param quiet_passes: Quiet-moment passes started on this day.
-    :param finalized_at: Epoch seconds of the nightly finalizing pass, or ``None``.
-    :param dreamed_at: Epoch seconds the Dreaming pass started, or ``None``.
-    :param people_at: Epoch seconds the People pass started, or ``None``.
+    :param finalized_at: Epoch seconds the nightly finalizing pass succeeded, or ``None``.
+    :param dreamed_at: Epoch seconds the Dreaming pass succeeded, or ``None``.
+    :param people_at: Epoch seconds the People pass succeeded, or ``None``.
+    :param claimed_at: Epoch seconds a pass took the lease (single-flight), or ``None``.
     :param created_at: Epoch seconds.
     :param updated_at: Epoch seconds of the last write.
     """
@@ -49,6 +50,7 @@ class DailyNote:
     finalized_at: int | None = None
     dreamed_at: int | None = None
     people_at: int | None = None
+    claimed_at: int | None = None
     created_at: int = 0
     updated_at: int = 0
 

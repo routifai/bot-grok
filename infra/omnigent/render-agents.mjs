@@ -18,7 +18,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const AGENTS_DIR = process.env.SUPERCHAT_RENDER_AGENTS_DIR || join(here, "agents");
 /** One entry per Muse bundle. The engine's `OMNIGENT_SUPERCHAT_DEFAULT_AGENT` (`superchat-claude` |
  * `superchat-pi`) picks which one a new Muse runs on (ADR 0009): this script renders BOTH every run
- * from the same templates. The choice is total: every Sub-agent Type (worker, subworker) of a bundle runs on that bundle's harness, so the Muse, its Helpers and
+ * from the same templates. The choice is total: every Sub-agent Type (worker, subworker, notes) of a bundle runs on that bundle's harness, so the Muse, its Helpers and
  * scheduled/background Helper runs all share one harness. Pi's extra keys keep it from fighting Omnigent: no AGENTS.md/CLAUDE.md
  * auto-discovery, our prompt replaces pi's base prompt, no host skills; they are defined once
  * here and rendered into the Muse and every Sub-agent Type alike. (Compaction is switched off
@@ -42,7 +42,7 @@ const MUSE_BUNDLES = [
 ];
 /** One directory per Sub-agent Type (CONTEXT.md), each a config.yaml template rendered with the
  * bundle's harness keys. */
-const SUB_AGENT_TYPES = ["worker", "worker/agents/subworker"];
+const SUB_AGENT_TYPES = ["worker", "worker/agents/subworker", "notes"];
 /** The deck kit's layout menu (engine/omnigent/omnigent/superchat/decks/kit/menu.md). */
 const DECK_LAYOUTS_PATH = "../../engine/omnigent/omnigent/superchat/decks/kit/menu.md";
 const GENERATED_HEADER =

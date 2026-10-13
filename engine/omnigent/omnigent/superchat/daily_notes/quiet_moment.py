@@ -1,10 +1,10 @@
 """The quiet-moment pass: keep today's daily note (and memory) current while the person is away.
 
 When a top-level Super Chat goes quiet (default 20 minutes) after a substantial exchange (at
-least :data:`MIN_TURNS` user messages since the last pass), one bounded ``analyst`` Helper (pinned
-to Haiku in the bundle) reads the recent conversation, updates today's note with
-``daily_note_update`` and records lasting facts with ``memory_remember``. It is an ad-hoc Helper
-(``start_adhoc_helper``): its Result never wakes the Conversation, so the person is never
+least :data:`MIN_TURNS` user messages since the last pass), one bounded ``notes`` Helper reads
+the recent conversation, updates today's note with ``daily_note_update`` and records lasting
+facts with ``memory_remember``. It is an ad-hoc Helper (``start_adhoc_helper``): its Result
+never wakes the Conversation, so the person is never
 messaged.
 
 Gating reuses the scheduled-run rules: nothing runs while the owner's proactivity is ``off`` or
@@ -12,6 +12,10 @@ inside their quiet hours, and at most :data:`MAX_PASSES_PER_DAY` passes run per 
 day. Each day is finalized once with one more pass in the local evening (a day that ended
 unfinalized is only closed). Idleness is re-derived on every tick from the stored messages and
 the note's own counters, so a restart never loses a due pass.
+
+A pass takes the note's lease when it starts and sets its done marker (``finalized_at``,
+``dreamed_at``, ``people_at``) only once its Helper finished and wrote content. A pass that
+crashed or wrote nothing keeps the lease and is retried when the lease expires.
 """
 
 from __future__ import annotations
@@ -25,19 +29,21 @@ from typing import Any
 
 from omnigent.entities.scheduled_task import OwnerPreferences
 from omnigent.superchat.daily_notes.notes import local_date, local_zone, render_note
-from omnigent.superchat.daily_notes.store import SqlAlchemyDailyNoteStore
+from omnigent.superchat.daily_notes.store import PASS_LEASE_SECONDS, SqlAlchemyDailyNoteStore
 
 _logger = logging.getLogger(__name__)
 
-# Retired Type name kept as the pass identity (Activity titles, rollover); it runs as a fast
-# ``worker`` (superchat.subagents.resolve_scheduled_helper).
-AGENT_TYPE = "analyst"
+# The Helper Type the passes run as: it alone may write the note and memory (agents/notes/).
+AGENT_TYPE = "notes"
 IDLE_SECONDS_ENV = "OMNIGENT_QUIET_MOMENT_IDLE_SECONDS"
 # Minimum time between two passes for the same owner (0 = no gap beyond the idle rule).
 MIN_GAP_SECONDS_ENV = "OMNIGENT_QUIET_MOMENT_MIN_GAP_SECONDS"
 DEFAULT_IDLE_SECONDS = 1200.0
 MIN_TURNS = 3
 MAX_PASSES_PER_DAY = 4
+# Helper runs one pass (finalize, Dreaming or People) of one day may use before it is left alone:
+# a pass that keeps failing or writing nothing must not start a run at every lease expiry.
+MAX_PASS_ATTEMPTS = 3
 FINALIZE_HOUR = 22
 FINALIZE_TICK_SECONDS = 900.0
 MAX_TICK_SECONDS = 30.0
@@ -204,6 +210,21 @@ def _has_content(note: Any) -> bool:
     )
 
 
+def _pass_wrote(note: Any, column: str) -> bool:
+    """Whether a finished pass left what it exists to write.
+
+    The finalize pass needs a note with content, Dreaming needs its reflection. The People pass
+    writes memory pages only, so it counts as done when its Helper finished.
+    """
+    if column == "people_at":
+        return True
+    if note is None:
+        return False
+    if column == "dreamed_at":
+        return bool(note.sections.get("reflection", "").strip())
+    return _has_content(note)
+
+
 class QuietMoment:
     """Ticks over persisted conversation data and runs the bounded pass for chats gone quiet."""
 
@@ -223,6 +244,11 @@ class QuietMoment:
         self._notes = note_store
         self._idle_s = idle_s if idle_s is not None else idle_seconds()
         self._ticker: asyncio.Task[None] | None = None
+        # Passes whose Helper may still run: ``(owner, day, column, helper id, started at)``.
+        # Lost on a restart, which leaves the lease to expire and the pass to be retried.
+        self._watching: list[tuple[str, str, str, str, float]] = []
+        # Runs started per ``(owner, day, column)``, capped at :data:`MAX_PASS_ATTEMPTS`.
+        self._attempts: dict[tuple[str, str, str], int] = {}
         self._last_slow_tick = 0.0
 
     @property
@@ -297,14 +323,12 @@ class QuietMoment:
         await self._start_helper(session_id, owner, day, finalize=False)
         return True
 
-    async def _start_helper(
-        self, session_id: str, owner: str, day: str, *, finalize: bool
-    ) -> None:
+    async def _start_helper(self, session_id: str, owner: str, day: str, *, finalize: bool) -> str:
         from omnigent.server.scheduled.helper_fire import start_adhoc_helper
 
         note = await asyncio.to_thread(self._notes.get, owner, day)
         user_id = None if owner == self._notes.owner_key(None) else owner
-        await start_adhoc_helper(
+        return await start_adhoc_helper(
             self._deps,
             parent_session_id=session_id,
             agent_type=AGENT_TYPE,
@@ -331,15 +355,23 @@ class QuietMoment:
                 continue
             if prefs.proactivity == "off" or _in_quiet_hours(prefs, instant):
                 continue
+            key = (note.owner, note.note_date, "finalized_at")
+            if not ended and self._attempts.get(key, 0) >= MAX_PASS_ATTEMPTS:
+                continue
             if not await asyncio.to_thread(self._notes.claim_finalize, note.owner, note.note_date):
                 continue
             if ended:
                 # The helper writes "today's" note, so a day that already ended is only closed.
+                await asyncio.to_thread(
+                    self._notes.complete_pass, note.owner, note.note_date, "finalized_at"
+                )
                 continue
             try:
-                await self._start_helper(
+                helper_id = await self._start_helper(
                     note.parent_session_id, note.owner, note.note_date, finalize=True
                 )
+                self._watching.append((*key, helper_id, instant))
+                self._attempts[key] = self._attempts.get(key, 0) + 1
                 started += 1
             except Exception:
                 _logger.exception("quiet moment: finalize failed for %s", note.owner)
@@ -349,7 +381,7 @@ class QuietMoment:
         """Start the Dreaming and People passes for days finalized a while ago.
 
         Same gates as the finalize pass (proactivity off or quiet hours hold them back), each
-        pass at most once per day, Haiku-pinned ``analyst`` Helpers that never message the person.
+        pass at most once per day, ``notes`` Helpers that never message the person.
 
         :returns: Helpers started.
         """
@@ -371,19 +403,20 @@ class QuietMoment:
             prefs = prefs or OwnerPreferences(user_id=note.owner)
             if prefs.proactivity == "off" or _in_quiet_hours(prefs, instant):
                 continue
-            skip = not _has_content(note) or service is None
+            # One lease per note: Dreaming, then People once Dreaming is done.
             for column, name, template, kinds in (
                 ("dreamed_at", "Dreaming", DREAM_PROMPT, ["working_style"]),
                 ("people_at", "People", PEOPLE_PROMPT, ["person"]),
             ):
+                key = (note.owner, note.note_date, column)
                 if getattr(note, column) is not None:
                     continue
-                if not await asyncio.to_thread(
+                if self._attempts.get(key, 0) >= MAX_PASS_ATTEMPTS:
+                    continue  # given up on this pass; the next one may still run
+                if service is None or not await asyncio.to_thread(
                     self._notes.claim_pass, note.owner, note.note_date, column
                 ):
-                    continue
-                if skip:
-                    continue
+                    break
                 try:
                     claims = await asyncio.to_thread(service.list_claims, note.owner, kinds=kinds)
                     text = template.format(
@@ -392,24 +425,27 @@ class QuietMoment:
                         styles=_claims_text(claims),
                         people=_claims_text(claims),
                     )
-                    await self._start_named(
+                    helper_id = await self._start_named(
                         note.parent_session_id,
                         note.owner,
                         name,
                         [{"type": "input_text", "text": text}],
                     )
+                    self._watching.append((*key, helper_id, instant))
+                    self._attempts[key] = self._attempts.get(key, 0) + 1
                     started += 1
                 except Exception:
                     _logger.exception("quiet moment: %s pass failed for %s", name, note.owner)
+                break
         return started
 
     async def _start_named(
         self, session_id: str, owner: str, name: str, content: list[dict[str, Any]]
-    ) -> None:
+    ) -> str:
         from omnigent.server.scheduled.helper_fire import start_adhoc_helper
 
         user_id = None if owner == self._notes.owner_key(None) else owner
-        await start_adhoc_helper(
+        return await start_adhoc_helper(
             self._deps,
             parent_session_id=session_id,
             agent_type=AGENT_TYPE,
@@ -417,6 +453,34 @@ class QuietMoment:
             user_id=user_id,
             content=content,
         )
+
+    async def settle(self, *, now: float | None = None) -> int:
+        """Set the done marker of each started pass whose Helper finished and wrote content.
+
+        A Helper that failed, wrote nothing or outlived the lease is dropped: its lease stays
+        and the pass is retried once the lease expires.
+
+        :returns: Markers set.
+        """
+        instant = now if now is not None else time.time()
+        done = 0
+        for watch in list(self._watching):
+            owner, day, column, helper_id, started = watch
+            helper = await asyncio.to_thread(
+                self._deps.conversation_store.get_conversation, helper_id
+            )
+            status = helper.live_status if helper is not None else "failed"
+            if status in (None, "running", "waiting") and instant - started < PASS_LEASE_SECONDS:
+                continue
+            self._watching.remove(watch)
+            if status != "idle":
+                continue
+            note = await asyncio.to_thread(self._notes.get, owner, day)
+            if _pass_wrote(note, column):
+                await asyncio.to_thread(self._notes.complete_pass, owner, day, column)
+                self._attempts.pop((owner, day, column), None)
+                done += 1
+        return done
 
     async def start(self) -> None:
         """Start the ticker."""
@@ -427,6 +491,7 @@ class QuietMoment:
         while True:
             await asyncio.sleep(self.tick_seconds)
             try:
+                await self.settle()
                 await self.idle_due()
                 if time.monotonic() - self._last_slow_tick >= FINALIZE_TICK_SECONDS:
                     self._last_slow_tick = time.monotonic()

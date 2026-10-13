@@ -37,13 +37,22 @@ def harness(db_uri: str, monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr("omnigent.server.scheduled.helper_fire.start_adhoc_helper", fake_start)
     prefs = _Prefs()
+    helper = SimpleNamespace(live_status="idle")
     deps = SimpleNamespace(
         scheduled_task_store=prefs,
-        conversation_store=SimpleNamespace(get_session_owner=lambda sid: None),
+        conversation_store=SimpleNamespace(
+            get_session_owner=lambda sid: None, get_conversation=lambda cid: helper
+        ),
     )
     notes = SqlAlchemyDailyNoteStore(db_uri)
     qm = QuietMoment(deps=deps, note_store=notes, idle_s=3600)
+    qm.helper = helper  # tests flip ``helper.live_status`` to end or fail the pass
     return qm, notes, prefs, started
+
+
+def _finalized(notes: Any) -> None:
+    assert notes.claim_finalize("local", "2026-10-04")
+    notes.complete_pass("local", "2026-10-04", "finalized_at")
 
 
 def _messages(notes: Any, monkeypatch: pytest.MonkeyPatch, stamps: list[int]) -> None:
@@ -63,7 +72,7 @@ async def test_pass_needs_three_turns_then_runs_a_bounded_helper(harness, monkey
     assert await qm.idle_due(now=NOON) == 0
     _messages(notes, monkeypatch, _stamps(3))
     assert await qm.idle_due(now=NOON) == 1
-    assert started[0]["agent_type"] == "analyst"
+    assert started[0]["agent_type"] == "notes"
     assert started[0]["parent_session_id"] == SESSION
     assert "daily_note_update" in started[0]["content"][0]["text"]
     assert notes.get("local", "2026-10-04").quiet_passes == 1  # type: ignore[union-attr]
@@ -211,14 +220,19 @@ async def test_nightly_dreaming_and_people_run_once_after_finalize(
     notes.write_sections(
         "local", "2026-10-04", {"talked_about": "- budget"}, parent_session_id=SESSION
     )
-    notes.claim_finalize("local", "2026-10-04")
+    _finalized(notes)
     later = time.time() + quiet_moment.NIGHTLY_DELAY_SECONDS + 60
 
     assert await qm.nightly_due(now=time.time()) == 0  # finalize pass still running
-    assert await qm.nightly_due(now=later) == 2
+    assert await qm.nightly_due(now=later) == 1  # one lease per note: Dreaming first
+    assert await qm.nightly_due(now=later) == 0
+    notes.write_sections("local", "2026-10-04", {"reflection": "Worked: x"})
+    assert await qm.settle(now=later) == 1
+    assert await qm.nightly_due(now=later) == 1
+    assert await qm.settle(now=later) == 1
     names = [call["name"] for call in started]
     assert names == ["Dreaming", "People"]
-    assert all(call["agent_type"] == "analyst" for call in started)
+    assert all(call["agent_type"] == "notes" for call in started)
     assert 'date: "2026-10-04"' in started[0]["content"][0]["text"]
     assert "c1 [edited]: Maya, manager" in started[1]["content"][0]["text"]
     assert await qm.nightly_due(now=later) == 0
@@ -230,7 +244,7 @@ async def test_nightly_held_by_proactivity_off(harness, monkeypatch: pytest.Monk
     prefs.prefs = OwnerPreferences(user_id="local", proactivity="off")
     monkeypatch.setattr("omnigent.runtime.get_memory_service", lambda: SimpleNamespace())
     notes.write_sections("local", "2026-10-04", {"talked_about": "- x"}, parent_session_id=SESSION)
-    notes.claim_finalize("local", "2026-10-04")
+    _finalized(notes)
     assert await qm.nightly_due(now=time.time() + 4000) == 0
     assert started == []
 
@@ -294,3 +308,99 @@ def test_quiet_prompt_uses_the_same_gate_as_the_other_memory_prompts() -> None:
     assert 'third person ("The user ...")' in prompt
     assert "`replaces_claim_id`" in prompt and "never store a negation" in prompt
     assert "the default is to save nothing" not in prompt
+
+
+def test_the_passes_run_as_notes_and_its_allow_list_has_the_tools_the_prompts_name() -> None:
+    import re
+    from pathlib import Path
+
+    assert quiet_moment.AGENT_TYPE == "notes"
+    from omnigent.superchat.subagents import scheduled_helper_type
+
+    assert scheduled_helper_type(quiet_moment.AGENT_TYPE) == "notes"
+    root = Path(__file__).resolve().parents[4] / "infra/omnigent/agents"
+    prompts = "\n".join(
+        [quiet_moment.QUIET_PROMPT, quiet_moment.DREAM_PROMPT, quiet_moment.PEOPLE_PROMPT]
+    )
+    named = set(re.findall(r"`((?:daily_note|memory|session_history)\w*)`", prompts))
+    assert {"daily_note_update", "memory_remember", "memory_search", "session_history"} <= named
+    for bundle in ("superchat-claude", "superchat-pi"):
+        text = (root / bundle / "agents/notes/config.yaml").read_text()
+        allow = text.split("allow:\n", 1)[1].split("\nprompt:", 1)[0]
+        tools = {line.strip()[2:] for line in allow.splitlines() if line.strip()}
+        assert named <= tools | {"daily_note_get"}
+        assert tools == {
+            "daily_note_get",
+            "daily_note_update",
+            "memory_remember",
+            "memory_forget",
+            "memory_search",
+            "memory_get",
+            "session_history",
+        }
+        # the worker stays read-only
+        worker = (root / bundle / "agents/worker/config.yaml").read_text()
+        assert "daily_note_update" not in worker and "memory_remember" not in worker
+
+
+@pytest.mark.asyncio
+async def test_markers_are_set_only_after_the_pass_wrote_content(harness) -> None:
+    qm, notes, _prefs, _started = harness
+    notes.write_sections(
+        "local", "2026-10-04", {"talked_about": "- budget"}, parent_session_id=SESSION
+    )
+    notes.claim_quiet_pass("local", "2026-10-04", max_per_day=4, parent_session_id=SESSION)
+    qm.helper.live_status = "running"
+    assert await qm.finalize_due(now=NIGHT) == 1
+    row = notes.get("local", "2026-10-04")
+    assert row.claimed_at is not None and row.finalized_at is None  # claimed, not done
+    assert await qm.settle(now=NIGHT) == 0  # still running
+    assert notes.get("local", "2026-10-04").finalized_at is None
+    qm.helper.live_status = "idle"
+    assert await qm.settle(now=NIGHT) == 1
+    row = notes.get("local", "2026-10-04")
+    assert row.finalized_at is not None and row.claimed_at is None
+
+
+@pytest.mark.asyncio
+async def test_a_failed_pass_keeps_the_lease_and_is_retried_after_it_expires(
+    harness, monkeypatch
+) -> None:
+    qm, notes, _prefs, started = harness
+    notes.write_sections(
+        "local", "2026-10-04", {"talked_about": "- budget"}, parent_session_id=SESSION
+    )
+    notes.claim_quiet_pass("local", "2026-10-04", max_per_day=4, parent_session_id=SESSION)
+    qm.helper.live_status = "failed"
+    assert await qm.finalize_due(now=NIGHT) == 1
+    assert await qm.settle(now=NIGHT) == 0
+    row = notes.get("local", "2026-10-04")
+    assert row.claimed_at is not None and row.finalized_at is None
+    # while the lease is held the pass is not started again
+    assert await qm.finalize_due(now=NIGHT) == 0
+    # after the lease expired it is claimed and run again
+    from omnigent.superchat.daily_notes import store as note_store
+
+    later = note_store.now_epoch() + note_store.PASS_LEASE_SECONDS + 1
+    monkeypatch.setattr(note_store, "now_epoch", lambda: later)
+    assert await qm.finalize_due(now=NIGHT) == 1
+    assert len(started) == 2
+    # a pass that keeps failing stops after MAX_PASS_ATTEMPTS runs, however often the lease expires
+    for step in range(2, 6):
+        monkeypatch.setattr(
+            note_store,
+            "now_epoch",
+            lambda step=step: later + step * 2 * note_store.PASS_LEASE_SECONDS,
+        )
+        await qm.finalize_due(now=NIGHT)
+    assert len(started) == quiet_moment.MAX_PASS_ATTEMPTS
+
+
+@pytest.mark.asyncio
+async def test_a_pass_that_wrote_nothing_is_not_marked_done(harness) -> None:
+    qm, notes, _prefs, _started = harness
+    notes.write_sections("local", "2026-10-04", {}, parent_session_id=SESSION)
+    notes.claim_quiet_pass("local", "2026-10-04", max_per_day=4, parent_session_id=SESSION)
+    qm._watching.append(("local", "2026-10-04", "finalized_at", "helper", NIGHT))
+    assert await qm.settle(now=NIGHT) == 0
+    assert notes.get("local", "2026-10-04").finalized_at is None
