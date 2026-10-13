@@ -145,3 +145,49 @@ async def test_compaction_without_the_guard_field_is_backwards_compatible(
         },
     )
     assert second.status_code == 202, second.text
+
+
+# ── GET /items?type=compaction: the latest checkpoint, cheaply ────────────
+
+
+async def test_items_type_filter_returns_the_latest_checkpoint(
+    client: httpx.AsyncClient,
+) -> None:
+    session_id = await _create_session(client, "compaction-latest-lookup")
+    for summary, expected in (("checkpoint A", None), ("checkpoint B", "A")):
+        if expected is not None:
+            listing = await client.get(
+                f"/v1/sessions/{session_id}/items", params={"type": "compaction"}
+            )
+            expected = listing.json()["data"][0]["id"]
+        resp = await client.post(
+            f"/v1/sessions/{session_id}/events",
+            json=_compaction_body(summary, expected_previous_compaction_id=expected),
+        )
+        assert resp.status_code == 202, resp.text
+
+    latest = await client.get(
+        f"/v1/sessions/{session_id}/items",
+        params={"type": "compaction", "order": "desc", "limit": 1},
+    )
+    assert latest.status_code == 200, latest.text
+    data = latest.json()["data"]
+    assert [item["summary"] for item in data] == ["checkpoint B"]
+    assert data[0]["last_item_id"] == "msg_does_not_need_to_exist"
+
+
+async def test_items_type_filter_is_empty_without_a_checkpoint(
+    client: httpx.AsyncClient,
+) -> None:
+    session_id = await _create_session(client, "compaction-latest-none")
+    resp = await client.get(
+        f"/v1/sessions/{session_id}/items", params={"type": "compaction", "order": "desc"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["data"] == []
+
+
+async def test_items_type_filter_rejects_other_types(client: httpx.AsyncClient) -> None:
+    session_id = await _create_session(client, "compaction-latest-bad-type")
+    resp = await client.get(f"/v1/sessions/{session_id}/items", params={"type": "bogus"})
+    assert resp.status_code == 422, resp.text

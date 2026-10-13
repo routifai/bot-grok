@@ -2248,6 +2248,50 @@ async def test_get_session_items_with_read_access(
     )
 
 
+async def test_latest_checkpoint_lookup_is_authorized_like_the_items_route(
+    auth_client: httpx.AsyncClient,
+) -> None:
+    """``GET /items?type=compaction`` needs READ on the session: a reader gets the
+    checkpoint, a stranger gets 404 and learns nothing."""
+    agent = await create_test_agent(auth_client, user="bryan")
+    s1 = await _create_session_as(auth_client, agent["id"], "bryan")
+    session_id = s1["id"]
+    posted = await auth_client.post(
+        f"/v1/sessions/{session_id}/events",
+        headers={"X-Forwarded-Email": "bryan"},
+        json={
+            "type": "compaction",
+            "data": {
+                "summary": "checkpoint",
+                "last_item_id": "msg_x",
+                "model": "test-model",
+                "token_count": 3,
+            },
+        },
+    )
+    assert posted.status_code == 202, posted.text
+    resp = await _grant_permission(
+        auth_client, session_id, granter="bryan", target_user="corey", level=LEVEL_READ
+    )
+    assert resp.status_code == 200
+    params = {"type": "compaction", "order": "desc", "limit": 1}
+
+    reader = await auth_client.get(
+        f"/v1/sessions/{session_id}/items",
+        params=params,
+        headers={"X-Forwarded-Email": "corey"},
+    )
+    assert reader.status_code == 200, reader.text
+    assert [item["summary"] for item in reader.json()["data"]] == ["checkpoint"]
+
+    stranger = await auth_client.get(
+        f"/v1/sessions/{session_id}/items",
+        params=params,
+        headers={"X-Forwarded-Email": "stranger"},
+    )
+    assert stranger.status_code == 404, stranger.text
+
+
 # ── SSE stream without permissions → 404 ───────────────────
 
 

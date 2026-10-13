@@ -28,7 +28,7 @@ Severity: **S1** breaks the year goal by itself; **S2** degrades quality or cost
 
 | # | Sev | Finding | Where | At one year |
 |---|-----|---------|-------|-------------|
-| 1 | S1 | Every compaction and every cold start page the **whole record from item 1**, then drop everything before the anchor. The server route already accepts `after` and `limit` up to 1000; the runner pages with `limit=100` and uses `after` only as a page cursor, never as the anchor. `_load_history_as_input` has six call sites. | `omnigent/superchat/rollover.py:147-189`; `omnigent/runner/app.py:5604-5648` (callers at `:5089`, `:7999`, `:9957`, `:11532`, `:11564`); route `omnigent/server/routes/sessions/routes_items.py:137-138` | Reads grow with lifetime: 50–150k items over HTTP, every morning and every compaction. |
+| 1 | S1 | Every compaction and every cold start page the **whole record from item 1**, then drop everything before the anchor. The server route already accepts `after` and `limit` up to 1000; the runner pages with `limit=100` and uses `after` only as a page cursor, never as the anchor. `_load_history_as_input` has five call sites. | `omnigent/superchat/rollover.py:147-189`; `omnigent/runner/app.py:5604-5648` (callers at `:5089`, `:7999`, `:9957`, `:11532`, `:11564`); route `omnigent/server/routes/sessions/routes_items.py:137-138` | Reads grow with lifetime: 50–150k items over HTTP, every morning and every compaction. |
 | 2 | S1 | **System-prompt change wipes the warm history.** `resume_session` is decided before `_get_or_create_client` rebuilds on a hash change; the fresh client gets only the trailing message. The hash covers the composed prompt including the MCP tool-name note, so a change in the tool set triggers the rebuild as well as an `AGENTS.md` edit. | `omnigent/inner/claude_sdk_executor.py:2764` vs `:3169-3175`, `:1963-1987`; hash input built at `:2788` | Every bundle deploy or tool-set change = amnesia until the next compaction. |
 | 3 | S1 | **Cold replay drops every tool call and result.** The adapter keeps only `message` items; the "verbatim" tail reaches the model as text. | `omnigent/runtime/harnesses/_executor_adapter.py:210`, `:1334-1353` | After each compaction the model loses what it did: paths written, helper ids, results. |
 | 4 | S1 | **One free-text state file, rewritten every time**, at every compaction and every 12 h return. No stable handles, no size budget, no check that an entry survived. | `omnigent/context/rollover.py:195-227`, `:445-477`; `omnigent/superchat/rollover.py:48` | ~365+ rewrites a year; a dropped entry is gone from the window and findable only by search. |
@@ -53,7 +53,7 @@ and the server; the harness contract (system prompt, history list, user message)
 
 1. Read the record from the checkpoint anchor on compaction and on cold start. The server exposes the latest
    `compaction` item (or `latest_compaction_id` on the session); both readers pass `after=<anchor>` and page with
-   `limit=1000`. All six `_load_history_as_input` call sites go through the same path. Items before the anchor
+   `limit=1000`. All five `_load_history_as_input` call sites go through the same path. A checkpoint's `last_item_id` is the last item it covers and its kept tail is stored in its own `compacted_messages`, so the read starts after that anchor and is complete. Items before the anchor
    remain reachable through `session_history`.
 2. In the executor, decide `resume_session` after `_get_or_create_client`; a rebuilt client is a cold start and
    replays history.

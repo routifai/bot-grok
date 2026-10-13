@@ -138,6 +138,7 @@ def register_items_routes(
         after: str | None = Query(default=None),
         before: str | None = Query(default=None),
         order: str = Query(default="asc", pattern="^(asc|desc)$"),
+        type: str | None = Query(default=None, pattern="^compaction$"),
     ) -> PaginatedList:
         """
         List items in a session with cursor-based pagination.
@@ -155,6 +156,8 @@ def register_items_routes(
         :param before: Cursor — return items before this item ID.
         :param order: Sort order, ``"asc"`` (chronological,
             default) or ``"desc"``.
+        :param type: Only items of this type. ``"compaction"`` with
+            ``order=desc&limit=1`` is the session's latest checkpoint.
         :returns: A :class:`PaginatedList` of conversation items.
         :raises OmnigentError: 404 if no session exists.
         """
@@ -173,6 +176,7 @@ def register_items_routes(
             after=after,
             before=before,
             order=order,
+            type=type,
         )
         redactor = await session_redactor(request, conversation_store, session_id, user_id)
         data = [redactor.deep(m.to_api_dict()) for m in page.data]

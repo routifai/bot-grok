@@ -119,21 +119,39 @@ class _FakeResponse:
 
 @dataclass
 class _FakeServerClient:
-    """One page of items + a recording POST — no pagination, no network."""
+    """The items route in memory: ``type``, ``order``, ``limit`` and the exclusive
+    ``after`` cursor (400 for an unknown id), plus a recording POST."""
 
     items: list[dict[str, Any]]
     post_status: int = 200
     get_status: int = 200
     posted: list[dict[str, Any]] = field(default_factory=list)
-    get_calls: int = 0
+    get_params: list[dict[str, str]] = field(default_factory=list)
+
+    @property
+    def get_calls(self) -> int:
+        return len(self.get_params)
 
     async def get(self, _url: str, *, params: dict[str, str], timeout: float) -> _FakeResponse:
-        self.get_calls += 1
+        self.get_params.append(dict(params))
         if self.get_status != 200:
             return _FakeResponse(self.get_status, {})
+        order = [it["id"] for it in self.items]
+        rows = [it for it in self.items if params.get("type") in (None, it["type"])]
         if params.get("after"):
-            return _FakeResponse(200, {"data": [], "has_more": False})
-        return _FakeResponse(200, {"data": self.items, "has_more": False})
+            if params["after"] not in order:
+                return _FakeResponse(400, {})
+            position = order.index(params["after"])
+            desc = params.get("order") == "desc"
+            rows = [
+                it
+                for it in rows
+                if (order.index(it["id"]) < position if desc else order.index(it["id"]) > position)
+            ]
+        if params.get("order") == "desc":
+            rows = rows[::-1]
+        limit = int(params.get("limit", "100"))
+        return _FakeResponse(200, {"data": rows[:limit], "has_more": len(rows) > limit})
 
     async def post(self, _url: str, *, json: dict[str, Any], timeout: float) -> _FakeResponse:
         self.posted.append(json)
@@ -503,3 +521,136 @@ async def test_a_non_claude_model_on_an_anthropic_wire_connection_is_summarized_
     assert ok is True and llm.calls
     assert {call["model"] for call in llm.calls} == {"anthropic/team-model"}
     assert all(proxy["base_url"] in str(call) for call in llm.calls)
+
+
+# ── anchored reads: only the record from the checkpoint's anchor on ───────
+
+
+def _long_record(*, before: int, during: int, after: int) -> list[dict[str, Any]]:
+    """*before* summarized items, a checkpoint anchored on the last of them, the
+    *during* items that landed while it summarized, the checkpoint, then *after* items."""
+    items = [_msg(f"m{i}", "user" if i % 2 == 0 else "assistant", f"t{i}") for i in range(before)]
+    anchor = items[-1]["id"]
+    items += [_msg(f"d{i}", "user" if i % 2 == 0 else "assistant", f"d{i}") for i in range(during)]
+    items.append(_compaction_item("c1", summary="REAL SUMMARY", last_item_id=anchor))
+    items += [_msg(f"n{i}", "user" if i % 2 == 0 else "assistant", f"n{i}") for i in range(after)]
+    return items
+
+
+def _full_read_result(items: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], Any, Any]:
+    from omnigent.context.rollover import split_at_latest_compaction
+
+    since, checkpoint = split_at_latest_compaction(items)
+    if checkpoint is None:
+        return items, None, None
+    return since, checkpoint["summary"], checkpoint["id"]
+
+
+@pytest.mark.asyncio
+async def test_rollover_reads_only_from_the_anchor_on_a_long_record() -> None:
+    items = _long_record(before=5000, during=4, after=6)
+    client = _FakeServerClient(items=items)
+
+    result = await rollover_mod._fetch_items_since_last_compaction(
+        client,  # type: ignore[arg-type]
+        "conv_1",
+    )
+
+    assert result == _full_read_result(items)
+    assert client.get_params == [
+        {"limit": "20", "order": "desc", "type": "compaction"},
+        {"limit": "1000", "order": "asc", "after": "m4999"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_anchored_read_pages_with_the_page_cursor() -> None:
+    items = _long_record(before=3000, during=0, after=2200)
+    client = _FakeServerClient(items=items)
+
+    result = await rollover_mod._fetch_items_since_last_compaction(
+        client,  # type: ignore[arg-type]
+        "conv_1",
+    )
+
+    assert result == _full_read_result(items)
+    assert [p.get("after") for p in client.get_params[1:]] == ["m2999", "n998", "n1998"]
+    assert {p["limit"] for p in client.get_params[1:]} == {"1000"}
+
+
+@pytest.mark.asyncio
+async def test_a_record_without_a_checkpoint_is_read_from_the_start() -> None:
+    items = [_msg(f"m{i}", "user" if i % 2 == 0 else "assistant", "x") for i in range(40)]
+    client = _FakeServerClient(items=items)
+
+    result = await rollover_mod._fetch_items_since_last_compaction(
+        client,  # type: ignore[arg-type]
+        "conv_1",
+    )
+
+    assert result == (items, None, None)
+    assert client.get_params[1] == {"limit": "1000", "order": "asc"}
+
+
+@pytest.mark.asyncio
+async def test_an_anchor_the_record_does_not_hold_reads_after_the_checkpoint() -> None:
+    """A native forwarder's synthetic boundary id: same result as the full read."""
+    items = _long_record(before=30, during=2, after=3)
+    items[32]["last_item_id"] = "boundary_not_in_the_record"
+    client = _FakeServerClient(items=items)
+
+    result = await rollover_mod._fetch_items_since_last_compaction(
+        client,  # type: ignore[arg-type]
+        "conv_1",
+    )
+
+    assert result == _full_read_result(items)
+    assert [p.get("after") for p in client.get_params[1:]] == [
+        "boundary_not_in_the_record",
+        "c1",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_placeholder_checkpoint_is_not_state_the_previous_real_one_is() -> None:
+    """A stand-in checkpoint (a manual SDK /compact before the fix) is skipped: the
+    summary comes from the previous real checkpoint and the turns the stand-in
+    covered are summarized again."""
+    placeholder = "[Claude Code compaction — context was automatically compacted]"
+    items = [
+        _msg("u1", "user", "old"),
+        _msg("a1", "assistant", "old answer"),
+        _compaction_item("c1", summary="REAL SUMMARY", last_item_id="a1"),
+        _msg("u2", "user", "kept by the placeholder"),
+        _msg("a2", "assistant", "answer"),
+        _compaction_item("c2", summary=placeholder, last_item_id="a2"),
+        _msg("u3", "user", "after"),
+    ]
+    client = _FakeServerClient(items=items)
+
+    since, summary, checkpoint_id = await rollover_mod._fetch_items_since_last_compaction(
+        client,  # type: ignore[arg-type]
+        "conv_1",
+    )
+
+    assert (summary, checkpoint_id) == ("REAL SUMMARY", "c1")
+    assert [it["id"] for it in since] == ["u2", "a2", "u3"]
+
+
+@pytest.mark.asyncio
+async def test_a_record_with_only_placeholder_checkpoints_is_read_from_the_start() -> None:
+    placeholder = "[Claude Code compaction — context was automatically compacted]"
+    items = [
+        _msg("u1", "user", "hi"),
+        _compaction_item("c1", summary=placeholder, last_item_id="u1"),
+        _msg("u2", "user", "again"),
+    ]
+    client = _FakeServerClient(items=items)
+
+    since, summary, checkpoint_id = await rollover_mod._fetch_items_since_last_compaction(
+        client,  # type: ignore[arg-type]
+        "conv_1",
+    )
+
+    assert (summary, checkpoint_id) == (None, None)
+    assert [it["id"] for it in since] == ["u1", "u2"]
