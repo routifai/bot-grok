@@ -21,10 +21,12 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import pytest
 
+from omnigent.context.rollover import checkpoint_header
 from omnigent.llms.types import MessageOutput, OutputText, Response
 from omnigent.runner import create_runner_app
 from tests.runner.conftest import (
@@ -1037,6 +1039,106 @@ async def test_compact_in_superside_chat_mode_posts_a_real_checkpoint(
         "response.compaction.in_progress",
         "response.compaction.completed",
     ]
+
+
+_STATE_TEXT = "## Working list\n- [t-launch · 2026-10-09] Spring launch budget"
+_JOURNAL_REPLY = f"{_STATE_TEXT}\n<journal>\n2026-10-12 · Planned the launch\n</journal>"
+
+
+class _RejectingCompactionClient(_RecordServerClient):
+    """Refuses every compaction write with a 500."""
+
+    async def post(self, url: str, **kwargs: Any) -> NullServerClient._Response:
+        response = await super().post(url, **kwargs)
+        body = kwargs.get("json", {})
+        if isinstance(body, dict) and body.get("type") == "compaction":
+
+            class _Failed(NullServerClient._Response):
+                status_code = 500
+
+            return _Failed()
+        return response
+
+
+async def _compact_once(
+    monkeypatch: pytest.MonkeyPatch, server_client: _RecordServerClient, conv_id: str
+) -> _FakeProcessManager:
+    llm_client = _GatedLLMClient(asyncio.Event(), text=_JOURNAL_REPLY)
+    llm_client._gate.set()
+    monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
+    app, pm = _build_app(_SequencedHarnessClient([_plain_frames()]), server_client)
+    async with _runner_client(app) as client:
+        await asyncio.wait_for(
+            client.post(
+                f"/v1/sessions/{conv_id}/events",
+                json={
+                    "type": "message",
+                    "role": "user",
+                    "model": "test-agent",
+                    "content": [{"type": "input_text", "text": "hello"}],
+                    "harness_override": "claude-sdk",
+                },
+            ),
+            timeout=5.0,
+        )
+        await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
+        resp = await client.post(f"/v1/sessions/{conv_id}/events", json={"type": "compact"})
+        assert resp.status_code == 200, resp.text
+        await _wait_until(lambda: len(server_client.posted_compactions) == 1, timeout=3.0)
+        await asyncio.sleep(0.2)
+    return pm
+
+
+@pytest.mark.asyncio
+async def test_a_stored_checkpoint_writes_the_journal_and_state_files(
+    monkeypatch: pytest.MonkeyPatch, _isolated_knowledge_workspace: Path
+) -> None:
+    server_client = _RecordServerClient(labels=_SUPERSIDE_LABELS, items=_history_items())
+
+    await _compact_once(monkeypatch, server_client, "conv_journal")
+
+    journal = (_isolated_knowledge_workspace / "memory" / "journal" / "2026-10-12.md").read_text()
+    assert "- 2026-10-12 · Planned the launch · main <!-- conv_journal -->" in journal
+    state = (_isolated_knowledge_workspace / "memory" / "STATE.md").read_text()
+    assert "Spring launch budget" in state
+    assert "Context checkpoint" not in state
+
+
+@pytest.mark.asyncio
+async def test_a_failed_checkpoint_post_writes_no_memory_files(
+    monkeypatch: pytest.MonkeyPatch, _isolated_knowledge_workspace: Path
+) -> None:
+    server_client = _RejectingCompactionClient(labels=_SUPERSIDE_LABELS, items=_history_items())
+
+    await _compact_once(monkeypatch, server_client, "conv_journal_failed")
+
+    assert list((_isolated_knowledge_workspace / "memory").rglob("*.md")) == []
+
+
+@pytest.mark.asyncio
+async def test_a_turn_in_a_computer_with_no_memory_folder_rebuilds_it(
+    monkeypatch: pytest.MonkeyPatch, _isolated_knowledge_workspace: Path
+) -> None:
+    (_isolated_knowledge_workspace / "memory").rmdir()
+    items = [
+        *_history_items(),
+        {
+            **_checkpoint_item(
+                "c1", summary=f"{checkpoint_header('size')}\n\n{_STATE_TEXT}", last_item_id="a1"
+            ),
+            "journal_lines": ["2026-10-11 · Asked for a budget"],
+        },
+    ]
+    server_client = _RecordServerClient(labels=_SUPERSIDE_LABELS, items=items)
+    app, _pm = _build_app(_SequencedHarnessClient([_plain_frames()]), server_client)
+
+    async with _runner_client(app) as client:
+        await asyncio.wait_for(_post_turn(client, "conv_lost_volume", "hello"), timeout=5.0)
+        memory = _isolated_knowledge_workspace / "memory"
+        await _wait_until(lambda: (memory / "STATE.md").exists(), timeout=3.0)
+
+    journal = (memory / "journal" / "2026-10-11.md").read_text()
+    assert "Asked for a budget · main <!-- conv_lost_volume -->" in journal
 
 
 # ── return after idle: a cold start, not a rewrite ───────────────────────

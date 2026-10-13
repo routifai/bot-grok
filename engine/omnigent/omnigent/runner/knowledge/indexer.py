@@ -1,9 +1,10 @@
 """The Computer's indexer: keep the index in step with the files area, and answer from it.
 
-The files area is ``your_files/`` and each Goal's ``files/`` under the workspace (uploads, what the
-Muse saves, what it writes there). :meth:`Indexer.scan` is the reconcile: new or changed files are
-queued, vanished ones are dropped; :meth:`Indexer.add` is the event path for one file (an upload, a
-saved artifact). :meth:`Indexer.process_next` runs one file through its passes:
+The files area is ``your_files/``, each Goal's ``files/`` and ``memory/`` (the journal and the
+working list copy) under the workspace (uploads, what the Muse saves, what it writes there).
+:meth:`Indexer.scan` is the reconcile: new or changed files are queued, vanished ones are
+dropped; :meth:`Indexer.add` is the event path for one file (an upload, a saved artifact).
+:meth:`Indexer.process_next` runs one file through its passes:
 
 ``queued -> text_ready``: parse, cut into passages with page numbers, store them (keyword-
 searchable at once).
@@ -117,10 +118,12 @@ def thumbnail_ref(file_id: str, page: int) -> str:
 
 
 def collection_of(path: str) -> str:
-    """The folder a workspace path belongs to: ``your_files``, ``goals/<id>`` or ``other``."""
+    """The folder of a workspace path: ``your_files``, ``memory``, ``goals/<id>`` or ``other``."""
     parts = PurePosixPath(path).parts
     if parts[:1] == ("your_files",):
         return "your_files"
+    if parts[:1] == ("memory",):
+        return "memory"
     if len(parts) > 2 and parts[0] == "goals" and parts[2] == "files":
         return f"goals/{parts[1]}"
     return "other"
@@ -192,6 +195,7 @@ class Indexer:
 
     def _areas(self) -> Iterator[Path]:
         yield self.workspace / "your_files"
+        yield self.workspace / "memory"
         goals = self.workspace / "goals"
         try:
             for goal in sorted(goals.iterdir()):
@@ -564,6 +568,8 @@ class Indexer:
     def _collections(self) -> list[dict[str, Any]]:
         """The person's folders and what is indexed in each."""
         names = ["your_files"]
+        if (self.workspace / "memory").is_dir():
+            names.append("memory")
         goals = self.workspace / "goals"
         with contextlib.suppress(OSError):
             names += [f"goals/{g.name}" for g in sorted(goals.iterdir()) if (g / "files").is_dir()]

@@ -115,3 +115,27 @@ def test_the_muse_may_call_its_reply_tools(bundle: Path) -> None:
         assert name in allow, name
     # Charts and dashboards are pages built in the Computer; the retired JSON chart tools stay out.
     assert not {"display_chart", "display_dashboard"} & allow
+
+
+@pytest.mark.parametrize("bundle", [CLAUDE, PI], ids=["claude", "pi"])
+def test_only_the_muse_may_close_a_working_list_line(bundle: Path) -> None:
+    def allowed(path: Path) -> set[str]:
+        return {line.strip().removeprefix("- ") for line in _lines(path)}
+
+    assert "state_close" in allowed(bundle / "config.yaml")
+    for helper in ("worker", "notes"):
+        names = allowed(bundle / "agents" / helper / "config.yaml")
+        assert "state_close" not in names
+    worker_names = allowed(bundle / "agents" / "worker" / "config.yaml")
+    # The worker reads memory/ with the file tools; it gains no tool that writes the notes.
+    assert not {"daily_note_update", "memory_remember", "memory_forget"} & worker_names
+
+
+@pytest.mark.parametrize("bundle", [CLAUDE, PI], ids=["claude", "pi"])
+def test_prompts_point_at_the_memory_folder(bundle: Path) -> None:
+    muse = (bundle / "AGENTS.md").read_text()
+    assert "search `memory/journal` with `files_query`" in muse
+    assert "`state_close`" in muse
+    assert "Never edit it or the journal" in muse
+    worker = (bundle / "agents/worker/config.yaml").read_text()
+    assert "`memory/STATE.md` holds" in worker and "Never write there" in worker

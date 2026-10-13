@@ -146,3 +146,30 @@ def test_relay_ops_pass_the_runners_granted_tool_gate_only_for_a_super_chat() ->
         )
         # a model's own call of the same name (no relay mark) is refused, even in a Super Chat
         assert tool_dispatch._ungranted_tool_reason(name, spec, "claude-sdk", labels=chat)
+
+
+def test_a_journal_line_is_found_and_comes_back_as_file_data(tmp_path: Path, monkeypatch) -> None:
+    from omnigent.runner.memory import files
+    from tests.runner.knowledge._fixtures import run_all
+
+    runtime = make_runtime(tmp_path, monkeypatch)
+    files.append_lines(
+        runtime.indexer.workspace,
+        [
+            files.format_line(
+                "2026-03-04", "Decided to move the launch to May", files.Origin("main", "c1")
+            )
+        ],
+    )
+    runtime.indexer.scan()
+    run_all(runtime.indexer)
+
+    found = call("files_query", query="move the launch", rerank=False)
+
+    # The same file-search envelope as any other file: a tool result, never a turn instruction.
+    assert found["type"] == "file_search"
+    top = found["results"][0]
+    assert top["path"] == "memory/journal/2026-03-04.md"
+    assert "Decided to move the launch to May" in top["passage"]
+    status = runtime.indexer.status()
+    assert any(c["name"] == "memory" and c["searchable"] == 1 for c in status["collections"])

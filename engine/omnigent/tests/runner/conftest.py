@@ -68,6 +68,22 @@ def _isolated_model_catalog_store(
 
 
 @pytest.fixture(autouse=True)
+def _isolated_knowledge_workspace(
+    monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
+) -> Path:
+    """Point the Computer's workspace (``memory/``, the index root) at a temp folder.
+
+    A stored checkpoint writes ``~/workspace/memory/`` in the runner; a test must never write
+    the developer's real home. ``memory/`` exists, so the rebuild that heals a missing folder
+    stays out of unrelated tests. The path is returned for tests that read the files.
+    """
+    workspace = tmp_path_factory.mktemp("knowledge_workspace")
+    (workspace / "memory").mkdir()
+    monkeypatch.setenv("SUPERCHAT_KNOWLEDGE_ROOT", str(workspace))
+    return workspace
+
+
+@pytest.fixture(autouse=True)
 def _ensure_subprocess_pythonpath(monkeypatch: pytest.MonkeyPatch) -> None:
     """Put the project root on ``PYTHONPATH`` for spawned harness children.
 

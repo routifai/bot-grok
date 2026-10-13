@@ -192,6 +192,15 @@ describe("TOOL_PRESENTATION", () => {
     expect(entry.snippet('{"error":"no Project"}')).toBe("no Project");
   });
 
+  it("state_close: says a line was closed and shows a refusal", () => {
+    const entry = TOOL_PRESENTATION.state_close as ToolPresentation;
+    expect(entry.title({ tag: "t-launch-budget", reason: "done" })).toBe(
+      "Closed a line of the working list",
+    );
+    expect(entry.snippet('{"closed":"t-launch-budget"}')).toBeNull();
+    expect(entry.snippet('{"error":"unknown tag"}')).toBe("unknown tag");
+  });
+
   it("sys_session_create: starts background work for a title", () => {
     const entry = TOOL_PRESENTATION.sys_session_create as ToolPresentation;
     expect(entry.icon).toBe("helper");

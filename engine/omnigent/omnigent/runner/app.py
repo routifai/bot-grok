@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeAlias, cast, overl
 if TYPE_CHECKING:
     # Type-only import: the runner keeps codex deps out of its runtime import
     # graph (they are imported lazily inside the codex-native helpers).
+    from omnigent.entities import CompactionData
     from omnigent.harnesses.claude_native.bridge import ClaudeNativeToolRelay
     from omnigent.harnesses.claude_native.main import ClaudeNativeUcodeConfig
     from omnigent.harnesses.codex_native.bridge import CodexNativeBridgeState
@@ -7940,6 +7941,39 @@ def create_runner_app(
             and part.get("text") == "/compact"
         )
 
+    def _journal_checkpoint(
+        conv_id: str, labels: Mapping[str, str] | None
+    ) -> Callable[[CompactionData], Awaitable[None]]:
+        """The ``on_stored`` hook for ``roll_over_session``: copy the checkpoint to ``memory/``."""
+        from omnigent.runner.memory.sync import record_checkpoint
+
+        async def _record(item: CompactionData) -> None:
+            await record_checkpoint(server_client, conv_id, dict(labels or {}), item)
+
+        return _record
+
+    _memory_rebuilds: set[str] = set()
+
+    def _schedule_memory_rebuild(conv_id: str) -> None:
+        """Heal a missing ``memory/`` folder (new or lost volume) in the background."""
+        from omnigent.runner.knowledge.runtime import default_workspace
+        from omnigent.runner.memory.files import memory_dir
+        from omnigent.runner.memory.sync import rebuild_if_missing
+
+        if _memory_rebuilds or memory_dir(default_workspace()).exists():
+            return
+        _memory_rebuilds.add(conv_id)
+
+        async def _run() -> None:
+            try:
+                await rebuild_if_missing(server_client, conv_id)
+            finally:
+                _memory_rebuilds.discard(conv_id)
+
+        task = asyncio.create_task(_run(), name=f"memory-rebuild-{conv_id}")
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
+
     async def _handle_superside_chat_compact(conv_id: str) -> Response:
         """Compact a superside-chat session with Omnigent's own rollover.
 
@@ -7980,6 +8014,7 @@ def create_runner_app(
                     connection=connection,
                     wire=wire,
                     on_rolled_over=lambda: _drop_superside_chat_warm_client(conv_id),
+                    on_stored=_journal_checkpoint(conv_id, labels),
                     cause="manual",
                 )
             except Exception:  # noqa: BLE001 — background task; the failed event clears the spinner
@@ -8943,6 +8978,7 @@ def create_runner_app(
         *,
         is_rewake: bool = False,
         check_archived_redirect: bool = False,
+        journal_result: tuple[str, str] | None = None,
     ) -> None:
         target_id = parent_id
         if check_archived_redirect:
@@ -8957,6 +8993,16 @@ def create_runner_app(
             _stranded_wake_parents.discard(parent_id)
             if is_rewake:
                 _last_rewake_notice[parent_id] = notice
+            elif journal_result is not None:
+                from omnigent.runner.memory.sync import record_helper_result
+
+                await record_helper_result(
+                    server_client,
+                    parent_id,
+                    title=journal_result[0],
+                    outcome=journal_result[1],
+                    session_id=child_id,
+                )
         else:
             _subagent_wake_pending.discard(parent_id)
             _stranded_wake_parents.add(parent_id)
@@ -9025,6 +9071,7 @@ def create_runner_app(
                 entry.created_by,
                 is_rewake=is_rewake,
                 check_archived_redirect=entry.superside_chat,
+                journal_result=(entry.title, entry.status) if entry.superside_chat else None,
             )
         )
         _wake_task.add_done_callback(_background_tasks.discard)
@@ -9526,6 +9573,7 @@ def create_runner_app(
         )
         if not is_superside_chat(labels):
             return None
+        _schedule_memory_rebuild(conv_id)
         idle_seconds = await _superside_chat_idle_seconds(conv_id)
         if not should_roll_over_for_idle(labels, idle_seconds=idle_seconds):
             return None
@@ -9570,6 +9618,7 @@ def create_runner_app(
             on_rolled_over=lambda: _drop_superside_chat_warm_client(
                 conv_id, defer_if_active=False
             ),
+            on_stored=_journal_checkpoint(conv_id, labels),
             cause="return",
         )
         return idle_seconds
@@ -9634,6 +9683,7 @@ def create_runner_app(
                 connection=connection,
                 wire=wire,
                 on_rolled_over=lambda: _drop_superside_chat_warm_client(conv_id),
+                on_stored=_journal_checkpoint(conv_id, labels),
             )
         except Exception:  # noqa: BLE001 — background task; never fail the turn that scheduled it
             _logger.warning(

@@ -512,6 +512,17 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
     },
   },
 
+  state_close: {
+    icon: "generic",
+    title: () => "Closed a line of the working list",
+    snippet: (output) => {
+      const parsed = tryParseJson(output);
+      if (parsed === undefined) return null;
+      const error = errorMessage(parsed);
+      return error ? clip(error) : null;
+    },
+  },
+
   sys_read_inbox: {
     icon: "helper",
     title: () => "Collected the result",

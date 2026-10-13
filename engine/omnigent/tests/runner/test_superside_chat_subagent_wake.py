@@ -13,6 +13,7 @@ inbox]``, covered by ``test_stranded_wake_retry_on_reconnect.py``):
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -104,6 +105,49 @@ async def test_superside_chat_wake_inlines_result(_no_wake_backoff: list[float])
         entry = runner_app.get_subagent_work(child_id)
         assert entry is not None
         assert entry.wake_inlined is True
+    finally:
+        runner_app.unregister_subagent_work(child_id)
+        runner_app._session_inboxes_ref.pop(parent_id, None)
+
+
+@pytest.mark.asyncio
+async def test_a_delivered_helper_result_adds_one_journal_line(
+    _no_wake_backoff: list[float], _isolated_knowledge_workspace: Path
+) -> None:
+    """The line names the Helper, its outcome and session id, never the Result text."""
+    from omnigent.runner import app as runner_app
+
+    parent_id = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+    child_id = "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5"
+    server_client = _RecordingServerClient()
+    app = create_runner_app(
+        process_manager=_FakeProcessManager(_ScriptedHarnessClient([])),  # type: ignore[arg-type]
+        server_client=server_client,  # type: ignore[arg-type]
+    )
+    runner_app._session_inboxes_ref[parent_id] = asyncio.Queue()
+    runner_app.register_subagent_work(
+        parent_session_id=parent_id,
+        child_session_id=child_id,
+        agent="researcher",
+        title="auth",
+        superside_chat=True,
+    )
+    journal_dir = _isolated_knowledge_workspace / "memory" / "journal"
+    try:
+        async with _runner_client(app) as client:
+            await _complete_child(client, child_id, "FINDINGS: the vault key rotated on March 3.")
+            deadline = asyncio.get_running_loop().time() + 5.0
+            while not list(journal_dir.glob("*.md")):
+                if asyncio.get_running_loop().time() > deadline:
+                    raise AssertionError("no journal line within 5s")
+                await asyncio.sleep(0.01)
+
+        (day_file,) = journal_dir.glob("*.md")
+        lines = [ln for ln in day_file.read_text().splitlines() if ln.startswith("- ")]
+        assert len(lines) == 1
+        assert f'Helper "auth" completed (session {child_id})' in lines[0]
+        assert f"main <!-- {parent_id} -->" in lines[0]
+        assert "vault key" not in lines[0]
     finally:
         runner_app.unregister_subagent_work(child_id)
         runner_app._session_inboxes_ref.pop(parent_id, None)

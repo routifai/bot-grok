@@ -397,6 +397,7 @@ async def roll_over_session(
     on_rolled_over: Callable[[], Awaitable[None]] | None = None,
     wire: str | None = None,
     cause: CheckpointCause = "size",
+    on_stored: Callable[[CompactionData], Awaitable[None]] | None = None,
 ) -> bool:
     """Build and persist the next rollover compaction item for *conversation_id*.
 
@@ -419,7 +420,9 @@ async def roll_over_session(
     *connection* and *wire* are the session's own provider (see :func:`summarizer_model`): the
     summary is written through the connection the session runs on. *cause* says why the
     checkpoint is made (size, return after idle, manual ``/compact``); it names the reason in
-    the checkpoint's header.
+    the checkpoint's header. *on_stored* gets the stored item (its journal lines and evicted
+    entries) once it is persisted, before *on_rolled_over*; a failure in it is logged and
+    swallowed.
 
     :returns: ``True`` iff a new compaction item was posted.
     """
@@ -495,6 +498,15 @@ async def roll_over_session(
             )
             return False
         await _clear_closes(server_client, conversation_id, closes)
+        if on_stored is not None:
+            try:
+                await on_stored(compaction)
+            except Exception:  # noqa: BLE001 — the item is already persisted; log and move on
+                logger.warning(
+                    "superside-chat rollover: on_stored failed for %s",
+                    conversation_id,
+                    exc_info=True,
+                )
         if on_rolled_over is not None:
             try:
                 await on_rolled_over()
