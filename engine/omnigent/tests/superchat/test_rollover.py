@@ -126,6 +126,7 @@ class _FakeServerClient:
     post_status: int = 200
     get_status: int = 200
     posted: list[dict[str, Any]] = field(default_factory=list)
+    patched: list[dict[str, Any]] = field(default_factory=list)
     get_params: list[dict[str, str]] = field(default_factory=list)
 
     @property
@@ -156,6 +157,10 @@ class _FakeServerClient:
     async def post(self, _url: str, *, json: dict[str, Any], timeout: float) -> _FakeResponse:
         self.posted.append(json)
         return _FakeResponse(self.post_status, {})
+
+    async def patch(self, _url: str, *, json: dict[str, Any], timeout: float) -> _FakeResponse:
+        self.patched.append(json)
+        return _FakeResponse(200, {})
 
 
 class _ReturnsTextClient:
@@ -676,3 +681,168 @@ async def test_a_record_with_only_placeholder_checkpoints_is_read_from_the_start
 
     assert (summary, checkpoint_id) == (None, None)
     assert [it["id"] for it in since] == ["u1", "u2"]
+
+
+# ── state_close: pending closes at the next checkpoint ──────────────────────
+
+_TAGGED = (
+    "## Topics\n"
+    "- [t-launch-budget · 2026-10-09] Spring launch budget\n"
+    "- [o-venue · 2026-10-09] Venue still open\n"
+    "- [d-vendor · 2026-10-09] Vendor chosen"
+)
+
+
+def _closes(**reasons: str) -> dict[str, str]:
+    return {
+        **_SUPERSIDE,
+        **{f"omnigent.state_close.{tag.replace('_', '-')}": why for tag, why in reasons.items()},
+    }
+
+
+@pytest.mark.asyncio
+async def test_two_pending_closes_both_apply_are_journaled_and_cleared() -> None:
+    from omnigent.context.rollover import checkpoint_header
+
+    items = [
+        _msg("u1", "user", "hi"),
+        _compaction_item("c1", summary=f"{checkpoint_header()}\n\n{_TAGGED}", last_item_id="u1"),
+        _msg("u2", "user", "forget the venue and the vendor"),
+        _msg("a2", "assistant", "done"),
+    ]
+    client = _FakeServerClient(items=items)
+    # The summarizer drops the venue and keeps the rest: the close must not be undone by repair.
+    reply = (
+        "- [t-launch-budget · 2026-10-09] Spring launch budget\n"
+        "- [d-vendor · 2026-10-09] Vendor chosen\n<journal>\n2026-10-12 · talked\n</journal>"
+    )
+
+    ok = await roll_over_session(
+        "conv_1",
+        labels=_closes(o_venue="wrong", d_vendor="person changed their mind"),
+        model="gpt-4o",
+        server_client=client,  # type: ignore[arg-type]
+        llm_client=_ReturnsTextClient(reply),
+    )
+
+    assert ok is True
+    data = client.posted[0]["data"]
+    assert "] closed: Venue still open" in data["summary"]
+    assert "] closed: Vendor chosen" in data["summary"]
+    assert data["repairs"] == 0
+    assert {c["tag"]: c["reason"] for c in data["applied_closes"]} == {
+        "o-venue": "wrong",
+        "d-vendor": "person changed their mind",
+    }
+    assert any("closed [o-venue]: wrong" in line for line in data["journal_lines"])
+    assert any("closed [d-vendor]: person changed their mind" in x for x in data["journal_lines"])
+    assert client.patched == [
+        {"labels": {"omnigent.state_close.o-venue": "", "omnigent.state_close.d-vendor": ""}}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_post_leaves_the_closes_pending() -> None:
+    client = _FakeServerClient(
+        items=[_msg("u1", "user", "hi"), _msg("a1", "assistant", "hello")], post_status=500
+    )
+    await roll_over_session(
+        "conv_1",
+        labels=_closes(o_venue="wrong"),
+        model="gpt-4o",
+        server_client=client,  # type: ignore[arg-type]
+        llm_client=_ReturnsTextClient("- [o-venue] Venue"),
+    )
+    assert client.patched == []
+
+
+@pytest.mark.asyncio
+async def test_the_posted_body_carries_the_new_payload_fields() -> None:
+    client = _FakeServerClient(items=[_msg("u1", "user", "hi"), _msg("a1", "assistant", "hello")])
+    await roll_over_session(
+        "conv_1",
+        labels=_SUPERSIDE,
+        model="gpt-4o",
+        server_client=client,  # type: ignore[arg-type]
+        llm_client=_ReturnsTextClient("- [t-a] A\n<journal>\n2026-10-12 · hi\n</journal>"),
+    )
+    data = client.posted[0]["data"]
+    assert data["journal_lines"] == ["2026-10-12 · hi"]
+    assert data["evicted_entries"] == [] and data["repairs"] == 0
+    assert client.patched == []
+
+
+# ── state_close tool ────────────────────────────────────────────────────────
+
+
+def _handler_ctx(client: Any) -> Any:
+    from omnigent.superchat.feature import HandlerCtx
+
+    return HandlerCtx("state_close", client, "conv_1", _SUPERSIDE)
+
+
+def _checkpoint_client() -> _FakeServerClient:
+    from omnigent.context.rollover import checkpoint_header
+
+    return _FakeServerClient(
+        items=[
+            _msg("u1", "user", "hi"),
+            _compaction_item(
+                "c1",
+                summary=f"{checkpoint_header()}\n\n{_TAGGED}\n- [t-old · 2026-10-01] closed: x",
+                last_item_id="u1",
+            ),
+        ]
+    )
+
+
+@pytest.mark.asyncio
+async def test_state_close_records_a_label_per_tag() -> None:
+    import json
+
+    from omnigent.superchat.state_file.handlers import handle_state_close
+
+    client = _checkpoint_client()
+    for tag in ("[o-venue · 2026-10-09]", "d-vendor"):
+        out = json.loads(
+            await handle_state_close(_handler_ctx(client), {"tag": tag, "reason": "wrong"})
+        )
+        assert "next checkpoint" in out["status"]
+    assert [p["labels"] for p in client.patched] == [
+        {"omnigent.state_close.o-venue": "wrong"},
+        {"omnigent.state_close.d-vendor": "wrong"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_state_close_reports_unknown_and_already_closed_tags() -> None:
+    import json
+
+    from omnigent.superchat.state_file.handlers import handle_state_close
+
+    client = _checkpoint_client()
+    unknown = json.loads(
+        await handle_state_close(_handler_ctx(client), {"tag": "t-nope", "reason": "x"})
+    )
+    assert "error" in unknown and "t-nope" in unknown["error"]
+    closed = json.loads(
+        await handle_state_close(_handler_ctx(client), {"tag": "t-old", "reason": "x"})
+    )
+    assert closed["status"] == "already closed"
+    bad = json.loads(await handle_state_close(_handler_ctx(client), {"tag": "???", "reason": "x"}))
+    assert "error" in bad
+    assert client.patched == []
+
+
+def test_state_close_is_offered_to_the_super_chat_only() -> None:
+    from omnigent.superchat.feature import ToolManagerCtx
+    from omnigent.superchat.features import FEATURE_HANDLERS, feature_tools
+
+    def names(labels: dict[str, str]) -> set[str]:
+        return {t.name() for t in feature_tools(labels, ToolManagerCtx())}
+
+    assert "state_close" in FEATURE_HANDLERS
+    assert "state_close" in names(_SUPERSIDE)
+    assert "state_close" not in names({**_SUPERSIDE, "omnigent.subagent": "x"})
+    assert "state_close" not in names(_ROLLOVER_MODE)
+    assert "state_close" not in names({})

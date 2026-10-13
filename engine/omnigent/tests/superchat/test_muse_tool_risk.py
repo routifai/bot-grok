@@ -50,6 +50,7 @@ RISK: dict[str, str | None] = {
     "render_card": None,
     "session_history": None,
     "side_chat_open": None,
+    "state_close": None,
     "start_helper": None,
     "message_helper": None,
     "suggest_follow_ups": None,

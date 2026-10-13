@@ -40,6 +40,7 @@ from omnigent.context.rollover import (
     resolve_rollover_threshold,
     split_at_latest_compaction,
 )
+from omnigent.context.state_file import close_label_key, pending_closes
 from omnigent.entities import CompactionData
 
 logger = logging.getLogger(__name__)
@@ -324,6 +325,10 @@ def _compaction_event_body(
     }
     if compaction.compacted_messages:
         body["compacted_messages"] = compaction.compacted_messages
+    for name in ("journal_lines", "evicted_entries", "applied_closes", "repairs"):
+        value = getattr(compaction, name)
+        if value is not None:
+            body[name] = value
     return body
 
 
@@ -356,6 +361,29 @@ def summarizer_model(
     if model.startswith("claude") or "anthropic.com" in base_url:
         return f"anthropic/{model}"
     return model
+
+
+async def _clear_closes(
+    server_client: httpx.AsyncClient, conversation_id: str, closes: Mapping[str, str]
+) -> None:
+    """Empty the ``state_close`` labels the stored checkpoint consumed. Best effort.
+
+    Labels are upsert-only, so "cleared" is an empty value. A failure leaves the close pending,
+    which the next checkpoint finds already closed: harmless.
+    """
+    consumed = {close_label_key(tag): "" for tag in closes}
+    if not consumed:
+        return
+    try:
+        await server_client.patch(
+            f"/v1/sessions/{conversation_id}", json={"labels": consumed}, timeout=10.0
+        )
+    except (httpx.HTTPError, RuntimeError):
+        logger.warning(
+            "superside-chat rollover: failed to clear applied closes for %s",
+            conversation_id,
+            exc_info=True,
+        )
 
 
 async def roll_over_session(
@@ -414,6 +442,7 @@ async def roll_over_session(
             return False
         if not items_since:
             return False
+        closes = pending_closes(labels)
         try:
             compaction = await build_rollover_item(
                 items_since,
@@ -424,6 +453,7 @@ async def roll_over_session(
                 connection=connection,
                 conversation_id=conversation_id,
                 cause=cause,
+                pending_closes=closes,
             )
         except Exception:  # noqa: BLE001 — a rollover failure must never fail the turn
             logger.warning(
@@ -464,6 +494,7 @@ async def roll_over_session(
                 resp.status_code,
             )
             return False
+        await _clear_closes(server_client, conversation_id, closes)
         if on_rolled_over is not None:
             try:
                 await on_rolled_over()

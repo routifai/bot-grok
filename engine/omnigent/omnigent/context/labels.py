@@ -55,6 +55,11 @@ ADHOC_HELPER_LABEL_KEY = "omnigent.subagent.adhoc"
 #: system-authored prompt, so memory upkeep never treats it as the person's words.
 SCHEDULED_FIRE_LABEL_KEY = "omnigent.scheduled_task_id"
 
+#: Prefix of the session labels that hold pending ``state_close`` requests: one label per tag
+#: (``<prefix><tag id>``), the value being the reason. Consumed by the next checkpoint, which
+#: sets each to an empty string.
+STATE_CLOSE_LABEL_PREFIX = "omnigent.state_close."
+
 # Token count at which a rollover session rolls over. Unset falls back to
 # 60% of the model's context window (100k-200k), or 100,000 when unknown
 # (see rollover.resolve_rollover_threshold).

@@ -1325,3 +1325,155 @@ def test_is_placeholder_summary_only_matches_the_stand_in() -> None:
     assert is_placeholder_summary("[Claude Code compaction — context was automatically compacted]")
     assert not is_placeholder_summary(None)
     assert not is_placeholder_summary("## Context checkpoint\n\nreal state")
+
+
+# ── tagged state file + journal ──────────────────────────────────────────
+
+_TAGGED_PREVIOUS = (
+    f"{CHECKPOINT_HEADER}\n\n## Topics\n"
+    "- [t-launch-budget · 2026-10-09] Spring launch budget: confirm the venue line\n"
+    "- [o-venue · 2026-10-09] Venue still open\n"
+    "Current position: waiting."
+)
+
+
+def test_summarizer_instruction_carries_the_tag_and_digest_rules() -> None:
+    text = state_file_summarizer_instruction(today="2026-01-01")
+    assert "Keep every existing tag exactly" in text
+    assert "closed:" in text and "merged into" in text
+    assert "no tags, give tags" in text
+    assert "A tool digest says what was done" in text
+    assert "never what the page, file or result said" in text
+    assert "<journal>" in text
+    assert "<journal>" not in state_file_summarizer_instruction(journal=False)
+
+
+@pytest.mark.asyncio
+async def test_the_journal_section_is_split_off_and_stored_on_the_item() -> None:
+    reply = (
+        "## Context checkpoint — 2026-10-12\n- [t-a] Alpha\n\n"
+        "<journal>\n- 2026-10-12 · asked for alpha\n- 2026-10-12 · wrote a file\n</journal>"
+    )
+    data = await build_rollover_item(
+        _turn(1) + _turn(2),
+        previous_summary=None,
+        keep_tokens=1,
+        model="gpt-4o",
+        llm_client=_ReturnsTextClient(reply),
+    )
+    assert data.journal_lines == ["2026-10-12 · asked for alpha", "2026-10-12 · wrote a file"]
+    assert "journal" not in data.summary
+    assert all("journal" not in str(m) for m in data.compacted_messages)
+    assert "[t-a" in data.summary
+    assert data.repairs == 0 and data.evicted_entries == [] and data.applied_closes == []
+
+
+@pytest.mark.asyncio
+async def test_a_reply_without_a_journal_has_zero_lines() -> None:
+    data = await build_rollover_item(
+        _turn(1),
+        previous_summary=None,
+        keep_tokens=1,
+        model="gpt-4o",
+        llm_client=_ReturnsTextClient("## State\n- [t-a] Alpha"),
+    )
+    assert data.journal_lines == []
+
+
+@pytest.mark.asyncio
+async def test_a_rewrite_that_loses_a_tag_is_repaired_and_counted() -> None:
+    reply = "## Topics\n- [t-launch-budget · 2026-10-12] Budget moved on\nCurrent position: x"
+    data = await build_rollover_item(
+        _turn(1),
+        previous_summary=_TAGGED_PREVIOUS,
+        keep_tokens=1,
+        model="gpt-4o",
+        llm_client=_ReturnsTextClient(reply),
+    )
+    assert data.repairs == 1
+    assert "- [o-venue · 2026-10-09] Venue still open" in data.summary
+    assert "Budget moved on" in data.summary
+    restored = data.compacted_messages[1]["content"][0]["text"]
+    assert "- [o-venue · 2026-10-09] Venue still open" in restored
+
+
+@pytest.mark.asyncio
+async def test_an_untagged_previous_checkpoint_is_carried_over_without_repairs() -> None:
+    previous = (
+        f"{CHECKPOINT_HEADER}\n\n## Topics\nSpring launch budget: venue line\nCurrent position: x"
+    )
+    data = await build_rollover_item(
+        _turn(1),
+        previous_summary=previous,
+        keep_tokens=1,
+        model="gpt-4o",
+        llm_client=_ReturnsTextClient("- [t-launch] Spring launch budget: venue line"),
+    )
+    assert data.repairs == 0
+
+
+@pytest.mark.asyncio
+async def test_pending_closes_close_the_entry_and_reach_the_journal_lines() -> None:
+    data = await build_rollover_item(
+        _turn(1),
+        previous_summary=_TAGGED_PREVIOUS,
+        keep_tokens=1,
+        model="gpt-4o",
+        llm_client=_ReturnsTextClient(
+            "- [t-launch-budget · 2026-10-09] Spring launch budget\n"
+            "<journal>\n2026-10-12 · talked\n</journal>"
+        ),
+        pending_closes={"o-venue": "the person said it is wrong"},
+    )
+    assert data.applied_closes == [{"tag": "o-venue", "reason": "the person said it is wrong"}]
+    assert "] closed: Venue still open" in data.summary
+    assert data.repairs == 0
+    assert data.journal_lines[0] == "2026-10-12 · talked"
+    assert data.journal_lines[-1].endswith("closed [o-venue]: the person said it is wrong")
+
+
+@pytest.mark.asyncio
+async def test_the_previous_state_fed_back_has_no_journal_and_no_header() -> None:
+    client = _ReturnsTextClient("- [t-a] A\n<journal>\n2026-10-12 · x\n</journal>")
+    first = await build_rollover_item(
+        _turn(1), previous_summary=None, keep_tokens=1, model="gpt-4o", llm_client=client
+    )
+    await build_rollover_item(
+        _turn(2), previous_summary=first.summary, keep_tokens=1, model="gpt-4o", llm_client=client
+    )
+    fed = client.seen_messages[0]["content"][0]["text"]
+    assert "- [t-a · " in fed
+    assert "2026-10-12 · x" not in fed
+
+
+def test_old_compaction_items_load_and_render() -> None:
+    from omnigent.entities import CompactionData
+    from omnigent.entities.conversation import parse_item_data
+
+    old = {
+        "summary": f"{CHECKPOINT_HEADER}\n\nOLD STATE FILE with no tags",
+        "last_item_id": "a1",
+        "model": "gpt-4o",
+        "token_count": 12,
+        "compacted_messages": [],
+    }
+    data = parse_item_data("compaction", old)
+    assert isinstance(data, CompactionData)
+    assert data.journal_lines is None and data.repairs is None
+    assert data.evicted_entries is None and data.applied_closes is None
+    assert person_facing_summary(data.summary) == "OLD STATE FILE with no tags"
+    # None fields stay out of the API shape, so old and new clients see old items unchanged.
+    assert "journal_lines" not in data.model_dump(exclude_none=True)
+
+
+def test_likely_duplicate_entries_are_pointed_out_to_the_summarizer() -> None:
+    from omnigent.context.rollover import _transcript_message
+
+    previous = (
+        "## Context checkpoint\n"
+        "- [t-venue · 2026-10-01] Venue for the spring launch: choosing between two halls\n"
+        "- [t-hall · 2026-10-05] Spring launch venue: choosing between two halls downtown\n"
+    )
+    text = str(_transcript_message([_msg("m1", "user", "hello")], previous))
+    assert "[t-venue] and [t-hall] may be the same thing" in text
+    assert text.index("may be the same thing") < text.index("<conversation>")

@@ -364,7 +364,7 @@ def rollover_extension_config(labels: Mapping[str, str] | None) -> _JsonObject |
     return {
         "checkpointHeader": CHECKPOINT_HEADER,
         "summarizerInstruction": state_file_summarizer_instruction(
-            today=SUMMARIZER_DATE_PLACEHOLDER
+            today=SUMMARIZER_DATE_PLACEHOLDER, journal=False
         ),
         "datePlaceholder": SUMMARIZER_DATE_PLACEHOLDER,
         "thresholdTokens": resolve_rollover_threshold(labels),

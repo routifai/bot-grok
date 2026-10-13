@@ -553,6 +553,11 @@ class CompactionData(BaseModel):
         Codex writes a UUID string to ``payload.window_id`` on its
         ``type == "compacted"`` rollout JSONL record; older Codex rollouts
         used integer counters there.
+    :param journal_lines: Dated lines of what happened since the previous checkpoint, from the
+        same summarizer call. The assistant's own record; ``None`` when the producer wrote none.
+    :param evicted_entries: State-file entry lines dropped for the size budget, word for word.
+    :param applied_closes: ``[{"tag": ..., "reason": ...}]`` closes applied at this checkpoint.
+    :param repairs: State-file entries put back because the rewrite lost them.
     """
 
     summary: str
@@ -561,6 +566,10 @@ class CompactionData(BaseModel):
     token_count: int
     compacted_messages: list[dict[str, Any]] | None = None
     window_id: int | str | None = None
+    journal_lines: list[str] | None = None
+    evicted_entries: list[str] | None = None
+    applied_closes: list[dict[str, str]] | None = None
+    repairs: int | None = None
 
     @field_validator("compacted_messages")
     @classmethod
