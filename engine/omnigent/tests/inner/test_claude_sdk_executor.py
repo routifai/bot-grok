@@ -6168,3 +6168,60 @@ async def test_terminal_error_carries_observed_usage() -> None:
     assert usage["context_tokens"] == 100_000
     # output_tokens is unknown on an incomplete turn — reported as 0.
     assert usage["output_tokens"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Tests: a rebuilt client is a cold start
+# ---------------------------------------------------------------------------
+
+
+class TestRebuiltClientReplaysHistory(unittest.TestCase):
+    """The prompt follows the client that receives it, not the one that was warm."""
+
+    _HISTORY = [
+        {"role": "user", "content": "first question", "session_id": "s1"},
+        {"role": "assistant", "content": "first answer", "session_id": "s1"},
+        {"role": "user", "content": "second question", "session_id": "s1"},
+    ]
+
+    def _sent_prompt(self, *, rebuild: bool) -> object:
+        from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
+
+        async def _t():
+            executor = ClaudeSDKExecutor()
+            executor._force_close_client = AsyncMock()  # type: ignore[method-assign]
+
+            def _state():
+                client = SimpleNamespace(disconnect=AsyncMock())
+                return SimpleNamespace(loop=None, task=None, client=client)
+
+            executor._clients["s1"] = _state()  # type: ignore[assignment]
+            sent: list[object] = []
+
+            class _Client:
+                async def query(self, prompt, session_id=None):
+                    sent.append(prompt)
+                    raise RuntimeError("stop after the prompt is sent")
+
+            async def fake_get_or_create_client(sdk, **kwargs):
+                if rebuild:
+                    executor._clients["s1"] = _state()  # type: ignore[assignment]
+                return _Client()
+
+            with patch.object(
+                executor, "_get_or_create_client", side_effect=fake_get_or_create_client
+            ):
+                async for _ in executor.run_turn(list(self._HISTORY), [], ""):
+                    pass
+            return sent[0]
+
+        return _run(_t())
+
+    def test_rebuilt_client_gets_full_history(self):
+        prompt = self._sent_prompt(rebuild=True)
+        self.assertIn("Conversation so far:", prompt)
+        self.assertIn("first answer", prompt)
+        self.assertIn("second question", prompt)
+
+    def test_warm_client_still_gets_only_trailing_user_content(self):
+        self.assertEqual(self._sent_prompt(rebuild=False), "second question")

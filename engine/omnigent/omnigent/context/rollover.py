@@ -22,6 +22,7 @@ from omnigent.context.labels import (
     SCHEDULED_HELPER_LABEL_KEY,
     is_rollover,
 )
+from omnigent.context.tool_digest import digest_tool_items
 from omnigent.entities import (
     NON_CONTENT_ITEM_TYPES,
     CompactionData,
@@ -428,9 +429,6 @@ def _items_for_summarizer(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return projected
 
 
-_TRANSCRIPT_OUTPUT_LIMIT = 2_000
-
-
 def _block_text(content: Any) -> str:
     """Join the text blocks of a message's content."""
     if isinstance(content, str):
@@ -440,6 +438,22 @@ def _block_text(content: Any) -> str:
     return "\n".join(
         str(block.get("text", "")) for block in content if isinstance(block, dict)
     ).strip()
+
+
+# Harnesses that compact on their own store a one-line stand-in as the checkpoint summary, e.g.
+# "[Claude Code compaction — context was automatically compacted]". It carries no state.
+_PLACEHOLDER_SUMMARY_MARKER = "context was automatically compacted]"
+_PLACEHOLDER_SUMMARY_MAX_CHARS = 200
+
+
+def is_placeholder_summary(summary: str | None) -> bool:
+    """Whether *summary* is a harness's stand-in for a compaction rather than a real checkpoint."""
+    text = (summary or "").strip()
+    return (
+        len(text) <= _PLACEHOLDER_SUMMARY_MAX_CHARS
+        and text.startswith("[")
+        and text.endswith(_PLACEHOLDER_SUMMARY_MARKER)
+    )
 
 
 def _transcript_message(
@@ -455,16 +469,13 @@ def _transcript_message(
         # Stored summaries carry the header; feed back only the summary itself.
         lines += [_SUMMARY_REQUEST_TEXT, "", _strip_seed_header(previous_summary), ""]
     lines.append("<conversation>")
-    for item in items:
-        kind = item.get("type")
-        if kind == "message":
+    digests = digest_tool_items(items)
+    for index, item in enumerate(items):
+        if index in digests:
+            lines.append(f"TOOL: {digests[index]}")
+        elif item.get("type") == "message":
             role = str(item.get("role", "user")).upper()
             lines.append(f"{role}: {_block_text(item.get('content'))}")
-        elif kind == "function_call":
-            lines.append(f"TOOL CALL {item.get('name')}: {item.get('arguments', '')}")
-        elif kind == "function_call_output":
-            output = str(item.get("output", ""))[:_TRANSCRIPT_OUTPUT_LIMIT]
-            lines.append(f"TOOL RESULT: {output}")
     lines += [
         "</conversation>",
         "",
@@ -545,6 +556,9 @@ async def build_rollover_item(
     """
     if not items_since_previous_compaction:
         raise ValueError("build_rollover_item requires at least one item to summarize")
+    if is_placeholder_summary(previous_summary):
+        # A placeholder holds no state; feeding it back would stand in for the real checkpoint.
+        previous_summary = None
 
     messages_to_summarize = [
         _transcript_message(

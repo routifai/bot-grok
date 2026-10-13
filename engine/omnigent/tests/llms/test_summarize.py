@@ -106,3 +106,18 @@ def test_build_summarization_input_appends_trigger_when_last_item_is_tool_output
         f"Expected trigger turn appended after tool output, got {len(result)} items."
     )
     assert result[-1]["role"] == "user"
+
+
+def test_state_file_form_does_not_conflict_with_the_plain_text_line() -> None:
+    """A caller that asks for a headed form must not also be told "no markup"; callers that
+    give no form keep the plain-text line."""
+    from omnigent.context.rollover import state_file_summarizer_instruction
+    from omnigent.llms.summarize import build_summarization_prompt
+
+    messages = [{"type": "message", "role": "user", "content": "hi"}]
+    headed = build_summarization_prompt(
+        messages, extra_instructions=state_file_summarizer_instruction()
+    )
+    assert "no markup" not in headed
+    assert "'## Context checkpoint" in headed
+    assert "no markup" in build_summarization_prompt(messages)

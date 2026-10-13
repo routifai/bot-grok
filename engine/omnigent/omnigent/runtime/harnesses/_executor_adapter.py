@@ -21,6 +21,8 @@ from typing import Any
 
 from fastapi import Response
 
+from omnigent.context.labels import SUPERSIDE_CHAT_MODE_VALUE
+from omnigent.context.tool_digest import digest_tool_items
 from omnigent.debug_logging import phase_scope
 from omnigent.errors import ElicitationDeclinedError, ErrorPhase
 from omnigent.inner.executor import (
@@ -207,7 +209,9 @@ class ExecutorAdapter(HarnessApp):
         instance. Installs stable tool/elicitation/policy bridges once on first use.
         """
         executor = self._ensure_executor()
-        messages = _translate_input_to_messages(request.input)
+        messages = _translate_input_to_messages(
+            request.input, tool_digests=request.context_mode == SUPERSIDE_CHAT_MODE_VALUE
+        )
         # Stamp session_key on every message so the inner executor keys its client consistently,
         # matching the key used by enqueue_session_message (steering delivery depends on this).
         for message in messages:
@@ -1315,16 +1319,19 @@ def _extract_user_text(
 
 def _translate_input_to_messages(
     input_value: str | list[dict[str, Any]],
+    *,
+    tool_digests: bool = False,
 ) -> list[Message]:
     """Convert a CreateResponseRequest input to inner Message list.
 
-    Accepts conversation-history shape (role-keyed messages; tool items dropped) and
-    single-turn fallback shape (plain string or content blocks, collapsed to one user message).
+    Accepts conversation-history shape (role-keyed messages; tool items dropped unless
+    *tool_digests*) and single-turn fallback shape (plain string or content blocks, collapsed
+    to one user message).
     """
     if isinstance(input_value, str):
         return [{"role": "user", "content": input_value}]
 
-    history_messages = _extract_role_keyed_messages(input_value)
+    history_messages = _extract_role_keyed_messages(input_value, tool_digests=tool_digests)
     if history_messages:
         return history_messages
 
@@ -1334,15 +1341,25 @@ def _translate_input_to_messages(
 
 def _extract_role_keyed_messages(
     input_value: list[dict[str, Any]],
+    *,
+    tool_digests: bool = False,
 ) -> list[Message]:
     """Extract role-keyed message items from an Omnigent input list.
 
     Tool-call items (function_call, function_call_output, etc.) are skipped — the inner SDK
-    reconstructs its own tool state. Returns an empty list for non-history inputs.
+    reconstructs its own tool state. With *tool_digests* (Super Chat) each call and its result
+    become one ``tool``-role message holding a framed digest line instead, so a cold replay
+    still says what was done; the role keeps tool output apart from the person's and the
+    assistant's words in the ``role: text`` history both the Claude SDK and Pi prompts render.
+    Returns an empty list for non-history inputs.
     """
     messages: list[Message] = []
-    for item in input_value:
+    digests = digest_tool_items(input_value) if tool_digests else {}
+    for index, item in enumerate(input_value):
         if not isinstance(item, dict):
+            continue
+        if index in digests:
+            messages.append({"role": "tool", "content": digests[index]})
             continue
         if item.get("type") != "message" or "role" not in item:
             continue
@@ -1351,6 +1368,8 @@ def _extract_role_keyed_messages(
         if not content:
             continue
         messages.append({"role": role, "content": content})
+    if digests and not any(message["role"] != "tool" for message in messages):
+        return []
     return messages
 
 

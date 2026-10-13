@@ -21,8 +21,12 @@ _SUMMARIZATION_BASE_PROMPT = (
     "Exclude: verbose tool output, redundant exchanges, and intermediate\n"
     "reasoning that led to a final decision — keep the decision, not the path.\n\n"
     "Do not incorporate knowledge from outside this conversation. Do not\n"
-    "invent facts. Write in plain text with no markup."
+    "invent facts."
 )
+
+# Closing line of the base prompt when the caller gives no form of its own; a
+# caller-supplied form (e.g. a headed state file) replaces it.
+_PLAIN_TEXT_NOTE = " Write in plain text with no markup."
 
 # Trailing user turn appended to the conversation so providers that
 # reject conversations ending in an assistant message (e.g. Databricks
@@ -82,6 +86,8 @@ def build_summarization_prompt(
         ) + prompt
     if extra_instructions:
         prompt = prompt + "\n\n" + extra_instructions
+    else:
+        prompt += _PLAIN_TEXT_NOTE
     return prompt
 
 

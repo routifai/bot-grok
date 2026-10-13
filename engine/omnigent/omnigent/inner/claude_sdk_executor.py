@@ -2761,7 +2761,8 @@ class ClaudeSDKExecutor(Executor):
                 )
             )
             return
-        resume_session = session_key in self._clients
+        warm_state = self._clients.get(session_key)
+        resume_session = warm_state is not None
         prompt = self._build_prompt(
             messages,
             resume_session=resume_session,
@@ -3173,6 +3174,12 @@ class ClaudeSDKExecutor(Executor):
             model=model,
             rebuild_on_instructions_change=is_superside_chat,
         )
+        if resume_session and self._clients.get(session_key) is not warm_state:
+            # The warm client was rebuilt (instructions changed): it is a cold
+            # start and needs the full history, not only the trailing message.
+            resume_session = False
+            if prompt != "/compact":
+                prompt = self._build_prompt(messages, resume_session=False)
 
         # ── LLM_REQUEST policy evaluation ────────────────────────
         # If the executor adapter installed a ``_policy_evaluator``

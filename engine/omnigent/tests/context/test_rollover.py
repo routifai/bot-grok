@@ -1136,3 +1136,69 @@ def test_split_with_unknown_anchor_falls_back_to_after_the_checkpoint() -> None:
     items = [_split_item("u1"), ckpt, _split_item("u2")]
     after, _ = split_at_latest_compaction(items)
     assert [i["id"] for i in after] == ["u2"]
+
+
+@pytest.mark.asyncio
+async def test_summarizer_transcript_uses_the_shared_tool_digest() -> None:
+    """Tool items reach the summarizer as the framed one-line digest, not raw lines."""
+    from omnigent.context.tool_digest import RESULT_LIMIT, tool_digest_line
+
+    items = [
+        *_turn(1),
+        {
+            "id": "i-call",
+            "type": "function_call",
+            "call_id": "c1",
+            "name": "files_write",
+            "arguments": '{"path": "projects/x/brief.md"}',
+        },
+        {"id": "i-out", "type": "function_call_output", "call_id": "c1", "output": "y" * 5_000},
+    ]
+    client = _ReturnsTextClient("ROLLING SUMMARY")
+    await build_rollover_item(
+        items, previous_summary=None, keep_tokens=_HUGE_TOKENS, model="gpt-4o", llm_client=client
+    )
+    assert client.seen_messages is not None
+    transcript = next(
+        block["text"]
+        for message in client.seen_messages
+        if message.get("role") == "user"
+        for block in message["content"]
+        if isinstance(block, dict) and "text" in block
+    )
+    digest = tool_digest_line("files_write", '{"path": "projects/x/brief.md"}', "y" * 5_000)
+    assert f"TOOL: {digest}" in transcript
+    assert "path=projects/x/brief.md" in digest
+    assert "y" * (RESULT_LIMIT + 1) not in transcript
+    assert "TOOL RESULT:" not in transcript
+
+
+@pytest.mark.asyncio
+async def test_placeholder_previous_summary_is_not_fed_back_as_state() -> None:
+    """A harness's one-line compaction stand-in holds no state; it is not the previous summary."""
+    placeholder = "[Claude Code compaction — context was automatically compacted]"
+    client = _ReturnsTextClient("ROLLING SUMMARY")
+    await build_rollover_item(
+        _turn(1),
+        previous_summary=placeholder,
+        keep_tokens=_HUGE_TOKENS,
+        model="gpt-4o",
+        llm_client=client,
+    )
+    assert client.seen_messages is not None
+    texts = [
+        block["text"]
+        for message in client.seen_messages
+        if message.get("role") == "user"
+        for block in message["content"]
+        if isinstance(block, dict) and "text" in block
+    ]
+    assert placeholder not in texts[0]
+
+
+def test_is_placeholder_summary_only_matches_the_stand_in() -> None:
+    from omnigent.context.rollover import is_placeholder_summary
+
+    assert is_placeholder_summary("[Claude Code compaction — context was automatically compacted]")
+    assert not is_placeholder_summary(None)
+    assert not is_placeholder_summary("## Context checkpoint\n\nreal state")
