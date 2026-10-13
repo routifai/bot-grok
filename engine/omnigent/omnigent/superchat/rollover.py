@@ -7,7 +7,9 @@ over at two points — see ``rollover/SUPERSIDE-CHAT-PLAN.md`` S2 and the
 - the engine-reported context size crosses :func:`~omnigent.context.rollover.
   resolve_rollover_threshold` after a turn (:func:`should_roll_over_for_threshold`);
 - the session's first message after being idle past
-  :func:`resolve_idle_refresh_seconds` (:func:`should_roll_over_for_idle`).
+  :func:`resolve_idle_refresh_seconds` (:func:`should_roll_over_for_idle`), but only
+  when the items since the last checkpoint no longer fit the kept-tail budget; otherwise
+  the return is a cold start from the stored checkpoint with no summarizer call.
 
 Either trigger runs the same action (:func:`roll_over_session`): build the
 next rollover item over this session's record since the latest ``compaction``
@@ -30,6 +32,7 @@ import httpx
 
 from omnigent.context.labels import is_superside_chat
 from omnigent.context.rollover import (
+    CheckpointCause,
     build_rollover_item,
     is_placeholder_summary,
     reported_context_window,
@@ -365,6 +368,7 @@ async def roll_over_session(
     connection: dict[str, str] | None = None,
     on_rolled_over: Callable[[], Awaitable[None]] | None = None,
     wire: str | None = None,
+    cause: CheckpointCause = "size",
 ) -> bool:
     """Build and persist the next rollover compaction item for *conversation_id*.
 
@@ -385,7 +389,9 @@ async def roll_over_session(
     must never fail it.
 
     *connection* and *wire* are the session's own provider (see :func:`summarizer_model`): the
-    summary is written through the connection the session runs on.
+    summary is written through the connection the session runs on. *cause* says why the
+    checkpoint is made (size, return after idle, manual ``/compact``); it names the reason in
+    the checkpoint's header.
 
     :returns: ``True`` iff a new compaction item was posted.
     """
@@ -417,6 +423,7 @@ async def roll_over_session(
                 llm_client=llm_client,
                 connection=connection,
                 conversation_id=conversation_id,
+                cause=cause,
             )
         except Exception:  # noqa: BLE001 — a rollover failure must never fail the turn
             logger.warning(

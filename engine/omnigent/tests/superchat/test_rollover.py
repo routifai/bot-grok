@@ -240,6 +240,28 @@ async def test_roll_over_session_builds_and_posts_compaction_item() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("cause", [None, "return", "manual"])
+async def test_roll_over_session_header_names_the_cause(cause: str | None) -> None:
+    from omnigent.context.rollover import checkpoint_header
+
+    client = _FakeServerClient(items=[_msg("u1", "user", "hi"), _msg("a1", "assistant", "hello")])
+    extra: dict[str, Any] = {} if cause is None else {"cause": cause}
+
+    ok = await roll_over_session(
+        "conv_1",
+        labels=_SUPERSIDE,
+        model="gpt-4o",
+        server_client=client,  # type: ignore[arg-type]
+        llm_client=_ReturnsTextClient("SUMMARY"),
+        **extra,
+    )
+
+    assert ok is True
+    summary = client.posted[0]["data"]["summary"]
+    assert summary.startswith(checkpoint_header(cause or "size"))  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
 async def test_roll_over_session_resumes_from_previous_compaction() -> None:
     """Items at/before the latest compaction item are excluded from the new build."""
     items = [

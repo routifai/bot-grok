@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from omnigent.context.labels import (
     ADHOC_HELPER_LABEL_KEY,
@@ -79,16 +79,41 @@ _SUMMARY_REQUEST_TEXT = (
 # Fixed, code-authored preface for every rollover summary: never written by
 # the LLM, so its wording can't drift.
 CHECKPOINT_MARKER = "[Context checkpoint inserted by the system, not a message from the user.]"
-CHECKPOINT_HEADER = (
-    f"{CHECKPOINT_MARKER} "
-    "This conversation grew past its context limit and earlier turns were "
-    "compacted into the summary below. The work in it is your own; build on "
+# Why a checkpoint was made: its first sentence. The rest of the header is the same for all.
+CheckpointCause = Literal["size", "return", "manual"]
+_CHECKPOINT_REASONS: dict[CheckpointCause, str] = {
+    "size": (
+        "This conversation grew past its context limit and earlier turns were "
+        "compacted into the summary below."
+    ),
+    "return": (
+        "The person came back after a long break and earlier turns were "
+        "compacted into the summary below."
+    ),
+    "manual": (
+        "The person asked to compact this conversation and earlier turns were "
+        "compacted into the summary below."
+    ),
+}
+_CHECKPOINT_REST = (
+    " The work in it is your own; build on "
     "it instead of redoing it. Files, processes and jobs your tools created "
     "still exist. Standing instructions and memory are live every turn and "
     "are not part of this summary. When facts conflict, the latest evidence "
     "and user corrections win. The summary may omit details: recover exact "
     "earlier messages with the session_history tool before relying on them."
 )
+
+
+def checkpoint_header(cause: CheckpointCause = "size") -> str:
+    """:returns: The fixed header of a rollover checkpoint made for *cause*."""
+    return f"{CHECKPOINT_MARKER} {_CHECKPOINT_REASONS[cause]}{_CHECKPOINT_REST}"
+
+
+# The header of a checkpoint made because the conversation grew too large; also the one
+# stored before checkpoints named their cause.
+CHECKPOINT_HEADER = checkpoint_header("size")
+CHECKPOINT_HEADERS = tuple(checkpoint_header(cause) for cause in _CHECKPOINT_REASONS)
 
 # A side chat's seed reuses the checkpoint summary but not its framing: the
 # model must know it is a separate chat, not the conversation that rolled over.
@@ -146,7 +171,7 @@ _SEED_HEADERS = (
     RESET_HEADER,
     SIDE_CHAT_SEED_HEADER,
     SIDE_CHAT_SEED_HEADER.removeprefix(f"{CHECKPOINT_MARKER} "),
-    CHECKPOINT_HEADER,
+    *CHECKPOINT_HEADERS,
 )
 # A heading that opens a section listing tools or capabilities: the person never reads it.
 _TOOLS_SECTION_TITLE = re.compile(r"\b(technical|tools?|capabilit)", re.IGNORECASE)
@@ -516,6 +541,7 @@ async def build_rollover_item(
     connection: dict[str, str] | None = None,
     runner_client: Any | None = None,
     conversation_id: str | None = None,
+    cause: CheckpointCause = "size",
 ) -> CompactionData:
     """
     Build the next rollover compaction item: a rolling summary + recent tail.
@@ -550,6 +576,8 @@ async def build_rollover_item(
         the runner's ``/v1/summarize`` so the runner's own credentials are
         used (the preferred path — see ``summarize_history``).
     :param conversation_id: Session id, forwarded to the runner delegation.
+    :param cause: Why the checkpoint is made; picks the header's first sentence
+        (:func:`checkpoint_header`).
     :returns: A new :class:`CompactionData` ready to be posted as a
         ``compaction`` item.
     :raises ValueError: If *items_since_previous_compaction* is empty.
@@ -579,13 +607,14 @@ async def build_rollover_item(
         # Never persist an empty checkpoint: the caller keeps the previous one
         # and retries on a later turn.
         raise ValueError("rollover summarizer returned no summary text")
-    summary_text = f"{CHECKPOINT_HEADER}\n\n{summary['text']}"
+    header = checkpoint_header(cause)
+    summary_text = f"{header}\n\n{summary['text']}"
     recent = _cap_tool_outputs(
         select_recent(items_since_previous_compaction, keep_tokens=keep_tokens, model=model)
     )
     last_item_id = items_since_previous_compaction[-1]["id"]
     # The relaunched CLI sees the header where the summarizer saw its request.
-    compacted_messages = _summary_exchange(summary["text"], CHECKPOINT_HEADER) + recent
+    compacted_messages = _summary_exchange(summary["text"], header) + recent
     return CompactionData(
         summary=summary_text,
         last_item_id=last_item_id,
@@ -599,8 +628,9 @@ def _side_chat_framed(seed: CompactionData) -> CompactionData:
     """Swap the rollover checkpoint header for the side chat's own framing."""
 
     def swap(text: str) -> str:
-        if text.startswith(CHECKPOINT_HEADER):
-            return SIDE_CHAT_SEED_HEADER + text.removeprefix(CHECKPOINT_HEADER)
+        for header in CHECKPOINT_HEADERS:
+            if text.startswith(header):
+                return SIDE_CHAT_SEED_HEADER + text.removeprefix(header)
         return text
 
     messages = seed.compacted_messages

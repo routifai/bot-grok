@@ -798,9 +798,12 @@ async def test_idle_rollover_skips_when_session_model_unresolvable(
     llm_client = _GatedLLMClient(asyncio.Event())
     monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
 
-    # Stale by far more than the 10s idle-refresh threshold above.
+    # Stale by far more than the 10s idle-refresh threshold above, and longer than the
+    # kept tail, so the return would summarize.
+    stale = int(time.time()) - 10_000
     server_client = _ThresholdServerClient(
-        labels=_SUPERSIDE_LABELS, items=_idle_history_items(10_000)
+        labels=_hard_limit_labels(),
+        items=[{**it, "created_at": stale} for it in _long_history_items()],
     )
     harness_client = _SequencedHarnessClient([_plain_frames()])
     app, _pm = _build_app(harness_client, server_client)
@@ -1034,3 +1037,281 @@ async def test_compact_in_superside_chat_mode_posts_a_real_checkpoint(
         "response.compaction.in_progress",
         "response.compaction.completed",
     ]
+
+
+# ── return after idle: a cold start, not a rewrite ───────────────────────
+
+_THREE_DAYS = 3 * 86_400
+_GAP_LINE = "It has been 3 days since the last message."
+
+
+def _last_user_text(body: dict[str, Any]) -> str:
+    """The text of the last user message the harness was sent."""
+    return [text for role, text in _texts(body["content"]) if role == "user"][-1]
+
+
+@pytest.mark.asyncio
+async def test_return_after_idle_makes_no_summarizer_call_and_names_the_gap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS", "10")
+    llm_client = _GatedLLMClient(asyncio.Event())
+    monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
+    server_client = _HardLimitServerClient(
+        labels=_SUPERSIDE_LABELS, items=_idle_history_items(_THREE_DAYS)
+    )
+    harness_client = _SequencedHarnessClient([_plain_frames()])
+    app, pm = _build_app(harness_client, server_client)
+    conv_id = "conv_return_small"
+
+    async with _runner_client(app) as client:
+        await asyncio.wait_for(_post_turn(client, conv_id, "hello"), timeout=5.0)
+        await _wait_until(lambda: len(harness_client.posted_bodies) == 1, timeout=2.0)
+        await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
+
+    assert llm_client.call_count == 0
+    assert server_client.posted_compactions == []
+    assert pm.released == [conv_id]  # the warm client was dropped: a cold start
+    text = _last_user_text(harness_client.posted_bodies[0])
+    assert _GAP_LINE in text
+    # The line is not persisted: it rides this turn's message only.
+    assert _GAP_LINE not in str(server_client._items)
+
+
+@pytest.mark.asyncio
+async def test_a_turn_that_is_not_a_return_has_no_gap_line() -> None:
+    server_client = _HardLimitServerClient(labels=_SUPERSIDE_LABELS, items=_history_items())
+    harness_client = _SequencedHarnessClient([_plain_frames()])
+    app, _pm = _build_app(harness_client, server_client)
+
+    async with _runner_client(app) as client:
+        await asyncio.wait_for(_post_turn(client, "conv_no_gap", "hello"), timeout=5.0)
+        await _wait_until(lambda: len(harness_client.posted_bodies) == 1, timeout=2.0)
+
+    assert "since the last message" not in _last_user_text(harness_client.posted_bodies[0])
+
+
+@pytest.mark.asyncio
+async def test_return_after_idle_with_more_than_the_tail_budget_rolls_over(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from omnigent.context.rollover import checkpoint_header
+
+    monkeypatch.setenv("OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS", "10")
+    llm_client = _GatedLLMClient(asyncio.Event(), text="STATE")
+    llm_client._gate.set()
+    monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
+    stale = int(time.time()) - _THREE_DAYS
+    items = [{**it, "created_at": stale} for it in _long_history_items()]
+    server_client = _HardLimitServerClient(labels=_hard_limit_labels(), items=items)
+    harness_client = _SequencedHarnessClient([_plain_frames()])
+    app, _pm = _build_app(harness_client, server_client)
+    conv_id = "conv_return_large"
+
+    async with _runner_client(app) as client:
+        await asyncio.wait_for(_post_turn(client, conv_id, "hello"), timeout=5.0)
+        await _wait_until(lambda: len(harness_client.posted_bodies) == 1, timeout=2.0)
+        await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
+
+    assert llm_client.call_count == 1
+    [posted] = server_client.posted_compactions
+    assert posted["data"]["summary"].startswith(checkpoint_header("return"))
+    assert _GAP_LINE in _last_user_text(harness_client.posted_bodies[0])
+
+
+# ── prefix delta: the profile and Projects go in full only when needed ───
+
+_PROFILE = (
+    "[Standing memory about the user, provided by the system, not a message from the "
+    "user]\n\nPreferences:\n- Prefers figures in CAD\n\n[End of standing memory]"
+)
+_PROFILE_LINE = "Standing memory unchanged since the last message."
+
+
+class _ProfileServerClient(_HardLimitServerClient):
+    """Also serves the Memory Profile, which a test can change between turns."""
+
+    def __init__(self, *, labels: dict[str, str], items: list[dict[str, Any]]) -> None:
+        super().__init__(labels=labels, items=items)
+        self.profile = _PROFILE
+
+    async def get(self, url: str, **kwargs: Any) -> NullServerClient._Response:
+        if url.endswith("/memory/profile"):
+            profile = self.profile
+
+            class _ProfileResponse(NullServerClient._Response):
+                def json(self) -> dict[str, Any]:
+                    return {"profile": profile}
+
+            return _ProfileResponse()
+        return await super().get(url, **kwargs)
+
+
+async def _turn(
+    app: Any,
+    client: Any,
+    harness_client: _SequencedHarnessClient,
+    conv_id: str,
+    *,
+    tools: list[dict[str, Any]] | None = None,
+) -> str:
+    """Run one turn to completion and return the text of the message the harness got."""
+    sent = len(harness_client.posted_bodies)
+    body: dict[str, Any] = {
+        "type": "message",
+        "role": "user",
+        "model": "test-agent",
+        "content": [{"type": "input_text", "text": f"question {sent}"}],
+        "harness": "claude-sdk",
+        "harness_override": "claude-sdk",
+    }
+    if tools is not None:
+        body["tools"] = tools
+    await asyncio.wait_for(client.post(f"/v1/sessions/{conv_id}/events", json=body), timeout=5.0)
+    await _wait_until(lambda: len(harness_client.posted_bodies) == sent + 1, timeout=2.0)
+    await _wait_until(lambda: conv_id not in app.state.active_turns, timeout=2.0)
+    return _last_user_text(harness_client.posted_bodies[-1])
+
+
+def _delta_app() -> tuple[Any, _FakeProcessManager, _SequencedHarnessClient, _ProfileServerClient]:
+    server_client = _ProfileServerClient(labels=_SUPERSIDE_LABELS, items=_history_items())
+    harness_client = _SequencedHarnessClient([_plain_frames()])
+    app, pm = _build_app(harness_client, server_client)
+    return app, pm, harness_client, server_client
+
+
+@pytest.mark.asyncio
+async def test_a_warm_client_gets_the_profile_once_then_one_line() -> None:
+    app, _pm, harness_client, server_client = _delta_app()
+    conv_id = "conv_delta_warm"
+
+    async with _runner_client(app) as client:
+        first = await _turn(app, client, harness_client, conv_id)
+        second = await _turn(app, client, harness_client, conv_id)
+        third = await _turn(app, client, harness_client, conv_id)
+        server_client.profile = _PROFILE.replace("CAD", "EUR")
+        changed = await _turn(app, client, harness_client, conv_id)
+        after_change = await _turn(app, client, harness_client, conv_id)
+
+    assert _PROFILE in first and _PROFILE_LINE not in first
+    for text in (second, third, after_change):
+        assert _PROFILE_LINE in text and "Prefers figures" not in text
+    assert "Prefers figures in EUR" in changed and _PROFILE_LINE not in changed
+
+
+@pytest.mark.asyncio
+async def test_warm_turns_with_an_unchanged_profile_add_under_300_prefix_tokens() -> None:
+    from omnigent.context.rollover import count_tokens
+    from omnigent.models.model_fallbacks import ROLLOVER_TOKEN_COUNT_MODEL
+
+    app, _pm, harness_client, _server = _delta_app()
+    conv_id = "conv_delta_budget"
+    prefix_tokens: list[int] = []
+
+    async with _runner_client(app) as client:
+        for _ in range(50):
+            text = await _turn(app, client, harness_client, conv_id)
+            prefix = text.removesuffix(f"question {len(harness_client.posted_bodies) - 1}")
+            prefix_tokens.append(
+                count_tokens(
+                    [{"type": "message", "role": "user", "content": prefix}],
+                    ROLLOVER_TOKEN_COUNT_MODEL,
+                )
+            )
+
+    assert prefix_tokens[0] > 0
+    assert max(prefix_tokens[1:]) < 300
+
+
+async def _drop_via_compact(app: Any, client: Any, conv_id: str, pm: _FakeProcessManager) -> None:
+    resp = await client.post(f"/v1/sessions/{conv_id}/events", json={"type": "compact"})
+    assert resp.status_code == 200, resp.text
+    await _wait_until(lambda: pm.released == [conv_id], timeout=3.0)
+    await asyncio.sleep(0.05)
+
+
+@pytest.mark.asyncio
+async def test_after_a_warm_client_drop_the_next_turn_carries_the_profile_again(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    llm_client = _GatedLLMClient(asyncio.Event(), text="STATE")
+    llm_client._gate.set()
+    monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
+    app, pm, harness_client, _server = _delta_app()
+    conv_id = "conv_delta_drops"
+
+    async with _runner_client(app) as client:
+        await _turn(app, client, harness_client, conv_id)
+        assert _PROFILE_LINE in await _turn(app, client, harness_client, conv_id)
+
+        # A rollover (here a manual /compact) drops the client.
+        await _drop_via_compact(app, client, conv_id, pm)
+        assert _PROFILE in await _turn(app, client, harness_client, conv_id)
+        assert _PROFILE_LINE in await _turn(app, client, harness_client, conv_id)
+
+        # The harness process was released or restarted behind the runner's back.
+        await pm.release(conv_id)
+        assert _PROFILE in await _turn(app, client, harness_client, conv_id)
+        assert _PROFILE_LINE in await _turn(app, client, harness_client, conv_id)
+
+        # A turn that failed leaves nothing remembered: the client may be gone.
+        failed = _SequencedHarnessClient([_failed_frames(), _plain_frames()])
+        harness_client._sequences = failed._sequences
+        harness_client.call_count = 0
+        await _turn(app, client, harness_client, conv_id)
+        assert _PROFILE in await _turn(app, client, harness_client, conv_id)
+        assert _PROFILE_LINE in await _turn(app, client, harness_client, conv_id)
+
+
+def _failed_frames() -> list[str]:
+    return [
+        _sse({"type": "response.created", "response": {"id": "resp_failed"}}),
+        _sse({"type": "response.failed", "error": {"message": "boom", "type": "server_error"}}),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_return_from_idle_and_the_hard_limit_drop_the_remembered_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS", "10")
+    llm_client = _GatedLLMClient(asyncio.Event(), text="STATE")
+    llm_client._gate.set()
+    monkeypatch.setattr("omnigent.runner.app._get_runner_llm_client", lambda: llm_client)
+    app, _pm, harness_client, server_client = _delta_app()
+    conv_id = "conv_delta_idle"
+
+    async with _runner_client(app) as client:
+        await _turn(app, client, harness_client, conv_id)
+        assert _PROFILE_LINE in await _turn(app, client, harness_client, conv_id)
+
+        server_client._items[:] = _idle_history_items(_THREE_DAYS)
+        back = await _turn(app, client, harness_client, conv_id)
+        assert _PROFILE in back and _GAP_LINE in back
+        server_client._items[:] = _history_items()
+        assert _PROFILE_LINE in await _turn(app, client, harness_client, conv_id)
+
+        # Past the hard limit the turn cold-starts from the record.
+        server_client._labels = _hard_limit_labels()
+        harness_client._sequences = [_triggering_frames(500_000), _plain_frames()]
+        harness_client.call_count = 0
+        await _turn(app, client, harness_client, conv_id)
+        assert _PROFILE in await _turn(app, client, harness_client, conv_id)
+
+
+@pytest.mark.asyncio
+async def test_a_changed_system_prompt_makes_the_next_turn_carry_the_profile_again() -> None:
+    """The executor rebuilds its client when the prompt it builds changes (a new tool set
+    here), and replays the persisted record, which holds no prefix blocks."""
+    app, _pm, harness_client, _server = _delta_app()
+    conv_id = "conv_delta_prompt"
+    tool = {
+        "type": "function",
+        "function": {"name": "client_tool", "parameters": {"type": "object"}},
+    }
+
+    async with _runner_client(app) as client:
+        await _turn(app, client, harness_client, conv_id)
+        assert _PROFILE_LINE in await _turn(app, client, harness_client, conv_id)
+        assert _PROFILE in await _turn(app, client, harness_client, conv_id, tools=[tool])
+        assert _PROFILE_LINE in await _turn(app, client, harness_client, conv_id, tools=[tool])

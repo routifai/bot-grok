@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import itertools
 import logging
 import os
 import secrets
@@ -437,6 +438,10 @@ class _HarnessEndpoint:
             self.socket_path.unlink()
 
 
+# Gives every spawned subprocess entry its own number, so a caller can tell a respawn apart.
+_ENTRY_SERIALS = itertools.count(1)
+
+
 class _SubprocessEntry:
     """
     Bookkeeping for one harness subprocess.
@@ -479,6 +484,7 @@ class _SubprocessEntry:
         self.model = model
         self.acp_config = acp_config or {}
         self.last_used_at: float = 0.0
+        self.serial = next(_ENTRY_SERIALS)
 
 
 def _model_env_key(harness: str) -> str:
@@ -1025,6 +1031,18 @@ class HarnessProcessManager:
         :returns: ``True`` if a subprocess entry exists.
         """
         return conversation_id in self._entries
+
+    def instance_serial(self, conversation_id: str) -> int | None:
+        """
+        The number of the live subprocess for a conversation, or ``None`` without one.
+
+        A released, reaped, crashed or respawned subprocess gets a new number, so a caller
+        that remembers what the old process was told can tell it is gone.
+
+        :param conversation_id: AP-allocated conversation id.
+        """
+        entry = self._entries.get(conversation_id)
+        return entry.serial if entry is not None else None
 
     def has_active_turn(self, conversation_id: str) -> bool:
         """

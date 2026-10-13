@@ -8,8 +8,9 @@ profile means "no profile".
 
 from __future__ import annotations
 
+import hashlib
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import httpx
@@ -18,6 +19,42 @@ from omnigent.superchat.local_time import local_time_block
 from omnigent.superchat.projects.block import projects_block
 
 _logger = logging.getLogger(__name__)
+
+#: Sent in place of a block the warm client already holds, see :func:`turn_prefix_blocks`.
+PROFILE_UNCHANGED_LINE = "Standing memory unchanged since the last message."
+PROJECTS_UNCHANGED_LINE = "Projects unchanged since the last message."
+
+
+def idle_gap_line(idle_seconds: float) -> str:
+    """One plain line naming how long the person was away, e.g. ``It has been 3 days ...``."""
+    hours = int(idle_seconds // 3600)
+    days = hours // 24
+    if days >= 2:
+        span = f"{days} days"
+    elif hours >= 1:
+        span = f"{hours} hour" + ("" if hours == 1 else "s")
+    else:
+        span = "less than an hour"
+    return f"It has been {span} since the last message."
+
+
+def _delta_block(
+    name: str,
+    block: str,
+    unchanged_line: str,
+    last_sent: Mapping[str, str] | None,
+    sent_now: dict[str, str] | None,
+) -> str:
+    """*block*, or *unchanged_line* when the warm client already got this exact block.
+
+    Records the block's hash in *sent_now* either way: the client holds it after this turn.
+    """
+    digest = hashlib.sha256(block.encode("utf-8")).hexdigest()
+    if sent_now is not None:
+        sent_now[name] = digest
+    if last_sent is not None and last_sent.get(name) == digest:
+        return unchanged_line
+    return block
 
 
 async def fetch_memory_profile(
@@ -132,6 +169,9 @@ async def turn_prefix_blocks(
     conversation_id: str,
     workspace: Path | None = None,
     message_texts: Sequence[str] = (),
+    idle_gap_seconds: float | None = None,
+    last_sent: Mapping[str, str] | None = None,
+    sent_now: dict[str, str] | None = None,
 ) -> list[str]:
     """The blocks to prepend to a Super Chat turn, in application order.
 
@@ -143,15 +183,28 @@ async def turn_prefix_blocks(
     :param workspace: The session's current working directory (marks the open Project).
     :param message_texts: Text parts of the turn's own message; features build blocks from them
         (``Feature.message_prefix``) that go first, so they end up closest to the message.
+    :param idle_gap_seconds: How long the person was away, when this is the first message back
+        from an idle break; adds one line next to the local time.
+    :param last_sent: Hashes (by ``profile`` / ``projects``) of the blocks the current warm
+        client last received. A block with the same hash goes as one short line instead.
+        ``None`` (a cold start, or anything unproven) sends every block in full.
+    :param sent_now: Filled with the hashes of the profile and Projects blocks this turn
+        carries, for the caller to remember once the turn completes.
     """
     blocks: list[str] = []
     if message_texts:
         blocks.extend(await _message_prefix_blocks(server_client, conversation_id, message_texts))
     profile = await fetch_memory_profile(server_client, conversation_id)
     if profile:
-        blocks.append(profile)
+        blocks.append(
+            _delta_block("profile", profile, PROFILE_UNCHANGED_LINE, last_sent, sent_now)
+        )
     if (projects := _safe_projects_block(workspace)) is not None:
-        blocks.append(projects)
+        blocks.append(
+            _delta_block("projects", projects, PROJECTS_UNCHANGED_LINE, last_sent, sent_now)
+        )
     blocks.extend(await _feature_prefix_blocks(server_client, conversation_id))
+    if idle_gap_seconds is not None:
+        blocks.append(idle_gap_line(idle_gap_seconds))
     blocks.append(await fetch_local_time_line(server_client))
     return blocks

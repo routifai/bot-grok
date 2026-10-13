@@ -13,6 +13,7 @@ import base64
 import contextlib
 import dataclasses
 import functools
+import hashlib
 import itertools
 import json
 import logging
@@ -3511,6 +3512,11 @@ def create_runner_app(
     _superside_chat_rollover_tasks: dict[str, asyncio.Task[None]] = {}
     # conv_id -> context fill the session's latest turn reported (hard-limit check).
     _superside_chat_last_context_tokens: dict[str, int] = {}
+    # conv_id -> what the session's current warm client was last sent of the Memory Profile and
+    # Projects blocks (hashes, plus the prompt and subprocess it was sent under); and what the
+    # turn in flight carries, kept once the turn completes (see _apply_turn_prefix_blocks).
+    _superside_chat_prefix_sent: dict[str, dict[str, str]] = {}
+    _superside_chat_prefix_pending: dict[str, dict[str, str]] = {}
     app.state.superside_chat_pending_refresh = _superside_chat_pending_refresh
     app.state.superside_chat_rollover_tasks = _superside_chat_rollover_tasks
     _last_server_item_id: dict[str, str] = {}
@@ -5524,6 +5530,7 @@ def create_runner_app(
         if _binding := _session_comment_relays.pop(session_id, None):
             _binding.relay.close()
         _session_histories.pop(session_id, None)
+        _forget_superside_chat_prefix(session_id)
         _last_server_item_id.pop(session_id, None)
         _session_event_queues.pop(session_id, None)
         _session_inboxes.pop(session_id, None)
@@ -5598,6 +5605,7 @@ def create_runner_app(
         session_id: str,
         drop_item_id: str | None = None,
         keep_tokens: int | None = None,
+        tail_tokens_out: list[int] | None = None,
     ) -> list[_JsonObject]:
         """Rebuild a session's harness input from its record.
 
@@ -5605,6 +5613,8 @@ def create_runner_app(
         ``iter_items_from_checkpoint``); the record before it stays reachable
         through ``session_history``. With *keep_tokens*, only the newest whole
         turns after the checkpoint that fit it are kept (the hard-limit trim).
+        *tail_tokens_out* receives the token count of the items after the
+        checkpoint, counted as the kept tail is (the idle-return size check).
         """
         from omnigent.context.labels import is_superside_chat
         from omnigent.superchat.rollover import (
@@ -5635,6 +5645,13 @@ def create_runner_app(
 
         if drop_item_id is not None:
             all_items = [it for it in all_items if it.get("id") != drop_item_id]
+        if tail_tokens_out is not None:
+            from omnigent.context.rollover import count_tokens, split_at_latest_compaction
+            from omnigent.models.model_fallbacks import ROLLOVER_TOKEN_COUNT_MODEL
+
+            tail_tokens_out.append(
+                count_tokens(split_at_latest_compaction(all_items)[0], ROLLOVER_TOKEN_COUNT_MODEL)
+            )
         converted = _convert_raw_items_to_input(all_items, keep_tokens=keep_tokens)
         # Items are persisted pre-resolution, so reloaded history can still
         # carry raw file_id blocks (the runner has no file/artifact stores).
@@ -7963,6 +7980,7 @@ def create_runner_app(
                     connection=connection,
                     wire=wire,
                     on_rolled_over=lambda: _drop_superside_chat_warm_client(conv_id),
+                    cause="manual",
                 )
             except Exception:  # noqa: BLE001 — background task; the failed event clears the spinner
                 _logger.warning(
@@ -8539,6 +8557,8 @@ def create_runner_app(
             _sweep_dead_turn_slot(conv_id, target)
             return
         _interrupted_sessions.add(conv_id)
+        # The executor drops its client on an interrupt: the next turn starts cold.
+        _forget_superside_chat_prefix(conv_id)
         await _forward_harness_interrupt(conv_id)
         # Floor: force-cancel the runner Task when we own one. In stream mode
         # there is no Task here — ``_resync_turn_state`` owns the sentinel pop,
@@ -9314,9 +9334,15 @@ def create_runner_app(
         if defer_if_active and conv_id in _active_turns:
             _superside_chat_pending_refresh.add(conv_id)
             return
+        _forget_superside_chat_prefix(conv_id)
         _session_histories.pop(conv_id, None)
         if process_manager is not None:
             await process_manager.release(conv_id)
+
+    def _forget_superside_chat_prefix(conv_id: str) -> None:
+        """Forget what the warm client was sent: the next turn carries every block in full."""
+        _superside_chat_prefix_sent.pop(conv_id, None)
+        _superside_chat_prefix_pending.pop(conv_id, None)
 
     async def _superside_chat_hard_limit_tokens(conv_id: str) -> int | None:
         """The context fill of *conv_id* if it leaves no room for another turn, else ``None``.
@@ -9466,8 +9492,10 @@ def create_runner_app(
         model = body.get("model_override") or body.get("llm_model")
         return model if isinstance(model, str) and model else None
 
-    async def _maybe_superside_chat_idle_rollover(conv_id: str) -> None:
-        """Roll over a superside-chat session on its first message back from idle.
+    async def _maybe_superside_chat_idle_rollover(
+        conv_id: str, *, measure_history: bool = True, trimmed: bool = False
+    ) -> float | None:
+        """Handle a superside-chat session's first message back from idle.
 
         Called every turn, at the top of ``_run_turn_bg_setup_and_stream``
         (before any history is loaded) — it decides for itself whether this
@@ -9476,24 +9504,52 @@ def create_runner_app(
         idle-seconds check, not from its call site. A no-op for a
         non-superside-chat session (checked before the idle lookup, so
         those pay no extra round trip).
+
+        A return is not context pressure, so it makes no summarizer call: the warm
+        client is dropped and the turn cold-starts from the stored checkpoint plus the
+        items since its anchor. The history is read here, once, and left cached for the
+        turn (the same read the turn would make). Only when those items alone exceed the
+        kept-tail budget (``resolve_keep_tokens``, counted as the tail is) does the
+        normal rollover run, with the "return" cause in its header.
+
+        :param measure_history: Whether this turn's history is read from the record
+            (not for a native harness, which keeps its own).
+        :param trimmed: The hard-limit path already trimmed this turn's history.
+        :returns: Seconds idle when this is a return, for the turn's gap line; else ``None``.
         """
         from omnigent.context.labels import is_superside_chat
+        from omnigent.context.rollover import resolve_keep_tokens
         from omnigent.superchat.rollover import roll_over_session, should_roll_over_for_idle
 
         labels = await _session_labels_for_runner_spawn(
             server_client=server_client, session_id=conv_id
         )
         if not is_superside_chat(labels):
-            return
+            return None
         idle_seconds = await _superside_chat_idle_seconds(conv_id)
         if not should_roll_over_for_idle(labels, idle_seconds=idle_seconds):
-            return
-        _logger.info("superside-chat refresh on return: %s idle %.0fs", conv_id, idle_seconds)
+            return None
+        _logger.info("superside-chat return from idle: %s idle %.0fs", conv_id, idle_seconds)
+        # defer_if_active=False: this runs synchronously at the start of
+        # THIS turn, which already holds its own _active_turns slot (claimed
+        # by the caller before this turn's task was even created) — the
+        # default deferral check would otherwise always (wrongly) defer.
+        await _drop_superside_chat_warm_client(conv_id, defer_if_active=False)
+        if not measure_history or trimmed:
+            return idle_seconds
+        since_anchor: list[int] = []
+        _session_histories[conv_id] = await _load_history_as_input(
+            conv_id, tail_tokens_out=since_anchor
+        )
+        keep_tokens = resolve_keep_tokens(labels)
+        if not since_anchor or since_anchor[0] <= keep_tokens:
+            return idle_seconds
+        # The turn's own read waits for the rollover; the cache is dropped with the client.
         # The turn body's ``model`` is the agent name; summarize on the session's LLM.
         # ROLLOVER_TOKEN_COUNT_MODEL (gpt-4o) is a tokenizer stand-in for sizing
         # text, never a model to actually call — falling back to it here would
         # silently route a real summarizer call to it. Skip this rollover
-        # instead; the next turn/idle check tries again.
+        # instead; the history read above is a valid cold start.
         resolved_model = await _superside_chat_session_model(conv_id)
         if resolved_model is None:
             _logger.warning(
@@ -9501,11 +9557,7 @@ def create_runner_app(
                 conv_id,
                 extra={"session_id": conv_id},
             )
-            return
-        # defer_if_active=False: this runs synchronously at the start of
-        # THIS turn, which already holds its own _active_turns slot (claimed
-        # by the caller before this turn's task was even created) — the
-        # default deferral check would otherwise always (wrongly) defer.
+            return idle_seconds
         wire, connection = _summarize_route(conv_id, resolved_model)
         await roll_over_session(
             conv_id,
@@ -9518,7 +9570,9 @@ def create_runner_app(
             on_rolled_over=lambda: _drop_superside_chat_warm_client(
                 conv_id, defer_if_active=False
             ),
+            cause="return",
         )
+        return idle_seconds
 
     async def _maybe_superside_chat_threshold_rollover(
         conv_id: str,
@@ -9589,8 +9643,26 @@ def create_runner_app(
                 extra={"session_id": conv_id},
             )
 
+    def _warm_client_serial(conv_id: str) -> str | None:
+        """The number of *conv_id*'s live harness subprocess, or ``None`` when unknown."""
+        serial = getattr(process_manager, "instance_serial", None)
+        value = serial(conv_id) if callable(serial) else None
+        return str(value) if isinstance(value, int) else None
+
+    def _commit_superside_chat_prefix(conv_id: str) -> None:
+        """Remember what the completed turn sent, tied to the subprocess that received it."""
+        sent = _superside_chat_prefix_pending.pop(conv_id, None)
+        serial = _warm_client_serial(conv_id)
+        if sent is not None and serial is not None:
+            _superside_chat_prefix_sent[conv_id] = {**sent, "process": serial}
+
     async def _apply_turn_prefix_blocks(
-        body: _JsonObject, conv_id: str, message: _JsonObject | None = None
+        body: _JsonObject,
+        conv_id: str,
+        message: _JsonObject | None = None,
+        *,
+        prompt_key: str = "",
+        idle_gap_seconds: float | None = None,
     ) -> _JsonObject:
         """Prepend the Super Chat per-turn blocks (Memory Profile, Projects, local time).
 
@@ -9600,10 +9672,35 @@ def create_runner_app(
         Called only for ``superside-chat`` turns; the blocks come from the one
         ``superchat.prompt_prefix`` hook, fetched fresh each turn (the SDK's system prompt is
         frozen per warm client, so a per-message block is the seam that still reaches it).
+
+        A warm client keeps every earlier turn's blocks in its transcript, so the Memory Profile
+        and Projects go in full only when they changed since this client last received them;
+        otherwise each is one short line. What it received is remembered only once a turn
+        completes (``_commit_superside_chat_prefix``), and only while the same subprocess
+        runs under the same *prompt_key* (a hash of the instructions and tool names the turn
+        sends: the executor rebuilds its client when they change, and replays the persisted
+        history, which holds no blocks). Taking the remembered state here means a turn that
+        fails, is interrupted or is cut short leaves nothing behind, so the next turn is full.
         """
         workspace = await _session_runtime_cwd(conv_id)
         texts = _message_texts(message.get("content")) if message else []
-        blocks = await turn_prefix_blocks(server_client, conv_id, workspace, texts)
+        last = _superside_chat_prefix_sent.pop(conv_id, None)
+        serial = _warm_client_serial(conv_id)
+        if last is not None and (
+            last.get("prompt") != prompt_key or last.get("process") != serial
+        ):
+            last = None
+        sent_now: dict[str, str] = {"prompt": prompt_key}
+        blocks = await turn_prefix_blocks(
+            server_client,
+            conv_id,
+            workspace,
+            texts,
+            idle_gap_seconds=idle_gap_seconds,
+            last_sent=last,
+            sent_now=sent_now,
+        )
+        _superside_chat_prefix_pending[conv_id] = sent_now
         return _prepend_turn_blocks(body, blocks, conv_id)
 
     def _discard_comment_relay(session_id: str, relay: ClaudeNativeToolRelay) -> None:
@@ -10023,7 +10120,11 @@ def create_runner_app(
 
         # Refresh on return: checked every turn (a live chat keeps its history
         # cached); a rollover drops the cache so the load below starts from it.
-        await _maybe_superside_chat_idle_rollover(conv)
+        _idle_gap = await _maybe_superside_chat_idle_rollover(
+            conv,
+            measure_history=not is_native_harness(harness_name),
+            trimmed=_trim_keep_tokens is not None,
+        )
         if conv not in _session_histories:
             _session_histories[conv] = (
                 []
@@ -10167,8 +10268,6 @@ def create_runner_app(
                 "content",
                 [],
             )
-        if _turn_context_mode == SUPERSIDE_CHAT_MODE_VALUE:
-            harness_body = await _apply_turn_prefix_blocks(harness_body, conv, msg_body)
         _content = cast(list[object], harness_body.get("content", []))
         _content_summary = []
         for _ci in _content:
@@ -10293,6 +10392,23 @@ def create_runner_app(
             and (name := _schema_tool_name(t)) is not None
             and name not in _spec_names
         )
+
+        if _turn_context_mode == SUPERSIDE_CHAT_MODE_VALUE:
+            # Placed after the tools are known: the key covers what the executor builds its
+            # system prompt from, so a change to it (which rebuilds the client) is a cold start.
+            _tool_names = sorted(
+                name for t in merged_tools if (name := _schema_tool_name(t)) is not None
+            )
+            _prompt_key = hashlib.sha256(
+                json.dumps([instructions, _tool_names]).encode()
+            ).hexdigest()
+            harness_body = await _apply_turn_prefix_blocks(
+                harness_body,
+                conv,
+                msg_body,
+                prompt_key=_prompt_key,
+                idle_gap_seconds=_idle_gap,
+            )
 
         await _ensure_native_terminal_for_turn(conv, harness_name)
 
@@ -10898,6 +11014,9 @@ def create_runner_app(
                                     # only for this one.
                                     _inj_id = event.get("injection_id")
                                     _answer_offer(_inj_id, taken=False)
+                                    # A refused steer can leave the client dropped (cold next).
+                                    _superside_chat_prefix_pending.pop(conv_id, None)
+                                    _superside_chat_prefix_sent.pop(conv_id, None)
                                     for _m in list(_session_message_buffers.get(conv_id) or []):
                                         if _m.get("injection_id") != _inj_id:
                                             continue
@@ -10927,6 +11046,7 @@ def create_runner_app(
                                             }
                                         )
                                         _text_acc.clear()
+                                    _commit_superside_chat_prefix(conv_id)
                                     _schedule_superside_chat_threshold_rollover(
                                         conv_id, event.get("response") or {}
                                     )
@@ -14310,6 +14430,7 @@ def create_runner_app(
         _session_mcp_spec_hash.pop(session_id, None)
         _instruction_delivery_warned.pop(session_id, None)
         _session_sub_agent_resolved.pop(session_id, None)
+        _forget_superside_chat_prefix(session_id)
         if agent_id:
             _spec_cache.pop(agent_id, None)
 

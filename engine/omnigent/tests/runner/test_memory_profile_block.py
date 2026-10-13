@@ -12,6 +12,8 @@ coverage pattern for the analogous post-compaction tail.
 
 from __future__ import annotations
 
+import pytest
+
 from omnigent.runner.app import _apply_memory_profile_to_body
 
 _BLOCK = (
@@ -89,3 +91,101 @@ def test_prepends_to_latest_user_message_in_a_history_with_tool_items() -> None:
     assert len(result) == len(history)
     assert result[-1]["content"][0]["text"] == f"{_BLOCK}\n\ntime?"
     assert result[0] == history[0]
+
+
+# ── the turn prefix: gap line and the unchanged-block lines ──────────────
+
+
+class _ProfileServer:
+    """Serves one Memory Profile, which a test can change."""
+
+    def __init__(self, profile: str | None) -> None:
+        self.profile = profile
+
+    async def get(self, url: str, **_kwargs: object) -> object:
+        profile = self.profile
+
+        class _Response:
+            status_code = 200
+
+            def json(self) -> dict[str, object]:
+                return {"profile": profile} if url.endswith("/memory/profile") else {}
+
+        return _Response()
+
+
+def test_idle_gap_line_is_one_plain_sentence() -> None:
+    from omnigent.superchat.prompt_prefix import idle_gap_line
+
+    assert idle_gap_line(3 * 86_400 + 5) == "It has been 3 days since the last message."
+    assert idle_gap_line(13 * 3600) == "It has been 13 hours since the last message."
+    assert idle_gap_line(3600) == "It has been 1 hour since the last message."
+    assert idle_gap_line(5) == "It has been less than an hour since the last message."
+    assert "\n" not in idle_gap_line(86_400 * 40)
+
+
+async def test_turn_prefix_sends_a_block_in_full_only_when_it_changed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from omnigent.superchat import prompt_prefix
+
+    projects = "[Projects]\n- taxes"
+    monkeypatch.setattr(prompt_prefix, "_safe_projects_block", lambda _w: projects)
+    server = _ProfileServer(_BLOCK)
+
+    async def build(last_sent: dict[str, str] | None) -> tuple[list[str], dict[str, str]]:
+        sent_now: dict[str, str] = {}
+        blocks = await prompt_prefix.turn_prefix_blocks(
+            server,
+            "conv",
+            None,
+            last_sent=last_sent,
+            sent_now=sent_now,  # type: ignore[arg-type]
+        )
+        return blocks, sent_now
+
+    first, sent = await build(None)
+    assert _BLOCK in first and projects in first
+
+    again, sent_again = await build(sent)
+    assert _BLOCK not in again and projects not in again
+    assert prompt_prefix.PROFILE_UNCHANGED_LINE in again
+    assert prompt_prefix.PROJECTS_UNCHANGED_LINE in again
+    assert sent_again == sent  # still held by the same client
+
+    server.profile = _BLOCK.replace("CAD", "EUR")
+    changed, _ = await build(sent)
+    assert server.profile in changed and projects not in changed
+    assert prompt_prefix.PROJECTS_UNCHANGED_LINE in changed
+
+    # The local-time line is never replaced; a gap line sits next to it.
+    gap = await prompt_prefix.turn_prefix_blocks(
+        server,
+        "conv",
+        None,
+        idle_gap_seconds=86_400 * 3,
+        last_sent=sent,  # type: ignore[arg-type]
+    )
+    assert gap[-1].startswith("[Current local time")
+    assert gap[-2] == "It has been 3 days since the last message."
+
+
+async def test_a_profile_that_goes_away_is_not_remembered_as_sent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from omnigent.superchat import prompt_prefix
+
+    monkeypatch.setattr(prompt_prefix, "_safe_projects_block", lambda _w: None)
+    server = _ProfileServer(None)
+    sent_now: dict[str, str] = {}
+
+    blocks = await prompt_prefix.turn_prefix_blocks(
+        server,
+        "conv",
+        None,
+        last_sent={"profile": "stale"},
+        sent_now=sent_now,  # type: ignore[arg-type]
+    )
+
+    assert sent_now == {}
+    assert len(blocks) == 1  # local time only

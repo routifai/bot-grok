@@ -1089,6 +1089,129 @@ def test_person_facing_summary_drops_framing_title_and_tool_sections(header_name
     )
 
 
+# ── checkpoint headers name their cause ──────────────────────────────────
+
+
+def test_each_checkpoint_cause_has_its_own_header_with_the_shared_marker() -> None:
+    from omnigent.context.rollover import CHECKPOINT_HEADERS, CHECKPOINT_MARKER, checkpoint_header
+
+    size, back, manual = (checkpoint_header(c) for c in ("size", "return", "manual"))
+
+    assert size == CHECKPOINT_HEADER  # the header stored before causes were named
+    assert len({size, back, manual}) == 3
+    assert "grew past its context limit" in size
+    assert "came back after a long break" in back
+    assert "asked to compact" in manual
+    assert "grew past its context limit" not in back + manual
+    assert (size, back, manual) == CHECKPOINT_HEADERS
+    for header in CHECKPOINT_HEADERS:
+        assert is_checkpoint_text(header) and header.startswith(CHECKPOINT_MARKER)
+        assert "session_history" in header  # the rest of the framing is shared
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cause", ["size", "return", "manual"])
+async def test_build_rollover_item_header_names_the_cause(cause: Any) -> None:
+    from omnigent.context.rollover import checkpoint_header
+
+    data = await build_rollover_item(
+        _turn(1) + _turn(2),
+        previous_summary=None,
+        keep_tokens=1,
+        model="gpt-4o",
+        llm_client=_ReturnsTextClient("STATE"),
+        cause=cause,
+    )
+
+    assert data.summary == f"{checkpoint_header(cause)}\n\nSTATE"
+    assert data.compacted_messages is not None
+    assert data.compacted_messages[0]["content"][0]["text"] == checkpoint_header(cause)
+
+
+@pytest.mark.asyncio
+async def test_build_rollover_item_defaults_to_the_size_header() -> None:
+    data = await build_rollover_item(
+        _turn(1),
+        previous_summary=None,
+        model="gpt-4o",
+        llm_client=_ReturnsTextClient("STATE"),
+    )
+    assert data.summary.startswith(CHECKPOINT_HEADER)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cause", ["size", "return", "manual"])
+async def test_a_later_rollover_strips_whatever_header_the_previous_one_had(cause: Any) -> None:
+    from omnigent.context.rollover import checkpoint_header
+
+    client = _ReturnsTextClient("NEXT")
+    await build_rollover_item(
+        _turn(2),
+        previous_summary=f"{checkpoint_header(cause)}\n\nOLD STATE",
+        model="gpt-4o",
+        llm_client=client,
+    )
+
+    prompt = str(client.seen_messages)
+    assert "OLD STATE" in prompt
+    assert "Context checkpoint inserted by the system" not in prompt
+
+
+@pytest.mark.parametrize("cause", ["size", "return", "manual"])
+def test_person_facing_summary_strips_every_cause_header(cause: Any) -> None:
+    from omnigent.context.rollover import checkpoint_header
+
+    assert person_facing_summary(f"{checkpoint_header(cause)}\n\nBody") == "Body"
+
+
+def test_the_reset_checkpoint_keeps_its_own_wording() -> None:
+    from omnigent.context.rollover import RESET_HEADER, build_reset_item
+
+    item = build_reset_item("a9", model=None)
+
+    assert item.summary == RESET_HEADER
+    assert "cleared this conversation" in RESET_HEADER
+    assert "grew past" not in RESET_HEADER
+    assert person_facing_summary(RESET_HEADER) is None
+
+
+@pytest.mark.parametrize("cause", ["size", "return", "manual"])
+def test_a_side_chat_seed_replaces_any_cause_header_with_its_own_framing(cause: Any) -> None:
+    """A parent checkpoint reused as a seed is reframed, whatever made it."""
+    from omnigent.context.rollover import (
+        SIDE_CHAT_SEED_HEADER,
+        _side_chat_framed,
+        checkpoint_header,
+    )
+    from omnigent.entities import CompactionData
+
+    header = checkpoint_header(cause)
+    seed = CompactionData(
+        summary=f"{header}\n\nSTATE",
+        last_item_id="a1",
+        model="gpt-4o",
+        token_count=5,
+        compacted_messages=[
+            {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": header}],
+            },
+            {
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": "STATE"}],
+            },
+        ],
+    )
+
+    data = _side_chat_framed(seed)
+
+    assert data.summary == f"{SIDE_CHAT_SEED_HEADER}\n\nSTATE"
+    assert data.compacted_messages is not None
+    assert data.compacted_messages[0]["content"][0]["text"] == SIDE_CHAT_SEED_HEADER
+
+
 def test_person_facing_summary_reads_a_seed_stored_before_the_marker_prefix() -> None:
     from omnigent.context.rollover import CHECKPOINT_MARKER, SIDE_CHAT_SEED_HEADER
 
