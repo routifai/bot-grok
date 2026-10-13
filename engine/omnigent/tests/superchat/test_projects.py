@@ -392,6 +392,10 @@ def test_bundles_offer_open_project_and_keep_the_whole_workspace_reachable(
     worker = next(a for a in spec.sub_agents if a.name == "worker")
     assert "open_project" in spec.tools.allow
     for agent in [spec, *spec.sub_agents, *worker.sub_agents]:
+        if agent.os_env is None:
+            # A Type with no shell or file tools (the notes passes) needs no workspace grant.
+            assert not any(tool.startswith("sys_os") for tool in agent.tools.allow), agent.name
+            continue
         assert agent.os_env.sandbox.write_paths == [WORKSPACE], agent.name
 
 
