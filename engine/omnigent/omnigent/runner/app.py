@@ -199,6 +199,7 @@ from omnigent.server.schemas import (
 )
 from omnigent.spec.skill_sources import resolve_session_skills
 from omnigent.spec.types import AgentSpec, LocalToolInfo, SkillSpec
+from omnigent.superchat.feature import is_helper
 from omnigent.superchat.helpers.saved_files import (
     collect_saved_files,
     forget_saved_files,
@@ -9797,6 +9798,8 @@ def create_runner_app(
             idle_gap_seconds=idle_gap_seconds,
             last_sent=last,
             sent_now=sent_now,
+            # The person's own chats only; a Helper's Brief is its context.
+            recall=not is_helper(await _tool_labels_for_session(conv_id)),
         )
         _superside_chat_prefix_pending[conv_id] = sent_now
         return _prepend_turn_blocks(body, blocks, conv_id)

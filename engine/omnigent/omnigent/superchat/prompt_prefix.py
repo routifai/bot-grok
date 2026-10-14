@@ -8,6 +8,7 @@ profile means "no profile".
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 from collections.abc import Mapping, Sequence
@@ -17,6 +18,7 @@ import httpx
 
 from omnigent.superchat.local_time import local_time_block
 from omnigent.superchat.projects.block import projects_block
+from omnigent.superchat.recall_hint.hint import recall_hint_block
 
 _logger = logging.getLogger(__name__)
 
@@ -172,13 +174,15 @@ async def turn_prefix_blocks(
     idle_gap_seconds: float | None = None,
     last_sent: Mapping[str, str] | None = None,
     sent_now: dict[str, str] | None = None,
+    recall: bool = False,
 ) -> list[str]:
     """The blocks to prepend to a Super Chat turn, in application order.
 
     Each block is prepended in turn, so the last one ends up first: ``[message blocks (the files
-    it attaches), memory profile (when any), Projects (when any), feature notes such as hand
-    edits (when any), local time]`` renders as local time, then the feature notes, then the
-    Projects, then the profile, then the message blocks, then the person's message.
+    it attaches), recall hint (when any), memory profile (when any), Projects (when any), feature
+    notes such as hand edits (when any), local time]`` renders as local time, then the feature
+    notes, then the Projects, then the profile, then the recall hint, then the message blocks,
+    then the person's message.
 
     :param workspace: The session's current working directory (marks the open Project).
     :param message_texts: Text parts of the turn's own message; features build blocks from them
@@ -190,10 +194,20 @@ async def turn_prefix_blocks(
         ``None`` (a cold start, or anything unproven) sends every block in full.
     :param sent_now: Filled with the hashes of the profile and Projects blocks this turn
         carries, for the caller to remember once the turn completes.
+    :param recall: Whether this chat may get the recall hint (the owner's setting decides, see
+        :mod:`omnigent.superchat.recall_hint`). It is built alongside the other fetches.
     """
+    hint = (
+        asyncio.create_task(
+            recall_hint_block(server_client, conversation_id, workspace, message_texts)
+        )
+        if recall and message_texts
+        else None
+    )
     blocks: list[str] = []
     if message_texts:
         blocks.extend(await _message_prefix_blocks(server_client, conversation_id, message_texts))
+    hint_at = len(blocks)
     profile = await fetch_memory_profile(server_client, conversation_id)
     if profile:
         blocks.append(
@@ -207,4 +221,6 @@ async def turn_prefix_blocks(
     if idle_gap_seconds is not None:
         blocks.append(idle_gap_line(idle_gap_seconds))
     blocks.append(await fetch_local_time_line(server_client))
+    if hint is not None and (recalled := await hint):
+        blocks.insert(hint_at, recalled)
     return blocks

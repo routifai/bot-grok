@@ -127,6 +127,11 @@ def _credential() -> str | None:
     return read_credential()
 
 
+def proxy_access() -> tuple[str | None, str | None]:
+    """The engine URL and launch token the model proxy is reached with (``None`` when unknown)."""
+    return _server_url, _credential()
+
+
 def get_runtime(factory: Callable[[], KnowledgeRuntime] | None = None) -> KnowledgeRuntime:
     """The runner's service, built on first use (not started)."""
     global _runtime
