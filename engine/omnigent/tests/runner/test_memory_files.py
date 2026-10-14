@@ -757,3 +757,254 @@ async def test_a_checkpoint_marks_a_new_folder_with_its_main_conversation(tmp_pa
     await record_checkpoint(_Server(), "conv_main", {}, _item(), workspace=tmp_path)
 
     assert files.owner_of(tmp_path) == "conv_main"
+
+
+# ── the index's conversation source ──────────────────────────────────────
+
+
+def _say(item_id: str, role: str, text: str, rid: str, **extra: Any) -> dict[str, Any]:
+    kind = "input_text" if role == "user" else "output_text"
+    return {
+        "id": item_id,
+        "response_id": rid,
+        "type": "message",
+        "role": role,
+        "created_at": DAY,
+        "content": [{"type": kind, "text": text}],
+        **extra,
+    }
+
+
+def _turns(prefix: str, count: int) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for n in range(count):
+        rows += [
+            _say(f"{prefix}u{n}", "user", f"question {n} about the venue", f"{prefix}r{n}"),
+            _say(f"{prefix}a{n}", "assistant", f"answer {n}", f"{prefix}r{n}"),
+        ]
+    return rows
+
+
+class _Record:
+    """The routes the conversation source reads: snapshot, related chats, items (both orders)."""
+
+    def __init__(
+        self,
+        items: dict[str, list[dict[str, Any]]],
+        related: dict[str, list[dict[str, Any]]] | None = None,
+    ) -> None:
+        self.items = items
+        self.related = related or {}
+        self.deleted: set[str] = set()
+        self.reads: list[tuple[str, dict[str, Any]]] = []
+
+    async def get(self, url: str, **kwargs: Any) -> Any:
+        params = dict(kwargs.get("params") or {})
+        chat = url.split("/")[3]
+        if url.endswith("/related_chats"):
+            return _Resp(200, {"data": self.related.get(chat, [])})
+        if url.endswith("/items"):
+            self.reads.append((chat, params))
+            rows = [r for r in self.items.get(chat, []) if params.get("type") in (None, r["type"])]
+            if params.get("order") == "desc":
+                rows = rows[::-1]
+            if params.get("after"):
+                ids = [r["id"] for r in rows]
+                if params["after"] not in ids:
+                    return _Resp(400, {"error": "stale_cursor"})
+                rows = rows[ids.index(params["after"]) + 1 :]
+            limit = int(params.get("limit", 100))
+            return _Resp(200, {"data": rows[:limit], "has_more": len(rows) > limit})
+        if chat in self.deleted:
+            return _Resp(404, {})
+        return _Resp(200, {"title": "t", "labels": {}})
+
+
+def _service(tmp_path: Path) -> Any:
+    from omnigent.runner.knowledge.runtime import KnowledgeRuntime
+    from tests.runner.knowledge._fixtures import FakeEmbedder
+
+    return KnowledgeRuntime(tmp_path / "index", tmp_path / "workspace", FakeEmbedder())
+
+
+def _passages(service: Any) -> dict[str, dict[str, str]]:
+    db = service.indexer.db
+    found = db.search("venue question about", limit=25, turns=True)
+    return {m["turn_item_id"]: m for m in db.turn_meta([c.id for c, _ in found]).values()}
+
+
+SIDE_LABELS = {SIDE_CHAT_LABEL_KEY: "1", SIDE_CHAT_PARENT_LABEL_KEY: "conv_main"}
+
+
+@pytest.mark.asyncio
+async def test_a_completed_turn_becomes_one_passage_with_its_metadata(tmp_path: Path) -> None:
+    from omnigent.runner.memory.sync import index_completed_turn
+
+    service = _service(tmp_path)
+    record = _Record({"conv_side": [*_turns("s", 3), _say("n1", "user", "[System: x]", "rn")]})
+
+    await index_completed_turn(record, "conv_side", SIDE_LABELS, project="spring", runtime=service)
+
+    found = _passages(service)
+    assert sorted(found) == ["su1", "su2"]  # the last two turns; a notice is never one
+    assert found["su2"] == {
+        "chat_id": "conv_side", "turn_item_id": "su2", "date": "2026-10-12", "origin": "side",
+        "project": "spring", "person_text": "question 2 about the venue",
+    }  # fmt: skip
+    assert found["su1"]["project"] == ""
+    assert service.indexer.process_next()  # one indexer tick embeds them
+    assert service.indexer.db.files(turns=True)[0].embed_status == "embedded"
+
+
+@pytest.mark.asyncio
+async def test_a_turn_written_before_its_reply_is_replaced_later(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnigent.runner.memory import sync
+
+    monkeypatch.setattr(sync, "_SETTLE_SECONDS", 0)
+    service = _service(tmp_path)
+    record = _Record({"conv_main": [_say("u1", "user", "venue question", "r1")]})
+    await sync.index_completed_turn(record, "conv_main", {}, runtime=service)
+    record.items["conv_main"] += [
+        _say("a1", "assistant", "Booked it.", "r1"),
+        _say("u2", "user", "venue next", "r2"),
+        _say("a2", "assistant", "Done.", "r2"),
+    ]
+    await sync.index_completed_turn(record, "conv_main", {}, runtime=service)
+
+    db = service.indexer.db
+    (row,) = db.files(turns=True)
+    assert sorted(c.text for c in db.chunks_for(row.file_id)) == [
+        "Person: venue next\nAssistant: Done.",
+        "Person: venue question\nAssistant: Booked it.",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_helper_turn_is_not_indexed_and_a_failing_write_does_not_raise(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnigent.context.labels import (
+        CONTEXT_MODE_LABEL,
+        SUBAGENT_LABEL_KEY,
+        SUPERSIDE_CHAT_MODE_VALUE,
+    )
+    from omnigent.runner.memory.sync import backfill_turns, index_completed_turn
+
+    service = _service(tmp_path)
+    record = _Record({"conv_h": _turns("h", 2), "conv_main": _turns("m", 2)})
+    helper = {CONTEXT_MODE_LABEL: SUPERSIDE_CHAT_MODE_VALUE, SUBAGENT_LABEL_KEY: "1"}
+    await index_completed_turn(record, "conv_h", helper, runtime=service)
+    await backfill_turns(record, "conv_h", helper, runtime=service)
+    assert _passages(service) == {} and record.reads == []
+
+    def broken(*_args: Any, **_kwargs: Any) -> int:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(service.indexer, "index_turns", broken)
+    await index_completed_turn(record, "conv_main", {}, runtime=service)
+    await backfill_turns(record, "conv_main", {}, runtime=service)
+    assert _passages(service) == {}
+
+
+@pytest.mark.asyncio
+async def test_outside_a_computer_nothing_is_indexed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnigent.runner.memory.sync import backfill_turns, index_completed_turn
+
+    monkeypatch.delenv("IS_SANDBOX", raising=False)
+    record = _Record({"conv_main": _turns("m", 2)})
+    await index_completed_turn(record, "conv_main", {})
+    await backfill_turns(record, "conv_main", {})
+    assert record.reads == []
+
+
+@pytest.mark.asyncio
+async def test_backfill_is_bounded_resumes_and_never_duplicates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnigent.runner.memory import sync
+
+    monkeypatch.setattr(sync, "_BACKFILL_PAGE", "10")
+    monkeypatch.setattr(sync, "_BACKFILL_PAGES", 2)
+    monkeypatch.setattr(sync, "_BACKFILL_TURNS", 6)
+    service = _service(tmp_path)
+    related = {"conv_main": [{"id": "conv_fork", "title": "f", "anchor_item_id": "mu1"}]}
+    record = _Record({"conv_main": _turns("m", 12), "conv_fork": _turns("f", 3)}, related)
+
+    await sync.backfill_turns(record, "conv_main", {}, runtime=service)
+    assert sorted(_passages(service)) == sorted(f"mu{n}" for n in range(6))  # six turns a run
+
+    restarted = _service(tmp_path)  # a restart: the progress is in the index file
+    for _ in range(4):
+        await sync.backfill_turns(record, "conv_main", {}, runtime=restarted)
+    found = _passages(restarted)
+    # Every turn once, except each chat's newest, which the live path writes.
+    assert sorted(found) == sorted([*(f"mu{n}" for n in range(11)), "fu0", "fu1"])
+    assert found["fu0"]["origin"] == "fork"
+    db = restarted.indexer.db
+    assert sum(len(db.chunks_for(r.file_id)) for r in db.files(turns=True)) == 13
+    assert db.meta("turns_backfilled:conv_main") == "done"
+    record.reads.clear()
+    await sync.backfill_turns(record, "conv_main", {}, runtime=restarted)
+    assert record.reads == []  # done: nothing is read again
+
+
+@pytest.mark.asyncio
+async def test_backfill_starts_over_when_its_cursor_item_is_gone(tmp_path: Path) -> None:
+    from omnigent.runner.memory import sync
+
+    service = _service(tmp_path)
+    service.indexer.db.set_meta("turns_cursor:conv_main", "gone")
+    record = _Record({"conv_main": _turns("m", 3)})
+    await sync.backfill_turns(record, "conv_main", {}, runtime=service)
+    await sync.backfill_turns(record, "conv_main", {}, runtime=service)
+    assert sorted(_passages(service)) == ["mu0", "mu1"]
+
+
+@pytest.mark.asyncio
+async def test_a_deleted_conversation_takes_its_passages_and_its_side_chats_with_it(
+    tmp_path: Path,
+) -> None:
+    from omnigent.runner.memory.sync import index_completed_turn
+
+    service = _service(tmp_path)
+    record = _Record(
+        {
+            "conv_main": [_stored("c1", SUMMARY), *_turns("m", 2)],
+            "conv_side": _turns("s", 2),
+            "conv_new": [_stored("n1", SUMMARY), *_turns("n", 2)],
+        }
+    )
+    await rebuild(record, "conv_main", workspace=tmp_path)
+    await index_completed_turn(record, "conv_main", {}, runtime=service)
+    await index_completed_turn(record, "conv_side", SIDE_LABELS, runtime=service)
+    await index_completed_turn(record, "conv_new", {}, runtime=service)
+
+    await reconcile(record, "conv_new", {}, workspace=tmp_path, runtime=service)
+    assert len(_passages(service)) == 6  # the old Conversation still exists: nothing goes
+
+    record.deleted.add("conv_main")
+    await reconcile(record, "conv_new", {}, workspace=tmp_path, runtime=service)
+
+    assert files.owner_of(tmp_path) == "conv_new"
+    assert sorted(_passages(service)) == ["nu0", "nu1"]
+    assert [r.name for r in service.indexer.db.files(turns=True)] == ["conv_new"]
+
+
+@pytest.mark.asyncio
+async def test_a_reset_keeps_the_passages(tmp_path: Path) -> None:
+    from omnigent.runner.memory.sync import index_completed_turn
+
+    service = _service(tmp_path)
+    record = _Record({"conv_main": [_stored("c1", SUMMARY), *_turns("m", 2)]})
+    await rebuild(record, "conv_main", workspace=tmp_path)
+    await index_completed_turn(record, "conv_main", {}, runtime=service)
+    record.items["conv_main"].append(_reset())
+
+    await reconcile(record, "conv_main", {}, workspace=tmp_path, runtime=service)
+
+    assert files.last_reset_of(tmp_path) == "c_reset"
+    assert sorted(_passages(service)) == ["mu0", "mu1"]

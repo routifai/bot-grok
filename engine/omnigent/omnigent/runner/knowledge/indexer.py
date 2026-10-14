@@ -11,6 +11,9 @@ searchable at once).
 ``text_ready -> ready``: embed the passages through the model proxy (keyword-only, with the reason,
 when the owner has no embedding connection), render PDF page thumbnails, settle.
 
+The index also holds the ``conversation`` source (:meth:`Indexer.index_turns`): one passage per
+completed turn, written by the runner; its only pass is the embedding.
+
 Everything blocks; the runtime (:mod:`omnigent.runner.knowledge.runtime`) runs it in one thread.
 """
 
@@ -32,6 +35,7 @@ from omnigent.runner.knowledge.chunking import chunk_pages
 from omnigent.runner.knowledge.db import (
     EMBED_EMBEDDED,
     EMBED_KEYWORD,
+    KIND_TURN,
     STATE_FAILED,
     STATE_QUEUED,
     STATE_READY,
@@ -39,6 +43,7 @@ from omnigent.runner.knowledge.db import (
     ChunkRow,
     FileRow,
     KnowledgeDb,
+    TurnPassage,
     file_id_for,
     search_text,
 )
@@ -58,6 +63,7 @@ from omnigent.runner.knowledge.markdown import (
 )
 from omnigent.runner.knowledge.parse import INDEXABLE_KINDS, parse_file
 from omnigent.runner.knowledge.pdf import render_page, render_thumbnails
+from omnigent.runner.knowledge.refs import journal_refs
 from omnigent.runner.knowledge.rerank import Reranker, RerankUnavailable
 from omnigent.runner.knowledge.tabular import (
     TABULAR_KINDS,
@@ -104,6 +110,8 @@ _EXTENSION_KIND = {
     ".xlsx": "xlsx",
 }
 _SKIPPED_DIRS = frozenset({"node_modules", "__pycache__"})
+#: Journal day files: their passages carry the references of their lines.
+JOURNAL_PREFIX = "memory/journal/"
 
 
 def kind_of(name: str) -> str | None:
@@ -372,6 +380,12 @@ class Indexer:
         loop: it yields there to a waiting ingest. *finish* ``False`` stops after the text pass
         (the file is keyword-searchable, the loop does the rest).
         """
+        if row.kind == KIND_TURN:  # a chat's conversation passages: stored, only embedding is left
+            with self._work:
+                current = self.db.get_file(row.file_id)
+                if current is not None and current.state == STATE_TEXT_READY:
+                    self._finish(current, None, retry=retry)
+            return
         with self._work:
             absolute = self.absolute(row.path)
             if not absolute.is_file():
@@ -414,6 +428,9 @@ class Indexer:
             digest = hashlib.sha256(data).hexdigest()
         self._write_markdown(row.file_id, markdown)
         stored = self.db.replace_chunks(row.file_id, chunks)
+        if row.path.startswith(JOURNAL_PREFIX):
+            found = {c.id: refs for c in stored if (refs := journal_refs(c.text))}
+            self.db.set_refs(found)
         self.db.update_file(
             row.file_id,
             state=STATE_TEXT_READY,
@@ -485,13 +502,16 @@ class Indexer:
         )
 
     def reindex(self) -> int:
-        """Send files that are keyword-only or embedded with another model back for embedding."""
+        """Send files that are keyword-only or embedded with another model back for embedding.
+
+        Conversation passages go back too; the count is of files only.
+        """
         try:
             tag = self.embedder.plan().tag
         except EmbeddingUnavailable:
             return 0
         count = 0
-        for row in self.db.files():
+        for row in self.db.files(turns=True):
             if row.state != STATE_READY or not row.chunk_count:
                 continue
             stale = row.embed_status != EMBED_EMBEDDED or any(
@@ -499,7 +519,7 @@ class Indexer:
             )
             if stale:
                 self.db.update_file(row.file_id, state=STATE_TEXT_READY, attempts=0)
-                count += 1
+                count += row.kind != KIND_TURN
         return count
 
     def maybe_reindex(self) -> int:
@@ -635,6 +655,31 @@ class Indexer:
             out.update(verdict)
         out["results"] = results[:limit]
         return out
+
+    # ------------------------------------------------------------------ conversation passages
+
+    def index_turn(self, passage: TurnPassage) -> int:
+        """Store one turn passage (idempotent on its ``turn_item_id``); see :meth:`index_turns`."""
+        return self.index_turns([passage])
+
+    def index_turns(
+        self, passages: Sequence[TurnPassage], *, cursor: tuple[str, str] | None = None
+    ) -> int:
+        """Store turn passages (keyword-searchable now) and wake the loop to embed them.
+
+        Under the work lock, so an embedding pass of the same chat cannot mark it done over a
+        passage written while it ran.
+        """
+        with self._work:
+            written = self.db.index_turns(passages, cursor=cursor)
+        if written and self.on_pending is not None:
+            self.on_pending()
+        return written
+
+    def delete_chats(self, chat_ids: Sequence[str], *, meta_keys: Sequence[str] = ()) -> int:
+        """Remove every conversation passage of these chats (and the meta keys *meta_keys*)."""
+        with self._work:
+            return self.db.delete_chats(chat_ids, meta_keys=meta_keys)
 
     def _rerank(
         self, query: str, hits: list[dict[str, Any]]
@@ -907,13 +952,14 @@ class Indexer:
         :raises AmbiguousFile: when a plain name matches several files.
         """
         if file_id:
-            return self.db.get_file(file_id)
+            row = self.db.get_file(file_id)
+            return None if row is not None and row.kind == KIND_TURN else row
         ref = (path or "").strip()
         if not ref:
             return None
         relative = self.relative(ref)
         row = self.db.file_by_path(relative) if relative else None
-        if row is not None:
+        if row is not None and row.kind != KIND_TURN:
             return row
         wanted = ref.replace("\\", "/").strip("/").lower()
         matches = [
