@@ -278,6 +278,48 @@ object".
 
 Ships in slice 5a (refs, indexer metadata, filters) with the two columns on artifact versions as its one migration.
 
+### 8.4 Where a Helper works: a dynamic working directory per delegation
+
+**Today.** The Conversation's working directory is already dynamic: `open_project` stores the path on the
+session (`PUT /v1/sessions/{id}/workspace`), the server tells the runner to drop its cached copy
+(`routes_workspace.py:111-116`, `workspace_change`), and the runner resolves the directory **per tool call**
+(`runner/app.py:11205`, `:14833`) and for the Projects block's `[open now]`. Both harnesses' native file and shell
+tools are off (`pi_executor.py:1992-1998`, `claude_sdk_executor.py:2794-2830`), so a stale process cwd never
+matters: every file or shell action goes through Omnigent with the current directory. Side chats and Forks copy the
+source's workspace (`routes_core.py:3188-3190`). Scheduled tasks can pin one (`scheduled/fire.py:13-18`). A Helper
+started with `start_helper` gets **none**: its create body carries labels only (`tool_dispatch.py:3163-3175`), so it
+starts at the workspace root whatever the Muse has open.
+
+**Change.** `start_helper` gains `project` (a slug, resolved like `open_project` does) or `path` (workspace-relative
+folder). Resolution order: the argument; else the parent's current workspace; else the root. The runner creates the
+child as today, then sets its workspace with the same `PUT …/workspace` the Conversation uses, **before** posting
+the Brief, so the Helper's first turn already has the right directory, the right `[open now]` in its Projects block,
+and relative paths in the Brief that resolve. The same `project:` ref lands on the Helper's journal lines (8.2).
+The artifact case falls out: the Muse knows an artifact's `source_path` from the version or the journal ref, and
+passes its folder.
+
+**What it is and is not.** The directory is attention and resolution: which Project the Helper believes it is in,
+where relative paths land, what `[open now]` says. It is not containment: `write_paths` stays the whole workspace
+(`agents/worker/config.yaml:31`), as for the Conversation. Containment, if ever wanted, is a separate per-session
+`write_paths`, not this.
+
+**Blind spots checked.**
+
+- The create schema allows `workspace` only with `host_id` or a caller-managed runner, and forbids it for a managed
+  sandbox create (`server/schemas.py:1476-1500`). Hence the PUT after create rather than a field on create; the PUT
+  is the path `open_project` already exercises.
+- The runner's workspace cache is per session and invalidated by the server's `workspace_change` forward
+  (`runner/app.py:5520`, `:14493`); a new child has no cached value yet, so the PUT before the first message is
+  enough.
+- The path must resolve under `/home/superchat/workspace`; `..` and symlinks out of it are rejected with the same
+  validation the workspace route applies. A missing folder is an error back to the Muse, not a silent root.
+- Pi and claude-sdk processes keep their spawn-time cwd; irrelevant while their native tools are off. If a bundle
+  ever re-enables them, the directory change must force a respawn (pi: `_ensure_rpc` restarts only on prompt or model
+  change, `pi_executor.py:2591-2598`).
+- Helper caps, Results, Activity and the Brief are untouched; the Memory Profile prepend is unchanged.
+
+One field on one tool, one PUT in the spawn path, one validation. Slice 5a, beside the refs.
+
 ## 9. One surface: cutting the redundant memory endpoints
 
 Today the Muse can reach memory through 17 tools, and the web through three unrelated search routes. Several answer
