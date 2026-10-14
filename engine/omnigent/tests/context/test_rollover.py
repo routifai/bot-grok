@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,7 @@ from omnigent.context.rollover import (
 from omnigent.harnesses.claude_native import main as claude_native
 from omnigent.harnesses.codex_native import main as codex_native
 from omnigent.llms.types import MessageOutput, OutputText, Response
+from omnigent.runner.memory.files import state_text_of
 from omnigent.runtime.compaction import count_tokens
 from omnigent.server.routes._sessions.common import (
     _LAST_CONTEXT_WINDOW_LABEL_KEY,
@@ -311,6 +313,38 @@ async def test_build_rollover_item_feeds_previous_summary_for_progressive_summar
     assert client.seen_messages is not None
     first_text = client.seen_messages[0]["content"][0]["text"]
     assert "automatically generated summary" in first_text
+
+
+@pytest.mark.asyncio
+async def test_rollover_marks_stale_open_entries_where_the_model_and_state_md_read() -> None:
+    today = datetime.now(UTC).date()
+    old, recent = today - timedelta(days=30), today - timedelta(days=29)
+    previous = f"{CHECKPOINT_HEADER}\n\n- [o-dana · {old} · stale?] waiting on Dana's reply"
+    # The summarizer keeps the mark it was shown and adds a 29-day-old and a closed entry.
+    client = _ReturnsTextClient(
+        f"- [o-dana · {old} · stale?] waiting on Dana's reply\n"
+        f"- [o-quotes · {recent}] three quotes requested\n"
+        f"- [t-venue · {old}] closed: the venue is booked"
+    )
+
+    data = await build_rollover_item(
+        _turn(1),
+        previous_summary=previous,
+        keep_tokens=_HUGE_TOKENS,
+        model="gpt-4o",
+        llm_client=client,
+    )
+
+    state = (
+        f"- [o-dana · {old} · stale?] waiting on Dana's reply\n"
+        f"- [o-quotes · {recent}] three quotes requested\n"
+        f"- [t-venue · {old}] closed: the venue is booked"
+    )
+    assert data.repairs == 0
+    assert data.summary == f"{CHECKPOINT_HEADER}\n\n{state}"
+    assert data.compacted_messages is not None
+    assert data.compacted_messages[1]["content"][0]["text"] == state
+    assert state_text_of(data.summary) == state  # what STATE.md is written from
 
 
 @pytest.mark.asyncio

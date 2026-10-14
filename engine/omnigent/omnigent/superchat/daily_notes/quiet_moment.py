@@ -27,6 +27,7 @@ import time
 from datetime import datetime
 from typing import Any
 
+from omnigent.context.state_file import STALE_MARK
 from omnigent.entities.scheduled_task import OwnerPreferences
 from omnigent.superchat.daily_notes.notes import local_date, local_zone, render_note
 from omnigent.superchat.daily_notes.store import PASS_LEASE_SECONDS, SqlAlchemyDailyNoteStore
@@ -112,11 +113,17 @@ the person and are never changed):
 
 {styles}
 
+Open entries of the Conversation's working list untouched for 30 days or more:
+
+{stale}
+
 1. Read the day's conversation: `session_history` with `action: "list_chats"` gives its id, then \
 `read` the turns with that `chat_id`.
 2. Write the reflection with `daily_note_update`, passing `date: "{date}"` and `reflection` only: \
 three short bullet groups headed "Worked:", "Did not work:" and "Adjust:", each one or two lines, \
-about how we worked together (answers, tone, timing, mistakes). Plain and specific; no praise.
+about how we worked together (answers, tone, timing, mistakes). Plain and specific; no praise. \
+If untouched entries are listed above, you may add a "Still open?" line naming them; never close \
+them and never ask the person about them.
 3. Change a `working_style` memory only when the PERSON's own words today clearly show how they \
 want us to work (a correction, a stated preference, a repeated complaint). Use `memory_remember` \
 with `kind: "working_style"`, their exact words as `quote`, and `replaces_claim_id` when it \
@@ -424,6 +431,7 @@ class QuietMoment:
                         note=render_note(note),
                         styles=_claims_text(claims),
                         people=_claims_text(claims),
+                        stale=await asyncio.to_thread(self._stale_entries, note.parent_session_id),
                     )
                     helper_id = await self._start_named(
                         note.parent_session_id,
@@ -438,6 +446,20 @@ class QuietMoment:
                     _logger.exception("quiet moment: %s pass failed for %s", name, note.owner)
                 break
         return started
+
+    def _stale_entries(self, chat_id: str) -> str:
+        """The entries marked ``stale?`` in the chat's latest checkpoint, one per line."""
+        try:
+            page = self._deps.conversation_store.list_items(
+                chat_id, limit=1, order="desc", type="compaction"
+            )
+            summary = getattr(page.data[0].data, "summary", None) if page.data else None
+        except Exception:  # noqa: BLE001 - the reflection runs without them
+            _logger.warning("quiet moment: could not read the checkpoint of %s", chat_id)
+            summary = None
+        mark = f"{STALE_MARK}]"
+        lines = [line.strip() for line in (summary or "").splitlines() if mark in line]
+        return "\n".join(lines) or "(none)"
 
     async def _start_named(
         self, session_id: str, owner: str, name: str, content: list[dict[str, Any]]

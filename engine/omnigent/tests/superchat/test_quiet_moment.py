@@ -239,6 +239,44 @@ async def test_nightly_dreaming_and_people_run_once_after_finalize(
 
 
 @pytest.mark.asyncio
+async def test_dreaming_is_shown_stale_entries_and_never_asks_or_closes(
+    harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    qm, notes, _prefs, started = harness
+    summary = (
+        "[Context checkpoint inserted by the system.]\n\n"
+        "- [o-dana · 2026-08-01 · stale?] waiting on Dana's reply\n"
+        "- [t-venue · 2026-10-01] venue shortlist"
+    )
+    checkpoint = SimpleNamespace(data=SimpleNamespace(summary=summary))
+    seen: list[dict[str, Any]] = []
+
+    def list_items(chat_id: str, **kwargs: Any) -> SimpleNamespace:
+        seen.append({"chat_id": chat_id, **kwargs})
+        return SimpleNamespace(data=[checkpoint])
+
+    qm._deps.conversation_store.list_items = list_items
+    monkeypatch.setattr(
+        "omnigent.runtime.get_memory_service",
+        lambda: SimpleNamespace(list_claims=lambda owner, kinds=None: []),
+    )
+    monkeypatch.setattr(quiet_moment, "_in_quiet_hours", lambda prefs, now: False)
+    notes.write_sections(
+        "local", "2026-10-04", {"talked_about": "- budget"}, parent_session_id=SESSION
+    )
+    _finalized(notes)
+    later = time.time() + quiet_moment.NIGHTLY_DELAY_SECONDS + 60
+
+    assert await qm.nightly_due(now=later) == 1
+    text = started[0]["content"][0]["text"]
+    assert seen[0]["chat_id"] == SESSION and seen[0]["type"] == "compaction"
+    assert "- [o-dana · 2026-08-01 · stale?] waiting on Dana's reply" in text
+    assert "t-venue" not in text
+    assert "never close them and never ask the person about them" in text
+    assert "state_close" not in quiet_moment.DREAM_PROMPT
+
+
+@pytest.mark.asyncio
 async def test_nightly_held_by_proactivity_off(harness, monkeypatch: pytest.MonkeyPatch) -> None:
     qm, notes, prefs, started = harness
     prefs.prefs = OwnerPreferences(user_id="local", proactivity="off")

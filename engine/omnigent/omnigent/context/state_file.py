@@ -6,10 +6,12 @@ The state file is free text the summarizer rewrites at every checkpoint. Some of
     - [t-launch-budget · 2026-10-09] Spring launch budget: confirm the venue line
     - [o-venue · 2026-10-09] closed: the venue is booked
     - [t-old-plan · 2026-09-30] merged into [t-launch-budget]: same topic
+    - [o-dana-reply · 2026-09-01 · stale?] waiting on Dana's reply
 
 The id says what it is (``t-`` topic, ``d-`` decision, ``o-`` open loop). The id alone is the
 identity of an entry; the date and the ``closed`` / ``merged into`` marks are attributes, so a
-changed date is never a lost entry. Every other line (headings, the position paragraph) is free
+changed date is never a lost entry. ``stale?`` is a rendering of the date (:func:`mark_stale`),
+never stored: :func:`parse` drops it. Every other line (headings, the position paragraph) is free
 text and passes through as written.
 
 Everything here is pure: no I/O, no model call. :func:`reconcile` is the one entry point the
@@ -18,6 +20,7 @@ rollover uses after the summarizer returns.
 
 from __future__ import annotations
 
+import datetime
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
@@ -40,12 +43,17 @@ JOURNAL_LINE_MAX_CHARS = 300
 CLOSE_REASON_MAX_CHARS = 200
 #: Longest tag id ``state_close`` accepts; the label key (128 chars) holds the prefix plus it.
 TAG_ID_MAX_CHARS = 64
+#: Days without a touch after which an open entry renders ``stale?``.
+STALE_AFTER_DAYS = 30
+STALE_MARK = " · stale?"
 
 _ID = r"[tdo]-[a-z0-9]+(?:-[a-z0-9]+)*"
 _TAG = re.compile(
-    rf"^(?P<prefix>\s*(?:[-*+]\s+)?)\[(?P<id>{_ID})(?:\s*[·|,]\s*(?P<date>\d{{4}}-\d{{2}}-\d{{2}}))?\]"
-    r"(?P<rest>.*)$"
+    rf"^(?P<prefix>\s*(?:[-*+]\s+)?)\[(?P<id>{_ID})(?:\s*[·|,]\s*(?P<date>\d{{4}}-\d{{2}}-\d{{2}}))?"
+    r"(?P<stale>\s*[·|,]?\s*stale\?)?\](?P<rest>.*)$"
 )
+#: A ``stale?`` the model moved out of the tag, right after it.
+_STALE_AFTER_TAG = re.compile(r"^\s*[·|,]?\s*stale\?")
 _CLOSED = re.compile(r"^\s*closed(?:\s*[:·—-]\s*|\s*$)")
 _MERGED = re.compile(rf"^\s*merged into \[(?P<target>{_ID})\](?:\s*[:·—-]\s*|\s+|$)")
 _JOURNAL = re.compile(r"<journal>(.*?)(?:</journal>|\Z)", re.DOTALL | re.IGNORECASE)
@@ -124,6 +132,13 @@ def parse(text: str) -> list[Line]:
             lines.append(raw)
             continue
         rest = match["rest"]
+        # ``stale?`` is recomputed at every checkpoint: drop it, keep the rest word for word.
+        moved = _STALE_AFTER_TAG.match(rest)
+        if moved is not None:
+            rest = rest[moved.end() :]
+            raw = raw[: match.start("rest")] + rest
+        if match["stale"] is not None:
+            raw = raw[: match.start("stale")] + raw[match.end("stale") :]
         closed = False
         merged_into = None
         merged = _MERGED.match(rest)
@@ -237,6 +252,34 @@ def carry_dates(previous: list[Line], lines: list[Line], *, today: str) -> list[
     return out
 
 
+def mark_stale(lines: list[Line], *, today: str) -> list[Line]:
+    """Add ``stale?`` to the tag of every open entry untouched for :data:`STALE_AFTER_DAYS`.
+
+    A rendering of the date for the model and ``STATE.md``, never stored state: :func:`parse`
+    drops it, so it cannot change an entry's identity, a repair or the eviction order.
+
+    :param today: The checkpoint's ISO date.
+    """
+    try:
+        now = datetime.date.fromisoformat(today)
+    except ValueError:
+        return lines
+    out: list[Line] = []
+    for line in lines:
+        if isinstance(line, Entry) and not line.done and line.date:
+            try:
+                age = (now - datetime.date.fromisoformat(line.date)).days
+            except ValueError:
+                age = 0
+            if age >= STALE_AFTER_DAYS:
+                match = _TAG.match(line.line)
+                if match is not None:
+                    at = match.end("date")
+                    line = replace(line, line=line.line[:at] + STALE_MARK + line.line[at:])
+        out.append(line)
+    return out
+
+
 def clip_entries(lines: list[Line]) -> list[Line]:
     """Cut every entry's text to :data:`ENTRY_MAX_CHARS` (an ellipsis marks the cut)."""
     out: list[Line] = []
@@ -331,7 +374,8 @@ def reconcile(
     """Check a rewritten state file against the previous one.
 
     In order: apply the pending closes, repair lost entries, carry dates forward, cut overlong
-    entries, then fit the budget. A previous file with no tags (stored before tags existed) has
+    entries, fit the budget, then mark stale entries (after eviction, so evicted lines go to the
+    journal without the mark). A previous file with no tags (stored before tags existed) has
     nothing to lose.
 
     :param previous_text: The previous state file (no checkpoint header), or ``None``.
@@ -346,7 +390,7 @@ def reconcile(
     lines, repairs = repair(before, lines)
     lines = clip_entries(carry_dates(before, lines, today=today))
     lines, evicted = fit_budget(lines, budget, count)
-    return Reconciled(render(lines), repairs, evicted, applied)
+    return Reconciled(render(mark_stale(lines, today=today)), repairs, evicted, applied)
 
 
 def split_journal(text: str) -> tuple[str, list[str]]:

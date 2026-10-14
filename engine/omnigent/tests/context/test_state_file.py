@@ -382,3 +382,56 @@ def test_likely_duplicates_point_at_same_kind_entries_with_heavy_overlap_only() 
     # Same kind, nearly the same words. A decision, another topic and a closed entry are not.
     assert sf.likely_duplicates(text) == [("t-venue", "t-hall")]
     assert sf.likely_duplicates(None) == [] and sf.likely_duplicates("no tags here") == []
+
+
+# ── stale? (a rendering of the date) ───────────────────────────────────────
+
+
+def test_an_open_entry_30_days_old_renders_stale_and_29_does_not() -> None:
+    text = "\n".join(
+        [
+            "- [o-dana · 2026-09-12] waiting on Dana's reply",
+            "- [o-quotes · 2026-09-13] three quotes requested",
+            "- [t-venue · 2026-09-01] closed: the venue is booked",
+            "- [t-old · 2026-09-01] merged into [o-dana]: same thing",
+        ]
+    )
+    out = _run(None, text)
+    assert out.text.splitlines() == [
+        "- [o-dana · 2026-09-12 · stale?] waiting on Dana's reply",
+        "- [o-quotes · 2026-09-13] three quotes requested",
+        "- [t-venue · 2026-09-01] closed: the venue is booked",
+        "- [t-old · 2026-09-01] merged into [o-dana]: same thing",
+    ]
+
+
+def test_a_stale_mark_coming_back_is_the_same_entry_with_no_repair() -> None:
+    previous = _run(None, "- [o-dana · 2026-09-01] waiting on Dana's reply").text
+    assert "· stale?]" in previous
+    # The summarizer keeps the mark in the tag, moves it after the tag, or touches the entry.
+    for new in (
+        previous,
+        "- [o-dana · 2026-09-01] · stale? waiting on Dana's reply",
+        "- [o-dana · 2026-10-12 · stale?] waiting on Dana's reply",
+    ):
+        lines = parse(new)
+        (entry,) = entries(lines).values()
+        assert entry.id == "o-dana" and entry.body == "waiting on Dana's reply"
+        assert "stale" not in render(lines)
+        out = _run(previous, new)
+        assert out.repairs == 0 and len(entries(parse(out.text))) == 1
+    assert _run(previous, previous).text == previous
+    touched = _run(previous, "- [o-dana · 2026-10-12 · stale?] waiting on Dana's reply")
+    assert touched.text == "- [o-dana · 2026-10-12] waiting on Dana's reply"
+
+
+def test_a_stale_closed_entry_parses_closed_and_never_renders_stale() -> None:
+    out = _run(None, "- [o-dana · 2026-09-01 · stale?] closed: Dana replied")
+    (entry,) = entries(parse(out.text)).values()
+    assert entry.closed and out.text == "- [o-dana · 2026-09-01] closed: Dana replied"
+
+
+def test_evicted_entries_go_to_the_journal_without_the_stale_mark() -> None:
+    text = "- [o-old · 2026-08-01] " + "word " * 40 + "\n- [o-new · 2026-10-12] kept"
+    out = _run(None, text, budget=20)
+    assert out.evicted and "stale" not in out.evicted[0]
