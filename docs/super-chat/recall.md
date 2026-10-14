@@ -171,7 +171,160 @@ have, one bounded block built from code we already have.
 
 The evaluation costs model calls and needs approval before each run.
 
-## 7. Sources
+## 7. Stale, outdated and superseded memory
+
+Old memory is not the problem; old memory *presented as current* is. The design keeps every fact dated, keeps one
+place that is allowed to say "current", and ranks the rest as evidence with its age showing.
+
+### 7.1 One source of "now", three sources of "then"
+
+| Source | What age means there | Rule |
+|--------|----------------------|------|
+| **Working state** (the tagged state file) | The only place that claims to be current. Every entry carries its last-touched date in the tag (`[t-launch-budget · 2026-10-09]`). | When a hint conflicts with the state file, the state file wins and the model says so ("the budget was 50k in March; it is 62k since 2 October"). |
+| **Claims** (about the person) | Already handled: `valid_until` expiry, `decision` out of the profile 30 days after last reinforcement, supersede chain with history, search boost that halves every 90 days (`omnigent/memory/service.py:52-55`). A superseded claim is excluded from search. | Keep. Add nothing. |
+| **Conversation turns** | A turn is a fact about what was said *on that date*. A March turn saying "budget 50k" is true as history and wrong as "now". | Every pointer carries its date. Ranking adds a recency factor (3 below). Near-duplicate hits on one topic collapse to the newest, with the older ones listed as "earlier" (4 below). |
+| **Journal** | Events. "30 Sep: three quotes requested" never goes stale. | Dated, no decay. A later line that undoes an earlier one ("venue decision reverted") ranks above it by date. |
+| **Files** | Only the current version is indexed; a saved artifact's new version replaces the old passages (the indexer's reconcile). | Pointer shows the file's last-modified date. Hand-edited versions are already delivered as notes to the turn. |
+
+### 7.2 Dates everywhere the model reads
+
+- Every hint line starts with its date. Every state-file entry carries its date. Every journal line carries its date.
+- The hint header says it: "pointers from earlier, dated; the working list above is current".
+- The instruction (`AGENTS.md`) adds one rule: an older pointer that conflicts with a newer pointer, the working
+  list or standing memory is history, not fact; answer from the newest, and name the change when it matters
+  ("you changed this on 2 October").
+
+### 7.3 Ranking with age, without losing the old
+
+Fusion score × recency factor, per source: conversation turns halve every 90 days (same half-life as claims);
+journal and files have no decay. The factor never reaches zero, so a question that is *about* the past ("when did
+we first discuss the venue?", "what did I say in March?") still finds March. The planner can also mark a sub-query
+as `historical`, which turns the factor off for that sub-query; the pull path exposes the same switch
+(`recency: off`).
+
+### 7.4 Collapsing versions of the same thing
+
+Two hits about the same topic from different dates (near-duplicate by the same token-overlap test the claims
+dedupe already uses, `omnigent/memory/service.py:48-50`, or the same state-file tag in the journal comment) become
+one line: the newest, with `· earlier: 14 Sep, 3 Mar` appended. The model sees that the thing changed and when,
+in one line, instead of three lines that disagree.
+
+### 7.5 Open loops that quietly age
+
+The state file's eviction already moves the longest-untouched entries to the journal when over budget. Add the
+visible version: an open entry untouched for 30 days renders with `· stale?` after its date. The model then asks
+once ("still waiting on Dana's reply?") or closes it with `state_close`; the person's answer settles it. The nightly
+Dreaming pass may list stale entries in `## Reflection`, never close them itself.
+
+### 7.6 What this does not do
+
+- No automatic deletion from any index. Old turns and journal lines stay searchable for life; age changes rank,
+  not presence.
+- No model call to decide staleness. Dates, the state file and the ranking factor do it; the model reasons over
+  dates it can see.
+- Claims keep their own rules; this section adds nothing to how facts about the person expire.
+
+Slice 5a carries the per-source recency factor, the dated pointers and the version collapse; slice 5b the planner's
+`historical` mark; the `· stale?` render is a one-line change to the state file renderer and can ship any time.
+
+## 8. Per-object history: what we did on this artifact, file or Project
+
+### 8.1 What exists, and what is missing
+
+| Object | Recorded today | Missing |
+|--------|----------------|---------|
+| Artifact | A version chain: `origin` (`ai`, `manual`, `restore`, `update`), `parent_version_id`, `source_path`, `created_at`, and the person's `edit_summary` on a hand edit (`omnigent/superchat/artifacts/store.py:125-190`) | Why the assistant made a version and what it changed; the link from a version to the turn or run that produced it is by time only |
+| File | Current version's passages in the Computer index; reindexed on change (ADR 0014) | Any history or provenance |
+| Project | The `PROJECT.md` card: name, aliases, summary, file names (`omnigent/superchat/projects/block.py`) | Any log of what happened inside the folder |
+| Activity | Per turn or per Helper run, derived on read from tool calls (`omnigent/superchat/activity/derive.py:1-10`) | A way to ask "everything that touched launch-budget.xlsx" |
+| Journal | One prose line per event; the instruction asks the summarizer to name files and helper runs (`omnigent/context/rollover.py:275-279`); origin and chat id in the comment (`omnigent/runner/memory/files.py:120-123`) | A structured reference; whether an object is named depends on the model that day |
+
+The inherited part is version chains, an action log per turn, and prose that often names the object. The missing
+part is the join: a stable reference from each piece of work to the artifact, file or Project it touched.
+
+### 8.2 The join: references written by code into the journal line
+
+The retired window at each compaction contains the tool calls, and they name the objects exactly: `files_write`
+paths, `artifact_*` ids and names, `open_project` slugs, Helper run ids, `deck_*` outputs. Code, not the
+summarizer, extracts them from the `function_call` items of the window and writes them into the journal line's
+trailing comment:
+
+```markdown
+- 2026-09-30 · Checked the supplier quote against the launch budget; venue line 12 % over · main <!-- chat:… files:projects/spring-launch/launch-budget.xlsx artifacts:art_7f2@v3 project:spring-launch helpers:hr_41 -->
+```
+
+- Refs are a fixed vocabulary: `files:` (workspace paths), `artifacts:` (`id@version`), `project:` (slug),
+  `helpers:` (run ids), `chats:` (side chat ids). Comma-separated, no spaces inside a value, at most 12 per line.
+- A line gets the refs of the turns it summarizes. The summarizer sees the refs when it writes the line
+  (the transcript shows them per turn), so the prose and the refs agree, but the refs come from code.
+- The same refs go into the compaction payload (`journal_lines` already carries the text), so `memory rebuild`
+  reproduces them.
+- The indexer stores the comment's refs as passage metadata (`project`, `files`, `artifacts`), so a search can
+  filter by them, and the `project` field in 3.1 is filled from here rather than guessed from the path.
+
+Two small additions on top:
+
+- **Artifact version → producing turn.** At save time the runner writes `turn_item_id` and `chat_id` onto the
+  artifact version (two nullable columns), replacing the by-time link in Activity and in the live-pages run history.
+- **Hint "likely Project".** Comes from the refs on the hits first, from path clustering second.
+
+### 8.3 What it answers
+
+"What did we do on launch-budget.xlsx?" is `recall` with `file: projects/spring-launch/launch-budget.xlsx`, which
+returns the journal lines and turns that reference it, newest first, each with its date and the artifact version it
+produced. "What happened in spring-launch last month?" is `project: spring-launch, since: 2026-09-14`. The Activity
+screen can open a version and show its turn. No new table; the journal becomes "what happened, by day and by
+object".
+
+Ships in slice 5a (refs, indexer metadata, filters) with the two columns on artifact versions as its one migration.
+
+## 9. One surface: cutting the redundant memory endpoints
+
+Today the Muse can reach memory through 17 tools, and the web through three unrelated search routes. Several answer
+the same question with different shapes. The cut keeps every capability and removes the choice.
+
+### 9.1 Model-facing tools
+
+| Today (allow list `infra/omnigent/templates/config.yaml.tmpl:48-70`) | Fate | Replaced by |
+|------|------|-------------|
+| `files_search`, `files_vsearch`, `files_query` | **Cut** two, rename one | `recall`: `queries[≤3]`, `sources`, filters `project` / `file` / `chat` / `since` / `until`, `recency: on|off`, `rerank`. Hybrid by default; keyword-only is what the index returns when the owner cannot embed, with the reason, as today |
+| `memory_search` | **Cut** | `recall` with `sources: memory` (fused) or `sources: [memory]` alone |
+| `session_history search` | **Cut** the action | `recall` with `sources: conversation` and `chat:` |
+| `memory_get`, `memory_explain` | **Merge** | `recall_get(id)`: one read by id for a turn (`i_…`), a journal line (`ep_…`), a file (`f_…` with optional pages), or a claim (`c_…`, with its quote, sources and supersede chain, which was `explain`) |
+| `files_get`, `files_multi_get` | **Merge** | `recall_get` with one id or several; `files_read_page` stays (an image, a different result) |
+| `files_status` | **Cut** from the Muse | search results already say `rerank:` and `embeddings:`; the web keeps the route |
+| `session_history read`, `list_chats`, `status` | **Keep** | paging exact turns without a query, discovering related chats, token headroom |
+| `sys_session_list`, `sys_session_get_info` | **Cut** from the Muse | duplicates of `list_chats` and the headroom in `status`; they stay engine tools for other bundles |
+| `sys_session_get_history` | **Keep** for now | the Helper Result notice points at it (`omnigent/superchat/subagents.py:319`); cut once `recall_get` accepts a Helper session id |
+| `memory_remember`, `memory_forget`, `state_close` | **Keep** | three different writes with three different safety rules |
+| `daily_note_get`, `daily_note_update` (notes Helper only) | **Cut** `get` | the day file is a file: `recall_get`; `daily_note_update` stays as the section-scoped write |
+
+Result: **17 → 9** for the Muse: `recall`, `recall_get`, `session_history` (read, list_chats, status), `files_read_page`,
+`memory_remember`, `memory_forget`, `state_close`, `sys_session_get_history` (until folded), `open_project`
+(unchanged, listed because the hint's Project line points at it). The handlers behind the cut tools stay where the
+web still calls them; only the Muse's allow list and the schemas change. `AGENTS.md` loses three paragraphs that
+told the model which search to pick.
+
+### 9.2 HTTP routes
+
+| Today | Fate |
+|-------|------|
+| `POST /sessions/{id}/knowledge/search`, `POST …/knowledge/find`, `GET …/memory/search`, and the session-list item search (`sqlalchemy_store.py:685`) | **One** `POST /sessions/{id}/recall`, the same body as the tool, relayed to the runner; the web's search box, the Memory tab search and the Library search call it with `sources` |
+| `GET …/memory/claims`, `…/claims/{id}`, `…/claims/{id}/explain`, `PATCH …/claims/{id}`, `POST …/memory/forget`, `POST …/memory/remember`, `GET …/memory/profile` | **Keep** (the Memory tab, the Helper Brief); fold `explain` into `GET …/claims/{id}?explain=1` |
+| `GET /me/daily-notes`, `GET /me/daily-notes/{date}`, `POST /daily-notes/write` | **Retire** once the web reads the day file through the knowledge routes (plan, item 14); `write` stays until the notes Helper's tool is section-scoped |
+| `GET …/knowledge/status`, `…/thumbnail`, `POST …/knowledge/ingest`, `…/reindex` | **Keep** (upload flow, Library badges) |
+| `GET …/transcript` | **Keep** (UI projection, not memory) |
+
+Four search entry points become one; the claim routes stay because they are a write surface with owner checks,
+not a search.
+
+### 9.3 Order
+
+Slice 5a adds `recall` and `recall_get` beside the old tools and switches `AGENTS.md`; the old tools leave the
+Muse's allow list one release later, after the "asked twice" evaluation has run on the new surface. The HTTP
+consolidation follows the web's switch, route by route.
+
+## 10. Sources
 
 - Anthropic, "Effective context engineering for AI agents" (hybrid: a little up front, just-in-time retrieval by
   identifier): https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents
