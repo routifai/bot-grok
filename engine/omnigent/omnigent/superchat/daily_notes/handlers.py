@@ -1,14 +1,18 @@
 """Runner-side handler for ``daily_note_get`` / ``daily_note_update``.
 
-Proxies the server's daily-note endpoints. A Helper writes under its parent chat.
+Proxies the server's daily-note endpoints. A Helper writes under its parent chat. After a write the
+note is also copied into the day file under ``memory/`` (the table stays the source).
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from omnigent.superchat._handler_http import error, finish, resolve_caller
 from omnigent.superchat.feature import HandlerCtx
+
+_logger = logging.getLogger(__name__)
 
 
 async def handle_daily_note_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:
@@ -37,4 +41,17 @@ async def handle_daily_note_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:
             resp = await caller.client.post("/v1/daily-notes/write", json=payload, timeout=30.0)
     except Exception as exc:  # noqa: BLE001
         return error(f"{tool_name} failed: {exc}")
-    return finish(resp)
+    out = finish(resp)
+    if tool_name == "daily_note_update" and resp.status_code < 400:
+        await _project(resp)
+    return out
+
+
+async def _project(resp: Any) -> None:
+    """Copy the written note into the day file in the Computer. Never fails the tool call."""
+    try:
+        from omnigent.runner.memory.sync import record_daily_note
+
+        await record_daily_note(resp.json())
+    except Exception:  # noqa: BLE001 - a copy must never fail the tool call
+        _logger.warning("daily note: could not project it to memory/", exc_info=True)

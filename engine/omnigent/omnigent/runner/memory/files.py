@@ -7,7 +7,9 @@ Layout::
 
 A journal line is ``- <date> · <text> · <origin> <!-- <chat id> -->``. The origin says where it
 came from: ``main``, ``side "<title>"`` or ``fork @ "<title>"``. Lines are appended under the
-heading and never edited. Appends run under a lock (a thread lock and, where the platform has
+heading and never edited. The day file also holds two sections written by code from the day's
+note: ``## Notes`` and ``## Reflection``, each replaced as a whole and never touching the Journal.
+Appends run under a lock (a thread lock and, where the platform has
 it, an ``flock`` on ``journal/.lock``), so two checkpoints that finish together keep both lines.
 The date is the one the line carries, else today in UTC (the runner does not know the owner's
 timezone).
@@ -27,6 +29,7 @@ import contextlib
 import logging
 import os
 import re
+import shutil
 import tempfile
 import threading
 from collections.abc import Iterable, Iterator
@@ -35,6 +38,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from omnigent.context.rollover import _strip_seed_header
+from omnigent.entities.daily_note import SECTION_TITLES, WRITER_KEYS
 from omnigent.stores.conversation_store import SIDE_CHAT_LABEL_KEY
 from omnigent.superchat.lineage import fork_anchor_id
 
@@ -49,6 +53,13 @@ MEMORY_DIR = "memory"
 JOURNAL_DIR = "journal"
 STATE_FILE = "STATE.md"
 JOURNAL_HEADING = "## Journal"
+NOTES_HEADING = "## Notes"
+REFLECTION_HEADING = "## Reflection"
+#: The main Conversation's session id, written inside ``memory/`` (the folder belongs to it).
+OWNER_FILE = ".owner"
+#: The id of the last reset item written to the journal and ``STATE.md``.
+LAST_RESET_FILE = ".last_reset"
+RESET_TEXT = "conversation reset"
 STATE_NOTE = "This is a copy of the working list, for reading. Edits here change nothing."
 EVICTED_PREFIX = "Moved out of the working list: "
 #: Longest chat title kept in an origin.
@@ -57,6 +68,8 @@ TITLE_MAX_CHARS = 80
 _DATE = re.compile(r"^(\d{4}-\d{2}-\d{2})(?:\s*[·|:-]\s*|\s+)")
 _BULLET = re.compile(r"^\s*(?:[-*+•]\s+)?")
 _SPACE = re.compile(r"\s+")
+_DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_HASH_LINE = re.compile(r"^([ \t]*)#", re.MULTILINE)
 _thread_lock = threading.Lock()
 
 
@@ -249,5 +262,132 @@ def write_state(workspace: Path, state_text: str) -> bool:
         _replace(directory / STATE_FILE, f"{STATE_NOTE}\n\n{state_text.strip()}\n")
     except OSError:
         _logger.warning("memory: could not write STATE.md", exc_info=True)
+        return False
+    return True
+
+
+def reset_state_text(date: str) -> str:
+    """:returns: The working list after a reset: one line saying when it was reset."""
+    return f"The conversation was reset on {date}."
+
+
+def _marker(workspace: Path, name: str) -> str | None:
+    try:
+        return (memory_dir(workspace) / name).read_text(encoding="utf-8").strip() or None
+    except OSError:
+        return None
+
+
+def _write_marker(workspace: Path, name: str, value: str) -> bool:
+    directory = memory_dir(workspace)
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        _replace(directory / name, f"{value.strip()}\n")
+    except OSError:
+        _logger.warning("memory: could not write %s", name, exc_info=True)
+        return False
+    return True
+
+
+def owner_of(workspace: Path) -> str | None:
+    """:returns: The main Conversation id the folder belongs to, or ``None`` when unmarked."""
+    return _marker(workspace, OWNER_FILE)
+
+
+def write_owner(workspace: Path, main_id: str, *, keep_existing: bool = False) -> bool:
+    """Mark the folder as belonging to *main_id*. Never raises.
+
+    :param keep_existing: Leave a marker that is already there (adopting an unmarked folder).
+    :returns: ``True`` unless the write failed (the failure is logged).
+    """
+    if keep_existing and owner_of(workspace) is not None:
+        return True
+    return _write_marker(workspace, OWNER_FILE, main_id)
+
+
+def last_reset_of(workspace: Path) -> str | None:
+    """:returns: The id of the last reset already written to the files, or ``None``."""
+    return _marker(workspace, LAST_RESET_FILE)
+
+
+def write_last_reset(workspace: Path, item_id: str) -> bool:
+    """Record that the reset *item_id* is written to the files. Never raises."""
+    return _write_marker(workspace, LAST_RESET_FILE, item_id)
+
+
+def wipe(workspace: Path) -> bool:
+    """Remove the whole ``memory/`` folder. Never raises.
+
+    :returns: ``True`` unless the removal failed (the failure is logged).
+    """
+    try:
+        with _thread_lock:
+            shutil.rmtree(memory_dir(workspace), ignore_errors=False)
+    except FileNotFoundError:
+        return True
+    except OSError:
+        _logger.warning("memory: could not remove the folder", exc_info=True)
+        return False
+    return True
+
+
+def _plain(text: str) -> str:
+    """:returns: *text* with every line that starts with ``#`` escaped, so it opens no section."""
+    return _HASH_LINE.sub(r"\1\\#", text.strip())
+
+
+def notes_body(sections: dict[str, str]) -> str:
+    """:returns: The note's writer sections as ``### <title>`` blocks, empty ones left out."""
+    parts = []
+    for key in WRITER_KEYS:
+        text = _plain(str(sections.get(key) or ""))
+        if text:
+            parts.append(f"### {SECTION_TITLES[key]}\n{text}")
+    return "\n\n".join(parts)
+
+
+def _set_section(text: str, heading: str, body: str) -> str:
+    """:returns: *text* with the *heading* section replaced by *body* (removed when empty)."""
+    match = re.search(rf"^{re.escape(heading)}[ \t]*\n", text, re.MULTILINE)
+    start = match.start() if match else len(text)
+    nxt = re.compile(r"^## ", re.MULTILINE).search(text, match.end()) if match else None
+    end = nxt.start() if nxt else len(text)
+    block = f"{heading}\n\n{body}" if body else ""
+    return _join(text[:start], block, text[end:])
+
+
+def _join(before: str, block: str, after: str) -> str:
+    parts = [p.strip("\n") for p in (before, block, after) if p.strip("\n")]
+    return "\n\n".join(parts) + "\n"
+
+
+def write_day_sections(workspace: Path, date: str, sections: dict[str, str]) -> bool:
+    """Replace the ``## Notes`` and ``## Reflection`` sections of a day file. Never raises.
+
+    The Journal section and its lines are not touched. An empty part writes no section (an old
+    one is removed); a day with no file and nothing to write gets none.
+
+    :param sections: The day's note sections, keyed as in the ``daily_notes`` table.
+    :returns: ``True`` unless a write failed (the failure is logged).
+    """
+    if not _DAY.match(date):
+        return False
+    notes = notes_body(sections)
+    reflection = _plain(str(sections.get("reflection") or ""))
+    directory = memory_dir(workspace) / JOURNAL_DIR
+    path = directory / f"{date}.md"
+    try:
+        if not path.exists() and not (notes or reflection):
+            return True
+        directory.mkdir(parents=True, exist_ok=True)
+        with _locked(directory):
+            if path.exists():
+                text = path.read_text(encoding="utf-8")
+            else:
+                text = f"# {date}\n\n{JOURNAL_HEADING}\n"
+            text = _set_section(text, NOTES_HEADING, notes)
+            _replace(path, _set_section(text, REFLECTION_HEADING, reflection))
+    except (OSError, ValueError):
+        _logger.warning("memory: could not write the day sections", exc_info=True)
         return False
     return True

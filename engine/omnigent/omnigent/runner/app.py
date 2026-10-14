@@ -7954,23 +7954,21 @@ def create_runner_app(
 
     _memory_rebuilds: set[str] = set()
 
-    def _schedule_memory_rebuild(conv_id: str) -> None:
-        """Heal a missing ``memory/`` folder (new or lost volume) in the background."""
-        from omnigent.runner.knowledge.runtime import default_workspace
-        from omnigent.runner.memory.files import memory_dir
-        from omnigent.runner.memory.sync import rebuild_if_missing
+    def _schedule_memory_sync(conv_id: str, labels: Mapping[str, str] | None) -> None:
+        """Heal ``memory/`` in the background: missing folder, new owner, a reset not yet seen."""
+        from omnigent.runner.memory.sync import reconcile
 
-        if _memory_rebuilds or memory_dir(default_workspace()).exists():
+        if _memory_rebuilds:
             return
         _memory_rebuilds.add(conv_id)
 
         async def _run() -> None:
             try:
-                await rebuild_if_missing(server_client, conv_id)
+                await reconcile(server_client, conv_id, dict(labels or {}))
             finally:
                 _memory_rebuilds.discard(conv_id)
 
-        task = asyncio.create_task(_run(), name=f"memory-rebuild-{conv_id}")
+        task = asyncio.create_task(_run(), name=f"memory-sync-{conv_id}")
         _background_tasks.add(task)
         task.add_done_callback(_background_tasks.discard)
 
@@ -9573,7 +9571,7 @@ def create_runner_app(
         )
         if not is_superside_chat(labels):
             return None
-        _schedule_memory_rebuild(conv_id)
+        _schedule_memory_sync(conv_id, labels)
         idle_seconds = await _superside_chat_idle_seconds(conv_id)
         if not should_roll_over_for_idle(labels, idle_seconds=idle_seconds):
             return None
