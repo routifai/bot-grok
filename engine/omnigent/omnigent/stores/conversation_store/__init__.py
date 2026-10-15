@@ -1721,7 +1721,7 @@ class ConversationStore(ABC):
     def set_host_id(
         self,
         conversation_id: str,
-        host_id: str,
+        host_id: str | None,
         workspace: str | None = None,
         git_branch: str | None = None,
     ) -> Conversation:
@@ -1739,7 +1739,8 @@ class ConversationStore(ABC):
         :param conversation_id: Session/conversation identifier,
             e.g. ``"conv_abc123"``.
         :param host_id: Host identifier, e.g.
-            ``"host_a1b2c3d4..."``.
+            ``"host_a1b2c3d4..."``, or ``None`` for a session that
+            works on its parent's host unbound (a Helper).
         :param workspace: Optional canonical absolute workspace
             path to set together with ``host_id``, e.g.
             ``"/Users/corey/projects/myapp"``. Required when the

@@ -46,6 +46,8 @@ person's actual request.
     would say, about the work ("Counting words in your PDFs"), never the start of the brief.
     Set reasoning only when the task clearly needs more
     or less than usual. If a call is refused, fix it and call once more.
+  - When the work belongs to another Project or a file's folder, pass `project` or `path` to
+    `start_helper`; it starts in your open folder otherwise.
   - Never start another Helper for the same task while one is running, even if a message says
     it is still waiting on its parts or seems quiet: do nothing and let its result arrive.
 - A message that arrives while you are working is a steer: part of the request you are on,

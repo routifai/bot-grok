@@ -258,3 +258,31 @@ async def test_a_helper_starts_in_its_parents_current_directory(
 
     assert created.status_code == 201, created.text
     assert _stored_workspace(store, created.json()["id"]) == _PROJECT
+
+
+async def test_a_helper_is_moved_on_its_parents_host_and_stays_unbound(
+    client: httpx.AsyncClient,
+    store: SqlAlchemyConversationStore,
+    accept_workspace: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A child with no host of its own is checked on its parent's host; its row keeps no host."""
+    monkeypatch.setattr(
+        routes_workspace, "_forward_session_change_to_runner", AsyncMock(return_value=None)
+    )
+    parent_id = await _host_session(client, store)
+    parent = store.get_conversation(parent_id)
+    assert parent is not None
+    created = await client.post(
+        "/v1/sessions",
+        json={"agent_id": parent.agent_id, "parent_session_id": parent_id, "initial_items": []},
+    )
+    child_id = created.json()["id"]
+
+    resp = await client.put(f"/v1/sessions/{child_id}/workspace", json={"workspace": _PROJECT})
+
+    assert resp.status_code == 200, resp.text
+    assert accept_workspace.await_args.kwargs["host_id"] == _HOST
+    child = store.get_conversation(child_id)
+    assert child is not None
+    assert (child.host_id, child.workspace) == (None, _PROJECT)

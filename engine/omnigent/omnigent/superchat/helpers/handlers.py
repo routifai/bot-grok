@@ -15,6 +15,8 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from omnigent.superchat.feature import HandlerCtx, SpawnRequest
+from omnigent.superchat.projects.card import is_slug, workspace_root
+from omnigent.superchat.projects.handlers import resolve_project
 from omnigent.superchat.subagents import HELPER_EFFORT_CHOICES, HELPER_MODEL_CHOICES
 from omnigent.superchat.titles import tidy_request_title
 
@@ -135,9 +137,11 @@ def _invalid_input(args: dict[str, Any]) -> str | None:
         return "requires a non-empty 'task'"
     if not isinstance(args.get("title", ""), str):
         return "'title' must be a string"
-    extra = set(args) - {"task", "title", "model", "reasoning", "files"}
+    extra = set(args) - {"task", "title", "model", "reasoning", "files", "project", "path"}
     if extra:
         return f"does not take {', '.join(sorted(extra))}"
+    if args.get("project") is not None and args.get("path") is not None:
+        return "takes 'project' or 'path', not both"
     if args.get("model", "strong") not in HELPER_MODEL_CHOICES:
         return f"'model' must be one of {', '.join(HELPER_MODEL_CHOICES)}"
     reasoning = args.get("reasoning")
@@ -149,6 +153,34 @@ def _invalid_input(args: dict[str, Any]) -> str | None:
     ):
         return "'files' must be a list of uploaded file ids"
     return None
+
+
+def _helper_folder(args: dict[str, Any]) -> tuple[str, str | None] | str | None:
+    """Where the Helper works: ``(folder, Project name)``; ``None`` keeps the caller's; or why not.
+
+    ``project`` resolves exactly as ``open_project`` does. ``path`` is resolved (``..`` and
+    symlinks followed) and must land on an existing folder inside the workspace; the server's
+    workspace route checks it again on the host.
+    """
+    slug, path = args.get("project"), args.get("path")
+    if slug is not None:
+        if not is_slug(slug):
+            return "'project' must be a folder name from the Projects list"
+        project = resolve_project(slug)
+        if project is None:
+            return f"no Project '{slug}'"
+        return str(project[0]), project[1]
+    if path is None:
+        return None
+    if not isinstance(path, str) or not path.strip():
+        return "'path' must be a folder in the workspace"
+    root = workspace_root().resolve()
+    folder = (root / path).resolve()
+    if not folder.is_relative_to(root):
+        return "'path' must be a folder inside the workspace"
+    if not folder.is_dir():
+        return f"no folder '{path}' in the workspace"
+    return str(folder), None
 
 
 def _prune(now: float) -> None:
@@ -165,7 +197,8 @@ async def handle_start_helper(ctx: HandlerCtx, args: dict[str, Any]) -> str:
     Start one Helper from a ``start_helper`` call.
 
     :param ctx: The call context (carries the runner's sub-agent launcher).
-    :param args: ``task`` plus optional ``model``, ``reasoning`` and ``files``.
+    :param args: ``task`` plus optional ``model``, ``reasoning``, ``files`` and one of
+        ``project`` / ``path`` (where it works; else the caller's current folder).
     :returns: A short receipt JSON, or an ``Error: ...`` string the model can act on.
     """
     host = ctx.sub_agents
@@ -177,6 +210,9 @@ async def handle_start_helper(ctx: HandlerCtx, args: dict[str, Any]) -> str:
     invalid = _invalid_input(args)
     if invalid is not None:
         return _refusal(invalid)
+    folder = _helper_folder(args)
+    if isinstance(folder, str):
+        return _refusal(folder)
     task: str = args["task"]
     key = (ctx.conversation_id, _normalize(task))
 
@@ -198,6 +234,8 @@ async def handle_start_helper(ctx: HandlerCtx, args: dict[str, Any]) -> str:
                 model=args.get("model", "strong"),
                 reasoning_effort=args.get("reasoning"),
                 file_ids=tuple(args.get("files") or ()),
+                workspace=folder[0] if folder else None,
+                project_name=folder[1] if folder else None,
             )
         )
         if result.child_id is None:

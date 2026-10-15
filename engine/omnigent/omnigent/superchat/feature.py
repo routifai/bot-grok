@@ -51,6 +51,9 @@ class SpawnRequest:
     :param model: The ``fast`` / ``strong`` choice.
     :param reasoning_effort: ``low`` / ``medium`` / ``high``, or ``None`` for the default.
     :param file_ids: Uploaded file ids to hand to the child.
+    :param workspace: Absolute folder the child works in, set before its brief is posted;
+        ``None`` keeps the folder it inherits from the caller.
+    :param project_name: Card name of the Project ``workspace`` is, if it is one.
     """
 
     agent: str
@@ -59,6 +62,8 @@ class SpawnRequest:
     model: str = "strong"
     reasoning_effort: str | None = None
     file_ids: tuple[str, ...] = ()
+    workspace: str | None = None
+    project_name: str | None = None
 
 
 @dataclass(frozen=True)

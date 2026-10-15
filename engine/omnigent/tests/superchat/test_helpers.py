@@ -54,7 +54,15 @@ def test_schema_is_one_flat_task_with_fast_strong() -> None:
     params = StartHelperTool().get_schema()["function"]["parameters"]
     assert params["required"] == ["task"]
     assert params["additionalProperties"] is False
-    assert set(params["properties"]) == {"task", "title", "model", "reasoning", "files"}
+    assert set(params["properties"]) == {
+        "task",
+        "title",
+        "model",
+        "reasoning",
+        "files",
+        "project",
+        "path",
+    }
     assert params["properties"]["model"]["enum"] == ["fast", "strong"]
     assert params["properties"]["model"]["default"] == "strong"
     assert params["properties"]["reasoning"]["enum"] == ["low", "medium", "high"]
@@ -307,6 +315,77 @@ async def test_bad_input_is_refused_up_front_in_start_helper_terms(
 ) -> None:
     out = await h.handle_start_helper(_ctx(dispatched), args)
     assert out == f"Error: start_helper: {mention}"
+    assert not dispatched
+
+
+# ── where the Helper works ─────────────────────────────────────────────────
+
+
+@pytest.fixture()
+def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A throwaway HOME with a Project ``q3-deck`` and a plain folder ``reports/q3``."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    root = tmp_path / "workspace"
+    (root / "projects" / "q3-deck").mkdir(parents=True)
+    (root / "projects" / "q3-deck" / "PROJECT.md").write_text("---\nname: Q3 board deck\n---\n")
+    (root / "reports" / "q3").mkdir(parents=True)
+    (tmp_path / "outside").mkdir()
+    return root.resolve()
+
+
+async def test_project_starts_the_helper_in_its_folder(
+    dispatched: list[SpawnRequest], workspace: Path
+) -> None:
+    await h.handle_start_helper(_ctx(dispatched), {"task": "Draft", "project": "q3-deck"})
+    request = dispatched[0]
+    assert Path(request.workspace or "").resolve() == workspace / "projects" / "q3-deck"
+    assert request.project_name == "Q3 board deck"
+
+
+async def test_path_starts_the_helper_in_that_folder(
+    dispatched: list[SpawnRequest], workspace: Path
+) -> None:
+    await h.handle_start_helper(_ctx(dispatched), {"task": "Sum", "path": "reports/q3/"})
+    assert (dispatched[0].workspace, dispatched[0].project_name) == (
+        str(workspace / "reports" / "q3"),
+        None,
+    )
+
+
+async def test_neither_keeps_the_callers_folder(
+    dispatched: list[SpawnRequest], workspace: Path
+) -> None:
+    """No folder in the request: the child inherits the caller's current one at create."""
+    await h.handle_start_helper(_ctx(dispatched), {"task": "Sum"})
+    assert (dispatched[0].workspace, dispatched[0].project_name) == (None, None)
+
+
+@pytest.mark.parametrize(
+    ("args", "mention"),
+    [
+        ({"project": "nope"}, "no Project 'nope'"),
+        ({"project": "../x"}, "'project' must be a folder name from the Projects list"),
+        ({"path": "reports/q4"}, "no folder 'reports/q4' in the workspace"),
+        ({"path": "../outside"}, "'path' must be a folder inside the workspace"),
+        ({"path": "/etc"}, "'path' must be a folder inside the workspace"),
+        ({"path": "projects/q3-deck/PROJECT.md"}, "no folder"),
+        ({"project": "q3-deck", "path": "reports"}, "takes 'project' or 'path', not both"),
+    ],
+)
+async def test_a_bad_folder_is_refused_before_any_helper_starts(
+    dispatched: list[SpawnRequest], workspace: Path, args: dict[str, Any], mention: str
+) -> None:
+    out = await h.handle_start_helper(_ctx(dispatched), {"task": "x", **args})
+    assert out.startswith(f"Error: start_helper: {mention}")
+    assert not dispatched
+
+
+async def test_a_symlink_out_of_the_workspace_is_refused(
+    dispatched: list[SpawnRequest], workspace: Path
+) -> None:
+    (workspace / "link").symlink_to(workspace.parent / "outside")
+    out = await h.handle_start_helper(_ctx(dispatched), {"task": "x", "path": "link"})
+    assert out == "Error: start_helper: 'path' must be a folder inside the workspace"
     assert not dispatched
 
 

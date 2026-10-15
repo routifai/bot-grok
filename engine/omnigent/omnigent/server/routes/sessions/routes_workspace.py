@@ -78,7 +78,15 @@ def register_workspace_routes(
         conv = await asyncio.to_thread(conversation_store.get_conversation, session_id)
         if conv is None or conv.agent_id is None:
             raise _session_not_found()
-        if conv.host_id is None:
+        host_id = conv.host_id
+        if host_id is None and conv.parent_conversation_id is not None:
+            # A Helper shares its parent's runner and host without being bound to the host,
+            # so its folder is checked there and the row stays unbound.
+            parent = await asyncio.to_thread(
+                conversation_store.get_conversation, conv.parent_conversation_id
+            )
+            host_id = parent.host_id if parent is not None else None
+        if host_id is None:
             raise OmnigentError(
                 "This session has no host workspace to change",
                 code=ErrorCode.INVALID_INPUT,
@@ -88,7 +96,7 @@ def register_workspace_routes(
             raise _session_not_found()
         canonical = await _validate_session_workspace(
             user_id=user_id,
-            host_id=conv.host_id,
+            host_id=host_id,
             workspace=body.workspace,
             agent=agent,
             agent_cache=agent_cache,

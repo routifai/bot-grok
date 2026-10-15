@@ -71,6 +71,20 @@ class StartHelperTool(Tool):
                             "items": {"type": "string"},
                             "description": "Ids of uploaded files to hand to the Helper.",
                         },
+                        "project": {
+                            "type": "string",
+                            "description": (
+                                "Slug of the Project the work belongs to; the Helper works in "
+                                "its folder. Omit to keep your current folder."
+                            ),
+                        },
+                        "path": {
+                            "type": "string",
+                            "description": (
+                                "Workspace-relative folder the Helper works in, instead of "
+                                "`project`."
+                            ),
+                        },
                     },
                     "required": ["task"],
                     "additionalProperties": False,
