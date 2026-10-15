@@ -10,11 +10,20 @@ from typing import Any
 
 import pytest
 
+from omnigent.memory.service import render_profile_block
 from omnigent.runner.knowledge import refs as refs_mod
 from omnigent.runner.knowledge.db import KIND_TURN, TurnPassage
 from omnigent.runner.knowledge.indexer import Indexer
 from omnigent.runner.knowledge.refs import journal_refs, line_refs, turn_refs
 from omnigent.runner.knowledge.turns import passage_of, split_turns
+from omnigent.superchat.artifacts.writeback import _note
+from omnigent.superchat.knowledge.attachment_context import build_block
+from omnigent.superchat.local_time import local_time_block
+from omnigent.superchat.projects.block import PROJECTS_OPEN
+from omnigent.superchat.projects.choice import MOVED_NOTE
+from omnigent.superchat.prompt_prefix import PROFILE_UNCHANGED_LINE, idle_gap_line
+from omnigent.superchat.recall_hint.hint import FOOTER as HINT_FOOTER
+from omnigent.superchat.recall_hint.hint import HEADER as HINT_HEADER
 from tests.runner.knowledge._fixtures import TAG, FakeEmbedder, build_indexer, run_all
 
 DAY = int(datetime(2026, 10, 12, 9, tzinfo=UTC).timestamp())
@@ -112,6 +121,58 @@ def test_a_steer_joins_its_turn_and_notices_and_hidden_context_make_no_passage()
     first = passage_of(turns[0], chat_id="c", main_id="c", origin="main")
     assert "budget line" in first.text and "Done, with a budget line." in first.text
     assert "timer" not in first.text and first.person_text == "Plan the launch"
+
+
+def _prefixed(message: str) -> str:
+    """*message* as a harness that keeps its own transcript hands it back: every block the runner
+    can prepend, built by its producer, in the order they render (local time first)."""
+    blocks = [
+        local_time_block("America/Toronto", now=datetime(2026, 10, 12, 13, tzinfo=UTC)),
+        idle_gap_line(3 * 86400),
+        MOVED_NOTE.format("/home/me/workspace/projects/launch"),
+        _note("brief.docx", 2, 3, ["retitled"], written=False),
+        f"{PROJECTS_OPEN} Pick one.\n- launch: Launch [open now]\n- budget: Budget]",
+        render_profile_block("- Prefers short answers\n\n- Works on the launch"),
+        "\n".join([HINT_HEADER, "- 2026-10-01 conversation: venue list [t:abc]", HINT_FOOTER]),
+        build_block([{"name": "a.txt", "path": "uploads/a.txt", "pages": 1, "file_id": "f1",
+                      "tabular": False, "markdown": "Notes [draft]\n\nSecond para"}]),
+    ]  # fmt: skip
+    return "\n\n".join([*(b for b in blocks if b), message])
+
+
+def test_only_the_persons_own_words_are_indexed() -> None:
+    items = [
+        _msg("u1", "user", _prefixed("Which venue did we pick?\n\nKeep it short."), "r1"),
+        _msg("a1", "assistant", "Harbor Hall.", "r1"),
+        _msg("u2", "user", _prefixed("and the date?"), "r1"),  # a steer, prefixed too
+    ]
+    (turn,) = split_turns(items)
+    p = passage_of(turn, chat_id="c", main_id="c", origin="main")
+    assert p.person_text == "Which venue did we pick? Keep it short."
+    assert p.text == (
+        "Person: Which venue did we pick?\n\nKeep it short.\nPerson: and the date?\n"
+        "Assistant: Harbor Hall."
+    )
+
+
+def test_a_message_of_injected_blocks_only_opens_a_turn_that_is_never_indexed() -> None:
+    # Nobody said anything: no person turn, and its reply is not taken for the turn before's.
+    items = [
+        _msg("u1", "user", "Plan the launch", "r1"),
+        _msg("a1", "assistant", "Planned.", "r1"),
+        _msg("u2", "user", _prefixed(PROFILE_UNCHANGED_LINE), "r2"),
+        _msg("a2", "assistant", "Anything else?", "r2"),
+    ]
+    turns = split_turns(items)
+    assert [(t.turn_item_id, t.notice) for t in turns] == [("u1", False), ("u2", True)]
+    assert turns[1].person == ""
+    assert passage_of(turns[0], chat_id="c", main_id="c", origin="main").text.endswith("Planned.")
+
+
+def test_a_message_that_quotes_a_marker_later_keeps_every_word() -> None:
+    text = "Why does my message start with [Current local time for the person: noon]?"
+    (turn,) = split_turns([_msg("u1", "user", f"Hi.\n{text}", "r1")])
+    assert turn.person == f"Hi.\n{text}"
 
 
 # ── storing ──────────────────────────────────────────────────────────────

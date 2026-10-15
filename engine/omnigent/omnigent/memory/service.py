@@ -85,10 +85,10 @@ _PROFILE_MIN_CONFIDENCE = 0.75
 # ~1.5k tokens, estimated chars/4 (no tokenizer call for a per-turn fetch).
 _PROFILE_MAX_CHARS = 1_500 * 4
 
-_PROFILE_BLOCK_HEADER = (
+PROFILE_BLOCK_HEADER = (
     "[Standing memory about the user — provided by the system, not a message from the user]"
 )
-_PROFILE_BLOCK_FOOTER = "[End of standing memory]"
+PROFILE_BLOCK_FOOTER = "[End of standing memory]"
 
 
 def _profile_safe(text: str) -> str:
@@ -103,7 +103,7 @@ def render_profile_block(profile: str) -> str:
     Phase 2) so the wording lives in one place, next to the projection it
     wraps.
     """
-    return f"{_PROFILE_BLOCK_HEADER}\n\n{profile}\n\n{_PROFILE_BLOCK_FOOTER}"
+    return f"{PROFILE_BLOCK_HEADER}\n\n{profile}\n\n{PROFILE_BLOCK_FOOTER}"
 
 
 def _tokenize(text: str) -> set[str]:

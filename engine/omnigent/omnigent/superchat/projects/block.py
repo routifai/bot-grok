@@ -19,6 +19,8 @@ _MAX_ALIASES = 6
 _MAX_SUMMARY_CHARS = 160
 #: Most top-level file names listed per Project (one directory listing, never recursive).
 _MAX_FILES = 8
+#: How the block starts; it ends with the ``]`` after its last Project line.
+PROJECTS_OPEN = "[Projects (folders under ~/workspace/projects/)."
 
 
 def open_project_slug(workspace: Path | None) -> str | None:
@@ -82,7 +84,7 @@ def projects_block(workspace: Path | None) -> str | None:
         return None
     lines = [_line(card, is_open=card.slug == open_slug) for card in cards]
     return (
-        "[Projects (folders under ~/workspace/projects/). Before touching any file for this "
+        f"{PROJECTS_OPEN} Before touching any file for this "
         "message, decide which Project it is about: compare it with EVERY Project below (name, "
         "aliases, summary, files), not just the open one, which is only where you happen to be. "
         "If it belongs to another, call open_project with that slug first. If it could fit two "

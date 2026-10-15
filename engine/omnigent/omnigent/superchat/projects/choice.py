@@ -26,6 +26,8 @@ WORKSPACE_CHOSEN_LABEL_KEY = "omnigent.superchat.workspace.chosen"
 WORKSPACE_CHOSEN_BY_PERSON = "person"
 #: The working directory the person just moved the chat to, until the next turn reads it.
 WORKSPACE_MOVED_LABEL_KEY = "omnigent.superchat.workspace.moved"
+#: The one-shot note :func:`deliver_person_move` writes, filled with the new working directory.
+MOVED_NOTE = "The person moved this chat to {}."
 
 
 def chosen_by_person(labels: Mapping[str, str] | None) -> bool:
@@ -80,4 +82,4 @@ async def deliver_person_move(
         _logger.warning(
             "could not clear the person-move note", extra={"session_id": conversation_id}
         )
-    return [f"The person moved this chat to {moved}."]
+    return [MOVED_NOTE.format(moved)]

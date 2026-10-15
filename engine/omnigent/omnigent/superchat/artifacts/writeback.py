@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -65,6 +66,13 @@ def write_bytes_idempotent(target: Path, data: bytes) -> bool:
         Path(tmp).unlink(missing_ok=True)
         raise
     return True
+
+
+#: A note :func:`_note` writes (one line), for readers that cut it from a stored message.
+NOTE_LINE = re.compile(
+    r"(The person edited .+ by hand|.+ was refreshed from its sources) \(v\d+ → v\d+\)"
+    r".* Treat v\d+ as current\.( \(Your workspace copy could not be updated yet; .*\))?"
+)
 
 
 def _note(

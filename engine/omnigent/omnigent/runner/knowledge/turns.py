@@ -6,6 +6,12 @@ runtime notice, the same test the transcript uses (:mod:`omnigent.superchat.tran
 A user message tagged with the running turn's ``response_id`` is a steer into that turn, not a
 turn of its own; its words join the turn's passage. A runtime notice (a timer, a Helper's Result)
 opens a turn of its own that is never indexed, so its reply is not taken for the person's.
+
+Only the person's own words are kept: the blocks a Super Chat turn is prefixed with (the Memory
+Profile, the local time, the Projects, a recall hint, attached files' text, one-shot notes) are
+cut by :func:`omnigent.superchat.prompt_prefix.person_words` wherever a stored message still
+carries them. A message that is nothing but those blocks opens a turn that is never indexed, like
+a notice: nobody said anything, and its reply is not the answer to the turn before.
 """
 
 from __future__ import annotations
@@ -19,6 +25,7 @@ from omnigent.entities.conversation import is_system_notice_text
 from omnigent.runner.knowledge.chunking import MAX_CHARS
 from omnigent.runner.knowledge.db import TurnPassage
 from omnigent.runner.knowledge.refs import turn_refs
+from omnigent.superchat.prompt_prefix import person_words
 from omnigent.superchat.transcript.blocks import item_text
 
 #: Longest slice of the person's message and of the reply a passage keeps.
@@ -99,7 +106,8 @@ def _take(turns: list[Turn], index: int, item: dict[str, Any]) -> None:
         if item.get("is_meta") is True or not text or not isinstance(item.get("id"), str):
             return
         rid = item.get("response_id") if isinstance(item.get("response_id"), str) else None
-        notice = item.get("is_system_notice") is True or is_system_notice_text(text)
+        text = person_words(text)
+        notice = item.get("is_system_notice") is True or not text or is_system_notice_text(text)
         if current is not None and rid is not None and rid == current.response_id:
             if not notice and not current.notice:
                 current.steers.append(text)

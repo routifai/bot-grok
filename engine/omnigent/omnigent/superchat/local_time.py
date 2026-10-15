@@ -39,6 +39,10 @@ def local_date(timezone: str | None, *, now: datetime | None = None) -> str:
     return f"{(now or datetime.now(UTC)).astimezone(_zone(timezone)):%Y-%m-%d}"
 
 
+#: How the local-time line starts; it ends with ``]`` on the same line.
+LOCAL_TIME_OPEN = "[Current local time for the person: "
+
+
 def local_time_block(timezone: str | None, *, now: datetime | None = None) -> str:
     """Render the person's current local time, e.g.
     ``[Current local time for the person: Sunday, October 4, 2026, 9:12 AM
@@ -52,7 +56,4 @@ def local_time_block(timezone: str | None, *, now: datetime | None = None) -> st
     offset = local.strftime("%z")
     sign = "\u2212" if offset.startswith("-") else "+"
     clock = f"{local:%A, %B} {local.day}, {local.year}, {local.hour % 12 or 12}:{local:%M %p}"
-    return (
-        f"[Current local time for the person: {clock} "
-        f"({zone.key}, UTC{sign}{offset[1:3]}:{offset[3:5]})]"
-    )
+    return f"{LOCAL_TIME_OPEN}{clock} ({zone.key}, UTC{sign}{offset[1:3]}:{offset[3:5]})]"
