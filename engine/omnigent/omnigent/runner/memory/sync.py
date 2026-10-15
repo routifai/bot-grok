@@ -51,8 +51,9 @@ _BACKFILL_PAGE = "1000"
 _BACKFILL_PAGES = 5
 _BACKFILL_TURNS = 300
 #: Index meta keys: the last item a chat's backfill read, and a main Conversation it finished.
-CURSOR_KEY = "turns_cursor:"
-BACKFILLED_KEY = "turns_backfilled:"
+#: Versioned: a backfill that stopped at the newest turn instead of the anchor runs once again.
+CURSOR_KEY = "turns_cursor.v2:"
+BACKFILLED_KEY = "turns_backfilled.v2:"
 #: Index meta key: the ``updated_at`` of an archived chat whose last turns were written.
 ARCHIVED_KEY = "turns_archived:"
 #: How often one process looks for newly archived chats of a Conversation (auto-archive is
