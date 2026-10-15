@@ -47,6 +47,7 @@ from omnigent.superchat.feature import HandlerCtx, SpawnRequest, SpawnResult, Su
 from omnigent.superchat.features import FEATURE_HANDLERS, FEATURE_RELAY_OPS, notify_result
 from omnigent.superchat.prompt_prefix import fetch_memory_profile as _fetch_memory_profile_block
 from omnigent.superchat.subagents import (
+    WORKER_TYPE,
     count_live_children,
     prepend_memory_profile,
     refuse_subagent_concurrency,
@@ -5208,6 +5209,12 @@ async def _execute_scheduled_task_tool(
         # "self" binds the task to the calling session.
         if args.get("parent_session_id") == "self":
             args["parent_session_id"] = conversation_id
+        # A chat that names no agent schedules for itself: bind to this chat as a worker.
+        if tool_name == "sys_scheduled_task_create":
+            if not args.get("agent_id") and not args.get("parent_session_id"):
+                args["parent_session_id"] = conversation_id
+            if args.get("parent_session_id") and not args.get("agent_type"):
+                args["agent_type"] = WORKER_TYPE
 
     try:
         if tool_name == "sys_scheduled_task_list":

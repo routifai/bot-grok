@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from omnigent.errors import OmnigentError
+from omnigent.server.auth import RESERVED_USER_LOCAL, AuthProvider
 from omnigent.server.routes.scheduled_tasks import create_scheduled_tasks_router
 from omnigent.stores.scheduled_task_store.sqlalchemy_store import SqlAlchemyScheduledTaskStore
 
@@ -30,6 +31,7 @@ class _Agent:
 class _Conv:
     id: str
     agent_id: str | None = _AGENT
+    parent_conversation_id: str | None = None
 
 
 class _AgentStore:
@@ -248,3 +250,40 @@ def test_retired_type_is_checked_as_the_worker_it_runs_as(
     assert ok.json()["agent_type"] == "analyst"
     with pytest.raises(OmnigentError):
         api.post("/v1/scheduled-tasks", json=_body(parent_session_id=_PARENT, agent_type="nope"))
+
+
+class _LocalAuth(AuthProvider):
+    """A single-user server: every request resolves to the ``"local"`` sentinel."""
+
+    def get_user_id(self, request: Any) -> str | None:
+        return RESERVED_USER_LOCAL
+
+
+class _Grants:
+    """Session grants keyed by the owner as stored, the ``"local"`` sentinel included."""
+
+    def is_admin(self, user_id: str) -> bool:
+        return False
+
+    def check_access(self, user_id: str | None, conversation_id: str, level: int) -> bool:
+        return user_id == RESERVED_USER_LOCAL and conversation_id == _PARENT
+
+
+def test_single_user_owner_can_bind_to_own_session(db_uri: str) -> None:
+    """On a single-user server a chat binds a task to itself (this used to 401)."""
+    app = FastAPI()
+    app.include_router(
+        create_scheduled_tasks_router(
+            SqlAlchemyScheduledTaskStore(db_uri),
+            agent_store=_AgentStore(),
+            conversation_store=_ConvStore(),
+            permission_store=_Grants(),  # type: ignore[arg-type]
+            auth_provider=_LocalAuth(),
+        ),
+        prefix="/v1",
+    )
+    resp = TestClient(app).post(
+        "/v1/scheduled-tasks", json=_body(parent_session_id=_PARENT, agent_type="worker")
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["parent_session_id"] == _PARENT

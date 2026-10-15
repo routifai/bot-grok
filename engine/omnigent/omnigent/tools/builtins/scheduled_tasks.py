@@ -85,8 +85,8 @@ class SysScheduledTaskCreateTool(Tool):
                             "type": "string",
                             "description": (
                                 "The agent to run, e.g. 'ag_abc123' — from "
-                                "sys_agent_list or sys_agent_get. Omit when "
-                                "parent_session_id is set."
+                                "sys_agent_list or sys_agent_get. Omit to bind the "
+                                "task to this chat."
                             ),
                         },
                         "parent_session_id": {
@@ -94,15 +94,14 @@ class SysScheduledTaskCreateTool(Tool):
                             "description": (
                                 "Optional. Bind each firing to a chat as a Helper "
                                 "child so its Result wakes that chat. Use 'self' for "
-                                "this chat (or a session id you own). Requires "
-                                "agent_type."
+                                "this chat (or a session id you own). Defaults to this "
+                                "chat when agent_id is omitted."
                             ),
                         },
                         "agent_type": {
                             "type": "string",
                             "description": (
-                                "Sub-agent Type the Helper runs as, e.g. 'worker'. "
-                                "Required with parent_session_id."
+                                "Sub-agent Type the bound Helper runs as. Defaults to 'worker'."
                             ),
                         },
                         "kind": {

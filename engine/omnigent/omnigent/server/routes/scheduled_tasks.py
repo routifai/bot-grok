@@ -472,9 +472,10 @@ def create_scheduled_tasks_router(
         from omnigent.server.routes._sessions.helpers import _require_declared_subagent
         from omnigent.superchat.subagents import scheduled_helper_type
 
-        user_id = None if owner == RESERVED_USER_LOCAL else owner
+        # Session grants are keyed by the owner as-is, the ``"local"`` sentinel included:
+        # mapping it to ``None`` here made require_access answer 401 on a single-user server.
         await require_access(
-            user_id, parent_session_id, LEVEL_OWNER, permission_store, conversation_store
+            owner, parent_session_id, LEVEL_OWNER, permission_store, conversation_store
         )
         parent = await asyncio.to_thread(conversation_store.get_conversation, parent_session_id)
         if parent is None or parent.agent_id is None:

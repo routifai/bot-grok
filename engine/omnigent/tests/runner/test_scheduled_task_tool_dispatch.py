@@ -312,6 +312,36 @@ async def test_self_parent_resolves_to_calling_session() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_without_agent_binds_to_calling_chat_as_worker() -> None:
+    """A chat that names neither an agent nor a parent schedules for itself."""
+    client = _KindClient("default")
+    await _execute_scheduled_task_tool(
+        "sys_scheduled_task_create",
+        json.dumps({"name": "remind", "prompt": "go", "rrule": "FREQ=DAILY;BYHOUR=9"}),
+        server_client=client,
+        conversation_id="conv_chat",
+    )
+    _, _, body = next(c for c in client.calls if c[0] == "POST")
+    assert body is not None
+    assert (body["parent_session_id"], body["agent_type"]) == ("conv_chat", "worker")
+    assert "agent_id" not in body
+
+
+@pytest.mark.asyncio
+async def test_create_with_agent_id_stays_unbound() -> None:
+    client = _KindClient("default")
+    await _execute_scheduled_task_tool(
+        "sys_scheduled_task_create",
+        json.dumps({"name": "n", "prompt": "go", "rrule": "FREQ=DAILY", "agent_id": "ag_1"}),
+        server_client=client,
+        conversation_id="conv_chat",
+    )
+    _, _, body = next(c for c in client.calls if c[0] == "POST")
+    assert body is not None
+    assert "parent_session_id" not in body and "agent_type" not in body
+
+
+@pytest.mark.asyncio
 async def test_update_forwards_a_new_rrule_and_timezone_and_nothing_else() -> None:
     # A rule change must reach the server: dropping it would send an empty PATCH.
     client = _RecordingClient(_Resp(body={"id": "t1"}))
