@@ -6,9 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-import httpx
-
-from omnigent.superchat._handler_http import error
+from omnigent.superchat._handler_http import error, set_session_workspace
 from omnigent.superchat.feature import HandlerCtx
 from omnigent.superchat.projects.card import (
     CARD_FILE,
@@ -20,38 +18,10 @@ from omnigent.superchat.projects.card import (
 from omnigent.superchat.projects.choice import person_chose_workspace
 
 
-def _refusal_detail(resp: httpx.Response) -> str:
-    """The server's refusal message (``{"error": {"message": ...}}``), else the raw body."""
-    try:
-        err = resp.json().get("error")
-    except (ValueError, AttributeError):
-        err = None
-    detail = err.get("message") if isinstance(err, dict) else err
-    return str(detail or resp.text)[:300]
-
-
-async def set_session_workspace(
-    client: httpx.AsyncClient, session_id: str, path: str, project_name: str | None = None
-) -> str | None:
-    """Ask the server to move a session's working directory; an error message on failure."""
-    body: dict[str, Any] = {"workspace": path}
-    if project_name:
-        body["project_name"] = project_name
-    try:
-        resp = await client.put(
-            f"/v1/sessions/{session_id}/workspace",
-            json=body,
-            timeout=30.0,
-        )
-    except httpx.HTTPError as exc:
-        return f"could not change the working directory: {exc}"
-    if resp.status_code >= 400:
-        return f"could not change the working directory: {_refusal_detail(resp)}"
-    return None
-
-
 def resolve_project(slug: str) -> tuple[Path, str] | None:
     """The folder and card name of Project ``slug``, or ``None`` when it has no card."""
+    if not is_slug(slug):
+        return None
     folder = projects_root() / slug
     if not (folder / CARD_FILE).is_file():
         return None

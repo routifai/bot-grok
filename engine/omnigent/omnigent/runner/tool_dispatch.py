@@ -3342,7 +3342,7 @@ async def _execute_subagent_tool(
             # Moved before anything is registered or posted, so the first turn already works
             # there; a refusal deletes the child. Pi and claude-sdk keep their spawn-time cwd,
             # harmless while their native file tools are off: re-enabling them needs a respawn.
-            from omnigent.superchat.projects.handlers import set_session_workspace
+            from omnigent.superchat._handler_http import set_session_workspace
 
             failure = await set_session_workspace(
                 server_client, child_session_id, workspace, project_name

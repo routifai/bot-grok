@@ -11,7 +11,11 @@ Nothing scans or indexes in the background.
 
 from __future__ import annotations
 
+from omnigent.superchat.feature import register_project_resolver
 from omnigent.superchat.projects.feature import PROJECTS_FEATURE
+from omnigent.superchat.projects.handlers import resolve_project
+
+register_project_resolver(resolve_project)
 
 FEATURE = PROJECTS_FEATURE
 

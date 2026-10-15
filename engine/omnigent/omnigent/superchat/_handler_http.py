@@ -97,3 +97,33 @@ async def resolve_caller(ctx: HandlerCtx) -> Caller | str:
 
 #: A 32-character hex record id (objective, scheduled task).
 HEX_ID_RE = re.compile(r"^[0-9a-fA-F]{32}$")
+
+
+def _refusal_detail(resp: httpx.Response) -> str:
+    """The server's refusal message (``{"error": {"message": ...}}``), else the raw body."""
+    try:
+        err = resp.json().get("error")
+    except (ValueError, AttributeError):
+        err = None
+    detail = err.get("message") if isinstance(err, dict) else err
+    return str(detail or resp.text)[:300]
+
+
+async def set_session_workspace(
+    client: httpx.AsyncClient, session_id: str, path: str, project_name: str | None = None
+) -> str | None:
+    """Ask the server to move a session's working directory; an error message on failure."""
+    body: dict[str, Any] = {"workspace": path}
+    if project_name:
+        body["project_name"] = project_name
+    try:
+        resp = await client.put(
+            f"/v1/sessions/{session_id}/workspace",
+            json=body,
+            timeout=30.0,
+        )
+    except httpx.HTTPError as exc:
+        return f"could not change the working directory: {exc}"
+    if resp.status_code >= 400:
+        return f"could not change the working directory: {_refusal_detail(resp)}"
+    return None

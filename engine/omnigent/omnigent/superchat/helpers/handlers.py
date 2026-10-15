@@ -12,11 +12,10 @@ import json
 import re
 import time
 from collections.abc import Iterable, Mapping
+from pathlib import Path
 from typing import Any
 
-from omnigent.superchat.feature import HandlerCtx, SpawnRequest
-from omnigent.superchat.projects.card import is_slug, workspace_root
-from omnigent.superchat.projects.handlers import resolve_project
+from omnigent.superchat.feature import HandlerCtx, SpawnRequest, resolve_project
 from omnigent.superchat.subagents import HELPER_EFFORT_CHOICES, HELPER_MODEL_CHOICES
 from omnigent.superchat.titles import tidy_request_title
 
@@ -164,9 +163,7 @@ def _helper_folder(args: dict[str, Any]) -> tuple[str, str | None] | str | None:
     """
     slug, path = args.get("project"), args.get("path")
     if slug is not None:
-        if not is_slug(slug):
-            return "'project' must be a folder name from the Projects list"
-        project = resolve_project(slug)
+        project = resolve_project(slug) if isinstance(slug, str) else None
         if project is None:
             return f"no Project '{slug}'"
         return str(project[0]), project[1]
@@ -174,7 +171,7 @@ def _helper_folder(args: dict[str, Any]) -> tuple[str, str | None] | str | None:
         return None
     if not isinstance(path, str) or not path.strip():
         return "'path' must be a folder in the workspace"
-    root = workspace_root().resolve()
+    root = (Path.home() / "workspace").resolve()
     folder = (root / path).resolve()
     if not folder.is_relative_to(root):
         return "'path' must be a folder inside the workspace"

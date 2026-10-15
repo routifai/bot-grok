@@ -364,7 +364,7 @@ async def test_neither_keeps_the_callers_folder(
     ("args", "mention"),
     [
         ({"project": "nope"}, "no Project 'nope'"),
-        ({"project": "../x"}, "'project' must be a folder name from the Projects list"),
+        ({"project": "../x"}, "no Project '../x'"),
         ({"path": "reports/q4"}, "no folder 'reports/q4' in the workspace"),
         ({"path": "../outside"}, "'path' must be a folder inside the workspace"),
         ({"path": "/etc"}, "'path' must be a folder inside the workspace"),

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from omnigent.context.labels import SUBAGENT_LABEL_KEY, is_superside_chat
@@ -192,3 +193,19 @@ class Feature:
     needs_own_turn: Callable[[str], bool] | None = None
     install: Callable[[FastAPI, InstallDeps], None] | None = None
     jobs: Callable[[FastAPI], list[BackgroundJob]] | None = None
+
+
+#: Where a Project's folder is, registered by the projects capability so another capability
+#: (``start_helper``) can ask core instead of importing it.
+_project_resolver: Callable[[str], tuple[Path, str] | None] | None = None
+
+
+def register_project_resolver(resolve: Callable[[str], tuple[Path, str] | None]) -> None:
+    """Set the function that maps a Project slug to ``(folder, name)``."""
+    global _project_resolver
+    _project_resolver = resolve
+
+
+def resolve_project(slug: str) -> tuple[Path, str] | None:
+    """``(folder, name)`` of Project ``slug``, or ``None`` when there is none (or no resolver)."""
+    return _project_resolver(slug) if _project_resolver is not None else None
