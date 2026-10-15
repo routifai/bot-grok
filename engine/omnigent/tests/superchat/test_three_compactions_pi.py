@@ -21,12 +21,14 @@ import contextlib
 import copy
 import json
 from collections.abc import AsyncIterator
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
 
+from omnigent.context import rollover as context_rollover
 from omnigent.context.labels import STATE_CLOSE_LABEL_PREFIX
 from omnigent.context.rollover import CHECKPOINT_MARKER
 from omnigent.context.tool_digest import FRAMING
@@ -479,12 +481,26 @@ def _clear_in_flight() -> None:
     rollover_mod._in_flight.clear()
 
 
-async def test_three_compactions_reach_pi_on_cold_starts(tmp_path: Path) -> None:
+def _frozen_at(day: str) -> type[datetime]:
+    """A ``datetime`` whose ``now`` is *day*, so dates follow the scripted phase."""
+
+    class _Frozen(datetime):
+        @classmethod
+        def now(cls, tz: Any = None) -> datetime:  # type: ignore[override]
+            return datetime.fromisoformat(f"{day}T12:00:00+00:00")
+
+    return _Frozen
+
+
+async def test_three_compactions_reach_pi_on_cold_starts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     server = _FakeServer()
     summarizer = _ScriptedSummarizer([_SUMMARY_1, _SUMMARY_2, _SUMMARY_3])
     stored: list[Any] = []
 
-    async def _compact() -> Any:
+    async def _compact(day: str) -> Any:
+        monkeypatch.setattr(context_rollover, "datetime", _frozen_at(day))
         before = len(server.reads)
         labels = dict(server.labels)
 
@@ -506,7 +522,7 @@ async def test_three_compactions_reach_pi_on_cold_starts(tmp_path: Path) -> None
     # Phase 1 → compaction 1: the first read covers the whole record.
     _phase_1(server)
     first_id = server.items[0]["id"]
-    c1, reads = await _compact()
+    c1, reads = await _compact(P1)
     assert first_id in {i for p, ids in reads if p.get("order") == "asc" for i in ids}
     assert c1["repairs"] == 0 and c1["evicted_entries"] == []
     assert EUR_LINE in c1["summary"]
@@ -532,7 +548,7 @@ async def test_three_compactions_reach_pi_on_cold_starts(tmp_path: Path) -> None
         session_id="helper_q4",
         workspace=tmp_path,
     )
-    c2, reads = await _compact()
+    c2, reads = await _compact(P2)
     assert all(p.get("after") == c1["last_item_id"] for p, _ in reads if p.get("order") == "asc")
     assert first_id not in {i for _, ids in reads for i in ids}
     assert c2["repairs"] == 1
@@ -547,7 +563,7 @@ async def test_three_compactions_reach_pi_on_cold_starts(tmp_path: Path) -> None
     # Phase 3 → compaction 3: the close is applied, the list is over budget, closed go first.
     await _phase_3(server)
     assert server.labels[f"{STATE_CLOSE_LABEL_PREFIX}t-q3-sales"]
-    c3, reads = await _compact()
+    c3, reads = await _compact(P3)
     assert all(p.get("after") == c2["last_item_id"] for p, _ in reads if p.get("order") == "asc")
     assert first_id not in {i for _, ids in reads for i in ids}
     assert c3["applied_closes"] == [
