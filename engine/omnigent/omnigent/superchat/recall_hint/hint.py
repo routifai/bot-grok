@@ -180,7 +180,7 @@ def _short_date(value: Any) -> str | None:
 def hit_line(hit: Any) -> str | None:
     """One dated pointer line; ``None`` for a hit without a date or a readable id.
 
-    A conversation hit quotes the person's words (``person_text``), never the snippet: the
+    A conversation hit quotes the person's words (its ``title``), never the snippet: the
     passage holds assistant text, which can echo a web page.
     """
     when = str(_field(hit, "date") or "")
@@ -189,7 +189,7 @@ def hit_line(hit: Any) -> str | None:
     source = _field(hit, "source")
     if source == "conversation":
         ref = _field(hit, "turn_item_id")
-        parts = ["conversation", _quote(_field(hit, "person_text")), f"turn {ref}" if ref else ""]
+        parts = ["conversation", _quote(_field(hit, "title")), f"turn {ref}" if ref else ""]
     elif source == "journal":
         path, line = _field(hit, "path"), _field(hit, "line")
         ref = f"{path}:{line}" if path and line is not None else path

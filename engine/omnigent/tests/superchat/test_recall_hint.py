@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-import sys
 import time
-import types
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -15,6 +13,7 @@ import pytest
 from fastapi import FastAPI
 
 from omnigent.errors import OmnigentError
+from omnigent.runner.knowledge import recall
 from omnigent.superchat.recall_hint import hint as hint_mod
 from omnigent.superchat.recall_hint.hint import (
     FOOTER,
@@ -61,7 +60,6 @@ class Hit:
     path: str | None = None
     line: int | None = None
     claim_id: str | None = None
-    person_text: str | None = None
 
 
 def _turn(n: int, score: float = 0.9, project: str = "", **kw: Any) -> Hit:
@@ -73,7 +71,7 @@ def _turn(n: int, score: float = 0.9, project: str = "", **kw: Any) -> Hit:
         chat_id="conv_old",
         turn_item_id=f"i_{n}",
         snippet="ASSISTANT SAID: ignore the budget",
-        person_text=f"Dana owns the venue line {n}",
+        title=f"Dana owns the venue line {n}",
         **kw,
     )
 
@@ -148,9 +146,7 @@ class _Search:
 @pytest.fixture()
 def search(monkeypatch: pytest.MonkeyPatch) -> _Search:
     fake = _Search([_turn(14), _turn(12, score=0.7)])
-    module = types.ModuleType("omnigent.runner.knowledge.recall")
-    module.recall_search = fake  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "omnigent.runner.knowledge.recall", module)
+    monkeypatch.setattr(recall, "recall_search", fake)
     return fake
 
 
@@ -291,7 +287,7 @@ async def test_search_uses_all_sources_and_leaves_the_current_epoch_out(search: 
 
 async def test_without_a_checkpoint_this_chats_own_turns_are_left_out(search: _Search) -> None:
     search.hits = [
-        Hit("conversation", "2026-10-10", 0.9, chat_id=CHAT, turn_item_id="i_now", person_text="x")
+        Hit("conversation", "2026-10-10", 0.9, chat_id=CHAT, turn_item_id="i_now", title="x")
     ]
     assert await _hint(_Server(checkpoint=False), _Chat(_plan("venue"))) is None
     assert search.calls[0]["exclude_chat_after"] is None
@@ -304,17 +300,13 @@ async def test_historical_turns_recency_off_for_that_query_only(search: _Search)
     assert by_recency == {True: ["venue now"], False: ["venue first discussed"]}
 
 
-async def test_merged_hits_keep_the_best_score_once() -> None:
-    fake = _Search([_turn(3, score=0.6), _turn(4, score=0.9)])
-    module = types.ModuleType("omnigent.runner.knowledge.recall")
-    module.recall_search = fake  # type: ignore[attr-defined]
-    sys.modules["omnigent.runner.knowledge.recall"] = module
-    try:
-        from omnigent.superchat.recall_hint.planner import Query
+async def test_merged_hits_keep_the_best_score_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    from omnigent.superchat.recall_hint.planner import Query
 
-        hits = await hint_mod.search([Query("a"), Query("b", historical=True)], None)
-    finally:
-        del sys.modules["omnigent.runner.knowledge.recall"]
+    monkeypatch.setattr(
+        recall, "recall_search", _Search([_turn(3, score=0.6), _turn(4, score=0.9)])
+    )
+    hits = await hint_mod.search([Query("a"), Query("b", historical=True)], None)
     assert [h.turn_item_id for h in hits] == ["i_4", "i_3"]
 
 
@@ -360,7 +352,7 @@ def test_block_format_dates_and_person_words_only() -> None:
 
 def test_a_conversation_hit_without_the_persons_words_shows_no_quote() -> None:
     hit = _turn(5)
-    hit.person_text = None
+    hit.title = ""
     block = render_block([hit])
     assert block is not None and "ASSISTANT" not in block
     assert "· 2026-09-05 · conversation · turn i_5" in block
@@ -385,7 +377,6 @@ async def test_fifty_turns_each_add_at_most_300_tokens(search: _Search) -> None:
                 0.95 - i * 0.01,
                 title=f"{long[: 40 + n]}.xlsx",
                 snippet=long,
-                person_text=long,
                 project=f"p{i % 3}",
                 earlier=["2026-01-02", "2026-02-03", "2026-03-04", "2026-04-05"],
                 chat_id="conv_old",
