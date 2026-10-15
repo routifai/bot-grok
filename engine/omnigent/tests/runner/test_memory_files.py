@@ -1074,7 +1074,7 @@ async def test_backfill_is_bounded_resumes_and_never_duplicates(
     assert found["fu0"]["origin"] == "fork"
     db = restarted.indexer.db
     assert sum(len(db.chunks_for(r.file_id)) for r in db.files(turns=True)) == 13
-    assert db.meta("turns_backfilled.v2:conv_main") == "done"
+    assert db.meta("turns_backfilled.v3:conv_main") == "done"
     record.reads.clear()
     await sync.backfill_turns(record, "conv_main", {}, runtime=restarted)
     assert record.reads == []  # done: nothing is read again
@@ -1085,7 +1085,7 @@ async def test_backfill_starts_over_when_its_cursor_item_is_gone(tmp_path: Path)
     from omnigent.runner.memory import sync
 
     service = _service(tmp_path)
-    service.indexer.db.set_meta("turns_cursor.v2:conv_main", "gone")
+    service.indexer.db.set_meta("turns_cursor.v3:conv_main", "gone")
     record = _Record({"conv_main": [*_turns("m", 3), _stored("c1", SUMMARY, last_item_id="ma1")]})
     await sync.backfill_turns(record, "conv_main", {}, runtime=service)
     await sync.backfill_turns(record, "conv_main", {}, runtime=service)
@@ -1110,7 +1110,7 @@ async def test_backfill_indexes_every_retired_turn_and_none_of_the_current_epoch
     await sync.backfill_turns(record, "conv_main", {}, runtime=service)
 
     assert sorted(_passages(service)) == ["mu0", "mu1", "su0", "su1"]
-    assert service.indexer.db.meta("turns_backfilled.v2:conv_main") == "done"
+    assert service.indexer.db.meta("turns_backfilled.v3:conv_main") == "done"
 
 
 @pytest.mark.asyncio
