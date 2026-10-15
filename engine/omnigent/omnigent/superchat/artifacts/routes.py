@@ -9,6 +9,7 @@ another owner's rows 404.
 from __future__ import annotations
 
 import asyncio
+import logging
 import posixpath
 from typing import Any
 from urllib.parse import quote
@@ -16,6 +17,8 @@ from urllib.parse import quote
 from fastapi import APIRouter, Query, Request, Response
 
 from omnigent.db.db_models import InvalidUuidError, uuid_to_bytes
+from omnigent.entities import MessageData
+from omnigent.entities.conversation import is_system_notice
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.server.auth import LEVEL_OWNER, RESERVED_USER_LOCAL, AuthProvider
 from omnigent.server.routes._auth_helpers import require_access, require_user
@@ -85,6 +88,47 @@ def artifact_to_response(
         "parent_version_id": item.parent_version_id,
         "edit_summary": item.edit_summary,
     }
+
+
+#: How many of a chat's newest messages are searched for the turn's opening one.
+_TURN_LOOKBACK = 50
+_logger = logging.getLogger(__name__)
+
+
+def producing_turn(
+    conversations: ConversationStore, parent_session_id: str, chat_id: str | None
+) -> tuple[str | None, str | None]:
+    """The chat saving a version into *parent_session_id*, and its current turn's person message.
+
+    *chat_id* (``None``: the Conversation itself) counts only when it is that Conversation or a
+    chat under it (a Helper, an update run); any other chat records nothing. The turn is named by
+    the newest message of the person in that chat (a Helper's Brief, a run's prompt); runtime
+    notices are skipped. A failed lookup records nothing: it never fails the save.
+
+    :returns: ``(chat_id, turn_item_id)``, each ``None`` when unknown.
+    """
+    try:
+        return _producing_turn(conversations, parent_session_id, chat_id)
+    except Exception:  # noqa: BLE001 - provenance is a label, never a reason to lose a version
+        _logger.warning("artifacts: could not find the turn saving into %s", parent_session_id)
+        return None, None
+
+
+def _producing_turn(
+    conversations: ConversationStore, parent_session_id: str, chat_id: str | None
+) -> tuple[str | None, str | None]:
+    chat = chat_id or parent_session_id
+    if chat != parent_session_id:
+        found = conversations.get_conversation(chat)
+        family = {found.parent_conversation_id, found.root_conversation_id} if found else set()
+        if parent_session_id not in family:
+            return None, None
+    page = conversations.list_items(chat, limit=_TURN_LOOKBACK, order="desc", type="message")
+    for item in page.data:
+        data = item.data
+        if isinstance(data, MessageData) and data.role == "user" and not is_system_notice(data):
+            return chat, item.id
+    return chat, None
 
 
 def check_id(value: str, what: str) -> None:
@@ -171,8 +215,13 @@ def create_artifacts_router(
         name: str = Query(min_length=1, max_length=512),
         title: str | None = Query(default=None, max_length=256),
         source_path: str | None = Query(default=None, max_length=1024),
+        chat_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
-        """Save the request body as the next version of ``name`` in a session the caller owns."""
+        """Save the request body as the next version of ``name`` in a session the caller owns.
+
+        ``chat_id`` is the chat saving it when that is not the Conversation itself (a Helper);
+        the version records it and its turn (:func:`producing_turn`).
+        """
         owner = _owner(request)
         check_id(parent_session_id, "parent_session_id")
         await require_access(
@@ -199,6 +248,11 @@ def create_artifacts_router(
         if kind == "html" and not is_deck_name(clean_name):
             # A page is editable by hand only where it has ids; don't leave that to the author.
             data = await asyncio.to_thread(name_elements, data)
+        if chat_id is not None:
+            check_id(chat_id, "chat_id")
+        saver, turn_item_id = await asyncio.to_thread(
+            producing_turn, conversation_store, parent_session_id, chat_id
+        )
         item = await asyncio.to_thread(
             store.create,
             user_id=owner,
@@ -209,6 +263,8 @@ def create_artifacts_router(
             mime=KIND_MIME[kind],
             data=data,
             source_path=source_path,
+            turn_item_id=turn_item_id,
+            chat_id=saver,
         )
         return artifact_to_response(item, versions=item.version)
 
@@ -331,6 +387,8 @@ def create_artifacts_router(
                     "origin": v.origin,
                     "parent_version_id": v.parent_version_id,
                     "edit_summary": v.edit_summary,
+                    "turn_item_id": v.turn_item_id,
+                    "chat_id": v.chat_id,
                 }
                 for v in versions
             ],

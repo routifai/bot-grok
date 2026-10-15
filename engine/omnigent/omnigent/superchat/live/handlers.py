@@ -45,6 +45,8 @@ async def handle_live_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:
             return error(f"no saved file named {name} in this chat")
         body = {k: args[k] for k in keys if args.get(k) is not None} if keys else None
         url = f"/v1/artifacts/{found['id']}/live{path}"
+        if tool == SAVE_TOOL_NAME:  # the version records the run that made it
+            url += f"?chat_id={caller.conversation_id}"
         return finish(await caller.client.request(method, url, json=body, timeout=60.0))
     except Exception as exc:  # noqa: BLE001
         return error(f"{tool} failed: {exc}")

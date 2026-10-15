@@ -4,13 +4,13 @@ out of everything that lists files, and the references passages carry."""
 from __future__ import annotations
 
 import sys
-import types
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from omnigent.runner.knowledge import refs as refs_mod
 from omnigent.runner.knowledge.db import KIND_TURN, TurnPassage
 from omnigent.runner.knowledge.indexer import Indexer
 from omnigent.runner.knowledge.refs import journal_refs, line_refs, turn_refs
@@ -229,6 +229,8 @@ def test_a_journal_line_gives_its_references() -> None:
     assert line_refs("- 2026-10-12 · Booked the venue · main <!-- conv_abc -->") == {}
     assert line_refs("- 2026-10-12 · no comment at all") == {}
     assert line_refs("- x <!-- chat:conv_abc project:a unknown:b -->") == {"project": ["a"]}
+    encoded = "- x <!-- conv_abc files:My%20Notes.md,a%2Cb.csv -->"
+    assert line_refs(encoded) == {"files": ["My Notes.md", "a,b.csv"]}
 
 
 def test_a_passage_of_several_lines_carries_each_reference_once() -> None:
@@ -266,15 +268,13 @@ def test_a_turn_without_the_refs_module_has_no_references() -> None:
 def test_a_turn_carries_its_references_and_a_project_reference_wins(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    fake = types.ModuleType("omnigent.context.refs")
     seen: list[list[dict[str, Any]]] = []
 
     def refs_from_items(items: list[dict[str, Any]]) -> dict[str, list[str]]:
         seen.append(items)
         return {"files": ["your_files/quote.pdf"], "project": ["spring-launch"], "helpers": []}
 
-    fake.refs_from_items = refs_from_items  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "omnigent.context.refs", fake)
+    monkeypatch.setattr(refs_mod, "refs_from_items", refs_from_items)
     items = [_msg("u1", "user", "Open the quote", "r1"), *_call("c1", "files_get", "ok", "r1")]
     p = passage_of(split_turns(items)[0], chat_id="c", main_id="c", origin="main", project="x")
     assert seen[0][0]["type"] == "function_call"

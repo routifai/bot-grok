@@ -1769,6 +1769,8 @@ class SqlArtifact(OmnigentBase):
     :param edit_summary: Short human text describing a manual edit.
     :param delivered_at: Epoch seconds when a manual version was written back to the Computer
         and announced to the Muse; ``None`` while still pending.
+    :param turn_item_id: The person's message item that opened the turn that saved it, if known.
+    :param chat_id: The chat (Conversation, Side chat, Helper or update run) that saved it.
     """
 
     __tablename__ = "artifacts"
@@ -1798,6 +1800,8 @@ class SqlArtifact(OmnigentBase):
     source_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     edit_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     delivered_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    turn_item_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
+    chat_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
 
     __table_args__ = (
         Index(

@@ -10,6 +10,7 @@ import httpx
 import pytest
 import pytest_asyncio
 
+from omnigent.entities import MessageData, NewConversationItem
 from omnigent.runtime.agent_cache import AgentCache
 from omnigent.server.app import create_app
 from omnigent.stores.agent_store.sqlalchemy_store import SqlAlchemyAgentStore
@@ -153,3 +154,59 @@ async def test_delete_tool_always_asks() -> None:
     assert risk is not None and risk.category == "delete"
     assert classify_tool_call("mcp__omnigent__artifact_delete", {}) is not None
     assert classify_tool_call("artifact_save", {"path": "a.html"}) is None
+
+
+def _ask(conversations: SqlAlchemyConversationStore, chat: str, text: str) -> str:
+    """A message of the person in *chat*; :returns: its item id."""
+    (item,) = conversations.append(
+        chat,
+        [
+            NewConversationItem(
+                type="message",
+                response_id="resp_1",
+                data=MessageData(role="user", content=[{"type": "input_text", "text": text}]),
+            )
+        ],
+    )
+    return item.id
+
+
+async def test_a_version_records_the_turn_and_chat_that_saved_it(
+    env: tuple[httpx.AsyncClient, str],
+    db_uri: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, chat = env
+    conversations = SqlAlchemyConversationStore(db_uri)
+    asked = _ask(conversations, chat, "make the page")
+    url = f"/v1/artifacts?parent_session_id={chat}&name=page.html"
+    first = (await client.post(url, content=b'<p data-superchat-id="p">1</p>')).json()
+
+    # A Helper saves through the tool: the version names the Helper and its Brief.
+    helper = conversations.create_conversation(parent_conversation_id=chat).id
+    brief = _ask(conversations, helper, "update the page")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "page.html").write_text('<p data-superchat-id="p">2</p>')
+    monkeypatch.setattr(handlers, "workspace_roots", lambda: [workspace.resolve()])
+
+    async def _kind(*_a: object) -> tuple[str, str | None]:
+        return "sub_agent", chat
+
+    from omnigent.superchat import _handler_http
+
+    monkeypatch.setattr(_handler_http, "session_kind_and_parent", _kind)
+    ctx = HandlerCtx("artifact_save", _ToolClient(client), helper)  # type: ignore[arg-type]
+    second = json.loads(await handle_artifact_tool(ctx, {"path": "page.html"}))
+    assert second["version"] == 2
+
+    # A chat outside the Conversation records nothing.
+    stranger = conversations.create_conversation().id
+    _ask(conversations, stranger, "elsewhere")
+    third = (await client.post(f"{url}&chat_id={stranger}", content=b"<p>3</p>")).json()
+    assert third["version"] == 3
+
+    meta = (await client.get(f"/v1/artifacts/{first['id']}")).json()
+    made_by = {v["version"]: (v["chat_id"], v["turn_item_id"]) for v in meta["all_versions"]}
+    assert made_by == {1: (chat, asked), 2: (helper, brief), 3: (None, None)}

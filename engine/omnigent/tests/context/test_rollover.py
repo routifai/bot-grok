@@ -1402,6 +1402,54 @@ async def test_the_journal_section_is_split_off_and_stored_on_the_item() -> None
     assert data.repairs == 0 and data.evicted_entries == [] and data.applied_closes == []
 
 
+def _write_call(call_id: str, path: str, response_id: str) -> list[dict[str, Any]]:
+    call, output = _tool_pair(call_id, response_id)
+    call.update(name="sys_os_write", arguments=f'{{"path": "{path}"}}')
+    return [call, output]
+
+
+@pytest.mark.asyncio
+async def test_the_window_refs_come_from_code_and_each_turn_shows_its_own() -> None:
+    items = (
+        _turn(1)[:1]
+        + _write_call("c1", "projects/q3/budget.xlsx", "r1")
+        + _turn(1)[1:]
+        + _turn(2)[:1]
+        + _write_call("c2", "memo.md", "r2")
+        + _turn(2)[1:]
+        + _turn(3)
+    )
+    client = _ReturnsTextClient(
+        "## Context checkpoint\n- [t-a] Alpha\n\n<journal>\n- 2026-10-12 · did it\n</journal>"
+    )
+    data = await build_rollover_item(
+        items, previous_summary=None, keep_tokens=1, model="gpt-4o", llm_client=client
+    )
+
+    assert data.journal_refs == {
+        "files": ["projects/q3/budget.xlsx", "memo.md"],
+        "project": ["q3"],
+    }
+    assert client.seen_messages is not None
+    transcript = client.seen_messages[0]["content"][0]["text"]
+    turns = transcript.split("USER: ")[1:]
+    assert "REFS: files:projects/q3/budget.xlsx project:q3" in turns[0]
+    assert "REFS: files:memo.md\n" in turns[1]
+    assert "REFS:" not in turns[2]
+
+
+@pytest.mark.asyncio
+async def test_a_window_without_tool_calls_has_no_refs() -> None:
+    data = await build_rollover_item(
+        _turn(1),
+        previous_summary=None,
+        keep_tokens=1,
+        model="gpt-4o",
+        llm_client=_ReturnsTextClient("## Context checkpoint\n- [t-a] Alpha"),
+    )
+    assert data.journal_refs is None
+
+
 @pytest.mark.asyncio
 async def test_a_reply_without_a_journal_has_zero_lines() -> None:
     data = await build_rollover_item(

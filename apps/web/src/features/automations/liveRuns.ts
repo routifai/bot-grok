@@ -8,8 +8,9 @@ const OPEN_RUN_SECONDS = 30 * 60;
 
 const seconds = (iso: string | null) => (iso ? Date.parse(iso) / 1000 : null);
 
-/** The update version each run made, matched by time (the engine does not link them): the run
- * that fired last before the version was saved, if the version came before that run ended. */
+/** The update version each run made: the one that records the run's chat. A version saved before
+ * the engine kept that is matched by time: the run that fired last before the version was saved,
+ * if the version came before that run ended. */
 export function versionsByRun(
   runs: readonly AutomationRun[],
   versions: readonly ArtifactVersion[],
@@ -17,6 +18,11 @@ export function versionsByRun(
   const made = new Map<string, ArtifactVersion>();
   for (const version of versions) {
     if (version.origin !== "update") continue;
+    if (version.chatId) {
+      const run = runs.find((candidate) => candidate.chatId === version.chatId);
+      if (run && !made.has(run.id)) made.set(run.id, version);
+      continue;
+    }
     const at = seconds(version.createdAt);
     if (at === null) continue;
     let best: { run: AutomationRun; fired: number } | null = null;

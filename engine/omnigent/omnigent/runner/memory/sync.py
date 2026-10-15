@@ -27,6 +27,7 @@ from omnigent.runner.knowledge.turns import Turn, passage_of, split_turns
 from omnigent.runner.memory import files
 from omnigent.stores.conversation_store import SIDE_CHAT_LABEL_KEY, side_chat_parent_id
 from omnigent.superchat.feature import is_helper
+from omnigent.superchat.projects.card import project_slug_from_workspace
 from omnigent.superchat.rollover import ItemsPageFetchError, _get_items_page
 
 _logger = logging.getLogger(__name__)
@@ -98,7 +99,11 @@ async def record_checkpoint(
         root = workspace or default_workspace()
         origin = await _origin(server_client, chat_id, labels)
         entries = files.checkpoint_lines(
-            origin, item.journal_lines, item.evicted_entries, default_date=files.today()
+            origin,
+            item.journal_lines,
+            item.evicted_entries,
+            default_date=files.today(),
+            refs=item.journal_refs,
         )
         await asyncio.to_thread(files.append_lines, root, entries)
         if origin.kind == "main":
@@ -119,11 +124,22 @@ async def record_helper_result(
     session_id: str,
     workspace: Path | None = None,
 ) -> None:
-    """Journal one line when a Helper's Result reaches its Conversation. Never raises."""
+    """Journal one line when a Helper's Result reaches its Conversation. Never raises.
+
+    The line names the Helper and, when its working directory is in one, the Project.
+    """
     try:
         origin = await _origin(server_client, parent_id, None)
+        workspace_dir = (await _snapshot(server_client, session_id)).get("workspace")
         entry = files.helper_result_line(
-            origin, title=title, outcome=outcome, session_id=session_id, date=files.today()
+            origin,
+            title=title,
+            outcome=outcome,
+            session_id=session_id,
+            date=files.today(),
+            project=project_slug_from_workspace(
+                workspace_dir if isinstance(workspace_dir, str) else None
+            ),
         )
         await asyncio.to_thread(files.append_lines, workspace or default_workspace(), [entry])
     except Exception:  # noqa: BLE001 - a copy must never fail the turn
@@ -225,6 +241,7 @@ async def rebuild(server_client: Any, chat_id: str, *, workspace: Path | None = 
                     item.get("journal_lines"),
                     item.get("evicted_entries"),
                     default_date=_item_date(item),
+                    refs=item.get("journal_refs"),
                 )
                 if origin.kind != "main":
                     continue

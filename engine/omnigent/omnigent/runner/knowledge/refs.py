@@ -11,6 +11,9 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping
 from typing import Any
+from urllib.parse import unquote
+
+from omnigent.context.refs import refs_from_items
 
 #: The reference keys, in the order they are written.
 REF_KEYS = ("files", "artifacts", "project", "helpers", "chats")
@@ -30,7 +33,10 @@ def merge_refs(found: Iterable[Mapping[str, Iterable[str]]]) -> dict[str, list[s
 
 
 def line_refs(line: str) -> dict[str, list[str]]:
-    """The references in one journal line's trailing comment (``{}`` when it has none)."""
+    """The references in one journal line's trailing comment (``{}`` when it has none).
+
+    Values are written percent-encoded (``omnigent.context.refs``) and read back decoded.
+    """
     match = _COMMENT.search(line)
     if match is None:
         return {}
@@ -38,7 +44,7 @@ def line_refs(line: str) -> dict[str, list[str]]:
     for token in match.group(1).split():
         key, sep, values = token.partition(":")
         if sep and key in REF_KEYS:
-            pairs.append({key: [v for v in values.split(",") if v]})
+            pairs.append({key: [unquote(v) for v in values.split(",") if v]})
     return merge_refs(pairs)
 
 
@@ -48,12 +54,5 @@ def journal_refs(text: str) -> dict[str, list[str]]:
 
 
 def turn_refs(items: list[dict[str, Any]]) -> dict[str, list[str]]:
-    """The references of a turn, from its tool items (``function_call`` and their outputs).
-
-    Uses ``omnigent.context.refs.refs_from_items`` when it is there; ``{}`` otherwise.
-    """
-    try:
-        from omnigent.context.refs import refs_from_items  # type: ignore[import-not-found]
-    except ImportError:
-        return {}
+    """The references of a turn, from its tool items (``function_call`` and their outputs)."""
     return merge_refs([refs_from_items(items)]) if items else {}

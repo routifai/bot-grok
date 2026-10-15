@@ -13,6 +13,7 @@ from omnigent.superchat.artifacts.routes import (
     artifact_to_response,
     check_id,
     load_artifact,
+    producing_turn,
     publication_to_response,
     request_owner,
 )
@@ -42,6 +43,7 @@ __all__ = [
     "artifact_to_response",
     "check_id",
     "load_artifact",
+    "producing_turn",
     "publication_to_response",
     "request_owner",
     "resolve_workspace_file",

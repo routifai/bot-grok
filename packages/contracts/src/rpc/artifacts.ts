@@ -50,6 +50,8 @@ export const ArtifactVersionSchema = z.object({
   origin: z.string().optional(),
   parentVersionId: Id.nullable().optional(),
   editSummary: z.string().nullable().optional(),
+  /** The chat that saved it (a Helper or update run for theirs); null before this was kept. */
+  chatId: Id.nullable().optional(),
 });
 
 export type ArtifactVersion = z.infer<typeof ArtifactVersionSchema>;

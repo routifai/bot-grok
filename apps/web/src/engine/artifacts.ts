@@ -116,6 +116,7 @@ export const artifactsRouter = {
         origin: version.origin,
         parentVersionId: version.parent_version_id ?? null,
         editSummary: version.edit_summary ?? null,
+        chatId: version.chat_id ?? null,
       }));
     }),
     getById: os.artifacts.getById.handler(async ({ input }) => {

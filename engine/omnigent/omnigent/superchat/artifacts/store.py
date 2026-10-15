@@ -143,6 +143,8 @@ class Artifact:
     :param source_path: Computer workspace path the file came from / is written back to.
     :param edit_summary: Short human text of a manual edit.
     :param delivered_at: When a manual version was written back and announced, else ``None``.
+    :param turn_item_id: The person's message item of the turn that saved it, if known.
+    :param chat_id: The chat that saved it (a Helper or update run for their saves), if known.
     """
 
     id: str
@@ -163,6 +165,8 @@ class Artifact:
     source_path: str | None = None
     edit_summary: str | None = None
     delivered_at: int | None = None
+    turn_item_id: str | None = None
+    chat_id: str | None = None
 
 
 def _to_entity(row: SqlArtifact) -> Artifact:
@@ -185,6 +189,8 @@ def _to_entity(row: SqlArtifact) -> Artifact:
         source_path=row.source_path,
         edit_summary=row.edit_summary,
         delivered_at=row.delivered_at,
+        turn_item_id=row.turn_item_id,
+        chat_id=row.chat_id,
     )
 
 
@@ -236,6 +242,8 @@ class SqlAlchemyArtifactStore:
         source_path: str | None = None,
         edit_summary: str | None = None,
         base_version: int | None = None,
+        turn_item_id: str | None = None,
+        chat_id: str | None = None,
     ) -> Artifact:
         """Store ``data`` as the next version of ``name`` in the session.
 
@@ -244,6 +252,8 @@ class SqlAlchemyArtifactStore:
 
         :param base_version: When given, the save only succeeds while this is still the newest
             version of the group; otherwise :class:`VersionConflictError` is raised.
+        :param turn_item_id: The person's message item of the turn that saved it.
+        :param chat_id: The chat that saved it.
         """
         blobs = self._blob_store()
         artifact_id = uuid.uuid4().hex
@@ -280,6 +290,8 @@ class SqlAlchemyArtifactStore:
                 source_path=(source_path or None) and source_path[:1024],
                 edit_summary=edit_summary,
                 delivered_at=None,
+                turn_item_id=turn_item_id,
+                chat_id=chat_id,
             )
             session.add(row)
             session.flush()

@@ -16,6 +16,7 @@ from omnigent.db.utils import now_epoch
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.server.auth import RESERVED_USER_LOCAL
 from omnigent.superchat.artifacts.parts import PartEditor, part_editor
+from omnigent.superchat.artifacts.routes import producing_turn
 from omnigent.superchat.artifacts.store import (
     HAND_ORIGINS,
     Artifact,
@@ -302,12 +303,21 @@ class LiveService:
         changes: list[dict[str, Any]],
         facts: dict[str, Any],
         sources: list[str] | None,
+        chat_id: str | None = None,
     ) -> dict[str, Any]:
-        """A run's outcome: at most one ``update`` version; no change moves ``checked_at`` only."""
+        """A run's outcome: at most one ``update`` version; no change moves ``checked_at`` only.
+
+        ``chat_id`` is the run's chat; the version records it and the run's turn.
+        """
         live, head = self.need(item)
         if changes and head.version != base_version:
             raise _stale()
-        plan, created = self._apply(live, head, changes)
+        made_by = (
+            producing_turn(self.conversations, head.parent_session_id, chat_id)
+            if chat_id
+            else (None, None)
+        )
+        plan, created = self._apply(live, head, changes, made_by=made_by)
         state = live.state
         if created is not None:
             unusual = "suggestions" if plan.suggestions else "unplaced" if plan.unplaced else None
@@ -388,16 +398,24 @@ class LiveService:
         self.live.save(live)
 
     def _apply(
-        self, live: Live, head: Artifact, changes: list[dict[str, Any]], summary: str = ""
+        self,
+        live: Live,
+        head: Artifact,
+        changes: list[dict[str, Any]],
+        summary: str = "",
+        made_by: tuple[str | None, str | None] = (None, None),
     ) -> tuple[Plan, Artifact | None]:
-        """Plan ``changes`` on ``head``, store one version, update the state in memory."""
+        """Plan ``changes`` on ``head``, store one version, update the state in memory.
+
+        :param made_by: ``(chat_id, turn_item_id)`` of the run that made the version.
+        """
         state = live.state
         plan = plan_changes(self.artifacts.read(head), changes, state, _editor(head))
         created = None
         if plan.applied:
             count = len(plan.applied)
             summary = summary or f"{count} change{'' if count == 1 else 's'}"
-            created = self._create(head, plan.data, summary, "update")
+            created = self._create(head, plan.data, summary, "update", made_by)
         kept = (state["last_update"] or {}).get("suggestions", [])
         touched = {c["id"] for c in plan.suggestions + plan.applied}
         suggestions = [s for s in kept if s["id"] not in touched] + plan.suggestions
@@ -410,7 +428,14 @@ class LiveService:
         state.update(written=plan.written, rejected=plan.rejected)
         return plan, created
 
-    def _create(self, head: Artifact, data: bytes, summary: str, origin: str) -> Artifact:
+    def _create(
+        self,
+        head: Artifact,
+        data: bytes,
+        summary: str,
+        origin: str,
+        made_by: tuple[str | None, str | None] = (None, None),
+    ) -> Artifact:
         try:
             return self.artifacts.create(
                 user_id=head.user_id,
@@ -425,6 +450,8 @@ class LiveService:
                 source_path=head.source_path,
                 edit_summary=summary,
                 base_version=head.version,
+                chat_id=made_by[0],
+                turn_item_id=made_by[1],
             )
         except VersionConflictError as exc:
             raise _stale() from exc

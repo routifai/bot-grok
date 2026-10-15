@@ -45,6 +45,15 @@ it("matches each update version to the run that made it, and ignores hand edits"
   expect(made.size).toBe(2);
 });
 
+it("links a version to the run whose chat saved it, and falls back to time for older ones", () => {
+  const runs = [run("r2", 2000, 2060), run("r1", 1000, 1050)];
+  // Saved by r1's chat, though its time would match r2.
+  const linked = { ...version("v3", 2040), chatId: "chat-r1" } as ArtifactVersion;
+  const made = versionsByRun(runs, [linked, version("v2", 2030)]);
+  expect(made.get("r1")?.id).toBe("v3");
+  expect(made.get("r2")?.id).toBe("v2");
+});
+
 it("does not give a version to a run that ended long before it", () => {
   expect(versionsByRun([run("r1", 1000, 1050)], [version("v2", 5000)]).size).toBe(0);
 });

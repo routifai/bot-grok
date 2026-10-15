@@ -155,8 +155,55 @@ def test_helper_result_line_has_no_body() -> None:
     assert date == "2026-10-12"
     assert line == (
         '- 2026-10-12 · Helper "Counting words" completed (session conv_h1) '
-        "· main <!-- conv_main -->"
+        "· main <!-- conv_main helpers:conv_h1 -->"
     )
+
+
+def test_helper_result_line_names_its_project_when_known() -> None:
+    line = files.helper_result_line(
+        MAIN,
+        title="Counting words",
+        outcome="completed",
+        session_id="conv_h1",
+        date="2026-10-12",
+        project="spring-launch",
+    )[1]
+
+    assert line.endswith("· main <!-- conv_main project:spring-launch helpers:conv_h1 -->")
+
+
+REFS = {"files": ["projects/spring-launch/budget.xlsx"], "artifacts": ["a1@v3"]}
+
+
+def test_journal_lines_carry_the_refs_after_the_chat_id() -> None:
+    lines = files.checkpoint_lines(
+        MAIN,
+        ["2026-10-12 · Checked the quote", "2026-10-12 · Saved the budget"],
+        ["- [t-old · 2026-08-01] Old plan"],
+        default_date="2026-10-12",
+        refs=REFS,
+    )
+
+    suffix = " · main <!-- conv_main files:projects/spring-launch/budget.xlsx artifacts:a1@v3 -->"
+    assert lines[0][1] == "- 2026-10-12 · Checked the quote" + suffix
+    assert lines[1][1].endswith(suffix)
+    # An evicted entry is the state file's text, not this window's work.
+    assert lines[2][1].endswith("· main <!-- conv_main -->")
+
+
+def test_refs_cannot_end_the_trailing_comment() -> None:
+    line = files.format_line("2026-10-12", "x", MAIN, {"files": ["a-->b c.md"]})[1]
+
+    assert line.endswith("<!-- conv_main files:a--%3Eb%20c.md -->")
+    assert line.count("-->") == 1
+
+
+def test_an_old_checkpoint_without_refs_still_loads() -> None:
+    item = CompactionData.model_validate(
+        {"summary": SUMMARY, "last_item_id": "m", "token_count": 1, "journal_lines": ["x"]}
+    )
+
+    assert item.journal_refs is None
 
 
 # ── STATE.md ─────────────────────────────────────────────────────────────
@@ -359,6 +406,27 @@ async def test_rebuild_twice_gives_the_same_files(tmp_path: Path) -> None:
 
     after = {p.name: p.read_text() for p in (tmp_path / "memory").rglob("*.md")}
     assert after == before
+
+
+@pytest.mark.asyncio
+async def test_rebuild_writes_the_refs_exactly_as_the_checkpoint_did(tmp_path: Path) -> None:
+    item = CompactionData(
+        summary=SUMMARY,
+        last_item_id="msg_1",
+        token_count=1,
+        journal_lines=["2026-10-12 · Checked the quote"],
+        journal_refs=REFS,
+    )
+    live, rebuilt = tmp_path / "live", tmp_path / "rebuilt"
+    await record_checkpoint(_Server(), "conv_main", {}, item, workspace=live)
+    stored = _stored("c1", SUMMARY, **item.model_dump(exclude={"summary"}))
+
+    await rebuild(_Chats({"conv_main": [stored]}), "conv_main", workspace=rebuilt)
+
+    assert "files:projects/spring-launch/budget.xlsx artifacts:a1@v3 -->" in _journal(
+        live, "2026-10-12"
+    )
+    assert _journal(rebuilt, "2026-10-12") == _journal(live, "2026-10-12")
 
 
 @pytest.mark.asyncio

@@ -10,7 +10,7 @@ import asyncio
 from collections.abc import Callable
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Body, Request
+from fastapi import APIRouter, Body, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnigent.errors import ErrorCode, OmnigentError
@@ -19,6 +19,7 @@ from omnigent.server.scheduled.rrule import RRuleValidationError, validate_rrule
 from omnigent.superchat.artifacts import (
     Artifact,
     artifact_to_response,
+    check_id,
     load_artifact,
     request_owner,
 )
@@ -283,9 +284,16 @@ def create_live_router(
         return await asyncio.to_thread(service.context, await _page(request, artifact_id))
 
     @router.post("/artifacts/{artifact_id}/live/save")
-    async def live_save(request: Request, artifact_id: str, body: SaveBody) -> dict[str, Any]:
-        """An update run's outcome: at most one ``update`` version."""
+    async def live_save(
+        request: Request,
+        artifact_id: str,
+        body: SaveBody,
+        chat_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        """An update run's outcome: at most one ``update`` version, made by the run ``chat_id``."""
         item = await _page(request, artifact_id)
+        if chat_id is not None:
+            check_id(chat_id, "chat_id")
         changes = [c.model_dump() for c in body.changes]
         return await asyncio.to_thread(
             lambda: service.save(
@@ -294,6 +302,7 @@ def create_live_router(
                 changes=changes,
                 facts=body.facts,
                 sources=body.sources,
+                chat_id=chat_id,
             )
         )
 

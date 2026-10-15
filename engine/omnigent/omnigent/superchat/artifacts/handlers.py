@@ -87,13 +87,14 @@ async def handle_artifact_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:
                 return error("artifact_delete requires a valid artifact_id")
             resp = await caller.client.delete(f"/v1/artifacts/{artifact_id}", timeout=30.0)
         else:
-            return await _save(caller.client, chat_id, args)
+            saver = caller.conversation_id if caller.is_helper else None
+            return await _save(caller.client, chat_id, args, saver)
     except Exception as exc:  # noqa: BLE001
         return error(f"{tool_name} failed: {exc}")
     return finish(resp)
 
 
-async def _save(client: Any, chat_id: str, args: dict[str, Any]) -> str:
+async def _save(client: Any, chat_id: str, args: dict[str, Any], saver: str | None) -> str:
     raw = args.get("path")
     if not isinstance(raw, str) or not raw.strip():
         return error("artifact_save requires a path")
@@ -112,6 +113,8 @@ async def _save(client: Any, chat_id: str, args: dict[str, Any]) -> str:
     )
     if isinstance(title, str) and title.strip():
         url += f"&title={quote(title.strip()[:256])}"
+    if saver:  # a Helper saves into its Conversation; the version records the Helper's turn
+        url += f"&chat_id={quote(saver)}"
     resp = await client.post(
         url, content=data, headers={"Content-Type": "application/octet-stream"}, timeout=120.0
     )

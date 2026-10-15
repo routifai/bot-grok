@@ -325,7 +325,7 @@ def _compaction_event_body(
     }
     if compaction.compacted_messages:
         body["compacted_messages"] = compaction.compacted_messages
-    for name in ("journal_lines", "evicted_entries", "applied_closes", "repairs"):
+    for name in ("journal_lines", "journal_refs", "evicted_entries", "applied_closes", "repairs"):
         value = getattr(compaction, name)
         if value is not None:
             body[name] = value

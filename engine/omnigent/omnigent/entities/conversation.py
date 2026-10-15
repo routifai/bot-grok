@@ -555,6 +555,9 @@ class CompactionData(BaseModel):
         used integer counters there.
     :param journal_lines: Dated lines of what happened since the previous checkpoint, from the
         same summarizer call. The assistant's own record; ``None`` when the producer wrote none.
+    :param journal_refs: What the summarized window touched, taken by code from its tool calls
+        (``{"files": [...], "project": [...]}``, see ``omnigent/context/refs.py``); written on
+        every journal line of this checkpoint. ``None`` on items stored before refs existed.
     :param evicted_entries: State-file entry lines dropped for the size budget, word for word.
     :param applied_closes: ``[{"tag": ..., "reason": ...}]`` closes applied at this checkpoint.
     :param repairs: State-file entries put back because the rewrite lost them.
@@ -567,6 +570,7 @@ class CompactionData(BaseModel):
     compacted_messages: list[dict[str, Any]] | None = None
     window_id: int | str | None = None
     journal_lines: list[str] | None = None
+    journal_refs: dict[str, list[str]] | None = None
     evicted_entries: list[str] | None = None
     applied_closes: list[dict[str, str]] | None = None
     repairs: int | None = None

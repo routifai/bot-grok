@@ -55,6 +55,8 @@ export interface OmnigentArtifactVersion {
   origin?: string;
   parent_version_id?: string | null;
   edit_summary?: string | null;
+  turn_item_id?: string | null;
+  chat_id?: string | null;
 }
 
 export interface OmnigentArtifactDetail extends OmnigentArtifact {

@@ -5,10 +5,13 @@ Layout::
     memory/STATE.md                  the Conversation's working list, one note line on top
     memory/journal/YYYY-MM-DD.md     "# <date>", a "## Journal" heading, then one line per event
 
-A journal line is ``- <date> · <text> · <origin> <!-- <chat id> -->``. The origin says where it
-came from: ``main``, ``side "<title>"`` or ``fork @ "<title>"``. Lines are appended under the
-heading and never edited. The day file also holds two sections written by code from the day's
-note: ``## Notes`` and ``## Reflection``, each replaced as a whole and never touching the Journal.
+A journal line is ``- <date> · <text> · <origin> <!-- <chat id> <refs> -->``. The origin says where
+it came from: ``main``, ``side "<title>"`` or ``fork @ "<title>"``. The refs, written by code, are
+``key:value,value`` pairs naming what the work touched (:mod:`omnigent.context.refs`), e.g.
+``files:projects/q3/budget.xlsx project:q3``; a line without any ends at the chat id. Lines are
+appended under the heading and never edited. The day file also holds two sections written by
+code from the day's note: ``## Notes`` and ``## Reflection``, each replaced as a whole and never
+touching the Journal.
 Appends run under a lock (a thread lock and, where the platform has
 it, an ``flock`` on ``journal/.lock``), so two checkpoints that finish together keep both lines.
 The date is the one the line carries, else today in UTC (the runner does not know the owner's
@@ -32,11 +35,12 @@ import re
 import shutil
 import tempfile
 import threading
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from omnigent.context.refs import format_refs
 from omnigent.context.rollover import _strip_seed_header
 from omnigent.entities.daily_note import SECTION_TITLES, WRITER_KEYS
 from omnigent.stores.conversation_store import SIDE_CHAT_LABEL_KEY
@@ -117,10 +121,14 @@ def today(now: datetime | None = None) -> str:
     return f"{now or datetime.now(UTC):%Y-%m-%d}"
 
 
-def format_line(date: str, text: str, origin: Origin) -> tuple[str, str]:
-    """:returns: ``(date, line)``: the journal line for *text* on *date* with its origin."""
+def format_line(
+    date: str, text: str, origin: Origin, refs: Mapping[str, list[str]] | None = None
+) -> tuple[str, str]:
+    """:returns: ``(date, line)``: the journal line for *text* on *date*, its origin and refs."""
     body = _one_line(text)
-    return date, f"- {date} · {body} · {origin.label} <!-- {_one_line(origin.chat_id)} -->"
+    refs_text = _one_line(format_refs(refs))
+    comment = " ".join(part for part in (_one_line(origin.chat_id), refs_text) if part)
+    return date, f"- {date} · {body} · {origin.label} <!-- {comment} -->"
 
 
 def checkpoint_lines(
@@ -129,11 +137,12 @@ def checkpoint_lines(
     evicted_entries: Iterable[str] | None,
     *,
     default_date: str,
+    refs: Mapping[str, list[str]] | None = None,
 ) -> list[tuple[str, str]]:
     """The journal lines a stored checkpoint adds.
 
     :param journal_lines: The item's dated lines; a line without a leading date gets
-        *default_date*.
+        *default_date*. Each one carries *refs*, the checkpoint's ``journal_refs``.
     :param evicted_entries: Entry lines dropped for the size budget, kept word for word (the
         list marker is the only thing removed), each marked as moved out of the working list.
     :returns: ``[(date, line)]``: the journal lines first, then the evicted entries.
@@ -145,7 +154,7 @@ def checkpoint_lines(
             continue
         match = _DATE.match(text)
         date, body = (match.group(1), text[match.end() :]) if match else (default_date, text)
-        out.append(format_line(date, body, origin))
+        out.append(format_line(date, body, origin, refs))
     for entry in evicted_entries or []:
         body = _BULLET.sub("", entry, count=1).strip()
         if body:
@@ -154,12 +163,22 @@ def checkpoint_lines(
 
 
 def helper_result_line(
-    origin: Origin, *, title: str, outcome: str, session_id: str, date: str
+    origin: Origin,
+    *,
+    title: str,
+    outcome: str,
+    session_id: str,
+    date: str,
+    project: str | None = None,
 ) -> tuple[str, str]:
-    """:returns: ``(date, line)`` for a Helper Result reaching its Conversation (no body)."""
+    """:returns: ``(date, line)`` for a Helper Result reaching its Conversation (no body).
+
+    The line refers to the Helper (``helpers:``) and to the Project it worked in, when known.
+    """
     name = _one_line(title).replace('"', "'")[:TITLE_MAX_CHARS]
+    refs = {"helpers": [session_id], **({"project": [project]} if project else {})}
     return format_line(
-        date, f'Helper "{name}" {outcome} (session {_one_line(session_id)})', origin
+        date, f'Helper "{name}" {outcome} (session {_one_line(session_id)})', origin, refs
     )
 
 

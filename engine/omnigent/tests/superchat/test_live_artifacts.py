@@ -109,6 +109,34 @@ def test_update_changes_facts_in_one_update_version(env) -> None:
     assert live.state["checked_at"] and live.state["misses"] == 0
 
 
+def test_update_version_records_the_run_that_made_it(env) -> None:
+    from omnigent.entities import ConversationItem, MessageData
+
+    run, prompt = uuid.uuid4().hex, uuid.uuid4().hex
+    brief = ConversationItem(
+        id=prompt, response_id="r", created_at=1, type="message", status="completed",
+        data=MessageData(role="user", content=[{"type": "input_text", "text": "update it"}]),
+    )  # fmt: skip
+
+    class _RunConvs(_Convs):
+        def get_conversation(self, conversation_id: str) -> Any:
+            return SimpleNamespace(parent_conversation_id=_SESSION, root_conversation_id=None)
+
+        def list_items(self, conversation_id: str, **_kw: Any) -> Any:
+            return SimpleNamespace(data=[brief] if conversation_id == run else [])
+
+    env.service.conversations = _RunConvs()
+    env.service.save(
+        _head(env), base_version=_head(env).version, changes=[{"id": "btc", "after": "B: 1"}],
+        facts={}, sources=None, chat_id=run,
+    )  # fmt: skip
+    first_update = _head(env)
+    _save(env, [{"id": "btc", "after": "B: 2"}])  # an older runner sends no chat
+
+    assert (first_update.chat_id, first_update.turn_item_id) == (run, prompt)
+    assert (_head(env).chat_id, _head(env).turn_item_id) == (None, None)
+
+
 def test_update_version_is_written_back_like_a_hand_edit(env) -> None:
     _save(env, [{"id": "btc", "after": "Bitcoin: 120"}])
     pending = env.artifacts.pending_manual(user_id=None, parent_session_id=_SESSION)

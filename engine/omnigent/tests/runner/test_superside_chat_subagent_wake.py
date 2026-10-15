@@ -146,7 +146,7 @@ async def test_a_delivered_helper_result_adds_one_journal_line(
         lines = [ln for ln in day_file.read_text().splitlines() if ln.startswith("- ")]
         assert len(lines) == 1
         assert f'Helper "auth" completed (session {child_id})' in lines[0]
-        assert f"main <!-- {parent_id} -->" in lines[0]
+        assert f"main <!-- {parent_id} helpers:{child_id} -->" in lines[0]
         assert "vault key" not in lines[0]
     finally:
         runner_app.unregister_subagent_work(child_id)
