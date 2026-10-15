@@ -3505,6 +3505,64 @@ class TestBlockedToolDetection(unittest.TestCase):
         self.assertEqual(len(tool_completes), 1)
         self.assertEqual(tool_completes[0].status, ToolCallStatus.ERROR)
 
+    def _tool_end(self, call_id: str, *, is_error: bool, result: str) -> str:
+        return json.dumps(
+            {
+                "type": "tool_execution_end",
+                "toolCallId": call_id,
+                "toolName": "write",
+                "isError": is_error,
+                "result": result,
+            }
+        )
+
+    def test_silent_end_after_failed_tool_is_a_visible_error(self):
+        """A turn that stops on a failed tool with no text fails loudly, keeping the session."""
+        events = self._run_with_events(
+            [
+                json.dumps({"type": "response", "success": True}),
+                self._tool_end("w1", is_error=True, result="Path /tmp is outside the workspace"),
+                json.dumps({"type": "agent_end", "messages": []}),
+            ]
+        )
+        self.assertFalse([e for e in events if isinstance(e, TurnComplete)])
+        error = events[-1]
+        self.assertIsInstance(error, ExecutorError)
+        self.assertIn("without a reply", error.message)
+        self.assertIn("write: Path /tmp is outside the workspace", error.message)
+        self.assertTrue(error.preserve_session)
+
+    def test_failed_tool_then_reply_completes(self):
+        """A failed tool the model then answers about is an ordinary turn."""
+        events = self._run_with_events(
+            [
+                json.dumps({"type": "response", "success": True}),
+                self._tool_end("w1", is_error=True, result="denied"),
+                json.dumps(
+                    {
+                        "type": "message_update",
+                        "assistantMessageEvent": {"type": "text_delta", "delta": "Could not."},
+                    }
+                ),
+                json.dumps({"type": "agent_end", "messages": []}),
+            ]
+        )
+        self.assertIsInstance(events[-1], TurnComplete)
+        self.assertEqual(events[-1].response, "Could not.")
+
+    def test_failed_tool_then_success_with_no_text_stays_silent(self):
+        """An intentionally silent turn whose last tool succeeded completes as before."""
+        events = self._run_with_events(
+            [
+                json.dumps({"type": "response", "success": True}),
+                self._tool_end("w1", is_error=True, result="denied"),
+                self._tool_end("w2", is_error=False, result="ok"),
+                json.dumps({"type": "agent_end", "messages": []}),
+            ]
+        )
+        self.assertIsInstance(events[-1], TurnComplete)
+        self.assertEqual(events[-1].response, "")
+
 
 def _make_pi_skill_dir(root: Path, name: str) -> Path:
     """Create a minimal valid skill directory for the resolver tests."""

@@ -2788,6 +2788,9 @@ class PiExecutor(Executor):
         # Error reported by a ``message_end`` (stopReason=error); surfaced at
         # ``agent_end`` so the terminal event is consumed off the RPC stream.
         pending_error: str | None = None
+        # The newest tool call's failure ("tool: error"), cleared by a later success: a turn
+        # that ends on it with no text is reported, never left as silence.
+        last_tool_failure: str | None = None
 
         while True:
             # After an errored message the only thing left to drain is the
@@ -2953,6 +2956,9 @@ class PiExecutor(Executor):
                 else:
                     status = ToolCallStatus.SUCCESS
 
+                last_tool_failure = (
+                    f"{tool_name}: {result_str[:300]}" if (is_error or is_blocked) else None
+                )
                 yield ToolCallComplete(
                     name=tool_name,
                     status=status,
@@ -3004,6 +3010,16 @@ class PiExecutor(Executor):
                             break
                 turn_usage = _aggregate_pi_turn_usage(message_usages, model)
                 _notify_usage_from_dict(model=model, usage=turn_usage)
+                if not response_text and last_tool_failure is not None:
+                    # The model stopped on a failed tool without a word: fail the turn
+                    # visibly. Pi is idle again (agent_end was read), so keep its session.
+                    yield ExecutorError(
+                        message="The turn ended without a reply after a tool failed: "
+                        f"{last_tool_failure}",
+                        usage=dict(turn_usage) if turn_usage is not None else None,
+                        preserve_session=True,
+                    )
+                    return
                 yield TurnComplete(
                     response=response_text,
                     usage=dict(turn_usage) if turn_usage is not None else None,
