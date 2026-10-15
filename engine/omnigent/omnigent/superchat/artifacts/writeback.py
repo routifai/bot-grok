@@ -7,7 +7,9 @@ when the person saved). For every hand-edited version the server still lists as 
 1. write the newest manual version's bytes to its ``source_path`` (idempotent: skipped when the
    file already holds exactly those bytes) so the Muse's next read sees the person's edits;
 2. ack it (``POST /v1/artifacts/{id}/delivered``) so the note is shown once;
-3. return one compact note per file for the turn prefix.
+3. return one compact note per file for the turn prefix;
+4. journal one line per delivered hand-edited version (``memory/journal``), so the edit outlives
+   the note.
 
 A failed write is not acked: the next turn retries, and the note says the file was not updated.
 Generic over artifact kinds: sheets cell edits and the deck editor both save ``origin="manual"``
@@ -103,6 +105,7 @@ async def deliver_manual_edits(
     for edit in edits:
         groups.setdefault(edit["name"], []).append(edit)
     notes: list[str] = []
+    delivered: list[dict[str, Any]] = []
     for name, items in groups.items():
         items.sort(key=lambda e: e["version"])
         head = items[-1]
@@ -139,9 +142,14 @@ async def deliver_manual_edits(
             )
         )
         if written or not head.get("source_path"):
+            delivered.extend(items)
             for item in items:
                 try:
                     await server_client.post(f"/v1/artifacts/{item['id']}/delivered", timeout=10.0)
                 except httpx.HTTPError:
                     _logger.warning("could not ack edit %s", item["id"], exc_info=True)
+    if delivered:
+        from omnigent.runner.memory.sync import record_hand_edits
+
+        await record_hand_edits(server_client, conversation_id, delivered)
     return notes

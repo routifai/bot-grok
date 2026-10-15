@@ -157,6 +157,44 @@ async def record_helper_result(
         )
 
 
+async def record_hand_edits(
+    server_client: Any,
+    chat_id: str,
+    edits: list[dict[str, Any]],
+    *,
+    workspace: Path | None = None,
+) -> None:
+    """Journal one line per hand-edited artifact version delivered to a turn. Never raises.
+
+    *edits* are ``pending-edits`` rows; only ``origin == "manual"`` ones are the person's (a live
+    update's refresh is not). A Helper writes nothing.
+    """
+    try:
+        manual = [e for e in edits if e.get("origin") == "manual"]
+        if not manual:
+            return
+        body = await _snapshot(server_client, chat_id)
+        labels = body.get("labels") if isinstance(body.get("labels"), dict) else None
+        if is_helper(labels):
+            return
+        title = body.get("title")
+        origin = files.origin_of(chat_id, labels, title if isinstance(title, str) else "")
+        entries = [
+            files.hand_edit_line(
+                origin,
+                name=str(edit["name"]),
+                version=int(edit["version"]),
+                artifact_id=str(edit["id"]),
+                summary=str(edit.get("edit_summary") or ""),
+                date=_item_date(edit),
+            )
+            for edit in manual
+        ]
+        await asyncio.to_thread(files.append_lines, workspace or default_workspace(), entries)
+    except Exception:  # noqa: BLE001 - a copy must never fail the turn
+        _logger.warning("memory: could not record the hand edits in %s", chat_id, exc_info=True)
+
+
 async def record_daily_note(note: dict[str, Any], *, workspace: Path | None = None) -> None:
     """Project a daily note (the ``daily_note_update`` response) into its day file. Never raises.
 

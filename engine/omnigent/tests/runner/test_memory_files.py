@@ -1133,3 +1133,41 @@ async def test_a_reset_keeps_the_passages(tmp_path: Path) -> None:
 
     assert files.last_reset_of(tmp_path) == "c_reset"
     assert sorted(_passages(service)) == ["mu0", "mu1"]
+
+
+# ── hand edits ───────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_a_delivered_hand_edit_becomes_one_journal_line_with_its_version(
+    _isolated_knowledge_workspace: Path,
+) -> None:
+    from omnigent.runner.knowledge.refs import line_refs
+    from omnigent.superchat.artifacts.writeback import deliver_manual_edits
+
+    edit = {"id": "art_7f2", "name": "budget.xlsx", "version": 3, "origin": "manual",
+            "edit_summary": "B4 1200 → 1500", "created_at": DAY, "write_back": False}  # fmt: skip
+    refresh = {**edit, "id": "art_9", "name": "brief.md", "origin": "update"}
+
+    class _Edits:
+        posted: list[str] = []
+
+        async def get(self, url: str, **_kwargs: Any) -> Any:
+            if url.startswith("/v1/artifacts/pending-edits"):
+                return _Resp(200, {"edits": [edit, refresh]})
+            return _Resp(200, {"title": "t", "labels": {}})
+
+        async def post(self, url: str, **_kwargs: Any) -> Any:
+            self.posted.append(url)
+            return _Resp(200, {})
+
+    server = _Edits()
+    notes = await deliver_manual_edits(server, "conv_main", roots=[])  # type: ignore[arg-type]
+
+    assert len(notes) == 2 and len(server.posted) == 2
+    (line,) = _lines(_isolated_knowledge_workspace)  # a live update's refresh is not the person's
+    assert line == (
+        "- 2026-10-12 · The person edited budget.xlsx by hand (v3): B4 1200 → 1500 · main "
+        "<!-- conv_main artifacts:art_7f2@v3 -->"
+    )
+    assert line_refs(line) == {"artifacts": ["art_7f2@v3"]}

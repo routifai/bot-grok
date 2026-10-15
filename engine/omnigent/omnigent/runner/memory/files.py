@@ -182,6 +182,19 @@ def helper_result_line(
     )
 
 
+def hand_edit_line(
+    origin: Origin, *, name: str, version: int, artifact_id: str, summary: str, date: str
+) -> tuple[str, str]:
+    """:returns: ``(date, line)`` for a version of an artifact the person edited by hand.
+
+    The line refers to that version (``artifacts:<id>@v<version>``).
+    """
+    detail = _one_line(summary)
+    text = f"The person edited {_one_line(name)} by hand (v{version})"
+    refs = {"artifacts": [f"{artifact_id}@v{version}"]}
+    return format_line(date, f"{text}: {detail}" if detail else text, origin, refs)
+
+
 def state_text_of(summary: str | None) -> str:
     """:returns: The state file text of a stored checkpoint summary, without its header."""
     return _strip_seed_header(summary or "").strip()
