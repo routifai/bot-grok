@@ -84,7 +84,9 @@ and the server; the harness contract (system prompt, history list, user message)
 ### C. One addition: tags on the state file, and a dated journal file (findings 4, 7, 11, 15)
 
 9. **Tags.** Every entry in the state file carries a short stable tag and a last-touched date
-   (`[t-launch-budget · 2026-10-09]`). The date lives in the tag itself, so it is in the rendered text and in the
+   (`[t-launch-budget · 2026-10-09]`). The tag's kind is `t-` topic, `d-` decision, `o-` open loop or `p-`
+   preference (how the person wants things done, a standing rule). The date lives in the tag itself, so it is in
+   the rendered text and in the
    payload with nothing extra to store; the summarizer sets it when it changes an entry, and code carries the
    previous version's date forward when the model leaves it out. The instruction says to keep tags, to mark an
    entry `closed` rather than drop it, and to fold two entries by marking one `merged into [tag]` rather than
@@ -99,7 +101,7 @@ and the server; the harness contract (system prompt, history list, user message)
    rendered state file is budgeted at 4k tokens. **Eviction writes first:** when over budget, entries are appended
    word for word, with their tags, to today's journal file and to the compaction payload, and only then dropped:
    first `closed` and `merged` entries, oldest first; when none are left, open entries that have gone longest
-   without being touched, by the date in their tag. Invariant 2 holds by construction.
+   without being touched, by the date in their tag, open preferences last. Invariant 2 holds by construction.
 9a. **Correction path.** When the person says an entry is wrong or should go, the instruction tells the summarizer
     to mark it `closed` at the next compaction. That depends on the model noticing a correction across a compaction
     boundary, so slice 3 also adds `state_close(tag, reason)`: a one-handler tool for the Muse that records a close

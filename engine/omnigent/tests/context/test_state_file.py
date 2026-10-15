@@ -435,3 +435,55 @@ def test_evicted_entries_go_to_the_journal_without_the_stale_mark() -> None:
     text = "- [o-old · 2026-08-01] " + "word " * 40 + "\n- [o-new · 2026-10-12] kept"
     out = _run(None, text, budget=20)
     assert out.evicted and "stale" not in out.evicted[0]
+
+
+# ── preferences (p-) ───────────────────────────────────────────────────────
+
+PREFS = "\n".join(
+    [
+        "- [d-venue · 2026-10-02] Hall B for the spring launch",
+        "- [p-finance-eur · 2026-08-01] Amounts in EUR, never USD",
+        "- [p-nosend · 2026-08-01] Never send an email without asking first",
+    ]
+)
+
+
+def test_a_dropped_preference_is_repaired_word_for_word() -> None:
+    new = PREFS.replace("- [p-finance-eur · 2026-08-01] Amounts in EUR, never USD\n", "")
+    out = _run(PREFS, new, budget=BIG)
+    assert out.repairs == 1
+    assert "- [p-finance-eur · 2026-08-01] Amounts in EUR, never USD" in out.text.split("\n")
+
+
+def test_a_preference_can_be_closed_and_its_tag_normalized() -> None:
+    assert normalize_tag("[p-nosend · 2026-08-01]") == "p-nosend"
+    out = _run(PREFS, PREFS, closes={"p-nosend": "the person lifted it"}, budget=BIG)
+    assert out.applied_closes == [{"tag": "p-nosend", "reason": "the person lifted it"}]
+    assert entries(parse(out.text))["p-nosend"].closed
+
+
+def test_an_old_open_preference_is_evicted_after_every_other_open_entry() -> None:
+    lines = _file(
+        "- [p-old · 2026-01-01] " + "x" * 100,
+        "- [d-new · 2026-10-01] " + "x" * 100,
+        "- [p-closed · 2026-09-01] closed: " + "x" * 100,
+        "- [o-mid · 2026-05-01] " + "x" * 100,
+    )
+    _, evicted = fit_budget(lines, 1, _count)
+    assert [parse(e)[0].id for e in evicted] == ["p-closed", "o-mid", "d-new", "p-old"]
+
+
+def test_an_old_preference_never_renders_stale() -> None:
+    out = _run(None, PREFS)
+    assert out.text == PREFS
+
+
+def test_a_decision_restated_as_a_preference_is_hinted_as_a_duplicate() -> None:
+    text = "\n".join(
+        [
+            "- [d-finance-eur · 2026-10-01] Report every amount in euros, never dollars",
+            "- [p-finance-eur · 2026-10-01] Report every amount in euros, never dollars",
+            "- [t-finance · 2026-10-01] Report every amount in euros, never dollars",
+        ]
+    )
+    assert sf.likely_duplicates(text) == [("d-finance-eur", "p-finance-eur")]

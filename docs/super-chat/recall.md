@@ -216,7 +216,8 @@ in one line, instead of three lines that disagree.
 ### 7.5 Open loops that quietly age
 
 The state file's eviction already moves the longest-untouched entries to the journal when over budget. Add the
-visible version: an open entry untouched for 30 days renders with `· stale?` after its date. The model then asks
+visible version: an open entry untouched for 30 days renders with `· stale?` after its date (never a `p-`
+preference: a standing rule holds until the person changes it). The model then asks
 once ("still waiting on Dana's reply?") or closes it with `state_close`; the person's answer settles it. The nightly
 Dreaming pass may list stale entries in `## Reflection`, never close them itself.
 The model asks about a stale entry only when the current message touches it, or once at the first message after a

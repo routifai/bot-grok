@@ -430,9 +430,10 @@ resolve one (`omnigent/runner/app.py:9597-9606`, `:7988-7996`).
      (`omnigent/context/rollover.py:522-536`, `omnigent/context/state_file.py:297-321`).
    - The summarizer instruction asks for a **state file**: a dated heading, identity and
      preferences first, active tasks with exact identifiers, negative facts, absolute dates, no tool
-     names. Each task, decision and open loop is one line with a tag,
-     `- [t-short-name · YYYY-MM-DD] text` (`t-` topic, `d-` decision, `o-` open loop): keep every
-     tag, mark an entry `closed:` or `merged into [tag]:` instead of deleting it, and record that a
+     names. Each task, decision, open loop and preference is one line with a tag,
+     `- [t-short-name · YYYY-MM-DD] text` (`t-` topic, `d-` decision, `o-` open loop, `p-` preference,
+     one entry per preference, never also written as a decision): keep every tag, mark an entry
+     `closed:` or `merged into [tag]:` instead of deleting it, and record that a
      tool ran, never what its result said. After the state file come 3 to 10 dated `<journal>` lines
      on what happened since the previous checkpoint (`omnigent/context/rollover.py:227-280`).
    - An empty summary raises, so the old checkpoint stays and a later turn retries.
@@ -441,8 +442,10 @@ resolve one (`omnigent/runner/app.py:9597-9606`, `:7988-7996`).
      calls; put back, word for word, every entry the rewrite lost (counted as `repairs`; never a
      rejection); carry a missing date forward; cut an entry over 400 characters; then fit 4,000
      tokens by evicting closed and merged entries first, then the longest-untouched open ones,
-     both oldest first, the evicted lines returned word for word for the journal; last, mark an
-     open entry whose date is 30 or more days before the checkpoint date `stale?` (4.3).
+     both oldest first, open preferences last, the evicted lines returned word for word for the
+     journal; last, mark an
+     open entry (not a preference) whose date is 30 or more days before the checkpoint date
+     `stale?` (4.3).
 3. Posts the result as a new `compaction` item, rejected with 409 when another process rolled over
    first (`omnigent/superchat/rollover.py:467-492`), and clears the applied close labels.
 4. Copies the checkpoint to the person's Computer (`on_stored`, 4.6).
@@ -471,7 +474,8 @@ asked to compact. The rest says the work in the summary is the model's own, that
 still exist, that standing instructions and memory are live every turn and not part of the
 summary, and that `session_history` recovers exact earlier messages.
 
-**The state file** is free text in which every task, decision and open loop is one tagged line
+**The state file** is free text in which every task, decision, open loop and preference is one
+tagged line
 (`omnigent/context/state_file.py:1-17`):
 
 ```text
@@ -480,8 +484,9 @@ summary, and that `session_history` recovers exact earlier messages.
 - [o-dana-reply · 2026-09-01 · stale?] waiting on Dana's reply
 ```
 
-The tag id is the entry's identity; the date is when it was last touched. An open entry whose date
-is 30 or more days before the checkpoint's date carries ` · stale?` after the date
+The tag id is the entry's identity; the date is when it was last touched. An open entry (other than
+a `p-` preference, a standing rule that does not age) whose date is 30 or more days before the
+checkpoint's date carries ` · stale?` after the date
 (`mark_stale`, `omnigent/context/state_file.py:255-280`). The mark is a rendering of the date, not
 stored state: it is added last, after repair and eviction, and the parser drops it wherever the
 summarizer puts it back, so it never changes an entry's identity, a repair or the eviction order.

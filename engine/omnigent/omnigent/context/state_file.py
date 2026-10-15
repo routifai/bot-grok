@@ -7,11 +7,14 @@ The state file is free text the summarizer rewrites at every checkpoint. Some of
     - [o-venue · 2026-10-09] closed: the venue is booked
     - [t-old-plan · 2026-09-30] merged into [t-launch-budget]: same topic
     - [o-dana-reply · 2026-09-01 · stale?] waiting on Dana's reply
+    - [p-currency · 2026-08-02] amounts in EUR, never USD
 
-The id says what it is (``t-`` topic, ``d-`` decision, ``o-`` open loop). The id alone is the
-identity of an entry; the date and the ``closed`` / ``merged into`` marks are attributes, so a
-changed date is never a lost entry. ``stale?`` is a rendering of the date (:func:`mark_stale`),
-never stored: :func:`parse` drops it. Every other line (headings, the position paragraph) is free
+The id says what it is (``t-`` topic, ``d-`` decision, ``o-`` open loop, ``p-`` preference: how
+the person wants things done, a standing rule). The id alone is the identity of an entry; the date
+and the ``closed`` / ``merged into`` marks are attributes, so a changed date is never a lost entry.
+``stale?`` is a rendering of the date (:func:`mark_stale`), never stored: :func:`parse` drops it.
+A preference holds until the person changes it, so it never renders ``stale?`` and an open one is
+the last entry evicted. Every other line (headings, the position paragraph) is free
 text and passes through as written.
 
 Everything here is pure: no I/O, no model call. :func:`reconcile` is the one entry point the
@@ -46,8 +49,12 @@ TAG_ID_MAX_CHARS = 64
 #: Days without a touch after which an open entry renders ``stale?``.
 STALE_AFTER_DAYS = 30
 STALE_MARK = " · stale?"
+#: Kind prefix of a preference: never ``stale?``, evicted last while open.
+PREFERENCE = "p-"
+#: Kinds hinted as duplicates of each other (a decision restated as a preference).
+_DUPLICATE_KIND = {"p-": "d-"}
 
-_ID = r"[tdo]-[a-z0-9]+(?:-[a-z0-9]+)*"
+_ID = r"[tdop]-[a-z0-9]+(?:-[a-z0-9]+)*"
 _TAG = re.compile(
     rf"^(?P<prefix>\s*(?:[-*+]\s+)?)\[(?P<id>{_ID})(?:\s*[·|,]\s*(?P<date>\d{{4}}-\d{{2}}-\d{{2}}))?"
     r"(?P<stale>\s*[·|,]?\s*stale\?)?\](?P<rest>.*)$"
@@ -255,6 +262,9 @@ def carry_dates(previous: list[Line], lines: list[Line], *, today: str) -> list[
 def mark_stale(lines: list[Line], *, today: str) -> list[Line]:
     """Add ``stale?`` to the tag of every open entry untouched for :data:`STALE_AFTER_DAYS`.
 
+    A preference (``p-``) never does: a standing rule is not less true for being old, and
+    ``stale?`` invites asking whether to drop it.
+
     A rendering of the date for the model and ``STATE.md``, never stored state: :func:`parse`
     drops it, so it cannot change an entry's identity, a repair or the eviction order.
 
@@ -266,7 +276,12 @@ def mark_stale(lines: list[Line], *, today: str) -> list[Line]:
         return lines
     out: list[Line] = []
     for line in lines:
-        if isinstance(line, Entry) and not line.done and line.date:
+        if (
+            isinstance(line, Entry)
+            and not line.done
+            and line.date
+            and not line.id.startswith(PREFERENCE)
+        ):
             try:
                 age = (now - datetime.date.fromisoformat(line.date)).days
             except ValueError:
@@ -297,6 +312,8 @@ _WORD = re.compile(r"[a-z0-9]{4,}")
 def likely_duplicates(text: str | None) -> list[tuple[str, str]]:
     """Pairs of open entries of the same kind whose wording overlaps heavily.
 
+    A decision and a preference count as one kind: the same rule written as both is a duplicate.
+
     A hint for the summarizer, never a decision: similar words are not the same topic, so the
     code only points and the model merges (``merged into``) when they are.
 
@@ -312,7 +329,7 @@ def likely_duplicates(text: str | None) -> list[tuple[str, str]]:
     for i, first in enumerate(ids):
         for second in ids[i + 1 :]:
             shared = words[first] & words[second]
-            if first[:2] != second[:2] or len(shared) < DUPLICATE_MIN_SHARED:
+            if _kind(first) != _kind(second) or len(shared) < DUPLICATE_MIN_SHARED:
                 continue
             overlap = len(shared) / len(words[first] | words[second])
             if overlap >= DUPLICATE_OVERLAP:
@@ -321,15 +338,20 @@ def likely_duplicates(text: str | None) -> list[tuple[str, str]]:
     return [(first, second) for _, first, second in scored[:DUPLICATE_MAX_HINTS]]
 
 
+def _kind(entry_id: str) -> str:
+    return _DUPLICATE_KIND.get(entry_id[:2], entry_id[:2])
+
+
 def fit_budget(
     lines: list[Line], budget: int, count: Callable[[str], int]
 ) -> tuple[list[Line], list[str]]:
     """Evict entries until the rendered file fits *budget* tokens.
 
     Closed and merged entries go first, oldest date first; when none are left, open entries,
-    oldest date first. The evicted lines come back word for word from the same call that drops
-    them, so the caller writes them down before the trimmed text is used. Free text is never
-    evicted: the loop stops when no entry is left.
+    oldest date first, open preferences (``p-``) after every other open entry. The evicted lines
+    come back word for word from the same call that drops them, so the caller writes them down
+    before the trimmed text is used. Free text is never evicted: the loop stops when no entry is
+    left.
 
     :param count: Token counter for a text.
     :returns: ``(lines, evicted)``; *evicted* are the entry lines, in eviction order.
@@ -340,7 +362,15 @@ def fit_budget(
         candidates = [(i, line) for i, line in enumerate(lines) if isinstance(line, Entry)]
         if not candidates:
             break
-        index, victim = min(candidates, key=lambda c: (not c[1].done, c[1].date or "", c[0]))
+        index, victim = min(
+            candidates,
+            key=lambda c: (
+                not c[1].done,
+                c[1].id.startswith(PREFERENCE),
+                c[1].date or "",
+                c[0],
+            ),
+        )
         evicted.append(victim.line)
         del lines[index]
     return lines, evicted
