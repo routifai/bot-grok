@@ -7944,12 +7944,22 @@ def create_runner_app(
 
     def _journal_checkpoint(
         conv_id: str, labels: Mapping[str, str] | None
-    ) -> Callable[[CompactionData], Awaitable[None]]:
-        """The ``on_stored`` hook for ``roll_over_session``: copy the checkpoint to ``memory/``."""
-        from omnigent.runner.memory.sync import record_checkpoint
+    ) -> Callable[[CompactionData, list[dict[str, Any]]], Awaitable[None]]:
+        """The ``on_stored`` hook for ``roll_over_session``: copy the checkpoint to ``memory/``,
+        then index the turns it retired (the ``conversation`` source)."""
+        from omnigent.runner.memory.sync import index_retired_turns, record_checkpoint
+        from omnigent.superchat.projects.card import project_slug_from_workspace
 
-        async def _record(item: CompactionData) -> None:
+        async def _record(item: CompactionData, window: list[dict[str, Any]]) -> None:
             await record_checkpoint(server_client, conv_id, dict(labels or {}), item)
+            workspace = await _session_workspace_value(conv_id)
+            await index_retired_turns(
+                server_client,
+                conv_id,
+                dict(labels or {}),
+                window,
+                project=project_slug_from_workspace(workspace) or "",
+            )
 
         return _record
 
@@ -7959,9 +7969,10 @@ def create_runner_app(
         """Heal ``memory/`` in the background: missing folder, new owner, a reset not yet seen.
 
         Then a bounded step of indexing the Conversation's turns from before they were indexed
-        live (the ``conversation`` source).
+        at compaction, and the last turns of its archived Side chats and Forks (the
+        ``conversation`` source).
         """
-        from omnigent.runner.memory.sync import backfill_turns, reconcile
+        from omnigent.runner.memory.sync import backfill_turns, index_archived_chats, reconcile
 
         if _memory_rebuilds:
             return
@@ -7971,55 +7982,11 @@ def create_runner_app(
             try:
                 await reconcile(server_client, conv_id, dict(labels or {}))
                 await backfill_turns(server_client, conv_id, dict(labels or {}))
+                await index_archived_chats(server_client, conv_id, dict(labels or {}))
             finally:
                 _memory_rebuilds.discard(conv_id)
 
         task = asyncio.create_task(_run(), name=f"memory-sync-{conv_id}")
-        _background_tasks.add(task)
-        task.add_done_callback(_background_tasks.discard)
-
-    _turn_indexing: set[str] = set()
-    _turn_index_again: set[str] = set()
-
-    def _schedule_turn_index(conv_id: str) -> None:
-        """Write the completed turn's passage to the index in the background (``conversation``).
-
-        One run per chat at a time; a turn that completes during a run asks for one more.
-        """
-        if conv_id in _turn_indexing:
-            _turn_index_again.add(conv_id)
-            return
-        _turn_indexing.add(conv_id)
-
-        async def _run() -> None:
-            from omnigent.context.labels import SUPERSIDE_CHAT_MODE_VALUE
-            from omnigent.runner.memory.sync import index_completed_turn
-            from omnigent.superchat.projects.card import project_slug_from_workspace
-
-            try:
-                cached = await _rollover_labels_for_session(conv_id)
-                if cached.get(CONTEXT_MODE_LABEL) != SUPERSIDE_CHAT_MODE_VALUE:
-                    return
-                labels = await _session_labels_for_runner_spawn(
-                    server_client=server_client, session_id=conv_id
-                )
-                while True:
-                    _turn_index_again.discard(conv_id)
-                    workspace = await _session_workspace_value(conv_id)
-                    await index_completed_turn(
-                        server_client,
-                        conv_id,
-                        dict(labels or {}),
-                        project=project_slug_from_workspace(workspace) or "",
-                    )
-                    if conv_id not in _turn_index_again:
-                        return
-            except Exception:  # noqa: BLE001 - indexing must never fail a turn
-                _logger.warning("turn index failed for %s", conv_id, exc_info=True)
-            finally:
-                _turn_indexing.discard(conv_id)
-
-        task = asyncio.create_task(_run(), name=f"turn-index-{conv_id}")
         _background_tasks.add(task)
         task.add_done_callback(_background_tasks.discard)
 
@@ -11148,7 +11115,6 @@ def create_runner_app(
                                         )
                                         _text_acc.clear()
                                     _commit_superside_chat_prefix(conv_id)
-                                    _schedule_turn_index(conv_id)
                                     _schedule_superside_chat_threshold_rollover(
                                         conv_id, event.get("response") or {}
                                     )

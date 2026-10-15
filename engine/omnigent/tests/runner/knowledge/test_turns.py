@@ -119,7 +119,9 @@ def test_a_steer_joins_its_turn_and_notices_and_hidden_context_make_no_passage()
 
 def test_a_turn_is_searchable_at_once_and_embedded_within_one_tick(tmp_path: Path) -> None:
     indexer, _ = build_indexer(tmp_path)
-    indexer.index_turn(_passage("u1", "Person: venue deposit\nAssistant: paid", project="spring"))
+    indexer.index_turns(
+        [_passage("u1", "Person: venue deposit\nAssistant: paid", project="spring")]
+    )
     (hit,) = _turn_hits(indexer, "venue deposit")
     assert hit == {
         "chat_id": "conv_main", "turn_item_id": "u1", "date": "2026-10-12", "origin": "main",
@@ -136,7 +138,7 @@ def test_a_turn_is_searchable_at_once_and_embedded_within_one_tick(tmp_path: Pat
 
 def test_without_embeddings_a_turn_is_found_by_keywords(tmp_path: Path) -> None:
     indexer, _ = build_indexer(tmp_path, FakeEmbedder(reason="no_connection"))
-    indexer.index_turn(_passage("u1", "Person: venue deposit"))
+    indexer.index_turns([_passage("u1", "Person: venue deposit")])
     run_all(indexer)
     (row,) = indexer.db.files(turns=True)
     assert row.state == "ready" and row.embed_reason == "no_connection"
@@ -151,7 +153,7 @@ def test_indexing_a_turn_again_is_idempotent_and_a_changed_one_is_replaced(
     run_all(indexer)
     assert indexer.index_turns([_passage("u1", "Person: venue")]) == 0
     assert indexer.db.files(turns=True)[0].state == "ready"  # nothing to embed again
-    indexer.index_turn(_passage("u1", "Person: venue\nAssistant: booked", project="spring"))
+    indexer.index_turns([_passage("u1", "Person: venue\nAssistant: booked", project="spring")])
     (row,) = indexer.db.files(turns=True)
     assert [c.text for c in indexer.db.chunks_for(row.file_id)] == [
         "Person: venue\nAssistant: booked"
@@ -182,7 +184,7 @@ def test_passages_stay_out_of_file_listings_collections_and_file_searches(
     (workspace / "your_files" / "notes.md").write_text("# Notes\n\nThe venue deposit is paid.\n")
     indexer.scan()
     run_all(indexer)
-    indexer.index_turn(_passage("u1", "Person: venue deposit"))  # not embedded yet: pending
+    indexer.index_turns([_passage("u1", "Person: venue deposit")])  # not embedded yet: pending
     status = indexer.status()
     assert [f["name"] for f in status["files"]] == ["notes.md"]
     assert status["pending"] == 0
@@ -201,7 +203,7 @@ def test_passages_stay_out_of_file_listings_collections_and_file_searches(
 
 def test_reindex_sends_passages_back_and_counts_files_only(tmp_path: Path) -> None:
     indexer, _ = build_indexer(tmp_path, FakeEmbedder(reason="no_connection"))
-    indexer.index_turn(_passage("u1", "Person: venue"))
+    indexer.index_turns([_passage("u1", "Person: venue")])
     run_all(indexer)
     indexer.embedder = FakeEmbedder()
     assert indexer.reindex() == 0
@@ -280,7 +282,7 @@ def test_a_turn_carries_its_references_and_a_project_reference_wins(
     assert seen[0][0]["type"] == "function_call"
     assert p.project == "spring-launch" and p.refs == {"files": ["your_files/quote.pdf"]}
     indexer, _ = build_indexer(tmp_path)
-    indexer.index_turn(p)
+    indexer.index_turns([p])
     (chunk_id,) = indexer.db.chunks_with_ref("files", "your_files/quote.pdf")
     assert indexer.db.refs_of([chunk_id])[chunk_id] == {
         "files": ["your_files/quote.pdf"], "project": ["spring-launch"]

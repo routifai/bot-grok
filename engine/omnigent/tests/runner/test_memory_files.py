@@ -887,6 +887,13 @@ class _Record:
             return _Resp(404, {})
         return _Resp(200, {"title": "t", "labels": {}})
 
+    async def post(self, url: str, **kwargs: Any) -> Any:
+        """A stored compaction joins the record (the rollover's ``POST .../events``)."""
+        rows = self.items.setdefault(url.split("/")[3], [])
+        data = dict(kwargs["json"]["data"])
+        rows.append({**data, "id": f"cmp{len(rows)}", "created_at": DAY})
+        return _Resp(200, {})
+
 
 def _service(tmp_path: Path) -> Any:
     from omnigent.runner.knowledge.runtime import KnowledgeRuntime
@@ -905,48 +912,93 @@ SIDE_LABELS = {SIDE_CHAT_LABEL_KEY: "1", SIDE_CHAT_PARENT_LABEL_KEY: "conv_main"
 
 
 @pytest.mark.asyncio
-async def test_a_completed_turn_becomes_one_passage_with_its_metadata(tmp_path: Path) -> None:
-    from omnigent.runner.memory.sync import index_completed_turn
+async def test_retired_turns_become_one_passage_each_with_their_metadata(tmp_path: Path) -> None:
+    from omnigent.runner.memory.sync import index_retired_turns
 
     service = _service(tmp_path)
-    record = _Record({"conv_side": [*_turns("s", 3), _say("n1", "user", "[System: x]", "rn")]})
+    window = [*_turns("s", 2), _say("n1", "user", "[System: x]", "rn")]
+    record = _Record({})
 
-    await index_completed_turn(record, "conv_side", SIDE_LABELS, project="spring", runtime=service)
+    await index_retired_turns(
+        record, "conv_side", SIDE_LABELS, window, project="spring", runtime=service
+    )
 
     found = _passages(service)
-    assert sorted(found) == ["su1", "su2"]  # the last two turns; a notice is never one
-    assert found["su2"] == {
-        "chat_id": "conv_side", "turn_item_id": "su2", "date": "2026-10-12", "origin": "side",
-        "project": "spring", "person_text": "question 2 about the venue",
+    assert sorted(found) == ["su0", "su1"]  # a notice is never one
+    assert found["su1"] == {
+        "chat_id": "conv_side", "turn_item_id": "su1", "date": "2026-10-12", "origin": "side",
+        "project": "spring", "person_text": "question 1 about the venue",
     }  # fmt: skip
-    assert found["su1"]["project"] == ""
+    assert record.reads == []  # the window is in hand: nothing is read
     assert service.indexer.process_next()  # one indexer tick embeds them
     assert service.indexer.db.files(turns=True)[0].embed_status == "embedded"
 
 
 @pytest.mark.asyncio
-async def test_a_turn_written_before_its_reply_is_replaced_later(
+async def test_a_turn_in_the_current_epoch_is_indexed_by_the_compaction_that_retires_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnigent.runner.memory import sync
+    from omnigent.superchat import rollover
+
+    async def summarize(items: list[dict[str, Any]], **_: Any) -> CompactionData:
+        return CompactionData(summary=SUMMARY, last_item_id=items[-1]["id"], token_count=1)
+
+    monkeypatch.setattr(rollover, "build_rollover_item", summarize)
+    service = _service(tmp_path)
+    record = _Record({"conv_main": [_say("mu0", "user", "question 0 about the venue", "mr0")]})
+
+    async def on_stored(_item: CompactionData, window: list[dict[str, Any]]) -> None:
+        await sync.index_retired_turns(record, "conv_main", {}, window, runtime=service)
+
+    async def compact() -> None:
+        assert await rollover.roll_over_session(
+            "conv_main", labels={}, model="m", server_client=record, on_stored=on_stored
+        )
+
+    await sync.backfill_turns(record, "conv_main", {}, runtime=service)  # a new Conversation
+    record.items["conv_main"] += [_say("ma0", "assistant", "answer 0", "mr0"), *_turns("m", 2)[2:]]
+    await sync.backfill_turns(record, "conv_main", {}, runtime=service)
+    assert _passages(service) == {}  # still in the window: not a passage yet
+
+    await compact()
+    assert sorted(_passages(service)) == ["mu0", "mu1"]
+
+    record.items["conv_main"] += _turns("n", 1)
+    assert sorted(_passages(service)) == ["mu0", "mu1"]
+    await compact()  # the next window only: the turns before its anchor are not read again
+    assert sorted(_passages(service)) == ["mu0", "mu1", "nu0"]
+
+
+@pytest.mark.asyncio
+async def test_an_archived_side_chat_indexes_the_turns_after_its_last_anchor(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from omnigent.runner.memory import sync
 
-    monkeypatch.setattr(sync, "_SETTLE_SECONDS", 0)
+    monkeypatch.setattr(sync, "_ARCHIVE_CHECK_SECONDS", 0)
     service = _service(tmp_path)
-    record = _Record({"conv_main": [_say("u1", "user", "venue question", "r1")]})
-    await sync.index_completed_turn(record, "conv_main", {}, runtime=service)
-    record.items["conv_main"] += [
-        _say("a1", "assistant", "Booked it.", "r1"),
-        _say("u2", "user", "venue next", "r2"),
-        _say("a2", "assistant", "Done.", "r2"),
-    ]
-    await sync.index_completed_turn(record, "conv_main", {}, runtime=service)
+    related = {
+        "conv_main": [
+            {"id": "conv_side", "title": "deck", "archived": True, "updated_at": 5},
+            {"id": "conv_open", "title": "open", "archived": False, "updated_at": 5},
+        ]
+    }
+    side = [*_turns("s", 3)]
+    side.insert(2, _stored("c1", SUMMARY, last_item_id="sa0"))  # su0 left the window there
+    record = _Record({"conv_side": side, "conv_open": _turns("o", 2)}, related)
 
-    db = service.indexer.db
-    (row,) = db.files(turns=True)
-    assert sorted(c.text for c in db.chunks_for(row.file_id)) == [
-        "Person: venue next\nAssistant: Done.",
-        "Person: venue question\nAssistant: Booked it.",
-    ]
+    await sync.index_archived_chats(record, "conv_main", {}, runtime=service)
+
+    found = _passages(service)
+    assert sorted(found) == ["su1", "su2"]  # su0 was its compaction's; an open chat waits
+    assert found["su2"]["origin"] == "side"
+    record.reads.clear()
+    await sync.index_archived_chats(record, "conv_main", {}, runtime=service)
+    assert record.reads == []  # once per archive
+    related["conv_main"][0]["updated_at"] = 9  # unarchived, used, archived again
+    await sync.index_archived_chats(record, "conv_main", {}, runtime=service)
+    assert {chat for chat, _ in record.reads} == {"conv_side"}
 
 
 @pytest.mark.asyncio
@@ -958,12 +1010,12 @@ async def test_a_helper_turn_is_not_indexed_and_a_failing_write_does_not_raise(
         SUBAGENT_LABEL_KEY,
         SUPERSIDE_CHAT_MODE_VALUE,
     )
-    from omnigent.runner.memory.sync import backfill_turns, index_completed_turn
+    from omnigent.runner.memory.sync import backfill_turns, index_retired_turns
 
     service = _service(tmp_path)
     record = _Record({"conv_h": _turns("h", 2), "conv_main": _turns("m", 2)})
     helper = {CONTEXT_MODE_LABEL: SUPERSIDE_CHAT_MODE_VALUE, SUBAGENT_LABEL_KEY: "1"}
-    await index_completed_turn(record, "conv_h", helper, runtime=service)
+    await index_retired_turns(record, "conv_h", helper, _turns("h", 2), runtime=service)
     await backfill_turns(record, "conv_h", helper, runtime=service)
     assert _passages(service) == {} and record.reads == []
 
@@ -971,7 +1023,7 @@ async def test_a_helper_turn_is_not_indexed_and_a_failing_write_does_not_raise(
         raise OSError("disk full")
 
     monkeypatch.setattr(service.indexer, "index_turns", broken)
-    await index_completed_turn(record, "conv_main", {}, runtime=service)
+    await index_retired_turns(record, "conv_main", {}, _turns("m", 2), runtime=service)
     await backfill_turns(record, "conv_main", {}, runtime=service)
     assert _passages(service) == {}
 
@@ -980,12 +1032,17 @@ async def test_a_helper_turn_is_not_indexed_and_a_failing_write_does_not_raise(
 async def test_outside_a_computer_nothing_is_indexed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from omnigent.runner.memory.sync import backfill_turns, index_completed_turn
+    from omnigent.runner.memory.sync import (
+        backfill_turns,
+        index_archived_chats,
+        index_retired_turns,
+    )
 
     monkeypatch.delenv("IS_SANDBOX", raising=False)
     record = _Record({"conv_main": _turns("m", 2)})
-    await index_completed_turn(record, "conv_main", {})
+    await index_retired_turns(record, "conv_main", {}, _turns("m", 2))
     await backfill_turns(record, "conv_main", {})
+    await index_archived_chats(record, "conv_main", {})
     assert record.reads == []
 
 
@@ -1009,7 +1066,7 @@ async def test_backfill_is_bounded_resumes_and_never_duplicates(
     for _ in range(4):
         await sync.backfill_turns(record, "conv_main", {}, runtime=restarted)
     found = _passages(restarted)
-    # Every turn once, except each chat's newest, which the live path writes.
+    # Every turn once, except each chat's newest, which its next compaction writes.
     assert sorted(found) == sorted([*(f"mu{n}" for n in range(11)), "fu0", "fu1"])
     assert found["fu0"]["origin"] == "fork"
     db = restarted.indexer.db
@@ -1036,7 +1093,7 @@ async def test_backfill_starts_over_when_its_cursor_item_is_gone(tmp_path: Path)
 async def test_a_deleted_conversation_takes_its_passages_and_its_side_chats_with_it(
     tmp_path: Path,
 ) -> None:
-    from omnigent.runner.memory.sync import index_completed_turn
+    from omnigent.runner.memory.sync import index_retired_turns
 
     service = _service(tmp_path)
     record = _Record(
@@ -1047,9 +1104,9 @@ async def test_a_deleted_conversation_takes_its_passages_and_its_side_chats_with
         }
     )
     await rebuild(record, "conv_main", workspace=tmp_path)
-    await index_completed_turn(record, "conv_main", {}, runtime=service)
-    await index_completed_turn(record, "conv_side", SIDE_LABELS, runtime=service)
-    await index_completed_turn(record, "conv_new", {}, runtime=service)
+    for chat, labels, prefix in (("conv_main", {}, "m"), ("conv_side", SIDE_LABELS, "s")):
+        await index_retired_turns(record, chat, labels, _turns(prefix, 2), runtime=service)
+    await index_retired_turns(record, "conv_new", {}, _turns("n", 2), runtime=service)
 
     await reconcile(record, "conv_new", {}, workspace=tmp_path, runtime=service)
     assert len(_passages(service)) == 6  # the old Conversation still exists: nothing goes
@@ -1064,12 +1121,12 @@ async def test_a_deleted_conversation_takes_its_passages_and_its_side_chats_with
 
 @pytest.mark.asyncio
 async def test_a_reset_keeps_the_passages(tmp_path: Path) -> None:
-    from omnigent.runner.memory.sync import index_completed_turn
+    from omnigent.runner.memory.sync import index_retired_turns
 
     service = _service(tmp_path)
     record = _Record({"conv_main": [_stored("c1", SUMMARY), *_turns("m", 2)]})
     await rebuild(record, "conv_main", workspace=tmp_path)
-    await index_completed_turn(record, "conv_main", {}, runtime=service)
+    await index_retired_turns(record, "conv_main", {}, _turns("m", 2), runtime=service)
     record.items["conv_main"].append(_reset())
 
     await reconcile(record, "conv_main", {}, workspace=tmp_path, runtime=service)

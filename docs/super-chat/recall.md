@@ -52,14 +52,16 @@ behind it.
 
 ### 3.1 One index
 
-Extend the Computer's existing index (ADR 0014, the qmd port) with one more source, **conversation turns**: when a
-turn completes, the runner, already in the Computer with the items in hand, writes one passage per turn (the
-person's text plus the assistant's final text, tool digests included, clipped to the passage limit) with metadata
-`{chat_id, turn_item_id, date, origin: main|side|fork, project}`. Side chats and Forks index into the same store
-with their origin. Turns from before this ships are backfilled once from the record (the same pass that rebuilds
-`memory/`), so an old Conversation is searchable from its first day, not from the day of the change. Same embeddings path (model proxy, keyword-only with the reason when the owner cannot embed),
-same RRF, same reranker. No new service, no new database. A year of daily use is on the order of 5,000 passages;
-sqlite-vec's exact scan is fine at that size.
+Extend the Computer's existing index (ADR 0014, the qmd port) with one more source, **conversation turns**, written
+**at compaction, not per turn**. Turns since the last checkpoint are already in the model's window (and the hint
+excludes them), so a turn needs the index only once it leaves the window, which is exactly what a compaction does.
+The background job that writes the journal lines hands the retired turns to the indexer as one batch: one passage
+per turn (the person's text, the assistant's final text, the tool digests, clipped to the passage limit) with
+metadata `{chat_id, turn_item_id, date, origin: main|side|fork, project}`. No work on the hot path, no second
+writer: the Computer's single indexer thread takes the batch the way it takes an upload. Side chats and Forks index
+at their own compaction, and an archived Side chat indexes its remaining turns then. Same embeddings path (model
+proxy, keyword-only with the reason when the owner cannot embed), same RRF, same reranker. No new service, no new
+database. A year of daily use is on the order of 5,000 passages; sqlite-vec's exact scan is fine at that size.
 
 Sources are then: `files` (uploads, Goal files, artifacts), `journal` (`memory/journal`), `conversation` (turns),
 and `memory` (claims, fetched from the server and fused in). The `project` field on files and turns is the Project
@@ -126,7 +128,7 @@ search before answering or asking) and points it at `files_query` with `sources:
 | Hint | ≤ 300, often 0 | ≤ 1.2 s cap, parallel with other prefix fetches; planner ≤ 600 ms, local search ≤ 150 ms | 1 cheap call (planner); 0 on fallback |
 | Pull, no rerank | one tool round trip; passages ≤ 8 × passage limit | ≈ 50–200 ms local | 0 |
 | Pull, rerank | same | + one cheap-model call (≈ 300–800 ms) | 1 |
-| Indexing a turn | 0 | background, after the turn | 0 (embedding through the proxy, batched) |
+| Indexing turns | 0 | at compaction, in the job that writes the journal; never on the hot path | 0 (embedding through the proxy, batched) |
 
 Pushing bodies instead of ids would cost 2–6k tokens on every turn and put retrieved text in front of every
 message; that is the version to refuse.
@@ -165,7 +167,7 @@ have, one bounded block built from code we already have.
 
 | Slice | Content | Passes when |
 |-------|---------|-------------|
-| 5a. Pull | `conversation` source written by the runner at turn end; `queries` and `sources` on `files_query`; `AGENTS.md` rule updated | A turn is searchable within one indexer tick; a two-sub-query call ranks a passage matching both above one matching one; `sources: memory` fuses claim hits; Postgres and SQLite behave the same (the index is in the Computer) |
+| 5a. Pull | `conversation` source written by the runner at compaction (the retired window, one passage per turn); `queries` and `sources` on `files_query`; `AGENTS.md` rule updated | A retired turn is searchable within one indexer tick after its compaction; a turn still in the window is not indexed; a two-sub-query call ranks a passage matching both above one matching one; `sources: memory` fuses claim hits; Postgres and SQLite behave the same (the index is in the Computer) |
 | 5b. Hint | The planner call with its code fallback; the push block, behind a per-owner setting on first; latency cap; floor; `likely Project` line | 50 turns add ≤ 300 tokens each from the hint; the planner returns `need: false` on acknowledgements and card picks and no search runs; a planner timeout falls back to code-derived queries within the cap; a turn whose message names a file in another Project gets a `likely Project` line |
 | Measure | The paid "asked twice" evaluation from the plan: 20 probes after ≥ 30 compactions, run twice: pull only, then hint on | Hint stays on if it removes at least 3 of the pull-only misses without adding wrong answers; otherwise it stays a setting |
 

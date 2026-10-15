@@ -125,18 +125,20 @@ def put_turn(
     refs: dict[str, list[str]] | None = None,
 ) -> None:
     """A conversation passage with its C1 metadata and C5 refs (ADR 0016), stored through the
-    index's turn writer and embedded by its pass (the runner's turn hook is not needed here)."""
-    indexer.index_turn(
-        TurnPassage(
-            chat_id=chat_id,
-            turn_item_id=turn_item_id,
-            date=date,
-            origin=origin,
-            project=project,
-            person_text=text.split(".")[0],
-            text=text,
-            main_id=chat_id,
-            refs=refs or {},
-        )
+    index's turn writer and embedded by its pass (no compaction needed)."""
+    indexer.index_turns(
+        [
+            TurnPassage(
+                chat_id=chat_id,
+                turn_item_id=turn_item_id,
+                date=date,
+                origin=origin,
+                project=project,
+                person_text=text.split(".")[0],
+                text=text,
+                main_id=chat_id,
+                refs=refs or {},
+            )
+        ]
     )
     run_all(indexer)

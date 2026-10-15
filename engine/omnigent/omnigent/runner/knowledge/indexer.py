@@ -12,7 +12,7 @@ searchable at once).
 when the owner has no embedding connection), render PDF page thumbnails, settle.
 
 The index also holds the ``conversation`` source (:meth:`Indexer.index_turns`): one passage per
-completed turn, written by the runner; its only pass is the embedding.
+completed turn, written by the runner when a compaction retires it; its only pass is the embedding.
 
 Everything blocks; the runtime (:mod:`omnigent.runner.knowledge.runtime`) runs it in one thread.
 """
@@ -657,10 +657,6 @@ class Indexer:
         return out
 
     # ------------------------------------------------------------------ conversation passages
-
-    def index_turn(self, passage: TurnPassage) -> int:
-        """Store one turn passage (idempotent on its ``turn_item_id``); see :meth:`index_turns`."""
-        return self.index_turns([passage])
 
     def index_turns(
         self, passages: Sequence[TurnPassage], *, cursor: tuple[str, str] | None = None
