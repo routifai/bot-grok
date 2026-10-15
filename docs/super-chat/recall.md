@@ -202,7 +202,9 @@ Fusion score × recency factor, per source: conversation turns halve every 90 da
 journal and files have no decay. The factor never reaches zero, so a question that is *about* the past ("when did
 we first discuss the venue?", "what did I say in March?") still finds March. The planner can also mark a sub-query
 as `historical`, which turns the factor off for that sub-query; the pull path exposes the same switch
-(`recency: off`).
+(`recency: off`). When the message names a time ("in March"), the planner also returns `since` and `until`
+(`YYYY-MM-DD`, counted from the person's local date it is given) and the hint's search keeps to those dates; a date
+that is not real is dropped.
 
 ### 7.4 Collapsing versions of the same thing
 

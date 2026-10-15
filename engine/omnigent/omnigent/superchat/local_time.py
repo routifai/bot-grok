@@ -8,7 +8,35 @@ in the owner's preference timezone (``/v1/me/proactivity``).
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+import httpx
+
+
+async def fetch_timezone(server_client: Any, *, timeout: float = 10.0) -> str | None:
+    """The owner's preference timezone (``/v1/me/proactivity``), ``None`` when unknown."""
+    try:
+        if server_client is not None:
+            resp = await server_client.get("/v1/me/proactivity", timeout=timeout)
+            if resp.status_code == 200:
+                found = resp.json().get("timezone")
+                return found if isinstance(found, str) and found else None
+    except (httpx.HTTPError, ValueError, AttributeError):
+        pass
+    return None
+
+
+def _zone(timezone: str | None) -> ZoneInfo:
+    try:
+        return ZoneInfo(timezone) if timezone else ZoneInfo("UTC")
+    except (ZoneInfoNotFoundError, ValueError):
+        return ZoneInfo("UTC")
+
+
+def local_date(timezone: str | None, *, now: datetime | None = None) -> str:
+    """The person's current local date, ``YYYY-MM-DD`` (UTC when the zone is unknown)."""
+    return f"{(now or datetime.now(UTC)).astimezone(_zone(timezone)):%Y-%m-%d}"
 
 
 def local_time_block(timezone: str | None, *, now: datetime | None = None) -> str:
@@ -19,12 +47,8 @@ def local_time_block(timezone: str | None, *, now: datetime | None = None) -> st
     :param timezone: IANA zone name; unknown or empty falls back to UTC.
     :param now: Instant to render (tests); defaults to the current time.
     """
-    instant = now or datetime.now(UTC)
-    try:
-        zone = ZoneInfo(timezone) if timezone else ZoneInfo("UTC")
-    except (ZoneInfoNotFoundError, ValueError):
-        zone = ZoneInfo("UTC")
-    local = instant.astimezone(zone)
+    zone = _zone(timezone)
+    local = (now or datetime.now(UTC)).astimezone(zone)
     offset = local.strftime("%z")
     sign = "\u2212" if offset.startswith("-") else "+"
     clock = f"{local:%A, %B} {local.day}, {local.year}, {local.hour % 12 or 12}:{local:%M %p}"

@@ -21,6 +21,7 @@ from typing import Any
 
 import httpx
 
+from omnigent.superchat.local_time import fetch_timezone, local_date
 from omnigent.superchat.recall_hint.planner import (
     PLANNER_CAP_SECONDS,
     Chat,
@@ -332,9 +333,16 @@ def _hit_key(hit: Any) -> tuple[Any, ...]:
     return tuple(_field(hit, name) for name in names)
 
 
-async def search(queries: Sequence[Query], exclude_chat_after: dict[str, str] | None) -> list[Any]:
+async def search(
+    queries: Sequence[Query],
+    exclude_chat_after: dict[str, str] | None,
+    *,
+    since: str | None = None,
+    until: str | None = None,
+) -> list[Any]:
     """Run the sub-queries through ``recall_search``: those marked historical in a call of
-    their own with recency off, the rest in one call; the two lists merge by best score."""
+    their own with recency off, the rest in one call; the two lists merge by best score.
+    *since* and *until* (``YYYY-MM-DD``) bound both calls to the dates the message asks about."""
     from omnigent.runner.knowledge.recall import recall_search
 
     groups = [
@@ -349,6 +357,8 @@ async def search(queries: Sequence[Query], exclude_chat_after: dict[str, str] | 
                 recency=recency,
                 limit=SEARCH_LIMIT,
                 exclude_chat_after=exclude_chat_after,
+                since=since,
+                until=until,
             )
             for texts, recency in groups
             if texts
@@ -375,9 +385,10 @@ async def _build(
         return None
     if is_small_talk(message):
         return None
-    items, checkpoint = await asyncio.gather(
+    items, checkpoint, timezone = await asyncio.gather(
         _recent_items(server_client, conversation_id),
         _checkpoint(server_client, conversation_id),
+        fetch_timezone(server_client, timeout=HINT_CAP_SECONDS),
     )
     if is_card_pick(message, items):
         return None
@@ -388,7 +399,9 @@ async def _build(
     card = read_card(open_slug) if open_slug else None
     project_name = card.name if card is not None else open_slug
     titles = open_entry_titles(checkpoint.get("summary") if checkpoint else None)
-    inputs = PlannerInput(message, project_name, titles, recent_turns(items, message))
+    inputs = PlannerInput(
+        message, project_name, titles, recent_turns(items, message), local_date(timezone)
+    )
     try:
         plan = await asyncio.wait_for(plan_queries(inputs, chat), PLANNER_CAP_SECONDS)
     except Exception as exc:  # noqa: BLE001 - a timeout or any failure falls back to code
@@ -399,7 +412,12 @@ async def _build(
     if not plan.need or not plan.queries:
         return None
     anchor = checkpoint.get("last_item_id") if checkpoint else None
-    hits = await search(plan.queries, {conversation_id: anchor} if anchor else None)
+    hits = await search(
+        plan.queries,
+        {conversation_id: anchor} if anchor else None,
+        since=plan.since,
+        until=plan.until,
+    )
     if not anchor:
         # No checkpoint: every turn of this chat is still in context.
         hits = [h for h in hits if _field(h, "chat_id") != conversation_id]

@@ -11,6 +11,7 @@ import json
 import re
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
+from datetime import date
 
 import httpx
 
@@ -24,13 +25,15 @@ PLANNER_SYSTEM = (
     "You decide whether anything from earlier (past conversation turns, notes, files, facts "
     "about the person) would help answer the person's new message, and write searches for it. "
     'Reply with only JSON: {"need": true, "queries": [{"q": "...", "historical": false}], '
-    '"project": ""}. '
+    '"project": "", "since": "", "until": ""}. '
     "need is false for a greeting, thanks or other acknowledgement, a pick from offered options, "
     "a short instruction about the reply in progress, or a message the recent turns and open "
     "entries already answer; then queries is empty. Otherwise write one to three short keyword "
     "queries, each a different angle: the thing, the decision about it, the file or person it "
     "touches. Mark a query historical when the message asks about the past (when did we first, "
-    "what did I say in March). project is the Project slug the message is about, or empty."
+    "what did I say in March). project is the Project slug the message is about, or empty. "
+    "since and until bound the dates the message asks about, YYYY-MM-DD, counted from today's "
+    "date (in March: the first and last day of the latest March); empty when it names no time."
 )
 
 #: ``(system, user) -> the model's text``; raises on any failure.
@@ -47,11 +50,17 @@ class Query:
 
 @dataclass(frozen=True)
 class Plan:
-    """What to recall this turn: nothing (``need`` false) or up to three sub-queries."""
+    """What to recall this turn: nothing (``need`` false) or up to three sub-queries.
+
+    :param since: First date the message asks about (``YYYY-MM-DD``), or ``None``.
+    :param until: Last date the message asks about, or ``None``.
+    """
 
     need: bool
     queries: tuple[Query, ...] = ()
     project: str | None = None
+    since: str | None = None
+    until: str | None = None
 
 
 @dataclass(frozen=True)
@@ -59,12 +68,14 @@ class PlannerInput:
     """What the planner reads.
 
     :param recent: ``(role, text)`` of the last two turns, oldest first.
+    :param today: The person's local date (``YYYY-MM-DD``), for dates the message names.
     """
 
     message: str
     project_name: str | None = None
     entry_titles: Sequence[str] = ()
     recent: Sequence[tuple[str, str]] = ()
+    today: str = ""
 
 
 class PlannerUnavailable(Exception):
@@ -79,6 +90,8 @@ def _clip(text: str, limit: int) -> str:
 def planner_prompt(inputs: PlannerInput) -> str:
     """The user message the planner reads."""
     lines = [f"New message: {_clip(inputs.message, _INPUT_MAX_CHARS)}"]
+    if inputs.today:
+        lines.append(f"Today: {inputs.today}")
     lines.append(f"Open Project: {inputs.project_name or 'none'}")
     if inputs.entry_titles:
         lines.append("Open entries:")
@@ -89,8 +102,19 @@ def planner_prompt(inputs: PlannerInput) -> str:
     return "\n".join(lines)
 
 
+def _iso_date(value: object) -> str | None:
+    """*value* when it is a real ``YYYY-MM-DD`` date, else ``None``."""
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value.strip()):
+        return None
+    try:
+        return date.fromisoformat(value.strip()).isoformat()
+    except ValueError:
+        return None
+
+
 def parse_plan(text: str) -> Plan:
-    """The plan in the model's reply.
+    """The plan in the model's reply. A date that is not a real ``YYYY-MM-DD`` is dropped, and
+    both when ``since`` comes after ``until``.
 
     :raises ValueError: when the reply holds no usable plan.
     """
@@ -117,7 +141,16 @@ def parse_plan(text: str) -> Plan:
             queries.append(Query(clean, query.historical))
     if not queries:
         raise ValueError("need without queries")
-    return Plan(need=True, queries=tuple(queries[:MAX_QUERIES]), project=project)
+    since, until = _iso_date(raw.get("since")), _iso_date(raw.get("until"))
+    if since and until and since > until:
+        since = until = None
+    return Plan(
+        need=True,
+        queries=tuple(queries[:MAX_QUERIES]),
+        project=project,
+        since=since,
+        until=until,
+    )
 
 
 async def proxy_chat(system: str, user: str) -> str:

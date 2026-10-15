@@ -16,7 +16,7 @@ from pathlib import Path
 
 import httpx
 
-from omnigent.superchat.local_time import local_time_block
+from omnigent.superchat.local_time import fetch_timezone, local_time_block
 from omnigent.superchat.projects.block import projects_block
 from omnigent.superchat.recall_hint.hint import recall_hint_block
 
@@ -96,15 +96,7 @@ async def fetch_memory_profile(
 
 async def fetch_local_time_line(server_client: httpx.AsyncClient | None) -> str:
     """The person's current local date/time line (owner preference zone; UTC when unknown)."""
-    timezone: str | None = None
-    try:
-        if server_client is not None:
-            resp = await server_client.get("/v1/me/proactivity", timeout=10.0)
-            if resp.status_code == 200:
-                timezone = resp.json().get("timezone")
-    except (httpx.HTTPError, ValueError, AttributeError):
-        pass
-    return local_time_block(timezone)
+    return local_time_block(await fetch_timezone(server_client))
 
 
 def _safe_projects_block(workspace: Path | None) -> str | None:

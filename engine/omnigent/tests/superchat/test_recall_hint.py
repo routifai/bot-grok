@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -128,6 +129,8 @@ class _Search:
         recency: bool = True,
         limit: int = 8,
         exclude_chat_after: dict[str, str] | None = None,
+        since: str | None = None,
+        until: str | None = None,
     ) -> list[Hit]:
         self.calls.append(
             {
@@ -136,6 +139,8 @@ class _Search:
                 "recency": recency,
                 "limit": limit,
                 "exclude_chat_after": exclude_chat_after,
+                "since": since,
+                "until": until,
             }
         )
         if self.delay:
@@ -298,6 +303,29 @@ async def test_historical_turns_recency_off_for_that_query_only(search: _Search)
     await _hint(_Server(), chat)
     by_recency = {c["recency"]: c["queries"] for c in search.calls}
     assert by_recency == {True: ["venue now"], False: ["venue first discussed"]}
+
+
+async def test_a_month_in_the_message_bounds_the_search_to_its_dates(search: _Search) -> None:
+    reply = json.dumps(
+        {
+            "need": True,
+            "queries": [{"q": "decision", "historical": True}],
+            "since": "2026-03-01",
+            "until": "2026-03-31",
+        }
+    )
+    chat = _Chat(reply)
+    await _hint(_Server(), chat, "what did we decide in March")
+    assert re.search(r"^Today: \d{4}-\d{2}-\d{2}$", chat.calls[0][1], re.M)
+    (call,) = search.calls
+    assert (call["since"], call["until"]) == ("2026-03-01", "2026-03-31")
+    # A date that is not real, or a range the wrong way round, is dropped.
+    bad = parse_plan('{"need": true, "queries": ["x"], "since": "2026-02-30", "until": "March"}')
+    assert (bad.since, bad.until) == (None, None)
+    backwards = parse_plan(
+        '{"need": true, "queries": ["x"], "since": "2026-03-31", "until": "2026-03-01"}'
+    )
+    assert (backwards.since, backwards.until) == (None, None)
 
 
 async def test_merged_hits_keep_the_best_score_once(monkeypatch: pytest.MonkeyPatch) -> None:
