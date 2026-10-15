@@ -411,16 +411,11 @@ async def _build(
         plan = Plan(need=True, queries=derive_queries(message, project_name, titles))
     if not plan.need or not plan.queries:
         return None
+    # The current epoch is in context; with no checkpoint (no anchor) that is the whole chat.
     anchor = checkpoint.get("last_item_id") if checkpoint else None
     hits = await search(
-        plan.queries,
-        {conversation_id: anchor} if anchor else None,
-        since=plan.since,
-        until=plan.until,
+        plan.queries, {conversation_id: anchor or ""}, since=plan.since, until=plan.until
     )
-    if not anchor:
-        # No checkpoint: every turn of this chat is still in context.
-        hits = [h for h in hits if _field(h, "chat_id") != conversation_id]
     if not hits or (_field(hits[0], "score") or 0) < SCORE_FLOOR:
         return None
     return render_block(hits, open_project=open_slug, guess=plan.project)

@@ -123,6 +123,7 @@ def put_turn(
     origin: str = "main",
     project: str = "",
     refs: dict[str, list[str]] | None = None,
+    last_item_id: str = "",
 ) -> None:
     """A conversation passage with its C1 metadata and C5 refs (ADR 0016), stored through the
     index's turn writer and embedded by its pass (no compaction needed)."""
@@ -138,6 +139,7 @@ def put_turn(
                 text=text,
                 main_id=chat_id,
                 refs=refs or {},
+                last_item_id=last_item_id,
             )
         ]
     )

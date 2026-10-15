@@ -128,8 +128,10 @@ async def recall_search(
     :param sources: A subset of :data:`SOURCES`; ``journal`` is the ``memory/`` folder.
     :param recency: Let conversation hits lose rank with age (off for questions about the past).
     :param limit: Most hits returned.
-    :param exclude_chat_after: Chat id -> turn item id after which that chat's turns are left
-        out (the current epoch). An item not in the index leaves the chat whole.
+    :param exclude_chat_after: Chat id -> item id after which that chat's turns are left out
+        (the current epoch): the first or last item of a stored turn, as a checkpoint's anchor
+        (the last item it retired) is. An empty id leaves the whole chat out (no checkpoint yet);
+        an item that starts or ends no stored turn leaves the chat whole.
     :param project: Only what belongs to this Project (folder slug).
     :param file: Only this file, and the journal lines and turns that touched it (newest first).
     :param chat: Only this chat's turns and the journal lines that name it.
@@ -392,6 +394,7 @@ def _hits(
     rows = {fid: row for fid in owners if (row := db.get_file(fid))}
     refs = db.refs_of(sorted(chunks))
     cutoffs = _cutoffs(db, exclude)
+    order = db.turn_order([c for c, t in turns.items() if t["chat_id"] in cutoffs])
     terms = {t for q in queries for t in _query_terms(q)}
     journals: dict[str, list[str]] = {}
     out: list[RecallHit] = []
@@ -406,7 +409,7 @@ def _hits(
         turn = turns.get(chunk.id)
         if turn is not None:
             cutoff = cutoffs.get(turn["chat_id"])
-            if cutoff is None or (turn["date"], chunk.id) <= cutoff:
+            if cutoff is None or order[chunk.id] <= cutoff:
                 out.append(_turn_hit(turn, chunk.text, score, ref))
             continue
         row = rows.get(chunk.file_id)
@@ -431,20 +434,14 @@ def _hits(
     return out
 
 
-def _cutoffs(db: Any, exclude: dict[str, str]) -> dict[str, tuple[str, int]]:
-    """Chat id -> the (date, passage id) of the turn after which that chat's turns are left out
-    (passage ids grow in the order turns are indexed)."""
-    if not exclude:
-        return {}
-    chunk_of = db.turn_chunks(list(exclude.values()))
-    meta = db.turn_meta(sorted(chunk_of.values()))
-    return {
-        chat_id: (turn["date"], chunk_of[item_id])
-        for chat_id, item_id in exclude.items()
-        if item_id in chunk_of
-        and (turn := meta.get(chunk_of[item_id])) is not None
-        and turn["chat_id"] == chat_id
-    }
+def _cutoffs(db: Any, exclude: dict[str, str]) -> dict[str, tuple[str, float, int]]:
+    """Chat id -> the order (``turn_order``) of the turn the cutoff item starts or ends; that
+    chat's turns ordered after it are left out. An empty item id leaves out every turn."""
+    found = {chat: db.turn_ending(chat, item) for chat, item in exclude.items() if item}
+    order = db.turn_order([c for c in found.values() if c is not None])
+    cutoffs = {chat: order[c] for chat, c in found.items() if c in order}
+    cutoffs.update({chat: ("", 0.0, 0) for chat, item in exclude.items() if not item})
+    return cutoffs
 
 
 def _object_refs(ref: dict[str, list[str]]) -> dict[str, list[str]]:

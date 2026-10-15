@@ -138,6 +138,33 @@ def test_the_current_epoch_of_a_chat_is_left_out(tmp_path: Path) -> None:
     assert {h.turn_item_id for h in unknown} == {"t1", "t2", "t3", "t4"}
 
 
+def test_a_checkpoint_anchor_on_a_reply_leaves_the_turns_after_it_out(tmp_path: Path) -> None:
+    from omnigent.runner.knowledge.turns import passage_of, split_turns
+
+    def say(item_id: str, role: str, text: str, at: int) -> dict:
+        kind = "input_text" if role == "user" else "output_text"
+        return {"id": item_id, "type": "message", "role": role, "created_at": at,
+                "response_id": f"r{at}", "content": [{"type": kind, "text": text}]}  # fmt: skip
+
+    day = 1_791_800_000  # one day: only the order of the turns tells them apart
+    record = [
+        say("u1", "user", "Draft the venue email.", day),
+        say("a1", "assistant", "Venue email drafted.", day),  # the checkpoint's anchor
+        say("u2", "user", "Send the venue email now.", day + 60),  # the current epoch
+        say("a2", "assistant", "Venue email sent.", day + 60),
+    ]
+    indexer, _ = build_indexer(tmp_path)
+    # Indexed earlier by a backfill that still took the current epoch, newest stored first.
+    turns = split_turns(record)[::-1]
+    indexer.index_turns([passage_of(t, chat_id="c1", main_id="c1", origin="main") for t in turns])
+    run_all(indexer)
+
+    hits = recall(indexer, ["venue email"], exclude_chat_after={"c1": "a1"}, recency=False)
+    assert [h.turn_item_id for h in hits] == ["u1"]
+    whole = recall(indexer, ["venue email"], exclude_chat_after={"c1": ""}, recency=False)
+    assert whole == []  # no checkpoint yet: the whole chat is the current epoch
+
+
 def test_claims_are_fused_by_rank_with_the_other_sources(tmp_path: Path) -> None:
     indexer, ws = build_indexer(tmp_path)
     _put(ws, "your_files/diet.md", "Lunch order notes for the offsite.")

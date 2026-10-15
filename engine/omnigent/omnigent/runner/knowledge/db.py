@@ -101,7 +101,9 @@ CREATE TABLE IF NOT EXISTS turns (
     date TEXT NOT NULL,
     origin TEXT NOT NULL,
     project TEXT NOT NULL DEFAULT '',
-    person_text TEXT NOT NULL DEFAULT ''
+    person_text TEXT NOT NULL DEFAULT '',
+    last_item_id TEXT NOT NULL DEFAULT '',
+    at REAL NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS turns_main ON turns (main_id);
 CREATE TABLE IF NOT EXISTS refs (
@@ -248,6 +250,9 @@ class TurnPassage:
     :param text: The passage: the person's text, the final reply and the tool digests.
     :param main_id: The main Conversation of the chat (deleting it removes the chat's passages).
     :param refs: The turn's references, ``{"files": [...], "artifacts": [...], ...}``.
+    :param last_item_id: The turn's last item (a runtime notice's turn after it counts as its
+        own), so a checkpoint anchor finds the turn it ends.
+    :param at: When the turn started (epoch seconds; 0 unknown): orders a chat's turns.
     """
 
     chat_id: str
@@ -259,6 +264,8 @@ class TurnPassage:
     text: str
     main_id: str
     refs: Mapping[str, Sequence[str]] = field(default_factory=dict)
+    last_item_id: str = ""
+    at: float = 0.0
 
 
 _TURN_FIELDS = ("chat_id", "turn_item_id", "date", "origin", "project", "person_text")
@@ -319,6 +326,12 @@ class KnowledgeDb:
             # changed since (see ``indexer.PARSER_VERSIONS``) is read again.
             conn.execute("ALTER TABLE files ADD COLUMN parser_version INTEGER NOT NULL DEFAULT 1")
         conn.execute("CREATE INDEX IF NOT EXISTS files_sha256 ON files (sha256)")
+        turns = {row[1] for row in conn.execute("PRAGMA table_info(turns)")}
+        if "last_item_id" not in turns:
+            # Passages stored before have neither: the next write of the turn fills them in.
+            conn.execute("ALTER TABLE turns ADD COLUMN last_item_id TEXT NOT NULL DEFAULT ''")
+        if "at" not in turns:
+            conn.execute("ALTER TABLE turns ADD COLUMN at REAL NOT NULL DEFAULT 0")
 
     # ------------------------------------------------------------------ plumbing
 
@@ -514,10 +527,11 @@ class KnowledgeDb:
     ) -> int:
         """Store turn passages, keyword-searchable at once; idempotent on ``turn_item_id``.
 
-        A turn already stored with the same text is left as it is (an empty project is filled
-        in); one whose text changed (stored before its reply was) is replaced. The chat's row goes
-        back to ``text_ready`` so the background pass embeds what is new. *cursor* is a
-        ``(meta key, value)`` saved in the same transaction (backfill progress).
+        A turn already stored with the same text is left as it is (an empty project, and its
+        last item and start, are filled in); one whose text changed (stored before its reply
+        was) is replaced. The chat's row goes back to ``text_ready`` so the background pass
+        embeds what is new. *cursor* is a ``(meta key, value)`` saved in the same transaction
+        (backfill progress).
 
         :returns: How many passages were written.
         """
@@ -527,11 +541,16 @@ class KnowledgeDb:
         with self._tx() as conn:
             for p in passages:
                 old = conn.execute(
-                    "SELECT t.chunk_id, c.text, t.project FROM turns t "
+                    "SELECT t.chunk_id, c.text, t.project, t.last_item_id, t.at FROM turns t "
                     "JOIN chunks c ON c.id = t.chunk_id WHERE t.turn_item_id = ?",
                     (p.turn_item_id,),
                 ).fetchone()
                 if old is not None and old[1] == p.text:
+                    if p.last_item_id and (old[3], old[4]) != (p.last_item_id, p.at):
+                        conn.execute(
+                            "UPDATE turns SET last_item_id = ?, at = ? WHERE chunk_id = ?",
+                            (p.last_item_id, p.at, old[0]),
+                        )
                     if p.project and not old[2]:
                         conn.execute(
                             "UPDATE turns SET project = ? WHERE chunk_id = ?", (p.project, old[0])
@@ -560,7 +579,8 @@ class KnowledgeDb:
                 project = p.project or (old[2] if old is not None else "")
                 conn.execute(
                     "INSERT INTO turns (chunk_id, turn_item_id, chat_id, main_id, date, origin, "
-                    "project, person_text) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    "project, person_text, last_item_id, at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         chunk_id,
                         p.turn_item_id,
@@ -570,6 +590,8 @@ class KnowledgeDb:
                         p.origin,
                         project,
                         p.person_text,
+                        p.last_item_id,
+                        p.at,
                     ),
                 )
                 self._write_refs(
@@ -613,6 +635,29 @@ class KnowledgeDb:
                 list(turn_item_ids),
             ).fetchall()
         return {r[0]: r[1] for r in rows}
+
+    def turn_ending(self, chat_id: str, item_id: str) -> int | None:
+        """The chunk id of *chat_id*'s stored turn that starts or ends at *item_id*, if any."""
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT chunk_id FROM turns WHERE chat_id = ? AND (last_item_id = ? OR "
+                "turn_item_id = ?) ORDER BY chunk_id DESC LIMIT 1",
+                (chat_id, item_id, item_id),
+            ).fetchone()
+        return int(row[0]) if row else None
+
+    def turn_order(self, chunk_ids: Sequence[int]) -> dict[int, tuple[str, float, int]]:
+        """``chunk id -> (date, start, chunk id)``: sorts a chat's turns in the order they ran (a
+        passage stored without its start falls back to its day, then the order it was stored)."""
+        if not chunk_ids:
+            return {}
+        marks = ", ".join("?" for _ in chunk_ids)
+        with self._connection() as conn:
+            rows = conn.execute(
+                f"SELECT chunk_id, date, at FROM turns WHERE chunk_id IN ({marks})",
+                list(chunk_ids),
+            ).fetchall()
+        return {r[0]: (str(r[1]), float(r[2] or 0), int(r[0])) for r in rows}
 
     def chats_of(self, main_id: str) -> list[str]:
         """The chats with passages that belong to the main Conversation *main_id*."""

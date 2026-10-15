@@ -1057,7 +1057,10 @@ async def test_backfill_is_bounded_resumes_and_never_duplicates(
     monkeypatch.setattr(sync, "_BACKFILL_TURNS", 6)
     service = _service(tmp_path)
     related = {"conv_main": [{"id": "conv_fork", "title": "f", "anchor_item_id": "mu1"}]}
-    record = _Record({"conv_main": _turns("m", 12), "conv_fork": _turns("f", 3)}, related)
+    main = _turns("m", 12)
+    main.insert(23, _stored("c1", SUMMARY, last_item_id="ma10"))  # mu11 ran while it summarized
+    fork = [*_turns("f", 3), _stored("c2", SUMMARY, last_item_id="fa1")]
+    record = _Record({"conv_main": main, "conv_fork": fork}, related)
 
     await sync.backfill_turns(record, "conv_main", {}, runtime=service)
     assert sorted(_passages(service)) == sorted(f"mu{n}" for n in range(6))  # six turns a run
@@ -1066,7 +1069,7 @@ async def test_backfill_is_bounded_resumes_and_never_duplicates(
     for _ in range(4):
         await sync.backfill_turns(record, "conv_main", {}, runtime=restarted)
     found = _passages(restarted)
-    # Every turn once, except each chat's newest, which its next compaction writes.
+    # Every retired turn once; each chat's current epoch waits for the compaction that retires it.
     assert sorted(found) == sorted([*(f"mu{n}" for n in range(11)), "fu0", "fu1"])
     assert found["fu0"]["origin"] == "fork"
     db = restarted.indexer.db
@@ -1083,10 +1086,31 @@ async def test_backfill_starts_over_when_its_cursor_item_is_gone(tmp_path: Path)
 
     service = _service(tmp_path)
     service.indexer.db.set_meta("turns_cursor:conv_main", "gone")
-    record = _Record({"conv_main": _turns("m", 3)})
+    record = _Record({"conv_main": [*_turns("m", 3), _stored("c1", SUMMARY, last_item_id="ma1")]})
     await sync.backfill_turns(record, "conv_main", {}, runtime=service)
     await sync.backfill_turns(record, "conv_main", {}, runtime=service)
     assert sorted(_passages(service)) == ["mu0", "mu1"]
+
+
+@pytest.mark.asyncio
+async def test_backfill_indexes_every_retired_turn_and_none_of_the_current_epoch(
+    tmp_path: Path,
+) -> None:
+    from omnigent.runner.memory import sync
+
+    service = _service(tmp_path)
+    related = {"conv_main": [{"id": "conv_side", "title": "s"}]}
+    # The main record ends at its anchor: its newest turn is retired, and no compaction is left
+    # to write it. The Side chat's newest turn is after its anchor: the current epoch.
+    main = [*_turns("m", 2), _stored("c1", SUMMARY, last_item_id="ma1")]
+    side = _turns("s", 3)
+    side.insert(4, _stored("c2", SUMMARY, last_item_id="sa1"))
+    record = _Record({"conv_main": main, "conv_side": side}, related)
+
+    await sync.backfill_turns(record, "conv_main", {}, runtime=service)
+
+    assert sorted(_passages(service)) == ["mu0", "mu1", "su0", "su1"]
+    assert service.indexer.db.meta("turns_backfilled:conv_main") == "done"
 
 
 @pytest.mark.asyncio

@@ -17,6 +17,7 @@ import asyncio
 import logging
 import os
 import time
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -35,6 +36,7 @@ from omnigent.superchat.projects.card import project_slug_from_workspace
 from omnigent.superchat.rollover import (
     ItemsPageFetchError,
     _get_items_page,
+    fetch_latest_checkpoint,
     iter_items_from_checkpoint,
 )
 
@@ -421,12 +423,20 @@ def _knowledge(server_client: Any, runtime: KnowledgeRuntime | None) -> Knowledg
 def _passages(
     turns: list[Turn], origin: files.Origin, main_id: str, project: str = ""
 ) -> list[TurnPassage]:
-    """The passages of *turns*; a turn a runtime notice started is never one."""
-    return [
-        passage_of(t, chat_id=origin.chat_id, main_id=main_id, origin=origin.kind, project=project)
-        for t in turns
-        if not t.notice
-    ]
+    """The passages of *turns*; a turn a runtime notice started is never one, and its items count
+    as the previous passage's (so an anchor at its end still finds a turn)."""
+    out: list[TurnPassage] = []
+    for t in turns:
+        if t.notice:
+            if out:
+                out[-1] = replace(out[-1], last_item_id=t.last_item_id)
+            continue
+        out.append(
+            passage_of(
+                t, chat_id=origin.chat_id, main_id=main_id, origin=origin.kind, project=project
+            )
+        )
+    return out
 
 
 async def index_retired_turns(
@@ -500,22 +510,32 @@ async def index_archived_chats(
 
 
 def _backfill_step(
-    items: list[dict[str, Any]], more: bool, room: int
+    items: list[dict[str, Any]], more: bool, room: int, ends: set[str]
 ) -> tuple[list[Turn], str | None, bool]:
     """What one page of the record gives: ``(turns to write, new cursor, reached the end)``.
 
-    The page's last turn may go on in the next page, or still be running at the record's end, so
-    it is left for the next read (at the end, for the compaction that retires it); a single turn
-    longer than a page is taken whole. ``None`` as the cursor means no progress.
+    *ends* are the chat's latest checkpoint anchor and the checkpoint item itself: the record
+    up to the first of them is retired, every turn in it complete. Before it, the page's last
+    turn may go on in the next page, so it is left for the next read; a single turn longer than
+    a page is taken whole. Past it is the current epoch, which only its compaction indexes.
+    ``None`` as the cursor means no progress.
     """
-    turns = split_turns(items)
-    keep, cut = turns[:-1], (turns[-1].first if turns else len(items))
+    end = next((i for i, it in enumerate(items) if it.get("id") in ends), None)
+    if end is not None:
+        items = items[: end + 1]
+        turns = split_turns(items)
+        keep, cut, done = turns, len(items), True
+    elif not more:
+        return [], None, True  # the cursor is at or past the anchor: nothing retired is left
+    else:
+        turns = split_turns(items)
+        keep, cut, done = turns[:-1], (turns[-1].first if turns else len(items)), False
+        if not keep and cut == 0:
+            keep, cut = turns, len(items)
     if len(keep) > room:
-        keep, cut, more = keep[:room], turns[room].first, True
-    elif more and not keep and cut == 0:
-        keep, cut = turns, len(items)
+        keep, cut, done = keep[:room], turns[room].first, False
     cursor = items[cut - 1].get("id") if cut > 0 else None
-    return keep, cursor if isinstance(cursor, str) else None, not more
+    return keep, cursor if isinstance(cursor, str) else None, done
 
 
 async def _backfill_chat(
@@ -525,10 +545,19 @@ async def _backfill_chat(
     main_id: str,
     budget: dict[str, int],
 ) -> bool:
-    """Index a chat's turns from its saved cursor while *budget* lasts. ``True`` at its end."""
+    """Index a chat's retired turns (up to its latest checkpoint's anchor) from its saved cursor
+    while *budget* lasts. ``True`` once none is left; a chat never compacted has none."""
     db, key = found.indexer.db, f"{CURSOR_KEY}{origin.chat_id}"
+    checkpoint = await fetch_latest_checkpoint(
+        server_client, origin.chat_id, skip_placeholders=True
+    )
+    if checkpoint is None:
+        return True
+    ends = {e for e in (checkpoint.get("last_item_id"), checkpoint.get("id")) if e}
     while budget["pages"] > 0 and budget["turns"] > 0:
         cursor = await asyncio.to_thread(db.meta, key)
+        if cursor in ends:
+            return True
         params = {"limit": _BACKFILL_PAGE, "order": "asc", **({"after": cursor} if cursor else {})}
         try:
             page = await _get_items_page(server_client, origin.chat_id, params)
@@ -540,7 +569,7 @@ async def _backfill_chat(
         budget["pages"] -= 1
         items = [it for it in page.get("data", []) if isinstance(it, dict)]
         more = bool(items) and bool(page.get("has_more", False))
-        turns, moved, ended = _backfill_step(items, more, budget["turns"])
+        turns, moved, ended = _backfill_step(items, more, budget["turns"], ends)
         budget["turns"] -= len(turns)
         passages = _passages(turns, origin, main_id)
         await asyncio.to_thread(
@@ -561,9 +590,10 @@ async def backfill_turns(
     """Index, once, the turns a Conversation had before turns were indexed. Never raises.
 
     Reads the record of the main Conversation, then of each Side chat and Fork, from its first
-    item, at most :data:`_BACKFILL_PAGES` pages and :data:`_BACKFILL_TURNS` turns per run. Each
-    chat's progress (the last item read) is saved with its passages, so a restart resumes where
-    it stopped and never writes a turn twice. Once every chat was read to its end the
+    item to its latest checkpoint's anchor (every retired turn, none of the current epoch), at
+    most :data:`_BACKFILL_PAGES` pages and :data:`_BACKFILL_TURNS` turns per run. Each chat's
+    progress (the last item read) is saved with its passages, so a restart resumes where it
+    stopped and never writes a turn twice. Once every chat was read to its anchor the
     Conversation is marked done; from then on its turns arrive with each compaction.
     """
     try:

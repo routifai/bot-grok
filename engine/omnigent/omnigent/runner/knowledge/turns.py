@@ -37,6 +37,8 @@ class Turn:
     :param turn_item_id: The id of the message that started it.
     :param first: Its position in the items it was cut from.
     :param notice: Started by a runtime notice: never indexed.
+    :param at: When its first message was written (epoch seconds; 0 unknown).
+    :param last_item_id: The last item of it read so far.
     """
 
     turn_item_id: str
@@ -48,6 +50,8 @@ class Turn:
     steers: list[str] = field(default_factory=list)
     assistant: str = ""
     tools: list[dict[str, Any]] = field(default_factory=list)
+    at: float = 0.0
+    last_item_id: str = ""
 
     @property
     def answered(self) -> bool:
@@ -62,36 +66,53 @@ def _date(item: dict[str, Any]) -> str:
     return f"{datetime.now(UTC):%Y-%m-%d}"
 
 
+def _at(item: dict[str, Any]) -> float:
+    created = item.get("created_at")
+    return (
+        float(created)
+        if isinstance(created, int | float) and not isinstance(created, bool)
+        else 0.0
+    )
+
+
 def _clip(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
 def split_turns(items: list[dict[str, Any]]) -> list[Turn]:
-    """The turns in *items* (oldest first). Items before the first turn start are skipped."""
+    """The turns in *items* (oldest first). Items before the first turn start are skipped; every
+    item after it belongs to the turn it falls in (its ``last_item_id``)."""
     turns: list[Turn] = []
     for index, item in enumerate(items):
-        kind, role = item.get("type"), item.get("role")
-        current = turns[-1] if turns else None
-        if kind == "message" and role == "user":
-            text = item_text(item)
-            if item.get("is_meta") is True or not text or not isinstance(item.get("id"), str):
-                continue
-            rid = item.get("response_id") if isinstance(item.get("response_id"), str) else None
-            notice = item.get("is_system_notice") is True or is_system_notice_text(text)
-            if current is not None and rid is not None and rid == current.response_id:
-                if not notice and not current.notice:
-                    current.steers.append(text)
-                continue
-            turns.append(Turn(item["id"], rid, _date(item), text, index, notice=notice))
-        elif current is None:
-            continue
-        elif kind == "message" and role == "assistant" and item.get("is_meta") is not True:
-            text = item_text(item)
-            if text:
-                current.assistant = text  # the turn's last text is its reply
-        elif kind in ("function_call", "function_call_output"):
-            current.tools.append(item)
+        _take(turns, index, item)
+        if turns and isinstance(item.get("id"), str):
+            turns[-1].last_item_id = item["id"]
     return turns
+
+
+def _take(turns: list[Turn], index: int, item: dict[str, Any]) -> None:
+    """Add *item* to the last turn of *turns*, or start a turn with it."""
+    kind, role = item.get("type"), item.get("role")
+    current = turns[-1] if turns else None
+    if kind == "message" and role == "user":
+        text = item_text(item)
+        if item.get("is_meta") is True or not text or not isinstance(item.get("id"), str):
+            return
+        rid = item.get("response_id") if isinstance(item.get("response_id"), str) else None
+        notice = item.get("is_system_notice") is True or is_system_notice_text(text)
+        if current is not None and rid is not None and rid == current.response_id:
+            if not notice and not current.notice:
+                current.steers.append(text)
+            return
+        turns.append(Turn(item["id"], rid, _date(item), text, index, notice=notice, at=_at(item)))
+    elif current is None:
+        return
+    elif kind == "message" and role == "assistant" and item.get("is_meta") is not True:
+        text = item_text(item)
+        if text:
+            current.assistant = text  # the turn's last text is its reply
+    elif kind in ("function_call", "function_call_output"):
+        current.tools.append(item)
 
 
 def passage_of(
@@ -124,4 +145,6 @@ def passage_of(
         text=text,
         main_id=main_id,
         refs={key: values for key, values in refs.items() if key != "project"},
+        last_item_id=turn.last_item_id,
+        at=turn.at,
     )

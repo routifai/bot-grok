@@ -264,6 +264,7 @@ async def _recall(runtime: KnowledgeRuntime, ctx: HandlerCtx, args: dict[str, An
             sources=sources,
             recency=args.get("recency") is not False,
             limit=max(limit, RERANK_CANDIDATES) if rerank else limit,
+            exclude_chat_after=await _current_epoch(ctx),
             indexer=indexer,
             claims=_claims(ctx),
             **filters,
@@ -290,6 +291,22 @@ async def _recall(runtime: KnowledgeRuntime, ctx: HandlerCtx, args: dict[str, An
         out.update(verdict)
     out["results"] = results[:limit]
     return json.dumps(out)
+
+
+async def _current_epoch(ctx: HandlerCtx) -> dict[str, str] | None:
+    """The calling chat's current epoch, which the model already has: its turns after the latest
+    checkpoint's anchor, or all of them with no checkpoint (as the hint leaves them out)."""
+    if ctx.server_client is None or not ctx.conversation_id:
+        return None
+    from omnigent.superchat.rollover import fetch_latest_checkpoint
+
+    try:
+        checkpoint = await fetch_latest_checkpoint(
+            ctx.server_client, ctx.conversation_id, skip_placeholders=True
+        )
+    except Exception:  # noqa: BLE001 - no checkpoint known is "the whole chat is this epoch"
+        checkpoint = None
+    return {ctx.conversation_id: (checkpoint or {}).get("last_item_id") or ""}
 
 
 def _hit_view(hit: RecallHit) -> dict[str, Any]:

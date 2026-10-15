@@ -291,11 +291,8 @@ async def test_search_uses_all_sources_and_leaves_the_current_epoch_out(search: 
 
 
 async def test_without_a_checkpoint_this_chats_own_turns_are_left_out(search: _Search) -> None:
-    search.hits = [
-        Hit("conversation", "2026-10-10", 0.9, chat_id=CHAT, turn_item_id="i_now", title="x")
-    ]
-    assert await _hint(_Server(checkpoint=False), _Chat(_plan("venue"))) is None
-    assert search.calls[0]["exclude_chat_after"] is None
+    await _hint(_Server(checkpoint=False), _Chat(_plan("venue")))
+    assert search.calls[0]["exclude_chat_after"] == {CHAT: ""}  # recall leaves the chat out
 
 
 async def test_historical_turns_recency_off_for_that_query_only(search: _Search) -> None:

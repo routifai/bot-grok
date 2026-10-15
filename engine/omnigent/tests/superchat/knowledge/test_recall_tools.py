@@ -20,6 +20,9 @@ CLAIM = {"claim_id": "k1", "text": "Prefers the hotel venue", "kind": "preferenc
 EXPLAIN = {"claim": CLAIM, "quote": "I like the hotel", "evidence": [],
            "supersedes": [{"claim_id": "k0"}], "superseded_by": None}  # fmt: skip
 BUDGET = "your_files/launch-budget.md"
+#: The calling chat's checkpoint: t1 left the window there; u2 is the current epoch.
+CHECKPOINT = {"id": "cp1", "type": "compaction", "summary": "## Context checkpoint\n\nstate",
+              "last_item_id": "a1"}  # fmt: skip
 
 
 def _msg(item_id: str, role: str, text: str) -> dict:
@@ -38,7 +41,7 @@ class Engine:
         self.paths: list[str] = []
         # the chat, oldest first: the turn t1 (person + reply), then the next turn u2
         self.items = [_msg("t1", "user", "Which venue?"), _msg("a1", "assistant", "The hotel."),
-                      _msg("u2", "user", "Thanks")]  # fmt: skip
+                      _msg("u2", "user", "Thanks"), CHECKPOINT]  # fmt: skip
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         path, params = request.url.path, request.url.params
@@ -86,12 +89,13 @@ def _stocked(tmp_path: Path, monkeypatch):
     line = f"- 2026-09-30 · Checked the hotel venue quote · main <!-- c1 files:{BUDGET} -->"
     _put(runtime, "memory/journal/2026-09-30.md", f"# 2026-09-30\n\n## Journal\n\n{line}\n")
     put_turn(runtime.indexer, SESSION, "t1", "2026-10-01", "Which venue? The hotel venue.",
-             refs={"files": [BUDGET]})  # fmt: skip
+             refs={"files": [BUDGET]}, last_item_id="a1")  # fmt: skip
     return runtime
 
 
 def test_recall_searches_every_source_by_default(tmp_path: Path, monkeypatch) -> None:
-    _stocked(tmp_path, monkeypatch)
+    runtime = _stocked(tmp_path, monkeypatch)
+    put_turn(runtime.indexer, SESSION, "u2", "2026-10-02", "Thanks for the hotel venue.")
     engine = Engine()
 
     found = call("recall", engine.client(), queries=["hotel venue", "venue cost"], rerank=False)
@@ -101,6 +105,7 @@ def test_recall_searches_every_source_by_default(tmp_path: Path, monkeypatch) ->
     best = {r["source"]: r for r in reversed(found["results"])}
     assert set(best) == {"files", "journal", "conversation", "memory"}
     assert best["conversation"]["id"] == "i_t1" and best["conversation"]["date"] == "2026-10-01"
+    assert "i_u2" not in {r["id"] for r in found["results"]}  # the current epoch: in context
     assert best["journal"]["id"].startswith("ep_") and best["journal"]["line"] == 5
     assert best["journal"]["snippet"] == "- 2026-09-30 · Checked the hotel venue quote · main"
     assert best["files"]["id"] == f"f_{best['files']['file_id']}@1"
