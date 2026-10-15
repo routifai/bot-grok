@@ -7,6 +7,7 @@ import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from omnigent.runner.knowledge.db import TurnPassage
 from omnigent.runner.knowledge.embedder import (
     Embedded,
     Embedder,
@@ -110,3 +111,32 @@ class FakeReranker(Reranker):
         self.calls.append((query, len(passages)))
         order = range(len(passages))
         return sorted(order, key=lambda i: (self.prefer.lower() not in passages[i].lower(), i))
+
+
+def put_turn(
+    indexer: Indexer,
+    chat_id: str,
+    turn_item_id: str,
+    date: str,
+    text: str,
+    *,
+    origin: str = "main",
+    project: str = "",
+    refs: dict[str, list[str]] | None = None,
+) -> None:
+    """A conversation passage with its C1 metadata and C5 refs (ADR 0016), stored through the
+    index's turn writer and embedded by its pass (the runner's turn hook is not needed here)."""
+    indexer.index_turn(
+        TurnPassage(
+            chat_id=chat_id,
+            turn_item_id=turn_item_id,
+            date=date,
+            origin=origin,
+            project=project,
+            person_text=text.split(".")[0],
+            text=text,
+            main_id=chat_id,
+            refs=refs or {},
+        )
+    )
+    run_all(indexer)

@@ -12,15 +12,26 @@ import asyncio
 import base64
 import json
 import re
+from dataclasses import asdict, replace
+from datetime import date
 from typing import Any
 
 from omnigent.runner.knowledge.db import FileRow
-from omnigent.runner.knowledge.indexer import DEFAULT_K, MAX_K, AmbiguousFile
+from omnigent.runner.knowledge.indexer import DEFAULT_K, MAX_K, RERANK_CANDIDATES, AmbiguousFile
+from omnigent.runner.knowledge.recall import (
+    MAX_QUERIES,
+    SOURCES,
+    ClaimSearch,
+    RecallHit,
+    journal_line,
+    recall_with_reason,
+)
 from omnigent.runner.knowledge.runtime import KnowledgeRuntime, configure, get_runtime
 from omnigent.runtime.mcp_tool_result import encode_mcp_image_result
 from omnigent.superchat._handler_http import HEX_ID_RE, error
 from omnigent.superchat.feature import HandlerCtx
 from omnigent.superchat.knowledge.tools import UPLOADS_PREFIX
+from omnigent.superchat.memory.handlers import handle_memory_tool
 
 #: Marks a ``files_search`` result so the transcript can show its pages as citation chips.
 SEARCH_RESULT_TYPE = "file_search"
@@ -51,6 +62,10 @@ async def handle_knowledge_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:
     """
     runtime = _runtime(ctx)
     try:
+        if ctx.tool_name == "recall":
+            return await _recall(runtime, ctx, args)
+        if ctx.tool_name == "recall_get":
+            return await _recall_get(runtime, ctx, args)
         return await asyncio.to_thread(_run, runtime, ctx.tool_name, args)
     except Exception as exc:  # noqa: BLE001
         return error(f"{ctx.tool_name} failed: {exc}")
@@ -209,3 +224,188 @@ def _thumbnail(runtime: KnowledgeRuntime, args: dict[str, Any]) -> str:
     return json.dumps(
         {"image_base64": base64.b64encode(data).decode(), "image_mime": "image/webp"}
     )
+
+
+# ---------------------------------------------------------------------- recall (ADR 0016)
+
+#: ``recall_get`` reads at most this many ids per call.
+MAX_READ_IDS = 10
+_FILTERS = ("project", "file", "chat", "since", "until")
+
+
+async def _recall(runtime: KnowledgeRuntime, ctx: HandlerCtx, args: dict[str, Any]) -> str:
+    """``recall``: Recall's search over the asked sources and filters, then the model rerank."""
+    asked = args.get("queries")
+    asked = [asked] if isinstance(asked, str) else asked if isinstance(asked, list) else []
+    queries = [q.strip() for q in [*asked, args.get("query")] if isinstance(q, str) and q.strip()]
+    named = args.get("sources")
+    named = [named] if isinstance(named, str) else named
+    sources = set(SOURCES)
+    if isinstance(named, list) and named and "all" not in named:
+        sources = {s for s in named if isinstance(s, str)}
+        if not sources <= SOURCES:
+            return error("sources are files, journal, conversation, memory or all")
+    filters = {k: v.strip() for k in _FILTERS if isinstance(v := args.get(k), str) and v.strip()}
+    for key in ("since", "until"):
+        try:
+            if key in filters:
+                date.fromisoformat(filters[key][:10])
+        except ValueError:
+            return error(f"{key} must be a date like 2026-09-14")
+    if len(queries) > MAX_QUERIES:
+        return error(f"recall takes at most {MAX_QUERIES} queries")
+    k = args.get("k")
+    limit = max(1, min(k, MAX_K)) if isinstance(k, int) and not isinstance(k, bool) else DEFAULT_K
+    rerank = args.get("rerank") is not False and bool(queries) and "file" not in filters
+    indexer = runtime.indexer
+    try:
+        hits, reason = await recall_with_reason(
+            queries,
+            sources=sources,
+            recency=args.get("recency") is not False,
+            limit=max(limit, RERANK_CANDIDATES) if rerank else limit,
+            indexer=indexer,
+            claims=_claims(ctx),
+            **filters,
+        )
+    except ValueError as exc:
+        return error(str(exc))
+    out: dict[str, Any] = {
+        "type": "recall",
+        "queries": queries,
+        "sources": sorted(sources),
+        **filters,
+        "mode": "keyword" if reason else "hybrid",
+        "keyword_only_reason": reason,
+        "files_indexing": indexer.db.pending_count(),
+    }
+    results = [_hit_view(hit) for hit in hits]
+    if rerank:
+        ranked, verdict = await asyncio.to_thread(
+            indexer.rerank_hits,
+            "; ".join(queries),
+            [{**r, "passage": r["snippet"]} for r in results],
+        )
+        results = [{k: v for k, v in r.items() if k != "passage"} for r in ranked]
+        out.update(verdict)
+    out["results"] = results[:limit]
+    return json.dumps(out)
+
+
+def _hit_view(hit: RecallHit) -> dict[str, Any]:
+    """A hit as the model reads it: what is set, nothing empty."""
+    return {k: v for k, v in asdict(hit).items() if v not in (None, "", [], {})}
+
+
+def _claims(ctx: HandlerCtx) -> ClaimSearch | None:
+    """Claim search through the engine route ``memory_search`` uses (needs the server)."""
+    if ctx.server_client is None or ctx.conversation_id is None:
+        return None
+    search_ctx = replace(ctx, tool_name="memory_search")
+
+    async def search(query: str, limit: int) -> list[dict[str, Any]]:
+        found = json.loads(await handle_memory_tool(search_ctx, {"query": query, "limit": limit}))
+        results = found.get("results") if isinstance(found, dict) else None
+        return results if isinstance(results, list) else []
+
+    return search
+
+
+async def _recall_get(runtime: KnowledgeRuntime, ctx: HandlerCtx, args: dict[str, Any]) -> str:
+    """``recall_get``: read hits by id, each through the reader its prefix names."""
+    ids = args.get("ids")
+    ids = [ids] if isinstance(ids, str) else ids if isinstance(ids, list) else []
+    ids = [i.strip() for i in [*ids, args.get("id")] if isinstance(i, str) and i.strip()]
+    if not ids:
+        return error("recall_get requires an id (or ids) from recall")
+    if len(ids) > MAX_READ_IDS:
+        return error(f"recall_get reads at most {MAX_READ_IDS} ids")
+    found = [await _read_one(runtime, ctx, read_id) for read_id in dict.fromkeys(ids)]
+    return json.dumps({"type": "recall_get", "results": found})
+
+
+async def _read_one(runtime: KnowledgeRuntime, ctx: HandlerCtx, read_id: str) -> dict[str, Any]:
+    prefix, _, rest = read_id.partition("_")
+    try:
+        if prefix == "i" and rest:
+            body = await _read_turn(runtime, ctx, rest)
+        elif prefix == "ep" and rest.isdigit():
+            body = await asyncio.to_thread(_read_journal, runtime, int(rest))
+        elif prefix == "f" and rest:
+            file_id, _, pages = rest.partition("@")
+            body = json.loads(
+                await asyncio.to_thread(
+                    _get, runtime, {"file_id": file_id, "pages": pages or None}
+                )
+            )
+        elif prefix == "c" and rest:
+            explain = replace(ctx, tool_name="memory_explain")
+            body = json.loads(await handle_memory_tool(explain, {"claim_id": rest}))
+        else:
+            body = {"error": "unknown id: ids start with i_, ep_, f_ or c_"}
+    except Exception as exc:  # noqa: BLE001 - one bad id never fails the others
+        body = {"error": f"could not read it: {exc}"}
+    return {"id": read_id, **body}
+
+
+def _read_journal(runtime: KnowledgeRuntime, passage_id: int) -> dict[str, Any]:
+    """A journal passage from the index, with its first line's number and date."""
+    db = runtime.indexer.db
+    chunk = db.chunks_by_ids([passage_id]).get(passage_id)
+    row = db.get_file(chunk.file_id) if chunk else None
+    if chunk is None or row is None or not row.path.startswith("memory/"):
+        return {"error": "no journal passage with that id"}
+    _, line, day = journal_line(runtime.indexer, row, chunk, set())
+    refs = db.refs_of([chunk.id]).get(chunk.id, {})
+    return {
+        "source": "journal",
+        "path": row.path,
+        "line": line,
+        "date": day,
+        "text": chunk.text,
+        **({"refs": refs} if refs else {}),
+    }
+
+
+async def _read_turn(runtime: KnowledgeRuntime, ctx: HandlerCtx, item_id: str) -> dict[str, Any]:
+    """A whole turn through ``session_history read``: paged back from the next turn's start."""
+    db = runtime.indexer.db
+    chunk_id = db.turn_chunks([item_id]).get(item_id)
+    turn = db.turn_meta([chunk_id]).get(chunk_id) if chunk_id is not None else None
+    if chunk_id is None or turn is None:
+        return {"error": "no turn with that id"}
+    view = {"source": "conversation", "chat_id": turn["chat_id"], "date": turn["date"][:10]}
+    if ctx.server_client is None or ctx.conversation_id is None:
+        chunk = db.chunks_by_ids([chunk_id])[chunk_id]
+        return {**view, "text": chunk.text, "note": "the turn as indexed"}
+    from omnigent.runner.tool_dispatch import _execute_session_history_tool
+    from omnigent.tools.builtins.session_history import project_api_item
+
+    cursor, after = None, item_id
+    for _ in range(5):  # a turn longer than 500 items is read from its newest part
+        resp = await ctx.server_client.get(
+            f"/v1/sessions/{turn['chat_id']}/items",
+            params={"after": after, "order": "asc", "limit": 100},
+            timeout=30.0,
+        )
+        resp.raise_for_status()
+        page = resp.json()
+        items = [project_api_item(raw) for raw in page.get("data", [])]
+        cursor = next(
+            (i["id"] for i in items if i.get("type") == "text" and i.get("role") == "user"), None
+        )
+        if cursor or not page.get("has_more") or not items:
+            break
+        after = items[-1]["id"]
+    read = json.loads(
+        await _execute_session_history_tool(
+            {"action": "read", "chat_id": turn["chat_id"], "cursor": cursor, "limit": 1},
+            conversation_id=ctx.conversation_id,
+            server_client=ctx.server_client,
+        )
+    )
+    turns = read.get("turns") or []
+    messages = turns[0]["messages"] if turns else []
+    if not messages or messages[0].get("id") != item_id:
+        return {**view, "error": read.get("error") or "that turn is no longer in the chat"}
+    return {**view, "messages": messages}

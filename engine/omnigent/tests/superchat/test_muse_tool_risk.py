@@ -47,6 +47,8 @@ RISK: dict[str, str | None] = {
     "files_status": None,
     "files_vsearch": None,
     "open_project": None,
+    "recall": None,
+    "recall_get": None,
     "render_card": None,
     "session_history": None,
     "side_chat_open": None,

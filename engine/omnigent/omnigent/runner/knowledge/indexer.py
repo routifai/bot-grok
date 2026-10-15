@@ -651,7 +651,7 @@ class Indexer:
         out["mode"] = out_mode
         out["keyword_only_reason"] = reason if out_mode == "keyword" else None
         if rerank:
-            results, verdict = self._rerank(query, results)
+            results, verdict = self.rerank_hits(query, results)
             out.update(verdict)
         out["results"] = results[:limit]
         return out
@@ -681,7 +681,7 @@ class Indexer:
         with self._work:
             return self.db.delete_chats(chat_ids, meta_keys=meta_keys)
 
-    def _rerank(
+    def rerank_hits(
         self, query: str, hits: list[dict[str, Any]]
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """*hits* in the model's order, or as they are with the reason it could not."""

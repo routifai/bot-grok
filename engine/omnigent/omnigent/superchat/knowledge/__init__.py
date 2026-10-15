@@ -47,6 +47,8 @@ def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]
         tools.FilesMultiGetTool(),
         tools.FilesReadPageTool(),
         tools.FilesStatusTool(),
+        tools.RecallTool(),
+        tools.RecallGetTool(),
     ]
 
 

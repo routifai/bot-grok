@@ -111,6 +111,8 @@ def test_models_get_the_qmd_style_tools(tmp_path: Path) -> None:
         "files_multi_get",
         "files_read_page",
         "files_status",
+        "recall",
+        "recall_get",
     ]
     assert FEATURE.tools({}, None) == []  # type: ignore[arg-type]
     assert {"files_ingest", "files_thumbnail", "files_reindex", "files_find"} <= set(

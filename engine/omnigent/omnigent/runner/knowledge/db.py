@@ -29,7 +29,7 @@ import sqlite3
 import struct
 import threading
 import time
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Hashable, Iterable, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -175,6 +175,19 @@ def fts_query(query: str) -> str | None:
         stem = word[:-1] if len(word) > _PREFIX_MIN and word.endswith("s") else word
         parts.append(f'"{stem}"*' if len(stem) >= _PREFIX_MIN else f'"{word}"')
     return " OR ".join(parts) or None
+
+
+def fuse(lists: Sequence[Sequence[Hashable]]) -> list[tuple[Any, float]]:
+    """Reciprocal rank fusion: every item of *lists*, best first, with a score in ``[0, 1]`` (an
+    item on top of every list is 1). An item found by several lists rises above one found once.
+    """
+    ranks: dict[Any, float] = {}
+    best = len(lists) / (_RRF_K + 1)
+    for ids in lists:
+        for rank, item in enumerate(ids, start=1):
+            ranks[item] = ranks.get(item, 0.0) + 1.0 / (_RRF_K + rank)
+    ordered = sorted(ranks.items(), key=lambda pair: (-pair[1], pair[0]))
+    return [(item, score / best) for item, score in ordered]
 
 
 def vector_bytes(vector: Sequence[float]) -> bytes:
@@ -589,6 +602,18 @@ class KnowledgeDb:
             ).fetchall()
         return {r[0]: dict(zip(_TURN_FIELDS, r[1:], strict=True)) for r in rows}
 
+    def turn_chunks(self, turn_item_ids: Sequence[str]) -> dict[str, int]:
+        """``turn item id -> chunk id`` of the stored turns among *turn_item_ids*."""
+        if not turn_item_ids:
+            return {}
+        marks = ", ".join("?" for _ in turn_item_ids)
+        with self._connection() as conn:
+            rows = conn.execute(
+                f"SELECT turn_item_id, chunk_id FROM turns WHERE turn_item_id IN ({marks})",
+                list(turn_item_ids),
+            ).fetchall()
+        return {r[0]: r[1] for r in rows}
+
     def chats_of(self, main_id: str) -> list[str]:
         """The chats with passages that belong to the main Conversation *main_id*."""
         with self._connection() as conn:
@@ -788,22 +813,38 @@ class KnowledgeDb:
         *file_ids* restricts the search to those files. Conversation passages are searched only
         with ``turns=True`` (and then nothing else): a file search never returns one.
         """
+        lists = self.rankings(
+            query,
+            limit=limit,
+            file_ids=file_ids,
+            query_vector=query_vector,
+            keyword=keyword,
+            turns=turns,
+        )
+        ordered = fuse(lists)[:limit]
+        chunks = self.chunks_by_ids([chunk_id for chunk_id, _ in ordered])
+        return [(chunks[i], score) for i, score in ordered if i in chunks]
+
+    def rankings(
+        self,
+        query: str,
+        *,
+        limit: int,
+        file_ids: Sequence[str] | None = None,
+        query_vector: Sequence[float] | None = None,
+        keyword: bool = True,
+        turns: bool = False,
+    ) -> list[list[int]]:
+        """The BM25 and vector rankings of passage ids for *query*, before :func:`fuse` (see
+        :meth:`search`)."""
         wanted = set(file_ids) if file_ids is not None else None
         if wanted is not None and not wanted:
             return []
         candidates = max(limit * _CANDIDATE_FACTOR, _MIN_CANDIDATES)
-        ranks: dict[int, float] = {}
-        best = 0.0
         lists: list[list[int]] = [self._bm25(query, candidates, wanted, turns)] if keyword else []
         if query_vector is not None and self.vector_dims() == len(query_vector):
             lists.append(self._nearest(query_vector, candidates, wanted, turns))
-        for ids in lists:
-            best += 1.0 / (_RRF_K + 1)
-            for rank, chunk_id in enumerate(ids, start=1):
-                ranks[chunk_id] = ranks.get(chunk_id, 0.0) + 1.0 / (_RRF_K + rank)
-        ordered = sorted(ranks.items(), key=lambda item: (-item[1], item[0]))[:limit]
-        chunks = self._chunks_by_ids([chunk_id for chunk_id, _ in ordered])
-        return [(chunks[i], score / best) for i, score in ordered if i in chunks]
+        return lists
 
     def _bm25(self, query: str, limit: int, wanted: set[str] | None, turns: bool) -> list[int]:
         match = fts_query(query)
@@ -854,7 +895,8 @@ class KnowledgeDb:
             keep = {r[0] for r in conn.execute(sql, params)}
         return [i for i in ids if i in keep][:limit]
 
-    def _chunks_by_ids(self, ids: Sequence[int]) -> dict[int, ChunkRow]:
+    def chunks_by_ids(self, ids: Sequence[int]) -> dict[int, ChunkRow]:
+        """Passages by id."""
         if not ids:
             return {}
         marks = ", ".join("?" for _ in ids)

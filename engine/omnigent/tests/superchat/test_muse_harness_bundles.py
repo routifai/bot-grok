@@ -134,7 +134,7 @@ def test_only_the_muse_may_close_a_working_list_line(bundle: Path) -> None:
 @pytest.mark.parametrize("bundle", [CLAUDE, PI], ids=["claude", "pi"])
 def test_prompts_point_at_the_memory_folder(bundle: Path) -> None:
     muse = (bundle / "AGENTS.md").read_text()
-    assert "search `memory/journal` with `files_query`" in muse
+    assert "use `recall` before you answer" in muse and "`recall_get`" in muse
     assert "`state_close`" in muse
     assert "Never edit it or the journal" in muse
     worker = (bundle / "agents/worker/config.yaml").read_text()
