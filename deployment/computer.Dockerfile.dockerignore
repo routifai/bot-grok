@@ -1,0 +1,25 @@
+# Build context for deployment/computer.Dockerfile (the repo root). Everything is excluded, then
+# only what the Dockerfile COPYs is let back in.
+*
+
+# venv stage
+!engine/omnigent/pyproject.toml
+!engine/omnigent/setup.py
+!engine/omnigent/LICENSE
+!engine/omnigent/NOTICE
+!engine/omnigent/sdks/python-client/
+!engine/omnigent/sdks/ui/
+!engine/omnigent/omnigent/
+
+# computer stage
+!deployment/computer/
+
+# Local build output and caches inside the folders above.
+**/node_modules
+**/__pycache__
+**/*.pyc
+**/.venv
+engine/omnigent/omnigent/server/static/web-ui
+deployment/computer/test_*.py
+deployment/computer/**/*.test.ts
+deployment/computer/**/fixtures

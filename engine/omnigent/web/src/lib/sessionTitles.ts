@@ -1,1 +1,0 @@
-export const USER_SESSION_TITLE_MAX_CHARS = 200;

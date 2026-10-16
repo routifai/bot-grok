@@ -20,7 +20,7 @@
       "!**/data",
       "!**/*.astro",
       "!engine/omnigent",
-      "!infra/sandboxes/computer/deck-export/fixtures"
+      "!deployment/computer/deck-export/fixtures"
     ]
   },
   "formatter": {

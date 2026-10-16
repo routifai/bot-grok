@@ -25,8 +25,8 @@ export default defineConfig({
           include: [
             ".agents/skills/pr-watch/*.test.ts",
             "packages/*/src/**/*.test.{ts,tsx}",
-            "infra/sandboxes/computer/deck-export/*.test.ts",
-            "infra/sandboxes/computer/pptx/*.test.ts",
+            "deployment/computer/deck-export/*.test.ts",
+            "deployment/computer/pptx/*.test.ts",
           ],
         },
       },

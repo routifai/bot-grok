@@ -1,6 +1,6 @@
 # Run Superchat locally with Docker
 
-`./scripts/setup.sh` builds the whole stack from this checkout with Docker Compose. The services
+`./deployment/setup.sh` builds the whole stack from this checkout with Docker Compose. The services
 and images are in the [README](../README.md#run-with-docker); this page is the walkthrough.
 
 ## Prerequisites
@@ -14,43 +14,35 @@ Node.js and pnpm are not needed; everything builds in Docker.
 
 ## What the stack runs
 
-One Compose project, `superchat`: Omnigent's own `engine/omnigent/deploy/docker/docker-compose.yaml`
-(Postgres and the Omnigent server), unchanged, with `infra/compose/docker-compose.superchat.yaml`
-on top. `setup.sh` runs, from the repo root (`dc` standing for
-`docker compose --env-file .env -f engine/omnigent/deploy/docker/docker-compose.yaml -f infra/compose/docker-compose.superchat.yaml`):
+One Compose project, `superchat`, from `deployment/compose.yaml`. `setup.sh` runs, from the repo
+root (`dc` standing for `docker compose --env-file .env -f deployment/compose.yaml`):
 
 ```sh
-dc --profile build build omnigent-server ubuntu-python omnigent-host computer
-dc build omnigent
+dc --profile build build computer
+dc build engine
 dc up -d --wait
 ```
-
-Compose resolves relative paths in every file against the first file's directory, so run it from
-the repo root with the files in this order.
 
 | Service | Role | Host port |
 |---|---|---|
 | `postgres` | one database, `omnigent`, with an `engine` schema | none |
-| `omnigent` | the Omnigent agent server (Superchat's engine); serves the web and the published apps; starts each person's Computer over the Docker socket | web `5173` (`SUPERCHAT_WEB_PORT`), engine `8012` (`SUPERCHAT_ENGINE_PORT`) |
+| `engine` | Superchat's engine; serves the web and the published apps; starts each person's Computer over the Docker socket | web `5173` (`SUPERCHAT_WEB_PORT`), engine `8012` (`SUPERCHAT_ENGINE_PORT`) |
 
 There is no app server: the web is built into the engine image and talks to the engine directly. Open
 http://127.0.0.1:5173.
 
-`omnigent-server`, `ubuntu-python`, `omnigent-host` and `computer` only build images: they sit
-under the `build` profile, so `up` never creates a container for them. `omnigent-server`
-and `omnigent-host` are Omnigent's own images (its Dockerfile's server and `host` targets); the
-engine (`superchat/engine:local`, `infra/omnigent/Dockerfile`) is the server image plus
-`infra/omnigent` at `/opt/bundle`. The Computer (`superchat/computer:local`) is the host image,
-built on plain Ubuntu 24.04 (`ubuntu-python`, the distro's Python) with only the claude and pi
-CLIs, plus Python's data stack, the pptx runtime, Chromium alone (copied out of Playwright's image)
-and Superchat's helpers; one per
-person, no desktop or screen. Its runner dials back to `ENGINE_PUBLIC_URL`, which is why the engine
-port is published.
+`computer` only builds an image: it sits under the `build` profile, so `up` never creates a
+container for it; the engine starts one per person. The engine image (`superchat/engine:local`,
+`deployment/engine.Dockerfile`) is the engine package, the built web and the agent bundles. The
+Computer (`superchat/computer:local`, `deployment/computer.Dockerfile`) is plain Ubuntu 24.04 with
+the distro's Python, the claude and pi CLIs, Python's data stack, the pptx runtime, Chromium alone
+(copied out of Playwright's image) and Superchat's helpers; one per person, no desktop or screen.
+Its runner dials back to `ENGINE_PUBLIC_URL`, which is why the engine port is published.
 
 ## Setup
 
 ```sh
-./scripts/setup.sh
+./deployment/setup.sh
 ```
 
 It creates `.env` from `.env.docker.example` (or keeps yours and adds missing keys), fills blank
@@ -90,45 +82,34 @@ secrets:
     file: ${HOME}/certs/company-ca-bundle.pem
 
 services:
-  # Omnigent's images. A machine with its own variant of Omnigent's Dockerfile points
-  # `dockerfile` here at it; the engine and Computer are built FROM whatever these produce.
-  omnigent-server:
+  engine:
     build:
       args:
+        NODE_IMAGE: registry.mirror.example/node:22-slim
+        PYTHON_IMAGE: registry.mirror.example/python:3.12-slim
         PYPI_INDEX_URL: https://pypi.mirror.example/simple
         NPM_CONFIG_REGISTRY: https://npm.mirror.example/
+        TORCH_INDEX_URL: https://pypi.mirror.example/simple
       secrets: *ca
-  ubuntu-python:
-    build:
-      args:
-        UBUNTU_IMAGE: registry.mirror.example/ubuntu:24.04
-      secrets: *ca
-  omnigent-host:
-    build:
-      args:
-        PYPI_INDEX_URL: https://pypi.mirror.example/simple
-        NPM_CONFIG_REGISTRY: https://npm.mirror.example/
-      secrets: *ca
-  # Superchat's layers.
   computer:
     build:
       args:
+        UBUNTU_IMAGE: registry.mirror.example/ubuntu:24.04
+        NODE_IMAGE: registry.mirror.example/node:22-slim
         CHROMIUM_IMAGE: registry.mirror.example/playwright/python:v1.63.0-noble
+        PYPI_INDEX_URL: https://pypi.mirror.example/simple
+        NPM_CONFIG_REGISTRY: https://npm.mirror.example/
       secrets: *ca
 ```
 
 ```sh
 docker compose --env-file .env \
-  -f engine/omnigent/deploy/docker/docker-compose.yaml \
-  -f infra/compose/docker-compose.superchat.yaml \
+  -f deployment/compose.yaml \
   -f /path/to/docker-compose.local.yaml up --build
 ```
 
-Its relative paths, like the other two files', resolve against `engine/omnigent/deploy/docker`. An
-existing local file written for Omnigent alone overrides `omnigent`; here the Omnigent image is
-built by `omnigent-server` (and `omnigent-host`), so move those `build:` settings there: `omnigent`
-is Superchat's thin engine layer. Pull Docker Hub images through the Docker daemon's registry
-mirror.
+Its relative paths resolve against `deployment/`, the first file's directory. Pull Docker Hub
+images through the Docker daemon's registry mirror.
 
 ## Who you are
 
@@ -160,9 +141,9 @@ Postgres lives in the `superchat_postgres-data` volume, the engine's state in
 ## Stop, update, reset
 
 ```sh
-./scripts/stop.sh     # stop, keep all data
-./scripts/reset.sh    # stop and DELETE all data (asks first)
-git pull && ./scripts/setup.sh   # update; keeps .env and secrets
+./deployment/stop.sh     # stop, keep all data
+./deployment/reset.sh    # stop and DELETE all data (asks first)
+git pull && ./deployment/setup.sh   # update; keeps .env and secrets
 ```
 
 ## Troubleshooting
@@ -173,6 +154,6 @@ git pull && ./scripts/setup.sh   # update; keeps .env and secrets
 - **A Computer cannot reach the engine.** Check `ENGINE_PUBLIC_URL`. On native Linux use the Docker
   bridge address (for example `http://172.17.0.1:8012`) and set `SUPERCHAT_ENGINE_BIND` to it.
 - **A service fails on boot.** The same `docker compose` command as above with `logs <service>`.
-  A blank required secret fails closed; re-run `./scripts/setup.sh` to fill it.
+  A blank required secret fails closed; re-run `./deployment/setup.sh` to fill it.
 - **Port in use.** Set `SUPERCHAT_WEB_PORT` (web) or `SUPERCHAT_ENGINE_PORT` (engine) in `.env`,
   then re-run setup.

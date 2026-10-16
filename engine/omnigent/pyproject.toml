@@ -431,39 +431,12 @@ omnigent = "omnigent.cli:main"
 omni = "omnigent.cli:main"
 
 [tool.uv]
-# Keep plain `uv sync` aligned with the published base package. Repository
-# workflows opt into the smallest dependency group they need.
 default-groups = []
 
-# `antigravity` requires protobuf>=7 (google-antigravity ships gencode
-# compiled against protobuf 7.x). The following extras/groups all cap their
-# own transitive deps at protobuf<7, making them mutually exclusive with
-# `antigravity`. Declaring conflicts lets uv resolve each set in an isolated
-# fork rather than failing the whole lockfile or silently downgrading
-# shared dependencies like databricks-sdk.
-#   cwsandbox:  protobuf<7 (cwsandbox itself)
-#   modal:      protobuf<7 (modal itself)
-#   databricks: protobuf<7 (databricks-sdk>=0.56 caps at <7.0)
-#   lint group: protobuf<7 (grpcio-tools<=1.81.1 requires protobuf<7) — only
-#               conflicts with antigravity, not with cwsandbox/modal/databricks
-conflicts = [
-    [{ extra = "antigravity" }, { extra = "cwsandbox" }],
-    [{ extra = "antigravity" }, { extra = "modal" }],
-    [{ extra = "antigravity" }, { extra = "databricks" }],
-    [{ group = "lint" }, { extra = "antigravity" }],
-]
-
-# Share the repository lockfile with standalone automation packages.
-[tool.uv.workspace]
-members = [".github/triage_v2"]
-
-# uv path-deps for the sibling SDK packages (renamed in Stage 3).
+# uv path-deps for the sibling SDK packages.
 [tool.uv.sources]
 omnigent-client = { path = "sdks/python-client", editable = true }
 omnigent-ui-sdk = { path = "sdks/ui", editable = true }
-# Local resolution for the `slack` extra. Only pulled in when `omnigent[slack]`
-# is requested (the extra is opt-in), so a default install never builds it.
-omnigent-slack = { path = "integrations/slack", editable = true }
 
 [tool.setuptools]
 include-package-data = true
@@ -477,14 +450,11 @@ include = ["omnigent*"]
 [tool.setuptools.package-data]
 "omnigent.db" = ["alembic.ini"]
 "omnigent.db.migrations" = ["script.py.mako"]
-"omnigent.resources.examples" = ["*.yaml", "*.sh", "debby/**/*", "polly/**/*"]
 "omnigent.resources.pi_native" = ["*.js"]
-"omnigent.resources.scripts" = ["*.sh"]
 # The deck kit: skeleton, layout vocabulary, templates (themes, licenses) and their embedded fonts.
 "omnigent.superchat.decks" = ["kit/**/*"]
-# include UI assets in build, plus the static API-only landing page served
-# at "/" when no web UI bundle is present
-"omnigent.server" = ["static/web-ui/**/*", "static/api_only_landing.html"]
+# The landing page served at "/" when no web build is mounted (OMNIGENT_WEB_UI_DIST).
+"omnigent.server" = ["static/api_only_landing.html"]
 
 [tool.pytest.ini_options]
 # auto mode: async tests without @pytest.mark.asyncio() are auto-

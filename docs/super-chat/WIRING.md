@@ -101,7 +101,7 @@ The single switch is "Omnigent connection configured": `OMNIGENT_URL` +
 | `related_chats` entries add `start`, `summary` (seed summary or `null`), `live` | `ChatSummary` without extra calls |
 | `GET /v1/sessions/{id}/context_summary` → `{summary, created_at}` or `{summary: null}` | "Knows our conversation" hover |
 
-### A1 · App backend (`packages/*`, `apps/api`, `apps/worker`, `infra/omnigent`)
+### A1 · App backend (`packages/*`, `apps/api`, `apps/worker`, `deployment/engine`)
 
 | Change | Why |
 |---|---|

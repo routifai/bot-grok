@@ -388,7 +388,7 @@ def test_bundles_offer_open_project_and_keep_the_whole_workspace_reachable(
 
     monkeypatch.setenv("TAVILY_API_KEY", "x")
     monkeypatch.setenv("SUPERCHAT_CLAUDE_MODEL", "m")
-    spec = parse(REPO / "infra/omnigent/agents" / name)
+    spec = parse(REPO / "deployment/engine/agents" / name)
     worker = next(a for a in spec.sub_agents if a.name == "worker")
     assert "open_project" in spec.tools.allow
     for agent in [spec, *spec.sub_agents, *worker.sub_agents]:

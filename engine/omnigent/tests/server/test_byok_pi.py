@@ -26,7 +26,7 @@ from omnigent.superchat.models.proxy import create_model_proxy_router
 from omnigent.superchat.models.store import ModelConnectionStore
 from omnigent.superchat.vault.store import VAULT_KEY_ENV
 
-TEMPLATE = Path(__file__).resolve().parents[4] / "infra/omnigent/engine/config.byok.yaml.tmpl"
+TEMPLATE = Path(__file__).resolve().parents[4] / "deployment/engine/config.byok.yaml.tmpl"
 AUTH = "python3 -m omnigent.host.model_credential token"
 
 

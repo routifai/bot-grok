@@ -14,10 +14,10 @@
     "check": "turbo check",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "sandbox:build": "docker compose --env-file .env -f engine/omnigent/deploy/docker/docker-compose.yaml -f infra/compose/docker-compose.superchat.yaml build computer",
+    "sandbox:build": "docker compose --env-file .env -f deployment/compose.yaml build computer",
     "test": "vitest run",
-    "compose:up": "docker compose --env-file .env -f engine/omnigent/deploy/docker/docker-compose.yaml -f infra/compose/docker-compose.superchat.yaml up --build",
-    "compose:down": "docker compose --env-file .env -f engine/omnigent/deploy/docker/docker-compose.yaml -f infra/compose/docker-compose.superchat.yaml down -v"
+    "compose:up": "docker compose --env-file .env -f deployment/compose.yaml up --build",
+    "compose:down": "docker compose --env-file .env -f deployment/compose.yaml down -v"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.13",

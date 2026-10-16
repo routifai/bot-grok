@@ -97,11 +97,11 @@ def test_a_type_declares_its_role_in_params() -> None:
 def test_bundles_declare_the_roles() -> None:
     for name in ("superchat-claude", "superchat-pi"):
         worker = yaml.safe_load(
-            (REPO / f"infra/omnigent/agents/{name}/agents/worker/config.yaml").read_text()
+            (REPO / f"deployment/engine/agents/{name}/agents/worker/config.yaml").read_text()
         )
         sub = yaml.safe_load(
             (
-                REPO / f"infra/omnigent/agents/{name}/agents/worker/agents/subworker/config.yaml"
+                REPO / f"deployment/engine/agents/{name}/agents/worker/agents/subworker/config.yaml"
             ).read_text()
         )
         assert worker["params"] == {"helper_type": "worker"}
@@ -109,7 +109,7 @@ def test_bundles_declare_the_roles() -> None:
 
 
 def test_bundle_surfaces() -> None:
-    bundle = REPO / "infra/omnigent/agents/superchat-claude"
+    bundle = REPO / "deployment/engine/agents/superchat-claude"
     muse = yaml.safe_load((bundle / "config.yaml").read_text())["tools"]["allow"]
     worker = yaml.safe_load((bundle / "agents/worker/config.yaml").read_text())["tools"]["allow"]
     sub = yaml.safe_load((bundle / "agents/worker/agents/subworker/config.yaml").read_text())[

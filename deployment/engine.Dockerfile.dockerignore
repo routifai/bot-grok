@@ -1,0 +1,37 @@
+# Build context for deployment/engine.Dockerfile (the repo root). Everything is excluded, then
+# only what the Dockerfile COPYs is let back in, so the context stays small and nothing local
+# (.env, data, caches, worktrees) can reach the image.
+*
+
+# web stage
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!.npmrc
+!tsconfig.base.json
+!patches/
+!packages/
+!apps/web/
+
+# python stage
+!engine/omnigent/pyproject.toml
+!engine/omnigent/setup.py
+!engine/omnigent/LICENSE
+!engine/omnigent/NOTICE
+!engine/omnigent/sdks/python-client/
+!engine/omnigent/sdks/ui/
+!engine/omnigent/omnigent/
+
+# engine stage
+!deployment/entrypoint.py
+!deployment/engine/agents/
+!deployment/engine/start.sh
+!deployment/engine/*.tmpl
+
+# Local build output and caches inside the folders above.
+**/node_modules
+**/dist
+**/__pycache__
+**/*.pyc
+**/.venv
+engine/omnigent/omnigent/server/static/web-ui

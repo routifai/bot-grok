@@ -21,8 +21,8 @@ flowchart LR
   (see [ADR 0015](docs/adr/0015-no-app-server-the-web-talks-to-the-engine.md)).
 - **engine** (`engine/omnigent`): the agent server. It owns sessions, the Conversation and side
   chats, Helpers, memory, approvals, artifacts, scheduled tasks (Automations), the model layer, who is asking (from an SSO broker header) and
-  the agent bundle (`infra/omnigent`). Any website can drive it.
-- **Computer** (`infra/sandboxes/computer`): a container per person where the agent actually runs:
+  the agent bundle (`deployment/engine`). Any website can drive it.
+- **Computer** (`deployment/computer`): a container per person where the agent actually runs:
   Omnigent's runner (host) image plus Superchat's additions, started by the engine over the Docker
   socket (the Docker counterpart of Omnigent's Kubernetes launcher), home on its own volume.
   It holds the person's files, indexes them for search, and renders decks and dashboards to
@@ -41,27 +41,26 @@ flowchart LR
 ## Run with Docker
 
 ```sh
-./scripts/setup.sh
+./deployment/setup.sh
 ```
 
-It writes `.env` from `.env.docker.example`, fills in the secrets, then builds and starts
-Omnigent's own Compose file, unchanged, with one Superchat file on top (re-run it, or this, after a
-change):
+It writes `.env` from `.env.docker.example`, fills in the secrets, then builds the two images and
+starts the stack. The same by hand, from the repo root:
 
 ```sh
-docker compose --env-file .env \
-  -f engine/omnigent/deploy/docker/docker-compose.yaml \
-  -f infra/compose/docker-compose.superchat.yaml up --build
+docker compose --env-file .env -f deployment/compose.yaml --profile build build computer
+docker compose --env-file .env -f deployment/compose.yaml build engine
+docker compose --env-file .env -f deployment/compose.yaml up -d --wait
 ```
 
-The images are Omnigent's own (`engine/omnigent/deploy/docker/Dockerfile`, built as
-`omnigent-server` and `omnigent-host`) plus thin layers for what Superchat adds:
+Everything about building and shipping is in [`deployment/`](deployment/README.md): two
+Dockerfiles, one Compose file, one build script.
 
 | Service | Image |
 |---|---|
-| `postgres` | Omnigent's Postgres, one database with an `engine` schema |
-| `omnigent` (web `5173`, engine `8012`) | the engine, which also serves the web: `infra/omnigent/Dockerfile`, Omnigent's server image + `infra/omnigent` (agent bundles, config, `start.sh`) at `/opt/bundle` + the built `apps/web` |
-| `computer` (build only) | the runner each person gets: `infra/sandboxes/computer/Dockerfile` on Omnigent's host image, on plain Ubuntu 24.04 |
+| `postgres` | `postgres:16-alpine`, one database with an `engine` schema |
+| `engine` (web `5173`, engine `8012`) | `deployment/engine.Dockerfile`: the engine package, the built `apps/web` it serves, and the agent bundles, config templates and `start.sh` at `/opt/bundle` |
+| `computer` (build only) | `deployment/computer.Dockerfile`: the runner each person gets, on plain Ubuntu 24.04 |
 
 `.env` keys: `OMNIGENT_PROXY_SECRET` and `OMNIGENT_VAULT_KEY` (engine
 secrets), `ANTHROPIC_API_KEY`, and `ENGINE_PUBLIC_URL` (where each Computer
@@ -83,8 +82,8 @@ cannot register a host for a person. Each person's Computer is their runner host
 | `apps/web` | web app |
 | `packages/*` | shared contracts, the engine client, UI |
 | `engine/omnigent` | engine |
-| `infra/omnigent` | agent instructions and tool bundle |
-| `infra/sandboxes` | Computer image |
+| `deployment/engine` | agent instructions and tool bundle |
+| `deployment/computer` | Computer image |
 
 ## License
 

@@ -49,9 +49,9 @@ untouched and still the default.
   no memory, scratchpad, Goals, or episodes. See
   `packages/adapters/src/omnigent/context-provider.test.ts` for the canary-string isolation
   tests.
-- **Agent bundles** — `infra/omnigent/agents/superchat-{pi,claude,openai,codex}/`, each a
+- **Agent bundles** — `deployment/engine/agents/superchat-{pi,claude,openai,codex}/`, each a
   directory-bundle agent (`config.yaml` + `AGENTS.md`) generated from one shared template
-  (`infra/omnigent/templates/`) by `node infra/omnigent/render-agents.mjs`, so the four harness
+  (`deployment/engine/templates/`) by `node deployment/engine/render-agents.mjs`, so the four harness
   variants differ only in `executor.config.harness`/`model`. Tools are `web_search` and
   `web_fetch` builtins only for week 1. `AGENTS.md` just says to follow
   `<deployment_context>` — all the real per-turn instructions arrive through the context-provider
@@ -102,11 +102,11 @@ Superchat (apps/api / apps/worker)                Omnigent server
                                         sandboxes/computer.py)
                                                  │  POST /computers, /computers/{id}/exec
                                                  ▼
-                                     Superchat's sandbox supervisor (infra/sandboxes/supervisor)
+                                     Superchat's sandbox supervisor (deployment/computer/supervisor)
                                                  │  ensures the container is running, execs into it
                                                  ▼
                                      The Muse's own computer container
-                                        (infra/sandboxes/computer image)
+                                        (deployment/computer image)
                                           └── `omnigent host` runs here, dials back to the
                                               Omnigent server over the runner WS tunnel
 ```
@@ -172,7 +172,7 @@ Omnigent session (skills, canvas, and browser use share it too), so Omnigent's b
 cleanup must never destroy it — every caller of those already treats "provider can't do that" as
 skippable.
 
-**The image**: `infra/sandboxes/computer/Dockerfile` is a thin layer `FROM` Omnigent's own host
+**The image**: `deployment/computer.Dockerfile` is a thin layer `FROM` Omnigent's own host
 image (`engine/omnigent/deploy/docker/Dockerfile`, target `host`, passed as the `omnigent-host`
 build context): that image already carries `omnigent` in `/opt/venv` (symlinked into
 `/usr/local/bin`, the supervisor's fixed exec `PATH`), Node and the harness CLIs. The layer adds
@@ -242,7 +242,7 @@ From the repo root, with Superchat's API running on `127.0.0.1:3100` (the defaul
 export OMNIGENT_CONTEXT_PROVIDER_URL=http://127.0.0.1:3100/internal/omnigent/context
 export OMNIGENT_CONTEXT_PROVIDER_SECRET=some-long-random-dev-secret
 export OMNIGENT_AUTH_HEADER_SECRET=some-long-random-dev-secret   # see Open Questions below
-export OMNIGENT_BUILTIN_AGENT_DIRS="$(pwd)/infra/omnigent/agents/superchat-claude:$(pwd)/infra/omnigent/agents/superchat-pi"
+export OMNIGENT_BUILTIN_AGENT_DIRS="$(pwd)/deployment/engine/agents/superchat-claude:$(pwd)/deployment/engine/agents/superchat-pi"
 
 uv run --project engine/omnigent omnigent server
 ```
@@ -262,7 +262,7 @@ export SUPERCHAT_PI_MODEL=databricks-claude-sonnet-4-6   # or whatever the local
 Regenerate the bundles after editing the template:
 
 ```bash
-node infra/omnigent/render-agents.mjs
+node deployment/engine/render-agents.mjs
 ```
 
 Restart the Omnigent server after changing a mounted bundle — `OMNIGENT_BUILTIN_AGENT_DIRS` is

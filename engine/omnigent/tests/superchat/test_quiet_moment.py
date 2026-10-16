@@ -356,7 +356,7 @@ def test_the_passes_run_as_notes_and_its_allow_list_has_the_tools_the_prompts_na
     from omnigent.superchat.subagents import scheduled_helper_type
 
     assert scheduled_helper_type(quiet_moment.AGENT_TYPE) == "notes"
-    root = Path(__file__).resolve().parents[4] / "infra/omnigent/agents"
+    root = Path(__file__).resolve().parents[4] / "deployment/engine/agents"
     prompts = "\n".join(
         [quiet_moment.QUIET_PROMPT, quiet_moment.DREAM_PROMPT, quiet_moment.PEOPLE_PROMPT]
     )

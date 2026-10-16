@@ -42,7 +42,7 @@ from .pptx_native import (
     resolve_target,
 )
 
-HELPER = Path(__file__).resolve().parents[5] / "infra/sandboxes/computer/superchat-deck-export"
+HELPER = Path(__file__).resolve().parents[5] / "deployment/computer/superchat-deck-export"
 
 
 def _chromium_available() -> bool:

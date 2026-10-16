@@ -12,8 +12,8 @@ runner needs.
 ## Runner location
 
 Every runner lives in the Muse's **Computer**: a per-Muse Docker container
-managed by Superchat's sandbox supervisor (`infra/sandboxes/supervisor`,
-`infra/sandboxes/computer`). There is no laptop (`omnigent host`) location.
+managed by Superchat's sandbox supervisor (`deployment/computer/supervisor`,
+`deployment/computer`). There is no laptop (`omnigent host`) location.
 
 Superchat's gateway (`packages/adapters/src/omnigent/gateway.ts`,
 `resolveRunnerBinding`) picks "computer" by selecting the Omnigent
@@ -114,7 +114,7 @@ Deployment requirements found live:
   `OMNIGENT_AUTH_PROVIDER=header` (Superchat calls it with header auth).
 - Superchat's api/worker `DATA_DIR` must equal the supervisor's `DATA_DIR`: the
   supervisor accepts only `homePath = <dataDir>/homes/<botId>` and rejects
-  anything else (`assertBotHomePath`, `infra/sandboxes/supervisor/src/index.ts`).
+  anything else (`assertBotHomePath`, `deployment/computer/supervisor/src/index.ts`).
 - Sessions carry `omnigent.computer.key` or `omnigent.computer.owner`, and
   `omnigent.tenant`. A Muse the engine creates sets the owner (its opaque
   person-and-space key) and the tenant itself. The provider prefers the key and
@@ -143,8 +143,8 @@ only relays.
 In order, each depending on the one before:
 
 1. **Postgres** — the engine server's store.
-2. **Build the computer image** — `pnpm sandbox:build` (Compose's `computer` service: Omnigent's host image plus `infra/sandboxes/computer/Dockerfile`). The supervisor does **not** auto-build this image — if it's missing, `POST /computers` fails with this exact command in the error.
-3. **Superchat's sandbox supervisor** (`infra/sandboxes/supervisor`) — needs the Docker socket.
+2. **Build the computer image** — `pnpm sandbox:build` (Compose's `computer` service: Omnigent's host image plus `deployment/computer.Dockerfile`). The supervisor does **not** auto-build this image — if it's missing, `POST /computers` fails with this exact command in the error.
+3. **Superchat's sandbox supervisor** (`deployment/computer/supervisor`) — needs the Docker socket.
 4. **The Omnigent server**, configured with the `sandbox:` block above and the required env from the previous section. Install the engine with the `memory` extra (`uv sync --extra memory ...`); without it the memory routes are not mounted and the Muse's memory tools fail with "not configured". On macOS the memory stack also needs `KMP_DUPLICATE_LIB_OK=TRUE` in the server's environment.
 5. **Superchat's own `apps/api`, `apps/worker`, `apps/web`** — talk to the Omnigent server through the gateway.
 
@@ -157,7 +157,7 @@ In order, each depending on the one before:
 - **Egress unfiltered.** The computer container has no outbound network
   restriction. Tools (web search, browser use) and the harness can reach the
   open internet; there is no allowlist or firewall layer in
-  `infra/sandboxes/computer` today.
+  `deployment/computer` today.
 - **Home path keying in team mode.** The provider keys a Muse's persistent
   home by `bot_id` alone (`<root>/homes/<bot_id>`, `computer.py`). A bot
   shared across users/spaces would resolve to one home; no per-user or

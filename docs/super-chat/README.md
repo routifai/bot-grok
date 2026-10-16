@@ -466,7 +466,7 @@ engine it is a **sub-agent** session (CONTEXT.md: "In the engine it is a Sub-age
   treated as the same hand-off (`DEDUP_WINDOW_S` in
   `engine/omnigent/omnigent/superchat/helpers/handlers.py`).
 - The tool is offered only where a Helper type is declared in the agent bundle. In Superchat the
-  type is `worker`, which can start `subworker` parts (`infra/omnigent/templates/agents/worker/config.yaml`).
+  type is `worker`, which can start `subworker` parts (`deployment/engine/templates/agents/worker/config.yaml`).
   A `subworker` cannot start more. The nesting cap is: chat, Helper, one level of parts
   (`refuse_subagent_nesting` in `engine/omnigent/omnigent/superchat/subagents.py`).
 - `fast` and `strong` are mapped to real models by engine config (`OMNIGENT_HELPER_MODEL_FAST`,
@@ -531,7 +531,7 @@ Super Chat or one of its Side Chats. Registered in
 **Registering a tool in the Activity panel (Superchat).** A step never shows the tool's raw name, only an
 icon, a plain title and (when useful) a short snippet. All three come from one registry,
 `TOOL_PRESENTATION` in `packages/core/src/tool-presentation.ts`. When a tool is added to the agent
-bundle (`infra/omnigent/agents/superchat-claude/`) or to the engine's always-on tools
+bundle (`deployment/engine/agents/superchat-claude/`) or to the engine's always-on tools
 (`ALWAYS_ON_SUPERSIDE_CHAT_TOOLS`), add an entry there with an icon (`ToolIconKey`), a
 `title(args)` derived only from the call's arguments, and a `snippet(output)`, or
 `tool-presentation.completeness.test.ts` fails. Map any new icon key in
@@ -909,7 +909,7 @@ Superchat's own side of the gateway (`packages/adapters/src/omnigent/env.ts`,
 ### Things this guide could not confirm
 
 - How a Helper gets the Conversation's context: by design, the **Muse writes a short summary of
-  the Conversation into the Brief** (its instructions say so: `infra/omnigent/templates/AGENTS.md`)
+  the Conversation into the Brief** (its instructions say so: `deployment/engine/templates/AGENTS.md`)
   and the engine puts the Memory Profile in front of it (`prepend_memory_profile` in
   `engine/omnigent/omnigent/runner/tool_dispatch.py`). There is no engine-made summary.
 - The per-turn profile check is the context mode label, so by the same rule a Helper session also

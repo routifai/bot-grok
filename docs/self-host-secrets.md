@@ -1,6 +1,6 @@
 # Self-host secrets checklist
 
-Credentials for the Docker stack. `./scripts/setup.sh` ([SETUP.md](./SETUP.md)) generates the
+Credentials for the Docker stack. `./deployment/setup.sh` ([SETUP.md](./SETUP.md)) generates the
 required ones; this page documents them for manual setup.
 
 Never commit `.env`, paste secret values into issues or PRs, or overwrite an existing `.env`
