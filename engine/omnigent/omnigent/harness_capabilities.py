@@ -26,7 +26,6 @@ class IntegrationMode(str, Enum):
 
     SDK_IN_PROCESS = "sdk-in-process"  # vendor SDK inside the harness subprocess
     CLI_SUBPROCESS = "cli-subprocess"  # drives a vendor CLI per turn
-    ACP_SUBPROCESS = "acp-subprocess"  # vendor CLI in Agent Client Protocol mode
     NATIVE_TUI = "native-tui"  # wraps a resident vendor TUI (tmux / file-inject)
     NATIVE_SERVER = "native-server"  # runner-owned vendor server + HTTP/SSE bridge
 
@@ -38,7 +37,6 @@ class Elicitation(str, Enum):
     HOOK = "hook"  # vendor PreToolUse hook posts to Omnigent
     JSONRPC = "jsonrpc"  # app-server JSON-RPC elicitation (codex)
     APPROVAL_MIRROR = "approval-mirror"  # poll the TUI approval pane, mirror to web
-    SSE_PERMISSION = "sse-permission"  # permission events over SSE / ACP elicit
 
 
 class Resume(str, Enum):
@@ -55,8 +53,6 @@ class EffortFamily(str, Enum):
     NONE = "none"
     ANTHROPIC = "anthropic"
     OPENAI = "openai"
-    GEMINI = "gemini"
-    COPILOT = "copilot"
     PI = "pi"
     # The real codex process is the per-model authority on reasoning levels
     # (Sol reaches ``ultra``); the SDK codex wire caps at ``xhigh``.
@@ -68,7 +64,6 @@ class ModelFamily(str, Enum):
 
     CLAUDE = "claude"
     GPT = "gpt"
-    GEMINI = "gemini"
     MULTI = "multi"  # accepts any validated id (no family rejection)
 
 
@@ -85,7 +80,6 @@ class ForkHistory(str, Enum):
 
     NONE = "none"  # fork launches fresh; no prior turns are carried
     REBUILD = "rebuild"  # rebuild the vendor's resumable session file from copied items
-    PREAMBLE = "preamble"  # replay prior turns as a text preamble (server-backed vendors)
 
 
 class InstructionDelivery(str, Enum):

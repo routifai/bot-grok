@@ -290,7 +290,7 @@ def _build_sys_session_send_schema(
                 "description": (
                     "Optional harness override for "
                     "this sub-agent session, e.g. "
-                    "'opencode-native'. Applies only "
+                    "'pi-native'. Applies only "
                     "when this send CREATES the "
                     "session AND the sub-agent spec "
                     "allowlists it via "

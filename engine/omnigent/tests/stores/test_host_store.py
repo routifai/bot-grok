@@ -48,7 +48,7 @@ def _set_updated_at(db_uri: str, host_id: str, value: int) -> None:
         session.commit()
 
 
-@pytest.mark.parametrize("provider", [None, "kubernetes", "agent_sandbox", "modal", "lakebox"])
+@pytest.mark.parametrize("provider", [None, "computer"])
 @pytest.mark.parametrize("saved_profile", [False, True])
 @pytest.mark.parametrize("binding", ["unbound", "same-host", "transfer"])
 def test_launch_admission_keeps_saved_profiles_on_managed_hosts(
@@ -756,7 +756,7 @@ def test_register_managed_host_and_resolve_token_roundtrip(db_uri: str) -> None:
         name="managed-m1",
         user_id="alice@example.com",
         token="raw-launch-token-1",
-        provider="modal",
+        provider="computer",
         sandbox_id="sb-m1",
         token_expires_at=now_epoch() + 3600,
     )
@@ -766,7 +766,7 @@ def test_register_managed_host_and_resolve_token_roundtrip(db_uri: str) -> None:
     assert resolved.host_id == "e932ccae9eeb8f2a86f7ebfc5089c28d"
     assert resolved.name == "managed-m1"
     assert resolved.user_id == "alice@example.com"
-    assert resolved.sandbox_provider == "modal"
+    assert resolved.sandbox_provider == "computer"
     assert resolved.sandbox_id == "sb-m1"
     # Pre-registered, not yet connected.
     assert resolved.status == "offline"
@@ -784,7 +784,7 @@ def test_resolve_launch_token_rejects_unknown_and_expired(db_uri: str) -> None:
         name="managed-m2",
         user_id="alice@example.com",
         token="raw-launch-token-2",
-        provider="modal",
+        provider="computer",
         sandbox_id="sb-m2",
         # Already expired.
         token_expires_at=now_epoch() - 1,
@@ -810,7 +810,7 @@ def test_replace_managed_host_sandbox_rotates_credential(db_uri: str) -> None:
         name="managed-m3",
         user_id="alice@example.com",
         token="generation-1-token",
-        provider="modal",
+        provider="computer",
         sandbox_id="sb-gen1",
         token_expires_at=now_epoch() + 3600,
     )
@@ -819,7 +819,7 @@ def test_replace_managed_host_sandbox_rotates_credential(db_uri: str) -> None:
         host_id="a687a760841c785578a03f4677f8db3c",
         user_id="alice@example.com",
         token="generation-2-token",
-        provider="modal",
+        provider="computer",
         sandbox_id="sb-gen2",
         token_expires_at=now_epoch() + 3600,
     )
@@ -854,7 +854,7 @@ def test_managed_columns_survive_connect(db_uri: str) -> None:
         name="managed-m4",
         user_id="alice@example.com",
         token="raw-launch-token-4",
-        provider="modal",
+        provider="computer",
         sandbox_id="sb-m4",
         token_expires_at=now_epoch() + 3600,
     )
@@ -867,7 +867,7 @@ def test_managed_columns_survive_connect(db_uri: str) -> None:
     )
 
     assert connected.status == "online"
-    assert connected.sandbox_provider == "modal"
+    assert connected.sandbox_provider == "computer"
     assert connected.sandbox_id == "sb-m4"
     # The credential still resolves after connect.
     assert (
@@ -887,7 +887,7 @@ def test_delete_host_hides_row_and_retains_cleanup_tombstone(db_uri: str) -> Non
         name="managed-m5",
         user_id="alice@example.com",
         token="raw-launch-token-5",
-        provider="modal",
+        provider="computer",
         sandbox_id="sb-m5",
         token_expires_at=now_epoch() + 3600,
     )
@@ -931,7 +931,7 @@ def test_stale_completion_removes_host_deleted_after_detach(db_uri: str) -> None
         name="managed-detach-delete-complete",
         user_id="alice@example.com",
         token="detach-delete-token",
-        provider="modal",
+        provider="computer",
         sandbox_id="detach-delete-sandbox",
         token_expires_at=now_epoch() + 3600,
     )
@@ -963,7 +963,7 @@ def test_replace_managed_host_sandbox_cannot_recreate_missing_host(db_uri: str) 
             host_id="c48e6fda4172492aa60ec299e5ce01d3",
             user_id="alice@example.com",
             token="too-late-token",
-            provider="modal",
+            provider="computer",
             sandbox_id="sb-too-late",
             token_expires_at=now_epoch() + 3600,
         )
@@ -980,7 +980,7 @@ def test_replace_managed_host_sandbox_cannot_revive_deleted_tombstone(db_uri: st
         name="managed-deleted-replace",
         user_id="alice@example.com",
         token="original-token",
-        provider="modal",
+        provider="computer",
         sandbox_id="original-sandbox",
         token_expires_at=now_epoch() + 3600,
     )
@@ -991,7 +991,7 @@ def test_replace_managed_host_sandbox_cannot_revive_deleted_tombstone(db_uri: st
             host_id=host_id,
             user_id="alice@example.com",
             token="replacement-token",
-            provider="modal",
+            provider="computer",
             sandbox_id="replacement-sandbox",
             token_expires_at=now_epoch() + 3600,
         )
@@ -1019,7 +1019,7 @@ def test_delete_host_serializes_with_sandbox_replacement(db_uri: str) -> None:
         name="managed-delete-replace-race",
         user_id="alice@example.com",
         token="generation-a-token",
-        provider="modal",
+        provider="computer",
         sandbox_id="generation-a",
         token_expires_at=now_epoch() + 3600,
     )
@@ -1074,7 +1074,7 @@ def test_delete_host_serializes_with_sandbox_replacement(db_uri: str) -> None:
                 host_id=host_id,
                 user_id="alice@example.com",
                 token="generation-b-token",
-                provider="modal",
+                provider="computer",
                 sandbox_id="generation-b",
                 token_expires_at=now_epoch() + 3600,
             )
@@ -1121,7 +1121,7 @@ def test_managed_sandbox_reaper_pages_and_compare_clear_span_workspaces(
             name="managed-11",
             user_id="alice@example.com",
             token="token-11",
-            provider="modal",
+            provider="computer",
             sandbox_id="sb-11",
             token_expires_at=now_epoch() + 3600,
         )
@@ -1131,7 +1131,7 @@ def test_managed_sandbox_reaper_pages_and_compare_clear_span_workspaces(
             name="managed-22",
             user_id="bob@example.com",
             token="token-22",
-            provider="e2b",
+            provider="other",
             sandbox_id="sb-22",
             token_expires_at=now_epoch() + 3600,
         )
@@ -1175,7 +1175,7 @@ def test_managed_sandbox_reaper_pages_and_compare_clear_span_workspaces(
         assert detached is not None
         assert detached.status == "offline"
         assert detached.updated_at == last_seen_at
-        assert detached.sandbox_provider == "modal"
+        assert detached.sandbox_provider == "computer"
         assert detached.sandbox_id is None
         assert detached.terminating_sandbox_id == "sb-11"
         assert store.resolve_launch_token(host_11, "token-11") is None
@@ -1211,7 +1211,7 @@ def test_detach_and_resume_rearm_are_atomic_competitors(db_uri: str) -> None:
         name="managed-race",
         user_id="alice@example.com",
         token="old-token",
-        provider="modal",
+        provider="computer",
         sandbox_id="sb-race",
         token_expires_at=now_epoch() + 3600,
     )
@@ -1269,7 +1269,7 @@ def test_pending_cleanup_rejects_reused_active_sandbox_id(db_uri: str) -> None:
         name="managed-reused-id",
         user_id="alice@example.com",
         token="old-generation-token",
-        provider="blaxel",
+        provider="computer",
         sandbox_id="managed-reused-id",
         token_expires_at=now_epoch() + 3600,
     )
@@ -1284,7 +1284,7 @@ def test_pending_cleanup_rejects_reused_active_sandbox_id(db_uri: str) -> None:
             host_id=host_id,
             user_id="alice@example.com",
             token="new-generation-token",
-            provider="blaxel",
+            provider="computer",
             sandbox_id="managed-reused-id",
             token_expires_at=now_epoch() + 3600,
         )
@@ -1304,7 +1304,7 @@ def test_pending_cleanup_does_not_block_rearming_new_generation(db_uri: str) -> 
         name="managed-rearm-new",
         user_id="alice@example.com",
         token="old-generation-token",
-        provider="modal",
+        provider="computer",
         sandbox_id="sb-old",
         token_expires_at=now_epoch() + 3600,
     )
@@ -1317,7 +1317,7 @@ def test_pending_cleanup_does_not_block_rearming_new_generation(db_uri: str) -> 
         host_id=host_id,
         user_id="alice@example.com",
         token="new-generation-token",
-        provider="modal",
+        provider="computer",
         sandbox_id="sb-new",
         token_expires_at=now_epoch() + 3600,
     )
@@ -1345,7 +1345,7 @@ def test_managed_connect_revalidates_token_after_detach(db_uri: str) -> None:
         name="managed-connect-race",
         user_id="alice@example.com",
         token="old-connect-token",
-        provider="modal",
+        provider="computer",
         sandbox_id="sb-connect-old",
         token_expires_at=now_epoch() + 3600,
     )
@@ -1367,7 +1367,7 @@ def test_managed_connect_revalidates_token_after_detach(db_uri: str) -> None:
         host_id=host_id,
         user_id="alice@example.com",
         token="new-connect-token",
-        provider="modal",
+        provider="computer",
         sandbox_id="sb-connect-new",
         token_expires_at=now_epoch() + 3600,
     )
@@ -1395,7 +1395,7 @@ def test_revoke_launch_token_keeps_row_but_stops_resolution(db_uri: str) -> None
         name="managed-revoke",
         user_id="alice@example.com",
         token="raw-launch-token-revoke",
-        provider="modal",
+        provider="computer",
         sandbox_id="sb-revoke",
         token_expires_at=now_epoch() + 3600,
     )
@@ -1416,7 +1416,7 @@ def test_revoke_launch_token_keeps_row_but_stops_resolution(db_uri: str) -> None
     )
     host = store.get_host("f59827fa9468170e62cf28104d2a5251")
     assert host is not None
-    assert host.sandbox_provider == "modal"
+    assert host.sandbox_provider == "computer"
     # Unknown host: no-op, not an error.
     store.revoke_launch_token("b4cfac8495d21e1a300c27de5203e52d")
 
@@ -1436,7 +1436,7 @@ def test_managed_host_raw_token_never_stored(db_uri: str) -> None:
         name="managed-m6",
         user_id="alice@example.com",
         token="raw-launch-token-6",
-        provider="modal",
+        provider="computer",
         sandbox_id="sb-m6",
         token_expires_at=now_epoch() + 3600,
     )
@@ -1461,7 +1461,7 @@ def test_replace_managed_host_sandbox_refuses_cross_owner(db_uri: str) -> None:
         name="managed-m7",
         user_id="alice@example.com",
         token="alice-token-7",
-        provider="modal",
+        provider="computer",
         sandbox_id="sb-m7",
         token_expires_at=now_epoch() + 3600,
     )
@@ -1471,7 +1471,7 @@ def test_replace_managed_host_sandbox_refuses_cross_owner(db_uri: str) -> None:
             host_id="58f80f7592c6a72ba121eb5aedde8a82",
             user_id="bob@example.com",
             token="bob-token-7",
-            provider="modal",
+            provider="computer",
             sandbox_id="sb-m7-bob",
             token_expires_at=now_epoch() + 3600,
         )
@@ -1495,7 +1495,7 @@ def test_computer_control_token_persists_across_store_instances(db_uri: str) -> 
         name="managed-ctl",
         user_id="alice@example.com",
         token="raw-launch-token-ctl",
-        provider="modal",
+        provider="computer",
         sandbox_id="sb-ctl",
         token_expires_at=now_epoch() + 3600,
     )

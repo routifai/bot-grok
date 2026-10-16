@@ -96,9 +96,7 @@ def _runner_hello() -> HelloFrame:
         harnesses=[
             "claude-native",
             "claude-sdk",
-            "codex",
-            "codex-native",
-            "openai-agents",
+            "pi",
         ],
         envs=[],
     )
@@ -508,7 +506,7 @@ async def test_inline_launch_stamps_terminal_view_label_at_creation(
     assert conv.labels.get("omnigent.ui") == "terminal"
 
 
-@pytest.mark.parametrize("harness", ["pi-native", "native-pi", "claude-native", "codex-native"])
+@pytest.mark.parametrize("harness", ["claude-native", "native-claude"])
 async def test_inline_launch_stamps_terminal_view_label_for_custom_native_harness(
     client: httpx.AsyncClient,
     app: FastAPI,
@@ -559,9 +557,9 @@ async def test_inline_launch_stamps_terminal_view_label_for_custom_native_harnes
 @pytest.mark.parametrize(
     "spec_harness,harness_override,terminal_view",
     [
-        ("claude-sdk", "pi-native", True),
-        ("pi-native", "claude-sdk", False),
-        ("pi-native", "auto", False),
+        ("claude-sdk", "claude-native", True),
+        ("claude-native", "claude-sdk", False),
+        ("claude-native", "auto", False),
     ],
 )
 async def test_custom_native_terminal_view_uses_harness_override(
@@ -737,7 +735,7 @@ async def test_inline_launch_connection_loss_still_returns_bound_session(
 
 
 _HARNESS_REFUSAL = (
-    "harness 'codex' is not configured on host 'laptop' — run `omnigent setup` on that machine"
+    "harness 'pi' is not configured on host 'laptop' — run `omnigent setup` on that machine"
 )
 _WORKSPACE_MISSING_ERROR = "workspace path does not exist: /deleted/worktree"
 
@@ -764,7 +762,7 @@ async def test_inline_create_harness_not_configured_stays_lenient(
     comm = await _connect_host(app)
     agent = await create_test_agent(
         client,
-        executor={"type": "omnigent", "config": {"harness": "codex"}},
+        executor={"type": "omnigent", "config": {"harness": "pi"}},
     )
 
     responder = asyncio.create_task(
@@ -783,7 +781,7 @@ async def test_inline_create_harness_not_configured_stays_lenient(
 
     # The create-time launch carries the agent's canonical harness so the
     # host can run its check; the refusal is just handled leniently.
-    assert launch_frame.harness == "codex", (
+    assert launch_frame.harness == "pi", (
         f"create launch frame should carry the agent's harness, got {launch_frame.harness!r}"
     )
     assert resp.status_code == 201, f"expected 201, got {resp.status_code}: {resp.text}"
@@ -814,7 +812,7 @@ async def test_inline_create_harness_not_configured_stays_lenient(
             HARNESS_NOT_CONFIGURED_ERROR_CODE,
             HARNESS_NOT_CONFIGURED_ERROR_CODE,
             _HARNESS_REFUSAL,
-            ("omnigent setup", "harness 'codex' is not configured"),
+            ("omnigent setup", "harness 'pi' is not configured"),
             None,
         ),
         (
@@ -896,7 +894,7 @@ async def test_message_relaunch_deterministic_failure_persists_error_turn(
     comm = await _connect_host(app)
     agent = await create_test_agent(
         client,
-        executor={"type": "omnigent", "config": {"harness": "codex"}},
+        executor={"type": "omnigent", "config": {"harness": "pi"}},
     )
     # Create with a successful create-time launch so the session binds a
     # runner_id (the fake runner never actually connects).
@@ -3154,7 +3152,7 @@ async def test_rider_of_a_refused_relaunch_surfaces_the_refusal(
     comm = await _connect_host(app)
     agent = await create_test_agent(
         client,
-        executor={"type": "omnigent", "config": {"harness": "codex"}},
+        executor={"type": "omnigent", "config": {"harness": "pi"}},
     )
     create_responder = asyncio.create_task(_serve_one_launch(comm, launch_status="launched"))
     create_resp = await client.post(

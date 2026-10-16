@@ -40,7 +40,7 @@ async def _assert_failure_on_both_streams(
                 "role": "user",
                 "model": "test-agent",
                 "content": [{"type": "input_text", "text": "hello"}],
-                "harness": "openai-agents",
+                "harness": "claude-sdk",
                 **message_fields,
             },
         )

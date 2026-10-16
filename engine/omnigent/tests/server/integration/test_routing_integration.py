@@ -752,7 +752,7 @@ async def _pinned_parent_and_child(
     :param client: Test HTTP client.
     :param db_uri: Database URI for a direct store handle.
     :param agent_name: Agent name to register.
-    :param harness: The parent agent's harness, e.g. ``"codex"``.
+    :param harness: The parent agent's harness, e.g. ``"claude-sdk"``.
     :returns: ``(parent_id, child_conversation, conversation_store)``.
     """
     agent = await create_test_agent(
@@ -784,7 +784,6 @@ async def _pinned_parent_and_child(
 @pytest.mark.parametrize(
     ("harness", "picked", "expected_harnesses"),
     [
-        ("codex", GPT_MODEL, {"codex"}),
         ("claude-sdk", ROUTED_MODEL, {"claude-sdk"}),
     ],
 )
@@ -841,14 +840,13 @@ async def test_child_of_a_pinned_parent_is_routed_in_the_parents_family(
         # The client asked for the auto harness outright.
         (
             "client-sentinel",
-            {"harness": "codex"},
+            {"harness": "claude-sdk"},
             {"cost_control_mode_override": "on", "harness_override": "auto"},
             ROUTED_MODEL,
             "rewrite the router",
         ),
         # The spec opted itself in: a brain pinned to claude-sdk used to clamp
-        # every child into the claude family, so a codex sub-agent was rerouted
-        # onto claude-sdk. `smart_routing_harness: auto` starts the parent auto
+        # every child into the claude family. `smart_routing_harness: auto` starts the parent auto
         # with no harness_override in the request at all.
         (
             "spec-opt-in",
@@ -870,8 +868,8 @@ async def test_child_of_an_auto_parent_keeps_cross_harness_candidates(
 ) -> None:
     """However the parent became auto, its children are routed against every family.
 
-    ``allowed_family=None``: every family is on offer, so a codex head can stay
-    on codex instead of being clamped into the brain's claude family.
+    ``allowed_family=None``: every family is on offer instead of the child being
+    clamped into the brain's claude family.
     """
     agent = await create_test_agent(
         client,
@@ -912,7 +910,7 @@ async def test_child_of_an_auto_parent_keeps_cross_harness_candidates(
                 runner_client,
             )
 
-    assert set(routing_client.offered[0]) == {"claude-sdk", "codex", "pi"}
+    assert set(routing_client.offered[0]) == {"claude-sdk", "pi"}
 
 
 @pytest.mark.parametrize(
@@ -1038,7 +1036,7 @@ async def _auto_parent_and_child(
     agent = await create_test_agent(
         client,
         name=agent_name,
-        executor={"type": "omnigent", "config": {"harness": "codex"}},
+        executor={"type": "omnigent", "config": {"harness": "claude-sdk"}},
     )
     body: dict[str, Any] = {"agent_id": agent["id"], "harness_override": "auto"}
     if cost_control is not None:
@@ -1174,7 +1172,7 @@ async def _pinned_parent(
 
     :param client: Test HTTP client.
     :param agent_name: Agent name to register.
-    :param harness: The parent agent's harness, e.g. ``"codex"``.
+    :param harness: The parent agent's harness, e.g. ``"claude-sdk"``.
     :param routing_on: Whether the parent routes its spawns.
     :returns: The parent session id.
     """
@@ -1217,68 +1215,14 @@ async def _create_child(
     )
 
 
-async def test_pinned_parent_cannot_create_a_child_in_another_family(
-    client: httpx.AsyncClient,
-) -> None:
-    parent_id = await _pinned_parent(
-        client, agent_name="family-gate-pinned-parent", harness="codex"
-    )
-    child = await _create_child(
-        client, parent_id, agent_name="family-gate-claude-child", harness="claude-sdk"
-    )
-    assert child.status_code == 400, child.text
-    assert "model family" in child.text
-
-
 async def test_pinned_parent_still_creates_children_in_its_own_family(
     client: httpx.AsyncClient,
 ) -> None:
     parent_id = await _pinned_parent(
-        client, agent_name="family-gate-same-family-parent", harness="codex"
+        client, agent_name="family-gate-same-family-parent", harness="claude-sdk"
     )
     child = await _create_child(
-        client, parent_id, agent_name="family-gate-codex-child", harness="codex"
-    )
-    assert child.status_code == 201, child.text
-
-
-async def test_auto_parent_may_create_a_child_in_another_family(
-    client: httpx.AsyncClient,
-) -> None:
-    agent = await create_test_agent(
-        client,
-        name="family-gate-auto-parent",
-        executor={"type": "omnigent", "config": {"harness": "codex"}},
-    )
-    parent = await client.post(
-        "/v1/sessions",
-        json={
-            "agent_id": agent["id"],
-            "cost_control_mode_override": "on",
-            "harness_override": "auto",
-        },
-    )
-    assert parent.status_code == 201, parent.text
-    child = await _create_child(
-        client,
-        str(parent.json()["id"]),
-        agent_name="family-gate-auto-claude-child",
-        harness="claude-sdk",
-    )
-    assert child.status_code == 201, child.text
-
-
-async def test_plain_parent_may_create_a_child_in_another_family(
-    client: httpx.AsyncClient,
-) -> None:
-    parent_id = await _pinned_parent(
-        client,
-        agent_name="family-gate-plain-parent",
-        harness="codex",
-        routing_on=False,
-    )
-    child = await _create_child(
-        client, parent_id, agent_name="family-gate-plain-claude-child", harness="claude-sdk"
+        client, parent_id, agent_name="family-gate-claude-native-child", harness="claude-native"
     )
     assert child.status_code == 201, child.text
 
@@ -1555,13 +1499,12 @@ async def _parent_with_native_child_pane(
 
     The pane is the shape a ``sys_session_create`` spawn produces when the
     orchestrator names another family's wrapper agent: a native terminal child
-    whose harness was never routed. Live example: a pinned ``codex-native``
-    session that spawned a ``claude-native-ui`` child.
+    whose harness was never routed.
 
     :param client: Test HTTP client.
     :param db_uri: Database URI for a direct store handle.
     :param agent_name: Agent name to register.
-    :param parent_harness: The parent agent's harness, e.g. ``"codex"``.
+    :param parent_harness: The parent agent's harness, e.g. ``"pi"``.
     :param auto: ``True`` to start the parent in Smart Routing (auto) harness
         mode, the only mode allowed cross-family spawns.
     :returns: ``(parent_id, child_conversation, conversation_store)``.
@@ -1615,52 +1558,6 @@ async def _parent_with_native_child_pane(
     return parent_id, refreshed, conv_store
 
 
-async def test_a_pinned_parents_child_pane_is_never_routed_onto_another_family(
-    client: httpx.AsyncClient,
-    db_uri: str,
-) -> None:
-    """A pinned codex parent's ``child_session`` route cannot land a claude arm.
-
-    Cross-family spawns are for auto-harness sessions only. The in-harness
-    spawn gate already held that line (``candidate_models(cross_harness=False)``)
-    but the child-session path did not: a live pinned codex session spawned a
-    ``claude-native-ui`` child and the router happily pinned it to
-    ``claude-sonnet-5``. Now nothing is routed and the chip says why.
-    """
-    _parent_id, child, conv_store = await _parent_with_native_child_pane(
-        client,
-        db_uri,
-        agent_name="routing-child-pane-pinned",
-        parent_harness="codex",
-        auto=False,
-    )
-    routing_client = FakeRoutingClient(
-        RoutingResult(model=ROUTED_MODEL, rationale="escalate", harness="claude_code")
-    )
-
-    data, forwarded = await _dispatch_native_turn(
-        child, conv_store, model=ROUTED_MODEL, routing_client=routing_client
-    )
-
-    # The router is never even asked: this pane has no candidate the parent's
-    # family can serve.
-    assert routing_client.calls == []
-    assert data.scope == "child_session"
-    assert data.applied is False
-    assert data.model == UNAVAILABLE_MODEL
-    assert "stay in its own model family" in data.rationale
-    assert "claude-native" in data.rationale
-    refreshed = conv_store.get_conversation(child.id)
-    assert refreshed is not None
-    # Nothing pinned, nothing switched in-band, and the route-once label is
-    # left unclaimed — the pane runs on its CLI's own model.
-    assert refreshed.model_override is None
-    assert not refreshed.labels.get(ROUTING_DECISION_LABEL_KEY)
-    assert [f.get("model_override") for f in forwarded] == [None]
-    # The spawn still ran: the message reached the terminal.
-    assert forwarded
-
-
 async def test_an_auto_parents_child_pane_still_routes_across_families(
     client: httpx.AsyncClient,
     db_uri: str,
@@ -1674,7 +1571,7 @@ async def test_an_auto_parents_child_pane_still_routes_across_families(
         client,
         db_uri,
         agent_name="routing-child-pane-auto",
-        parent_harness="codex",
+        parent_harness="pi",
         auto=True,
     )
     routing_client = FakeRoutingClient(
@@ -1713,7 +1610,7 @@ async def test_a_pane_still_on_the_auto_sentinel_is_routed_in_its_own_family(
         client,
         db_uri,
         agent_name="routing-child-pane-sentinel",
-        parent_harness="codex",
+        parent_harness="pi",
         auto=True,
     )
     sentinel = conv_store.update_conversation(child.id, harness_override="auto")
@@ -1843,8 +1740,8 @@ async def test_a_follow_up_message_cannot_flip_a_routed_childs_harness(
         subagent_routing="on",
     )
     routing_client = _SequenceRoutingClient(
-        RoutingResult(model=GPT_MODEL, rationale="first", harness="codex"),
-        RoutingResult(model=ROUTED_MODEL, rationale="second", harness="claude_code"),
+        RoutingResult(model=ROUTED_MODEL, rationale="first", harness="claude_code"),
+        RoutingResult(model=GPT_MODEL, rationale="second", harness="pi"),
     )
 
     await _send_child_message(child, conv_store, routing_client, "audit routing")
@@ -1852,7 +1749,7 @@ async def test_a_follow_up_message_cannot_flip_a_routed_childs_harness(
     after_first = conv_store.get_conversation(child.id)
     assert after_first is not None
     assert len(routing_client.calls) == 1
-    assert after_first.model_override == GPT_MODEL
+    assert after_first.model_override == ROUTED_MODEL
     first_harness = after_first.harness_override
     assert first_harness not in (None, "auto")
     assert after_first.labels.get(ROUTING_DECISION_LABEL_KEY)
@@ -1865,7 +1762,7 @@ async def test_a_follow_up_message_cannot_flip_a_routed_childs_harness(
     assert after_second is not None
     assert len(routing_client.calls) == 1, "the follow-up must not re-run the judge"
     assert after_second.harness_override == first_harness
-    assert after_second.model_override == GPT_MODEL
+    assert after_second.model_override == ROUTED_MODEL
     assert len(_routing_decisions(conv_store, child.id)) == 1
 
 
@@ -2149,7 +2046,7 @@ async def test_a_routing_outage_still_delivers_a_child_spawns_turn(
         client,
         db_uri,
         agent_name=f"routing-outage-child-{label}",
-        harness="codex",
+        harness="claude-sdk",
     )
 
     await _send_child_message(
@@ -2188,7 +2085,7 @@ async def test_an_auto_harness_outage_leaves_the_route_once_label_unclaimed(
     agent = await create_test_agent(
         client,
         name=f"routing-outage-auto-{label}",
-        executor={"type": "omnigent", "config": {"harness": "codex"}},
+        executor={"type": "omnigent", "config": {"harness": "claude-sdk"}},
     )
     created = await client.post(
         "/v1/sessions",

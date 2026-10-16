@@ -30,7 +30,7 @@ def _message(text: str, item_id: str | None = None) -> dict[str, Any]:
         "role": "user",
         "model": "test-agent",
         "content": [{"type": "input_text", "text": text}],
-        "harness": "openai-agents",
+        "harness": "claude-sdk",
     }
     if item_id:
         body["persisted_item_id"] = item_id

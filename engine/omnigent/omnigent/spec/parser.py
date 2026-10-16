@@ -258,9 +258,9 @@ def parse(root: Path, *, expand_env: bool = True) -> AgentSpec:
             llm.extra["reasoning_effort"] = executor.reasoning_effort
     # Ensure spec.llm is populated from executor fields when only the
     # executor: block declares model/connection (the common case for
-    # user-authored YAML). Internal consumers (policy builder,
-    # web_fetch sub-agent) still read spec.llm for extra, retry,
-    # and request_timeout.
+    # user-authored YAML). Internal consumers (e.g. the policy
+    # builder) still read spec.llm for extra, retry, and
+    # request_timeout.
     if llm is None and executor.model is not None:
         llm = LLMConfig(model=executor.model, connection=executor.connection)
     elif llm is not None:
@@ -280,7 +280,6 @@ def parse(root: Path, *, expand_env: bool = True) -> AgentSpec:
     from omnigent.sandbox.copy_on_write import validate_copy_on_write_harness
 
     validate_copy_on_write_harness(os_env, executor.harness_kind)
-    model_egress = _parse_model_egress(raw.get("model_egress"))
     terminals = _parse_terminals(raw.get("terminals"))
     params = raw.get("params", {})
     # Top-level ``async:`` flag gates the LLM-callable async-dispatch
@@ -360,7 +359,6 @@ def parse(root: Path, *, expand_env: bool = True) -> AgentSpec:
         max_sessions=max_sessions,
         async_enabled=async_enabled,
         os_env=os_env,
-        model_egress=model_egress,
         terminals=terminals,
         timers=timers,
         spawn=spawn,
@@ -779,7 +777,7 @@ def _parse_executor_auth(
       the ``providers:`` block of ``~/.omnigent/config.yaml``).
 
     :param raw: The raw ``executor:`` mapping already read from YAML.
-        Example: ``{"harness": "openai-agents", "auth": {"type": "api_key",
+        Example: ``{"harness": "claude-sdk", "auth": {"type": "api_key",
         "api_key": "$OPENAI_API_KEY"}}``.
     :param expand_env: Whether to expand ``${VAR}`` / ``$VAR`` references
         in the ``api_key`` value. ``True`` for runtime; ``False`` for
@@ -1382,35 +1380,6 @@ def _parse_egress_rules(raw: object) -> list[str] | None:
         except ValueError as exc:
             raise OmnigentError(
                 f"os_env.sandbox.egress_rules[{i}] is invalid: {exc}",
-                code=ErrorCode.INVALID_INPUT,
-            ) from exc
-        validated.append(entry)
-    return validated
-
-
-def _parse_model_egress(raw: object) -> list[str] | None:
-    """Parse the explicit model-signing grant independently of generic egress."""
-    if raw is None:
-        return None
-    if not isinstance(raw, list) or not raw:
-        raise OmnigentError(
-            "model_egress must be a non-empty list of HTTP egress rules",
-            code=ErrorCode.INVALID_INPUT,
-        )
-    from omnigent.inner.egress.rules import parse_rule
-
-    validated: list[str] = []
-    for index, entry in enumerate(raw):
-        if not isinstance(entry, str):
-            raise OmnigentError(
-                f"model_egress[{index}] must be a string",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        try:
-            parse_rule(entry)
-        except ValueError as exc:
-            raise OmnigentError(
-                f"model_egress[{index}] is invalid: {exc}",
                 code=ErrorCode.INVALID_INPUT,
             ) from exc
         validated.append(entry)

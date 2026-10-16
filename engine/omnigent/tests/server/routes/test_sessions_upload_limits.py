@@ -181,13 +181,11 @@ def test_message_cannot_inline_a_filesystem_attachment(
 @pytest.mark.parametrize(
     "filename,target_harness,event_type,block_type,status",
     [
-        ("archive.zip", "cursor-native", "message", "input_file", 415),
-        ("archive.zip", "openai-agents", "message", "input_file", 415),
-        ("archive.zip", "openai-agents", "message", "input_image", 415),
-        ("archive.zip", "cursor-native", "slash_command", "input_file", 415),
+        ("archive.zip", "pi", "message", "input_file", 415),
+        ("archive.zip", "claude-sdk", "message", "input_image", 415),
+        ("archive.zip", "pi", "slash_command", "input_file", 415),
         ("archive.zip", "claude-native", "message", "input_file", 202),
-        ("archive.zip", "codex-native", "message", "input_file", 202),
-        ("notes.txt", "openai-agents", "message", "input_file", 202),
+        ("notes.txt", "pi", "message", "input_file", 202),
     ],
 )
 def test_send_rechecks_unsent_upload_after_harness_transition(

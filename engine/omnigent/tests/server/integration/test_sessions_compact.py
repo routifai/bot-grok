@@ -192,7 +192,7 @@ async def test_compact_sdk_harness_no_runner_returns_not_available(
     agent = await create_test_agent(
         client,
         name="sdk-no-runner-compact",
-        executor={"type": "omnigent", "config": {"harness": "openai-agents"}},
+        executor={"type": "omnigent", "config": {"harness": "pi"}},
         include_llm=False,
     )
     sid = await _create_session(client, agent["id"])

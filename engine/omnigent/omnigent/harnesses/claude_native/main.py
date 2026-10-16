@@ -2384,7 +2384,7 @@ def _fetch_external_session_id_for_redirect(
         if resp.status_code >= 400:
             return None
         payload = resp.json()
-    except Exception:  # noqa: BLE001
+    except Exception:
         _logger.warning(
             "failed to fetch external Claude session id for redirect; session=%s",
             session_id,
@@ -2850,7 +2850,7 @@ def _ucode_config_for_profile(
     if agent_state is None:
         raise click.ClickException(
             f"ucode state for profile {profile!r} does not include a Claude agent entry. "
-            f"Run `{cli_invocation()} setup --internal-beta` to refresh ucode configuration."
+            "Re-run ucode setup for this profile to refresh its configuration."
         )
 
     base_url = agent_state.env.get(_UCODE_CLAUDE_BASE_URL_ENV) or agent_state.base_url
@@ -2860,12 +2860,12 @@ def _ucode_config_for_profile(
         raise click.ClickException(
             f"ucode state for profile {profile!r} is missing Claude base URL "
             f"({_UCODE_CLAUDE_BASE_URL_ENV} / base_url). "
-            f"Run `{cli_invocation()} setup --internal-beta` to refresh ucode configuration."
+            "Re-run ucode setup for this profile to refresh its configuration."
         )
     if not agent_state.auth_command:
         raise click.ClickException(
             f"ucode state for profile {profile!r} is missing Claude auth_command. "
-            f"Run `{cli_invocation()} setup --internal-beta` to refresh ucode configuration."
+            "Re-run ucode setup for this profile to refresh its configuration."
         )
 
     refresh_interval_ms = (
@@ -2887,7 +2887,7 @@ def _ucode_config_for_profile(
             live_catalog = discover_databricks_claude_catalog(creds.host, creds.token)
             live_models = live_catalog.families
             routable_models = live_catalog.model_ids
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             # Recoverable fallback; frames are debug-only so a TTY-mirrored
             # host console stays concise.
             _logger.warning(
@@ -3281,7 +3281,7 @@ _BROKER_APIKEY_HELPER_TTL_MS = 900_000
 # A managed connect deployment can pin the gateway serving-endpoint model (e.g.
 # ``databricks-claude-sonnet-4-6``) so sessions default to a model the workspace
 # actually serves, rather than the bundled catalog default (which may name a
-# family the workspace has not deployed). Mirrors the opencode gateway env var.
+# family the workspace has not deployed).
 # Discovering the served model from the gateway is a follow-up cleanup.
 _DATABRICKS_GATEWAY_MODEL_ENV = "OMNIGENT_DATABRICKS_GATEWAY_MODEL"
 
@@ -3382,7 +3382,7 @@ def _connect_broker_claude_config() -> ClaudeNativeUcodeConfig | None:
         # Security: state.json is writable, and the broker bearer (apiKeyHelper)
         # is presented to whatever ANTHROPIC_BASE_URL resolves to. Only adopt
         # ucode's env/model when its base URL is HTTPS on the connected workspace
-        # host (mirrors the opencode guard); otherwise keep the profile-derived
+        # host; otherwise keep the profile-derived
         # route rather than forwarding the bearer to an unverified origin.
         if ucode_base_url and https_url_on_workspace_host(ucode_base_url, workspace_host):
             # Adopt only the explicit routing/model keys from the writable
@@ -3530,7 +3530,7 @@ def resolve_native_claude_config(
     log_info_once(
         _logger,
         "native-claude routing: Claude CLI login (no provider configured for the Claude "
-        "harness, no Databricks profile). Run `omnigent setup --no-internal-beta` to route "
+        "harness, no Databricks profile). Run `omnigent setup` to route "
         "through a provider.",
     )
     return None
@@ -3608,7 +3608,7 @@ def _wrapper_spec_raw_instructions(spec_path: Path) -> str | None:
 
     try:
         spec = load_agent_spec(spec_path, expand_env=False)
-    except Exception:  # noqa: BLE001
+    except Exception:
         _logger.warning(
             "Could not resolve raw instructions from wrapper spec %s",
             spec_path,
@@ -4031,7 +4031,7 @@ async def _attach_with_transcript_forwarder(
                 await forwarder
             except asyncio.CancelledError:
                 pass
-            except Exception:  # noqa: BLE001
+            except Exception:
                 # The forwarder is best-effort mirroring. A bug there
                 # (corrupt transcript JSONL, file-system error, anything
                 # uncaught in the parser) must not skip the Omnigent terminal
@@ -4129,7 +4129,7 @@ async def _attach_with_reconnect(
         if not first_attempt and recover is not None:
             try:
                 await recover()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 _logger.warning(
                     "%s-native reconnect recovery callback raised; retrying attach anyway",
                     session_name.lower(),

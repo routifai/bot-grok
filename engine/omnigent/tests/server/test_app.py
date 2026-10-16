@@ -19,10 +19,7 @@ import pytest
 from fastapi import FastAPI, Request
 from PIL import Image
 
-from omnigent.native.native_coding_agents import (
-    ANTIGRAVITY_NATIVE_AGENT_NAME,
-    QWEN_NATIVE_AGENT_NAME,
-)
+from omnigent.native.native_coding_agents import CLAUDE_NATIVE_AGENT_NAME
 from omnigent.runtime.agent_cache import AgentCache
 from omnigent.server import app as server_app
 from omnigent.stores.agent_store.sqlalchemy_store import SqlAlchemyAgentStore
@@ -1062,13 +1059,13 @@ def test_ensure_extra_builtin_agents_skips_bad_path_and_seeds_good(
     assert seed_stores.agent_store.get_by_name("does-not-exist") is None
 
 
-def test_ensure_default_native_agents_seeds_qwen_card(seed_stores: _SeedStores) -> None:
+def test_ensure_default_native_agents_seeds_claude_card(seed_stores: _SeedStores) -> None:
     """
-    The native seeding loop registers qwen-native-ui as a picker-renderable built-in.
+    The native seeding loop registers the Claude Code native agent as a
+    picker-renderable built-in.
 
     The new-session picker reads built-ins from ``GET /v1/agents``; without this
-    seeder Qwen Code only appears after the ``omnigent qwen`` CLI first registers
-    it, so it was absent from the Web UI dropdown.
+    seeder Claude Code would be absent from the Web UI dropdown.
     """
     server_app._ensure_default_native_agents(
         seed_stores.agent_store,
@@ -1076,9 +1073,9 @@ def test_ensure_default_native_agents_seeds_qwen_card(seed_stores: _SeedStores) 
         seed_stores.agent_cache,
     )
 
-    seeded = seed_stores.agent_store.get_by_name(QWEN_NATIVE_AGENT_NAME)
-    assert seeded is not None, "qwen-native-ui was not registered"
-    assert seeded.name == QWEN_NATIVE_AGENT_NAME
+    seeded = seed_stores.agent_store.get_by_name(CLAUDE_NATIVE_AGENT_NAME)
+    assert seeded is not None, f"{CLAUDE_NATIVE_AGENT_NAME} was not registered"
+    assert seeded.name == CLAUDE_NATIVE_AGENT_NAME
     # The bundle must be retrievable, not just referenced.
     assert seed_stores.artifact_store.get(seeded.bundle_location) is not None
 
@@ -1109,192 +1106,6 @@ def test_ensure_default_native_agents_seeds_every_native_agent(
         assert seeded.id == builtin_agent_id(agent.agent_name)
         assert seeded.session_id is None, "built-ins must be session-scope NULL"
         assert seed_stores.artifact_store.get(seeded.bundle_location) is not None
-
-
-def test_ensure_default_acp_agents_seeds_configured_agent(
-    seed_stores: _SeedStores, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A configured ``acp:<slug>`` agent becomes a picker-renderable built-in.
-
-    This is the ACP analogue of the native seeding: the New-Session picker reads
-    built-ins from ``GET /v1/agents``, so a configured ACP agent must seed to
-    appear — the same way ``opencode-native-ui`` etc. do.
-
-    **What breaks if this fails**: a user with Devin (or any ``acp:`` agent) set
-    up on their machine never sees it in the web picker.
-    """
-    from omnigent.db.utils import builtin_agent_id
-    from omnigent.onboarding.acp_auth import AcpAgentEntry
-
-    # A display label with a space ("Gemini CLI") must not become the agent name
-    # (spec names are [a-zA-Z0-9_-]+); the slug is used instead.
-    entry = AcpAgentEntry(
-        slug="gemini-cli", name="Gemini CLI", command="gemini --experimental-acp"
-    )
-    monkeypatch.setattr("omnigent.onboarding.acp_auth.acp_agents", lambda *a, **k: [entry])
-    # No builtin ACP CLI installed, so only the configured agent seeds.
-    monkeypatch.setattr("omnigent._platform.resolve_cli_binary", lambda _b, **k: None)
-
-    server_app._ensure_default_acp_agents(
-        seed_stores.agent_store, seed_stores.artifact_store, seed_stores.agent_cache
-    )
-
-    # Keyed by the slug, not the label.
-    seeded = seed_stores.agent_store.get_by_name("gemini-cli")
-    assert seeded is not None, "configured acp:<slug> agent was not seeded into the picker"
-    assert seed_stores.agent_store.get_by_name("Gemini CLI") is None, (
-        "the invalid space-bearing label must not be used as the agent name"
-    )
-    assert seeded.id == builtin_agent_id("gemini-cli")
-    assert seeded.session_id is None, "built-ins must be session-scope NULL"
-    assert seed_stores.artifact_store.get(seeded.bundle_location) is not None
-
-
-def test_ensure_default_acp_agents_seeds_builtin_cli_rows_without_a_local_binary(
-    seed_stores: _SeedStores, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Every builtin ACP CLI row seeds even when no vendor CLI is on this host.
-
-    The vendor CLI runs on the *executing* host (the attached runner), not on the
-    server, so the server's own PATH says nothing about launchability. The picker
-    hides a row the selected host can't run via that host's ``configured_harnesses``
-    readiness map — the same way natives are seeded unconditionally and filtered.
-
-    **What breaks if this fails**: on a remote server (no vendor CLI in its
-    container) Devin and Grok vanish from the New Chat picker even though the Mac
-    runner attached to it has them installed — the row is never seeded, so no
-    per-host filter can bring it back.
-    """
-    from omnigent.acp_cli_harnesses import ACP_CLI_HARNESSES
-
-    monkeypatch.setattr("omnigent.onboarding.acp_auth.acp_agents", lambda *a, **k: [])
-    # No vendor CLI resolves here — the remote-server / app-container shape.
-    monkeypatch.setattr("omnigent._platform.resolve_cli_binary", lambda _b, **k: None)
-
-    server_app._ensure_default_acp_agents(
-        seed_stores.agent_store, seed_stores.artifact_store, seed_stores.agent_cache
-    )
-    # Keyed by the catalog id (a valid slug), not the display label.
-    for key in ACP_CLI_HARNESSES:
-        assert seed_stores.agent_store.get_by_name(key) is not None, (
-            f"builtin ACP CLI {key!r} was not seeded"
-        )
-
-
-def test_ensure_default_acp_agents_configured_agent_beats_same_slug_builtin(
-    seed_stores: _SeedStores, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """A configured agent whose slug is a builtin row id keeps its own command.
-
-    ``AcpAgentEntry(name="Devin")`` slugifies to ``devin``, which is also a
-    catalog row id, so both sources seed the same :func:`builtin_agent_id`. The
-    row must be skipped rather than seeded second and overwriting the user's
-    entry — while an unrelated row (``grok``) still seeds alongside.
-
-    **What breaks if this fails**: picking "Devin" in the web picker silently
-    runs the fixed row argv (account-default model) instead of the command the
-    user configured, e.g. ``devin acp --model swe-1-7-medium``.
-    """
-    import io
-    import tarfile
-
-    from omnigent.db.utils import builtin_agent_id
-    from omnigent.onboarding.acp_auth import AcpAgentEntry
-    from omnigent.spec import load
-
-    entry = AcpAgentEntry(slug="devin", name="Devin", command="devin acp --model swe-1-7-medium")
-    monkeypatch.setattr("omnigent.onboarding.acp_auth.acp_agents", lambda *a, **k: [entry])
-    # Both vendor CLIs are installed, so the devin row would otherwise seed too.
-    monkeypatch.setattr(
-        "omnigent._platform.resolve_cli_binary", lambda _b, **k: "/usr/local/bin/x"
-    )
-
-    server_app._ensure_default_acp_agents(
-        seed_stores.agent_store, seed_stores.artifact_store, seed_stores.agent_cache
-    )
-
-    seeded = seed_stores.agent_store.get_by_name("devin")
-    assert seeded is not None
-    assert seeded.id == builtin_agent_id("devin"), "both sources key the same id"
-    assert seed_stores.agent_store.get_by_name("grok") is not None, (
-        "a non-colliding builtin row must still seed"
-    )
-
-    # Presence is not enough — assert the surviving row launches the *configured*
-    # harness, since the bug was an overwrite that kept the name and lost the spec.
-    bundle = seed_stores.artifact_store.get(seeded.bundle_location)
-    assert bundle is not None
-    dest = tmp_path / "seeded"
-    with tarfile.open(fileobj=io.BytesIO(bundle), mode="r:gz") as tf:
-        tf.extractall(dest, filter="data")
-    assert load(dest).executor.config["harness"] == "acp:devin"
-
-
-def test_ensure_default_acp_agents_seeds_no_slug_rows_without_acp_config(
-    seed_stores: _SeedStores, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """An empty ``acp:`` block seeds no ``acp:<slug>`` row — only catalog rows.
-
-    Unlike a builtin row, a configured agent's launch command is resolved from the
-    host's own ``acp:`` block at spawn time, so a slug this host never defined could
-    not launch anywhere. Only the fixed catalog rows are host-independent.
-
-    **What breaks if this fails**: the picker grows a row for a slug no config
-    defines, and choosing it fails at spawn with an unresolvable ACP command.
-    """
-    from omnigent.acp_cli_harnesses import ACP_CLI_HARNESSES
-
-    monkeypatch.setattr("omnigent.onboarding.acp_auth.acp_agents", lambda *a, **k: [])
-    monkeypatch.setattr("omnigent._platform.resolve_cli_binary", lambda _b, **k: None)
-
-    server_app._ensure_default_acp_agents(
-        seed_stores.agent_store, seed_stores.artifact_store, seed_stores.agent_cache
-    )
-    assert seed_stores.agent_store.get_by_name("kilocode") is None, (
-        "a slug absent from config must not be seeded"
-    )
-    seeded = {
-        key for key in ACP_CLI_HARNESSES if seed_stores.agent_store.get_by_name(key) is not None
-    }
-    assert seeded == set(ACP_CLI_HARNESSES), "catalog rows are host-independent and always seed"
-
-
-def test_ensure_default_acp_agents_survives_unreadable_config(
-    seed_stores: _SeedStores, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A malformed ``acp:`` block is skipped, never fatal to server startup."""
-
-    def _boom(*_a: object, **_k: object) -> list[object]:
-        raise ValueError("bad acp: block")
-
-    monkeypatch.setattr("omnigent.onboarding.acp_auth.acp_agents", _boom)
-    monkeypatch.setattr("omnigent._platform.resolve_cli_binary", lambda _b, **k: None)
-
-    # Must not raise — startup calls this and a bad user config can't take the
-    # whole server down.
-    server_app._ensure_default_acp_agents(
-        seed_stores.agent_store, seed_stores.artifact_store, seed_stores.agent_cache
-    )
-
-
-def test_build_acp_bundle_carries_the_harness_id(tmp_path: Path) -> None:
-    """The seeded bundle's spec runs on ``acp:<slug>`` — resolved at spawn.
-
-    **What breaks if this fails**: the picker row exists but launches the wrong
-    (or no) ACP agent because the harness id didn't reach the bundle.
-    """
-    import io
-    import tarfile
-
-    from omnigent.spec import load
-
-    data = server_app._build_acp_bundle(harness="acp:devin", name="devin")
-    dest = tmp_path / "bundle"
-    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tf:
-        tf.extractall(dest, filter="data")
-    spec = load(dest)
-    assert spec.name == "devin"
-    assert spec.executor.config["harness"] == "acp:devin"
 
 
 def test_ensure_default_native_agents_raises_when_provider_missing(
@@ -1335,7 +1146,7 @@ def test_ensure_default_native_agents_is_idempotent(seed_stores: _SeedStores) ->
         seed_stores.artifact_store,
         seed_stores.agent_cache,
     )
-    first = seed_stores.agent_store.get_by_name(QWEN_NATIVE_AGENT_NAME)
+    first = seed_stores.agent_store.get_by_name(CLAUDE_NATIVE_AGENT_NAME)
     assert first is not None
     server_app._ensure_default_native_agents(
         seed_stores.agent_store,
@@ -1343,10 +1154,10 @@ def test_ensure_default_native_agents_is_idempotent(seed_stores: _SeedStores) ->
         seed_stores.agent_cache,
     )
     page = seed_stores.agent_store.list(limit=100)
-    qwen_rows = [a for a in page.data if a.name == QWEN_NATIVE_AGENT_NAME]
-    assert len(qwen_rows) == 1
-    assert qwen_rows[0].id == first.id
-    assert qwen_rows[0].version == first.version == 1
+    claude_rows = [a for a in page.data if a.name == CLAUDE_NATIVE_AGENT_NAME]
+    assert len(claude_rows) == 1
+    assert claude_rows[0].id == first.id
+    assert claude_rows[0].version == first.version == 1
 
 
 def test_ensure_default_polly_agent_seeds_card(seed_stores: _SeedStores) -> None:
@@ -1370,14 +1181,15 @@ def test_ensure_default_polly_agent_seeds_card(seed_stores: _SeedStores) -> None
     assert seed_stores.artifact_store.get(seeded.bundle_location) is not None
 
 
-def test_ensure_default_antigravity_agent_seeds_card(seed_stores: _SeedStores) -> None:
+def test_ensure_default_claude_native_agent_carries_native_harness(
+    seed_stores: _SeedStores,
+) -> None:
     """
-    Seeding registers antigravity-native-ui as a built-in the picker renders.
+    Seeding registers the Claude Code native agent as a built-in the picker renders.
 
-    This is what makes "Antigravity" launchable from the web-UI new-session
-    picker next to Claude Code and Codex. The agent must be session-scope
-    NULL (a built-in) and carry the ``antigravity-native`` harness so the
-    runner boots the agy native terminal rather than an SDK harness.
+    The agent must be session-scope NULL (a built-in) and carry the
+    ``claude-native`` harness so the runner boots the native terminal rather
+    than an SDK harness.
     """
     server_app._ensure_default_native_agents(
         seed_stores.agent_store,
@@ -1385,9 +1197,9 @@ def test_ensure_default_antigravity_agent_seeds_card(seed_stores: _SeedStores) -
         seed_stores.agent_cache,
     )
 
-    seeded = seed_stores.agent_store.get_by_name(ANTIGRAVITY_NATIVE_AGENT_NAME)
-    assert seeded is not None, "antigravity-native-ui was not registered"
-    assert seeded.name == ANTIGRAVITY_NATIVE_AGENT_NAME
+    seeded = seed_stores.agent_store.get_by_name(CLAUDE_NATIVE_AGENT_NAME)
+    assert seeded is not None, f"{CLAUDE_NATIVE_AGENT_NAME} was not registered"
+    assert seeded.name == CLAUDE_NATIVE_AGENT_NAME
     # Built-ins are session-scope NULL so ``GET /v1/agents`` (which filters on
     # ``session_id IS NULL``) returns them to the picker.
     assert seeded.session_id is None
@@ -1396,15 +1208,15 @@ def test_ensure_default_antigravity_agent_seeds_card(seed_stores: _SeedStores) -
     # The materialized spec must carry the native harness — the contract the
     # server's _native_terminal_runtime + runner auto-create key off.
     loaded = seed_stores.agent_cache.load(seeded.id, seeded.bundle_location, expand_env=False)
-    assert loaded.spec.executor.config.get("harness") == "antigravity-native"
+    assert loaded.spec.executor.config.get("harness") == "claude-native"
 
 
-def test_ensure_default_agents_includes_antigravity(seed_stores: _SeedStores) -> None:
+def test_ensure_default_agents_includes_claude_native(seed_stores: _SeedStores) -> None:
     """
-    The startup seeder registers the antigravity built-in alongside the others.
+    The startup seeder registers the Claude Code native built-in alongside the others.
 
     ``_ensure_default_agents`` is the single call the server lifespan makes; a
-    regression that drops the antigravity line would silently remove it from the
+    regression that drops the native seeding would silently remove it from the
     picker even though its helper still works.
     """
     server_app._ensure_default_agents(
@@ -1413,7 +1225,7 @@ def test_ensure_default_agents_includes_antigravity(seed_stores: _SeedStores) ->
         seed_stores.agent_cache,
     )
 
-    assert seed_stores.agent_store.get_by_name(ANTIGRAVITY_NATIVE_AGENT_NAME) is not None
+    assert seed_stores.agent_store.get_by_name(CLAUDE_NATIVE_AGENT_NAME) is not None
 
 
 def test_ensure_default_polly_agent_is_idempotent(seed_stores: _SeedStores) -> None:
@@ -1770,7 +1582,7 @@ def test_ensure_default_debby_agent_seeds_card(seed_stores: _SeedStores) -> None
 
     The new-session picker reads built-ins from ``GET /v1/agents`` and
     renders each as a card; this is what makes debby launchable next
-    to Claude Code, Codex, and polly. The deeper refresh/idempotency
+    to Claude Code and polly. The deeper refresh/idempotency
     behavior lives in the shared ``_ensure_builtin_agent`` and is
     covered by the polly tests above — this verifies debby's wiring
     (name constant, packaged bundle source) specifically.

@@ -1226,14 +1226,7 @@ async def _send_hello(
                 direct_attach_port=direct_attach_port,
                 direct_attach_token=direct_attach_token,
                 connection_id=connection_id,
-                harnesses=[
-                    "claude-native",
-                    "claude-sdk",
-                    "codex",
-                    "openai-agents",
-                    "open-responses",
-                    "pi",
-                ],
+                harnesses=["claude-native", "claude-sdk", "pi"],
                 envs=["os_sandbox"],
             )
         )

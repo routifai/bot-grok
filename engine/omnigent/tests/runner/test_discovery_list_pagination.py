@@ -32,7 +32,7 @@ def _session_rows(*, large: bool) -> list[dict[str, object]]:
         {
             "id": f"conv_{index:02d}",
             "agent_id": f"ag_{index:02d}",
-            "agent_name": "researcher",
+            "agent_name": "reviewer",
             "title": f"{'x' * 10_000}{index:02d}" if large else f"Session {index}",
             "status": "idle",
             "runner_id": None,
@@ -372,8 +372,8 @@ async def test_sys_session_list_preserves_small_default_then_pages() -> None:
                     "data": [
                         {
                             "id": "conv_child",
-                            "title": "researcher:catalog",
-                            "tool": "researcher",
+                            "title": "reviewer:catalog",
+                            "tool": "reviewer",
                             "session_name": "catalog",
                         }
                     ]
@@ -420,7 +420,7 @@ async def test_sys_session_list_preserves_small_default_then_pages() -> None:
             conversation_id="conv_caller",
         )
 
-    child = {"agent": "researcher", "title": "catalog", "conversation_id": "conv_child"}
+    child = {"agent": "reviewer", "title": "catalog", "conversation_id": "conv_child"}
     assert len(complete["sessions"]) == _ROW_COUNT
     assert complete["sub_agents"] == [child]
     assert "page" not in complete
@@ -447,7 +447,7 @@ async def test_sys_session_list_continues_server_catalog_with_cursor() -> None:
         {
             "id": f"conv_{index:04d}",
             "agent_id": f"ag_{index:04d}",
-            "agent_name": "researcher",
+            "agent_name": "reviewer",
             "title": f"Session {index}",
             "status": "idle",
             "runner_id": None,
@@ -540,8 +540,8 @@ async def test_sys_session_list_reports_oversized_fixed_sub_agents() -> None:
         children=[
             {
                 "id": "conv_child",
-                "title": f"researcher:{'x' * 110_000}",
-                "tool": "researcher",
+                "title": f"reviewer:{'x' * 110_000}",
+                "tool": "reviewer",
                 "session_name": "x" * 110_000,
             }
         ],
@@ -634,7 +634,7 @@ async def test_cursor_is_bound_to_tool_sections_and_filters(tmp_path: Path) -> N
         )
         session_page = await _call_session(
             client,
-            {"limit": 3, "agent_name": "researcher"},
+            {"limit": 3, "agent_name": "reviewer"},
         )
         wrong_filter = await _call_session(
             client,

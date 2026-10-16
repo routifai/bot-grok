@@ -64,7 +64,7 @@ def validate_inference_credentials(
             if not isinstance(provider, dict):
                 continue
             validate_fields(provider)
-            for name in ("anthropic", "openai", "gemini"):
+            for name in ("anthropic", "openai"):
                 family = provider.get(name)
                 if isinstance(family, dict):
                     validate_fields(family)
@@ -74,10 +74,10 @@ def validate_inference_credentials(
 
 
 def normalize_inference_harness(harness: str) -> str:
-    """Normalize supported harness aliases while preserving exact ACP identities."""
+    """Normalize supported harness aliases to their canonical identities."""
     if harness.startswith("native-"):
         harness = harness.removeprefix("native-") + "-native"
-    return harness if harness.startswith("acp:") else (canonicalize_harness(harness) or harness)
+    return canonicalize_harness(harness) or harness
 
 
 #: The credential command a Computer's harness runs to reach the engine's model proxy: a
@@ -93,7 +93,7 @@ def _is_model_connection(provider: object) -> bool:
         return False
     if provider.get("connection") == "model":
         return True
-    families = [provider.get(name) for name in ("anthropic", "openai", "gemini")]
+    families = [provider.get(name) for name in ("anthropic", "openai")]
     present = [family for family in families if isinstance(family, dict)]
     return bool(present) and all(
         family.get("auth_command") == MODEL_PROXY_AUTH_COMMAND for family in present
@@ -137,16 +137,10 @@ def parse_inference_config(config: dict[str, object]) -> dict[str, HarnessInfere
         if key not in {
             "claude-sdk",
             "claude-native",
-            "codex",
             "codex-native",
-            "openai-agents",
-            "qwen",
-            "jcode",
-            "opencode-native",
             "pi",
             "pi-native",
-            "acp",
-        } and not (key.startswith("acp:") and key.removeprefix("acp:").strip()):
+        }:
             raise ValueError(f"Harness {name!r} does not support inference bindings")
         if key in result:
             raise ValueError(f"Duplicate inference binding for harness {key!r}")
@@ -167,10 +161,8 @@ def parse_inference_config(config: dict[str, object]) -> dict[str, HarnessInfere
 
 
 def binding_for_harness(config: dict[str, object], harness: str) -> HarnessInferenceBinding | None:
-    """Resolve exact ACP identities before an explicitly configured generic ACP fallback."""
-    bindings = parse_inference_config(config)
-    key = normalize_inference_harness(harness)
-    return bindings.get(key) or (bindings.get("acp") if key.startswith("acp:") else None)
+    """Resolve the inference binding configured for *harness*, if any."""
+    return parse_inference_config(config).get(normalize_inference_harness(harness))
 
 
 def resolve_bound_provider(
@@ -226,19 +218,7 @@ def resolve_bound_model(config: dict[str, object], harness: str, model: str | No
             preferred = (
                 "anthropic"
                 if key in {"claude-native", "claude-sdk"}
-                else (
-                    "openai"
-                    if key
-                    in {
-                        "codex",
-                        "codex-native",
-                        "openai-agents",
-                        "qwen",
-                        "jcode",
-                        "opencode-native",
-                    }
-                    else None
-                )
+                else ("openai" if key == "codex-native" else None)
             )
             families = (
                 [provider.families[preferred]]

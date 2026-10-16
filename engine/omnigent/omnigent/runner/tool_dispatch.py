@@ -387,34 +387,11 @@ _PUBLIC_USER_SENTINEL = "__public__"
 _SHARE_ENABLED_POLICIES = frozenset({"non-public", "public"})
 _SHARE_PUBLIC_POLICY = "public"
 
-# Priority 5f.1: web_fetch — translates the LLM-facing query/url
-# arguments into a sys_session_send call against the built-in
-# ``__web_researcher`` sub-agent, then reuses
-# ``_execute_subagent_tool``.
-_WEB_FETCH_TOOLS = frozenset({"web_fetch"})
-
-# Priority 5f.1b: web_search — the first-party search builtin. Runner-local
-# so non-OpenAI-harness web_search calls resolve to the spec's configured
-# backend (google / perplexity / nimble) via WebSearchTool.invoke.
-# (OpenAI Responses-compatible harnesses use the native web_search_preview
-# passthrough and never reach this path.) Without this entry the call fell
-# through to the spec-callable branch and errored "tool unavailable".
+# Priority 5f.1: web_search — the first-party search builtin. Runner-local
+# so web_search calls resolve to the spec's configured Tavily backend via
+# WebSearchTool.invoke. Without this entry the call fell through to the
+# spec-callable branch and errored "tool unavailable".
 _WEB_SEARCH_TOOLS = frozenset({"web_search"})
-
-# nimble_research — Nimble Agent API v2 research runs (start → poll → result).
-# Runner-local so a non-OpenAI model's nimble_research call resolves to
-# NimbleResearchTool.invoke, the same posture as web_search.
-_NIMBLE_RESEARCH_TOOLS = frozenset({"nimble_research"})
-
-# nimble_extract — Nimble Extract Templates (template run → structured JSON).
-# Runner-local for the same reason.
-_NIMBLE_EXTRACT_TOOLS = frozenset({"nimble_extract"})
-
-# Hindsight long-term memory builtins. Runner-local (like web_search) so that a
-# wrapped harness's (claude-sdk / codex / cursor / pi) tool call resolves to the
-# spec-configured Hindsight tool via its ``invoke``. Without this entry the call
-# falls through to the harness, which has no such tool, and silently no-ops.
-_HINDSIGHT_TOOLS = frozenset({"hindsight_retain", "hindsight_recall", "hindsight_reflect"})
 
 # Priority 5f.2: sys_list_models — runner-local because provider resolution
 # reads the runner host's config/credentials, same as the spawn paths.
@@ -540,12 +517,9 @@ _NATIVE_RELAY_BUILTIN_TOOLS = (
     # framework-owned schemas for every spec, so the native relay surface is
     # session-static and always includes them.
     | _BROWSER_TOOLS
-    # Memory builtins are relayed to native harnesses too — unlike web_search,
-    # native harnesses have no built-in long-term memory of their own.
-    | _HINDSIGHT_TOOLS
-    # Skills ride the relay for the same reason memory does: ``load_skill`` is
-    # what discovers host-scope skills (``.agents/skills`` and friends), and a
-    # native session's only tool surface is this relay.
+    # Skills ride the relay: ``load_skill`` is what discovers host-scope
+    # skills (``.agents/skills`` and friends), and a native session's only
+    # tool surface is this relay.
     | _SKILL_TOOLS
     # session_history: ToolManager registers it only for a rollover session
     # (label-driven — see ToolManager._register_session_history_tool), so it
@@ -959,11 +933,7 @@ _ALL_LOCAL_TOOLS = (
     | _SESSION_QUERY_TOOLS
     | _SESSION_SELF_WRITE_TOOLS
     | _SESSION_HISTORY_TOOLS
-    | _WEB_FETCH_TOOLS
     | _WEB_SEARCH_TOOLS
-    | _NIMBLE_RESEARCH_TOOLS
-    | _NIMBLE_EXTRACT_TOOLS
-    | _HINDSIGHT_TOOLS
     | _TIMER_TOOLS
     | _TASK_LIFECYCLE_TOOLS
     | _SKILL_TOOLS
@@ -2266,25 +2236,6 @@ def _find_subagent_spec(sub_agent_name: str, agent_spec: AgentSpec | None) -> Ag
     for sub_agent in getattr(agent_spec, "sub_agents", None) or []:
         if getattr(sub_agent, "name", None) == sub_agent_name:
             return sub_agent
-    # Built-in web_fetch researcher: ``WebFetchTool.__init__`` appends
-    # ``__web_researcher`` to the owner's live ``sub_agents`` in memory but
-    # never serializes it, so it is absent from the runner's re-parsed spec.
-    # Reconstruct it deterministically -- the same pure builder the
-    # child-boot resolver (``workflow.py::_find_spec_by_name``) uses -- so
-    # this lookup and the dispatch gate agree the sub-agent exists. Without
-    # it, ``_has_subagent`` returns True while ``_subagent_harness`` /
-    # ``_subagent_allowed_harnesses`` (both routed through here) return
-    # ``None``, i.e. the gate and the spec lookup disagree about the same
-    # name. Reconstruction is gated inside the helper on the tree actually
-    # declaring ``web_fetch``, so a caller-supplied name cannot coerce an
-    # arbitrary parent into a shell-capable researcher.
-    from omnigent.tools.builtins.web_fetch import (
-        RESEARCHER_NAME,
-        reconstruct_researcher_spec,
-    )
-
-    if sub_agent_name == RESEARCHER_NAME:
-        return reconstruct_researcher_spec(agent_spec)
     return None
 
 
@@ -2314,7 +2265,7 @@ def _subagent_harness_override_from_args(args: _JsonObject) -> str | None:
     Extract a per-dispatch harness override from ``sys_session_send`` args.
 
     The optional ``harness`` field lives in the object form of ``args``
-    (``{"input": ..., "harness": "opencode-native"}``). Returned raw (not
+    (``{"input": ..., "harness": "pi-native"}``). Returned raw (not
     yet canonicalized) so the caller can validate it against the sub-agent
     allowlist and quote the original spelling in errors.
 
@@ -2406,7 +2357,7 @@ def _subagent_allowed_harnesses(
     spec — the explicit opt-in that gates ``args.harness``. Each entry is
     canonicalized so a user-facing alias still matches.
 
-    :param sub_agent_name: Name of the sub-agent, e.g. ``"opencode"``.
+    :param sub_agent_name: Name of the sub-agent, e.g. ``"pi"``.
     :param agent_spec: Parent agent's spec.
     :returns: Canonical allowlisted harness ids (empty when none declared).
     """
@@ -2446,12 +2397,12 @@ def _harness_has_inference_binding(harness: str) -> bool:
     """Whether an inference binding owns *harness*'s model namespace.
 
     A bound harness resolves ids through ``resolve_bound_model`` at launch
-    (see the opencode/claude launch paths in :mod:`omnigent.runner.app`), so a
+    (see the claude launch paths in :mod:`omnigent.runner.app`), so a
     binding-validated bare id needs no ``provider/`` prefix or Databricks
     profile; ``_dispatch_model_mismatch`` has already vetted the id against
     the binding's allowlist by the time inheritance consults this.
 
-    :param harness: The child's resolved harness, e.g. ``"opencode-native"``.
+    :param harness: The child's resolved harness, e.g. ``"pi-native"``.
     :returns: ``True`` when a binding is configured for the harness.
     """
     from omnigent.inference_config import binding_for_harness, load_runtime_inference_config
@@ -2462,13 +2413,12 @@ def _harness_has_inference_binding(harness: str) -> bool:
 def _harness_vendor_key(canon: str) -> str:
     """Return a vendor key that unifies a harness's native/SDK spellings.
 
-    Single-vendor harnesses key on their ``ModelFamily`` (claude / gpt / gemini),
+    Single-vendor harnesses key on their ``ModelFamily`` (claude / gpt),
     so ``claude-native``, ``claude-sdk`` and ``claude_sdk`` all collapse to
     ``"claude"`` and ``codex`` / ``codex-native`` to ``"gpt"``. Multi-model
     harnesses have no single family, so they key on the base name with
-    ``-native`` dropped (``pi`` ↔ ``pi-native``, ``opencode`` ↔
-    ``opencode-native``). The ``_``→``-`` fold lets the executor-type spelling
-    ``claude_sdk`` resolve to the ``claude-sdk`` capability row.
+    ``-native`` dropped (``pi`` ↔ ``pi-native``). The ``_``→``-`` fold lets
+    the executor-type spelling ``claude_sdk`` resolve to the ``claude-sdk`` capability row.
 
     :param canon: A canonical harness id, e.g. ``"claude-sdk"``.
     :returns: The vendor key, e.g. ``"claude"``.
@@ -2493,7 +2443,7 @@ def _child_is_foreign_harness(child_harness: str, parent_harness: object) -> boo
     default. Vendor identity is :func:`_harness_vendor_key`, which folds a
     vendor's native/SDK spellings together (``claude-native`` ↔ ``claude-sdk``,
     ``pi`` ↔ ``pi-native``) so same-vendor children inherit while genuinely
-    different vendors (claude vs gpt vs pi vs opencode) skip. A child whose
+    different vendors (claude vs gpt vs pi) skip. A child whose
     inference binding validated the id is exempted upstream by
     :func:`_harness_has_inference_binding`.
 
@@ -2541,8 +2491,8 @@ def _normalize_subagent_model(
     from omnigent.inference_config import binding_for_harness, load_runtime_inference_config
     from omnigent.models.model_catalog import resolve_model_provider
 
-    # ACP commands own their model namespace, even when provider credentials are shared.
-    if canonicalize_harness(harness) == "acp" or (
+    # A harness with an inference binding owns its model namespace.
+    if (
         harness is not None
         and binding_for_harness(load_runtime_inference_config(), harness) is not None
     ):
@@ -3157,7 +3107,7 @@ async def _execute_subagent_tool(
             if child_harness is not None:
                 missing_cli = missing_harness_cli(child_harness)
                 if missing_cli is not None:
-                    # Non-npm CLIs (e.g. cursor-agent) carry an ``install_hint``
+                    # Non-npm CLIs carry an ``install_hint``
                     # instead of a ``package``; using the hint avoids an
                     # ``npm install -g None`` instruction.
                     install = (
@@ -4296,101 +4246,6 @@ async def _session_create_from_config_path(
     )
 
 
-async def _execute_web_fetch_tool(
-    args: _JsonObject,
-    *,
-    server_client: httpx.AsyncClient | None,
-    conversation_id: str | None,
-    agent_spec: AgentSpec | None,
-    task_id: str | None,
-    publish_event: Callable[[str, _JsonObject], None] | None = None,
-    session_inbox: asyncio.Queue[_JsonObject] | None = None,
-) -> str:
-    """
-    Dispatch a ``web_fetch`` tool call.
-
-    Translates the user-facing ``query`` / ``url`` arguments into
-    a ``sys_session_send`` invocation against the built-in
-    ``__web_researcher`` sub-agent, then delegates to
-    :func:`_execute_subagent_tool`. The session name embeds
-    ``task_id`` so concurrent ``web_fetch`` calls from the same
-    parent don't collide on the
-    ``(parent_conversation_id, title)`` unique index that
-    ``_execute_subagent_tool`` ultimately exercises via
-    ``POST /v1/sessions``.
-
-    :param args: Parsed LLM arguments — ``query`` (required) and
-        optional ``url``.
-    :param server_client: httpx client pointed at the Omnigent server.
-    :param conversation_id: Parent session id,
-        e.g. ``"conv_abc123"``.
-    :param agent_spec: Parent agent's spec — used by the inner
-        ``_execute_subagent_tool`` to resolve the sub-agent.
-    :param task_id: Calling task id; used to discriminate parallel
-        ``web_fetch`` invocations from the same parent.
-    :param session_inbox: Parent inbox queue for delayed sub-agent
-        completion delivery.
-    :returns: The researcher's findings, or an error string.
-    """
-    from omnigent.tools.base import ToolContext
-    from omnigent.tools.builtins.web_fetch import (
-        RESEARCHER_NAME,
-        build_web_fetch_prompt,
-    )
-    from omnigent.tools.builtins.web_fetch_tavily import WebFetchExtractTool, uses_fetch_provider
-
-    fetch_config = _builtin_config_from_spec(agent_spec, "web_fetch")
-    if uses_fetch_provider(fetch_config):
-        ctx = ToolContext(
-            task_id=task_id or "web_fetch",
-            agent_id="web_fetch",
-            conversation_id=conversation_id,
-        )
-        return await asyncio.to_thread(
-            WebFetchExtractTool(fetch_config).invoke, json.dumps(args), ctx
-        )
-
-    query = args.get("query")
-    if not query:
-        return "Error: 'query' parameter is required."
-    url = args.get("url")
-    prompt = build_web_fetch_prompt(str(query), str(url) if url else None)
-
-    # Embed task_id so each web_fetch from the same parent gets a
-    # distinct child conversation (the server enforces a partial
-    # unique index on (parent_conversation_id, title) where
-    # title="<tool>:<session>").
-    session_name = f"web_fetch_{task_id or 'anon'}"
-
-    return await _execute_subagent_tool(
-        {
-            "agent": RESEARCHER_NAME,
-            "args": prompt,
-            "title": session_name,
-        },
-        server_client=server_client,
-        conversation_id=conversation_id,
-        agent_spec=agent_spec,
-        publish_event=publish_event,
-        session_inbox=session_inbox,
-    )
-
-
-def _builtin_config_from_spec(agent_spec: AgentSpec | None, name: str) -> dict[str, str]:
-    """
-    Return the config dict of the ``tools.builtins`` entry called ``name``.
-
-    :param agent_spec: Parent agent's spec, or ``None``.
-    :param name: Builtin name, e.g. ``"web_fetch"``.
-    :returns: The entry's config, or ``{}`` when absent.
-    """
-    tools = getattr(agent_spec, "tools", None)
-    for entry in getattr(tools, "builtins", None) or []:
-        if getattr(entry, "name", None) == name:
-            return getattr(entry, "config", None) or {}
-    return {}
-
-
 def _web_search_config_from_spec(agent_spec: AgentSpec | None) -> dict[str, str]:
     """
     Return the ``web_search`` builtin's config dict from the parent spec.
@@ -4402,7 +4257,7 @@ def _web_search_config_from_spec(agent_spec: AgentSpec | None) -> dict[str, str]
 
     :param agent_spec: Parent agent's spec, or ``None``.
     :returns: The web_search config dict, e.g.
-        ``{"search_provider": "nimble", "api_key": "..."}``.
+        ``{"search_provider": "tavily", "api_key": "..."}``.
     """
     if agent_spec is None:
         return {}
@@ -4429,16 +4284,8 @@ async def _execute_web_search_tool(
     runs its synchronous ``invoke`` off the event loop (the backend makes a
     blocking HTTP call).
 
-    ``llm_provider`` comes from the same helper session setup uses
-    (:func:`~omnigent.llms.routing.web_search_native_passthrough_provider`),
-    so dispatch preserves the session-setup invariants: on OpenAI
-    Responses-compatible harnesses the native ``web_search_preview``
-    passthrough is kept (``invoke()`` raises its fence if a function call
-    ever reaches this path — defensive, the provider executes server-side);
-    every other harness/model runs in function-tool mode.
-
     :param args: Parsed LLM arguments — ``query`` (required).
-    :param agent_spec: Parent agent's spec; carries the web_search config + model.
+    :param agent_spec: Parent agent's spec; carries the web_search config.
     :param conversation_id: Parent session id, threaded into the context.
     :param task_id: Calling task id, threaded into the context.
     :param agent_id: Calling agent id, threaded into the context.
@@ -4447,199 +4294,10 @@ async def _execute_web_search_tool(
     from omnigent.tools.base import ToolContext
     from omnigent.tools.builtins.web_search import WebSearchTool
 
-    config = _web_search_config_from_spec(agent_spec)
-    # Same helper as ToolManager._create_web_search, so dispatch and
-    # session-setup advertisement cannot drift.
-    from omnigent.llms.routing import web_search_native_passthrough_provider
-
-    executor = getattr(agent_spec, "executor", None)
-    llm_provider = web_search_native_passthrough_provider(
-        getattr(executor, "model", None), getattr(executor, "harness_kind", None)
-    )
-    tool = WebSearchTool(config=config, llm_provider=llm_provider)
+    tool = WebSearchTool(config=_web_search_config_from_spec(agent_spec))
     ctx = ToolContext(
         task_id=task_id or "web_search",
         agent_id=agent_id or "web_search",
-        conversation_id=conversation_id,
-    )
-    return await asyncio.to_thread(tool.invoke, json.dumps(args), ctx)
-
-
-def _nimble_research_config_from_spec(agent_spec: AgentSpec | None) -> dict[str, str]:
-    """
-    Return the ``nimble_research`` builtin's config dict from the parent spec.
-
-    Mirrors :func:`_web_search_config_from_spec`: scans ``spec.tools.builtins``
-    for the entry named ``"nimble_research"`` and returns its ``config``
-    (credentials + agent instance id + polling knobs). Empty dict when the
-    builtin is a bare string or absent.
-
-    :param agent_spec: Parent agent's spec, or ``None``.
-    :returns: The nimble_research config dict, e.g.
-        ``{"api_key": "...", "agent_id": "wsa_..."}``.
-    """
-    if agent_spec is None:
-        return {}
-    tools = getattr(agent_spec, "tools", None)
-    builtins = getattr(tools, "builtins", None) or []
-    for entry in builtins:
-        if getattr(entry, "name", None) == "nimble_research":
-            return getattr(entry, "config", None) or {}
-    return {}
-
-
-async def _execute_nimble_research_tool(
-    args: _JsonObject,
-    *,
-    agent_spec: AgentSpec | None,
-    conversation_id: str | None = None,
-    task_id: str | None = None,
-    agent_id: str | None = None,
-) -> str:
-    """
-    Dispatch a ``nimble_research`` tool call to Nimble's Agent API v2.
-
-    Builds ``NimbleResearchTool`` from the spec's ``nimble_research`` builtin config
-    and runs its synchronous ``invoke`` off the event loop (the backend blocks
-    on the start → poll → result lifecycle), mirroring
-    :func:`_execute_web_search_tool`.
-
-    :param args: Parsed LLM arguments — ``task`` (required), ``effort`` (optional).
-    :param agent_spec: Parent agent's spec; carries the nimble_research config.
-    :param conversation_id: Parent session id, threaded into the context.
-    :param task_id: Calling task id, threaded into the context.
-    :param agent_id: Calling agent id, threaded into the context.
-    :returns: The JSON envelope, or an error string.
-    """
-    from omnigent.tools.base import ToolContext
-    from omnigent.tools.builtins.nimble_research import NimbleResearchTool
-
-    config = _nimble_research_config_from_spec(agent_spec)
-    tool = NimbleResearchTool(config=config)
-    ctx = ToolContext(
-        task_id=task_id or "nimble_research",
-        agent_id=agent_id or "nimble_research",
-        conversation_id=conversation_id,
-    )
-    return await asyncio.to_thread(tool.invoke, json.dumps(args), ctx)
-
-
-def _nimble_extract_config_from_spec(agent_spec: AgentSpec | None) -> dict[str, str]:
-    """
-    Return the ``nimble_extract`` builtin's config dict from the parent spec.
-
-    Mirrors :func:`_nimble_research_config_from_spec`: scans
-    ``spec.tools.builtins`` for the entry named ``"nimble_extract"`` and
-    returns its ``config`` (credentials + optional template/timeout). Empty
-    dict when the builtin is a bare string or absent.
-
-    :param agent_spec: Parent agent's spec, or ``None``.
-    :returns: The nimble_extract config dict, e.g.
-        ``{"api_key": "...", "template": "google_search"}``.
-    """
-    if agent_spec is None:
-        return {}
-    tools = getattr(agent_spec, "tools", None)
-    builtins = getattr(tools, "builtins", None) or []
-    for entry in builtins:
-        if getattr(entry, "name", None) == "nimble_extract":
-            return getattr(entry, "config", None) or {}
-    return {}
-
-
-async def _execute_nimble_extract_tool(
-    args: _JsonObject,
-    *,
-    agent_spec: AgentSpec | None,
-    conversation_id: str | None = None,
-    task_id: str | None = None,
-    agent_id: str | None = None,
-) -> str:
-    """
-    Dispatch a ``nimble_extract`` tool call to Nimble's Extract Templates run
-    endpoint.
-
-    Builds ``NimbleExtractTool`` from the spec's ``nimble_extract`` builtin
-    config and runs its synchronous ``invoke`` off the event loop (the backend
-    makes a blocking HTTP call), mirroring :func:`_execute_web_search_tool`.
-
-    :param args: Parsed LLM arguments — ``params`` (required object).
-    :param agent_spec: Parent agent's spec; carries the nimble_extract config.
-    :param conversation_id: Parent session id, threaded into the context.
-    :param task_id: Calling task id, threaded into the context.
-    :param agent_id: Calling agent id, threaded into the context.
-    :returns: The structured JSON, or an error string.
-    """
-    from omnigent.tools.base import ToolContext
-    from omnigent.tools.builtins.nimble_extract import NimbleExtractTool
-
-    config = _nimble_extract_config_from_spec(agent_spec)
-    tool = NimbleExtractTool(config=config)
-    ctx = ToolContext(
-        task_id=task_id or "nimble_extract",
-        agent_id=agent_id or "nimble_extract",
-        conversation_id=conversation_id,
-    )
-    return await asyncio.to_thread(tool.invoke, json.dumps(args), ctx)
-
-
-def _hindsight_config_from_spec(agent_spec: AgentSpec | None, tool_name: str) -> dict[str, str]:
-    """
-    Return a Hindsight builtin's config dict from the parent spec.
-
-    Mirrors ``ToolManager._register_builtin_tools``: scans ``spec.tools.builtins``
-    for the entry named *tool_name* (e.g. ``"hindsight_recall"``) and returns its
-    ``config`` (api_key, bank_id, etc.). Empty dict when declared bare or absent.
-
-    :param agent_spec: Parent agent's spec, or ``None``.
-    :param tool_name: The Hindsight tool name to look up.
-    :returns: The builtin's config dict.
-    """
-    if agent_spec is None:
-        return {}
-    tools = getattr(agent_spec, "tools", None)
-    builtins = getattr(tools, "builtins", None) or []
-    for entry in builtins:
-        if getattr(entry, "name", None) == tool_name:
-            return getattr(entry, "config", None) or {}
-    return {}
-
-
-async def _execute_hindsight_tool(
-    args: _JsonObject,
-    *,
-    tool_name: str,
-    agent_spec: AgentSpec | None,
-    conversation_id: str | None = None,
-    task_id: str | None = None,
-    agent_id: str | None = None,
-) -> str:
-    """
-    Dispatch a Hindsight memory tool call (retain / recall / reflect).
-
-    Builds the tool from the spec's builtin config and runs its synchronous
-    ``invoke`` off the event loop (it makes a blocking HTTP call to Hindsight).
-    The bank is resolved inside the tool from ``config.bank_id`` → ``ctx.agent_id``
-    → ``ctx.conversation_id``, so the real ``agent_id`` is threaded through here.
-
-    :param args: Parsed LLM arguments (``content`` for retain, ``query`` otherwise).
-    :param tool_name: The Hindsight tool name being dispatched.
-    :param agent_spec: Parent agent's spec; carries the Hindsight builtin config.
-    :param conversation_id: Parent session id, threaded into the context.
-    :param task_id: Calling task id, threaded into the context.
-    :param agent_id: Calling agent id — the default memory bank.
-    :returns: The tool's string result, or an error string.
-    """
-    from omnigent.tools.base import ToolContext
-    from omnigent.tools.builtins import get_builtin_tool
-
-    config = _hindsight_config_from_spec(agent_spec, tool_name)
-    tool = get_builtin_tool(tool_name, config)
-    if tool is None:
-        return f"Hindsight tool {tool_name!r} is not available."
-    ctx = ToolContext(
-        task_id=task_id or tool_name,
-        agent_id=agent_id or tool_name,
         conversation_id=conversation_id,
     )
     return await asyncio.to_thread(tool.invoke, json.dumps(args), ctx)
@@ -4663,9 +4321,8 @@ def _has_subagent(
     """
     if agent_spec is None:
         return False
-    # AP-style spec: sub_agents list, including the synthesized
-    # ``__web_researcher``. Routed through the single resolver so the gate
-    # and every downstream harness / allowlist lookup agree about whether a
+    # AP-style spec: sub_agents list. Routed through the single resolver so
+    # the gate and every downstream harness / allowlist lookup agree about whether a
     # name exists (see :func:`_find_subagent_spec`).
     if _find_subagent_spec(sub_agent_name, agent_spec) is not None:
         return True
@@ -6528,7 +6185,7 @@ async def _collect_sub_agents(
                     # Exclude the caller itself from its own sibling list.
                     if entry["conversation_id"] != conversation_id:
                         result.append(entry)
-        except Exception:  # noqa: BLE001
+        except Exception:
             _logger.debug(
                 "sys_session_list sibling enrichment failed for parent %s",
                 parent_id,
@@ -7212,7 +6869,7 @@ async def execute_tool(
     agent_id: str | None = None,
     agent_name: str | None = None,
     runner_workspace: Path | None = None,
-    local_tool_workdir: Path | None | _UnsetLocalToolWorkdir = _UNSET_LOCAL_TOOL_WORKDIR,
+    local_tool_workdir: Path | _UnsetLocalToolWorkdir | None = _UNSET_LOCAL_TOOL_WORKDIR,
     mcp_manager: RunnerMcpManager | None = None,
     session_inbox: asyncio.Queue[_JsonObject] | None = None,
     session_async_tasks: dict[str, tuple[asyncio.Task[str], asyncio.Event]] | None = None,
@@ -7401,44 +7058,9 @@ async def execute_tool(
                 conversation_id=conversation_id,
                 server_client=server_client,
             )
-        elif tool_name in _WEB_FETCH_TOOLS:
-            output = await _execute_web_fetch_tool(
-                args,
-                server_client=server_client,
-                conversation_id=conversation_id,
-                agent_spec=agent_spec,
-                task_id=task_id,
-                publish_event=publish_event,
-                session_inbox=session_inbox,
-            )
         elif tool_name in _WEB_SEARCH_TOOLS:
             output = await _execute_web_search_tool(
                 args,
-                agent_spec=agent_spec,
-                conversation_id=conversation_id,
-                task_id=task_id,
-                agent_id=agent_id,
-            )
-        elif tool_name in _NIMBLE_RESEARCH_TOOLS:
-            output = await _execute_nimble_research_tool(
-                args,
-                agent_spec=agent_spec,
-                conversation_id=conversation_id,
-                task_id=task_id,
-                agent_id=agent_id,
-            )
-        elif tool_name in _NIMBLE_EXTRACT_TOOLS:
-            output = await _execute_nimble_extract_tool(
-                args,
-                agent_spec=agent_spec,
-                conversation_id=conversation_id,
-                task_id=task_id,
-                agent_id=agent_id,
-            )
-        elif tool_name in _HINDSIGHT_TOOLS:
-            output = await _execute_hindsight_tool(
-                args,
-                tool_name=tool_name,
                 agent_spec=agent_spec,
                 conversation_id=conversation_id,
                 task_id=task_id,
@@ -7637,7 +7259,7 @@ async def dispatch_tool_locally(
     agent_id: str | None = None,
     agent_name: str | None = None,
     runner_workspace: Path | None = None,
-    local_tool_workdir: Path | None | _UnsetLocalToolWorkdir = _UNSET_LOCAL_TOOL_WORKDIR,
+    local_tool_workdir: Path | _UnsetLocalToolWorkdir | None = _UNSET_LOCAL_TOOL_WORKDIR,
     mcp_manager: RunnerMcpManager | None = None,
     session_inbox: asyncio.Queue[_JsonObject] | None = None,
     session_async_tasks: dict[str, tuple[asyncio.Task[str], asyncio.Event]] | None = None,
@@ -8532,7 +8154,7 @@ async def _execute_async_inbox_tool(
     agent_id: str | None,
     agent_name: str | None,
     runner_workspace: Path | None,
-    local_tool_workdir: Path | None | _UnsetLocalToolWorkdir,
+    local_tool_workdir: Path | _UnsetLocalToolWorkdir | None,
     mcp_manager: RunnerMcpManager | None,
     filesystem_registry: FilesystemRegistry | None = None,
     harness_client: httpx.AsyncClient | None = None,
@@ -9070,7 +8692,7 @@ async def _evaluate_async_tool_call_policy(
             evaluation_id,
             extra={"session_id": conversation_id},
         )
-    except Exception:  # noqa: BLE001
+    except Exception:
         _logger.warning(
             "async PHASE_TOOL_CALL policy evaluate failed for %s; denying",
             evaluation_id,
@@ -9096,7 +8718,7 @@ def _spawn_async_tool(
     runner_workspace: Path | None,
     mcp_manager: RunnerMcpManager | None,
     filesystem_registry: FilesystemRegistry | None = None,
-    local_tool_workdir: Path | None | _UnsetLocalToolWorkdir = _UNSET_LOCAL_TOOL_WORKDIR,
+    local_tool_workdir: Path | _UnsetLocalToolWorkdir | None = _UNSET_LOCAL_TOOL_WORKDIR,
     effective_harness: str | None = None,
 ) -> str:
     """
@@ -9398,9 +9020,9 @@ def _unconfirmed_hard_stop_result(task_id: str, *, status: str) -> str:
     """Return an explicit failed-to-confirm hard-stop.
 
     A ``stop_session`` 503 is a kill failure, not proof the pane is gone
-    (Claude already maps ``TmuxSessionNotAdvertised`` to 204; ``_uniform_stop``
-    503s any ``RuntimeError``, including a transient tmux error on a live
-    pane). Callers must not treat this as a cached terminal / ``absent``
+    (Claude already maps ``TmuxSessionNotAdvertised`` to 204; other stop
+    paths 503 any ``RuntimeError``, including a transient tmux error on a
+    live pane). Callers must not treat this as a cached terminal / ``absent``
     result.
     """
     return json.dumps(
@@ -9529,8 +9151,7 @@ async def _cancel_subagent_task(
     Cancel a running sub-agent worker, routing by the child's harness.
 
     The cancel event is chosen from ``native_cancel_capability``, which
-    mirrors the child runner's ``NativeInterruptRunner.stop`` dispatch
-    (Claude plus the ``_UNIFORM_STOP`` natives):
+    mirrors the child runner's ``NativeInterruptRunner.stop`` dispatch:
 
     * stop-capable natives — POST ``stop_session``: the child runner
       hard-stops the worker, marks the work entry cancelled, delivers a
@@ -9543,7 +9164,7 @@ async def _cancel_subagent_task(
       ``stop_session`` returns 503 is reported as an unconfirmed /
       best-effort cancel: the kill failed and the worker may still be
       running.
-    * best-effort natives (Codex, Pi, Antigravity, OpenCode) and
+    * best-effort natives (Codex, Pi) and
       in-process harnesses — POST ``interrupt``. No runner-side
       hard-stop is wired for them, so the result is reported
       best-effort rather than implying process termination.

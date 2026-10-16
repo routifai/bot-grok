@@ -51,10 +51,6 @@ llms/
     base.py                # BaseAdapter ABC
     openai.py              # OpenAI + OpenAI-compatible (Groq, DeepSeek, xAI, OpenRouter, Ollama)
     anthropic.py           # Anthropic Messages API
-    gemini.py              # Gemini generateContent API
-    bedrock.py             # AWS Bedrock Converse API
-    vertex.py              # Vertex AI (Gemini format + GCP auth)
-    databricks.py          # Databricks (OpenAI-compat + OAuth)
 ```
 
 ### Request Flow
@@ -242,58 +238,6 @@ Ported from `mlflow/gateway/providers/anthropic.py`. Key translations:
 Auth: `ANTHROPIC_API_KEY` env var. Headers: `x-api-key`, `anthropic-version: 2023-06-01`.
 Endpoint: `https://api.anthropic.com/v1/messages`
 
-### Gemini — `adapters/gemini.py`
-
-Ported from `mlflow/gateway/providers/gemini.py`. Key translations:
-
-**Request (Chat Completions -> Gemini):**
-- Messages -> `contents` with role remapping (`assistant` -> `model`)
-- System messages -> `system_instruction`
-- Tool calls -> `functionCall` parts
-- Tool results -> `functionResponse` parts in user role
-- Tools -> `functionDeclarations` with `parametersJsonSchema`
-- Generation config key mapping (`stop` -> `stopSequences`, `max_tokens` -> `maxOutputTokens`, etc.)
-
-**Response (Gemini -> Chat Completions):**
-- `candidates[0].content.parts[0].text` -> assistant content
-- `functionCall` parts -> `tool_calls` (MD5 `call_id` fallback for Gemini's missing IDs)
-- `usageMetadata` -> usage
-
-Auth: `GOOGLE_API_KEY` via `x-goog-api-key` header.
-Endpoint: `https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent`
-Streaming: `:streamGenerateContent?alt=sse`
-
-### Bedrock — `adapters/bedrock.py`
-
-Ported from `mlflow/gateway/providers/bedrock.py` (Converse API).
-
-**Request (Chat Completions -> Bedrock Converse):**
-- System messages -> `system` prompts
-- User/assistant messages -> content blocks with `text`
-- Tool results -> `toolResult` blocks in user role
-- Tools -> `toolConfig` with `toolSpec` entries
-- Generation params -> `inferenceConfig` (temperature, topP, maxTokens, stopSequences)
-
-**Response (Bedrock Converse -> Chat Completions):**
-- `output.message.content` blocks -> text content and/or `tool_calls`
-- `stopReason` mapping: `tool_use` -> `tool_calls`, else `stop`
-- `usage.inputTokens/outputTokens/totalTokens` -> Chat Completions usage
-
-Uses `boto3` (lazy import, sync). Auth from env: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION`.
-
-### Vertex AI — `adapters/vertex.py`
-
-Inherits Gemini translation logic. Different auth and endpoint:
-- Auth: `google.auth` Application Default Credentials or service account (lazy import)
-- Endpoint: `https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/google/models/{model}:generateContent`
-- Config from env: `VERTEX_PROJECT`, `VERTEX_LOCATION`
-
-### Databricks — `adapters/databricks.py`
-
-Extends OpenAI-compatible adapter with Databricks auth:
-- Auth: `DATABRICKS_HOST` + `DATABRICKS_TOKEN` from env. Bearer token.
-- Base URL: `{DATABRICKS_HOST}/serving-endpoints`
-
 ---
 
 ## Integration with workflow.py
@@ -327,8 +271,6 @@ Model strings without a provider prefix default to `"openai"` for backward compa
 ## Dependencies
 
 - `httpx` (already in pyproject.toml) — HTTP client for all providers
-- `boto3` — lazy import, only for Bedrock
-- `google-auth` — lazy import, only for Vertex AI
 - No litellm, no aiohttp, no fastapi
 - `openai` SDK is NOT used by the llms module itself (it makes raw HTTP calls)
 
@@ -337,5 +279,3 @@ Model strings without a provider prefix default to `"openai"` for backward compa
 1. **Phase 1 — Core plumbing**: types, routing, _responses_to_chat, base adapter, client, __init__
 2. **Phase 2 — OpenAI adapter + workflow swap**: adapters/openai.py, update workflow.py
 3. **Phase 3 — Anthropic adapter**: adapters/anthropic.py
-4. **Phase 4 — Gemini adapter**: adapters/gemini.py
-5. **Phase 5 — Remaining**: adapters/bedrock.py, adapters/vertex.py, adapters/databricks.py

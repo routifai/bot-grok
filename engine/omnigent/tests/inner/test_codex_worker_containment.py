@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import os
-import socket
 import subprocess
 import sys
-import tempfile
 import uuid
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock
@@ -16,12 +14,9 @@ import pytest
 
 from omnigent.inner.codex_executor import _CodexAppServerSession
 from omnigent.inner.codex_worker import (
-    _BROKERED_AUTH_SECRET_ENV,
-    prepare_codex_catalog_probe,
     prepare_codex_worker,
 )
 from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec
-from omnigent.inner.model_signer import SignerReadiness
 from omnigent.inner.sandbox import SandboxPolicy, with_additional_write_roots
 
 
@@ -215,59 +210,7 @@ def test_worker_grants_only_selected_skills_directory_read_only(
         worker.close()
 
 
-def test_brokered_catalog_probe_is_network_denied(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    codex = tmp_path / "bin" / "codex"
-    codex.parent.mkdir()
-    codex.touch()
-    codex_home = tmp_path / "codex-home"
-    codex_home.mkdir()
-    launcher = tmp_path / "launcher"
-    launcher.touch()
-    backend = Mock()
-    backend.wrap_launcher_argv.return_value = [
-        "/usr/bin/sandbox-exec",
-        str(codex),
-        "debug",
-        "models",
-        "--bundled",
-    ]
-    captured: dict[str, SandboxPolicy] = {}
-
-    def _create_launcher(target: str, policy: SandboxPolicy) -> str:
-        assert target == str(codex)
-        captured["policy"] = policy
-        return str(launcher)
-
-    monkeypatch.setattr(
-        "omnigent.inner.codex_worker.resolve_sandbox",
-        Mock(return_value=_active_policy(tmp_path)),
-    )
-    monkeypatch.setattr("omnigent.inner.codex_worker.get_backend", Mock(return_value=backend))
-    monkeypatch.setattr("omnigent.inner.codex_worker.create_exec_launcher", _create_launcher)
-
-    probe = prepare_codex_catalog_probe(
-        codex_path=str(codex),
-        cwd=tmp_path,
-        codex_home=codex_home,
-        os_env=OSEnvSpec(sandbox=OSEnvSandboxSpec(type="darwin_seatbelt")),
-        spawn_env_names=["PATH", "HOME", "CODEX_HOME"],
-    )
-
-    policy = captured["policy"]
-    assert not policy.allow_network
-    assert policy.egress_relay_port is None
-    assert policy.egress_socket_path is None
-    assert policy.spawn_env_allowlist == ["CODEX_HOME", "HOME", "PATH"]
-    assert codex_home.resolve() in policy.write_roots
-
-    probe.close()
-    assert not launcher.exists()
-
-
-def test_non_signer_egress_rules_route_only_through_owned_proxy(
+def test_egress_rules_route_only_through_owned_proxy(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -343,7 +286,7 @@ def test_non_signer_egress_rules_route_only_through_owned_proxy(
     assert not egress_tmpdir.exists()
 
 
-def test_non_signer_egress_setup_rolls_back_before_return(
+def test_egress_setup_rolls_back_before_return(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -399,135 +342,15 @@ def test_non_signer_egress_setup_rolls_back_before_return(
     assert not egress_tmpdir.exists()
 
 
-def test_signer_readiness_adds_only_relay_and_public_ca(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    codex = tmp_path / "bin" / "codex"
-    codex.parent.mkdir()
-    codex.touch()
-    codex_home = tmp_path / "codex-home"
-    codex_home.mkdir()
-    signer_dir = tmp_path / "signer"
-    signer_dir.mkdir()
-    socket_path = signer_dir / "relay.sock"
-    socket_path.touch()
-    ca_bundle = signer_dir / "ca-bundle.pem"
-    ca_bundle.write_text("PUBLIC CA", encoding="utf-8")
-    readiness = SignerReadiness(
-        relay_port=43123,
-        socket_path=socket_path,
-        ca_bundle_path=ca_bundle,
-        placeholder="oa_cred_session",
-    )
-    launcher = tmp_path / "launcher"
-    launcher.touch()
-    backend = Mock()
-    backend.wrap_launcher_argv.return_value = ["/usr/bin/sandbox-exec", str(codex)]
-    captured: dict[str, SandboxPolicy] = {}
-
-    def _create_launcher(target: str, policy: SandboxPolicy) -> str:
-        captured["policy"] = policy
-        return str(launcher)
-
-    monkeypatch.setattr(
-        "omnigent.inner.codex_worker.resolve_sandbox",
-        Mock(return_value=_active_policy(tmp_path)),
-    )
-    monkeypatch.setattr("omnigent.inner.codex_worker.get_backend", Mock(return_value=backend))
-    monkeypatch.setattr("omnigent.inner.codex_worker.create_exec_launcher", _create_launcher)
-    secret_env = {
-        name: f"host-secret-{index}" for index, name in enumerate(_BROKERED_AUTH_SECRET_ENV)
-    }
-    worker_env = {
-        "PATH": os.environ["PATH"],
-        "CODEX_HOME": str(codex_home),
-        **secret_env,
-    }
-
-    worker = prepare_codex_worker(
-        codex_path=str(codex),
-        cwd=tmp_path,
-        codex_home=codex_home,
-        os_env=OSEnvSpec(sandbox=OSEnvSandboxSpec(type="darwin_seatbelt")),
-        spawn_env_names=list(worker_env),
-        signer_readiness=readiness,
-        worker_env=worker_env,
-    )
-
-    policy = captured["policy"]
-    assert policy.egress_relay_port == readiness.relay_port
-    assert policy.egress_socket_path == str(readiness.socket_path)
-    assert policy.allow_network is False
-    assert policy.read_roots is not None
-    assert signer_dir in policy.read_roots
-    assert {path.name for path in signer_dir.iterdir()} == {"ca-bundle.pem", "relay.sock"}
-    assert worker_env["HTTPS_PROXY"] == "http://127.0.0.1:43123"
-    assert worker_env["OPENAI_API_KEY"] == readiness.placeholder
-    assert worker_env["SSL_CERT_FILE"] == str(readiness.ca_bundle_path)
-    assert all(worker_env.get(name) != value for name, value in secret_env.items())
-    assert str(readiness.socket_path) not in worker_env.values()
-    assert "token" not in str(policy.to_jsonable()).lower()
-    worker.close()
-
-
-def test_signer_readiness_rejects_ordinary_egress_rules(tmp_path: Path) -> None:
-    readiness = SignerReadiness(
-        relay_port=43123,
-        socket_path=Path("/private/signer/relay.sock"),
-        ca_bundle_path=Path("/private/signer/ca-bundle.pem"),
-        placeholder="oa_cred_session",
-    )
-
-    with pytest.raises(
-        ValueError,
-        match=r"does not support os_env\.sandbox\.egress_rules",
-    ):
-        prepare_codex_worker(
-            codex_path=str(tmp_path / "codex"),
-            cwd=tmp_path,
-            codex_home=tmp_path / "codex-home",
-            os_env=OSEnvSpec(
-                sandbox=OSEnvSandboxSpec(
-                    type="darwin_seatbelt",
-                    egress_rules=["GET api.github.com/repos/company/**"],
-                )
-            ),
-            spawn_env_names=[],
-            signer_readiness=readiness,
-            worker_env={},
-        )
-
-
-def test_signer_readiness_rejects_unwrapped_worker(tmp_path: Path) -> None:
-    readiness = SignerReadiness(
-        relay_port=43123,
-        socket_path=Path("/private/signer/relay.sock"),
-        ca_bundle_path=Path("/private/signer/ca-bundle.pem"),
-        placeholder="oa_cred_session",
-    )
-
-    with pytest.raises(OSError, match="requires an active sandbox"):
-        prepare_codex_worker(
-            codex_path=str(tmp_path / "codex"),
-            cwd=tmp_path,
-            codex_home=tmp_path / "codex-home",
-            os_env=OSEnvSpec(sandbox=OSEnvSandboxSpec(type="none")),
-            spawn_env_names=[],
-            signer_readiness=readiness,
-            worker_env={},
-        )
-
-
 def test_launcher_scratch_clone_preserves_exact_relay(tmp_path: Path) -> None:
     policy = _active_policy(tmp_path)
     policy.egress_relay_port = 43123
-    policy.egress_socket_path = "/private/signer/relay.sock"
+    policy.egress_socket_path = "/private/egress/relay.sock"
 
     cloned = with_additional_write_roots(policy, [tmp_path / "launcher-scratch"])
 
     assert cloned.egress_relay_port == 43123
-    assert cloned.egress_socket_path == "/private/signer/relay.sock"
+    assert cloned.egress_socket_path == "/private/egress/relay.sock"
 
 
 def test_explicit_none_sandbox_keeps_direct_worker_path(tmp_path: Path) -> None:
@@ -732,128 +555,3 @@ def test_real_seatbelt_worker_cannot_write_outside_grants(tmp_path: Path) -> Non
 
     assert completed.returncode == 0, completed.stderr
     assert not escaped
-
-
-@pytest.mark.skipif(sys.platform != "darwin", reason="requires macOS Seatbelt")
-def test_real_seatbelt_worker_reads_only_public_signer_state_and_relay_network(
-    tmp_path: Path,
-) -> None:
-    unique = uuid.uuid4().hex
-    signer_public = Path(tempfile.mkdtemp(prefix="osp-", dir="/tmp")).resolve()
-    signer_private = Path(tempfile.mkdtemp(prefix="osr-", dir="/tmp")).resolve()
-    socket_path = signer_public / "relay.sock"
-    unrelated_socket_path = signer_public / "unrelated.sock"
-    ca_bundle = signer_public / "ca-bundle.pem"
-    ca_bundle.write_text("PUBLIC CA", encoding="utf-8")
-    private_marker = signer_private / "bearer-token"
-    private_marker.write_text("PRIVATE SIGNER TOKEN", encoding="utf-8")
-    host_marker = Path.home() / f".omnigent-host-credential-{unique}"
-    host_marker.write_text("HOST CREDENTIAL", encoding="utf-8")
-
-    unix_listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    unix_listener.bind(str(socket_path))
-    unix_listener.listen(1)
-    unrelated_listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    unrelated_listener.bind(str(unrelated_socket_path))
-    unrelated_listener.listen(1)
-    host_socket_candidates = [
-        value
-        for value in (
-            "/var/run/docker.sock",
-            os.environ.get("SSH_AUTH_SOCK"),
-            os.environ.get("DATABRICKS_SDK_SERVICE"),
-        )
-        if value and Path(value).exists()
-    ]
-    direct_listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    direct_listener.bind(("127.0.0.1", 0))
-    direct_listener.listen(1)
-    direct_port = int(direct_listener.getsockname()[1])
-    relay_probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    relay_probe.bind(("127.0.0.1", 0))
-    relay_port = int(relay_probe.getsockname()[1])
-    relay_probe.close()
-
-    codex = tmp_path / "codex"
-    codex.write_text(
-        "#!/usr/bin/python3\n"
-        "import os, pathlib, socket, sys\n"
-        f"for path in ({str(private_marker)!r}, {str(host_marker)!r}):\n"
-        "    try:\n"
-        "        pathlib.Path(path).read_bytes()\n"
-        "    except OSError:\n"
-        "        pass\n"
-        "    else:\n"
-        "        sys.exit(91)\n"
-        f"assert {unrelated_socket_path.name!r} in os.listdir({str(signer_public)!r})\n"
-        f"for path in {[str(unrelated_socket_path), *host_socket_candidates]!r}:\n"
-        "    denied = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)\n"
-        "    try:\n"
-        "        denied.connect(path)\n"
-        "    except OSError:\n"
-        "        pass\n"
-        "    else:\n"
-        "        sys.exit(93)\n"
-        "    finally:\n"
-        "        denied.close()\n"
-        f"relay = socket.create_connection(('127.0.0.1', {relay_port}), timeout=3)\n"
-        "relay.close()\n"
-        "try:\n"
-        f"    direct = socket.create_connection(('127.0.0.1', {direct_port}), timeout=1)\n"
-        "except OSError:\n"
-        "    sys.exit(0)\n"
-        "direct.close()\n"
-        "sys.exit(92)\n",
-        encoding="utf-8",
-    )
-    codex.chmod(0o755)
-    codex_home = tmp_path / "codex-home"
-    codex_home.mkdir()
-    readiness = SignerReadiness(
-        relay_port=relay_port,
-        socket_path=socket_path,
-        ca_bundle_path=ca_bundle,
-        placeholder="oa_cred_session",
-    )
-    worker_env = {"PATH": os.environ["PATH"], "CODEX_HOME": str(codex_home)}
-    worker = prepare_codex_worker(
-        codex_path=str(codex),
-        cwd=tmp_path,
-        codex_home=codex_home,
-        os_env=OSEnvSpec(
-            cwd=str(tmp_path),
-            sandbox=OSEnvSandboxSpec(
-                type="darwin_seatbelt",
-                allow_network=False,
-                cwd_hidden_scan_overflow="error",
-            ),
-        ),
-        spawn_env_names=list(worker_env),
-        signer_readiness=readiness,
-        worker_env=worker_env,
-    )
-
-    try:
-        completed = subprocess.run(
-            [worker.launch_path, "app-server"],
-            cwd=tmp_path,
-            env=worker_env,
-            capture_output=True,
-            text=True,
-            timeout=15,
-            check=False,
-        )
-    finally:
-        worker.close()
-        unix_listener.close()
-        unrelated_listener.close()
-        direct_listener.close()
-        host_marker.unlink(missing_ok=True)
-        private_marker.unlink(missing_ok=True)
-        socket_path.unlink(missing_ok=True)
-        unrelated_socket_path.unlink(missing_ok=True)
-        ca_bundle.unlink(missing_ok=True)
-        signer_public.rmdir()
-        signer_private.rmdir()
-
-    assert completed.returncode == 0, completed.stderr

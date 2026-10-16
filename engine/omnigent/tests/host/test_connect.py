@@ -163,7 +163,6 @@ def _write_discovery_skill(root: Path, name: str, *, visible: bool = True) -> No
     "harness,expected",
     [
         ("claude-native", {"project", "user", "toolkit:review"}),
-        ("codex-native", {"codex-user"}),
     ],
 )
 async def test_host_discovers_harness_skills_without_a_runner(
@@ -525,112 +524,6 @@ async def test_handle_model_options_serves_the_pi_harness(
     )
 
 
-@pytest.mark.parametrize("harness", ["devin-native", "native-devin", "devin"])
-async def test_handle_model_options_missing_devin_is_quiet(
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-    harness: str,
-) -> None:
-    """Repeated picker requests for an absent optional CLI must not flood host logs."""
-    from omnigent.harnesses.devin_native import main as devin_native
-
-    monkeypatch.setattr(devin_native, "resolve_cli_binary", lambda *_args, **_kwargs: None)
-    run = Mock(side_effect=AssertionError("a missing CLI must not spawn a subprocess"))
-    monkeypatch.setattr(devin_native, "subprocess", SimpleNamespace(run=run))
-    host = _make_host_process()
-
-    with caplog.at_level(logging.WARNING, logger="omnigent.host.connect"):
-        for i in range(3):
-            result = await host._handle_model_options(
-                HostModelOptionsFrame(request_id=f"missing_{i}", harness=harness),
-            )
-            assert result.status == "failed"
-            assert result.models == []
-            assert result.error is not None
-            assert "requires the 'devin' CLI" in result.error
-            assert "OMNIGENT_DEVIN_PATH" in result.error
-
-    run.assert_not_called()
-    assert not caplog.records
-
-
-async def test_handle_model_options_devin_recovers_after_install(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A failed preview must not hide a later install or configured executable."""
-    from omnigent.harnesses.devin_native import main as devin_native
-
-    resolve = Mock(return_value=None)
-    monkeypatch.setattr(devin_native, "resolve_cli_binary", resolve)
-    monkeypatch.setenv("OMNIGENT_DEVIN_PATH", "/custom/bin/devin")
-    host = _make_host_process()
-    host._configured_harnesses = {"devin-native": False}
-    first = await host._handle_model_options(
-        HostModelOptionsFrame(request_id="missing", harness="devin-native"),
-    )
-    assert first.status == "failed"
-
-    resolve.return_value = "/custom/bin/devin"
-    run = Mock(
-        return_value=SimpleNamespace(
-            stdout=json.dumps(
-                {
-                    "default_model": "test-family",
-                    "families": [{"slug": "test-family", "family_label": "Test Family"}],
-                }
-            )
-        )
-    )
-    monkeypatch.setattr(devin_native, "subprocess", SimpleNamespace(run=run))
-    result = await host._handle_model_options(
-        HostModelOptionsFrame(request_id="installed", harness="devin-native"),
-    )
-
-    assert result.status == "ok"
-    assert result.models == [
-        {
-            "id": "test-family",
-            "displayName": "Test Family",
-            "isDefault": True,
-            "source": {"kind": "subscription", "label": "Subscription", "name": "devin"},
-        }
-    ]
-    assert resolve.call_args.args == ("/custom/bin/devin",)
-    assert run.call_args.args[0] == ["/custom/bin/devin", "models", "list", "--format", "json"]
-
-
-@pytest.mark.parametrize(
-    "failure",
-    [
-        subprocess.CalledProcessError(1, "devin"),
-        subprocess.TimeoutExpired("devin", 10),
-        ValueError("invalid model catalog"),
-    ],
-)
-async def test_handle_model_options_devin_probe_failure_still_warns(
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-    failure: Exception,
-) -> None:
-    """Failures from an installed CLI remain diagnosable in the host log."""
-    from omnigent.harnesses.devin_native import main as devin_native
-
-    monkeypatch.setattr(devin_native, "list_devin_cli_model_options", Mock(side_effect=failure))
-    host = _make_host_process()
-    with caplog.at_level(logging.WARNING, logger="omnigent.host.connect"):
-        result = await host._handle_model_options(
-            HostModelOptionsFrame(request_id="failed", harness="devin-native"),
-        )
-
-    assert result.status == "failed"
-    assert result.models == []
-    assert result.error == "failed to resolve Devin model options"
-    record = next(r for r in caplog.records if r.message == "Devin model catalog unavailable")
-    assert record.levelno == logging.WARNING
-    assert record.exc_info is not None
-    assert record.exc_info[1] is failure
-
-
 @pytest.mark.parametrize("failure", ["raises", "resolves_nothing"])
 async def test_handle_model_options_codex_probe_failure_is_failed(
     monkeypatch: pytest.MonkeyPatch, failure: str
@@ -668,13 +561,13 @@ async def test_handle_model_options_rejects_unsupported_harness() -> None:
     host = _make_host_process()
 
     result = await host._handle_model_options(
-        HostModelOptionsFrame(request_id="req_models", harness="cursor-native"),
+        HostModelOptionsFrame(request_id="req_models", harness="harness-from-elsewhere"),
     )
 
     assert result == HostModelOptionsResultFrame(
         request_id="req_models",
         status="failed",
-        error="model options are unsupported for harness 'cursor-native'",
+        error="model options are unsupported for harness 'harness-from-elsewhere'",
     )
 
 
@@ -968,45 +861,6 @@ async def test_handle_launch_refuses_unconfigured_harness(
     assert host._runners == {}
 
 
-async def test_handle_launch_native_cursor_message_points_at_cursor_installer(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    A native-Cursor refusal must name the ``cursor-agent`` installer and
-    login, not ``omni setup`` — which only configures the SDK ``cursor``
-    harness and never installs the ``cursor-agent`` CLI ``omni cursor`` boots.
-
-    Here ``harness_setup_hint`` is the real function (only the readiness check
-    is forced False), so this exercises the connect.py → hint wiring end to end.
-    """
-    host = _make_host_process()
-    workspace = tmp_path / "project"
-    workspace.mkdir()
-    monkeypatch.setattr(
-        "omnigent.host.connect.harness_is_configured",
-        lambda harness: False,
-    )
-
-    frame = HostLaunchRunnerFrame(
-        request_id="req_cursor_native",
-        binding_token="token_abc",
-        workspace=str(workspace),
-        harness="cursor-native",
-    )
-    result = await host._handle_launch(frame)
-
-    assert result.status == "failed"
-    assert result.error_code == HARNESS_NOT_CONFIGURED_ERROR_CODE
-    message = result.error or ""
-    assert "'cursor-native'" in message
-    assert "test-laptop" in message
-    assert "cursor.com/install" in message
-    assert "cursor-agent login" in message
-    assert "omni setup" not in message
-    assert host._runners == {}
-
-
 @pytest.mark.parametrize("discovery_pending", [False, True])
 async def test_handle_launch_configured_harness_proceeds_to_spawn(
     tmp_path: Path,
@@ -1297,16 +1151,16 @@ def test_unavailable_harness_quick_probe_is_ttl_cached(monkeypatch: pytest.Monke
     monkeypatch.setattr(connect_mod, "harness_is_configured", lambda h: calls.append(h) or False)
     connect_mod._invalidate_quick_probe_cache()
     try:
-        previous = {"goose-native": False, "qwen-native": False}
+        previous = {"claude-native": False, "pi": False}
 
         # Burst of quick probes well inside the TTL.
         for _ in range(12):
             assert connect_mod._unavailable_harness_became_ready(previous) is False
         # Each harness resolved exactly ONCE — the cadence served from cache.
-        assert sorted(calls) == ["goose-native", "qwen-native"]
+        assert sorted(calls) == ["claude-native", "pi"]
 
         # A harness that becomes configured is seen once the verdict expires.
-        monkeypatch.setattr(connect_mod, "harness_is_configured", lambda h: h == "goose-native")
+        monkeypatch.setattr(connect_mod, "harness_is_configured", lambda h: h == "claude-native")
         monkeypatch.setattr(connect_mod, "HARNESS_READINESS_QUICK_PROBE_CACHE_TTL_S", 0.0)
         assert connect_mod._unavailable_harness_became_ready(previous) is True
     finally:
@@ -1325,13 +1179,13 @@ def test_quick_probe_cache_survives_configured_flip_within_ttl(
     monkeypatch.setattr(connect_mod, "harness_is_configured", lambda _h: state["configured"])
     connect_mod._invalidate_quick_probe_cache()
     try:
-        assert connect_mod._unavailable_harness_became_ready({"goose-native": False}) is False
+        assert connect_mod._unavailable_harness_became_ready({"claude-native": False}) is False
         state["configured"] = True
         # Still inside the TTL: cached miss wins.
-        assert connect_mod._unavailable_harness_became_ready({"goose-native": False}) is False
+        assert connect_mod._unavailable_harness_became_ready({"claude-native": False}) is False
         # Expiry re-probes and sees the install.
         monkeypatch.setattr(connect_mod, "HARNESS_READINESS_QUICK_PROBE_CACHE_TTL_S", 0.0)
-        assert connect_mod._unavailable_harness_became_ready({"goose-native": False}) is True
+        assert connect_mod._unavailable_harness_became_ready({"claude-native": False}) is True
     finally:
         connect_mod._invalidate_quick_probe_cache()
 
@@ -4609,15 +4463,15 @@ def test_handle_install_harness_already_installed_skips_installer(
         raise AssertionError("installer ran despite the harness already being installed")
 
     monkeypatch.setattr(connect, "try_install_harness_cli", _must_not_install)
-    monkeypatch.setattr(connect, "configured_harness_map", lambda: {"opencode-native": True})
+    monkeypatch.setattr(connect, "configured_harness_map", lambda: {"claude-native": True})
 
     host = _make_host_process()
     result = host._handle_install_harness(
-        HostInstallHarnessFrame(request_id="i0", harness="opencode")
+        HostInstallHarnessFrame(request_id="i0", harness="claude")
     )
 
     assert result.status == "ok"
-    assert result.configured_harnesses == {"opencode-native": True}
+    assert result.configured_harnesses == {"claude-native": True}
 
 
 def test_handle_install_harness_failure_surfaces_reason(

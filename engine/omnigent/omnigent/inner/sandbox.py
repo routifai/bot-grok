@@ -1243,9 +1243,8 @@ def create_exec_launcher(
     """Write an executable launcher that runs ``target_path`` inside ``sandbox``.
 
     Callers hand the returned path to spawners that ``execve`` it
-    directly (the Claude Agent SDK, tmux, the ACP/qwen/kimi/goose/pi
-    executors), so the file must be executable by the kernel on its
-    own.
+    directly (the Claude Agent SDK, tmux, the pi executor), so the file must
+    be executable by the kernel on its own.
 
     :param target_path: The real binary the launcher ultimately spawns.
     :param sandbox: Policy baked into the launcher and applied before the spawn.

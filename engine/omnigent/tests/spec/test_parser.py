@@ -53,28 +53,6 @@ def test_parse_minimal(agent_dir: Path) -> None:
     assert spec.mcp_servers == []
     assert spec.local_tools == []
     assert spec.sub_agents == []
-    assert spec.model_egress is None
-
-
-def test_parse_model_egress_as_distinct_typed_grant(tmp_path: Path) -> None:
-    rule = "POST workspace.databricks.com/ai-gateway/codex/v1/responses"
-    (tmp_path / "config.yaml").write_text(
-        yaml.safe_dump({"spec_version": 1, "model_egress": [rule]})
-    )
-
-    spec = parse(tmp_path)
-
-    assert spec.model_egress == [rule]
-
-
-@pytest.mark.parametrize("value", [[], "POST workspace.databricks.com/**", [123]])
-def test_parse_model_egress_rejects_invalid_grants(tmp_path: Path, value: object) -> None:
-    (tmp_path / "config.yaml").write_text(
-        yaml.safe_dump({"spec_version": 1, "model_egress": value})
-    )
-
-    with pytest.raises(OmnigentError, match="model_egress"):
-        parse(tmp_path)
 
 
 def test_parse_missing_config_yaml(tmp_path: Path) -> None:
@@ -3889,7 +3867,7 @@ def test_parse_executor_auth_databricks(tmp_path: Path) -> None:
     config = {
         "spec_version": 1,
         "executor": {
-            "harness": "openai-agents",
+            "harness": "pi",
             "model": "databricks-gpt-5-4-mini",
             "auth": {"type": "databricks", "profile": "oss"},
         },
@@ -3915,7 +3893,7 @@ def test_parse_executor_auth_api_key(tmp_path: Path, monkeypatch: pytest.MonkeyP
     config = {
         "spec_version": 1,
         "executor": {
-            "harness": "openai-agents",
+            "harness": "pi",
             "model": "gpt-4o",
             "auth": {"type": "api_key", "api_key": "$MY_KEY"},
         },
@@ -3969,7 +3947,7 @@ def test_parse_executor_auth_absent(tmp_path: Path) -> None:
     """No ``auth:`` key yields ``spec.executor.auth is None``."""
     config = {
         "spec_version": 1,
-        "executor": {"harness": "openai-agents", "model": "gpt-4o"},
+        "executor": {"harness": "pi", "model": "gpt-4o"},
     }
     (tmp_path / "config.yaml").write_text(yaml.dump(config))
     spec = parse(tmp_path)
@@ -4032,7 +4010,7 @@ def test_parse_executor_auth_api_key_with_base_url(
     config = {
         "spec_version": 1,
         "executor": {
-            "harness": "openai-agents",
+            "harness": "pi",
             "auth": {"type": "api_key", "api_key": "$MY_KEY", "base_url": "$MY_BASE"},
         },
     }
@@ -4052,7 +4030,7 @@ def test_parse_executor_auth_api_key_base_url_absent(
     config = {
         "spec_version": 1,
         "executor": {
-            "harness": "openai-agents",
+            "harness": "pi",
             "auth": {"type": "api_key", "api_key": "$MY_KEY"},
         },
     }

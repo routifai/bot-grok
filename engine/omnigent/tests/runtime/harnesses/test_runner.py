@@ -229,10 +229,10 @@ def test_configure_logging_writes_to_the_parents_log_file(
     monkeypatch.setenv(PROCESS_LOG_FILE_ENV_VAR, str(parent_log))
     _reset_omnigent_log_handlers()
 
-    _runner._configure_logging("acp", "conv_abc")
-    logging.getLogger("omnigent.inner.acp_executor").warning("acp[Grok] boom")
+    _runner._configure_logging("claude-sdk", "conv_abc")
+    logging.getLogger("omnigent.inner.claude_sdk_executor").warning("claude-sdk boom")
 
-    assert "acp[Grok] boom" in parent_log.read_text()
+    assert "claude-sdk boom" in parent_log.read_text()
 
 
 def test_configure_logging_falls_back_to_a_per_conversation_file(
@@ -247,12 +247,12 @@ def test_configure_logging_falls_back_to_a_per_conversation_file(
     monkeypatch.setenv("OMNIGENT_DATA_DIR", str(tmp_path))
     _reset_omnigent_log_handlers()
 
-    _runner._configure_logging("acp", "conv_xyz")
-    logging.getLogger("omnigent.inner.acp_executor").warning("acp[Grok] boom")
+    _runner._configure_logging("claude-sdk", "conv_xyz")
+    logging.getLogger("omnigent.inner.claude_sdk_executor").warning("claude-sdk boom")
 
-    written = list((tmp_path / "logs" / "harness").glob("acp-conv_xyz-*.log"))
+    written = list((tmp_path / "logs" / "harness").glob("claude-sdk-conv_xyz-*.log"))
     assert written, "expected a per-conversation harness log"
-    assert "acp[Grok] boom" in written[0].read_text()
+    assert "claude-sdk boom" in written[0].read_text()
 
 
 def test_configure_logging_survives_an_unwritable_log_dir(
@@ -268,7 +268,7 @@ def test_configure_logging_survives_an_unwritable_log_dir(
     monkeypatch.setenv("OMNIGENT_DATA_DIR", str(blocked))
     _reset_omnigent_log_handlers()
 
-    _runner._configure_logging("acp", "conv_bad")  # must not raise
+    _runner._configure_logging("claude-sdk", "conv_bad")  # must not raise
 
 
 def _reset_omnigent_log_handlers() -> None:

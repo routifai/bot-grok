@@ -10,18 +10,14 @@ This module turns that existing signal into a provider
 :meth:`~omnigent.onboarding.sandboxes.base.SandboxHostLauncher.keep_alive` call,
 so a sandbox whose platform reaps on inactivity, or one that expects the
 operator to push an absolute deadline forward, stays up while work is happening
-and is reclaimed once it is not. Nine providers already implement ``keep_alive``
-but only the CLI bootstrap ever called it; this is the managed-path caller.
+and is reclaimed once it is not.
 
-Providers that cannot extend a sandbox (``kubernetes`` today) raise
-:class:`SandboxCapabilityError` and are skipped, leaving their behaviour exactly
-as it is now.
+Providers that cannot extend a sandbox raise :class:`SandboxCapabilityError`
+and are skipped.
 
-Rate-limited per runner at a provider-scoped cadence
+Rate-limited per runner
 (:func:`~omnigent.onboarding.sandboxes.base.resolve_managed_keepalive_interval_s`):
-``keep_alive`` is a provider API call — on Kubernetes-style backends an apiserver
-write that wakes a controller reconcile — so agent_sandbox refreshes fast (short
-window) while other providers stay on the cheap default.
+``keep_alive`` is a provider API call, so it stays on a cheap cadence.
 """
 
 from __future__ import annotations
@@ -44,14 +40,6 @@ if TYPE_CHECKING:
     from omnigent.stores.host_store import HostStore
 
 _logger = logging.getLogger(__name__)
-
-# runner_id -> its provider's keepalive cadence (seconds), filled by
-# _keep_alive_for_runner once the runner's provider is resolved. Until then the
-# fast agent_sandbox cadence is used (see _interval_for) so an agent_sandbox's
-# short window is never under-refreshed; a slower provider self-corrects to its
-# own cadence after its first keepalive, at the cost of one early refresh.
-# custom-lint: disable-next=workspace-scoped-cache -- keyed by runner_id
-_runner_interval_s: dict[str, float] = {}
 
 # Cap on the per-runner throttle map before stale entries are pruned. Runners
 # are transient, so without this a long-lived server accumulates one dead key
@@ -101,21 +89,12 @@ def configure(
         _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="managed-keepalive")
 
 
-def _interval_for(runner_id: str) -> float:
-    """The keepalive cadence for *runner_id*: its provider's, once cached, else
-    the fast agent_sandbox cadence so a short-window sandbox is never under-refreshed."""
-    return _runner_interval_s.get(runner_id, resolve_managed_keepalive_interval_s("agent_sandbox"))
-
-
-def keepalive_interval_s(runner_id: str) -> float:
-    """Seconds the runner tunnel's keepalive loop sleeps between refreshes for
-    *runner_id* (and the per-runner throttle in :func:`touch`).
-
-    Provider-scoped: agent_sandbox refreshes fast because its window is short;
-    other providers keep the cheaper default so they are not over-called. The loop
-    sleep and the throttle read the same value, so they cannot disagree.
+def keepalive_interval_s() -> float:
+    """Seconds the runner tunnel's keepalive loop sleeps between refreshes (and
+    the per-runner throttle in :func:`touch`). The loop sleep and the throttle
+    read the same value, so they cannot disagree.
     """
-    return _interval_for(runner_id)
+    return resolve_managed_keepalive_interval_s()
 
 
 def touch(runner_id: str) -> None:
@@ -142,7 +121,7 @@ def touch(runner_id: str) -> None:
         return
     now = time.monotonic()
     last = _last_kept.get(runner_id)
-    if last is not None and now - last < _interval_for(runner_id):
+    if last is not None and now - last < keepalive_interval_s():
         return
     with _inflight_lock:
         if runner_id in _inflight:
@@ -159,11 +138,10 @@ def touch(runner_id: str) -> None:
 
 
 def _prune_throttle(now: float) -> None:
-    """Drop throttle entries older than two slow intervals (their runners are gone)."""
-    cutoff = now - 2 * resolve_managed_keepalive_interval_s()
+    """Drop throttle entries older than two intervals (their runners are gone)."""
+    cutoff = now - 2 * keepalive_interval_s()
     for runner_id in [rid for rid, seen in _last_kept.items() if seen < cutoff]:
         _last_kept.pop(runner_id, None)
-        _runner_interval_s.pop(runner_id, None)
 
 
 def _keep_alive_for_runner(runner_id: str) -> None:
@@ -201,11 +179,6 @@ def _keep_alive_for_runner(runner_id: str) -> None:
                     host.sandbox_id,
                 )
                 continue
-            # Cache the provider's cadence so the loop sleep and throttle settle
-            # onto it (agent_sandbox stays fast; others fall back to the default).
-            _runner_interval_s[runner_id] = resolve_managed_keepalive_interval_s(
-                host.sandbox_provider
-            )
             try:
                 extended = config.launcher_factory().keep_alive(host.sandbox_id)
                 # INFO from the server layer so the keepalive is visible in the
@@ -221,15 +194,15 @@ def _keep_alive_for_runner(runner_id: str) -> None:
                         host.sandbox_provider,
                     )
             except SandboxCapabilityError:
-                # Provider cannot extend a sandbox (e.g. kubernetes): today's
-                # behaviour, nothing to log every 10 minutes.
+                # Provider cannot extend a sandbox (e.g. computer): nothing to
+                # log every 10 minutes.
                 _logger.debug(
                     "keep_alive unsupported by provider %s; skipping sandbox %s",
                     host.sandbox_provider,
                     host.sandbox_id,
                 )
     # Keepalive is best effort: it must never disrupt the runner tunnel.
-    except Exception:  # noqa: BLE001
+    except Exception:
         _logger.warning("managed sandbox keepalive failed for runner %s", runner_id, exc_info=True)
     finally:
         with _inflight_lock:

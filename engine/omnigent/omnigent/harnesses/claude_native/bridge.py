@@ -1,8 +1,7 @@
 """Claude terminal utilities and the shared native-harness MCP relay.
 
-The ``serve-mcp`` entrypoint and tool relay also serve Codex, Antigravity,
-OpenCode, Cursor, Hermes, Kiro, Qwen and ACP clients. The historical module
-path remains stable; shared result conversion lives in
+The ``serve-mcp`` entrypoint and tool relay also serve Codex and Pi clients.
+The historical module path remains stable; shared result conversion lives in
 ``omnigent.runtime.mcp_tool_result``.
 
 The native wrapper has two live processes that need to rendezvous:
@@ -70,7 +69,6 @@ from omnigent._platform import IS_WINDOWS, is_wsl, stable_user_id
 from omnigent.harnesses.claude_native.message_display_hook import MESSAGE_DELTAS_FILE
 from omnigent.harnesses.claude_native.status import CONTEXT_RAW_FILE
 from omnigent.harnesses.diagnostics import detect_sign_in_prompt, sign_in_next_step
-from omnigent.harnesses.kiro_native import bridge as kiro_bridge
 from omnigent.models.claude_model_vocabulary import MODEL_VOCABULARY_ENV_VARS
 from omnigent.models.model_metadata import concrete_reported_model
 from omnigent.util.json_types import JsonObject as _JsonObject
@@ -83,9 +81,6 @@ if TYPE_CHECKING:
     from omnigent.inner.terminal import TerminalInstance
     from omnigent.llms.context_window import ModelPricing
 
-from omnigent.inner.hook_scripts.subagent_router import (
-    AGENT_TOOL_MATCHER as CLAUDE_SUBAGENT_TOOL_MATCHER,
-)
 from omnigent.native import native_bridge_common
 from omnigent.tools.base import Tool, ToolContext
 from omnigent.util.reasoning_effort import CLAUDE_EFFORTS
@@ -644,8 +639,8 @@ def _trusted_parent_for_bridge_dir(target: Path) -> Path:
     Return the trusted parent for an allowed bridge directory.
 
     Claude-native files live below the uid-scoped temp bridge root.
-    Codex-, Pi-, Cursor-, Qwen-, Hermes-, Antigravity-, and OpenCode-native reuse
-    the relay/MCP implementation but keep bridge files below their own bridge roots.
+    Codex- and Pi-native reuse the relay/MCP implementation but keep bridge
+    files below their own bridge roots.
     All roots use the same owner-only ancestor validation; only the trusted
     anchor differs.
 
@@ -683,85 +678,6 @@ def _trusted_parent_for_bridge_dir(target: Path) -> Path:
             trusted_parent = pi_root.parent.parent
         return _absolute_syntactic_path(trusted_parent)
 
-    from omnigent.harnesses.cursor_native.bridge import bridge_root as cursor_bridge_root
-
-    cursor_root = _absolute_syntactic_path(cursor_bridge_root())
-    if target.is_relative_to(cursor_root):
-        return _absolute_syntactic_path(cursor_root.parent.parent)
-
-    from omnigent.harnesses.devin_native.bridge import bridge_root as devin_bridge_root
-
-    devin_root = _absolute_syntactic_path(devin_bridge_root())
-    if target.is_relative_to(devin_root):
-        # Same shape as cursor-native ($TMPDIR/omnigent-<uid>/devin-native): trust
-        # the uid-scoped temp dir's parent and validate/chmod the two
-        # bridge-owned directories below it.
-        return _absolute_syntactic_path(devin_root.parent.parent)
-
-    from omnigent.harnesses.antigravity_native.bridge import bridge_root as antigravity_bridge_root
-
-    # antigravity-native keeps its bridge files below ``~/.omnigent/antigravity-native``,
-    # the same ``$HOME/.omnigent/<harness>-native`` shape codex uses, so apply the
-    # identical anchor logic: in production trust ``$HOME`` and validate/chmod the
-    # two bridge-owned dirs below it (``.omnigent`` and ``antigravity-native``); in
-    # tests the monkeypatched root may differ, so trust the direct parent.
-    antigravity_root = _absolute_syntactic_path(antigravity_bridge_root())
-    if target.is_relative_to(antigravity_root):
-        trusted_parent = antigravity_root.parent
-        if (
-            antigravity_root.name == "antigravity-native"
-            and antigravity_root.parent.name == ".omnigent"
-        ):
-            trusted_parent = antigravity_root.parent.parent
-        return _absolute_syntactic_path(trusted_parent)
-
-    from omnigent.harnesses.qwen_native.bridge import bridge_root as qwen_bridge_root
-
-    qwen_root = _absolute_syntactic_path(qwen_bridge_root())
-    if target.is_relative_to(qwen_root):
-        # Same shape as cursor-native ($TMPDIR/omnigent-<uid>/qwen-native): trust
-        # the uid-scoped temp dir's parent and validate/chmod the two
-        # bridge-owned directories below it.
-        return _absolute_syntactic_path(qwen_root.parent.parent)
-
-    from omnigent.harnesses.hermes_native.bridge import bridge_root as hermes_bridge_root
-
-    hermes_root = _absolute_syntactic_path(hermes_bridge_root())
-    if target.is_relative_to(hermes_root):
-        # Same shape as cursor-native ($TMPDIR/omnigent-<uid>/hermes-native): trust
-        # the uid-scoped temp dir's parent and validate/chmod the two
-        # bridge-owned directories below it.
-        return _absolute_syntactic_path(hermes_root.parent.parent)
-
-    from omnigent.harnesses.opencode_native.bridge import bridge_root as opencode_bridge_root
-
-    # opencode-native keeps its bridge files below ``~/.omnigent/opencode-native``
-    # (the same ``$HOME/.omnigent/<harness>-native`` shape codex/antigravity use),
-    # so apply the identical anchor logic: in production trust ``$HOME`` and
-    # validate/chmod the two bridge-owned dirs below it (``.omnigent`` and
-    # ``opencode-native``); in tests the monkeypatched root may differ, so trust
-    # the direct parent.
-    opencode_root = _absolute_syntactic_path(opencode_bridge_root())
-    if target.is_relative_to(opencode_root):
-        trusted_parent = opencode_root.parent
-        if opencode_root.name == "opencode-native" and opencode_root.parent.name == ".omnigent":
-            trusted_parent = opencode_root.parent.parent
-        return _absolute_syntactic_path(trusted_parent)
-
-    kiro_root = _absolute_syntactic_path(kiro_bridge.bridge_root())
-    if target.is_relative_to(kiro_root):
-        # Same shape as cursor-native ($TMPDIR/omnigent-<uid>/kiro-native): trust
-        # the uid-scoped temp dir's parent and validate/chmod the two
-        # bridge-owned directories below it.
-        return _absolute_syntactic_path(kiro_root.parent.parent)
-
-    # Headless ACP harnesses (acp / goose / qwen) put their Omnigent-MCP relay
-    # bridge below ``$TMPDIR/omnigent-<uid>/acp-mcp`` (same uid-scoped shape as
-    # cursor/qwen/hermes-native), so trust the uid-scoped temp dir's parent.
-    acp_root = _absolute_syntactic_path(acp_mcp_bridge_root())
-    if target.is_relative_to(acp_root):
-        return _absolute_syntactic_path(acp_root.parent.parent)
-
     # The subagent router's per-session dirs sit beside the native bridges
     # ($TMPDIR/omnigent-<uid>/subagent-router), so trust the same parent.
     router_root = _absolute_syntactic_path(subagent_router_bridge_root())
@@ -770,9 +686,7 @@ def _trusted_parent_for_bridge_dir(target: Path) -> Path:
 
     raise RuntimeError(
         f"bridge dir {target!s} is not under an allowed bridge root "
-        f"({claude_root!s}, {codex_root!s}, {pi_root!s}, {cursor_root!s}, "
-        f"{devin_root!s}, {antigravity_root!s}, {qwen_root!s}, {hermes_root!s}, "
-        f"{opencode_root!s}, {kiro_root!s}, {acp_root!s}, {router_root!s})"
+        f"({claude_root!s}, {codex_root!s}, {pi_root!s}, {router_root!s})"
     )
 
 
@@ -1382,38 +1296,6 @@ def subagent_router_bridge_root() -> Path:
     :returns: The subagent-router root directory (not created here).
     """
     return _BRIDGE_ROOT_PARENT / "subagent-router"
-
-
-def acp_mcp_bridge_root() -> Path:
-    """Bridge root for the headless ACP harnesses' Omnigent-MCP relay.
-
-    Shares the uid-scoped temp parent with claude-native
-    (``$TMPDIR/omnigent-<uid>/acp-mcp``). Used by the acp / goose / qwen
-    executors' ``OmnigentAcpMcp`` relay so ``serve-mcp``'s bridge dir passes the
-    :func:`_trusted_parent_for_bridge_dir` secure-root check.
-
-    :returns: The ACP-MCP bridge root directory (not created here).
-    """
-    return _BRIDGE_ROOT_PARENT / "acp-mcp"
-
-
-def prepare_acp_mcp_bridge_dir() -> Path:
-    """Create a fresh, secure per-relay bridge dir for an ACP harness.
-
-    Returns a unique owner-only directory under :func:`acp_mcp_bridge_root` with
-    a minimal token-only ``bridge.json`` — so the shared ``serve-mcp`` serves
-    ONLY the relay tools (no raw ``sys_os_*`` filesystem tools; the ACP agent
-    owns those). The caller's relay writes ``tool_relay.json`` here and points
-    ``serve-mcp`` at the directory.
-
-    :returns: The prepared bridge directory path.
-    """
-    bridge_dir = acp_mcp_bridge_root() / secrets.token_hex(8)
-    _ensure_secure_dir(bridge_dir)
-    config_path = bridge_dir / _CONFIG_FILE
-    if not config_path.exists():
-        _write_json_file(config_path, {"token": secrets.token_urlsafe(32)})
-    return bridge_dir
 
 
 def bridge_dir_for_bridge_id(bridge_id: str) -> Path:
@@ -2134,7 +2016,6 @@ def build_hook_settings(
     launch_permission_mode: str | None = None,
     launch_bypass_permissions: bool = False,
     launch_effort: str | None = None,
-    subagent_router_dir: Path | None = None,
     turn_routing: bool = False,
 ) -> _JsonObject:
     """
@@ -2179,10 +2060,6 @@ def build_hook_settings(
         dialog never blocks a host-spawned terminal.
     :param launch_effort: Effective launch effort from ``--effort``.
         Mirrored into ``effortLevel`` for restart/re-exec parity.
-    :param subagent_router_dir: Directory where the runner advertises its
-        ``route-subagent`` endpoint (``subagent_router.json``). When set,
-        a ``PreToolUse`` hook routes native subagent spawns; ``None``
-        leaves spawns unrouted.
     :param turn_routing: ``True`` when the session launched with Smart
         Routing on, which registers the ``UserPromptSubmit`` first-message
         routing hook. ``False`` omits it: the hook would otherwise put a
@@ -2395,36 +2272,6 @@ def build_hook_settings(
         # server-side. Covers both web-UI-injected and direct-terminal
         # prompts, since both fire UserPromptSubmit.
         hooks["UserPromptSubmit"].append({"hooks": [evaluate_policy_hook]})
-    if subagent_router_dir is not None:
-        # Route natively spawned subagents (the Task/Agent tool) through
-        # the runner's route-subagent endpoint. Settings-level hooks also
-        # apply to nested spawns, so a routed subagent's own spawns are
-        # routed too. The script fails open — an unreachable endpoint
-        # emits no output and the spawn proceeds unchanged.
-        router_command_parts = [
-            python,
-            "-I",
-            "-m",
-            "omnigent.inner.hook_scripts.claude_router_hook",
-            "--bridge-dir",
-            str(bridge_dir),
-            "--router-dir",
-            str(subagent_router_dir),
-        ]
-        from omnigent.inner.hook_scripts.subagent_router import HOOK_TIMEOUT_S
-
-        router_hook: _JsonObject = {
-            "type": "command",
-            "command": _python_hook_command(router_command_parts),
-            # Outermost hop of the routing timeout budget documented in
-            # ``omnigent.runner.subagent_routing``: derived from the hook
-            # script's own request budget so it always exceeds it and the
-            # script's fail-open branch runs before Claude kills it.
-            "timeout": int(HOOK_TIMEOUT_S),
-        }
-        hooks.setdefault("PreToolUse", []).append(
-            {"matcher": CLAUDE_SUBAGENT_TOOL_MATCHER, "hooks": [router_hook]}
-        )
     settings: _JsonObject = {"hooks": hooks}
     if launch_model:
         settings["model"] = launch_model
@@ -2541,7 +2388,6 @@ def augment_claude_args(
     skills_filter: str | list[str] = "all",
     append_system_prompt: str | None = None,
     allowed_tools: tuple[str, ...] = (),
-    subagent_router_dir: Path | None = None,
     turn_routing: bool = False,
 ) -> list[str]:
     """
@@ -2587,10 +2433,6 @@ def augment_claude_args(
         Code's native ``--append-system-prompt`` flag.
     :param allowed_tools: Optional narrowly scoped Claude tool names to merge
         into ``--allowedTools`` without replacing the user's allowlist.
-    :param subagent_router_dir: Directory advertising the runner's
-        ``route-subagent`` endpoint, threaded to
-        :func:`build_hook_settings` so native ``Task`` spawns are routed.
-        ``None`` leaves them unrouted.
     :param turn_routing: ``True`` when the session launched with Smart
         Routing on, threaded to :func:`build_hook_settings` so the
         ``UserPromptSubmit`` first-message routing hook is registered.
@@ -2609,7 +2451,6 @@ def augment_claude_args(
         launch_permission_mode=_arg_value(claude_args, "--permission-mode"),
         launch_bypass_permissions=_args_request_bypass_permissions(claude_args),
         launch_effort=_arg_value(claude_args, "--effort"),
-        subagent_router_dir=subagent_router_dir,
         turn_routing=turn_routing,
     )
     args = _merge_disallowed_tools(list(claude_args), _OMNIGENT_DISALLOWED_TOOLS)

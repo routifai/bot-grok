@@ -22,6 +22,7 @@ from omnigent.spec.types import SharePolicy, ToolRuntime
 from omnigent.tools._srt import is_srt_available
 from omnigent.tools.base import Tool, ToolContext, is_valid_tool_name
 from omnigent.tools.builtins import (
+    INSTANTIABLE_BUILTINS,
     ListCommentsTool,
     LoadSkillTool,
     ReadSkillFileTool,
@@ -370,20 +371,15 @@ class ToolManager:
         """
         Register built-in tools declared in ``tools.builtins``.
 
-        Most tools are looked up in the built-in registry and
-        instantiated with spec-level config. Some (``web_search``,
-        ``web_fetch``, ``upload_file``) need runtime context the
-        registry doesn't have and are dispatched through
-        :meth:`_create_builtin` instead.
+        Each tool is looked up in the built-in registry and
+        instantiated with its spec-level config.
         """
         for entry in self._spec.tools.builtins:
-            tool = self._create_builtin(entry.name, entry.config)
+            tool = get_builtin_tool(entry.name, config=entry.config)
             if tool is None:
                 _logger.warning(
                     "Unknown built-in tool %r — skipping. "
-                    "Available: web_search, web_fetch, upload_file, "
-                    "list_files, download_file, "
-                    "search_conversations, export_agent. "
+                    "Available: %s. "
                     "Note: list_comments and update_comment are "
                     "framework-owned and auto-registered; they cannot "
                     "be declared in the spec. "
@@ -391,73 +387,10 @@ class ToolManager:
                     "spec-level `terminals:` block + sys_terminal_*; "
                     "one-shot shells use sys_os_shell.)",
                     entry.name,
+                    ", ".join(sorted(INSTANTIABLE_BUILTINS)),
                 )
                 continue
             self._tools[tool.name()] = tool
-
-    def _create_builtin(
-        self,
-        name: str,
-        config: dict[str, str] | None,
-    ) -> Tool | None:
-        """
-        Instantiate a built-in tool by name.
-
-        :param name: The builtin name from the spec.
-        :param config: Optional spec-level config dict.
-        :returns: A :class:`Tool` instance, or ``None``.
-        """
-        if name == "web_search":
-            return self._create_web_search(config)
-        if name == "web_fetch":
-            return self._create_web_fetch(config)
-        if name == "upload_file":
-            from omnigent.tools.builtins.upload_file import UploadFileTool
-
-            return UploadFileTool()
-        return get_builtin_tool(name, config=config)
-
-    def _create_web_search(self, config: dict[str, str] | None) -> Tool:
-        """
-        Build a :class:`WebSearchTool` for the parent's LLM.
-
-        The OpenAI-native ``web_search_preview`` passthrough is only used
-        on OpenAI Responses-compatible harnesses; everywhere else the tool
-        gets a function schema — see
-        :func:`~omnigent.llms.routing.web_search_native_passthrough_provider`.
-
-        :param config: Spec-level tool config dict, e.g.
-            ``{"api_key": "...", "engine_id": "..."}``.
-        :returns: A configured :class:`WebSearchTool`.
-        """
-        from omnigent.llms.routing import web_search_native_passthrough_provider
-        from omnigent.tools.builtins.web_search import WebSearchTool
-
-        llm_provider = web_search_native_passthrough_provider(
-            self._spec.executor.model, self._spec.executor.harness_kind
-        )
-        return WebSearchTool(config=config, llm_provider=llm_provider)
-
-    def _create_web_fetch(self, config: dict[str, str] | None = None) -> Tool:
-        """
-        Build the ``web_fetch`` tool.
-
-        With ``fetch_provider`` in the config it is the headless extract
-        tool; otherwise a WebFetchTool that inherits the parent's LLM config.
-
-        :param config: Spec-level tool config dict.
-        :returns: The configured web_fetch tool.
-        """
-        from omnigent.tools.builtins.web_fetch import WebFetchTool
-        from omnigent.tools.builtins.web_fetch_tavily import (
-            WebFetchExtractTool,
-            uses_fetch_provider,
-        )
-
-        if uses_fetch_provider(config):
-            return WebFetchExtractTool(config)
-
-        return WebFetchTool(parent_spec=self._spec)
 
     def _register_sub_agent_tools(self) -> None:
         """

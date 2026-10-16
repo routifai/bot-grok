@@ -161,11 +161,6 @@ def use_error_with_usage(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-def use_provider_auth_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MOCK_EXECUTOR_SCRIPT", "provider_auth_failure")
-
-
-@pytest.fixture
 def use_cancelled(monkeypatch: pytest.MonkeyPatch) -> None:
     """MockExecutor that yields a provider-side TurnCancelled."""
     monkeypatch.setenv("MOCK_EXECUTOR_SCRIPT", "cancelled")
@@ -253,7 +248,7 @@ async def test_tool_call_translates_to_paired_function_call_items(
     # The mock yields ToolCallRequest + ToolCallComplete +
     # TurnComplete. The ToolCallComplete carries NO call_id in its
     # metadata — it models a ``handles_tools_internally`` executor
-    # (e.g. antigravity) whose tool was run ENTIRELY inside the
+    # whose tool was run ENTIRELY inside the
     # SDK and never round-tripped through ``_stable_tool_executor`` /
     # ctx.dispatch_tool. The adapter must therefore emit BOTH the
     # observed function_call AND its paired function_call_output —
@@ -503,39 +498,6 @@ async def test_executor_error_usage_reaches_response_failed(
     assert events[-1].data["response"]["error"] is not None
 
 
-async def test_provider_auth_required_survives_adapter_and_sse_envelope(
-    use_provider_auth_failure: None,
-    manager: HarnessProcessManager,
-) -> None:
-    conv_id = "conv_provider_auth"
-    client = await manager.get_client(conv_id, _TEST_HARNESS_NAME)
-    events: list[_ParsedSSEEvent] = []
-    async with client.stream(
-        "POST", f"/v1/sessions/{conv_id}/events", json=_start_turn_body()
-    ) as response:
-        async for event in _stream_iter(response):
-            events.append(event)
-
-    assert events[-1].event == "response.failed"
-    error = events[-1].data["response"]["error"]
-    assert error == {
-        "code": "PROVIDER_AUTH_REQUIRED",
-        "message": (
-            "Provider authentication required for host "
-            "https://workspace.cloud.databricks.com and profile agent-profile. "
-            "Run `ucode configure` or `databricks auth login --host "
-            "https://workspace.cloud.databricks.com --profile agent-profile`, then Retry."
-        ),
-        "title": "Databricks authentication required",
-        "cause": (
-            "Databricks authentication for the selected workspace/profile is missing or expired."
-        ),
-        "remediation": "ucode configure",
-    }
-    assert "stderr" not in str(error).lower()
-    assert "token" not in str(error).lower()
-
-
 async def test_turn_cancelled_terminates_with_response_cancelled(
     use_cancelled: None,
     manager: HarnessProcessManager,
@@ -693,8 +655,7 @@ def test_classify_openai_exception_maps_known_types() -> None:
     ``openai.RateLimitError`` would not be classified
     retryable; the workflow would not retry through what is in
     fact a transient gateway hiccup. ``openai`` is in the venv
-    — the openai-agents / open-responses inner executors depend
-    on it directly.
+    — the codex and pi executors depend on it.
     """
     import openai
 
@@ -740,7 +701,7 @@ def test_classify_openai_exception_context_length_exceeded_direct() -> None:
     is classified so the harness wire carries the code and the workflow's
     reactive compaction fires.
 
-    What breaks if this fails: context overflow from the openai-agents
+    What breaks if this fails: context overflow from an OpenAI-backed
     executor is misclassified as a generic permanent error and compaction
     never triggers.
     """
@@ -761,11 +722,11 @@ def test_classify_openai_exception_context_length_exceeded_direct() -> None:
 
 def test_classify_openai_exception_context_length_exceeded_wrapped() -> None:
     """
-    When the openai-agents SDK wraps a ``BadRequestError`` as
+    When an SDK wraps a ``BadRequestError`` as
     ``__cause__`` of a generic ``Exception``, the classifier walks
     the cause chain and still returns ``"context_length_exceeded"``.
 
-    What breaks if this fails: the common case where the agents SDK
+    What breaks if this fails: the common case where an SDK
     wraps provider errors is not classified and compaction never fires.
     """
     import openai
@@ -851,8 +812,7 @@ def test_classify_anthropic_exception_returns_none_when_sdk_not_installed() -> N
 
     Regression: a hard-import of :mod:`anthropic` would crash
     the ``ExecutorAdapter._build_error_detail`` path on every
-    error in environments that don't ship the SDK (e.g. the
-    openai-agents wrap deployment).
+    error in environments that don't ship the SDK.
     """
     from omnigent.runtime.harnesses._executor_adapter import (
         _classify_anthropic_exception,
@@ -1313,7 +1273,7 @@ def test_observed_tool_call_reemits_a_completed_function_call() -> None:
 
     **What breaks if this fails**: the inline ToolCallRequest emits status
     ``"in_progress"``, which the turn-persist filter drops — so the card renders
-    live but disappears on refresh (the reported bug for generic-ACP harnesses).
+    live but disappears on refresh (the reported bug for wrapped harnesses).
     On completion the adapter re-emits the same call as a ``completed``
     function_call (which persists), then the function_call_output. Same call_id →
     the web dedupes the live in_progress render and this one into a single card.
@@ -1491,8 +1451,7 @@ def test_translate_event_mcp_request_queues_tool_use_id_for_dispatch() -> None:
 
 def test_translate_event_non_mcp_request_queues_tool_use_id() -> None:
     """
-    A ``ToolCallRequest`` with a non-MCP name (e.g. an
-    openai-agents native FunctionTool) ALSO pushes its
+    A ``ToolCallRequest`` with a non-MCP (bare) name ALSO pushes its
     ``tool_use_id`` onto the correlation queue.
 
     What this proves: the queue is not MCP-specific. Every
@@ -1503,10 +1462,9 @@ def test_translate_event_non_mcp_request_queues_tool_use_id() -> None:
 
     Originally, the queue gated on the MCP prefix
     because only claude-sdk-via-MCP went through dispatch.
-    When openai-agents-sdk landed, its native FunctionTool
-    on_invoke_tool callback ALSO routes through
+    Bare-named tools ALSO route through
     :meth:`_stable_tool_executor` (no MCP prefix). With the
-    old gate, openai-agents tools fell through to a fresh
+    old gate, those tools fell through to a fresh
     uuid in :func:`_bridge_one_dispatch`, the Omnigent client saw
     two function_call events with different call_ids, and
     the REPL rendered ``⏵ tool_name`` twice plus an empty
@@ -1524,7 +1482,7 @@ def test_translate_event_non_mcp_request_queues_tool_use_id() -> None:
 
     adapter._translate_event(
         ToolCallRequest(
-            name="sys_timer_set",  # Bare name (openai-agents path).
+            name="sys_timer_set",  # Bare (non-MCP) name.
             args={"seconds": 5},
             metadata={"call_id": "call_openai_xyz"},
         ),
@@ -1533,7 +1491,7 @@ def test_translate_event_non_mcp_request_queues_tool_use_id() -> None:
 
     assert list(adapter._pending_mcp_call_ids) == ["call_openai_xyz"], (
         f"Non-MCP tools that go through _stable_tool_executor "
-        f"(openai-agents FunctionTool path) MUST enqueue their "
+        f"(bare-name path) MUST enqueue their "
         f"tool_use_id so the dispatch's action_required emit "
         f"reuses the same call_id as the inline observed emit. "
         f"Got {list(adapter._pending_mcp_call_ids)!r} — without "
@@ -1825,9 +1783,9 @@ async def test_rejected_call_does_not_steal_next_dispatch_call_id() -> None:
 
 
 @pytest.mark.asyncio
-async def test_observed_and_dispatched_call_ids_match_for_openai_agents() -> None:
+async def test_observed_and_dispatched_call_ids_match_for_bare_name_tools() -> None:
     """
-    End-to-end round-trip: for an openai-agents-style ToolCallRequest
+    End-to-end round-trip: for a bare-name ToolCallRequest
     (bare name, ``metadata["call_id"]`` set), the observed
     function_call event the adapter emits and the action_required
     function_call the dispatch emits MUST share the same call_id.
@@ -1858,7 +1816,7 @@ async def test_observed_and_dispatched_call_ids_match_for_openai_agents() -> Non
     adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
     ctx = _RecordingTurnContext()
 
-    # Step 1 — adapter sees the openai-agents ToolCallRequest
+    # Step 1 — adapter sees the bare-name ToolCallRequest
     # (bare name, SDK call_id in metadata).
     sdk_call_id = "call_openai_xyz_123"
     adapter._translate_event(
@@ -2330,7 +2288,7 @@ async def test_interrupt_drops_inner_session_synchronously() -> None:
 def test_internal_errored_tool_complete_emits_output_with_real_call_id() -> None:
     """An internally-run errored tool's completion pairs by a NON-empty call_id.
 
-    The antigravity-sdk executor runs builtin tools entirely inside the SDK; a
+    A ``handles_tools_internally`` executor runs builtin tools entirely inside the SDK; a
     tool that errors surfaces as a :class:`ToolCallComplete` (status ERROR) that
     never round-trips through ``_stable_tool_executor``, so the adapter's
     completion branch is the ONLY ``function_call_output`` source. Downstream
@@ -2353,7 +2311,7 @@ def test_internal_errored_tool_complete_emits_output_with_real_call_id() -> None
     adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
     ctx = _RecordingTurnContext()
 
-    call_id = "tc_antigravity_err_1"
+    call_id = "tc_internal_err_1"
     # The internally-run builtin tool call (observed) ...
     adapter._translate_event(
         ToolCallRequest(
@@ -2391,7 +2349,7 @@ def test_internal_errored_tool_complete_emits_output_with_real_call_id() -> None
         f"({call_id!r}) so it pairs downstream; got {output_call_id!r}."
     )
     assert output_call_id != "", (
-        "function_call_output for an internally-run errored antigravity tool "
+        "function_call_output for an internally-run errored tool "
         "must NOT carry call_id=='' — every downstream consumer pairs strictly "
         "by call_id and discards an empty-id output, orphaning the result."
     )
@@ -2570,249 +2528,6 @@ async def test_policy_evaluator_no_active_turn_context_is_phase_aware() -> None:
         verdict = await adapter._stable_policy_evaluator(advisory_phase, {})
         assert verdict.action == "POLICY_ACTION_ALLOW", advisory_phase
         assert verdict.reason is None, advisory_phase
-
-
-class _CancelFlag:
-    """Records whether the adapter signalled cancellation.
-
-    A real class rather than MagicMock so an unexpected attribute access on the
-    flag fails loud, per the project's testing rules.
-    """
-
-    def __init__(self) -> None:
-        self.was_set = False
-
-    def set(self) -> None:
-        """Mark the turn cancelled."""
-        self.was_set = True
-
-
-class _ElicitingTurnContext:
-    """Stand-in for :class:`TurnContext` that captures one elicitation.
-
-    Only the surface the elicitation bridges touch is implemented: ``elicit`` and
-    ``cancelled``.
-    """
-
-    def __init__(self, reply: Any) -> None:  # type: ignore[explicit-any]
-        """:param reply: The :class:`ElicitationResult` to answer with."""
-        self.reply = reply
-        self.cancelled = _CancelFlag()
-        self.seen: list[Any] = []  # type: ignore[explicit-any]
-
-    async def elicit(self, elicitation_id: str, params: Any) -> Any:  # type: ignore[explicit-any]
-        """Record the request and return the canned reply."""
-        self.seen.append((elicitation_id, params))
-        return self.reply
-
-
-@pytest.mark.asyncio
-async def test_elicitation_choice_handler_asks_for_one_button_per_option() -> None:
-    """The card is asked for buttons, and the chosen label comes back.
-
-    The ``answer`` enum shape is a contract with the web approval card, which
-    renders one button per enum value and replies ``content={"answer": <label>}``
-    (see ``web/src/components/blocks/ApprovalCard.test.tsx``). A change to either
-    half silently collapses the card back to Approve/Reject, so it is asserted
-    exactly here.
-    """
-    from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
-    from omnigent.server.schemas import ElicitationResult
-
-    adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
-    ctx = _ElicitingTurnContext(
-        ElicitationResult(action="accept", content={"answer": "Allow this session"})
-    )
-    adapter._current_ctx = ctx  # type: ignore[assignment]
-
-    chosen = await adapter._stable_elicitation_choice_handler(
-        "Ran command",
-        {"command": "ls"},
-        ["Allow", "Allow this session", "Reject"],
-    )
-
-    assert chosen == "Allow this session"
-    (_elicitation_id, params) = ctx.seen[0]
-    assert params.requestedSchema == {
-        "type": "object",
-        "properties": {
-            "answer": {"type": "string", "enum": ["Allow", "Allow this session", "Reject"]}
-        },
-        "required": ["answer"],
-    }
-    # The card still names the tool and previews its arguments, as the binary one does.
-    assert "Ran command" in params.message
-    assert params.content_preview == 'Ran command({"command": "ls"})'
-    assert params.phase == "tool_call"
-    assert not ctx.cancelled.was_set
-
-
-@pytest.mark.asyncio
-async def test_elicitation_choice_handler_declines_on_a_dismissed_card() -> None:
-    """A declined card returns no choice and signals cancellation, as before."""
-    from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
-    from omnigent.server.schemas import ElicitationResult
-
-    adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
-    ctx = _ElicitingTurnContext(ElicitationResult(action="decline"))
-    adapter._current_ctx = ctx  # type: ignore[assignment]
-
-    assert (
-        await adapter._stable_elicitation_choice_handler("shell", {}, ["Allow", "Reject"]) is None
-    )
-    assert ctx.cancelled.was_set
-
-
-@pytest.mark.asyncio
-async def test_elicitation_choice_handler_declines_without_a_turn() -> None:
-    """An orphaned callback declines rather than granting a scope unreviewed."""
-    from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
-
-    adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
-    assert adapter._current_ctx is None
-
-    assert (
-        await adapter._stable_elicitation_choice_handler("shell", {}, ["Allow", "Reject"]) is None
-    )
-
-
-@pytest.mark.asyncio
-async def test_run_turn_installs_the_choice_bridge_only_where_supported() -> None:
-    """The choice bridge reaches executors that accept it, and only those.
-
-    Bridges are installed by attribute, so a rename on either side would leave the
-    feature silently inert — the card would quietly stay Approve/Reject. Executors
-    that don't offer the agent's own options must not grow the attribute.
-    """
-    import asyncio
-
-    from omnigent.inner.executor import Executor, ExecutorConfig, Message, ToolSpec, TurnComplete
-    from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
-    from omnigent.runtime.harnesses._scaffold import TurnContext
-    from omnigent.server.schemas import CreateResponseRequest
-
-    class _ChoiceCapableExecutor(Executor):
-        """Declares the attribute, as :class:`AcpExecutor` does."""
-
-        def __init__(self) -> None:
-            self._elicitation_choice_handler = None
-
-        async def run_turn(
-            self,
-            messages: list[Message],
-            tools: list[ToolSpec],
-            system_prompt: str,
-            config: ExecutorConfig | None = None,
-        ):
-            yield TurnComplete(response="ok")
-
-    class _BinaryOnlyExecutor(Executor):
-        """Declares no choice attribute — e.g. the SDK harnesses."""
-
-        async def run_turn(
-            self,
-            messages: list[Message],
-            tools: list[ToolSpec],
-            system_prompt: str,
-            config: ExecutorConfig | None = None,
-        ):
-            yield TurnComplete(response="ok")
-
-    for executor, expected in ((_ChoiceCapableExecutor(), True), (_BinaryOnlyExecutor(), False)):
-        adapter = ExecutorAdapter(executor_factory=lambda e=executor: e)  # type: ignore[misc]
-        ctx = TurnContext(
-            response_id="resp_bridge", event_queue=asyncio.Queue(), cancelled=asyncio.Event()
-        )
-        await adapter.run_turn(CreateResponseRequest(model="agent", input="hi"), ctx)
-
-        installed = getattr(executor, "_elicitation_choice_handler", None) is not None
-        assert installed is expected, type(executor).__name__
-        # The yes/no bridge is installed on both — the choice bridge is additive.
-        assert getattr(executor, "_elicitation_handler", None) is not None
-
-
-def test_translate_event_emits_subagent_started() -> None:
-    """A ``SubAgentStarted`` becomes the runner-internal ``subagent.started`` SSE event.
-
-    This is the harness half of the surfacing seam: the runner turns this event
-    into a child session. If it stops emitting, the Subagents panel goes empty
-    for the agent.
-    """
-    from omnigent.inner.executor import SubAgentStarted
-    from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
-    from omnigent.server.schemas import SubagentStartedEvent
-
-    adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
-    ctx = _RecordingTurnContext(response_id="resp_sa")
-    adapter._translate_event(
-        SubAgentStarted(child_key="a0ac9364", title="mathutils", task="create files"),
-        ctx,  # type: ignore[arg-type]
-    )
-    assert len(ctx.emitted) == 1
-    ev = ctx.emitted[0]
-    assert isinstance(ev, SubagentStartedEvent)
-    assert (ev.type, ev.child_key, ev.title, ev.task) == (
-        "subagent.started",
-        "a0ac9364",
-        "mathutils",
-        "create files",
-    )
-
-
-def test_translate_event_emits_subagent_completed() -> None:
-    """A ``SubAgentCompleted`` becomes the runner-internal ``subagent.completed`` SSE event."""
-    from omnigent.inner.executor import SubAgentCompleted
-    from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
-    from omnigent.server.schemas import SubagentCompletedEvent
-
-    adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
-    ctx = _RecordingTurnContext(response_id="resp_sa")
-    adapter._translate_event(
-        SubAgentCompleted(child_key="a0ac9364", ok=True, summary="3 tests pass"),
-        ctx,  # type: ignore[arg-type]
-    )
-    assert len(ctx.emitted) == 1
-    ev = ctx.emitted[0]
-    assert isinstance(ev, SubagentCompletedEvent)
-    assert (ev.type, ev.child_key, ev.ok, ev.summary) == (
-        "subagent.completed",
-        "a0ac9364",
-        True,
-        "3 tests pass",
-    )
-
-
-def test_translate_event_emits_subagent_tool_call() -> None:
-    """A ``SubAgentToolCall`` becomes ``subagent.tool_call`` with JSON arguments.
-
-    The runner appends this to the child transcript as a ``function_call`` card,
-    so ``arguments`` must be the JSON-encoded string the item expects.
-    """
-    from omnigent.inner.executor import SubAgentToolCall
-    from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
-    from omnigent.server.schemas import SubagentToolCallEvent
-
-    adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
-    ctx = _RecordingTurnContext(response_id="resp_sa")
-    adapter._translate_event(
-        SubAgentToolCall(
-            child_key="a0ac9364",
-            call_id="toolu_01",
-            name="Wrote mathutils.py",
-            args={"file_path": "mathutils.py"},
-        ),
-        ctx,  # type: ignore[arg-type]
-    )
-    assert len(ctx.emitted) == 1
-    ev = ctx.emitted[0]
-    assert isinstance(ev, SubagentToolCallEvent)
-    assert (ev.type, ev.child_key, ev.call_id, ev.name) == (
-        "subagent.tool_call",
-        "a0ac9364",
-        "toolu_01",
-        "Wrote mathutils.py",
-    )
-    assert json.loads(ev.arguments) == {"file_path": "mathutils.py"}
 
 
 def test_interrupt_slice_covers_pi_rpc_session_close_reap_budget() -> None:

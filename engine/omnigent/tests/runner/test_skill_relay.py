@@ -8,8 +8,7 @@ where the docs say every agent picks it up is invisible to every native
 harness, silently.
 
 The per-family sources do not cover it: codex walks its bundle plus
-``~/.codex/skills``, cursor walks ``~/.cursor/skills``, and the agy provider
-skips the generic walk entirely.
+``~/.codex/skills``.
 """
 
 from __future__ import annotations

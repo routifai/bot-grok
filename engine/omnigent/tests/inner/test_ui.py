@@ -13,20 +13,6 @@ def test_accent_is_brand_magenta() -> None:
     assert ui.ACCENT == "#F43BA6"
 
 
-def test_show_banner_requires_a_tty() -> None:
-    """The banner is decoration — never drawn off a TTY."""
-
-    assert ui.show_banner(isatty=False, env={}) is False
-    assert ui.show_banner(isatty=True, env={}) is True
-
-
-@pytest.mark.parametrize("value", ["1", "true", "YES", "on"])
-def test_show_banner_respects_no_banner_env(value: str) -> None:
-    """``OMNIGENT_NO_BANNER`` force-disables the banner even on a TTY."""
-
-    assert ui.show_banner(isatty=True, env={ui.NO_BANNER_ENV_VAR: value}) is False
-
-
 def test_warnings_and_errors_go_to_stderr(capsys: pytest.CaptureFixture[str]) -> None:
     """Diagnostics print to stderr so piped stdout stays clean."""
 

@@ -4,8 +4,8 @@ These drive the runner class directly with lightweight fakes, complementing the
 HTTP-path tests in ``test_app_sessions_native_events_lifecycle.py`` /
 ``test_app_sessions_native_supervision.py`` (which POST to ``/events`` and patch
 the bridge-module control functions). The focus here is the registry dispatch
-and the descriptor-collapsed uniform handlers: which harnesses route where, the
-no-handler fall-through contract (antigravity/opencode), and the 503 mapping.
+and the Claude handlers: which harnesses route where, the
+no-handler fall-through contract, the grace-timer cancel, and the 503 mapping.
 """
 
 from __future__ import annotations
@@ -107,17 +107,39 @@ def _make_runner(**overrides: Any) -> tuple[NativeInterruptRunner, dict[str, Any
     return NativeInterruptRunner(**kwargs), captured
 
 
-def test_native_cancel_capability_follows_stop_registry() -> None:
-    """Parent cancel capability must track ``_UNIFORM_STOP`` plus Claude."""
-    from omnigent.native.native_coding_agents import NATIVE_CODING_AGENTS
-    from omnigent.runner.native.interrupt import (
-        _UNIFORM_STOP,
-        native_cancel_capability,
+def _patch_claude_bridge(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    inject: Any = None,
+    kill: Any = None,
+) -> None:
+    """Route the Claude bridge lookups to ``dir/<conv>`` and stub inject/kill."""
+    import omnigent.harnesses.claude_native.bridge as claude_bridge
+    from omnigent.runner.native import interrupt as interrupt_mod
+
+    async def _fake_bridge_id(*, server_client: Any, session_id: str) -> str:
+        del server_client
+        return session_id
+
+    monkeypatch.setattr(interrupt_mod, "_claude_native_bridge_id_for_session", _fake_bridge_id)
+    monkeypatch.setattr(claude_bridge, "bridge_dir_for_bridge_id", lambda bid: f"dir/{bid}")
+    monkeypatch.setattr(
+        claude_bridge,
+        "inject_interrupt",
+        inject if inject is not None else (lambda bridge_dir, *, timeout_s: None),
     )
+    if kill is not None:
+        monkeypatch.setattr(claude_bridge, "kill_session", kill)
+
+
+def test_native_cancel_capability_follows_stop_registry() -> None:
+    """Claude has a dedicated stop; non-native wrappers cancel in-process."""
+    from omnigent.native.native_coding_agents import NATIVE_CODING_AGENTS
+    from omnigent.runner.native.interrupt import native_cancel_capability
 
     for agent in NATIVE_CODING_AGENTS:
         capability = native_cancel_capability(agent.wrapper_label)
-        if agent.key == "claude" or agent.key in _UNIFORM_STOP:
+        if agent.key == "claude":
             assert capability == "stop", agent.key
         else:
             assert capability == "best_effort", agent.key
@@ -129,7 +151,7 @@ def test_native_cancel_capability_follows_stop_registry() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("harness", ["antigravity-native", "opencode-native", "claude-sdk", None])
+@pytest.mark.parametrize("harness", ["claude-sdk", "pi", None])
 async def test_no_handler_harnesses_return_none(harness: str | None) -> None:
     """Harnesses without an interrupt/stop handler return None (caller falls through)."""
     runner, _ = _make_runner()
@@ -138,7 +160,7 @@ async def test_no_handler_harnesses_return_none(harness: str | None) -> None:
 
 
 @pytest.mark.asyncio
-async def test_uniform_interrupt_defers_parent_wake_until_outcome_known(
+async def test_interrupt_defers_parent_wake_until_outcome_known(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """An interrupt injects the Escape but must not report a terminal status yet.
@@ -147,18 +169,15 @@ async def test_uniform_interrupt_defers_parent_wake_until_outcome_known(
     may be delivered until the harness's terminal edge or the grace timer
     resolves the outcome.
     """
-    import omnigent.harnesses.goose_native.bridge as goose_bridge
-
     calls: list[Any] = []
 
     def _inject(bridge_dir: Any, *, timeout_s: float) -> None:
         calls.append((bridge_dir, timeout_s))
 
-    monkeypatch.setattr(goose_bridge, "bridge_dir_for_session_id", lambda conv: f"dir/{conv}")
-    monkeypatch.setattr(goose_bridge, "inject_interrupt", _inject)
+    _patch_claude_bridge(monkeypatch, inject=_inject)
 
     runner, captured = _make_runner()
-    resp = await runner.interrupt("goose-native", "conv_g")
+    resp = await runner.interrupt("claude-native", "conv_g")
 
     assert isinstance(resp, Response) and resp.status_code == 204
     assert calls == [("dir/conv_g", 1.0)]
@@ -175,16 +194,14 @@ async def test_interrupt_grace_timer_delivers_unconfirmed_cancel(
     """With no terminal edge after the interrupt, the grace timer reports cancelled."""
     import asyncio
 
-    import omnigent.harnesses.goose_native.bridge as goose_bridge
     from omnigent.runner.native import interrupt as interrupt_mod
 
-    monkeypatch.setattr(goose_bridge, "bridge_dir_for_session_id", lambda conv: f"dir/{conv}")
-    monkeypatch.setattr(goose_bridge, "inject_interrupt", lambda bridge_dir, *, timeout_s: None)
+    _patch_claude_bridge(monkeypatch)
     monkeypatch.setattr(interrupt_mod, "_NATIVE_INTERRUPT_CANCEL_GRACE_S", 0.02)
 
     runner, captured = _make_runner()
     captured["current_work_id"] = "work_g"  # a live dispatch to bind the cancel to
-    resp = await runner.interrupt("goose-native", "conv_g")
+    resp = await runner.interrupt("claude-native", "conv_g")
     assert isinstance(resp, Response) and resp.status_code == 204
     assert captured["wakes"] == []
 
@@ -206,16 +223,14 @@ async def test_grace_timer_does_not_cancel_superseded_dispatch(
     """
     import asyncio
 
-    import omnigent.harnesses.goose_native.bridge as goose_bridge
     from omnigent.runner.native import interrupt as interrupt_mod
 
-    monkeypatch.setattr(goose_bridge, "bridge_dir_for_session_id", lambda conv: f"dir/{conv}")
-    monkeypatch.setattr(goose_bridge, "inject_interrupt", lambda bridge_dir, *, timeout_s: None)
+    _patch_claude_bridge(monkeypatch)
     monkeypatch.setattr(interrupt_mod, "_NATIVE_INTERRUPT_CANCEL_GRACE_S", 0.02)
 
     runner, captured = _make_runner()
     captured["current_work_id"] = "work_A"
-    await runner.interrupt("goose-native", "conv_g")  # defers, bound to work_A
+    await runner.interrupt("claude-native", "conv_g")  # defers, bound to work_A
     # A new send reuses the child session before the timer fires.
     captured["current_work_id"] = "work_B"
 
@@ -236,14 +251,11 @@ async def test_resolve_pending_interrupt_only_consumes_matching_dispatch(
     only on a work_id match; otherwise it drops the stale record and reports
     not-pending so the caller handles the idle normally.
     """
-    import omnigent.harnesses.goose_native.bridge as goose_bridge
-
-    monkeypatch.setattr(goose_bridge, "bridge_dir_for_session_id", lambda conv: f"dir/{conv}")
-    monkeypatch.setattr(goose_bridge, "inject_interrupt", lambda bridge_dir, *, timeout_s: None)
+    _patch_claude_bridge(monkeypatch)
 
     runner, captured = _make_runner()
     captured["current_work_id"] = "work_A"
-    await runner.interrupt("goose-native", "conv_g")  # pending bound to work_A
+    await runner.interrupt("claude-native", "conv_g")  # pending bound to work_A
 
     # An idle arrives for a NEWER dispatch: the pending is stale and must be
     # dropped, letting the idle be handled as work_B's own outcome.
@@ -253,7 +265,7 @@ async def test_resolve_pending_interrupt_only_consumes_matching_dispatch(
 
     # A matching dispatch's idle DOES resolve its interrupt.
     captured["current_work_id"] = "work_C"
-    await runner.interrupt("goose-native", "conv_h")
+    await runner.interrupt("claude-native", "conv_h")
     resolved, work_id = runner.resolve_pending_interrupt("conv_h", "work_C")
     assert (resolved, work_id) == (True, "work_C")
 
@@ -272,19 +284,17 @@ async def test_repeated_interrupt_on_reused_child_gives_new_dispatch_its_cancel(
     """
     import asyncio
 
-    import omnigent.harnesses.goose_native.bridge as goose_bridge
     from omnigent.runner.native import interrupt as interrupt_mod
 
-    monkeypatch.setattr(goose_bridge, "bridge_dir_for_session_id", lambda conv: f"dir/{conv}")
-    monkeypatch.setattr(goose_bridge, "inject_interrupt", lambda bridge_dir, *, timeout_s: None)
+    _patch_claude_bridge(monkeypatch)
     monkeypatch.setattr(interrupt_mod, "_NATIVE_INTERRUPT_CANCEL_GRACE_S", 0.05)
 
     runner, captured = _make_runner()
     captured["current_work_id"] = "work_A"
-    await runner.interrupt("goose-native", "conv_g")  # A's pending (work_A) lingers
+    await runner.interrupt("claude-native", "conv_g")  # A's pending (work_A) lingers
     # The child is reused for dispatch B and interrupted before A's timer fires.
     captured["current_work_id"] = "work_B"
-    await runner.interrupt("goose-native", "conv_g")  # must replace A with work_B
+    await runner.interrupt("claude-native", "conv_g")  # must replace A with work_B
 
     await asyncio.sleep(0.2)
     # B receives its OWN grace-period cancellation (bound to work_B, delivered),
@@ -306,16 +316,14 @@ async def test_grace_timer_skips_cancel_when_dispatch_unbound(
     """
     import asyncio
 
-    import omnigent.harnesses.goose_native.bridge as goose_bridge
     from omnigent.runner.native import interrupt as interrupt_mod
 
-    monkeypatch.setattr(goose_bridge, "bridge_dir_for_session_id", lambda conv: f"dir/{conv}")
-    monkeypatch.setattr(goose_bridge, "inject_interrupt", lambda bridge_dir, *, timeout_s: None)
+    _patch_claude_bridge(monkeypatch)
     monkeypatch.setattr(interrupt_mod, "_NATIVE_INTERRUPT_CANCEL_GRACE_S", 0.02)
 
     runner, captured = _make_runner()
     captured["current_work_id"] = None  # no dispatch to bind to
-    await runner.interrupt("goose-native", "conv_g")
+    await runner.interrupt("claude-native", "conv_g")
 
     await asyncio.sleep(0.1)
     assert captured["wakes"] == [], "an unbound interrupt must deliver no cancel"
@@ -329,15 +337,13 @@ async def test_resolved_interrupt_disarms_grace_timer(
     """A terminal edge that consumed the pending interrupt silences the timer."""
     import asyncio
 
-    import omnigent.harnesses.goose_native.bridge as goose_bridge
     from omnigent.runner.native import interrupt as interrupt_mod
 
-    monkeypatch.setattr(goose_bridge, "bridge_dir_for_session_id", lambda conv: f"dir/{conv}")
-    monkeypatch.setattr(goose_bridge, "inject_interrupt", lambda bridge_dir, *, timeout_s: None)
+    _patch_claude_bridge(monkeypatch)
     monkeypatch.setattr(interrupt_mod, "_NATIVE_INTERRUPT_CANCEL_GRACE_S", 0.02)
 
     runner, captured = _make_runner()
-    await runner.interrupt("goose-native", "conv_g")
+    await runner.interrupt("claude-native", "conv_g")
     assert runner.take_pending_interrupt("conv_g")[0] is True
 
     await asyncio.sleep(0.1)
@@ -345,71 +351,45 @@ async def test_resolved_interrupt_disarms_grace_timer(
 
 
 @pytest.mark.asyncio
-async def test_pi_interrupt_uses_enqueue_without_timeout(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """pi's uniform interrupt uses enqueue_interrupt with no timeout kwarg."""
-    import omnigent.harnesses.pi_native.bridge as pi_bridge
-
-    calls: list[Any] = []
-    monkeypatch.setattr(pi_bridge, "bridge_dir_for_session_id", lambda conv: f"dir/{conv}")
-    monkeypatch.setattr(
-        pi_bridge, "enqueue_interrupt", lambda bridge_dir: calls.append(bridge_dir)
-    )
-
-    runner, _ = _make_runner()
-    resp = await runner.interrupt("pi-native", "conv_p")
-
-    assert isinstance(resp, Response) and resp.status_code == 204
-    assert calls == ["dir/conv_p"]
-
-
-@pytest.mark.asyncio
-async def test_uniform_interrupt_bridge_error_returns_503(
+async def test_claude_interrupt_bridge_error_returns_503(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A RuntimeError from the bridge inject maps to a 503 with the error code."""
     import json
 
-    import omnigent.harnesses.qwen_native.bridge as qwen_bridge
-
     def _boom(bridge_dir: Any, *, timeout_s: float) -> None:
         raise RuntimeError("tmux target is not advertised")
 
-    monkeypatch.setattr(qwen_bridge, "bridge_dir_for_session_id", lambda conv: "d")
-    monkeypatch.setattr(qwen_bridge, "inject_interrupt", _boom)
+    _patch_claude_bridge(monkeypatch, inject=_boom)
 
     runner, captured = _make_runner()
-    resp = await runner.interrupt("qwen-native", "conv_q")
+    resp = await runner.interrupt("claude-native", "conv_q")
 
     assert resp is not None and resp.status_code == 503
     body = json.loads(bytes(resp.body))
-    assert body["error"] == "qwen_native_interrupt_failed"
-    assert body["detail"] == "safe:qwen-native interrupt"
+    assert body["error"] == "claude_native_interrupt_failed"
+    assert body["detail"] == "safe:claude-native interrupt"
     # No parent wake on failure.
     assert captured["wakes"] == []
+    assert runner.take_pending_interrupt("conv_q")[0] is False
 
 
 @pytest.mark.asyncio
-async def test_uniform_stop_kills_tears_down_and_goes_idle(
+async def test_claude_stop_kills_tears_down_and_goes_idle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A uniform stop kills the bridge, publishes idle, and wakes the parent."""
-    import omnigent.harnesses.cursor_native.bridge as cursor_bridge
-
+    """A stop kills the bridge, publishes idle, and wakes the parent."""
     killed: list[Any] = []
-    monkeypatch.setattr(cursor_bridge, "bridge_dir_for_session_id", lambda conv: f"dir/{conv}")
-    monkeypatch.setattr(
-        cursor_bridge,
-        "kill_session",
-        lambda bridge_dir, *, timeout_s: killed.append((bridge_dir, timeout_s)),
+    _patch_claude_bridge(
+        monkeypatch,
+        kill=lambda bridge_dir, *, timeout_s: killed.append((bridge_dir, timeout_s)),
     )
 
     runner, captured = _make_runner()
     # A stop that follows an unresolved interrupt settles it: the kill is
     # confirmed, so no grace-timer cancel may fire later.
-    runner._pending_interrupts["conv_c"] = 0.0
-    resp = await runner.stop("cursor-native", "conv_c")
+    runner._pending_interrupts["conv_c"] = None
+    resp = await runner.stop("claude-native", "conv_c")
 
     assert isinstance(resp, Response) and resp.status_code == 204
     assert runner.take_pending_interrupt("conv_c")[0] is False
@@ -417,58 +397,6 @@ async def test_uniform_stop_kills_tears_down_and_goes_idle(
     idle = [e for _, e in captured["published"] if e.get("status") == "idle"]
     assert idle == [{"type": "session.status", "status": "idle"}]
     assert captured["wakes"] == [("conv_c", "cancelled", None)]
-
-
-@pytest.mark.asyncio
-async def test_uniform_stop_kill_failure_returns_503_without_idle(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A failed kill returns 503 and does NOT publish idle (no lie to the UI)."""
-    import json
-
-    import omnigent.harnesses.hermes_native.bridge as hermes_bridge
-
-    def _boom(bridge_dir: Any, *, timeout_s: float) -> None:
-        raise RuntimeError("tmux target is not advertised")
-
-    monkeypatch.setattr(hermes_bridge, "bridge_dir_for_session_id", lambda conv: "d")
-    monkeypatch.setattr(hermes_bridge, "kill_session", _boom)
-
-    runner, captured = _make_runner()
-    resp = await runner.stop("hermes-native", "conv_h")
-
-    assert resp is not None and resp.status_code == 503
-    assert json.loads(bytes(resp.body))["error"] == "hermes_native_stop_failed"
-    assert [e for _, e in captured["published"] if e.get("status") == "idle"] == []
-
-
-@pytest.mark.asyncio
-async def test_codex_and_pi_stop_route_to_interrupt(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """codex/pi have no distinct stop — stop() routes to their interrupt handler."""
-    import omnigent.harnesses.pi_native.bridge as pi_bridge
-
-    calls: list[str] = []
-    monkeypatch.setattr(pi_bridge, "bridge_dir_for_session_id", lambda conv: conv)
-    monkeypatch.setattr(
-        pi_bridge, "enqueue_interrupt", lambda bridge_dir: calls.append(bridge_dir)
-    )
-
-    runner, _ = _make_runner()
-    resp = await runner.stop("pi-native", "conv_p")
-
-    assert isinstance(resp, Response) and resp.status_code == 204
-    # The interrupt path ran (enqueue_interrupt), not a kill_session.
-    assert calls == ["conv_p"]
-
-
-@pytest.mark.asyncio
-async def test_codex_interrupt_noop_when_no_bridge_state() -> None:
-    """codex interrupt returns 204 when there is no live bridge state."""
-    runner, _ = _make_runner()  # default codex_bridge_state returns None
-    resp = await runner.interrupt("codex-native", "conv_cx")
-    assert isinstance(resp, Response) and resp.status_code == 204
 
 
 @pytest.mark.asyncio

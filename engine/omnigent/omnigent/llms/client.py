@@ -103,8 +103,7 @@ class _ResponsesNamespace:
         :param connection_params: Per-call connection overrides.
             Keys are provider-specific, e.g.
             ``{"api_key": "...", "base_url": "..."}`` for
-            OpenAI-compatible providers, or
-            ``{"aws_region": "us-west-2"}`` for Bedrock.
+            OpenAI-compatible providers.
             ``None`` uses the adapter's default credentials.
         :param timeout: Request timeout in seconds. ``None``
             uses the adapter's default (120s non-streaming, 300s

@@ -115,7 +115,6 @@ from omnigent.server.routes._sessions.common import (
     _CODEX_NATIVE_COLLABORATION_MODE_LABEL_KEY,
     _CODEX_NATIVE_COLLABORATION_MODES,
     _CODEX_NATIVE_WRAPPER_LABEL_VALUE,
-    _DEVIN_NATIVE_WRAPPER_LABEL_VALUE,
     _logger,
     _managed_launch_tasks,
     get_server_runner_router,
@@ -124,7 +123,6 @@ from omnigent.server.routes._sessions.common import (
 from omnigent.server.routes._sessions.helpers import (
     _TUI_INJECT_FORWARD_TIMEOUT_S,
     SessionLiveness,
-    _agent_carries_cursor_fork_history,
     _agent_carries_native_fork_history,
     _announce_session_added,
     _apply_liveness_to_items,
@@ -186,7 +184,6 @@ from omnigent.server.routes._sessions.orchestration import (
     _publish_runner_recovered_status,
     _run_managed_launch,
     _spawn_archive_stop,
-    _validate_session_model_selection,
     ensure_runner_connected,
     managed_first_launch_labels,
 )
@@ -2384,27 +2381,18 @@ def register_core_routes(
             )
             if conv_for_permission_mode is None:
                 raise _session_not_found()
-            # The mode lives in the harness's own TUI, so both the eligible wrapper
-            # and the vocabulary are per harness — Devin's rungs are not Claude's,
-            # and validating one against the other would reject a valid switch.
-            wrapper_for_permission_mode = conv_for_permission_mode.labels.get(
-                _CLAUDE_NATIVE_WRAPPER_LABEL_KEY
-            )
-            if wrapper_for_permission_mode == _CLAUDE_NATIVE_WRAPPER_LABEL_VALUE:
-                allowed_permission_modes: tuple[str, ...] = tuple(_CLAUDE_NATIVE_PERMISSION_MODES)
-            elif wrapper_for_permission_mode == _DEVIN_NATIVE_WRAPPER_LABEL_VALUE:
-                from omnigent.harnesses.devin_native.bridge import DEVIN_PERMISSION_MODES
-
-                allowed_permission_modes = DEVIN_PERMISSION_MODES
-            else:
+            # The mode lives in the harness's own TUI.
+            if (
+                conv_for_permission_mode.labels.get(_CLAUDE_NATIVE_WRAPPER_LABEL_KEY)
+                != _CLAUDE_NATIVE_WRAPPER_LABEL_VALUE
+            ):
                 raise OmnigentError(
-                    "permission_mode is only supported for claude-native and "
-                    "devin-native sessions",
+                    "permission_mode is only supported for claude-native sessions",
                     code=ErrorCode.INVALID_INPUT,
                 )
-            if body.permission_mode not in allowed_permission_modes:
+            if body.permission_mode not in _CLAUDE_NATIVE_PERMISSION_MODES:
                 raise OmnigentError(
-                    f"permission_mode must be one of {sorted(allowed_permission_modes)}",
+                    f"permission_mode must be one of {sorted(_CLAUDE_NATIVE_PERMISSION_MODES)}",
                     code=ErrorCode.INVALID_INPUT,
                 )
             requested_permission_mode = body.permission_mode
@@ -2504,13 +2492,6 @@ def register_core_routes(
                     request, conv_for_model, None if clear_model else model_override
                 )
                 clear_model = False
-            else:
-                await asyncio.to_thread(
-                    _validate_session_model_selection,
-                    conv_for_model,
-                    None if clear_model else model_override,
-                    agent_store,
-                )
 
         # Cost-control switch: ``"off"`` is a real stored value here,
         # so the clear signal is an explicit JSON null (field present,
@@ -3285,12 +3266,7 @@ def register_core_routes(
                 ) from exc
             source_harness = source.inference_snapshot["harness"]
             target_harness = actual_harness(target_spec)
-            same_harness = (
-                source_harness == target_harness
-                if source_harness.startswith("acp:") or target_harness.startswith("acp:")
-                else canonicalize_harness(source_harness) == canonicalize_harness(target_harness)
-            )
-            if not same_harness:
+            if canonicalize_harness(source_harness) != canonicalize_harness(target_harness):
                 raise OmnigentError(
                     "A configured session can only fork into the same harness. "
                     "Start a new session to choose another harness and provider.",
@@ -3458,24 +3434,16 @@ def register_core_routes(
         # items (the converters consume Omnigent's normalized item shape, so
         # the source harness doesn't matter). SDK targets replay the
         # transcript as context regardless, so the marker is inert for them.
-        # claude/codex/pi native rebuild the transcript (each rebuilds its
-        # resumable session file from the copied items, so all three sit in
-        # _FORK_HISTORY_NATIVE_HARNESSES); cursor native instead replays prior
-        # turns as a text preamble (its conversation is server-backed, so a
-        # local store can't be seeded — fork-only, see
-        # _agent_carries_cursor_fork_history). The single FORK_CARRY_HISTORY
-        # label drives both; the runner branches on harness.
-        target_is_cursor = await asyncio.to_thread(_agent_carries_cursor_fork_history, base_agent)
-        carry_history_into_native = target_is_cursor or await asyncio.to_thread(
+        # Native harnesses rebuild their resumable session file from the copied
+        # items (see _FORK_HISTORY_NATIVE_HARNESSES).
+        carry_history_into_native = await asyncio.to_thread(
             _agent_carries_native_fork_history, base_agent
         )
         # The source's native session id is only resumable by a target in the
         # SAME provider family — a Claude target can't clone a Codex rollout.
         # Cross-family, the store must skip the fork-source directive so the
         # runner takes the rebuild path instead of a doomed clone attempt
-        # (a failed clone launches fresh, losing history). cursor never clones a
-        # native session (server-backed; it carries history via the preamble),
-        # so it always skips the source directive too. A managed fork gets its
+        # (a failed clone launches fresh, losing history). A managed fork gets its
         # OWN fresh sandbox, whose filesystem has no copy of the source's local
         # native rollout, so the clone is likewise doomed — skip the directive
         # so the runner rebuilds from the copied Omnigent items instead.
@@ -3484,7 +3452,6 @@ def register_core_routes(
         # parent's full transcript, defeating the seed appended below.
         resume_source_native_session = (
             (not switching_agent or copy_model_settings)
-            and not target_is_cursor
             and body.host_type != "managed"
             and not (body.side_chat and source_is_rollover)
         )
@@ -3946,9 +3913,7 @@ def register_core_routes(
             _same_provider_family, current_agent, target_agent
         )
         # claude/codex/pi native can replay fork history (each rebuilds its
-        # resumable session file from the copied items); cursor-native can't
-        # (no resumable session file), so don't stamp a carry-history promise
-        # it would silently break with a fresh launch.
+        # resumable session file from the copied items).
         carry_history_into_native = await asyncio.to_thread(
             _agent_carries_native_fork_history, target_agent
         )

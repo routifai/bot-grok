@@ -59,7 +59,7 @@ _LABEL_SEPARATOR = " | "
 #: (built by :func:`fire_title_candidates`): `` (Oct 03 07:00 UTC)`` plus an optional task-id stub.
 _FIRE_SUFFIX = re.compile(r"\s*\([A-Z][a-z]{2} \d{1,2} \d{2}:\d{2} UTC\)(?:\s+[0-9a-f]{8})?$")
 
-#: Opaque or ordinal sub-agent titles ("researcher-1", "web_fetch_91af03c2").
+#: Opaque or ordinal sub-agent titles ("helper-1", "web_search_91af03c2").
 _GENERIC_TITLE = re.compile(
     r"^(?=\S*\d)(?:[a-z_]+[-_ ]?\d+|[a-z_-]*[0-9a-f]{6,}[0-9a-f_-]*)$", re.IGNORECASE
 )

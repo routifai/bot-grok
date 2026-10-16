@@ -63,8 +63,7 @@ def test_set_sandbox_env_sets_claude_code_tmpdir(tmp_path: pathlib.Path) -> None
     a Claude CLI spawned inside the sandbox without this var fails
     with ``EPERM`` opening ``/tmp/claude-<uid>`` the moment it tries to
     write its settings. This covers any ``claude-sdk`` harness spawned
-    under the sandbox, including the hidden ``__web_researcher``
-    sub-agent the ``web_fetch``/``web_search`` builtins spawn.
+    under the sandbox.
     """
     env: dict[str, str] = {"SOME_OTHER_VAR": "keep-me"}
     set_sandbox_env(env, tmp_path)

@@ -23,10 +23,10 @@ a no-op when the host token is absent, the broker is unreachable, the feature is
 off, or the owner hasn't connected Databricks (the sandbox then keeps whatever
 ambient ``~/.databrickscfg`` it already had).
 
-Scope: this wires the *command-based* gateway harnesses. The opencode-native
-gateway and the Databricks MCP resolver read a static profile token via the SDK
-and are intentionally not wired here; a host-only profile makes them fall back
-to their ambient config until a broker-backed resolver lands for them.
+Scope: this wires the *command-based* gateway harnesses. The Databricks MCP
+resolver reads a static profile token via the SDK and is intentionally not
+wired here; a host-only profile makes it fall back to its ambient config until
+a broker-backed resolver lands for it.
 """
 
 from __future__ import annotations
@@ -215,9 +215,9 @@ def https_url_on_workspace_host(url: str, workspace_host: str) -> bool:
     """True when *url* is HTTPS and shares *workspace_host*'s network location.
 
     The managed-connect harnesses forward a broker-minted bearer to a base URL
-    that ultimately comes from a writable on-disk file (ucode ``state.json`` or
-    the generated opencode config). Bind that destination to the sidecar/profile
-    workspace so a stale or tampered file can't aim the bearer at another origin.
+    that ultimately comes from a writable on-disk file (ucode ``state.json``).
+    Bind that destination to the sidecar/profile workspace so a stale or
+    tampered file can't aim the bearer at another origin.
     A scheme-less *workspace_host* is treated as HTTPS.
     """
     from urllib.parse import urlsplit

@@ -34,9 +34,7 @@ class _Startup:
     event_client: SimpleNamespace
     bridge_dir: Path
     close_order: list[str]
-    subagent_router: object
     turn_router: object
-    shutdown_subagent: AsyncMock
     shutdown_turn: AsyncMock
     session_id: str = "child-codex-startup"
 
@@ -68,18 +66,14 @@ def startup(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> _Startup:
         app_server.stderr_task = None
 
     monkeypatch.setattr(app_server, "close", AsyncMock(side_effect=close_app_server))
-    shutdown_subagent = AsyncMock(side_effect=lambda *_args: close_order.append("subagent"))
     shutdown_turn = AsyncMock(side_effect=lambda *_args: close_order.append("turn"))
-    monkeypatch.setattr(orchestration, "_shutdown_session_router_async", shutdown_subagent)
     monkeypatch.setattr(orchestration, "_shutdown_session_turn_router_async", shutdown_turn)
     context = _Startup(
         app_server=app_server,
         event_client=SimpleNamespace(close=AsyncMock(side_effect=close_client)),
         bridge_dir=tmp_path,
         close_order=close_order,
-        subagent_router=object(),
         turn_router=object(),
-        shutdown_subagent=shutdown_subagent,
         shutdown_turn=shutdown_turn,
     )
     monkeypatch.setitem(orchestration._AUTO_CODEX_APP_SERVERS, context.session_id, app_server)
@@ -96,7 +90,6 @@ async def _discover(startup: _Startup, **kwargs: object) -> None:
         event_client=startup.event_client,  # type: ignore[arg-type]
         routing_summary="provider 'test' (model=gpt-test)",
         app_server=startup.app_server,
-        subagent_router=startup.subagent_router,  # type: ignore[arg-type]
         turn_router=startup.turn_router,  # type: ignore[arg-type]
         **kwargs,  # type: ignore[arg-type]
     )
@@ -184,9 +177,8 @@ async def test_startup_failure_is_visible_at_error_and_belongs_to_child(
     assert type(error).__name__ in error_text
     assert "Launch routing: provider 'test' (model=gpt-test)" in error_text
     assert read_bridge_state(startup.bridge_dir) is None
-    assert startup.close_order == ["client", "app_server", "subagent", "turn"]
+    assert startup.close_order == ["client", "app_server", "turn"]
     assert startup.session_id not in orchestration._AUTO_CODEX_APP_SERVERS
-    startup.shutdown_subagent.assert_awaited_once_with(startup.session_id, startup.subagent_router)
     startup.shutdown_turn.assert_awaited_once_with(startup.session_id, startup.turn_router)
 
 
@@ -241,7 +233,7 @@ async def test_failure_diagnostics_use_original_launch_not_registry_replacement(
     assert record.attributes.get("app_server_returncode") is None
     replacement.close.assert_not_awaited()
     assert orchestration._AUTO_CODEX_APP_SERVERS[startup.session_id] is replacement
-    assert startup.close_order == ["client", "app_server", "subagent", "turn"]
+    assert startup.close_order == ["client", "app_server", "turn"]
     assert read_bridge_startup_error(startup.bridge_dir) is None
 
 
@@ -324,7 +316,7 @@ async def test_terminal_exit_fails_without_waiting_for_thread_timeout(
         assert "unexpected argument" not in str(row) + local_line + error
     assert "private-early-exit-token" not in str(row) + local_line + error
     assert "\x1b" not in str(row) + local_line + error
-    assert startup.close_order == ["client", "app_server", "subagent", "turn"]
+    assert startup.close_order == ["client", "app_server", "turn"]
 
 
 @pytest.mark.parametrize("capture", [None, "1"])
@@ -400,7 +392,7 @@ async def test_stale_terminal_exit_does_not_stop_replacement_launch(
 
     assert orchestration._AUTO_CODEX_APP_SERVERS[startup.session_id] is replacement
     replacement.close.assert_not_awaited()
-    assert startup.close_order == ["client", "app_server", "subagent", "turn"]
+    assert startup.close_order == ["client", "app_server", "turn"]
     assert read_bridge_startup_error(startup.bridge_dir) == "replacement launch marker"
 
 
@@ -760,7 +752,7 @@ async def test_diagnostics_error_preserves_original_failure_and_cleanup(
     error_text = read_bridge_startup_error(startup.bridge_dir)
     assert error_text is not None
     assert "startup timed out after 30s: TimeoutError" in error_text
-    assert startup.close_order == ["client", "app_server", "subagent", "turn"]
+    assert startup.close_order == ["client", "app_server", "turn"]
     assert startup.session_id not in orchestration._AUTO_CODEX_APP_SERVERS
 
 
@@ -780,7 +772,7 @@ async def test_cancellation_cleans_up_without_reporting_startup_failure(
     assert _failure_records(caplog) == []
     assert read_bridge_startup_error(startup.bridge_dir) is None
     assert read_bridge_state(startup.bridge_dir) is None
-    assert startup.close_order == ["client", "app_server", "subagent", "turn"]
+    assert startup.close_order == ["client", "app_server", "turn"]
 
 
 async def test_success_starts_forwarder_without_reporting_startup_failure(
@@ -815,7 +807,7 @@ async def test_success_starts_forwarder_without_reporting_startup_failure(
     supervise.assert_awaited_once()
     assert supervise.await_args.kwargs["thread_id"] == "thread-ready"
     assert supervise.await_args.kwargs["client"] is startup.event_client
-    assert startup.close_order == ["client", "app_server", "subagent", "turn"]
+    assert startup.close_order == ["client", "app_server", "turn"]
 
 
 @pytest.mark.parametrize(

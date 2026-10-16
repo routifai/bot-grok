@@ -80,7 +80,7 @@ async def test_superside_chat_wake_inlines_result(_no_wake_backoff: list[float])
     runner_app.register_subagent_work(
         parent_session_id=parent_id,
         child_session_id=child_id,
-        agent="researcher",
+        agent="reviewer",
         title="auth",
         superside_chat=True,
     )
@@ -128,7 +128,7 @@ async def test_a_delivered_helper_result_adds_one_journal_line(
     runner_app.register_subagent_work(
         parent_session_id=parent_id,
         child_session_id=child_id,
-        agent="researcher",
+        agent="reviewer",
         title="auth",
         superside_chat=True,
     )
@@ -172,7 +172,7 @@ async def test_plain_mode_wake_is_unchanged(_no_wake_backoff: list[float]) -> No
     runner_app.register_subagent_work(
         parent_session_id=parent_id,
         child_session_id=child_id,
-        agent="researcher",
+        agent="reviewer",
         title="auth",
     )
     try:
@@ -230,7 +230,7 @@ async def test_superside_chat_wake_redirects_archived_side_chat_to_super_chat(
     runner_app.register_subagent_work(
         parent_session_id=side_chat_id,
         child_session_id=child_id,
-        agent="researcher",
+        agent="reviewer",
         title="auth",
         superside_chat=True,
     )

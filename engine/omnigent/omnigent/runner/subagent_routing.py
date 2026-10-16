@@ -1,15 +1,15 @@
 """Native-subagent routing: loopback endpoint + server-side policy.
 
-Harness ``PreToolUse`` hooks (Claude ``Task``, Codex ``spawn_agent``) call
-this before a native subagent spawn to ask which model the spawn should
+The claude-sdk executor's in-process ``PreToolUse`` hook (Claude ``Task``)
+calls this before a native subagent spawn to ask which model the spawn should
 run on. The gate is **advisory**: every transport failure, unreachable
 endpoint, unparseable verdict or hook timeout allows the spawn unchanged,
 because a spawn that dies on routing infrastructure is worse than a spawn
 on the inherited model. Two halves live here:
 
 * **Runner side** — a loopback HTTP relay (:func:`start_subagent_router`)
-  on ``127.0.0.1:0``, bearer-token authenticated, advertised to hook
-  scripts via ``subagent_router.json`` in the session bridge dir. Same
+  on ``127.0.0.1:0``, bearer-token authenticated, advertised to the hook
+  via ``subagent_router.json`` in the session bridge dir. Same
   rendezvous as ``tool_relay.json``.
 * **Server side** — the policy (:func:`resolve_subagent_route`), which
   runs where ``RuntimeCaps.routing_client`` lives and persists every
@@ -24,11 +24,10 @@ handler forwards to it with :func:`make_server_relay_resolver`.
 strictly larger than the hop it waits on — otherwise an inner hop's
 fail-open branch can never run. Canonical values, outermost first:
 
-1. harness hook timeout — 12s (``claude_native_bridge``'s PreToolUse entry,
-   codex's spawn hook, and ``HOOK_TIMEOUT_S`` for the in-process claude-sdk
-   hook). Strictly larger than hop 2, never equal to it: a hook killed at the
+1. harness hook timeout — 12s (``HOOK_TIMEOUT_S`` for the in-process
+   claude-sdk hook). Strictly larger than hop 2, never equal to it: a hook killed at the
    same instant its request gives up never reaches its fail-open branch.
-2. hook script HTTP request — :data:`HOOK_REQUEST_TIMEOUT_S` (8s, defined
+2. hook HTTP request — :data:`HOOK_REQUEST_TIMEOUT_S` (8s, defined
    as ``REQUEST_TIMEOUT_S`` in ``omnigent.inner.hook_scripts.subagent_router``,
    which stays stdlib-only and cannot import this module)
 3. runner loopback relay wait — :data:`RELAY_TIMEOUT_S` (7s)
@@ -131,25 +130,14 @@ _TASK_NAME_CAP = 200
 #: without limit, so the oldest verdicts are dropped.
 _RELAYED_CAP = 500
 
-# Harnesses whose spawn hooks read a router advertisement, per family. Every
+# Harnesses whose in-process spawn hook reads a router advertisement. Every
 # other harness gets no router env vars at all.
-_CLAUDE_HOOK_HARNESSES = frozenset({"claude-sdk", "claude_sdk", "claude-native"})
-_CODEX_HOOK_HARNESSES = frozenset({"codex", "codex-native"})
-# Codex harnesses that route in-harness spawns for a *pinned* Smart Routing
-# session too, not only an auto-harness one. Just the native terminal: it is
-# the only codex surface whose spawns never reach the session-create path, so
-# without the endpoint its spawn tools are neither gated nor pre-approved and
-# a Smart Routing session cannot spawn at all. An SDK/bundle agent on the
-# codex app-server spawns through session-create, which already routes off the
-# stamped switch, so the in-harness gate would only add a round trip.
-_PINNED_CODEX_HOOK_HARNESSES = frozenset({"codex-native"})
+_CLAUDE_HOOK_HARNESSES = frozenset({"claude-sdk", "claude_sdk"})
 
 # Cross-harness counterpart used to offer the router a second family, and
 # to name the redirect target when it picks from that family.
 _COUNTERPART_HARNESS: dict[str, str] = {
-    "claude-sdk": "codex",
     "claude-native": "codex-native",
-    "codex": "claude-sdk",
     "codex-native": "claude-native",
 }
 
@@ -801,7 +789,7 @@ async def _decide(
     result = None
     try:
         call = await route_with_fallback(backends, task, candidates, gateway_backed=gateway_backed)
-    except Exception as exc:  # noqa: BLE001 — router outages are a normal path here
+    except Exception as exc:
         _logger.warning(
             "route-subagent: router call failed for session=%s", session_id, exc_info=True
         )
@@ -1160,7 +1148,7 @@ def _handler_factory(
                     _awaited(resolver(session_id, req)), loop
                 )
                 decision = future.result(timeout=request_timeout_s)
-            except Exception:  # noqa: BLE001 — never wedge the spawn path
+            except Exception:
                 _logger.warning(
                     "route-subagent: resolver failed for session=%s", session_id, exc_info=True
                 )
@@ -1226,7 +1214,7 @@ def make_server_relay_resolver(
             )
             resp.raise_for_status()
             payload = resp.json()
-        except Exception:  # noqa: BLE001 — server hop failures are expected
+        except Exception:
             _logger.warning(
                 "route-subagent: server relay failed for session=%s", session_id, exc_info=True
             )
@@ -1390,10 +1378,10 @@ def ensure_session_router_quietly(
     The launch-site wrapper: a session with no server client has nowhere to
     relay verdicts to, and neither a router that cannot bind a socket nor a
     bridge root that fails its ownership check may take the harness launch
-    down with it. Only the harnesses whose spawn hooks read the
-    advertisement get a router at all — every other harness (pi, copilot,
-    goose, …) is handed no router env vars, so starting one for it would
-    only risk failing its session init.
+    down with it. Only the claude-sdk harness, whose in-process spawn hook
+    reads the advertisement, gets a router at all — every other harness is
+    handed no router env vars, so starting one for it would only risk
+    failing its session init.
 
     :param session_id: Session/conversation identifier.
     :param bridge_dir: Directory the advertisement is written into.
@@ -1407,18 +1395,11 @@ def ensure_session_router_quietly(
     :param caps: Accepted and ignored; kept so launch sites can pass the
         ``RuntimeCaps`` they already hold.
     :param routing_class: The session's Smart Routing class, which decides
-        whether it gets an endpoint at all. A **plain** session gets none
-        on either family: the loopback server, its bearer token on disk and
-        the per-spawn hook round trip are Smart Routing's costs to pay, not
-        a plain session's. Every **routed** session on a native terminal
-        gets one, pinned or auto-harness — on codex the advertisement is
-        also what turns the generated ``spawn_agent`` hook, the extra tool
-        pre-approvals and the merged ``hooks.json`` on, and without those a
-        pinned Smart Routing session could not spawn at all. The codex
-        *SDK* arm still needs :attr:`~SessionRoutingClass.auto_harness`:
-        its spawns go through the session-create path, which routes off the
-        stamped switch without any in-harness gate. Stamped at create, so
-        flipping the gear's subagent-routing toggle on for a plain session
+        whether it gets an endpoint at all. A **plain** session gets none:
+        the loopback server, its bearer token on disk and the per-spawn hook
+        round trip are Smart Routing's costs to pay, not a plain session's.
+        Every **routed** session gets one, pinned or auto-harness. Stamped
+        at create, so flipping the gear's subagent-routing toggle on for a plain session
         stays inert until it is recreated.
     :returns: The running router handle, or ``None`` when it could not
         start.
@@ -1426,15 +1407,9 @@ def ensure_session_router_quietly(
     del caps
     if server_client is None:
         return None
-    if harness not in _CLAUDE_HOOK_HARNESSES and harness not in _CODEX_HOOK_HARNESSES:
+    if harness not in _CLAUDE_HOOK_HARNESSES:
         return None
     if not routing_class.routing_enabled:
-        return None
-    if (
-        harness in _CODEX_HOOK_HARNESSES
-        and harness not in _PINNED_CODEX_HOOK_HARNESSES
-        and not routing_class.auto_harness
-    ):
         return None
     try:
         return ensure_session_router(
@@ -1506,7 +1481,7 @@ def _prune_router_dirs(router: SubagentRouter) -> None:
 def router_dir_for_session(session_id: str) -> Path:
     """Return the advertisement directory for a session with no bridge dir.
 
-    The SDK harnesses (claude-agent-sdk, codex app-server) have no bridge
+    The claude-agent-sdk harness has no bridge
     directory of their own, so the router gets a private owner-only one
     beside the native bridges. Created through the shared bridge-dir
     hardening: the advertisement holds a bearer token, and
@@ -1548,38 +1523,21 @@ def session_router_env(session_id: str, harness: str | None = None) -> dict[str,
 def router_env(session_id: str, router_dir: Path, harness: str | None = None) -> dict[str, str]:
     """Build the env that points a harness process at the router.
 
-    Each harness family reads the advertisement out of a directory named in
-    its own env var: the claude-agent-sdk executor registers its in-process
-    hook from it, and the codex executor uses it as the switch that turns
-    generated routing ``hooks.json`` on. Only *harness*'s own vars are set —
-    a codex executor spawned beneath a claude session would otherwise see
-    the codex vars carrying the parent's session id and route as it.
+    The claude-agent-sdk executor reads the advertisement out of the
+    directory named in its env var and registers its in-process hook from it.
 
     :param session_id: Session/conversation identifier.
     :param router_dir: Directory holding ``subagent_router.json``.
-    :param harness: Harness being launched. ``None`` sets both families'
-        vars, for callers that cannot name the harness.
+    :param harness: Harness being launched. ``None`` sets the vars anyway,
+        for callers that cannot name the harness.
     :returns: Env-var overrides for the harness process; empty for a
-        harness with no routing hooks.
+        harness with no routing hook.
     """
-    from omnigent.inner.codex_executor import (
-        CODEX_ROUTER_DIR_ENV_VAR,
-        CODEX_ROUTER_SESSION_ID_ENV_VAR,
-    )
     from omnigent.inner.hook_scripts.subagent_router import (
         ROUTER_DIR_ENV_VAR,
         SESSION_ID_ENV_VAR,
     )
 
-    claude_env = {ROUTER_DIR_ENV_VAR: str(router_dir), SESSION_ID_ENV_VAR: session_id}
-    codex_env = {
-        CODEX_ROUTER_DIR_ENV_VAR: str(router_dir),
-        CODEX_ROUTER_SESSION_ID_ENV_VAR: session_id,
-    }
-    if harness is None:
-        return {**claude_env, **codex_env}
-    if harness in _CLAUDE_HOOK_HARNESSES:
-        return claude_env
-    if harness in _CODEX_HOOK_HARNESSES:
-        return codex_env
-    return {}
+    if harness is not None and harness not in _CLAUDE_HOOK_HARNESSES:
+        return {}
+    return {ROUTER_DIR_ENV_VAR: str(router_dir), SESSION_ID_ENV_VAR: session_id}

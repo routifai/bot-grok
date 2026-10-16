@@ -24,7 +24,7 @@ If none of the above yield both a host and a token, the resolver raises
 
 Note: this resolver intentionally does NOT honor ``OPENAI_BASE_URL`` /
 ``OPENAI_API_KEY``. Those env vars are used by the *OpenAI* client paths
-(serving endpoints, openai-agents harness) and ALREADY contain the full
+(serving endpoints) and ALREADY contain the full
 serving-endpoints URL. Callers of this resolver need the bare workspace
 host so they can append their own path (e.g. ``/serving-endpoints``);
 reusing a full OpenAI base URL would produce malformed URLs, so we

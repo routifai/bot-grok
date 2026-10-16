@@ -80,16 +80,16 @@ def test_classifies_auth_failure(output: str) -> None:
 
 
 def test_classifies_missing_binary_by_exit_code() -> None:
-    diagnosis = classify_terminal_failure(command="qwen", exit_status=127, output="")
+    diagnosis = classify_terminal_failure(command="pi", exit_status=127, output="")
     assert diagnosis is not None
     assert diagnosis.title == "Agent command not found"
 
 
 def test_classifies_missing_binary_by_output() -> None:
     diagnosis = classify_terminal_failure(
-        command="qwen",
+        command="pi",
         exit_status=None,
-        output="bash: qwen: command not found",
+        output="bash: pi: command not found",
     )
     assert diagnosis is not None
     assert diagnosis.title == "Agent command not found"

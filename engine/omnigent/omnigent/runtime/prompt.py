@@ -109,8 +109,7 @@ def _framework_instructions_for(
     Only an agent that can dispatch sub-agents receives wake notices, so no
     other agent's prompt mentions them. That is the ``sys_session_send``
     registration gate in ``omnigent.tools.manager`` (declared sub-agents or
-    ``spawn: true``) plus the ``web_fetch`` builtin, which dispatches the
-    built-in web researcher through the same path.
+    ``spawn: true``).
 
     The embedded-browser priority guidance applies to every agent,
     mirroring the unconditional ``browser_*`` registration
@@ -125,11 +124,7 @@ def _framework_instructions_for(
     :returns: The applicable framework instructions, never empty.
     """
     instructions: list[str] = []
-    dispatches_web_researcher = any(
-        entry.name == "web_fetch" and not entry.config.get("fetch_provider")
-        for entry in spec.tools.builtins
-    )
-    if spec.tools.agents or spec.spawn or dispatches_web_researcher:
+    if spec.tools.agents or spec.spawn:
         instructions.append(SUBAGENT_WAKE_NOTICE_INSTRUCTION)
     instructions.append(EMBEDDED_BROWSER_PRIORITY_INSTRUCTION)
     if is_rollover(labels):

@@ -852,7 +852,7 @@ def test_bootstrap_runs_steps_in_order_and_returns_provisioned_id(
     assert sid == "sb-new"
     # Auth happens INSIDE the sandbox, after the wheels are shipped.
     # build's pypi_proxy must come from the launcher (None for the
-    # fake) — a hardcoded proxy here would leak the lakebox-only index
+    # fake) — a hardcoded proxy here would leak a provider-specific index
     # into every provider. The login entry carries the CLI-derived
     # workspace host — a missing/None segment there means the
     # orchestrator dropped the workspace pin on its way to the login.

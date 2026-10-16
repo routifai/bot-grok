@@ -71,7 +71,6 @@ from omnigent.models.model_metadata import concrete_reported_model
 from omnigent.native.native_coding_agents import (
     native_coding_agent_for_agent_name,
     native_coding_agent_for_harness,
-    native_coding_agent_for_wrapper_label,
 )
 from omnigent.policies.types import (
     ElicitationRequest,
@@ -170,7 +169,6 @@ from omnigent.server.routes._sessions.common import (  # noqa: F401
     _CLAUDE_NATIVE_WRAPPER_LABEL_KEY,
     _CLAUDE_NATIVE_WRAPPER_LABEL_VALUE,
     _CODEX_NATIVE_MODEL,
-    _CURSOR_NATIVE_WRAPPER_LABEL_VALUE,
     _EXTERNAL_SESSION_STATUS_TYPE,
     _FENCE_EXEMPT_EVENT_TYPES,
     _LAST_CONTEXT_TOKENS_LABEL_KEY,
@@ -224,8 +222,6 @@ from omnigent.server.routes._sessions.common import (  # noqa: F401
 # primitives) live in _sessions.helpers.
 from omnigent.server.routes._sessions.helpers import (
     SessionLiveness,
-    _antigravity_subagent_labels_from_body,
-    _antigravity_subagent_title,
     _await_settled_managed_launch,
     _build_new_item,
     _build_policy_engine_from_spec,
@@ -234,13 +230,10 @@ from omnigent.server.routes._sessions.helpers import (
     _coerce_cumulative_field,
     _collect_descendant_conversation_ids,
     _consume_pre_resolved_harness_elicitation,
-    _create_and_publish_antigravity_child,
     _create_and_publish_codex_child,
-    _create_and_publish_devin_child,
     _create_session_worktree,
     _delete_stored_session_bundle_after_failure,
     _derive_terminal_launch_args_from_spec,
-    _devin_subagent_labels_from_body,
     _emit_server_routing_decision,
     _error_item_from_sse,
     _extract_claude_native_runner_failure,
@@ -248,8 +241,6 @@ from omnigent.server.routes._sessions.helpers import (
     _extract_user_text_for_routing,
     _extract_user_text_from_event,
     _find_codex_native_subagent_child,
-    _find_devin_native_subagent_child,
-    _find_subagent_child_by_title,
     _flush_relay_text,
     _forward_approval_to_runner,
     _forward_session_change_to_runner,
@@ -257,7 +248,6 @@ from omnigent.server.routes._sessions.helpers import (
     _handle_advise_models_mcp,
     _invalidate_runner_backed_snapshot_state,
     _is_codex_native_subagent,
-    _is_kiro_native_session,
     _is_native_interrupt_record,
     _last_task_error_from_labels,
     _latest_assistant_text_from_store,
@@ -296,7 +286,6 @@ from omnigent.server.routes._sessions.helpers import (
     _publish_error_event,
     _publish_external_conversation_item,
     _publish_input_consumed,
-    _publish_model_options,
     _publish_sandbox_status,
     _publish_status,
     _publish_terminal_pending,
@@ -1405,8 +1394,7 @@ def _accumulate_session_usage(
     Cost is computed when the model's per-token pricing is
     available from the MLflow catalog (looked up once per call
     from the response's ``model`` field). When the harness instead
-    reports an authoritative per-turn ``cost_usd`` (e.g. Copilot's
-    AI-credit total), that value is used directly in preference to
+    reports an authoritative per-turn ``cost_usd``, that value is used directly in preference to
     the catalog estimate. The ``total_cost_usd`` key is written
     **only when the turn is priced** (catalog pricing available or a
     harness-reported cost) — an unpriced session leaves it absent
@@ -1949,7 +1937,7 @@ def _context_labels_from_turn_usage(
 ) -> dict[str, str]:
     """Build context-window indicator labels from an in-process turn's usage.
 
-    An in-process harness (``claude-sdk`` / ``openai-agents`` / ``pi``) reports
+    An in-process harness (``claude-sdk`` / ``pi``) reports
     the turn's window fill as ``usage.context_tokens`` and its observed model as
     ``usage.model`` on ``response.completed``. Mirror the two labels the
     claude-native ``external_session_usage`` path writes, so the web context
@@ -2246,45 +2234,6 @@ def _spawn_native_approval_popup_forward(
     task.add_done_callback(_native_popup_forward_tasks.discard)
 
 
-def _spawn_native_blocked_notice_forward(
-    session_id: str, message: str, policy_name: str | None = None
-) -> None:
-    """
-    Ask the bound runner to pop an INFORMATIONAL hard-block notice on the pane.
-
-    The request-phase HARD-DENY counterpart of
-    :func:`_spawn_native_approval_popup_forward`: no approve/decline (the prompt
-    is blocked). opencode can only hard-block a prompt by its policy plugin
-    throwing, which opencode renders as a generic "Unexpected server error";
-    this forwards the policy reason so the runner can surface it as a dismissable
-    tmux popup on the opencode pane. Fire-and-forget; the runner dispatch is
-    harness-gated (only ``opencode-native`` pops — claude/codex already show a
-    clean ``UserPromptSubmit`` block, so they no-op).
-
-    :param session_id: Omnigent session id, e.g. ``"conv_abc123"``.
-    :param message: The block reason shown in the popup.
-    :param policy_name: Deciding policy, rendered as the popup header. ``None``
-        falls back to a generic header on the runner.
-    :returns: None. Forwarding failures (runner offline / none bound) are
-        swallowed and never affect the verdict.
-    """
-
-    async def _forward() -> None:
-        await _forward_session_change_to_runner(
-            session_id,
-            get_server_runner_router(),
-            {
-                "type": "policy_blocked_notice",
-                "message": message,
-                "policy_name": policy_name,
-            },
-        )
-
-    task = asyncio.create_task(_forward())
-    _native_popup_forward_tasks.add(task)
-    task.add_done_callback(_native_popup_forward_tasks.discard)
-
-
 async def _hold_native_ask_gate(*args: Any, **kwargs: Any) -> bool:
     """Call-time proxy so a facade patch of this symbol is honored here."""
     from omnigent.server.routes import sessions as _facade
@@ -2406,69 +2355,6 @@ async def _hold_native_ask_gate_impl(
     return approved
 
 
-async def _persist_external_antigravity_subagent_start(
-    parent_id: str,
-    parent_conv: Conversation,
-    body: SessionEventInput,
-    conversation_store: ConversationStore,
-) -> str:
-    """
-    Mint or update a child Conversation for an agy sub-agent.
-
-    agy spawns each sub-agent as its own cascade and names them on the parent's
-    ``INVOKE_SUBAGENT`` step; the reader posts one of these per named child so
-    the Agents rail can show it. Unlike claude (which is discovered from an
-    on-disk ``subagents/`` directory) the child already has a stable id of its
-    own, so that id is both the label and the title's unique half.
-
-    Idempotent: a redelivered start for the same ``cascade_id`` resolves to the
-    existing row and upserts labels rather than minting a duplicate.
-
-    :param parent_id: Parent antigravity-native conversation id, e.g.
-        ``"conv_parent987"``.
-    :param parent_conv: Pre-fetched parent row.
-    :param body: POST event body. Required ``data.cascade_id``; optional
-        ``role``, ``agent_type``, ``tool_call_id``.
-    :param conversation_store: Store for reading/creating child rows.
-    :returns: Child conversation id, e.g. ``"conv_child456"``.
-    :raises OmnigentError: 400 if ``cascade_id`` is missing, or the parent has
-        no bound agent.
-    """
-    cascade_id = body.data.get("cascade_id")
-    if not isinstance(cascade_id, str) or not cascade_id:
-        raise OmnigentError(
-            "external_antigravity_subagent_start requires non-empty data.cascade_id",
-            code=ErrorCode.INVALID_INPUT,
-        )
-    if parent_conv.agent_id is None:
-        raise OmnigentError(
-            f"parent session {parent_id!r} has no agent_id; cannot "
-            "create an antigravity-native sub-agent child",
-            code=ErrorCode.INVALID_INPUT,
-        )
-    role = body.data.get("role")
-    agent_type = body.data.get("agent_type")
-    title = _antigravity_subagent_title(
-        role if isinstance(role, str) else "",
-        cascade_id,
-    )
-    labels = _antigravity_subagent_labels_from_body(cascade_id, body)
-    existing = await asyncio.to_thread(
-        _find_subagent_child_by_title, conversation_store, parent_id, title
-    )
-    if existing is not None:
-        await asyncio.to_thread(conversation_store.set_labels, existing.id, labels)
-        return existing.id
-    return await _create_and_publish_antigravity_child(
-        parent_id,
-        parent_conv,
-        title,
-        agent_type if isinstance(agent_type, str) else "",
-        labels,
-        conversation_store,
-    )
-
-
 async def _persist_external_codex_subagent_start(
     parent_id: str,
     parent_conv: Conversation,
@@ -2511,55 +2397,6 @@ async def _persist_external_codex_subagent_start(
         return existing.id
     return await _create_and_publish_codex_child(
         parent_id, parent_conv, thread_id, labels, conversation_store
-    )
-
-
-async def _persist_external_devin_subagent_start(
-    parent_id: str,
-    parent_conv: Conversation,
-    body: SessionEventInput,
-    conversation_store: ConversationStore,
-) -> str:
-    """
-    Mint or update a child Conversation for a Devin ``run_subagent`` sub-agent.
-
-    Devin runs each delegate as a chain inside the parent session's message
-    forest, not as its own session; the forwarder reconstructs that chain from
-    Devin's SQLite store on completion and posts it here as a child.
-
-    Idempotent: the forwarder re-posts a sub-agent each time it mirrors the
-    (already finished, stable) transcript, so repeated POSTs for the same
-    ``agent_id`` return the existing child id and upsert any new labels.
-
-    :param parent_id: Parent devin-native conversation id, e.g. ``"conv_parent987"``.
-    :param parent_conv: Pre-fetched parent row.
-    :param body: POST event body with ``data.agent_id`` required; optional
-        ``title``, ``tool_use_id``.
-    :param conversation_store: Store for reading/creating child rows.
-    :returns: Child conversation id, e.g. ``"conv_child456"``.
-    :raises OmnigentError: If ``agent_id`` is missing or the parent has no bound agent.
-    """
-    agent_id = body.data.get("agent_id")
-    if not isinstance(agent_id, str) or not agent_id:
-        raise OmnigentError(
-            "external_devin_subagent_start requires non-empty data.agent_id",
-            code=ErrorCode.INVALID_INPUT,
-        )
-    if parent_conv.agent_id is None:
-        raise OmnigentError(
-            f"parent session {parent_id!r} has no agent_id; cannot "
-            "create a devin-native sub-agent child",
-            code=ErrorCode.INVALID_INPUT,
-        )
-    existing = await asyncio.to_thread(
-        _find_devin_native_subagent_child, conversation_store, parent_id, agent_id
-    )
-    labels = _devin_subagent_labels_from_body(agent_id, body)
-    if existing is not None:
-        await asyncio.to_thread(conversation_store.set_labels, existing.id, labels)
-        return existing.id
-    return await _create_and_publish_devin_child(
-        parent_id, parent_conv, agent_id, labels, conversation_store
     )
 
 
@@ -2763,11 +2600,11 @@ async def _persist_external_conversation_item_unlocked(
         # recorded leaves a stale head entry, and draining by position would
         # hand it to THIS message (see ``omnigent.runtime.pending_inputs``).
         # Skipped older entries are persisted as undelivered. A miss falls back
-        # to the oldest entry, except for Kiro, whose prompt text is exact.
+        # to the oldest entry.
         text = _message_text(item.data.content) or ""
         matched = pending_inputs.resolve_matching_text(session_id, text, hold=True)
         drained = matched.matched
-        if item.stable_id is not None or _is_kiro_native_session(conv):
+        if item.stable_id is not None:
             skipped_pending = matched.skipped
             # Jumped-over entries that a positional drain may already have
             # settled: drained without an undelivered record.
@@ -2778,7 +2615,7 @@ async def _persist_external_conversation_item_unlocked(
             # message would brand everything queued in between undelivered.
             # Leave the older entries queued for a later mirror instead.
             held_older = [*matched.skipped, *matched.uncertain]
-        if drained is None and not _is_kiro_native_session(conv):
+        if drained is None:
             drained = pending_inputs.resolve_oldest(session_id, hold=True)
             if drained is not None:
                 # The mirror's true owner may be any entry still queued, so none
@@ -3090,23 +2927,13 @@ def _build_skipped_native_items(
     """
     if not skipped_entries:
         return []
-    if _is_kiro_native_session(conv):
-        harness_key = "kiro"
-        code = "kiro_native_prompt_not_recorded"
-        message = (
-            "Kiro did not accept this web message into its structured session "
-            "transcript. The native terminal may have shown the underlying error."
-        )
-    else:
-        native_agent = _native_coding_agent_for_session(conv)
-        display_name = native_agent.display_name if native_agent is not None else "The agent"
-        harness_key = "native"
-        code = "native_prompt_not_recorded"
-        message = (
-            f"{display_name} never recorded this message in its transcript before "
-            "accepting a later one, so it was not delivered. The native terminal may "
-            "have shown the underlying error."
-        )
+    native_agent = _native_coding_agent_for_session(conv)
+    display_name = native_agent.display_name if native_agent is not None else "The agent"
+    message = (
+        f"{display_name} never recorded this message in its transcript before "
+        "accepting a later one, so it was not delivered. The native terminal may "
+        "have shown the underlying error."
+    )
     items: list[NewConversationItem] = []
     for skipped in skipped_entries:
         turn_id = generate_task_id()
@@ -3118,7 +2945,7 @@ def _build_skipped_native_items(
                 created_by=skipped.created_by,
                 stable_id=uuid.uuid5(
                     uuid.NAMESPACE_URL,
-                    f"omnigent-skipped-{harness_key}-user:{session_id}:{skipped.pending_id}",
+                    f"omnigent-skipped-native-user:{session_id}:{skipped.pending_id}",
                 ).hex,
             )
         )
@@ -3126,10 +2953,12 @@ def _build_skipped_native_items(
             NewConversationItem(
                 type="error",
                 response_id=turn_id,
-                data=ErrorData(source="execution", code=code, message=message),
+                data=ErrorData(
+                    source="execution", code="native_prompt_not_recorded", message=message
+                ),
                 stable_id=uuid.uuid5(
                     uuid.NAMESPACE_URL,
-                    f"omnigent-skipped-{harness_key}-error:{session_id}:{skipped.pending_id}",
+                    f"omnigent-skipped-native-error:{session_id}:{skipped.pending_id}",
                 ).hex,
             )
         )
@@ -4094,7 +3923,7 @@ async def _maybe_wake_stale_resumable_managed_sandbox(
     """
     Wake a resumable managed host whose persisted liveness has gone stale.
 
-    Islo idle pause is memory-preserving: the local host/runner WebSocket
+    A resumable sandbox's idle pause is memory-preserving: the local host/runner WebSocket
     objects can remain registered until their ping loops time out, even though
     the VM is already paused and cannot answer new requests. When the durable
     host-store liveness row is stale, trust it over those in-memory objects,
@@ -4782,7 +4611,6 @@ async def _run_managed_wake(
                 host_id,
                 host_store,
                 sandbox_config,
-                repos=repos,
                 force=True,
                 on_stage=_on_stage,
                 agent_name=agent_name,
@@ -8334,7 +8162,7 @@ async def _relay_runner_stream_once(
                         )
                         if evt_type == "response.completed":
                             # Persist the context-window indicator labels for an
-                            # in-process turn (claude-sdk / openai-agents / pi):
+                            # in-process turn (claude-sdk / pi):
                             # numerator from usage.context_tokens, denominator
                             # from the observed model's window. This is the only
                             # path that gives a model-unpinned claude-sdk session
@@ -10271,7 +10099,6 @@ async def _create_session_from_existing_agent(
 
     inference_snapshot = None
     if agent_cache is not None:
-        from omnigent.harness_aliases import canonicalize_harness
         from omnigent.runtime.workflow import _find_spec_by_name
 
         try:
@@ -10302,7 +10129,6 @@ async def _create_session_from_existing_agent(
         if selection_spec is not None and body.sub_agent_name:
             selection_spec = _find_spec_by_name(selection_spec, body.sub_agent_name)
         from omnigent.server.routes.sandbox_inference import (
-            configured_snapshot,
             prepare_create_inference,
         )
 
@@ -10323,14 +10149,6 @@ async def _create_session_from_existing_agent(
                 conversation_store,
                 harness_override=harness_override,
                 model_override=model_override,
-            )
-        if (
-            selection_spec is not None
-            and not configured_snapshot(inference_snapshot)
-            and canonicalize_harness(harness_override or _spec_harness(selection_spec)) == "acp"
-        ):
-            await asyncio.to_thread(
-                _validate_acp_spec_models, selection_spec, model_override, harness_override
             )
 
     # Inherit runner affinity from the parent session so the child
@@ -10419,10 +10237,9 @@ async def _create_session_from_existing_agent(
     # ``body.terminal_launch_args`` is ignored. This is the YOLO seam:
     # claude-native maps ``permission_mode`` to ``--permission-mode``,
     # codex-native defaults to full bypass
-    # (``--dangerously-bypass-approvals-and-sandbox``), and cursor-native
-    # defaults to ``--yolo`` so a headless worker can edit/run unattended
-    # without stalling on native approval prompts (opt out with
-    # ``yolo: false``). A caller cannot inject launch wiring by smuggling
+    # (``--dangerously-bypass-approvals-and-sandbox``) so a headless worker
+    # can edit/run unattended without stalling on native approval prompts
+    # (opt out with ``yolo: false``). A caller cannot inject launch wiring by smuggling
     # args through the spawn body.
     #
     # Sessions that resolve their own agent (top-level sessions and the
@@ -10886,11 +10703,6 @@ def _create_session_from_bundle(
             enforce_handler_allowlist=not local_single_user_enabled(),
         )
     assert spec.name is not None
-
-    from omnigent.server.routes.sandbox_inference import configured_snapshot
-
-    if _spec_harness(spec) == "acp" and not configured_snapshot(inference_snapshot):
-        _validate_acp_spec_models(spec)
 
     if metadata.reasoning_effort is None and spec.executor.reasoning_effort is not None:
         _, seeded_effort = validate_session_model_metadata(
@@ -11454,14 +11266,13 @@ async def _fetch_model_options(
     runner_client: httpx.AsyncClient | None,
     session_id: str,
     conv: Conversation,
-    agent_store: AgentStore | None = None,
 ) -> list[dict[str, Any]]:
     """
     Resolve the Web UI model-picker options for a native session.
 
-    Three shapes:
+    Two shapes:
 
-    * **codex-native / cursor-native / kiro-native** — a *live* catalog only
+    * **codex-native** — a *live* catalog only
       the bound runner can read from the installed CLI. This stays
       off the snapshot hot path: the first snapshot kicks a background fetch
       and returns ``[]``; subsequent snapshots serve the cache. The cache
@@ -11473,20 +11284,14 @@ async def _fetch_model_options(
       With no runner bound and a cold cache (server restart while the
       session slept), the session's host resolves a pre-launch preview
       instead — the same source the new-session picker uses.
-    * **acp** — the deployment's curated provider ``models:`` shortlist from
-      the session's explicit provider (provider default first). Local to the
-      server, so a cold cache re-resolves inline with no runner round trip.
-      Served only when the deployment actually curated a set (2+ models); a
-      session configured without one shows no picker, matching pi-native's
-      no-scope-when-uncurated rule.
+
+    pi-native's catalog is pushed by its extension instead (see below).
 
     :param runner_client: HTTP client pointed at the bound runner, or
         ``None`` when no runner is bound.
     :param session_id: Session/conversation identifier,
         e.g. ``"conv_abc123"``.
     :param conv: Conversation row whose labels identify the wrapper.
-    :param agent_store: Optional store for the ACP spec lookup; resolves
-        from the runtime globals when ``None``.
     :returns: Model options, or ``[]`` when the session has no model picker or
         the runner-owned options are not yet available.
     """
@@ -11501,11 +11306,6 @@ async def _fetch_model_options(
         return _pushed_model_options_cache.get(session_id, [])
     endpoint = _MODEL_OPTIONS_ENDPOINT_BY_WRAPPER.get(wrapper or "")
     if endpoint is None:
-        # Generic ACP sessions carry no native wrapper label; their picker
-        # serves the deployment's curated provider ``models:`` shortlist
-        # resolved from the spec instead of a runner-owned catalog.
-        if _resolve_harness_impl_is_acp(conv, agent_store):
-            return await _load_acp_model_options(session_id, conv, agent_store)
         return []
     cached = _model_options_cache.get(session_id)
     if runner_client is None:
@@ -11583,159 +11383,6 @@ async def _codex_side_chat_fork_sealed(conv: Conversation, conv_store: Conversat
         return False
     parent = await asyncio.to_thread(conv_store.get_conversation, conv.parent_conversation_id)
     return parent is not None and bool(parent.runner_id) and parent.runner_id != conv.runner_id
-
-
-def _resolve_harness_impl_is_acp(conv: Conversation, agent_store: AgentStore | None) -> bool:
-    """Return whether *conv* runs a generic ``acp`` harness.
-
-    ``canonicalize_harness`` folds ``acp:<slug>`` ids to ``"acp"``, so any
-    configured or embedded generic ACP agent matches.
-
-    :param conv: Conversation row the session snapshot was built from.
-    :param agent_store: Optional store for the harness lookup; ``None`` lets
-        :func:`_resolve_harness` fall back to the runtime global.
-    :returns: ``True`` when the session's resolved harness is ``"acp"``.
-    """
-    from omnigent.harness_aliases import canonicalize_harness
-
-    return canonicalize_harness(_resolve_harness(conv, agent_store=agent_store)) == "acp"
-
-
-def _validate_acp_spec_models(
-    spec: AgentSpec, model_override: str | None = None, harness_override: str | None = None
-) -> None:
-    """Validate portable model choices; the runner validates its local ACP default.
-
-    :param spec: Resolved agent or sub-agent spec.
-    :param model_override: Explicit session model, if supplied.
-    :param harness_override: Session harness selection, if supplied.
-    """
-    from dataclasses import replace
-
-    from omnigent.models.model_catalog import validate_acp_model
-
-    if harness_override:
-        spec = replace(
-            spec,
-            executor=replace(
-                spec.executor, config={**spec.executor.config, "harness": harness_override}
-            ),
-        )
-    default_model = spec.executor.model
-    if not default_model:
-        embedded = spec.executor.config.get("acp_agent")
-        if isinstance(embedded, dict):
-            default_model = embedded.get("model")
-    validate_acp_model(spec, default_model)
-    validate_acp_model(spec, model_override)
-
-
-def _validate_session_model_selection(
-    conv: Conversation, model: str | None, agent_store: AgentStore
-) -> None:
-    """Validate a model mutation against the resolved harness and current provider config.
-
-    :param conv: The conversation whose model is changing.
-    :param model: Requested model id, or ``None`` to restore the configured default.
-    :param agent_store: Store for loading the conversation's bound agent spec.
-    :raises OmnigentError: If the harness cannot be resolved or its model policy rejects the pick.
-    """
-    from omnigent.harness_aliases import canonicalize_harness
-    from omnigent.runtime.workflow import _find_spec_by_name
-
-    harness = canonicalize_harness(conv.harness_override)
-    if harness and harness != "acp":
-        return
-    if not harness and native_coding_agent_for_wrapper_label(
-        conv.labels.get(_CLAUDE_NATIVE_WRAPPER_LABEL_KEY)
-    ):
-        return
-    try:
-        root_spec = _load_agent_spec_for_session(conv, agent_store)
-        selection_spec = root_spec
-        if root_spec is not None and conv.sub_agent_name:
-            selection_spec = _find_spec_by_name(root_spec, conv.sub_agent_name)
-        if root_spec is None or selection_spec is None:
-            raise OmnigentError(
-                "Cannot resolve the session's agent spec to validate model selection.",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        harness = harness or canonicalize_harness(
-            selection_spec.executor.config.get("harness")
-            or root_spec.executor.config.get("harness")
-            or selection_spec.executor.type
-        )
-    except OmnigentError:
-        raise
-    except Exception as exc:
-        raise OmnigentError(
-            "Cannot load the session's agent spec to validate model selection.",
-            code=ErrorCode.INVALID_INPUT,
-        ) from exc
-    if not harness or harness == "omnigent":
-        raise OmnigentError(
-            "Cannot resolve the session's harness to validate model selection.",
-            code=ErrorCode.INVALID_INPUT,
-        )
-    if harness == "acp":
-        _validate_acp_spec_models(selection_spec, model, conv.harness_override)
-
-
-async def _load_acp_model_options(
-    session_id: str,
-    conv: Conversation,
-    agent_store: AgentStore | None,
-) -> list[dict[str, Any]]:
-    """Resolve the curated picker options for a generic ACP session.
-
-    Serves the explicitly selected provider's verified shortlist in provider
-    order. The default row restores the agent's configured launch model.
-    The resolved options, including an empty catalog, stay cached while the
-    session sleeps without needing a runner round trip. Spec and provider
-    configuration reads run off the event loop.
-
-    Fewer than two curated models returns ``[]`` so the picker does not render.
-
-    :param session_id: Session/conversation identifier, e.g. ``"conv_abc"``.
-    :param conv: Conversation row the options are resolved for.
-    :param agent_store: Store for the bound-agent spec load; ``None`` falls
-        back to the runtime global store.
-    :returns: Option dicts (``id`` / ``displayName`` / ``isDefault``), or
-        ``[]`` when nothing was curated.
-    """
-    cached = _model_options_cache.get(session_id)
-    if cached is not None:
-        return cached
-    if agent_store is None:
-        from omnigent.runtime._globals import _agent_store
-
-        agent_store = _agent_store
-    if agent_store is None:
-        return []
-    spec = await asyncio.to_thread(_load_agent_spec_for_session, conv, agent_store)
-    if spec is None:
-        return []
-    from omnigent.models.model_catalog import _acp_launch_model, acp_curated_models
-    from omnigent.runtime.workflow import _find_spec_by_name
-
-    def resolve_options() -> list[dict[str, Any]]:
-        resolved_spec = spec
-        if conv.sub_agent_name:
-            resolved_spec = _find_spec_by_name(spec, conv.sub_agent_name) or spec
-        curated = acp_curated_models(resolved_spec)
-        if len(curated) < 2:
-            return []
-        default_model = _acp_launch_model(resolved_spec)
-        return [
-            {"id": model_id, "displayName": model_id, "isDefault": model_id == default_model}
-            for model_id in curated
-        ]
-
-    options = await asyncio.to_thread(resolve_options)
-    _model_options_cache[session_id] = options
-    _model_options_stale.discard(session_id)
-    _publish_model_options(session_id)
-    return options
 
 
 # The tunnel transport does not enforce httpx timeouts, so the runner status
@@ -11985,16 +11632,10 @@ async def _get_session_snapshot(
         runner_client = get_runner_client()
 
     if refresh_state:
-        wrapper = conv.labels.get(_CLAUDE_NATIVE_WRAPPER_LABEL_KEY)
-        # Cursor effort/model changes refresh snapshots; keep its previous
-        # options visible until the asynchronous CLI re-fetch replaces them.
-        # Other live catalogs retain their existing drop-on-refresh contract.
         _invalidate_runner_backed_snapshot_state(
             session_id,
             cancel_inflight=False,
-            drop_model_options=(
-                runner_client is not None and wrapper != _CURSOR_NATIVE_WRAPPER_LABEL_VALUE
-            ),
+            drop_model_options=runner_client is not None,
         )
 
     # A server recycle clears this cache while the persisted relay status survives.
@@ -12116,7 +11757,7 @@ async def _get_session_snapshot(
         if not conv.reported_model:
             llm_model = conv.model_override or catalog.get("default_model")
     else:
-        model_options = await _fetch_model_options(runner_client, session_id, conv, agent_store)
+        model_options = await _fetch_model_options(runner_client, session_id, conv)
     # Dynamic override from the forwarder (real Claude Code window).
     # Only present after the first statusLine tick; before that the
     # spec default applies.
@@ -12237,11 +11878,9 @@ __all__ = [
     "_maybe_wake_stale_resumable_managed_sandbox",
     "_native_subagent_wrapper_labels",
     "_native_terminal_runtime",
-    "_persist_external_antigravity_subagent_start",
     "_persist_external_codex_subagent_start",
     "_persist_external_conversation_item",
     "_persist_external_conversation_items",
-    "_persist_external_devin_subagent_start",
     "_persist_external_session_usage",
     "_persist_host_launch_failure_turn",
     "_persist_model_change_note",
@@ -12263,7 +11902,6 @@ __all__ = [
     "_spawn_archive_stop",
     "_spawn_gateway_backed",
     "_spawn_native_approval_popup_forward",
-    "_spawn_native_blocked_notice_forward",
     "_wait_for_host_bound_runner_client",
     "_wake_parent_for_blocked_child",
     "configure_subagent_block_notifier",

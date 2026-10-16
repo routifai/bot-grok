@@ -45,5 +45,5 @@ def test_codex_default_model_stays_workflow_pinned_under_spread(
     key = _key_that_rebalances(model)
     _model_pools.set_current_test(key)
 
-    assert resolve_default_model(model, "openai-agents") != model
+    assert resolve_default_model(model, "pi") != model
     assert resolve_default_model(model, "codex") == model

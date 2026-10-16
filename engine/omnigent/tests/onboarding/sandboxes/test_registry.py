@@ -66,10 +66,7 @@ def test_plugin_state_loads_builtins() -> None:
     reset_plugin_state_for_tests()
     state = plugin_state()
     assert isinstance(state, SandboxProviderPluginState)
-    assert "modal" in state
-    assert "blaxel" in state
-    assert "gensee" in state
-    assert "kubernetes" in state
+    assert state.names() == ("computer",)
 
 
 def test_plugin_state_is_cached() -> None:
@@ -93,19 +90,16 @@ def test_available_providers_returns_builtins() -> None:
     """available_providers exposes built-in provider names."""
     reset_plugin_state_for_tests()
     names = available_providers()
-    assert "modal" in names
-    assert "blaxel" in names
-    assert "gensee" in names
-    assert "kubernetes" in names
+    assert "computer" in names
 
 
 def test_get_provider_metadata_known_provider() -> None:
     """Metadata for a registered provider is available."""
     reset_plugin_state_for_tests()
-    meta = get_provider_metadata("modal")
+    meta = get_provider_metadata("computer")
     assert meta is not None
-    assert meta.name == "modal"
-    assert "omnigent.onboarding.sandboxes.modal:ModalSandboxLauncher" in meta.launcher_class
+    assert meta.name == "computer"
+    assert "omnigent.onboarding.sandboxes.computer:ComputerSandboxLauncher" in meta.launcher_class
 
 
 def test_get_provider_metadata_unknown_returns_none() -> None:
@@ -117,30 +111,8 @@ def test_get_provider_metadata_unknown_returns_none() -> None:
 def test_instantiate_loads_built_in_provider() -> None:
     """instantiate imports and constructs a built-in launcher."""
     reset_plugin_state_for_tests()
-    launcher = instantiate("modal")
-    assert launcher.provider == "modal"
-
-
-def test_instantiate_loads_blaxel_without_optional_sdk() -> None:
-    """The lazy Blaxel module imports before the optional SDK is installed."""
-    reset_plugin_state_for_tests()
-    launcher = instantiate("blaxel")
-    assert launcher.provider == "blaxel"
-
-
-def test_instantiate_loads_microsandbox_without_optional_sdk() -> None:
-    """The lazy microsandbox module imports before the optional SDK is installed."""
-    reset_plugin_state_for_tests()
-    launcher = instantiate("microsandbox")
-    assert launcher.provider == "microsandbox"
-
-
-def test_instantiate_loads_gensee_from_core() -> None:
-    """Gensee resolves to the built-in launcher without a plugin package."""
-    reset_plugin_state_for_tests()
-    launcher = instantiate("gensee")
-    assert launcher.provider == "gensee"
-    assert launcher.__class__.__module__ == "omnigent.onboarding.sandboxes.gensee"
+    launcher = instantiate("computer")
+    assert launcher.provider == "computer"
 
 
 def test_instantiate_unknown_raises() -> None:
@@ -245,23 +217,23 @@ def test_validation_rejects_name_collision(
     """A community plugin cannot override an existing provider name."""
     reset_plugin_state_for_tests()
     contribution = SandboxProviderContribution(
-        name="modal-duplicate",
+        name="computer-duplicate",
         providers={
-            "modal": SandboxProviderMetadata(
-                name="modal",
-                launcher_class=f"{COMMUNITY_MODULE_PREFIX}modal:ModalSandboxLauncher",
+            "computer": SandboxProviderMetadata(
+                name="computer",
+                launcher_class=f"{COMMUNITY_MODULE_PREFIX}computer:ComputerSandboxLauncher",
             )
         },
     )
     _set_entry_points(
         monkeypatch,
-        _FakeEntryPoint(name="modal-duplicate", value=lambda: contribution),
+        _FakeEntryPoint(name="computer-duplicate", value=lambda: contribution),
     )
     state = plugin_state()
 
-    assert "modal" in state.providers  # original built-in still present
-    assert "modal-duplicate" in state.load_errors
-    assert "override existing provider" in state.load_errors["modal-duplicate"]
+    assert "computer" in state.providers  # original built-in still present
+    assert "computer-duplicate" in state.load_errors
+    assert "override existing provider" in state.load_errors["computer-duplicate"]
 
 
 def test_validation_rejects_name_mismatch(
@@ -292,18 +264,8 @@ def test_validation_rejects_name_mismatch(
 def test_get_launcher_uses_registry() -> None:
     """The public get_launcher resolves providers through the merged state."""
     reset_plugin_state_for_tests()
-    launcher = get_launcher("modal")
-    assert launcher.provider == "modal"
-
-
-def test_get_launcher_passes_server_url_to_microsandbox() -> None:
-    """CLI server context reaches the microsandbox network configuration."""
-    reset_plugin_state_for_tests()
-    launcher = get_launcher(
-        "microsandbox",
-        server_url="http://host.microsandbox.internal:8799",
-    )
-    assert launcher._host_ports == (8799,)
+    launcher = get_launcher("computer")
+    assert launcher.provider == "computer"
 
 
 def test_get_launcher_unknown_raises_click_exception() -> None:

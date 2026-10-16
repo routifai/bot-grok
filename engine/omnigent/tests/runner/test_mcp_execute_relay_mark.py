@@ -54,7 +54,7 @@ async def _call(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, body: dict, *, 
                 "agent_id": "31ebfedf721b44dabd76f662cb70a400",
                 "model": "probe-agent",
                 "content": [{"type": "input_text", "text": "seed"}],
-                "harness": "openai-agents",
+                "harness": "claude-sdk",
             },
         )
         assert seed.status_code == 202

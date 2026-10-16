@@ -9,6 +9,7 @@ computes the same-family model/history/label deltas, and forwards them to
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -183,13 +184,14 @@ class _AgentCacheStub:
         :param expand_env: Ignored — accepted to match the real
             ``AgentCache.load`` signature. Without it the
             route's keyword call would raise ``TypeError``.
-        :returns: A sentinel object (the route ignores the value).
+        :returns: A loaded-agent stand-in with no spec (the route reads only ``spec``,
+            which matters only for a session with a saved inference snapshot).
         :raises RuntimeError: When configured to fail.
         """
         del agent_id, bundle_location, expand_env
         if self._raise:
             raise RuntimeError("bundle missing")
-        return object()
+        return SimpleNamespace(spec=None)
 
 
 class _LoadedAgentStub:
@@ -327,7 +329,7 @@ def _patch_family_helpers(
     :param same_family: Value ``_same_provider_family`` returns.
     :param native: Value ``_agent_is_native`` /
         ``_agent_carries_native_fork_history`` return (these switch tests
-        target claude/codex native, which both classify and carry history).
+        target claude native, which classifies and carries history).
     :param labels: Value ``_presentation_labels_for_agent`` returns.
     :param raise_on_load: Whether the bundle precheck should fail.
     """
@@ -355,14 +357,7 @@ _BUILTIN_ORIGIN = _agent("c1030c25bd9d756e4aef6c4e96a7e126", "claude", "bundle/c
 _BUILTIN_CLAUDE = _agent(
     "52adb39f0c5ea92b5563da5327dac08f", "claude-native-ui", "bundle/claude-native", None
 )
-_BUILTIN_CODEX = _agent(
-    "6fa6e4f714621b090e80bd25b0b00e64", "codex-native-ui", "bundle/codex", None
-)
-_BUILTIN_CURSOR = _agent(
-    "d373c637b68c84d23322fc8cb06e14f4", "cursor-native-ui", "bundle/cursor", None
-)
-_BUILTIN_PI = _agent("4145a5c0a210faef9129717c0317ed79", "pi-native-ui", "bundle/pi", None)
-_BUILTIN_QWEN = _agent("ec99b28a23f0c9a5bf70c63df08dd14d", "qwen-native-ui", "bundle/qwen", None)
+_BUILTIN_PI = _agent("4145a5c0a210faef9129717c0317ed79", "pi", "bundle/pi", None)
 
 
 # ── Tests ────────────────────────────────────────────────────────
@@ -443,7 +438,7 @@ async def test_switch_cross_family_resets_model_but_carries_history(
     agent_store = _AgentStore(
         {
             "a98bb825ebd41391c19637c58fe3c0b7": _CURRENT,
-            "6fa6e4f714621b090e80bd25b0b00e64": _BUILTIN_CODEX,
+            "52adb39f0c5ea92b5563da5327dac08f": _BUILTIN_CLAUDE,
         }
     )
     # native=True with same_family=False → model resets, history still carries.
@@ -452,7 +447,7 @@ async def test_switch_cross_family_resets_model_but_carries_history(
 
     resp = client.post(
         "/v1/sessions/e9f8f58523cec9a57d3bdf93be543e8c/switch-agent",
-        json={"agent_id": "6fa6e4f714621b090e80bd25b0b00e64"},
+        json={"agent_id": "52adb39f0c5ea92b5563da5327dac08f"},
     )
 
     assert resp.status_code == 200, resp.text
@@ -466,46 +461,36 @@ async def test_switch_cross_family_resets_model_but_carries_history(
 
 
 @pytest.mark.parametrize(
-    "target_agent,target_harness,expected_labels,expected_carry",
+    "target_agent,target_harness,expected_labels,expected_carry,expected_copy",
     [
-        # cursor-native has no resumable session file to rebuild → no carry.
+        # claude-native rebuilds its resumable session file from the copied
+        # items → carry history, terminal-first UI; same (Claude) family as the
+        # claude SDK source, so model settings carry over.
         (
-            _BUILTIN_CURSOR,
-            "cursor-native",
-            {"omnigent.ui": "terminal", "omnigent.wrapper": "cursor-native-ui"},
-            False,
-        ),
-        # pi-native rebuilds its JSONL session file from the copied items →
-        # carry history (parity with claude/codex native).
-        (
-            _BUILTIN_PI,
-            "pi-native",
-            {"omnigent.ui": "terminal", "omnigent.wrapper": "pi-native-ui"},
+            _BUILTIN_CLAUDE,
+            "claude-native",
+            {"omnigent.ui": "terminal", "omnigent.wrapper": "claude-code-native-ui"},
+            True,
             True,
         ),
-        # qwen-native rebuilds qwen's on-disk chat recording from the copied
-        # items → carry history (parity with claude/codex/pi native).
-        (
-            _BUILTIN_QWEN,
-            "qwen-native",
-            {"omnigent.ui": "terminal", "omnigent.wrapper": "qwen-native-ui"},
-            True,
-        ),
+        # An SDK target has no native transcript to rebuild → no carry, chat UI.
+        (_BUILTIN_PI, "pi", {}, False, False),
     ],
 )
 @pytest.mark.asyncio
-async def test_switch_cursor_pi_native_targets_carry_history_gating(
+async def test_switch_targets_carry_history_gating(
     monkeypatch: pytest.MonkeyPatch,
     target_agent: Agent,
     target_harness: str,
     expected_labels: dict[str, str],
     expected_carry: bool,
+    expected_copy: bool,
 ) -> None:
-    """Switching into cursor/pi native keeps terminal UI; carry gates per harness.
+    """Switching into a native target keeps terminal UI; carry gates per harness.
 
-    Cross-family from a claude SDK source so ``copy_model_settings`` is always
-    False. ``carry_history_into_native`` is True only for the harness with a
-    rebuildable session file (pi-native), False for cursor-native.
+    From a claude SDK source, ``copy_model_settings`` follows the provider family.
+    ``carry_history_into_native`` is True only for a native harness with a
+    rebuildable session file (claude-native), False for an SDK target.
     """
     conv_store = _ConversationStore(conversations={"e9f8f58523cec9a57d3bdf93be543e8c": _conv()})
     agent_store = _AgentStore(
@@ -531,7 +516,7 @@ async def test_switch_cursor_pi_native_targets_carry_history_gating(
 
     assert resp.status_code == 200, resp.text
     call = conv_store.switch_calls[0]
-    assert call["copy_model_settings"] is False
+    assert call["copy_model_settings"] is expected_copy
     assert call["carry_history_into_native"] is expected_carry, (
         f"{target_harness} carry_history_into_native should be {expected_carry}."
     )
@@ -988,15 +973,13 @@ async def test_switch_400_unloadable_target_bundle(monkeypatch: pytest.MonkeyPat
 @pytest.mark.parametrize(
     "filename,target_harness,old_runtime,expected_status",
     [
-        ("sample.zip", "openai-agents", False, 400),
+        ("sample.zip", "pi", False, 400),
         ("sample.docx", "claude-sdk", False, 400),
-        ("sample.sqlite", "pi-native", False, 400),
-        ("sample.zip", "cursor-native", False, 400),
         ("sample.zip", "claude-native", False, 200),
-        ("sample.sqlite", "codex-native", False, 200),
-        ("sample.png", "openai-agents", False, 200),
+        ("sample.sqlite", "claude-native", False, 200),
+        ("sample.png", "pi", False, 200),
         ("sample.txt", "claude-sdk", False, 200),
-        ("sample.zip", "codex-native", True, 409),
+        ("sample.zip", "claude-native", True, 409),
     ],
 )
 def test_switch_checks_attachment_history_before_mutation(
@@ -1018,7 +1001,7 @@ def test_switch_checks_attachment_history_before_mutation(
         data=MessageData(role="user", content=[{"type": "input_file", "file_id": file_id}]),
     )
     conv_store = _ConversationStore({source.id: source}, {source.id: [item]})
-    target = _BUILTIN_CODEX
+    target = _BUILTIN_CLAUDE
     agent_store = _AgentStore({_CURRENT.id: _CURRENT, target.id: target})
     file_store = _AttachmentFileStore(
         StoredFile(id=file_id, created_at=1, filename=filename, bytes=4, session_id=source.id)

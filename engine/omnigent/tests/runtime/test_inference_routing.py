@@ -10,13 +10,11 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
 import pytest
-import tomllib
 import yaml
 
 from omnigent.errors import OmnigentError
 from omnigent.harnesses.claude_native.main import resolve_native_claude_config
 from omnigent.harnesses.codex_native.app_server import resolve_native_codex_launch
-from omnigent.harnesses.opencode_native.provider import resolve_bound_opencode_gateway
 from omnigent.harnesses.pi_native.credentials import (
     _live_family_model_entries,
     resolve_pi_native_provider,
@@ -24,15 +22,10 @@ from omnigent.harnesses.pi_native.credentials import (
 from omnigent.host.connect import _build_runner_env, _write_runner_inference_config
 from omnigent.inference_config import inference_config_scope, validate_inference_credentials
 from omnigent.models.model_catalog import (
-    _acp_launch_model,
-    acp_curated_models,
     list_models_for_worker,
-    validate_acp_model,
 )
 from omnigent.runtime.workflow import (
-    _build_acp_cli_spawn_env,
     _build_claude_sdk_spawn_env,
-    _build_codex_spawn_env,
     _resolve_provider_for_build,
 )
 from omnigent.spec.types import AgentSpec, ExecutorSpec, ProviderAuth
@@ -74,11 +67,7 @@ def _profile() -> dict[str, object]:
             "claude-native",
             "claude-sdk",
             "codex-native",
-            "codex",
             "pi-native",
-            "opencode-native",
-            "jcode",
-            "acp:custom",
         )
     }
     return {"providers": providers, "inference": {"harnesses": harnesses}}
@@ -123,7 +112,7 @@ def test_pi_invalid_saved_profile_does_not_fall_back_to_native_login(
         resolve_pi_native_provider()
 
 
-@pytest.mark.parametrize("harness", ["claude-sdk", "codex", "pi", "qwen", "openai-agents"])
+@pytest.mark.parametrize("harness", ["claude-sdk", "pi"])
 def test_unbound_host_keeps_its_explicit_provider_and_model(harness, tmp_path) -> None:
     from omnigent.runner.app import _HARNESS_MODEL_ENV_KEY, _build_spawn_env_from_spec
 
@@ -138,7 +127,7 @@ def test_unbound_host_keeps_its_explicit_provider_and_model(harness, tmp_path) -
     assert "HARNESS_PI_PRESERVE_MODEL_IDS" not in env
 
 
-@pytest.mark.parametrize("harness", ["codex", "claude-sdk", "pi", "qwen", "openai-agents"])
+@pytest.mark.parametrize("harness", ["claude-sdk", "pi"])
 def test_bound_sdk_selected_model_precedes_an_obsolete_spec_pin(harness: str) -> None:
     from omnigent.runner.app import _HARNESS_MODEL_ENV_KEY, _build_spawn_env_from_spec
 
@@ -165,10 +154,10 @@ def test_sdk_harness_override_resolves_its_own_provider_binding() -> None:
 
     with inference_config_scope(_profile()):
         env = _build_spawn_env_from_spec(
-            _spec("claude-native", "model-a"), "codex", model_override="model-a"
+            _spec("claude-native", "model-a"), "claude-sdk", model_override="model-a"
         )
     assert env is not None
-    assert env["HARNESS_CODEX_GATEWAY_BASE_URL"] == "https://bifrost.example/v1"
+    assert env["HARNESS_CLAUDE_SDK_GATEWAY_BASE_URL"] == "https://bifrost.example/anthropic"
 
 
 def test_bound_claude_sdk_preserves_a_literal_anthropic_prefix() -> None:
@@ -240,12 +229,9 @@ async def test_bound_claude_launch_never_falls_back_to_cli_login() -> None:
 def test_codex_binding_routes_without_spec_auth_or_family_default() -> None:
     with inference_config_scope(_profile()):
         native = resolve_native_codex_launch(model=None, spec=_spec("codex-native"))
-        sdk = _build_codex_spawn_env(_spec("codex", "databricks-literal/model-b"))
     assert native.model == "model-a"
     assert "https://bifrost.example/v1" in " ".join(native.config_overrides)
     assert native.profile is None
-    assert sdk["HARNESS_CODEX_MODEL"] == "databricks-literal/model-b"
-    assert sdk["HARNESS_CODEX_GATEWAY_BASE_URL"] == "https://bifrost.example/v1"
 
 
 def test_explicit_conflicting_provider_is_rejected() -> None:
@@ -285,76 +271,6 @@ def test_pi_single_model_policy_preserves_literal_ids_and_stays_curated() -> Non
         ]
         with pytest.raises(OmnigentError, match="configured model list"):
             resolve_pi_native_provider(model="unlisted")
-
-
-def test_acp_slug_binding_preserves_one_model_restriction() -> None:
-    profile = _profile()
-    profile["inference"] = {
-        "harnesses": {
-            "acp:custom": {
-                "provider": "bifrost",
-                "default_model": "databricks-literal/model-b",
-                "model_allowlist": ["databricks-literal/model-b"],
-            }
-        }
-    }
-    spec = _spec("acp:custom")
-    with inference_config_scope(profile):
-        assert _acp_launch_model(spec) == "databricks-literal/model-b"
-        assert acp_curated_models(spec) == ("databricks-literal/model-b",)
-        validate_acp_model(spec, None)
-        with pytest.raises(OmnigentError, match="configured model list"):
-            validate_acp_model(spec, "model-a")
-        assert acp_curated_models(_spec("acp:other")) == ()
-
-
-def test_opencode_uses_bound_gateway_and_exact_model() -> None:
-    with inference_config_scope(_profile()):
-        gateway = resolve_bound_opencode_gateway(model="databricks-literal/model-b")
-    assert gateway is not None
-    assert gateway.base_url == "https://bifrost.example/v1"
-    assert gateway.model_id == "databricks-literal/model-b"
-    assert gateway.model_ids == ("model-a", "databricks-literal/model-b")
-
-
-def test_bound_qwen_rejects_a_responses_only_endpoint() -> None:
-    from omnigent.runtime.workflow import _build_qwen_spawn_env
-
-    profile = {
-        "providers": {
-            "gateway": {
-                "kind": "gateway",
-                "openai": {
-                    "base_url": "https://gateway.example/v1",
-                    "api_key_ref": "env:BIFROST_TEST_KEY",
-                    "wire_api": "responses",
-                    "models": {"default": "model-a"},
-                },
-            }
-        },
-        "inference": {"harnesses": {"qwen": {"provider": "gateway"}}},
-    }
-    with inference_config_scope(profile), pytest.raises(ValueError, match="chat wire API"):
-        _build_qwen_spawn_env(_spec("qwen"))
-
-
-def test_jcode_binding_avoids_connect_and_isolates_session_config(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    broker = Mock(side_effect=AssertionError("Bifrost must not activate the Databricks broker"))
-    monkeypatch.setattr("omnigent.host.jcode_databricks.connect_jcode_gateway_env", broker)
-    with inference_config_scope(_profile()):
-        first = _build_acp_cli_spawn_env(_spec("jcode"), harness="jcode", session_id="first")
-        second = _build_acp_cli_spawn_env(
-            _spec("jcode", "databricks-literal/model-b"), harness="jcode", session_id="second"
-        )
-    assert first["JCODE_HOME"] != second["JCODE_HOME"]
-    config = tomllib.loads((Path(first["JCODE_HOME"]) / "config.toml").read_text())
-    assert config["providers"]["omnigent"]["base_url"] == "https://bifrost.example/v1"
-    assert config["provider"]["default_model"] == "model-a"
-    assert second["HARNESS_ACP_MODEL"] == "databricks-literal/model-b"
-    assert "test-bifrost-token" not in (Path(first["JCODE_HOME"]) / "config.toml").read_text()
-    broker.assert_not_called()
 
 
 def test_saved_runner_config_keeps_old_route_after_host_profile_edit(
@@ -422,10 +338,8 @@ def test_saved_credential_references_survive_runner_launch(
     with patch.dict(os.environ, env, clear=True), inference_config_scope(profile):
         claude = resolve_native_claude_config(spec=_spec("claude-native"))
         codex = resolve_native_codex_launch(model=None, spec=_spec("codex-native"))
-        opencode = resolve_bound_opencode_gateway(model=None)
     assert claude is not None and "saved-test-token" in claude.api_key_helper
     assert "saved-test-token" in " ".join(codex.config_overrides)
-    assert opencode is not None and opencode.api_key == "saved-test-token"
 
 
 def test_ordinary_host_keeps_legacy_credential_forwarding(monkeypatch) -> None:
@@ -537,33 +451,3 @@ def test_pi_mixed_shortlist_registers_each_models_wire() -> None:
     assert [row["id"] for row in rendered["omnigent"]["models"]] == ["claude-primary"]
     assert rendered["omnigent-openai"]["api"] == "openai-responses"
     assert [row["id"] for row in rendered["omnigent-openai"]["models"]] == ["gpt-primary"]
-
-
-def test_acp_override_uses_selected_agents_inference_binding(tmp_path: Path) -> None:
-    from omnigent.runner.app import _build_spawn_env_from_spec
-
-    (tmp_path / "config.yaml").write_text(
-        yaml.safe_dump(
-            {
-                "acp": {
-                    "agents": [
-                        {"name": "Other", "command": "other acp"},
-                        {"name": "Custom", "command": "custom acp"},
-                    ]
-                }
-            }
-        )
-    )
-    spec = _spec("acp:other")
-    with inference_config_scope(_profile()):
-        env = _build_spawn_env_from_spec(spec, "acp:custom")
-        assert env is not None
-        assert env["HARNESS_ACP_COMMAND"] == "custom acp"
-        assert env["HARNESS_ACP_MODEL"] == "model-a"
-        assert env["HARNESS_ACP_MODEL_LIST"].split(",") == [
-            "model-a",
-            "databricks-literal/model-b",
-        ]
-        with pytest.raises(OmnigentError, match="configured model list"):
-            _build_spawn_env_from_spec(spec, "acp:custom", model_override="unlisted")
-    assert spec.executor.config["harness"] == "acp:other"

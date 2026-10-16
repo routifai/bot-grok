@@ -59,7 +59,7 @@ def _run(names: list[str], text: str = "compare these") -> list[str]:
 
 
 def test_fourth_work_call_is_refused_with_handoff_text() -> None:
-    assert _run(["web_search", "web_fetch", "browser_click", "sys_os_shell"]) == [
+    assert _run(["web_search", "artifact_save", "browser_click", "sys_os_shell"]) == [
         "allow",
         "allow",
         "allow",

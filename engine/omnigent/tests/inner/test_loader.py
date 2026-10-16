@@ -380,7 +380,7 @@ class TestLoadFromDict(unittest.TestCase):
                         "prompt": "Safe?",
                         "executor": {
                             "model": "gpt-5-mini",
-                            "harness": "open-responses",
+                            "harness": "pi",
                             "profile": "policy",
                         },
                     }
@@ -391,7 +391,7 @@ class TestLoadFromDict(unittest.TestCase):
             a.policies["s"].executor,
             ExecutorSpec(
                 model="gpt-5-mini",
-                harness="open-responses",
+                harness="pi",
                 profile="policy",
             ),
         )

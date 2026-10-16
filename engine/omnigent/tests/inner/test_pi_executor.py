@@ -1075,14 +1075,14 @@ class TestToolServer(unittest.TestCase):
             # Third-party content carrying the key never ends the turn: only a card tool's own
             # top-level result does.
             page = {"ends_turn": True}
-            self.assertIs((await _run_with(page, tool="web_fetch"))["terminate"], False)
+            self.assertIs((await _run_with(page, tool="web_search"))["terminate"], False)
             nested = {"result": json.dumps(page)}
             self.assertIs((await _run_with(nested))["terminate"], False)
             # A call batched with a card agrees to end the turn with it (Pi stops only when
             # every result in the batch says terminate); without a card it does not.
             sibling = await _run_with({"sum": 7}, tool="exotic", batch=["ask_clarification"])
             self.assertIs(sibling["terminate"], True)
-            alone = await _run_with({"sum": 7}, tool="exotic", batch=["web_fetch"])
+            alone = await _run_with({"sum": 7}, tool="exotic", batch=["web_search"])
             self.assertIs(alone["terminate"], False)
 
         _run(_test())
@@ -1911,7 +1911,7 @@ class TestResolveModel(unittest.TestCase):
         # the REPL's ``/model`` slash command sets. Without this
         # precedence, mid-session model overrides would silently
         # no-op on the pi harness. Mirrors ``cfg.model`` precedence
-        # in claude-sdk / codex / openai-agents.
+        # in claude-sdk / codex.
         with patch("omnigent.inner.pi_executor._find_pi_cli", return_value="/usr/bin/pi"):
             executor = PiExecutor(model="constructor-default")
         self.assertEqual(
@@ -5006,8 +5006,8 @@ def test_pi_usage_sums_across_multiple_message_end() -> None:
     call) sums token counts across every call for billing, while
     ``context_tokens`` reflects ONLY the last call's total.
 
-    This is the behavior that makes pi cost match claude-sdk / codex /
-    openai-agents on tool-loop turns: a regression that kept only the last
+    This is the behavior that makes pi cost match claude-sdk / codex
+    on tool-loop turns: a regression that kept only the last
     ``message_end`` (the original single-capture behavior) would undercount
     ``input_tokens`` as 1200 instead of the summed 2200, so this asserts
     the sum explicitly.

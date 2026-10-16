@@ -183,7 +183,6 @@ def agent_spec_to_agent_def(spec: AgentSpec) -> AgentDef:
         tools=_translate_tools_to_omnigent(spec),
         executor=executor_spec,
         os_env=spec.os_env,
-        model_egress=spec.model_egress,
         bundle_dir=bundle_dir,
         skills_filter=spec.skills_filter,
     )
@@ -1028,7 +1027,7 @@ def agent_def_to_agent_spec(
     # harness after model-prefix auto-pick has run — not the raw
     # YAML value. A parent YAML like ``agent_with_subagent_session.yaml``
     # declares only ``executor.model: databricks-gpt-5-4-mini`` and
-    # relies on auto-pick to resolve it to ``openai-agents``; if we
+    # relies on auto-pick to resolve its harness; if we
     # passed the raw ``""`` down, the child (which has no model of
     # its own) would end up with an empty harness and fail
     # validation.
@@ -1159,7 +1158,6 @@ def agent_def_to_agent_spec(
         guardrails=guardrails,
         mcp_servers=mcp_servers,
         os_env=agent_def.os_env,
-        model_egress=agent_def.model_egress,
         terminals=terminals,
         timers=agent_def.timers,
         spawn=agent_def.spawn,
@@ -1597,8 +1595,7 @@ def _translate_llm_from_def(
     :param raw_executor: Optional raw omnigent YAML ``executor:``
         mapping. When present and it carries an ``extra:`` dict,
         those kwargs flow into :attr:`LLMConfig.extra` so harness-
-        specific overrides (``max_turns`` for the openai-agents
-        harness, ``temperature`` for any harness, etc.) propagate
+        specific overrides (``temperature`` for any harness, etc.) propagate
         through to :class:`omnigent.executor.ExecutorConfig.extra`.
         The omnigent loader drops unknown fields on
         ``ExecutorSpec`` at parse time, so we read them back from
@@ -1676,13 +1673,11 @@ def _translate_executor_from_def(
         harness, and the validator requires harness to be one
         of the supported set so an empty string fails
         hard there.
-    :param raw_executor: Optional raw YAML ``executor:`` mapping.
-        When present, OpenAI Agents SDK wire settings are forwarded
-        into ``executor.config`` so the harness subprocess reads the
-        correct API surface and reasoning replay policy. The omnigent
-        loader silently drops unknown fields on its own
-        :class:`~omnigent.inner.datamodel.ExecutorSpec`, so we
-        have to recover this field from the raw dict here.
+    :param raw_executor: Optional raw YAML ``executor:`` mapping,
+        read for the ``auth`` block when the parsed spec carries none.
+        The omnigent loader silently drops unknown fields on its own
+        :class:`~omnigent.inner.datamodel.ExecutorSpec`, so we have to
+        recover it from the raw dict here.
     :returns: An :class:`ExecutorSpec` with ``type="omnigent"``
         when a harness is known.
     :raises OmnigentError: When a model is declared but no
@@ -1703,16 +1698,8 @@ def _translate_executor_from_def(
     harness = oa_executor.harness if oa_executor is not None else None
     if harness is None:
         harness = ""
-    # A namespaced generic-ACP id (``acp:<slug>``) canonicalizes to the base
-    # ``acp`` harness, but the slug is what selects which user-configured ACP
-    # agent to spawn — ``_build_acp_spawn_env`` reads it back off
-    # ``config["harness"]`` at spawn time (see the dispatch note in
-    # ``runner/app.py``). Canonicalizing it away here silently spawned the first
-    # configured agent instead of the requested one, so keep the full id for
-    # ``acp:`` and canonicalize everything else (so aliases still resolve).
-    # Mirrors ``_materialize_harness_launcher_file`` in ``omnigent/cli.py``.
-    _canonical_harness = canonicalize_harness(harness) or ""
-    harness = harness if _canonical_harness == "acp" and ":" in harness else _canonical_harness
+    # Canonicalize so aliases resolve.
+    harness = canonicalize_harness(harness) or ""
     profile = oa_executor.profile if oa_executor is not None else None
     if profile is None:
         profile = ""
@@ -1723,7 +1710,7 @@ def _translate_executor_from_def(
     #       its own model, that model's prefix is a strong intent
     #       signal and dominates parent inheritance (a Claude-model
     #       child under a GPT-model parent should run on
-    #       claude-sdk, not inherit the parent's openai-agents).
+    #       claude-sdk, not inherit the parent's harness).
     #   (3) parent harness — inline AgentTools that omit their
     #       own ``executor:`` block entirely inherit from parent.
     #   (4) auto-pick on whatever model happens to be present as
@@ -1759,21 +1746,6 @@ def _translate_executor_from_def(
         config["context_files"] = oa_executor.context_files
     if oa_executor is not None and oa_executor.system_prompt_mode is not None:
         config["system_prompt_mode"] = oa_executor.system_prompt_mode
-    # These are not fields on the omnigent inner ExecutorSpec, so read them
-    # from the raw YAML dict and carry them forward explicitly.
-    # The openai-agents harness spawn-env builder reads
-    # ``spec.executor.config["use_responses"]`` to set
-    # ``HARNESS_OPENAI_AGENTS_USE_RESPONSES``, which controls
-    # whether the inner executor uses /responses or /chat/completions.
-    # ``use_responses`` is carried via raw_executor when present
-    if raw_executor is not None:
-        use_responses_raw = raw_executor.get("use_responses")
-        if use_responses_raw is not None:
-            config["use_responses"] = bool(use_responses_raw)
-        if "reasoning_item_id_policy" in raw_executor:
-            config["reasoning_item_id_policy"] = raw_executor["reasoning_item_id_policy"]
-        if "acp_agent" in raw_executor:
-            config["acp_agent"] = raw_executor["acp_agent"]
     # ``auth`` is now parsed by the loader into OmniExecutorSpec.auth;
     # fall back to raw_executor for the top-level agent path that still
     # goes through _translate_executor_from_def(raw_executor=...).
@@ -1793,7 +1765,7 @@ def _translate_executor_from_def(
         raise OmnigentError(
             f"no harness can be inferred for model {model!r}. "
             f"Declare an explicit 'harness:' in the executor block "
-            f"(e.g. 'openai-agents', 'claude-sdk') or use a model "
+            f"(e.g. 'claude-sdk', 'pi') or use a model "
             f"whose prefix maps to a known harness.",
             code=ErrorCode.INVALID_INPUT,
         )

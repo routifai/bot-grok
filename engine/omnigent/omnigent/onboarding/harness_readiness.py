@@ -11,11 +11,10 @@ is on ``PATH``. That gates the native CLI harnesses (Claude Code / Codex
 via ``claude`` / ``codex``) and ``pi`` — the common "I picked Claude Code
 but never ran ``omnigent setup`` to install it" case.
 
-In-process SDK harnesses (``claude-sdk``, ``openai-agents``,
-``antigravity``) run without any CLI and resolve their model credentials
-at runtime. The **launch gate** still never blocks them: the spec's
-``executor.auth`` (with ``${ENV}`` expansion) is invisible here, so a
-hard gate would break launches that actually work. The **picker map**,
+The in-process SDK harness (``claude-sdk``) runs without any CLI and
+resolves its model credentials at runtime. The **launch gate** still never
+blocks it: the spec's ``executor.auth`` (with ``${ENV}`` expansion) is
+invisible here, so a hard gate would break launches that actually work. The **picker map**,
 however, checks the credential sources the daemon *can* see locally —
 locally resolvable provider entries (including ambient-detected local
 providers such as a reachable Ollama), ambient env API keys, Claude Code's
@@ -29,12 +28,8 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 
-import omnigent.onboarding.gemini_auth as _gemini_auth
-import omnigent.onboarding.kimi_auth as _kimi_auth
 from omnigent._platform import IS_WINDOWS, resolve_cli_binary
 from omnigent.harness_aliases import HARNESS_ALIASES, NATIVE_HARNESSES, canonicalize_harness
 from omnigent.harness_availability import (
@@ -46,16 +41,7 @@ from omnigent.harness_availability import (
 )
 from omnigent.harness_plugins import harness_install_keys, valid_harnesses
 from omnigent.onboarding.harness_install import (
-    COPILOT_KEY,
-    CURSOR_KEY,
-    DEVIN_KEY,
-    GOOSE_KEY,
-    HERMES_KEY,
-    KIMI_KEY,
-    KIRO_KEY,
-    OPENCODE_KEY,
     PI_KEY,
-    QWEN_KEY,
     READINESS_CLI_PROBE_TIMEOUT_S,
     harness_cli_installed,
     harness_install_spec,
@@ -67,7 +53,6 @@ from omnigent.onboarding.provider_config import (
     ANTHROPIC_FAMILY,
     BEDROCK_KIND,
     CLI_CONFIG_KIND,
-    GEMINI_FAMILY,
     OPENAI_FAMILY,
     PI_SURFACE,
     SUBSCRIPTION_KIND,
@@ -76,16 +61,6 @@ from omnigent.onboarding.provider_config import (
     load_config,
 )
 
-# In-process SDK harnesses: no CLI binary to gate on. The launch gate never
-# blocks them (spec-level auth is invisible here), but the picker map reports
-# ``needs-auth`` when no locally visible credential source could serve them
-# (see :func:`_sdk_harness_availability`). Includes both
-# the canonical ``openai-agents`` and the ``openai-agents-sdk`` spelling the
-# workflow's ``AgentHarnessType`` uses; executor-type spellings (``claude_sdk``
-# / ``agents_sdk``) and the ``claude`` alias normalize onto these first.
-# ``antigravity`` is the in-process Gemini SDK harness (its key resolves at
-# runtime), distinct from the CLI-wrapping ``antigravity-native`` (``agy``)
-# harness gated below on its binary plus an API key or OAuth credential.
 _logger = logging.getLogger(__name__)
 
 # Bound startup and periodic readiness work: the slow checks are independent
@@ -93,27 +68,12 @@ _logger = logging.getLogger(__name__)
 # smaller hosts.
 _READINESS_PROBE_MAX_WORKERS = 4
 
-_SDK_HARNESSES: frozenset[str] = frozenset(
-    {"claude-sdk", "openai-agents", "openai-agents-sdk", "antigravity"}
-)
-
-# Families/harnesses whose CLIs authenticate via file-based credentials rather
-# than a CLI login-status command. For these, ``harness_is_configured`` checks
-# BOTH the binary (via ``harness_cli_installed``) AND the credential (via the
-# callable here). ``agy`` accepts ``GEMINI_API_KEY`` or writes an OAuth token on
-# its first interactive run; ``kimi login`` writes
-# ``~/.kimi-code/credentials/kimi-code.json``, and pay-per-use users instead set
-# an API key in ``~/.kimi-code/config.toml`` (kimi has no login-status probe) —
-# ``kimi_auth_configured`` accepts either. The ``anthropic`` / ``openai``
-# families authenticate via subscription provider config and do not appear here.
-# Each lambda resolves through its module at call time so a test can monkeypatch
-# ``…gemini_auth.gemini_login_detected`` / ``…kimi_auth.kimi_auth_configured``
-# and have the patch take effect without this dict caching the old function
-# object.
-_FAMILY_CREDENTIAL_CHECK: dict[str, Callable[[], bool]] = {
-    GEMINI_FAMILY: lambda: _gemini_auth.gemini_login_detected(),
-    KIMI_KEY: lambda: _kimi_auth.kimi_auth_configured(),
-}
+# In-process SDK harnesses: no CLI binary to gate on. The launch gate never
+# blocks them (spec-level auth is invisible here), but the picker map reports
+# ``needs-auth`` when no locally visible credential source could serve them
+# (see :func:`_sdk_harness_availability`). The executor-type spelling
+# (``claude_sdk``) and the ``claude`` alias normalize onto this first.
+_SDK_HARNESSES: frozenset[str] = frozenset({"claude-sdk"})
 
 # CLI-wrapping pi harnesses. Both the bare ``pi`` surface and the native
 # ``pi-native`` wrapper launch the same ``pi`` binary (``canonicalize_harness``
@@ -122,71 +82,15 @@ _FAMILY_CREDENTIAL_CHECK: dict[str, Callable[[], bool]] = {
 # be gated explicitly or they fail open like an unknown harness.
 _PI_HARNESSES: frozenset[str] = frozenset({PI_SURFACE, "pi-native"})
 
-# Surface name for Kimi Code in the readiness map. Mirrors :data:`PI_SURFACE`
-# — kimi is a CLI-backed harness with its own backend (Moonshot AI's), not a
-# member of the anthropic/openai families that :data:`_HARNESS_FAMILY` keys.
-KIMI_SURFACE = "kimi"
-
-# Native OpenCode harness. Like pi, it wraps a CLI (``opencode``) with no
-# ``_HARNESS_FAMILY`` entry, so it must be gated explicitly or it would fail
-# open like an unknown harness.
-_OPENCODE_HARNESSES: frozenset[str] = frozenset({"opencode-native"})
-
-# Native Cursor harnesses. These boot the ``cursor-agent`` TUI (``omni cursor``)
-# and so, like the other native CLI harnesses, can't launch without that binary
-# on ``PATH`` — gate them on it. Distinct from the SDK ``cursor`` harness
-# (``CURSOR_KEY`` below), which runs in-process via ``cursor-sdk`` and gates on
-# a ``CURSOR_API_KEY`` instead. Without these entries they'd fail open like an
-# unknown harness, letting a binary-less launch die inside the executor.
-_CURSOR_NATIVE_HARNESSES: frozenset[str] = frozenset({"cursor-native", "native-cursor"})
-
-# Native Kiro harnesses boot the standalone ``kiro-cli`` TUI. Kiro has its own
-# auth backend and no Omnigent provider family, so readiness is binary presence.
-_KIRO_NATIVE_HARNESSES: frozenset[str] = frozenset({"kiro-native", "native-kiro"})
-
-# Native Goose harnesses. Boot the ``goose session`` TUI (``omni goose``) and
-# can't launch without the ``goose`` binary on ``PATH`` — gate on it, like the
-# other native CLI harnesses. Goose owns its own auth (``goose configure``), so
-# there is no SDK variant or key to gate on.
-_GOOSE_NATIVE_HARNESSES: frozenset[str] = frozenset({"goose-native", "native-goose"})
-
-# Native Kimi TUI harnesses (``omnigent kimi``). Like the other native CLIs,
-# they wrap the resident ``kimi`` binary and can't launch without it on
-# ``PATH`` — gate on it. Distinct from the bare ``kimi`` SDK surface
-# (:data:`KIMI_SURFACE`), which gates on the same binary but renders headlessly.
-_KIMI_NATIVE_HARNESSES: frozenset[str] = frozenset({"kimi-native", "native-kimi"})
-
-# Native Hermes harnesses. Boot the ``hermes`` TUI (``omni hermes``) and can't
-# launch without the ``hermes`` binary on ``PATH`` — gate on it, like the other
-# native CLI harnesses. Hermes owns its own auth (``hermes setup`` /
-# ``hermes model``); the headless ``hermes`` harness gates on the same binary.
-_HERMES_NATIVE_HARNESSES: frozenset[str] = frozenset({"hermes-native", "native-hermes"})
-
-# Native Devin harnesses boot the resident ``devin`` TUI (``omni devin``). Devin
-# owns its own auth (``devin auth login`` writes a credential file it reads back
-# at spawn), so there is no Omnigent-managed key to gate on and readiness is
-# binary presence — like the other native CLI harnesses. Without these entries
-# they'd fail open like an unknown harness, letting a binary-less launch die
-# inside the executor.
-_DEVIN_NATIVE_HARNESSES: frozenset[str] = frozenset({"devin-native", "native-devin"})
-
-# CLI-wrapping qwen harnesses. ``qwen`` / ``qwen-code`` (the ACP harness) and
-# ``qwen-native`` / ``native-qwen`` (the native TUI via ``omni qwen``) all resolve
-# to the same ``qwen`` binary (canonicalize_harness folds ``qwen-code`` → ``qwen``
-# and ``native-qwen`` → ``qwen-native``). Unlike claude/codex they have no
-# ``_HARNESS_FAMILY`` entry, so they must be gated explicitly or they fail open.
-_QWEN_HARNESSES: frozenset[str] = frozenset({QWEN_KEY, "qwen-code", "qwen-native", "native-qwen"})
-
 
 def _canonical_harness(harness: str) -> str:
     """Normalize a harness id to its canonical spelling.
 
     Folds the user-facing alias (``claude`` → ``claude-sdk``) and the
     executor-type spellings :attr:`AgentSpec.harness_kind` returns
-    (``claude_sdk`` → ``claude-sdk``, ``agents_sdk`` → ``openai-agents``)
-    onto the canonical ids keyed in ``_HARNESS_FAMILY``.
+    (``claude_sdk`` → ``claude-sdk``) onto the canonical ids keyed in ``_HARNESS_FAMILY``.
 
-    :param harness: A harness id, e.g. ``"claude"``, ``"agents_sdk"``,
+    :param harness: A harness id, e.g. ``"claude"``, ``"claude_sdk"``,
         or ``"codex-native"``.
     :returns: The canonical spelling, e.g. ``"claude-sdk"`` or
         ``"codex-native"``; unknown names are returned unchanged.
@@ -199,21 +103,10 @@ def _install_key(canonical: str) -> str:
     """Return the install-spec key whose CLI binary *canonical* requires.
 
     :param canonical: A canonical CLI-wrapping harness id keyed in
-        ``_HARNESS_FAMILY`` (e.g. ``"codex-native"``), ``"pi"``, or
-        ``"kimi"``.
-    :returns: ``"anthropic"`` / ``"openai"`` for the claude/codex CLIs,
-        :data:`~omnigent.onboarding.harness_install.KIMI_KEY` for kimi,
-        :data:`~omnigent.onboarding.harness_install.OPENCODE_KEY` for
-        opencode-native,
-        :data:`~omnigent.onboarding.harness_install.QWEN_KEY` for qwen, or
+        ``_HARNESS_FAMILY`` (e.g. ``"codex-native"``) or a pi spelling.
+    :returns: ``"anthropic"`` / ``"openai"`` for the claude/codex CLIs, or
         :data:`~omnigent.onboarding.harness_install.PI_KEY` for pi.
     """
-    if canonical == KIMI_SURFACE or canonical in _KIMI_NATIVE_HARNESSES:
-        return KIMI_KEY
-    if canonical in _OPENCODE_HARNESSES:
-        return OPENCODE_KEY
-    if canonical in _QWEN_HARNESSES:
-        return QWEN_KEY
     return _HARNESS_FAMILY.get(canonical) or PI_KEY
 
 
@@ -225,9 +118,8 @@ def _harness_availability_core(harness: str) -> HarnessAvailability:
     structured states so the web UI and setup dialogs can show actionable
     copy.
 
-    :param harness: A harness id, e.g. ``"claude-native"``, ``"codex"``,
-        ``"openai-agents"``, ``"agents_sdk"``, ``"kiro-native"``, ``"pi"``,
-        ``"pi-native"``, ``"qwen"``, or ``"qwen-code"``.
+    :param harness: A harness id, e.g. ``"claude-native"``,
+        ``"codex-native"``, ``"claude_sdk"``, ``"pi"``, or ``"pi-native"``.
     :returns: A :data:`HarnessAvailability` value.``True`` when launchable;
         ``False`` or a reason string otherwise.
     """
@@ -235,83 +127,12 @@ def _harness_availability_core(harness: str) -> HarnessAvailability:
     if IS_WINDOWS and canonical in NATIVE_HARNESSES:
         # Native harnesses require tmux/PTY, which the runner does not support on Windows.
         return False
-    if canonical == "acp":
-        # The generic ACP harness has no fixed binary — "configured" means at
-        # least one agent is registered in the ``acp:`` config block. Each
-        # agent's own binary is a soft PATH hint surfaced in setup, not a hard
-        # gate. A malformed block reads as not-configured rather than raising.
-        try:
-            from omnigent.onboarding.acp_auth import acp_agents
-
-            return bool(acp_agents())
-        except Exception:
-            return False
     if canonical in _SDK_HARNESSES:
         # Launch gate only: never block an SDK launch (spec-level auth is
         # invisible here). The picker map's credential check lives in
         # :func:`_sdk_harness_availability`.
         return True
-    if canonical in _CURSOR_NATIVE_HARNESSES:
-        # Native Cursor (``omni cursor``) wraps the ``cursor-agent`` CLI — gate
-        # on that binary. Keep the missing-binary case as the historical bare
-        # ``False`` sentinel, surfacing an outdated version only as
-        # ``"version-too-low"``.
-        return _installer_only_availability(CURSOR_KEY)
-    if canonical in _KIRO_NATIVE_HARNESSES:
-        return _installer_only_availability(KIRO_KEY)
-    if canonical in _GOOSE_NATIVE_HARNESSES or canonical == GOOSE_KEY:
-        return _installer_only_availability(GOOSE_KEY)
-    if canonical in _HERMES_NATIVE_HARNESSES or canonical == HERMES_KEY:
-        return _installer_only_availability(HERMES_KEY)
-    if canonical in _DEVIN_NATIVE_HARNESSES:
-        return _installer_only_availability(DEVIN_KEY)
-    if canonical == CURSOR_KEY:
-        # Cursor runs in-process via ``cursor-sdk`` and authenticates with a
-        # ``CURSOR_API_KEY`` (a ``cursor-agent login`` does not apply). So,
-        # unlike the CLI-wrapping harnesses, there is no binary to gate on:
-        # readiness is whether a key is resolvable — stored by ``omnigent setup``
-        # (the ``cursor:`` block — see :mod:`omnigent.onboarding.cursor_auth`)
-        # or inherited from the env. A bad key surfaces at run time.
-        #
-        # ``cursor-sdk`` is now an OPTIONAL extra, but we deliberately do NOT
-        # also gate on SDK presence: this mirrors ``antigravity`` (also SDK-only
-        # and now-optional, never gated on the SDK). A missing SDK surfaces as
-        # the executor's import error on the first turn
-        # (:mod:`omnigent.inner.cursor_executor`); gating here would only
-        # duplicate that, less actionably. So cursor keeps its single key check.
-        from omnigent.onboarding.cursor_auth import cursor_api_key_configured
-
-        return cursor_api_key_configured() or bool(os.environ.get("CURSOR_API_KEY"))
-    if canonical == COPILOT_KEY:
-        # Copilot runs in-process via the ``github-copilot-sdk`` package (the
-        # SDK bundles the CLI binary it drives, so there is no separate binary to
-        # gate on) and authenticates against GitHub's Copilot backend with a
-        # GitHub token. So, like cursor, readiness is whether a token is
-        # resolvable — one stored by ``omnigent setup`` (the ``copilot:`` config
-        # block — see :mod:`omnigent.onboarding.copilot_auth`) or inherited from
-        # the environment. A bad / Copilot-less token surfaces at run time.
-        from omnigent.onboarding.copilot_auth import (
-            COPILOT_TOKEN_ENV_VARS,
-            copilot_github_host,
-            copilot_github_token_configured,
-            gh_cli_github_token,
-        )
-
-        if copilot_github_token_configured() or any(
-            os.environ.get(var) for var in COPILOT_TOKEN_ENV_VARS
-        ):
-            return True
-        # A ``gh auth login`` session is a usable Copilot credential, so a
-        # logged-in user is ready without pasting a token into setup.
-        return gh_cli_github_token(copilot_github_host()) is not None
-    if (
-        canonical not in _HARNESS_FAMILY
-        and canonical not in _PI_HARNESSES
-        and canonical != KIMI_SURFACE
-        and canonical not in _KIMI_NATIVE_HARNESSES
-        and canonical not in _OPENCODE_HARNESSES
-        and canonical not in _QWEN_HARNESSES
-    ):
+    if canonical not in _HARNESS_FAMILY and canonical not in _PI_HARNESSES:
         required_cli = required_cli_for_harness(canonical) or required_cli_for_harness(harness)
         if required_cli is not None:
             return resolve_cli_binary(required_cli.binary) is not None
@@ -319,18 +140,7 @@ def _harness_availability_core(harness: str) -> HarnessAvailability:
         # it can't assess readiness. Fail open (custom/newer harnesses,
         # version skew).
         return True
-    install_key = _install_key(canonical)
-    availability = _installer_only_availability(install_key)
-    # Families that authenticate via file-based credentials (not a CLI login
-    # command) require both the binary AND a stored credential. The ``agy`` CLI
-    # falls into this category: it has no ``agy login`` subcommand and writes
-    # OAuth creds on the first interactive browser run instead.
-    if availability is not True:
-        return availability
-    credential_check = _FAMILY_CREDENTIAL_CHECK.get(install_key)
-    if credential_check is not None:
-        return credential_check()
-    return True
+    return _installer_only_availability(_install_key(canonical))
 
 
 # Native CLI harnesses that authenticate via their own login command and can
@@ -341,18 +151,10 @@ def _harness_availability_core(harness: str) -> HarnessAvailability:
 # not-signed-in harness is never blocked from launching (its login surfaces at
 # run time). Pi is handled separately in :func:`_harness_availability` (it has
 # no CLI login, so it can't use the login-command path here — its credential is
-# an omnigent-managed provider). Qwen is absent on purpose: its key lives in the
-# harness's own env / interactive ``/auth``, which the daemon can't reduce to a
-# provider check, so it reports binary presence only.
-# Cursor native is included here too: ``cursor-agent`` has its own login command,
-# so the picker can distinguish "not installed" from "installed but not signed
-# in", while the launch gate stays binary-only.
+# an omnigent-managed provider).
 _AUTH_AWARE_NATIVE_HARNESSES: dict[str, str] = {
     "claude-native": "anthropic",
     "native-claude": "anthropic",
-    "opencode-native": OPENCODE_KEY,
-    "cursor-native": CURSOR_KEY,
-    "native-cursor": CURSOR_KEY,
 }
 
 
@@ -732,90 +534,6 @@ def _databricks_workspace_configured() -> bool:
         return False
 
 
-def _adc_file_carries_credentials(path: Path) -> bool:
-    """Whether an ADC file actually carries credential material.
-
-    Checks the locally required fields rather than file existence — an ADC
-    file is only a credential when it declares its type's key material: a
-    ``refresh_token`` for ``authorized_user``, a ``private_key`` +
-    ``client_email`` for ``service_account``. Other declared types
-    (``external_account``, impersonation, …) carry type-specific material
-    this check does not model, so a declared type errs toward ready (a false
-    "ready" is the pre-warning status quo); an empty or type-less JSON body
-    (``{}``) proves nothing. Local file read only, no provider contact; never
-    raises.
-
-    :param path: The ADC JSON file path.
-    :returns: ``True`` when the file parses and declares credential material.
-    """
-    import json
-
-    try:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
-    except Exception as exc:
-        # Class-only: an ADC file (or its parse error) may embed secrets.
-        _logger.debug("readiness: ADC file parse failed (%s)", type(exc).__name__)
-        return False
-    if not isinstance(data, dict):
-        return False
-    cred_type = str(data.get("type") or "").strip()
-    if not cred_type:
-        return False
-    if cred_type == "authorized_user":
-        return bool(data.get("refresh_token"))
-    if cred_type == "service_account":
-        return bool(data.get("private_key")) and bool(data.get("client_email"))
-    return True
-
-
-def _google_adc_configured() -> bool:
-    """Whether GCP Application Default Credentials are visible.
-
-    Antigravity's Vertex AI path authenticates via ADC; whether a spec opts
-    into Vertex is invisible here. The file counts only when it actually
-    carries credential material (:func:`_adc_file_carries_credentials`) — a
-    merely existing or empty ADC file supplies nothing a launch could
-    authenticate with.
-
-    :returns: ``True`` when an ADC credential file with material is present.
-    """
-    try:
-        cred_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
-        if cred_path and os.path.exists(cred_path):
-            return _adc_file_carries_credentials(Path(cred_path))
-        adc = Path.home() / ".config" / "gcloud" / "application_default_credentials.json"
-        return adc.exists() and _adc_file_carries_credentials(adc)
-    except Exception:
-        _logger.debug("readiness: ADC check failed", exc_info=True)
-        return False
-
-
-def _antigravity_credential_configured() -> bool:
-    """Whether a credential the antigravity SDK harness can use is visible.
-
-    Mirrors the spawn-env resolution (``_build_antigravity_spawn_env``):
-    Antigravity is Gemini-native — a stored ``antigravity:`` config-block key,
-    an ambient ``GEMINI_API_KEY`` / ``ANTIGRAVITY_API_KEY``, or Vertex AI via
-    ADC. The ``openai``/``anthropic`` provider families are deliberately not
-    consulted (the spawn env never adopts them for this harness).
-
-    :returns: ``True`` when any such source is visible.
-    """
-    try:
-        from omnigent.onboarding.antigravity_auth import (
-            ANTIGRAVITY_ENV_VARS,
-            antigravity_api_key_configured,
-        )
-
-        if antigravity_api_key_configured():
-            return True
-        if any(os.environ.get(var) for var in ANTIGRAVITY_ENV_VARS):
-            return True
-    except Exception:
-        _logger.debug("readiness: antigravity credential check failed", exc_info=True)
-    return _google_adc_configured()
-
-
 def _global_auth_configured() -> bool:
     """Whether the user-level global ``auth:`` block can serve the SDK builders.
 
@@ -853,8 +571,6 @@ def _sdk_harness_availability(canonical: str) -> HarnessAvailability:
     :param canonical: A canonical SDK harness id from :data:`_SDK_HARNESSES`.
     :returns: ``True`` or ``"needs-auth"``.
     """
-    if canonical == "antigravity":
-        return True if _antigravity_credential_configured() else HARNESS_NEEDS_AUTH
     if _family_provider_configured(canonical):
         return True
     if _family_fallback_provider_configured(canonical):
@@ -916,10 +632,6 @@ def _cli_family_availability(canonical: str, install_key: str) -> HarnessAvailab
     binary_state = _binary_availability_reason(install_key)
     if binary_state is not True:
         return binary_state
-    if install_key == OPENCODE_KEY:
-        from omnigent.onboarding.opencode_auth import opencode_auth_summary
-
-        return True if opencode_auth_summary().has_provider else "needs-auth"
     # claude: ready when EITHER an omnigent-managed provider serves the family
     # (an API key / gateway the user set, incl. from the UI) OR the harness's
     # own subscription login is present (`claude auth status`, a subprocess —
@@ -955,10 +667,6 @@ def _harness_availability(canonical: str) -> HarnessAvailability:
         return _codex_auth_unavailable_reason() or True
     install_key = _AUTH_AWARE_NATIVE_HARNESSES.get(canonical)
     if install_key is not None:
-        # Cursor is auth-aware like the other native CLI harnesses, so a missing
-        # binary surfaces as the structured ``"binary-missing"`` reason — not the
-        # bare ``False`` it historically reported. That keeps the picker badge /
-        # warning copy uniform across every CLI-backed native harness.
         return _cli_family_availability(canonical, install_key)
     if canonical in _PI_HARNESSES:
         # pi has no CLI login — its only credential is either an omnigent-managed
@@ -993,7 +701,7 @@ def _harness_availability(canonical: str) -> HarnessAvailability:
 def harness_is_configured(harness: str) -> bool:
     """Return whether *harness* can be launched on this machine.
 
-    Only CLI-wrapping harnesses are assessed (native Claude/Codex/Kiro and
+    Only CLI-wrapping harnesses are assessed (native Claude/Codex and
     ``pi`` / ``pi-native``): they cannot run without their binary on
     ``PATH``, and that is the one thing the daemon can check reliably and
     locally. SDK harnesses and unknown harnesses always return ``True`` —
@@ -1007,9 +715,8 @@ def harness_is_configured(harness: str) -> bool:
     returns ``True`` because auth failures surface at run time rather than
     blocking dispatch.
 
-    :param harness: A harness id, e.g. ``"claude-native"``, ``"codex"``,
-        ``"openai-agents"``, ``"agents_sdk"``, ``"kiro-native"``, ``"pi"``,
-        ``"pi-native"``, ``"qwen"``, or ``"qwen-code"``.
+    :param harness: A harness id, e.g. ``"claude-native"``,
+        ``"codex-native"``, ``"claude_sdk"``, ``"pi"``, or ``"pi-native"``.
     :returns: ``True`` when launchable (CLI installed, or a harness the
         daemon doesn't gate); ``False`` when the binary is missing or on
         an unsupported version.
@@ -1038,7 +745,7 @@ def configured_harness_map() -> dict[str, HarnessAvailability]:
 
     :returns: Mapping of harness spelling to readiness, e.g.
         ``{"claude-native": False, "codex-native": "needs-auth",
-        "claude-sdk": "needs-auth", "pi": True, "qwen": True}``.
+        "claude-sdk": "needs-auth", "pi": True}``.
     """
     spellings: set[str] = set(_HARNESS_FAMILY)
     spellings.update(valid_harnesses())
@@ -1046,19 +753,6 @@ def configured_harness_map() -> dict[str, HarnessAvailability]:
     spellings.update(_EXECUTOR_TYPE_HARNESS_ALIASES)
     spellings.update(HARNESS_ALIASES)
     spellings.update(_PI_HARNESSES)
-    spellings.update(_OPENCODE_HARNESSES)
-    spellings.update(_CURSOR_NATIVE_HARNESSES)
-    spellings.update(_KIRO_NATIVE_HARNESSES)
-    spellings.update(_GOOSE_NATIVE_HARNESSES)
-    spellings.update(_KIMI_NATIVE_HARNESSES)
-    spellings.update(_HERMES_NATIVE_HARNESSES)
-    spellings.update(_DEVIN_NATIVE_HARNESSES)
-    spellings.update(_QWEN_HARNESSES)
-    spellings.add(CURSOR_KEY)
-    spellings.add(KIMI_SURFACE)
-    spellings.add(GOOSE_KEY)  # headless Goose (``goose acp``) gates on the goose binary
-    spellings.add(HERMES_KEY)  # Hermes Agent wraps the ``hermes`` CLI
-    spellings.add(COPILOT_KEY)
     canonical_by_cache_key: dict[tuple[str, ...], str] = {}
     cache_key_by_spelling: dict[str, tuple[str, ...]] = {}
     for spelling in spellings:

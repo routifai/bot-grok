@@ -27,12 +27,6 @@ def canonicalize_harness(harness: str | None) -> str | None:
     """
     if harness is None:
         return None
-    # Namespaced generic-ACP ids (``acp:<slug>``) canonicalize to the base
-    # ``acp`` harness for identity / validity / module resolution / model-family
-    # checks. The ``<slug>`` selecting the concrete agent is carried separately in
-    # the spec's ``executor.config`` and read by ``_build_acp_spawn_env``.
-    if harness.startswith("acp:"):
-        return "acp"
     return HARNESS_ALIASES.get(harness, harness)
 
 
@@ -48,7 +42,7 @@ def is_native_harness(harness: str | None) -> bool:
     into that running process. Accepts the canonical native spellings that
     :attr:`AgentSpec.harness_kind` returns plus their reversed aliases.
 
-    :param harness: A harness id, e.g. ``"codex-native"`` or ``"claude_sdk"``;
+    :param harness: A harness id, e.g. ``"claude-native"`` or ``"claude_sdk"``;
         ``None`` returns ``False``.
     :returns: ``True`` for a native CLI harness, else ``False``.
     """
@@ -63,11 +57,11 @@ def native_terminal_name(harness: str | None) -> str | None:
     Native CLI panes are keyed ``(conversation_id, <short-name>, "main")`` in the
     terminal registry, where the short name is the canonical native harness id
     with the ``-native`` suffix dropped — e.g. ``"claude-native"`` -> ``"claude"``,
-    ``"native-codex"`` -> ``"codex"``, ``"opencode-native"`` -> ``"opencode"``.
+    ``"native-claude"`` -> ``"claude"``.
 
     :param harness: A harness id (canonical or reversed alias), e.g.
-        ``"cursor-native"``; ``None`` or a non-native harness returns ``None``.
-    :returns: The terminal short-name, e.g. ``"cursor"``, or ``None`` when
+        ``"claude-native"``; ``None`` or a non-native harness returns ``None``.
+    :returns: The terminal short-name, e.g. ``"claude"``, or ``None`` when
         *harness* is not a native CLI harness.
     """
     if harness is None or not is_native_harness(harness):

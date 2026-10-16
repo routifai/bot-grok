@@ -1,8 +1,8 @@
 """Idle reaper for native-harness terminal panes (issue #1349).
 
-Native CLI sessions (``claude-native`` / ``codex-native`` / ``cursor-native`` /
-...) run their vendor CLI plus a full MCP fleet inside a persistent tmux pane
-held for the whole conversation lifetime. Unlike the SDK harness proxies — which
+Native CLI sessions (``claude-native`` / ``codex-native`` / ``pi-native``) run
+their vendor CLI plus a full MCP fleet inside a persistent tmux pane held for
+the whole conversation lifetime. Unlike the SDK harness proxies — which
 ``HarnessProcessManager._idle_reaper_loop`` reaps after an idle window — these
 panes have no idle reaper, so on a shared/multi-conversation runner memory grows
 without bound as idle conversations accumulate, independent of how many are
@@ -57,24 +57,7 @@ PANE_OUTPUT_BUSY_WINDOW_S = 120.0
 # cheap name pre-filter; the wiring additionally confirms the registry resource
 # ROLE is a native harness (so a user terminal that merely shares the name is not
 # reaped — see ``create_runner_app``).
-#
-# "kimi" is deliberately absent: kimi records no resumable chat id, so a reaped
-# pane cannot be re-created with its context — the next turn would silently
-# start a fresh TUI. Keep kimi panes alive until the session is torn down.
-NATIVE_PANE_TERMINAL_NAMES: frozenset[str] = frozenset(
-    {
-        "claude",
-        "codex",
-        "cursor",
-        "goose",
-        "hermes",
-        "kiro",
-        "qwen",
-        "pi",
-        "antigravity",
-        "opencode",
-    }
-)
+NATIVE_PANE_TERMINAL_NAMES: frozenset[str] = frozenset({"claude", "codex", "pi"})
 
 # Default idle window before an unused native pane is reaped. Mirrors
 # ``HarnessProcessManager``'s 1-hour SDK-proxy default for consistency.

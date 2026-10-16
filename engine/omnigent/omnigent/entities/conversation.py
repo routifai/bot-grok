@@ -145,7 +145,7 @@ class Conversation:
         spawn by the route-subagent relay, so a change takes effect on
         the next spawn.
     :param harness_override: Per-session harness override for the
-        bound agent's brain, e.g. ``"pi"`` or ``"openai-agents"``.
+        bound agent's brain, e.g. ``"pi"`` or ``"claude-sdk"``.
         ``None`` means use the harness declared in the agent spec
         (``executor.config.harness``). Set at session creation via
         ``POST /v1/sessions`` (the new-chat harness picker) and

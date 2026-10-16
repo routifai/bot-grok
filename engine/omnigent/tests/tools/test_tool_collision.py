@@ -117,7 +117,7 @@ def test_no_collision_with_unrelated_builtin_loads_fine(
         [info],
         tmp_path,
         agent_name="testagent",
-        builtin_tool_names=frozenset({"web_search", "code_sandbox", "web_fetch"}),
+        builtin_tool_names=frozenset({"web_search", "code_sandbox", "upload_file"}),
     )
     assert len(tools) == 1
     assert tools[0].name() == "my_unique_name"

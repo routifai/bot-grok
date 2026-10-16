@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import importlib
-import sys
 from collections.abc import Callable, Iterator
-from pathlib import Path
 
 import pytest
 
@@ -196,41 +193,12 @@ def test_community_harness_readiness_uses_install_metadata(
     assert readiness.harness_is_configured("foo") is True
 
 
-def test_community_namespace_imports_external_harness_package(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    package_root = tmp_path / "plugin"
-    package_dir = package_root / "omnigent" / "community" / "harness" / "foo"
-    package_dir.mkdir(parents=True)
-    (package_dir / "__init__.py").write_text("VALUE = 'ok'\n", encoding="utf-8")
-
-    monkeypatch.syspath_prepend(str(package_root))
-
-    import omnigent.community as community
-    import omnigent.community.harness as harnesses
-
-    importlib.reload(community)
-    importlib.reload(harnesses)
-    sys.modules.pop("omnigent.community.harness.foo", None)
-
-    module = importlib.import_module("omnigent.community.harness.foo")
-    assert module.VALUE == "ok"
-
-
 def test_builtin_background_title_generators_are_registered() -> None:
     generators = hp.background_title_generators()
 
-    assert set(generators) >= {
-        "claude-sdk",
-        "claude-native",
-        "codex",
-        "codex-native",
-    }
+    assert set(generators) >= {"claude-sdk", "claude-native"}
     assert generators["claude-sdk"].generator.endswith("sdk:generate_background_title")
-    assert generators["codex"].generator == generators["claude-sdk"].generator
     assert generators["claude-native"].resolver_harness == "claude-sdk"
-    assert generators["codex-native"].resolver_harness is None
 
 
 def test_community_harness_can_register_background_title_generator(
@@ -295,28 +263,3 @@ def test_builtin_native_provider_paths_resolve() -> None:
         ):
             resolved = native_dispatch.resolve_hook(provider, hook)
             assert callable(resolved), f"{provider.key}.{hook} did not resolve to a callable"
-
-
-def test_builtin_native_provider_bridge_id_label_keys_match_constants() -> None:
-    """The derived bridge_id_label_key equals each harness's real constant.
-
-    ``harness_plugins`` derives the label key from the uniform
-    ``omnigent.<key>_native.bridge_id`` pattern rather than importing the bridge
-    modules (which would break its import-light contract). Pin the derivation
-    against the actual constants so a rename can't silently diverge.
-    """
-    from omnigent.harnesses.antigravity_native.bridge import ANTIGRAVITY_NATIVE_BRIDGE_ID_LABEL_KEY
-    from omnigent.harnesses.codex_native.bridge import CODEX_NATIVE_BRIDGE_ID_LABEL_KEY
-    from omnigent.harnesses.opencode_native.bridge import OPENCODE_NATIVE_BRIDGE_ID_LABEL_KEY
-
-    expected = {
-        "codex": CODEX_NATIVE_BRIDGE_ID_LABEL_KEY,
-        "opencode": OPENCODE_NATIVE_BRIDGE_ID_LABEL_KEY,
-        "antigravity": ANTIGRAVITY_NATIVE_BRIDGE_ID_LABEL_KEY,
-    }
-    for provider in hp.native_providers():
-        if provider.key in expected:
-            assert provider.bridge_id_label_key == expected[provider.key]
-        else:
-            # Bare builders and claude (resolved via a runner helper) carry no key.
-            assert provider.bridge_id_label_key is None, provider.key

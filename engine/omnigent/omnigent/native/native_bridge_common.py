@@ -1,9 +1,9 @@
 """Shared owner-pid marker + orphan prune for native-harness bridge dirs.
 
-Each native coding-agent harness (claude / codex / antigravity / opencode /
-pi) keeps a per-session bridge directory under its own bridge root holding the
-``bridge.json`` token, MCP/policy config, and hook state. Some harnesses also
-co-locate persistent resume state there. When a launcher crashes or a session
+Each native coding-agent harness (claude / codex / pi) keeps a per-session
+bridge directory under its own bridge root holding the ``bridge.json`` token,
+MCP/policy config, and hook state. Some harnesses also co-locate persistent
+resume state there. When a launcher crashes or a session
 is abandoned, disposable bridge material must be reclaimed without deleting
 state the native runtime needs to resume.
 
@@ -12,7 +12,7 @@ prepared it. The marker is refreshed on every turn's bridge prep. The sweep
 considers dirs whose owner is provably dead while leaving live and unmarked
 dirs alone; harnesses may apply an additional retention policy.
 
-This module factors the marker write and the per-root sweep so all five
+This module factors the marker write and the per-root sweep so all
 harnesses share one implementation (the per-harness modules only supply their
 own bridge root), plus a dynamic cross-harness reaper for host maintenance or
 standalone runner startup. It mirrors the terminal orphan sweep

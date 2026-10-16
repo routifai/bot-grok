@@ -8,7 +8,7 @@ from omnigent.errors import ErrorCategory, ErrorImpact, ErrorPhase, OmnigentErro
 
 # Provider ``exc.code`` / ``exc.body.error.code`` values that signal
 # a context-window overflow.  Currently OpenAI-origin codes; add
-# Anthropic / Gemini / other codes here as their SDKs start stamping
+# Anthropic / other codes here as their SDKs start stamping
 # structured codes on exceptions (today they embed the signal in the
 # error *message*, which ``llm_retry.classify_llm_error`` handles
 # separately via regex).

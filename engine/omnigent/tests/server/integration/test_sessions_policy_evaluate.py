@@ -1363,17 +1363,12 @@ async def test_policy_evaluate_gates_every_first_party_tool_result_shape(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Both established spellings of the tool name are accepted AND gated.
-
-    Requiring ``request_data.name`` rejected the OpenCode plugin's shape,
-    which sends the tool in ``event.target`` — and that producer converts any
-    non-2xx into ALLOW, so a stricter guard silently disabled its policies
-    instead of tightening them.
+    The first-party tool-result shape is accepted AND gated.
 
     Asserting a 200 would not be enough: the guard could accept the shape
     while the engine still saw no tool name, leaving tool-scoped policies
-    skipped exactly as before. A tool-scoped DENY is asserted instead, so the
-    resolved name has to reach the container the engine reads.
+    skipped. A tool-scoped DENY is asserted instead, so the resolved name has
+    to reach the container the engine reads.
     """
     deny_policy = FunctionPolicySpec(
         name="admin__deny_bash_result",
@@ -1396,11 +1391,6 @@ async def test_policy_evaluate_gates_every_first_party_tool_result_shape(
             "type": "PHASE_TOOL_RESULT",
             "data": {"result": "ok"},
             "request_data": {"name": "Bash"},
-        },
-        "target (opencode plugin)": {
-            "type": "PHASE_TOOL_RESULT",
-            "data": {"result": "ok"},
-            "target": "Bash",
         },
     }
     for why, event in shapes.items():

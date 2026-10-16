@@ -66,77 +66,12 @@ OMNIGENT_EXECUTOR_TYPE = "omnigent"
 
 
 # Harness identifiers accepted by ``executor.config.harness`` when
-# ``executor.type == "omnigent"``. Matches the set of internal-loop
-# harnesses ``OmnigentExecutor`` wraps. ``databricks`` is
-# intentionally excluded — omnigent has a native databricks
-# adapter, so an omnigent+databricks
-# pairing is a spec misconfiguration. See
+# ``executor.type == "omnigent"``, plus their user-facing aliases. Derived
+# from the harness registry (``omnigent.harness_plugins``) so the accepted set
+# never drifts from what can actually launch. ``databricks`` is intentionally
+# excluded — omnigent has a native databricks adapter, so an
+# omnigent+databricks pairing is a spec misconfiguration. See
 # designs/OMNIGENT_INTEGRATION.md §1.
-#
-# ``open-responses`` is the OpenAI Responses-API harness that
-# ``omnigent.inner.open_responses_sdk.OpenResponsesExecutor``
-# implements; the executor_factory resolves it when the YAML
-# declares ``harness: open-responses``, so the adapter must
-# accept it too. It was missing from the initial allowlist, which
-# made ``examples/terminal_workers.yaml``
-# fail at spec-load with a "must be one of [...], got
-# 'open-responses'" error.
-#
-# ``opencode-native`` is the native OpenCode server bridge (runner-owned
-# ``opencode serve`` + SSE forwarder); its ``opencode`` / ``native-opencode``
-# spellings are accepted aliases below.
-OMNIGENT_HARNESSES = frozenset(
-    {
-        "antigravity",
-        "antigravity-native",
-        "claude-native",
-        "claude-sdk",
-        "codex",
-        "codex-native",
-        "copilot",
-        "cursor",
-        "kimi",
-        "kimi-native",
-        "cursor-native",
-        "kiro-native",
-        "goose",
-        "goose-native",
-        "hermes",
-        "hermes-native",
-        "openai-agents",
-        "open-responses",
-        "opencode-native",
-        "pi",
-        "pi-native",
-        "qwen",
-        "qwen-native",
-    },
-)
-# User-facing aliases accepted in specs and normalized before runtime dispatch.
-OMNIGENT_HARNESS_ALIASES = frozenset(
-    {
-        "claude",
-        "native-kiro",
-        "native-pi",
-        "native-antigravity",
-        "native-goose",
-        "openai-agents-sdk",
-        "agy",
-        "google-antigravity",
-        "kimi-code",
-        "qwen-code",
-        "opencode",
-        "native-opencode",
-        "native-hermes",
-        "github-copilot",
-        "native-kimi",
-    }
-)
-_OMNIGENT_ACCEPTED_HARNESSES = OMNIGENT_HARNESSES | OMNIGENT_HARNESS_ALIASES
-
-# Dynamic registry overlay. The literals above remain as readable documentation
-# for the built-in set, while the exported constants reflect installed
-# community harness plugins.
 OMNIGENT_HARNESSES = valid_harnesses()
 OMNIGENT_HARNESS_ALIASES = frozenset(registry_harness_aliases())
 _OMNIGENT_ACCEPTED_HARNESSES = accepted_harnesses()

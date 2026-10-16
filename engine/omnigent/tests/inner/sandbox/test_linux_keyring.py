@@ -10,7 +10,6 @@ import sys
 import time
 from collections.abc import Iterator
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -92,10 +91,7 @@ def desktop_keyring(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator
                 process.wait(timeout=5)
 
 
-@pytest.mark.parametrize("recipient", ["runner", "goose"])
-def test_runner_and_granted_goose_read_real_desktop_keyring(
-    desktop_keyring: Path, tmp_path: Path, recipient: str
-) -> None:
+def test_runner_reads_real_desktop_keyring(desktop_keyring: Path, tmp_path: Path) -> None:
     from omnigent.cli import _build_host_daemon_env
     from omnigent.host.connect import _build_runner_env
 
@@ -107,37 +103,7 @@ def test_runner_and_granted_goose_read_real_desktop_keyring(
         workspace=str(tmp_path),
         parent_pid=os.getpid(),
     )
-    if recipient == "goose":
-        from omnigent.inner.goose_executor import GooseExecutor
-        from omnigent.runner.app import _build_spawn_env_from_spec
-        from omnigent.runtime.harnesses.process_manager import _build_harness_spawn_env
-        from omnigent.spec.types import AgentSpec, ExecutorSpec
-
-        os_env = OSEnvSpec(
-            type="caller_process",
-            sandbox=OSEnvSandboxSpec(
-                type="none", env_passthrough=["DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR"]
-            ),
-        )
-        spec = AgentSpec(
-            spec_version=1,
-            name="desktop-test",
-            executor=ExecutorSpec(type="omnigent", config={"harness": "goose"}),
-            os_env=os_env,
-        )
-        with patch.dict(os.environ, env, clear=True):
-            harness_env = _build_harness_spawn_env(_build_spawn_env_from_spec(spec, "goose"))
-        with patch.dict(os.environ, harness_env, clear=True):
-            executor = GooseExecutor.__new__(GooseExecutor)
-            executor._os_env = os_env
-            executor._provider = None
-            executor._model = None
-            env = executor._build_spawn_env()
-    lookup = (
-        "resolve_secret('keychain:desktop-test')"
-        if recipient == "runner"
-        else "keyring.get_password('omnigent', 'desktop-test')"
-    )
+    lookup = "resolve_secret('keychain:desktop-test')"
     probe = f"""
 import keyring
 from keyring.backends.SecretService import Keyring

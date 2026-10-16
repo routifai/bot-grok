@@ -27,14 +27,10 @@ from __future__ import annotations
 from omnigent.harness_plugins import harness_modules
 
 # Harness-name -> fully-qualified module path, sourced from the harness
-# registry (built-ins + installed community plugins). Each module must
-# export ``create_app() -> FastAPI``; the runner imports the module, calls
-# the factory, and serves the result over a Unix socket. The historical
-# mutable-dict surface is preserved (tests inject fixture entries by dict
-# mutation), but the contents come from the dynamic registry, not a literal.
-
-# Keep the historical mutable dict surface while sourcing builtins and
-# community plugins from the dynamic registry.
+# registry. Each module must export ``create_app() -> FastAPI``; the runner
+# imports the module, calls the factory, and serves the result over a Unix
+# socket. The historical mutable-dict surface is preserved (tests inject
+# fixture entries by dict mutation), but the contents come from the registry.
 _HARNESS_MODULES = harness_modules()
 
 __all__ = ["_HARNESS_MODULES"]

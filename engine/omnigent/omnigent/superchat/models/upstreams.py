@@ -224,8 +224,8 @@ PROVIDERS = tuple(UPSTREAMS)
 
 
 def harness_family(harness: str) -> str:
-    """:returns: The vendor family a harness declares in its capabilities (``claude``, ``gpt``,
-    ``gemini`` or ``multi``); ``multi`` when the harness declares nothing."""
+    """:returns: The vendor family a harness declares in its capabilities (``claude``, ``gpt``
+    or ``multi``); ``multi`` when the harness declares nothing."""
     from omnigent.harness_plugins import harness_capabilities
 
     capabilities = harness_capabilities()
@@ -237,12 +237,11 @@ def harness_family(harness: str) -> str:
 _PREFERENCE = ("anthropic", "openrouter", "litellm")
 
 #: The wire protocol a harness family speaks through a model connection: the Claude family
-#: speaks Anthropic Messages, the GPT/Gemini families Chat Completions (until ``responses`` is
+#: speaks Anthropic Messages, the GPT family Chat Completions (until ``responses`` is
 #: wired), a multi-model harness either.
 _FAMILY_WIRES: dict[str, frozenset[str]] = {
     "claude": frozenset({"messages"}),
     "gpt": frozenset({"chat"}),
-    "gemini": frozenset({"chat"}),
 }
 
 

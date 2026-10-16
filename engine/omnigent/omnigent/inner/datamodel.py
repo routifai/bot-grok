@@ -344,7 +344,7 @@ class ExecutorSpec:
         or ``"openai/gpt-4o"``. ``None`` when not specified (a
         harness-specific default is used).
     :param harness: Executor harness selector, e.g. ``"claude-sdk"``,
-        ``"open-responses"``, ``"codex"``. ``None`` when the default
+        ``"pi"``. ``None`` when the default
         harness for the model applies.
     :param profile: Credentials profile name (typically a
         ``~/.databrickscfg`` profile), e.g. ``"<your-profile>"``.
@@ -940,7 +940,6 @@ class AgentDef:
     # translated to an AgentSpec.
     agent_session_sharing: str = "none"
     os_env: OSEnvSpec | None = None
-    model_egress: list[str] | None = None
     terminals: dict[str, TerminalEnvSpec] = field(default_factory=dict)
     skills: SkillRegistry = field(default_factory=dict)
     # Materialized agent-bundle root on disk, when known. Used by

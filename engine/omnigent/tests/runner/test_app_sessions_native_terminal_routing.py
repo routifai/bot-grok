@@ -19,7 +19,6 @@ from omnigent.runner.app import (
     _auto_create_repl_terminal,
 )
 from omnigent.runner.resource_registry import (
-    CODEX_NATIVE_TERMINAL_ROLE,
     OMNIGENT_REPL_TERMINAL_ROLE,
     SessionResourceRegistry,
 )
@@ -275,274 +274,6 @@ async def test_create_session_terminal_ensure_failure_returns_json_without_live_
     # The structured, non-sensitive cause (exception type only, here) still
     # names the failure kind without the free-form message.
     assert "(ImportError)" in error["message"]
-
-
-@dataclass
-class _EnsureCodexTerminalCase:
-    """
-    One routing case for the codex-native ensure terminal branch.
-
-    :param case_id: Human-readable id for the parametrized case.
-    :param body: ``POST /resources/terminals`` JSON body.
-    :param existing: Whether a live ``codex``/``main`` terminal exists.
-    :param existing_native: Whether the existing terminal metadata looks
-        like a runner-owned Codex remote TUI.
-    :param expect_auto_create: Whether the route should call the full
-        codex-native auto-create helper.
-    :param expect_launch: Whether the route should fall through to the
-        generic terminal launch path.
-    :param expect_close: Whether the existing terminal should be closed
-        before native auto-create.
-    :param expect_name: Resource ``name`` expected in the HTTP response.
-    """
-
-    case_id: str
-    body: dict[str, object]
-    existing: bool
-    existing_native: bool
-    expect_auto_create: bool
-    expect_launch: bool
-    expect_close: bool
-    expect_name: str
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "case",
-    [
-        _EnsureCodexTerminalCase(
-            case_id="ensure_no_terminal_auto_creates",
-            body={"terminal": "codex", "session_key": "main", "ensure_native_terminal": True},
-            existing=False,
-            existing_native=False,
-            expect_auto_create=True,
-            expect_launch=False,
-            expect_close=False,
-            expect_name="auto-created",
-        ),
-        _EnsureCodexTerminalCase(
-            case_id="ensure_existing_returns_live",
-            body={"terminal": "codex", "session_key": "main", "ensure_native_terminal": True},
-            existing=True,
-            existing_native=True,
-            expect_auto_create=False,
-            expect_launch=False,
-            expect_close=False,
-            expect_name="existing",
-        ),
-        _EnsureCodexTerminalCase(
-            case_id="ensure_existing_bash_terminal_replaces",
-            body={"terminal": "codex", "session_key": "main", "ensure_native_terminal": True},
-            existing=True,
-            existing_native=False,
-            expect_auto_create=True,
-            expect_launch=False,
-            expect_close=True,
-            expect_name="auto-created",
-        ),
-        _EnsureCodexTerminalCase(
-            case_id="no_marker_uses_generic_launch",
-            body={"terminal": "codex", "session_key": "main"},
-            existing=False,
-            existing_native=False,
-            expect_auto_create=False,
-            expect_launch=True,
-            expect_close=False,
-            expect_name="launched",
-        ),
-    ],
-    ids=lambda c: c.case_id,
-)
-async def test_create_session_terminal_ensure_routes_codex_native(
-    case: _EnsureCodexTerminalCase,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    ``POST /resources/terminals`` routes a codex/main ensure request.
-
-    The ensure marker must invoke the runner-owned Codex setup
-    (app-server, forwarder, and TUI terminal) or return an existing
-    terminal. Without the marker, a plain codex terminal launch remains a
-    generic terminal request. Removing this branch makes the auto-create
-    cases return ``"launched"``; over-broad routing makes the generic case
-    return ``"auto-created"``.
-
-    :param case: Parametrized routing scenario.
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :returns: None.
-    """
-    sid = "ad2c1855c982b13e9c4df55b75d26ef8"
-    auto_create_calls: list[str] = []
-    auto_create_kwargs: list[dict[str, object]] = []
-    launch_calls: list[str] = []
-    close_calls: list[str] = []
-    route_events: list[str] = []
-
-    async def _stub_auto_create(
-        session_id: str,
-        resource_registry: object,
-        publish_event: object,
-        **kwargs: object,
-    ) -> SessionResourceView:
-        """
-        Record the codex-native ensure path.
-
-        :param session_id: Session id being ensured, e.g.
-            ``"ad2c1855c982b13e9c4df55b75d26ef8"``.
-        :param resource_registry: Runner resource registry collaborator.
-        :param publish_event: Runner event publisher collaborator.
-        :param kwargs: Additional keyword arguments such as
-            ``server_client`` and ``agent_spec``.
-        :returns: Tagged terminal resource view.
-        """
-        del resource_registry, publish_event
-        route_events.append("auto-create")
-        auto_create_calls.append(session_id)
-        auto_create_kwargs.append(kwargs)
-        return SessionResourceView(
-            id="terminal_codex_main",
-            type="terminal",
-            session_id=session_id,
-            name="auto-created",
-        )
-
-    async def _stub_get_terminal(
-        self: object,
-        session_id: str,
-        terminal_id: str,
-    ) -> SessionResourceView | None:
-        """
-        Return an existing terminal only for seeded cases.
-
-        :param self: Bound registry instance.
-        :param session_id: Session id being queried, e.g.
-            ``"ad2c1855c982b13e9c4df55b75d26ef8"``.
-        :param terminal_id: Terminal resource id, e.g.
-            ``"terminal_codex_main"``.
-        :returns: Existing resource view or ``None``.
-        """
-        del self
-        if case.existing and terminal_id == "terminal_codex_main":
-            return SessionResourceView(
-                id=terminal_id,
-                type="terminal",
-                session_id=session_id,
-                name="existing",
-                metadata={
-                    "terminal_name": "codex",
-                    "session_key": "main",
-                },
-            )
-        return None
-
-    def _stub_terminal_resource_role(
-        self: object,
-        session_id: str,
-        terminal_id: str,
-    ) -> str | None:
-        """
-        Return the private resource role for seeded existing terminals.
-
-        :param self: Bound registry instance.
-        :param session_id: Session id being queried, e.g.
-            ``"ad2c1855c982b13e9c4df55b75d26ef8"``.
-        :param terminal_id: Terminal resource id, e.g.
-            ``"terminal_codex_main"``.
-        :returns: ``"codex-native"`` for native seeded terminals.
-        """
-        del self, session_id
-        if case.existing and case.existing_native and terminal_id == "terminal_codex_main":
-            return CODEX_NATIVE_TERMINAL_ROLE
-        return None
-
-    async def _stub_close_terminal(
-        self: object,
-        session_id: str,
-        terminal_id: str,
-    ) -> bool:
-        """
-        Record stale terminal replacement closes.
-
-        :param self: Bound registry instance.
-        :param session_id: Session id being modified, e.g.
-            ``"ad2c1855c982b13e9c4df55b75d26ef8"``.
-        :param terminal_id: Terminal resource id, e.g.
-            ``"terminal_codex_main"``.
-        :returns: ``True`` to allow replacement.
-        """
-        del self
-        assert route_events == []
-        route_events.append("close")
-        close_calls.append(f"{session_id}:{terminal_id}")
-        return True
-
-    async def _stub_launch_auxiliary_terminal(
-        self: object,
-        *,
-        session_id: str,
-        terminal_name: str,
-        session_key: str,
-        **kwargs: object,
-    ) -> SessionResourceView:
-        """
-        Record generic terminal launch calls.
-
-        :param self: Bound registry instance.
-        :param session_id: Session id being launched, e.g.
-            ``"ad2c1855c982b13e9c4df55b75d26ef8"``.
-        :param terminal_name: Terminal name, e.g. ``"codex"``.
-        :param session_key: Terminal session key, e.g. ``"main"``.
-        :param kwargs: Additional launch keyword arguments.
-        :returns: Tagged terminal resource view.
-        """
-        del self, kwargs
-        launch_calls.append(f"{terminal_name}:{session_key}")
-        return SessionResourceView(
-            id=terminal_resource_id(terminal_name, session_key),
-            type="terminal",
-            session_id=session_id,
-            name="launched",
-        )
-
-    monkeypatch.setattr(
-        "omnigent.runner.native.orchestration._auto_create_codex_terminal", _stub_auto_create
-    )
-    monkeypatch.setattr(SessionResourceRegistry, "get_terminal_resource", _stub_get_terminal)
-    monkeypatch.setattr(
-        SessionResourceRegistry,
-        "terminal_resource_role",
-        _stub_terminal_resource_role,
-    )
-    monkeypatch.setattr(SessionResourceRegistry, "close_terminal", _stub_close_terminal)
-    monkeypatch.setattr(
-        SessionResourceRegistry,
-        "launch_auxiliary_terminal",
-        _stub_launch_auxiliary_terminal,
-    )
-
-    app = create_runner_app(
-        process_manager=_FakeProcessManager(_ScriptedHarnessClient([])),  # type: ignore[arg-type]
-        server_client=NullServerClient(),  # type: ignore[arg-type]
-        terminal_registry=TerminalRegistry(),
-    )
-
-    async with _runner_client(app) as client:
-        resp = await client.post(f"/v1/sessions/{sid}/resources/terminals", json=case.body)
-
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["name"] == case.expect_name
-    assert (auto_create_calls == [sid]) == case.expect_auto_create
-    if case.expect_auto_create:
-        assert auto_create_kwargs[0]["server_client"] is not None
-        assert "agent_spec" in auto_create_kwargs[0]
-    else:
-        assert auto_create_kwargs == []
-    assert (launch_calls == ["codex:main"]) == case.expect_launch
-    assert (close_calls == [f"{sid}:terminal_codex_main"]) == case.expect_close
-    expected_events = ["close", "auto-create"] if case.expect_close else []
-    if case.expect_auto_create and not case.expect_close:
-        expected_events = ["auto-create"]
-    assert route_events == expected_events
 
 
 @pytest.mark.asyncio
@@ -826,7 +557,7 @@ async def test_auto_create_repl_terminal_inherits_agent_sandbox(
         name="sdk_worker",
         executor=ExecutorSpec(
             type="omnigent",
-            config={"harness": "openai-agents", "model": "claude-default"},
+            config={"harness": "claude-sdk", "model": "claude-default"},
         ),
         os_env=agent_os_env,
     )
@@ -854,13 +585,13 @@ async def test_auto_create_repl_terminal_inherits_agent_sandbox(
     ("harness", "sub_agent_name", "expect_created"),
     [
         # SDK harness, top-level → REPL terminal auto-creates.
-        ("openai-agents", None, True),
+        ("claude-sdk", None, True),
         # Sub-agent sessions surface through the parent transcript — no
         # REPL pane of their own.
-        ("openai-agents", "worker", False),
+        ("claude-sdk", "worker", False),
         # Native harnesses own a dedicated terminal (the vendor TUI); the
         # REPL pane must not double up next to it.
-        ("codex-native", None, False),
+        ("claude-native", None, False),
     ],
 )
 @pytest.mark.asyncio
@@ -881,7 +612,7 @@ async def test_create_session_repl_terminal_dispatch(
     terminal (over-create).
 
     :param harness: Harness id resolved from the agent spec,
-        e.g. ``"openai-agents"``.
+        e.g. ``"claude-sdk"``.
     :param sub_agent_name: ``sub_agent_name`` in the POST body, or
         ``None`` for a top-level session.
     :param expect_created: Whether the REPL auto-create must fire.

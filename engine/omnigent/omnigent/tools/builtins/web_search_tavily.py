@@ -2,9 +2,7 @@
 
 Uses Tavily's agent-optimized search endpoint (``POST /search``) to
 return a list of grounded results (title, URL, snippet) plus an
-optional synthesized ``answer``. Good for non-OpenAI models
-(Anthropic, Llama, Databricks-hosted, etc.) that cannot use OpenAI's
-native ``web_search_preview``.
+optional synthesized ``answer``.
 
 Configured in the agent spec::
 

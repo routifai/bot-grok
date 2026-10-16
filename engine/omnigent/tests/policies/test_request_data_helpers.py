@@ -2,7 +2,7 @@
 
 ``request_user_text`` and ``request_attachments`` normalize the REQUEST-phase
 ``event["data"]`` — a ``{"user_content", "attachments"}`` dict from the server
-input gate, or a bare string / content-block list from native / opencode hooks —
+input gate, or a bare string / content-block list from native hooks —
 so request-phase policies read the typed message and attachments uniformly.
 """
 
@@ -18,7 +18,7 @@ def test_request_user_text_from_dict() -> None:
 
 
 def test_request_user_text_from_string() -> None:
-    """Native / opencode hooks pass the prompt text directly as a string."""
+    """Native hooks pass the prompt text directly as a string."""
     assert request_user_text("hello there") == "hello there"
 
 

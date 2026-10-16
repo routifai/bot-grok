@@ -570,7 +570,7 @@ async def test_permission_mode_omitted_for_non_claude_agent() -> None:
     """A mis-stamped non-Claude row degrades to no --permission-mode flag.
 
     The injection is harness-gated fail-safe: even if a permission_mode somehow
-    persisted on a codex/cursor task, the fire must NOT inject the unknown flag
+    persisted on a non-Claude task, the fire must NOT inject the unknown flag
     (which would break the launch) — it launches with the agent's own default.
     """
     conv_store = FakeConversationStore()
@@ -580,7 +580,7 @@ async def test_permission_mode_omitted_for_non_claude_agent() -> None:
         return None
 
     on_fire = build_on_fire(
-        _claude_agent_deps(store, conv_store, harness="codex-native"),
+        _claude_agent_deps(store, conv_store, harness="pi"),
         launch_dispatch=_launch,
     )
     await on_fire(0, "task_1")
@@ -666,13 +666,13 @@ async def test_no_reasoning_effort_when_spec_has_none() -> None:
 
 @pytest.mark.asyncio
 async def test_native_wrapper_task_stamps_terminal_first_labels() -> None:
-    """A native-CLI (Pi) automation session gets the terminal-first labels.
+    """A native-CLI (Claude Code) automation session gets the terminal-first labels.
 
     Interactive New Chat stamps ``omnigent.ui = terminal`` + the wrapper label
     so the web UI shows the Chat/Terminal switcher; the fire path must stamp the
     same labels or the session renders Chat-only with no way to its terminal.
     """
-    from omnigent.native.native_coding_agents import PI_NATIVE_AGENT_NAME
+    from omnigent.native.native_coding_agents import CLAUDE_NATIVE_AGENT_NAME
 
     conv_store = FakeConversationStore()
     store = FakeScheduledTaskStore(rows={"task_1": _task()})
@@ -680,9 +680,13 @@ async def test_native_wrapper_task_stamps_terminal_first_labels() -> None:
         store,
         conversation_store=conv_store,
         agent_store=FakeAgentStore(
-            {"ag_1": _FakeAgent("ag_1", bundle_location="ag_1/hash", name=PI_NATIVE_AGENT_NAME)}
+            {
+                "ag_1": _FakeAgent(
+                    "ag_1", bundle_location="ag_1/hash", name=CLAUDE_NATIVE_AGENT_NAME
+                )
+            }
         ),
-        agent_cache=FakeAgentCache(harness="pi-native"),
+        agent_cache=FakeAgentCache(harness="claude-native"),
     )
 
     async def _launch(conv: Any, task: Any) -> None:
@@ -694,7 +698,7 @@ async def test_native_wrapper_task_stamps_terminal_first_labels() -> None:
 
     assert conv_store.label_writes["conv_1"] == {
         "omnigent.ui": "terminal",
-        "omnigent.wrapper": PI_NATIVE_AGENT_NAME,
+        "omnigent.wrapper": "claude-code-native-ui",
         "omnigent.scheduled_task_id": "task_1",
     }
 
@@ -760,16 +764,16 @@ async def test_native_wrapper_labels_resolve_without_agent_cache() -> None:
 
     Parity with the interactive create path, which resolves these labels with no
     cache dependency — a deployment with no fire-deps cache must not silently
-    drop the switcher for a Pi/OpenCode/etc. automation.
+    drop the switcher for a native-CLI automation.
     """
-    from omnigent.native.native_coding_agents import PI_NATIVE_AGENT_NAME
+    from omnigent.native.native_coding_agents import CLAUDE_NATIVE_AGENT_NAME
 
     conv_store = FakeConversationStore()
     store = FakeScheduledTaskStore(rows={"task_1": _task()})
     deps = _deps(
         store,
         conversation_store=conv_store,
-        agent_store=FakeAgentStore({"ag_1": _FakeAgent("ag_1", name=PI_NATIVE_AGENT_NAME)}),
+        agent_store=FakeAgentStore({"ag_1": _FakeAgent("ag_1", name=CLAUDE_NATIVE_AGENT_NAME)}),
         # agent_cache left None.
     )
 
@@ -782,7 +786,7 @@ async def test_native_wrapper_labels_resolve_without_agent_cache() -> None:
 
     assert conv_store.label_writes["conv_1"] == {
         "omnigent.ui": "terminal",
-        "omnigent.wrapper": PI_NATIVE_AGENT_NAME,
+        "omnigent.wrapper": "claude-code-native-ui",
         "omnigent.scheduled_task_id": "task_1",
     }
 
@@ -1517,7 +1521,7 @@ async def test_managed_fires_use_regular_launch_with_unchanged_server_config(
             server_url="https://server.example.com",
             launcher_factory=lambda: pytest.fail("managed launch is stubbed"),
             token_ttl_s=90000,
-            provider="agent_sandbox",
+            provider="computer",
             host_config={"runner": {"idle_timeout_s": 7200}},
         )
     )
@@ -1531,7 +1535,7 @@ async def test_managed_fires_use_regular_launch_with_unchanged_server_config(
         hosts.hosts[host_id] = _FakeHost(
             host_id,
             RESERVED_USER_LOCAL,
-            sandbox_provider="agent_sandbox",
+            sandbox_provider="computer",
             sandbox_id=f"sandbox_{session_id}",
         )
         bound[session_id] = _FakeConversation(
@@ -1597,7 +1601,7 @@ async def test_legacy_pinned_sandbox_fails_before_host_rpc(
     host = _FakeHost(
         "host_1",
         "alice@example.com",
-        sandbox_provider="agent_sandbox",
+        sandbox_provider="computer",
         sandbox_id=sandbox_id,
     )
     store = FakeScheduledTaskStore(
@@ -1630,7 +1634,7 @@ async def test_resolve_owner_host_skips_sandbox_hosts() -> None:
     # is a real connected host. The resolver must skip the sandbox and pick the
     # connected host rather than reusing the sandbox.
     hosts = {
-        "sandbox_1": _FakeHost("sandbox_1", "alice@example.com", sandbox_provider="modal"),
+        "sandbox_1": _FakeHost("sandbox_1", "alice@example.com", sandbox_provider="computer"),
         "host_2": _FakeHost("host_2", "alice@example.com"),
     }
     deps = _deps(

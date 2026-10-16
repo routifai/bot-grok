@@ -163,7 +163,7 @@ class FakeSandboxLauncher(SandboxLauncher):
         provisions immediately.
     """
 
-    provider: ClassVar[str] = "modal"
+    provider: ClassVar[str] = "computer"
 
     def __init__(
         self,
@@ -192,49 +192,6 @@ class FakeSandboxLauncher(SandboxLauncher):
         # "not running" — a fresh fake sandbox has never started a loop.
         self.host_already_running = host_already_running
         self.run_envs: list[Mapping[str, str] | None] = []
-        # Image reference / secret names / env names the production code
-        # constructed the launcher with (captured by the
-        # ctor-monkeypatch shims).
-        self.image: str | None = None
-        self.template: str | None = None
-        self.secrets: list[str] | None = None
-        self.env: list[str] | None = None
-        self.region: str | None = None
-        self.ttl: str | None = None
-        self.endpoint: str | None = None
-        self.home_dir: str | None = None
-        self.registry: dict[str, object] | None = None
-        self.disk_size_gb: int | None = None
-        self.base_url: str | None = None
-        self.gateway_profile: str | None = None
-        self.snapshot_name: str | None = None
-        self.workdir: str | None = None
-        self.vcpus: int | None = None
-        self.memory_mb: int | None = None
-        self.disk_gb: int | None = None
-        self.idle_pause_after_s: int | None = None
-        self.cluster: str | None = None
-        # Microsandbox ctor wiring (captured by
-        # install_fake_microsandbox_launcher).
-        self.cpus: int | None = None
-        self.memory_mib: int | None = None
-        self.idle_timeout_s: int | None = None
-        self.network: str | None = None
-        self.host_ports: list[int] | None = None
-        # Kubernetes ctor wiring (captured by install_fake_kubernetes_launcher).
-        self.namespace: str | None = None
-        self.secret_name: str | None = None
-        self.service_account: str | None = None
-        self.node_selector: dict[str, str] | None = None
-        self.kubeconfig: str | None = None
-        self.in_cluster: bool | None = None
-        self.resources: dict[str, object] | None = None
-        self.pvc_mounts: list[dict[str, object]] | None = None
-        self.secret_mounts: list[dict[str, object]] | None = None
-        self.tolerations: list[dict[str, object]] | None = None
-        self.pod_ready_timeout_s: int | None = None
-        self.runtime_class: str | None = None
-        self.home_size_limit: str | None = None
         self.prepared = False
         self.provisioned_names: list[str] = []
         self.commands: list[str] = []
@@ -350,326 +307,27 @@ def _parse_host_start(command: str) -> HostStartInvocation:
     )
 
 
-def install_fake_modal_launcher(
+def install_fake_computer_launcher(
     monkeypatch: Any,  # pytest.MonkeyPatch — Any avoids importing pytest in a helpers module
     fake: FakeSandboxLauncher,
 ) -> None:
     """
-    Substitute the fake for ``ModalSandboxLauncher`` at its public seam.
+    Substitute the fake for ``ComputerSandboxLauncher`` at its public seam.
 
-    The managed flow constructs ``ModalSandboxLauncher(image=…)`` (and
-    the terminate path constructs it bare); the shim records the image
-    on the fake and hands the fake back, so production code runs
-    unmodified against it.
-
-    :param monkeypatch: The test's ``pytest.MonkeyPatch``.
-    :param fake: The fake launcher to substitute.
-    """
-    import omnigent.onboarding.sandboxes.modal as modal_mod
-
-    def _ctor(
-        *, image: str | None = None, secrets: list[str] | None = None
-    ) -> FakeSandboxLauncher:
-        """Stand-in constructor recording the construction wiring."""
-        fake.image = image
-        fake.secrets = secrets
-        return fake
-
-    monkeypatch.setattr(modal_mod, "ModalSandboxLauncher", _ctor)
-
-
-def install_fake_daytona_launcher(
-    monkeypatch: Any,  # pytest.MonkeyPatch — Any avoids importing pytest in a helpers module
-    fake: FakeSandboxLauncher,
-) -> None:
-    """
-    Substitute the fake for ``DaytonaSandboxLauncher`` at its public seam.
-
-    The managed flow constructs ``DaytonaSandboxLauncher(image=…,
-    env=…)``; the shim records both on the fake and hands the fake
-    back, so production code runs unmodified against it.
-
-    :param monkeypatch: The test's ``pytest.MonkeyPatch``.
-    :param fake: The fake launcher to substitute.
-    """
-    import omnigent.onboarding.sandboxes.daytona as daytona_mod
-
-    def _ctor(*, image: str | None = None, env: list[str] | None = None) -> FakeSandboxLauncher:
-        """Stand-in constructor recording the construction wiring."""
-        fake.image = image
-        fake.env = env
-        return fake
-
-    monkeypatch.setattr(daytona_mod, "DaytonaSandboxLauncher", _ctor)
-
-
-def install_fake_blaxel_launcher(
-    monkeypatch: Any,
-    fake: FakeSandboxLauncher,
-) -> None:
-    """Substitute the fake for ``BlaxelSandboxLauncher``."""
-    import omnigent.onboarding.sandboxes.blaxel as blaxel_mod
-
-    def _ctor(
-        *,
-        image: str | None = None,
-        env: list[str] | None = None,
-        region: str | None = None,
-        memory_mb: int | None = None,
-        ttl: str | None = None,
-    ) -> FakeSandboxLauncher:
-        fake.image = image
-        fake.env = env
-        fake.region = region
-        fake.memory_mb = memory_mb
-        fake.ttl = ttl
-        return fake
-
-    monkeypatch.setattr(blaxel_mod, "BlaxelSandboxLauncher", _ctor)
-
-
-def install_fake_boxlite_launcher(
-    monkeypatch: Any,  # pytest.MonkeyPatch — Any avoids importing pytest in a helpers module
-    fake: FakeSandboxLauncher,
-) -> None:
-    """
-    Substitute the fake for ``BoxliteSandboxLauncher`` at its public seam.
-
-    The managed flow constructs ``BoxliteSandboxLauncher(endpoint=…,
-    image=…, env=…)``; the shim records all three on the fake and hands
-    the fake back, so production code runs unmodified against it.
-
-    :param monkeypatch: The test's ``pytest.MonkeyPatch``.
-    :param fake: The fake launcher to substitute.
-    """
-    import omnigent.onboarding.sandboxes.boxlite as boxlite_mod
-
-    def _ctor(
-        *,
-        endpoint: str | None = None,
-        image: str | None = None,
-        env: list[str] | None = None,
-        home_dir: str | None = None,
-        registry: dict[str, object] | None = None,
-        disk_size_gb: int | None = None,
-    ) -> FakeSandboxLauncher:
-        """Stand-in constructor recording the construction wiring."""
-        fake.endpoint = endpoint
-        fake.image = image
-        fake.env = env
-        fake.home_dir = home_dir
-        fake.registry = registry
-        fake.disk_size_gb = disk_size_gb
-        return fake
-
-    monkeypatch.setattr(boxlite_mod, "BoxliteSandboxLauncher", _ctor)
-
-
-def install_fake_islo_launcher(
-    monkeypatch: Any,  # pytest.MonkeyPatch — Any avoids importing pytest in a helpers module
-    fake: FakeSandboxLauncher,
-) -> None:
-    """
-    Substitute the fake for ``IsloSandboxLauncher`` at its public seam.
-
-    The managed flow constructs ``IsloSandboxLauncher(image=…, env=…,
-    base_url=…, gateway_profile=…, snapshot_name=…, workdir=…,
-    vcpus=…, memory_mb=…, disk_gb=…, idle_pause_after_s=…)``; the shim
-    records those constructor args on the fake and hands it back, so
+    The YAML ``provider: computer`` path constructs ``ComputerSandboxLauncher()``
+    (lazily, through its launcher factory); the shim hands the fake back, so
     production code runs unmodified against it.
 
     :param monkeypatch: The test's ``pytest.MonkeyPatch``.
     :param fake: The fake launcher to substitute.
     """
-    import omnigent.onboarding.sandboxes.islo as islo_mod
+    import omnigent.onboarding.sandboxes.computer as computer_mod
 
-    def _ctor(
-        *,
-        image: str | None = None,
-        env: list[str] | None = None,
-        base_url: str | None = None,
-        gateway_profile: str | None = None,
-        snapshot_name: str | None = None,
-        workdir: str | None = None,
-        vcpus: int | None = None,
-        memory_mb: int | None = None,
-        disk_gb: int | None = None,
-        idle_pause_after_s: int | None = None,
-    ) -> FakeSandboxLauncher:
-        """Stand-in constructor recording the construction wiring."""
-        fake.image = image
-        fake.env = env
-        fake.base_url = base_url
-        fake.gateway_profile = gateway_profile
-        fake.snapshot_name = snapshot_name
-        fake.workdir = workdir
-        fake.vcpus = vcpus
-        fake.memory_mb = memory_mb
-        fake.disk_gb = disk_gb
-        fake.idle_pause_after_s = idle_pause_after_s
+    def _ctor() -> FakeSandboxLauncher:
+        """Stand-in constructor handing back the fake."""
         return fake
 
-    monkeypatch.setattr(islo_mod, "IsloSandboxLauncher", _ctor)
-
-
-def install_fake_microsandbox_launcher(
-    monkeypatch: Any,  # Avoid importing pytest in a helpers module.
-    fake: FakeSandboxLauncher,
-) -> None:
-    """
-    Substitute the fake for ``MicrosandboxSandboxLauncher`` at its public seam.
-
-    The managed flow constructs ``MicrosandboxSandboxLauncher(image=…,
-    env=…, cpus=…, memory_mib=…, idle_timeout_s=…, network=…)``; the shim
-    records those constructor args on the fake and hands it back, so
-    production code runs unmodified against it.
-
-    :param monkeypatch: The test's ``pytest.MonkeyPatch``.
-    :param fake: The fake launcher to substitute.
-    """
-    import omnigent.onboarding.sandboxes.microsandbox as microsandbox_mod
-
-    def _ctor(
-        *,
-        image: str | None = None,
-        env: list[str] | None = None,
-        cpus: int | None = None,
-        memory_mib: int | None = None,
-        idle_timeout_s: int | None = None,
-        network: str | None = None,
-        host_ports: list[int] | None = None,
-    ) -> FakeSandboxLauncher:
-        """Stand-in constructor recording the construction wiring."""
-        fake.image = image
-        fake.env = env
-        fake.cpus = cpus
-        fake.memory_mib = memory_mib
-        fake.idle_timeout_s = idle_timeout_s
-        fake.network = network
-        fake.host_ports = host_ports
-        return fake
-
-    monkeypatch.setattr(microsandbox_mod, "MicrosandboxSandboxLauncher", _ctor)
-
-
-def install_fake_e2b_launcher(
-    monkeypatch: Any,  # pytest.MonkeyPatch — Any avoids importing pytest in a helpers module
-    fake: FakeSandboxLauncher,
-) -> None:
-    """
-    Substitute the fake for ``E2BSandboxLauncher`` at its public seam.
-
-    The managed flow constructs ``E2BSandboxLauncher(template=…, env=…)``;
-    the shim records the template name and env names on the fake and
-    hands the fake back, so production code runs unmodified against it.
-
-    :param monkeypatch: The test's ``pytest.MonkeyPatch``.
-    :param fake: The fake launcher to substitute.
-    """
-    import omnigent.onboarding.sandboxes.e2b as e2b_mod
-
-    def _ctor(*, template: str | None = None, env: list[str] | None = None) -> FakeSandboxLauncher:
-        """Stand-in constructor recording the construction wiring."""
-        fake.template = template
-        fake.env = env
-        # Report the e2b provider so managed-host teardown's provider match
-        # (launcher.provider vs host.sandbox_provider) exercises the real path
-        # instead of the FakeSandboxLauncher default ("modal").
-        fake.provider = "e2b"  # type: ignore[misc]  # shadow the ClassVar per-instance
-        return fake
-
-    monkeypatch.setattr(e2b_mod, "E2BSandboxLauncher", _ctor)
-
-
-def install_fake_openshell_launcher(
-    monkeypatch: Any,  # pytest.MonkeyPatch — Any avoids importing pytest in a helpers module
-    fake: FakeSandboxLauncher,
-) -> None:
-    """
-    Substitute the fake for ``OpenShellSandboxLauncher`` at its public seam.
-
-    The managed flow constructs ``OpenShellSandboxLauncher(image=…,
-    env=…, cluster=…)``; the shim records those constructor args on the
-    fake and hands it back, so production code runs unmodified against it.
-
-    :param monkeypatch: The test's ``pytest.MonkeyPatch``.
-    :param fake: The fake launcher to substitute.
-    """
-    import omnigent.onboarding.sandboxes.openshell as openshell_mod
-
-    def _ctor(
-        *,
-        image: str | None = None,
-        env: list[str] | None = None,
-        cluster: str | None = None,
-        workspace: str | None = None,
-    ) -> FakeSandboxLauncher:
-        """Stand-in constructor recording the construction wiring."""
-        fake.image = image
-        fake.env = env
-        fake.cluster = cluster
-        fake.workspace = workspace
-        return fake
-
-    monkeypatch.setattr(openshell_mod, "OpenShellSandboxLauncher", _ctor)
-
-
-def install_fake_kubernetes_launcher(
-    monkeypatch: Any,  # pytest.MonkeyPatch — Any avoids importing pytest in a helpers module
-    fake: FakeSandboxLauncher,
-) -> None:
-    """
-    Substitute the fake for ``KubernetesSandboxLauncher`` at its public seam.
-
-    The managed flow constructs ``KubernetesSandboxLauncher(image=…, env=…,
-    namespace=…, secret_name=…, service_account=…, node_selector=…,
-    kubeconfig=…, in_cluster=…, resources=…, pvc_mounts=…, secret_mounts=…,
-    tolerations=…, pod_ready_timeout_s=…, runtime_class=…, home_size_limit=…)``;
-    the shim records those constructor args on the
-    fake and hands it back, so production code runs unmodified against it.
-
-    :param monkeypatch: The test's ``pytest.MonkeyPatch``.
-    :param fake: The fake launcher to substitute.
-    """
-    import omnigent.onboarding.sandboxes.kubernetes as kubernetes_mod
-
-    def _ctor(
-        *,
-        image: str | None = None,
-        env: list[str] | None = None,
-        namespace: str | None = None,
-        secret_name: str | None = None,
-        service_account: str | None = None,
-        node_selector: dict[str, str] | None = None,
-        kubeconfig: str | None = None,
-        in_cluster: bool | None = None,
-        resources: dict[str, object] | None = None,
-        pvc_mounts: list[dict[str, object]] | None = None,
-        secret_mounts: list[dict[str, object]] | None = None,
-        tolerations: list[dict[str, object]] | None = None,
-        pod_ready_timeout_s: int | None = None,
-        runtime_class: str | None = None,
-        home_size_limit: str | None = None,
-    ) -> FakeSandboxLauncher:
-        """Stand-in constructor recording the construction wiring."""
-        fake.image = image
-        fake.env = env
-        fake.namespace = namespace
-        fake.secret_name = secret_name
-        fake.service_account = service_account
-        fake.node_selector = node_selector
-        fake.kubeconfig = kubeconfig
-        fake.in_cluster = in_cluster
-        fake.resources = resources
-        fake.pvc_mounts = pvc_mounts
-        fake.secret_mounts = secret_mounts
-        fake.tolerations = tolerations
-        fake.pod_ready_timeout_s = pod_ready_timeout_s
-        fake.runtime_class = runtime_class
-        fake.home_size_limit = home_size_limit
-        return fake
-
-    monkeypatch.setattr(kubernetes_mod, "KubernetesSandboxLauncher", _ctor)
+    monkeypatch.setattr(computer_mod, "ComputerSandboxLauncher", _ctor)
 
 
 async def wait_for_completion(

@@ -10,8 +10,7 @@ Core rule — **stdout carries data, stderr carries decoration**:
 * Machine-readable output (IDs, paths, config dumps, the ``version``
   string) goes to stdout via :data:`console`, so ``omnigent … | cat``
   stays clean.
-* Warnings, errors, and the brand banner go to stderr (via
-  :data:`err_console` / the banner helpers) and are TTY-gated, so they
+* Warnings and errors go to stderr via :data:`err_console`, so they
   never corrupt piped stdout.
 
 Color is handled by rich: both consoles honor ``NO_COLOR`` and terminal
@@ -20,24 +19,14 @@ capability automatically, so callers never emit raw ANSI.
 
 from __future__ import annotations
 
-import os
-import sys
-from collections.abc import Mapping
-
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 from rich.theme import Theme
 
-from . import wordmark
-
-#: Brand accent — Otto's magenta-pink, shared with the mascot and banner.
-ACCENT = wordmark.WORDMARK_COLOR
-
-#: Env var that force-disables the brand banner even on a TTY. Mirrors the
-#: ``OMNIGENT_NO_SPINNER`` convention in :mod:`omnigent._runner_startup`.
-NO_BANNER_ENV_VAR = "OMNIGENT_NO_BANNER"
+#: Brand accent — Otto's magenta-pink, shared with the mascot.
+ACCENT = "#F43BA6"
 
 # Named styles, so call sites use semantic tokens ("omni.warning") rather
 # than hard-coded colors. Semantic colors stay conventional; only the
@@ -58,31 +47,8 @@ OMNIGENT_THEME = Theme(
 # lazily by rich, so these follow ``CliRunner`` / ``capsys`` stream swaps.
 #: Console for stdout — data and primary output.
 console = Console(theme=OMNIGENT_THEME, highlight=False)
-#: Console for stderr — status, warnings, errors, and the brand banner.
+#: Console for stderr — status, warnings, and errors.
 err_console = Console(stderr=True, theme=OMNIGENT_THEME, highlight=False)
-
-
-def show_banner(*, isatty: bool | None = None, env: Mapping[str, str] | None = None) -> bool:
-    """
-    Decide whether the brand banner / brandmark should be drawn.
-
-    The banner is decoration, so it only shows on an interactive stderr
-    and can be force-disabled with ``OMNIGENT_NO_BANNER``. Color *within*
-    the banner is a separate concern handled by rich (``NO_COLOR`` simply
-    renders the art in monochrome).
-
-    :param isatty: Override for ``sys.stderr.isatty()`` (tests pass this
-        to exercise both branches without a real PTY).
-    :param env: Environment snapshot; defaults to ``os.environ``.
-    :returns: ``True`` when the banner should be drawn.
-    """
-    if isatty is None:
-        isatty = sys.stderr.isatty()
-    if not isatty:
-        return False
-    effective_env = os.environ if env is None else env
-    raw = str(effective_env.get(NO_BANNER_ENV_VAR, "")).strip().lower()
-    return raw not in {"1", "true", "yes", "on"}
 
 
 # ── Status helpers ────────────────────────────────────────────────────
@@ -192,45 +158,3 @@ def panel(renderable: object, *, title: str | None = None, **kwargs: object) -> 
         border_style="omni.accent",
         **kwargs,  # type: ignore[arg-type]
     )
-
-
-# ── Brand banner ──────────────────────────────────────────────────────
-
-
-def print_landing(
-    *,
-    epilogue: list[tuple[str, str]] | None = None,
-    gradient: bool = True,
-    tagline: str | None = None,
-) -> None:
-    """
-    Print the full Otto + wordmark lockup (the hero banner), TTY-gated.
-
-    Drawn on stderr so it never lands in piped stdout. No-op when the
-    banner is suppressed (non-TTY or ``OMNIGENT_NO_BANNER``).
-
-    :param epilogue: Optional aligned ``(label, value)`` rows beneath the
-        art (e.g. version / next-step).
-    :param gradient: Fade the wordmark magenta→pink (default on for the
-        hero moment); falls back to flat accent on low-color terminals.
-    :param tagline: Optional dim tagline under the art.
-    :returns: None.
-    """
-    if not show_banner():
-        return
-    wordmark.render_lockup(err_console, gradient=gradient, tagline=tagline, epilogue=epilogue)
-
-
-def print_brandmark(subtitle: str | None = None) -> None:
-    """
-    Print the compact one-line brandmark (``✦ omnigent``), TTY-gated.
-
-    For non-interactive commands that want a branded header without the
-    full banner. Drawn on stderr; no-op when the banner is suppressed.
-
-    :param subtitle: Optional dim trailing text, e.g. a version string.
-    :returns: None.
-    """
-    if not show_banner():
-        return
-    wordmark.render_compact(err_console, subtitle=subtitle)

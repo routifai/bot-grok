@@ -18,7 +18,7 @@ from omnigent.host.frames import (
 from omnigent.server.auth import AuthProvider
 from omnigent.server.host_registry import HostConnection, HostRegistry
 from omnigent.server.routes._auth_helpers import require_user
-from omnigent.server.routes._host_launch import host_absent_error, resolve_host_owner
+from omnigent.server.routes._host_launch import host_offline_error, resolve_host_owner
 from omnigent.stores.host_store import HostStore
 
 _MCP_SERVERS_TIMEOUT_S = 15.0
@@ -28,7 +28,7 @@ class McpServerSummary(BaseModel):
     """An MCP server a harness loads on the host, without secrets.
 
     :param name: Server name as configured, e.g. ``"github"``.
-    :param harness: Harness family that loads it: ``claude``, ``codex``, or ``cursor``.
+    :param harness: Harness family that loads it: ``claude`` or ``codex``.
     :param transport: ``stdio`` for a local process, ``http`` for a remote server.
     :param scope: Config scope; always ``user`` today.
     :param plugin: Plugin that bundles the server, e.g. ``"figma"``.
@@ -65,12 +65,12 @@ def create_mcp_servers_router(
         Returns names and non-secret metadata only; the caller must own the host.
         """
         user_id = require_user(request, auth_provider)
-        host = await asyncio.to_thread(
+        await asyncio.to_thread(
             resolve_host_owner, user_id=user_id, host_id=host_id, host_store=host_store
         )
         conn = host_registry.get(host_id)
         if conn is None:
-            raise host_absent_error(host)
+            raise host_offline_error()
         if CAP_MCP_INVENTORY not in conn.hello.capabilities:
             raise HTTPException(status_code=501, detail="update the host to list its MCP servers")
         result = await request_host_mcp_servers(host_registry=host_registry, host_conn=conn)

@@ -60,7 +60,6 @@ RISK: dict[str, str | None] = {
     "suggestion_list": None,
     "vault_fill": None,
     "vault_request_secret": None,
-    "web_fetch": None,
     "web_search": None,
 }
 

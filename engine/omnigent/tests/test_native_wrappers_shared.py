@@ -1,10 +1,9 @@
-"""Unit tests for the CLI-side orchestration shared by the goose/kimi/pi native wrappers.
+"""Unit tests for the CLI-side orchestration of the pi native wrapper.
 
-``omnigent.harnesses.{goose,kimi,pi}_native.main`` are structurally identical: resolve
-the vendor CLI, create or resume an Omnigent session through a daemon runner, wait for
-the runner-owned tmux terminal, and attach. Every test here runs once per wrapper, with
-the few behavioral differences (pi has no cold-resume state and a legacy path env var)
-carried on :class:`_Wrapper`. The server is an ``httpx.MockTransport`` and the daemon
+``omnigent.harnesses.pi_native.main`` resolves the vendor CLI, creates or resumes an
+Omnigent session through a daemon runner, waits for the runner-owned tmux terminal,
+and attaches. Wrapper-specific traits (pi has no cold-resume state and a legacy path
+env var) are carried on :class:`_Wrapper`. The server is an ``httpx.MockTransport`` and the daemon
 helpers are recorded fakes; no process, tmux or network is involved.
 """
 
@@ -29,10 +28,9 @@ import yaml
 
 @dataclass(frozen=True)
 class _Wrapper:
-    key: str  # "goose"
-    label: str  # "Goose"
+    key: str  # "pi"
+    label: str  # "Pi"
     module: ModuleType
-    cold_resume: bool  # tracks a cold-resumed terminal separately from a reattach
     reattached_on_resume: bool  # resuming an existing session reports reattached
     host_scoped_picker: bool  # the resume picker is scoped to this machine's host id
 
@@ -48,18 +46,15 @@ def _wrapper(
     key: str,
     label: str,
     *,
-    cold_resume: bool,
     reattached_on_resume: bool,
     host_scoped_picker: bool = False,
 ) -> _Wrapper:
     module = importlib.import_module(f"omnigent.harnesses.{key}_native.main")
-    return _Wrapper(key, label, module, cold_resume, reattached_on_resume, host_scoped_picker)
+    return _Wrapper(key, label, module, reattached_on_resume, host_scoped_picker)
 
 
 _WRAPPERS = [
-    _wrapper("goose", "Goose", cold_resume=True, reattached_on_resume=False),
-    _wrapper("kimi", "Kimi", cold_resume=True, reattached_on_resume=False),
-    _wrapper("pi", "Pi", cold_resume=False, reattached_on_resume=True, host_scoped_picker=True),
+    _wrapper("pi", "Pi", reattached_on_resume=True, host_scoped_picker=True),
 ]
 
 
@@ -719,11 +714,8 @@ async def test_prepare_relaunches_an_exited_terminal(w: _Wrapper, daemon: _Recor
     prepared = await daemon.prepare(session_id="conv_1")
 
     assert prepared.terminal_id == "terminal_ready"
-    if w.cold_resume:
-        assert prepared.cold_resumed is True and prepared.reattached is False
-    else:
-        assert prepared.reattached is w.reattached_on_resume
-        assert not hasattr(prepared, "cold_resumed")
+    assert prepared.reattached is w.reattached_on_resume
+    assert not hasattr(prepared, "cold_resumed")
     # A resumed session waits for its host and reads the runner binding (fresh=False).
     assert ("launch", "conv_1", "/work", False) in daemon.events
     assert daemon.names().count("host_online") == 1
@@ -859,12 +851,6 @@ def remote(w: _Wrapper, monkeypatch: pytest.MonkeyPatch) -> _RemoteHarness:
     monkeypatch.setattr(
         m, "echo_native_resume_hint", lambda **kw: events.append(("hint", kw["native_command"]))
     )
-    if hasattr(m, "echo_native_cold_resume_hint"):
-        monkeypatch.setattr(
-            m,
-            "echo_native_cold_resume_hint",
-            lambda **kw: events.append(("cold_hint", kw["agent_label"])),
-        )
     return _RemoteHarness(events, prepared)
 
 
@@ -897,24 +883,6 @@ def test_remote_resumed_session_skips_bundle_and_resume_hint(
 
     assert ("prepare", "conv_old", None, "host_1") in remote.events
     assert not any(event[0] == "hint" for event in remote.events)
-
-
-def test_remote_cold_resume_hint_only_for_wrappers_that_track_it(
-    w: _Wrapper, remote: _RemoteHarness, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    prepared = remote.prepared
-    if w.cold_resume:
-        prepared = replace(prepared, cold_resumed=True)
-
-    async def prepare(**kwargs: Any) -> Any:
-        return prepared
-
-    monkeypatch.setattr(w.module, f"_prepare_{w.key}_terminal_via_daemon", prepare)
-
-    _run_remote(w, session_id="conv_old")
-
-    hinted = ("cold_hint", w.label) in remote.events
-    assert hinted is w.cold_resume
 
 
 def test_remote_picker_cancel_returns_without_launching(

@@ -277,7 +277,7 @@ def test_compaction_snapshot_without_messages_is_unchanged() -> None:
 
 
 def test_compaction_snapshot_preserves_text_only_messages() -> None:
-    """Text snapshots (cursor/hermes forwarders) round-trip untouched."""
+    """Text-only snapshots round-trip untouched."""
     event = _compaction_event([{"type": "input_text", "text": "hello there"}])
 
     data = parse_item_data("compaction", {"type": "compaction", **event})

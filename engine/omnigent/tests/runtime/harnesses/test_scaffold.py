@@ -411,7 +411,7 @@ async def test_subclass_can_emit_paired_function_call_items(
     """A subclass can emit function_call + function_call_output directly.
 
     Verifies the §Sub-agent representation pattern: harness-native
-    sub-agents (Claude Code Task, OpenAI Agents handoff) surface
+    sub-agents (e.g. Claude Code Task) surface
     as a paired function_call (status: completed) +
     function_call_output emitted directly via ctx.emit, NOT going
     through ctx.dispatch_tool (which is for server-dispatched
@@ -923,7 +923,7 @@ async def test_scaffold_response_completed_preserves_context_tokens(
 
     Billing totals (``total_tokens`` summed across sub-calls) are
     split from context-fill totals (``context_tokens`` = last
-    sub-call total for multi-call executors like openai-agents).
+    sub-call total for multi-call executors).
     The harness scaffold converts the inner executor's usage dict
     into the wire ``Usage`` model before emitting
     ``response.completed``. If that conversion drops

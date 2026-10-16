@@ -41,22 +41,6 @@ from omnigent.llms.routing import RoutedModel, infer_harness_from_model, parse_m
             RoutedModel(provider="ollama", model="llama3"),
         ),
         (
-            "gemini/gemini-2.5-pro",
-            RoutedModel(provider="gemini", model="gemini-2.5-pro"),
-        ),
-        (
-            "bedrock/anthropic.claude-3-sonnet",
-            RoutedModel(provider="bedrock", model="anthropic.claude-3-sonnet"),
-        ),
-        (
-            "vertex/gemini-2.5-pro",
-            RoutedModel(provider="vertex", model="gemini-2.5-pro"),
-        ),
-        (
-            "databricks/my-endpoint",
-            RoutedModel(provider="databricks", model="my-endpoint"),
-        ),
-        (
             "moonshot/kimi-k2-instruct",
             RoutedModel(provider="moonshot", model="kimi-k2-instruct"),
         ),
@@ -77,9 +61,7 @@ def test_parse_with_provider_prefix(
         # the generic-client routing primitive (omnigent/llms/client.py); its
         # bare→openai default preserves the OpenAI-compatible adapter path
         # for specs that pin a plain model id against a custom base_url
-        # (LiteLLM / OpenRouter / local-gateway style).  Provider inference
-        # for harness decisions (web_search passthrough gating) is scoped to
-        # web_search_native_passthrough_provider, not to this function.
+        # (LiteLLM / OpenRouter / local-gateway style).
         "claude-opus-4-8",
         "gemini-2.5-flash",
         "grok-2",
@@ -111,15 +93,12 @@ def test_unknown_provider_raises() -> None:
         ("databricks-claude-sonnet-4-6", "claude-sdk"),
         # Anthropic-prefixed models also need claude-sdk.
         ("anthropic/claude-sonnet-4-20250514", "claude-sdk"),
-        # Databricks-hosted GPT and plain OpenAI models → openai-agents.
-        ("databricks-gpt-5-4", "openai-agents"),
-        ("openai/gpt-5.4", "openai-agents"),
-        ("gpt-5.4", "openai-agents"),
-        # xAI / Grok models -- provider prefix required.
-        ("xai/grok-4.3", "openai-agents"),
-        ("xai/grok-4", "openai-agents"),
-        # Unknown model — no prefix match — returns empty string so the
-        # downstream validator can surface a "harness required" error.
+        # Every non-Claude model — no prefix match — returns empty string
+        # so the downstream validator can surface a "harness required" error.
+        ("databricks-gpt-5-4", ""),
+        ("openai/gpt-5.4", ""),
+        ("gpt-5.4", ""),
+        ("xai/grok-4", ""),
         ("llama3-groq", ""),
         ("unknown-model-xyz", ""),
     ],

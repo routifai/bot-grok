@@ -4,7 +4,7 @@ Tests for the unified builtin tool registry (POLICIES.md §15.8).
 Phase 2 unification: `BUILTIN_NAMES` and the instantiable
 subset both derive from a single `_BUILTIN_REGISTRY` dict,
 with `None` factories marking framework-owned names
-(``web_fetch``).
+(``list_comments``, ``update_comment``, ...).
 
 These tests lock the name-space invariants so any future
 registry change has to either deliberately touch them or
@@ -43,11 +43,10 @@ def test_builtin_names_excludes_request_approval() -> None:
 
 
 def test_builtin_names_includes_framework_owned_tools() -> None:
-    """web_fetch, list_comments, and update_comment
+    """list_comments, update_comment, and sys_list_models
     are framework-owned (need runtime context, not instantiated
     via the registry). They must still occupy the name-space so
     user specs can't declare tools with these names."""
-    assert "web_fetch" in BUILTIN_NAMES
     assert "list_comments" in BUILTIN_NAMES
     assert "update_comment" in BUILTIN_NAMES
     assert "sys_list_models" in BUILTIN_NAMES
@@ -59,7 +58,6 @@ def test_instantiable_subset_excludes_framework_owned() -> None:
     uses this set to tell the agent author what they can
     declare — listing framework-owned names there would be
     confusing and wrong."""
-    assert "web_fetch" not in INSTANTIABLE_BUILTINS
     assert "list_comments" not in INSTANTIABLE_BUILTINS
     assert "update_comment" not in INSTANTIABLE_BUILTINS
 
@@ -80,7 +78,6 @@ def test_get_builtin_tool_returns_none_for_framework_owned() -> None:
     constructor path. This is the same behavior as an
     unknown name, which is fine because BUILTIN_NAMES is
     the authoritative "is this reserved?" set."""
-    assert get_builtin_tool("web_fetch") is None
     assert get_builtin_tool("list_comments") is None
     assert get_builtin_tool("update_comment") is None
 
@@ -115,18 +112,10 @@ def test_builtin_names_size_matches_registry() -> None:
             {
                 # Instantiable
                 "web_search",
-                "nimble_research",
-                "nimble_extract",
                 "upload_file",
                 "list_files",
                 "download_file",
                 "search_conversations",
-                "export_agent",
-                # Hindsight long-term memory tools (optional `hindsight`
-                # extra; factories probe for hindsight-client).
-                "hindsight_retain",
-                "hindsight_recall",
-                "hindsight_reflect",
                 # Framework-owned (need runtime context, not
                 # user-instantiable). Policy ASKs surface as
                 # MCP-shape elicitations on the SSE stream and
@@ -134,7 +123,6 @@ def test_builtin_names_size_matches_registry() -> None:
                 # The ``sys_terminal_*`` family also lives outside
                 # this registry — registered by ToolManager when
                 # the spec declares ``terminals:``.
-                "web_fetch",
                 # Comment tools: auto-registered by ToolManager so
                 # agents can list/update review comments without
                 # spec opt-in. Session-scoped at invoke time via

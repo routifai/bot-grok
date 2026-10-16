@@ -1,6 +1,6 @@
 """Detect AI credentials already present on the machine.
 
-For the ``omnigent setup --no-internal-beta`` first-run experience, this module
+For the ``omnigent setup`` first-run experience, this module
 discovers credentials a user already has — vendor API keys in the
 environment, a logged-in ``claude`` / ``codex`` CLI, or a local Ollama
 server — so the setup flow can offer them as one-tap choices instead of
@@ -37,7 +37,7 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 from omnigent.onboarding import codex_auth_readiness
-from omnigent.onboarding.provider_config import ANTHROPIC_FAMILY, GEMINI_FAMILY, OPENAI_FAMILY
+from omnigent.onboarding.provider_config import ANTHROPIC_FAMILY, OPENAI_FAMILY
 from omnigent.onboarding.providers import PROVIDER_ENV_VARS
 from omnigent.util.env_credentials import getenv_nonempty_with_omnigent_prefix
 
@@ -81,15 +81,11 @@ CLAUDE_CODE_MANAGED_SETTINGS_PATHS: tuple[Path, ...] = (
 # Providers absent here (or mapped to ``None``) are reported with
 # ``family=None`` — their key is detected but no harness surface is
 # implied. Anthropic serves the ``anthropic`` surface; OpenAI and
-# OpenAI-compatible gateways (OpenRouter) serve the ``openai`` surface;
-# Gemini serves the ``gemini`` surface (the antigravity-sdk harness drives
-# the Gemini SDK directly with a GEMINI_API_KEY), so a detected
-# GEMINI_API_KEY is adopted as a ``gemini``-family ``key`` provider.
+# OpenAI-compatible gateways (OpenRouter) serve the ``openai`` surface.
 _ENV_KEY_FAMILY: dict[str, str | None] = {
     "anthropic": ANTHROPIC_FAMILY,
     "openai": OPENAI_FAMILY,
     "openrouter": OPENAI_FAMILY,
-    "gemini": GEMINI_FAMILY,
 }
 
 
@@ -98,13 +94,13 @@ class DetectedProvider:
     """A credential found on the machine during ambient detection.
 
     :param name: The provider/source name, e.g. ``"anthropic"``,
-        ``"openai"``, ``"openrouter"``, ``"gemini"``, ``"claude"``,
+        ``"openai"``, ``"openrouter"``, ``"claude"``,
         ``"codex"``, or ``"ollama"``.
     :param kind: How the credential authenticates — ``"key"`` (an API key
         in the environment), ``"subscription"`` (a logged-in CLI), or
         ``"local"`` (a self-hosted endpoint).
     :param family: The model family this credential serves
-        (``"anthropic"`` / ``"openai"`` / ``"gemini"``), or ``None`` when the
+        (``"anthropic"`` / ``"openai"``), or ``None`` when the
         credential is detected but maps to no omnigent harness surface.
     :param source: A human-readable descriptor of where the credential
         comes from, e.g. ``"$ANTHROPIC_API_KEY"``, ``"claude CLI login"``,

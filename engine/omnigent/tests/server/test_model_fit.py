@@ -34,8 +34,8 @@ from .test_inference_catalog import _state, _transport, credentials  # noqa: F40
 
 def test_family_comes_from_harness_capabilities() -> None:
     assert harness_family("claude-sdk") == "claude"
-    assert harness_family("codex") == "gpt"
-    assert harness_family("pi") == harness_family("pi-native") == "multi"
+    assert harness_family("claude-native") == "claude"
+    assert harness_family("pi") == "multi"
     assert harness_family("not-a-harness") == "multi"
 
 
@@ -44,7 +44,7 @@ def test_providers_that_cannot_serve_the_family_are_excluded() -> None:
     assert preferred_providers(harness_family("claude-sdk")) == every
     assert preferred_providers(harness_family("pi")) == every
     # A Messages-only upstream cannot serve a harness that speaks Chat Completions.
-    assert preferred_providers(harness_family("codex")) == ("openrouter", "litellm")
+    assert preferred_providers("gpt") == ("openrouter", "litellm")
 
 
 def _config(harness: str, **binding) -> dict:
@@ -59,8 +59,6 @@ def test_parse_rejects_a_model_the_harness_cannot_serve(field) -> None:
     value = ["openai/gpt-5"] if field == "model_allowlist" else "openai/gpt-5"
     with pytest.raises(ValueError, match="cannot use model 'openai/gpt-5'"):
         parse_inference_config(_config("claude-sdk", **{field: value}))
-    with pytest.raises(ValueError, match="claude-6"):
-        parse_inference_config(_config("codex", model_allowlist=["claude-6"]))
 
 
 def test_parse_keeps_claude_on_claude_multi_on_anything_and_unknown_aliases() -> None:
@@ -86,11 +84,18 @@ def test_static_catalog_filters_other_vendors_for_claude_not_for_pi() -> None:
 @pytest.mark.asyncio
 async def test_discovered_catalog_filters_other_vendors() -> None:
     ids = ("claude-sonnet-5-5", "gpt-5-4", "gateway/fast")
-    state = _state(allowed=None, default=None)
+    state = _state(allowed=None, default=None, harness="claude-sdk")
+    state.sandbox_config.default.host_config["providers"]["bifrost"]["anthropic"] = {
+        "base_url": "https://inference.example",
+        "api_key_ref": "env:POD_INFERENCE_KEY",
+    }
     snapshot = await SandboxInferenceService(state, transport=_transport(ids)).prepare(
-        "agent_sandbox", "codex-native", "alice"
+        "computer", "claude-sdk", "alice"
     )
-    assert [m["id"] for m in snapshot["catalog"]["models"]] == ["gpt-5-4", "gateway/fast"]
+    assert [m["id"] for m in snapshot["catalog"]["models"]] == [
+        "claude-sonnet-5-5",
+        "gateway/fast",
+    ]
 
 
 @pytest.mark.parametrize(

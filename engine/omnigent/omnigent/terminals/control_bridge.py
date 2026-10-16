@@ -380,7 +380,7 @@ def _mode_restore_escapes(meta: _PaneMetadata | None) -> tuple[bytes, bytes]:
     happened before this client attached and are never in the ``%output``
     stream. Without replaying them the browser xterm believes no mouse
     tracking is active, so a wheel over a TUI that scrolls via mouse reports
-    (OpenCode, claude, vim) sends nothing at all and the view cannot scroll
+    (claude, vim) sends nothing at all and the view cannot scroll
     until the program happens to re-toggle its modes.
 
     tmux tracks each mode as a pane flag, so the seed can reconstruct them:

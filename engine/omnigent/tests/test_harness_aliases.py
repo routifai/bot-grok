@@ -9,78 +9,42 @@ from omnigent.harness_aliases import (
     is_native_harness,
     native_terminal_name,
 )
-from omnigent.spec._omnigent_compat import OMNIGENT_HARNESSES
 
 
 @pytest.mark.parametrize(
     "alias,canonical",
     [
         ("claude", "claude-sdk"),
-        ("native-pi", "pi-native"),
-        ("native-kiro", "kiro-native"),
-        # Docs / runtime-dispatch spelling of the openai-agents harness;
-        # specs and OMNIGENT_HARNESSES use "openai-agents".
-        ("openai-agents-sdk", "openai-agents"),
+        ("native-claude", "claude-native"),
         # Canonical names pass through unchanged.
-        ("openai-agents", "openai-agents"),
+        ("claude-sdk", "claude-sdk"),
+        ("claude-native", "claude-native"),
         ("pi", "pi"),
-        # Canonical cursor id passes through unchanged (no alias).
-        ("cursor", "cursor"),
-        # Antigravity SDK harness: user-facing spellings → canonical id.
-        ("agy", "antigravity"),
-        ("google-antigravity", "antigravity"),
-        ("antigravity", "antigravity"),
-        # Antigravity native harness aliases.
-        ("agy-native", "antigravity-native"),
-        ("native-agy", "antigravity-native"),
-        ("native-antigravity", "antigravity-native"),
         # Unknown names return unchanged so callers keep their own errors.
         ("bogus", "bogus"),
         (None, None),
     ],
 )
 def test_canonicalize_harness(alias: str | None, canonical: str | None) -> None:
-    """Alias spellings map to canonical ids; everything else passes through.
-
-    A missing ``openai-agents-sdk`` mapping breaks the documented
-    ``omnigent run ... --harness openai-agents-sdk`` invocation at
-    ``_validate_harness``.
-    """
+    """Alias spellings map to canonical ids; everything else passes through."""
     assert canonicalize_harness(alias) == canonical
 
 
 @pytest.mark.parametrize(
     "harness,expected",
     [
-        # Canonical native spellings and their reversed forms.
+        # The canonical native spelling and its reversed form.
         ("claude-native", True),
-        ("codex-native", True),
         ("native-claude", True),
-        ("native-codex", True),
-        ("pi-native", True),
-        ("native-pi", True),
-        ("kiro-native", True),
-        ("native-kiro", True),
-        ("antigravity-native", True),
-        ("native-antigravity", True),
-        ("agy-native", True),
-        ("native-agy", True),
         # SDK harnesses are NOT native — they replay the Omnigent
         # transcript and don't own an on-disk runtime transcript. A
         # regression that classified these as native would wrongly route a
         # fork into the native-rebuild path.
         ("claude-sdk", False),
         ("claude_sdk", False),
-        ("openai-agents", False),
-        ("agents_sdk", False),
-        ("codex", False),
-        ("kiro", False),
-        ("antigravity", False),
-        ("agy", False),
+        ("pi", False),
         # The "claude" shorthand canonicalizes to claude-sdk (not native).
         ("claude", False),
-        # cursor is a headless ACP harness, not a native CLI bridge.
-        ("cursor", False),
         ("some-unknown-harness", False),
         (None, False),
     ],
@@ -95,37 +59,15 @@ def test_is_native_harness(harness: str | None, expected: bool) -> None:
     assert is_native_harness(harness) is expected
 
 
-def test_kiro_native_is_valid_omnigent_harness_but_plain_kiro_is_not() -> None:
-    """Kiro's native identity is canonical; plain ``kiro`` is not a generic harness."""
-    assert "kiro-native" in OMNIGENT_HARNESSES
-    assert "kiro" not in OMNIGENT_HARNESSES
-
-
 @pytest.mark.parametrize(
     ("harness", "expected"),
     [
         ("claude-native", "claude"),
         ("native-claude", "claude"),  # reversed alias
-        ("codex-native", "codex"),
-        ("cursor-native", "cursor"),
-        ("goose-native", "goose"),
-        ("hermes-native", "hermes"),
-        ("kiro-native", "kiro"),
-        ("qwen-native", "qwen"),
-        ("kimi-native", "kimi"),
-        ("pi-native", "pi"),
-        ("antigravity-native", "antigravity"),
-        ("native-antigravity", "antigravity"),
-        ("agy-native", "antigravity"),
-        ("native-agy", "antigravity"),
-        ("opencode-native", "opencode"),
-        ("opencode", "opencode"),  # alias folds to opencode-native
         # Non-native harnesses (and the SDK shorthands) have no native pane.
         ("claude-sdk", None),
         ("claude", None),
-        ("codex", None),
-        ("cursor", None),
-        ("agents_sdk", None),
+        ("pi", None),
         ("some-unknown-harness", None),
         (None, None),
     ],

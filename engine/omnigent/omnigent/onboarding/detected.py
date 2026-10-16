@@ -32,7 +32,6 @@ from omnigent.onboarding.configure_models import (
 )
 from omnigent.onboarding.provider_config import (
     ANTHROPIC_FAMILY,
-    GEMINI_FAMILY,
     LOCAL_KIND,
     OPENAI_FAMILY,
     SUBSCRIPTION_KIND,
@@ -43,11 +42,8 @@ from omnigent.onboarding.provider_config import (
 )
 from omnigent.util.env_credentials import getenv_nonempty_with_omnigent_prefix
 
-# The families auto-default resolution walks, in a stable order. ``gemini``
-# is included so a detected-only GEMINI_API_KEY (the antigravity-sdk harness's
-# credential) auto-becomes the gemini-family default in the read-time merge,
-# matching how a detected anthropic / openai key auto-defaults.
-_FAMILIES = (ANTHROPIC_FAMILY, OPENAI_FAMILY, GEMINI_FAMILY)
+# The families auto-default resolution walks, in a stable order.
+_FAMILIES = (ANTHROPIC_FAMILY, OPENAI_FAMILY)
 
 # Top-level config key listing detection names the user has dismissed by
 # removing the adopted entry. A detection whose backing credential cannot be
@@ -224,12 +220,9 @@ def synthesize_detected_entries(
         order.
     :returns: Raw provider entries keyed by the detection name, e.g.
         ``{"anthropic": {"kind": "key", ...}, "codex": {"kind":
-        "subscription", "cli": "codex"}}``. A detected GEMINI_API_KEY is
-        adopted as a ``gemini``-family ``key`` provider (the antigravity-sdk
-        surface) — see :data:`omnigent.onboarding.ambient._ENV_KEY_FAMILY`.
-        Only detections that map to no omnigent family at all (a ``family``-less
-        :class:`DetectedProvider`) are skipped. The mapping preserves detection
-        order.
+        "subscription", "cli": "codex"}}``. Only detections that map to no
+        omnigent family at all (a ``family``-less :class:`DetectedProvider`)
+        are skipped. The mapping preserves detection order.
     """
     entries: dict[str, dict[str, object]] = {}
     for det in detected:

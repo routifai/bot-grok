@@ -280,13 +280,12 @@ def test_runner_env_preserves_claude_tool_search_flags() -> None:
     assert {name: env.get(name) for name in _CLAUDE_TOOL_SEARCH_ENV} == _CLAUDE_TOOL_SEARCH_ENV
 
 
-# The gcloud ADC auth selectors the Antigravity CLI (agy) reads. Non-secret
+# The gcloud Application Default Credentials selectors. Non-secret
 # selectors/paths (the ADC file *contains* the credential; the vars just point
 # at it), so they ride the allowlists like KUBECONFIG rather than the
 # credential passthrough. The CLOUDSDK_ entries are exact names on purpose:
 # gcloud's CLOUDSDK_AUTH_* vars carry live tokens and must stay stripped.
 _GCLOUD_ADC_ENV: Final = {
-    "AGY_ADC_AUTH": "true",
     "GOOGLE_APPLICATION_CREDENTIALS": "/home/alice/.config/gcloud/adc.json",
     "GOOGLE_CLOUD_PROJECT": "acme-dev",
     "GOOGLE_CLOUD_QUOTA_PROJECT": "acme-quota",
@@ -302,9 +301,8 @@ def test_host_daemon_env_preserves_gcloud_adc_selectors(
 ) -> None:
     """The gcloud ADC selectors survive the CLI→daemon strip in both modes.
 
-    Without them the detached daemon loses the user's gcloud login, so every
-    antigravity-native pane it (transitively) spawns blocks at agy's
-    interactive "Select login method" menu.
+    Without them the detached daemon loses the user's gcloud login for
+    tooling inside the agent's shell.
     """
     # Given
     for name, value in _GCLOUD_ADC_ENV.items():
@@ -320,8 +318,8 @@ def test_host_daemon_env_preserves_gcloud_adc_selectors(
 def test_runner_env_preserves_gcloud_adc_selectors() -> None:
     """The gcloud ADC selectors survive the daemon→runner strip.
 
-    The runner env is what the antigravity-native pane ultimately inherits,
-    so this hop is where a drop turns into agy's login menu.
+    The runner env is what the agent's shell ultimately inherits, so this hop
+    is where a drop loses the user's gcloud login.
     """
     # Given
     base_env = {"PATH": "/usr/bin", **_GCLOUD_ADC_ENV}

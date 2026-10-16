@@ -385,7 +385,7 @@ def request_user_text(data: object) -> str:
     """Extract the user's typed text from a REQUEST-phase ``event["data"]``.
 
     Request ``data`` is a dict ``{"user_content", "attachments"}`` from the
-    server input gate. Native / opencode hooks may still pass the prompt text
+    server input gate. Native hooks may still pass the prompt text
     directly as a bare string, and legacy multimodal input as a content-block
     list — normalize all three to the typed text so request-phase policies read
     it uniformly.

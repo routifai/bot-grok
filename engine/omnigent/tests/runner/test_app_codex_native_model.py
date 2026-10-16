@@ -6,8 +6,7 @@ the native Codex TUI launches with. The canonical ``executor.model`` field
 wins — the same field every in-process harness consumes — with a fallback
 to ``executor.config["model"]`` for bundle specs that pin the model inside
 the harness config block. Gateway-routed ``databricks-*`` ids are valid
-Codex models on the Databricks path, so they pass through (unlike
-cursor-native).
+Codex models on the Databricks path, so they pass through.
 """
 
 from __future__ import annotations

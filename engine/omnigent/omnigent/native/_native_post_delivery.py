@@ -1,7 +1,6 @@
-"""Delivery-ambiguity classification and shared retry loop for native-forwarder
-event POSTs.
+"""Delivery-ambiguity classification for native-forwarder event POSTs.
 
-The claude-native, codex-native, and antigravity-native forwarders mirror
+The claude-native and codex-native forwarders mirror
 transcript items into AP as ``external_conversation_item`` POSTs. Producers
 that include a stable ``source_id`` receive store-level idempotency; legacy
 payloads without one still use random item ids, so an ambiguous retry can
@@ -9,9 +8,6 @@ append a duplicate bubble visible only in the web UI.
 
 :func:`post_may_have_been_delivered` is the shared classifier all forwarders
 use to decide whether a failed POST is safe to retry.
-
-:func:`post_session_event_with_retry` is the shared retry loop extracted from
-the codex/antigravity forwarders so a single implementation is maintained.
 """
 
 from __future__ import annotations
@@ -25,13 +21,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
-
-from omnigent.native._native_forwarder_health import (
-    note_post_success as note_native_post_success,
-)
-from omnigent.native._native_forwarder_health import (
-    record_post_failure as record_native_post_failure,
-)
 
 _logger = logging.getLogger(__name__)
 
@@ -182,8 +171,8 @@ async def post_external_session_status(
     """Post one ``external_session_status`` event to the Sessions API.
 
     The turn-end edge native forwarders use to drive session status and, for
-    sub-agents, the parent-inbox wake. Shared by the claude-native and
-    cursor-native forwarders so the event shape stays in one place.
+    sub-agents, the parent-inbox wake. Kept here so the event shape stays in
+    one place.
 
     :param client: Omnigent HTTP client.
     :param session_id: Omnigent session/conversation id.
@@ -235,95 +224,6 @@ async def post_external_session_status(
         json={"type": "external_session_status", "data": data},
     )
     resp.raise_for_status()
-
-
-async def post_session_event_with_retry(
-    *,
-    client: httpx.AsyncClient,
-    url: str,
-    payload: dict[str, object],
-    event_type: str,
-    max_attempts: int,
-    retry_status_codes: frozenset[int],
-    sleep: Callable[[float], Coroutine[None, None, None]],
-    retry_delay: Callable[[int], float],
-    logger_name: str,
-) -> httpx.Response | None:
-    """
-    POST a session event payload with bounded transient retries.
-
-    Shared retry loop used by the antigravity (and optionally other)
-    native forwarders. Conversation items persist with a random primary
-    key and no server-side dedup, so an ambiguous transport failure
-    (request sent, response lost) is NOT retried — a re-post would
-    duplicate the item. Other event types are idempotent/transient and
-    are retried.
-
-    :param client: HTTP client for Omnigent event posts.
-    :param url: Full request URL, e.g. ``"/v1/sessions/conv_x/events"``.
-    :param payload: JSON payload to POST, e.g. ``{"type": ..., "data": ...}``.
-    :param event_type: Session event type, e.g.
-        ``"external_conversation_item"``. Used in log messages and to decide
-        whether an ambiguous failure is safe to retry.
-    :param max_attempts: Maximum POST attempts, e.g. ``3``.
-    :param retry_status_codes: HTTP status codes to retry, e.g.
-        ``frozenset({429, 500, 503})``.
-    :param sleep: Async sleep coroutine (stubbable in tests).
-    :param retry_delay: Callable ``attempt -> float`` returning the delay
-        before the next attempt (one-based failed attempt number).
-    :param logger_name: Logger name used for warning messages, e.g.
-        ``"omnigent.harnesses.antigravity_native.reader"``.
-    :returns: Final HTTP response, or ``None`` when all attempts raised
-        transport errors (or after an ambiguous conversation-item failure).
-    """
-    log = logging.getLogger(logger_name)
-    for attempt in range(1, max_attempts + 1):
-        try:
-            response = await client.post(url, json=payload)
-        except httpx.HTTPError as exc:
-            # Conversation items persist with a random primary key and no
-            # server-side dedup, so an ambiguous failure (request sent,
-            # response lost — the server may have committed it) must not
-            # be retried: a re-post would duplicate the item.
-            # Other event types are idempotent / transient, so retrying
-            # them on the same errors is safe and preserves delivery.
-            if event_type == "external_conversation_item" and post_may_have_been_delivered(exc):
-                log.warning(
-                    "skipping session event after an ambiguous transport "
-                    "failure (may already be committed); not retrying to avoid "
-                    "a duplicate: type=%s error=%r",
-                    event_type,
-                    exc,
-                )
-                return None
-            if attempt >= max_attempts:
-                log.warning(
-                    "failed to post session event after retries: type=%s attempts=%s error=%r",
-                    event_type,
-                    max_attempts,
-                    exc,
-                )
-                # Surface this connectivity failure to the harness idle-turn
-                # watchdog so a stall caused by unreachable-server posts is
-                # reported with its real cause, not a generic "wedged LLM"
-                # reason.
-                record_native_post_failure(event_type, exc)
-                return None
-            await sleep(retry_delay(attempt))
-            continue
-        # Reaching here means the POST got an HTTP response (no transport
-        # error), proving the server is reachable — clear any stale
-        # connectivity-failure record so the watchdog can't later misattribute
-        # it to an unrelated stall.
-        note_native_post_success()
-        if response.status_code < 400:
-            return response
-        if response.status_code not in retry_status_codes:
-            return response
-        if attempt >= max_attempts:
-            return response
-        await sleep(retry_delay(attempt))
-    return None
 
 
 @dataclass(frozen=True)

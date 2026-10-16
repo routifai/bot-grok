@@ -55,19 +55,19 @@ def test_extends_the_hosts_sandbox(monkeypatch: pytest.MonkeyPatch) -> None:
     _wire(
         monkeypatch,
         launcher=launcher,
-        host=SimpleNamespace(sandbox_id="sbx1", sandbox_provider="modal"),
+        host=SimpleNamespace(sandbox_id="sbx1", sandbox_provider="computer"),
     )
     managed_host_keepalive._keep_alive_for_runner("r1")
     assert launcher.calls == ["sbx1"]
 
 
 def test_provider_without_keep_alive_is_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
-    # kubernetes today: the base class raises, and that must not propagate.
+    # A provider without keep-alive: the base class raises, and that must not propagate.
     launcher = _Launcher(raises=SandboxCapabilityError("nope"))
     _wire(
         monkeypatch,
         launcher=launcher,
-        host=SimpleNamespace(sandbox_id="sbx1", sandbox_provider="kubernetes"),
+        host=SimpleNamespace(sandbox_id="sbx1", sandbox_provider="computer"),
     )
     managed_host_keepalive._keep_alive_for_runner("r1")
     assert launcher.calls == ["sbx1"]  # attempted, error swallowed
@@ -180,9 +180,9 @@ def test_a_host_on_an_unoffered_provider_is_skipped(
         list_conversations_by_runner_id=lambda _rid: [SimpleNamespace(host_id="host1")]
     )
     hosts = SimpleNamespace(
-        get_host=lambda _hid: SimpleNamespace(sandbox_id="sbx1", sandbox_provider="modal")
+        get_host=lambda _hid: SimpleNamespace(sandbox_id="sbx1", sandbox_provider="computer")
     )
-    # Deployment no longer offers 'modal'. A default-returning resolver would
+    # Deployment no longer offers the host's provider. A default-returning resolver would
     # hand back some other provider's config; for_provider says None.
     deployment = SimpleNamespace(for_provider=lambda provider: None)
     monkeypatch.setattr(managed_host_keepalive, "_conversation_store", conversations)
@@ -228,32 +228,26 @@ def test_inflight_is_released_even_when_the_provider_raises(
     _wire(
         monkeypatch,
         launcher=launcher,
-        host=SimpleNamespace(sandbox_id="sbx1", sandbox_provider="modal"),
+        host=SimpleNamespace(sandbox_id="sbx1", sandbox_provider="computer"),
     )
     monkeypatch.setattr(managed_host_keepalive, "_inflight", {"r1"})
     managed_host_keepalive._keep_alive_for_runner("r1")
     assert "r1" not in managed_host_keepalive._inflight
 
 
-def test_keepalive_interval_is_provider_scoped(monkeypatch: pytest.MonkeyPatch) -> None:
-    """
-    agent_sandbox refreshes fast (its window is short); other providers keep the
-    cheap default so lowering agent_sandbox's cadence does not multiply their
-    write load. An explicit env override wins for both.
-    """
+def test_keepalive_interval_default_and_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The cheap 600s default applies unless the env override is set; a huge override clamps."""
     from omnigent.onboarding.sandboxes.base import resolve_managed_keepalive_interval_s
 
     monkeypatch.delenv("OMNIGENT_MANAGED_KEEPALIVE_INTERVAL_S", raising=False)
-    assert resolve_managed_keepalive_interval_s("agent_sandbox") == 60.0
-    assert resolve_managed_keepalive_interval_s("modal") == 600.0
     assert resolve_managed_keepalive_interval_s() == 600.0
+    assert managed_host_keepalive.keepalive_interval_s() == 600.0
     monkeypatch.setenv("OMNIGENT_MANAGED_KEEPALIVE_INTERVAL_S", "15")
-    assert resolve_managed_keepalive_interval_s("agent_sandbox") == 15.0
-    assert resolve_managed_keepalive_interval_s("modal") == 15.0
+    assert resolve_managed_keepalive_interval_s() == 15.0
     # A finite-but-huge override is clamped to the max, not passed through where
     # it would overflow the window-floor math (ceil(2 * interval)).
     monkeypatch.setenv("OMNIGENT_MANAGED_KEEPALIVE_INTERVAL_S", "1e308")
-    assert resolve_managed_keepalive_interval_s("agent_sandbox") == 3600.0
+    assert resolve_managed_keepalive_interval_s() == 3600.0
 
 
 def test_successful_keepalive_logs_at_info_on_the_server_logger(
@@ -267,7 +261,7 @@ def test_successful_keepalive_logs_at_info_on_the_server_logger(
     _wire(
         monkeypatch,
         launcher=launcher,
-        host=SimpleNamespace(sandbox_id="sbx1", sandbox_provider="agent_sandbox"),
+        host=SimpleNamespace(sandbox_id="sbx1", sandbox_provider="computer"),
     )
     with caplog.at_level(logging.INFO, logger="omnigent.server.managed_host_keepalive"):
         managed_host_keepalive._keep_alive_for_runner("r1")
@@ -286,30 +280,9 @@ def test_soft_failed_keepalive_suppresses_the_success_info(
     _wire(
         monkeypatch,
         launcher=launcher,
-        host=SimpleNamespace(sandbox_id="sbx1", sandbox_provider="agent_sandbox"),
+        host=SimpleNamespace(sandbox_id="sbx1", sandbox_provider="computer"),
     )
     with caplog.at_level(logging.INFO, logger="omnigent.server.managed_host_keepalive"):
         managed_host_keepalive._keep_alive_for_runner("r1")
     assert launcher.calls == ["sbx1"]  # attempted
     assert not any("kept managed sandbox" in r.getMessage() for r in caplog.records)
-
-
-def test_keepalive_interval_caches_the_runners_provider(monkeypatch: pytest.MonkeyPatch) -> None:
-    """
-    Before the runner's provider is known, the loop/throttle use the fast
-    agent_sandbox cadence (never under-refresh a short window); once
-    _keep_alive_for_runner resolves the provider, the runner's own cadence is
-    cached and returned.
-    """
-    monkeypatch.delenv("OMNIGENT_MANAGED_KEEPALIVE_INTERVAL_S", raising=False)
-    monkeypatch.setattr(managed_host_keepalive, "_runner_interval_s", {})
-    # unknown runner -> fast agent_sandbox default, so a short window is safe
-    assert managed_host_keepalive.keepalive_interval_s("r1") == 60.0
-    _wire(
-        monkeypatch,
-        launcher=_Launcher(),
-        host=SimpleNamespace(sandbox_id="sbx1", sandbox_provider="modal"),
-    )
-    managed_host_keepalive._keep_alive_for_runner("r1")
-    # now cached at modal's slower cadence
-    assert managed_host_keepalive.keepalive_interval_s("r1") == 600.0

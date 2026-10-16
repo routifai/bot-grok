@@ -229,29 +229,19 @@ def test_nearest_pi_thinking_level_clamps_to_reported_levels() -> None:
     assert nearest_pi_thinking_level("bogus", ["low"]) is None
 
 
-def test_efforts_for_harness_distinguishes_unsupported_from_unknown() -> None:
-    """The three outcomes are distinct, and the last two must not be conflated.
+def test_efforts_for_harness_distinguishes_known_from_unknown() -> None:
+    """A registered harness resolves to its vocabulary; an unregistered one to ``None``.
 
-    A harness with no effort plumbing returns an empty set (callers should
-    refuse or filter), while a harness absent from the capability registry
-    returns ``None`` (callers cannot classify it, so a filter must pass the
-    value through rather than drop what a plugin harness might accept).
+    A harness absent from the capability registry returns ``None`` (callers
+    cannot classify it, so a filter must pass the value through rather than
+    drop what a plugin harness might accept).
     """
-    from omnigent.util.reasoning_effort import GEMINI_EFFORTS, efforts_for_harness
+    from omnigent.util.reasoning_effort import efforts_for_harness
 
     assert efforts_for_harness("claude-sdk") == ANTHROPIC_EFFORTS
     assert efforts_for_harness("claude-native") == ANTHROPIC_EFFORTS
-    assert efforts_for_harness("antigravity-native") == GEMINI_EFFORTS
     # pi declares its own family, so it resolves to a real vocabulary.
     assert efforts_for_harness("pi") == PI_EFFORTS
-    assert efforts_for_harness("pi-native") == PI_EFFORTS
-    # codex-native drives the real codex process, which takes Sol's max/ultra;
-    # sharing the SDK codex family (capped at xhigh) dropped a session created
-    # at ultra to Codex's default before its first turn.
-    assert efforts_for_harness("codex-native") == CODEX_NATIVE_EFFORTS
-    assert efforts_for_harness("codex") == CODEX_EFFORTS
-    # Known, but declared EffortFamily.NONE.
-    assert efforts_for_harness("opencode-native") == frozenset()
     # Not in the registry at all — unclassifiable, not unsupported.
     assert efforts_for_harness("some-plugin-harness") is None
     assert efforts_for_harness(None) is None

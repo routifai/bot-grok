@@ -547,114 +547,12 @@ def test_ensure_secure_dir_succeeds_without_getuid(
     assert bridge_dir.is_dir()
 
 
-def test_trusted_parent_accepts_qwen_native_bridge_dir(
+def test_trusted_parent_rejects_path_outside_all_roots_and_names_pi(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """
-    The relay's bridge-root allowlist accepts qwen-native bridge dirs.
-
-    The comment relay (``start_tool_relay`` → ``_ensure_secure_dir`` →
-    ``_trusted_parent_for_bridge_dir``) writes its JSON file under the
-    harness's bridge dir, validating it lives below a known bridge root.
-    qwen-native reuses this relay but keeps files under its own root
-    (``$TMPDIR/omnigent-<uid>/qwen-native``); if that root is missing from the
-    allowlist, every qwen-native session raises ``not under an allowed bridge
-    root`` and the relay never starts (observed in a live runner log). This
-    pins the qwen-native branch so the regression can't return.
-    """
-    from omnigent.harnesses.qwen_native import bridge as qwen_native_bridge
-
-    # Distinct claude root so the qwen target can't match the claude branch
-    # first (the autouse fixture points the claude root at ``tmp_path``).
-    monkeypatch.setattr(
-        "omnigent.harnesses.claude_native.bridge._BRIDGE_ROOT", tmp_path / "claude-native"
-    )
-    monkeypatch.setattr("omnigent.harnesses.claude_native.bridge._TRUSTED_PARENT", tmp_path)
-    # qwen root mirrors production shape: <uid-scoped temp>/qwen-native.
-    qwen_root = tmp_path / "omnigent-test" / "qwen-native"
-    monkeypatch.setattr(qwen_native_bridge, "_BRIDGE_ROOT", qwen_root)
-
-    target = claude_native_bridge._absolute_syntactic_path(qwen_root / "abc123")
-    trusted = claude_native_bridge._trusted_parent_for_bridge_dir(target)
-
-    # Same anchor as cursor-native: the uid-scoped temp dir's parent.
-    assert trusted == claude_native_bridge._absolute_syntactic_path(qwen_root.parent.parent)
-
-
-def test_trusted_parent_accepts_kiro_native_bridge_dir(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    The relay's bridge-root allowlist accepts kiro-native bridge dirs.
-
-    kiro-native reuses the shared ``serve-mcp`` / relay infrastructure but keeps
-    files under its own root (``$TMPDIR/omnigent-<uid>/kiro-native``). Without the
-    kiro branch, ``start_tool_relay`` -> ``_ensure_secure_dir`` ->
-    ``_trusted_parent_for_bridge_dir`` raises ``not under an allowed bridge root``
-    and the relay (and serve-mcp's own ``server.json`` write) never start. This
-    pins the kiro-native branch.
-    """
-    from omnigent.harnesses.kiro_native import bridge as kiro_native_bridge
-
-    # Distinct claude root so the kiro target can't match the claude branch
-    # first (the autouse fixture points the claude root at ``tmp_path``).
-    monkeypatch.setattr(
-        "omnigent.harnesses.claude_native.bridge._BRIDGE_ROOT", tmp_path / "claude-native"
-    )
-    monkeypatch.setattr("omnigent.harnesses.claude_native.bridge._TRUSTED_PARENT", tmp_path)
-    # kiro root mirrors production shape: <uid-scoped temp>/kiro-native.
-    kiro_root = tmp_path / "omnigent-test" / "kiro-native"
-    monkeypatch.setattr(kiro_native_bridge, "_BRIDGE_ROOT", kiro_root)
-
-    target = claude_native_bridge._absolute_syntactic_path(kiro_root / "abc123")
-    trusted = claude_native_bridge._trusted_parent_for_bridge_dir(target)
-
-    # Same anchor as cursor-native: the uid-scoped temp dir's parent.
-    assert trusted == claude_native_bridge._absolute_syntactic_path(kiro_root.parent.parent)
-
-
-def test_trusted_parent_accepts_devin_native_bridge_dir(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    The relay's bridge-root allowlist accepts devin-native bridge dirs.
-
-    devin-native keeps its bridge files under its own uid-scoped temp root
-    (``$TMPDIR/omnigent-<uid>/devin-native``), the same shape as cursor-native.
-    Without the devin branch, the comment/tool relay's
-    ``start_tool_relay`` -> ``_ensure_secure_dir`` ->
-    ``_trusted_parent_for_bridge_dir`` raises ``not under an allowed bridge
-    root`` and the relay never starts for devin sessions. This pins the
-    devin-native branch.
-    """
-    from omnigent.harnesses.devin_native import bridge as devin_native_bridge
-
-    # Distinct claude root so the devin target can't match the claude branch
-    # first (the autouse fixture points the claude root at ``tmp_path``).
-    monkeypatch.setattr(
-        "omnigent.harnesses.claude_native.bridge._BRIDGE_ROOT", tmp_path / "claude-native"
-    )
-    monkeypatch.setattr("omnigent.harnesses.claude_native.bridge._TRUSTED_PARENT", tmp_path)
-    # devin root mirrors production shape: <uid-scoped temp>/devin-native.
-    devin_root = tmp_path / "omnigent-test" / "devin-native"
-    monkeypatch.setattr(devin_native_bridge, "_BRIDGE_ROOT", devin_root)
-
-    target = claude_native_bridge._absolute_syntactic_path(devin_root / "abc123")
-    trusted = claude_native_bridge._trusted_parent_for_bridge_dir(target)
-
-    # Same anchor as cursor-native: the uid-scoped temp dir's parent.
-    assert trusted == claude_native_bridge._absolute_syntactic_path(devin_root.parent.parent)
-
-
-def test_trusted_parent_rejects_path_outside_all_roots_and_names_qwen(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A path under no known root is refused, and the error names the qwen root."""
-    from omnigent.harnesses.qwen_native import bridge as qwen_native_bridge
+    """A path under no known root is refused, and the error names the pi root."""
+    from omnigent.harnesses.pi_native import bridge as pi_native_bridge
 
     # Distinct claude root so ``outside`` below isn't swept under it (the autouse
     # fixture points the claude root at ``tmp_path``).
@@ -662,13 +560,13 @@ def test_trusted_parent_rejects_path_outside_all_roots_and_names_qwen(
         "omnigent.harnesses.claude_native.bridge._BRIDGE_ROOT", tmp_path / "claude-native"
     )
     monkeypatch.setattr("omnigent.harnesses.claude_native.bridge._TRUSTED_PARENT", tmp_path)
-    qwen_root = tmp_path / "omnigent-test" / "qwen-native"
-    monkeypatch.setattr(qwen_native_bridge, "_BRIDGE_ROOT", qwen_root)
+    pi_root = tmp_path / ".omnigent" / "pi-native"
+    monkeypatch.setattr(pi_native_bridge, "_BRIDGE_ROOT", pi_root)
 
     outside = claude_native_bridge._absolute_syntactic_path(tmp_path / "somewhere-else" / "x")
     with pytest.raises(RuntimeError, match="not under an allowed bridge root") as exc:
         claude_native_bridge._trusted_parent_for_bridge_dir(outside)
-    assert "qwen-native" in str(exc.value)
+    assert "pi-native" in str(exc.value)
 
 
 def test_record_hook_event_updates_transcript_state(tmp_path: Path) -> None:
@@ -3248,7 +3146,6 @@ def test_generated_claude_subprocesses_pin_runner_tmpdir(
         bridge_dir=bridge_dir,
         python_executable="/venv/bin/python",
         ap_server_url="http://127.0.0.1:8787",
-        subagent_router_dir=bridge_dir,
         turn_routing=True,
     )
     mcp_config = json.loads(args[args.index("--mcp-config") + 1])
@@ -3263,7 +3160,7 @@ def test_generated_claude_subprocesses_pin_runner_tmpdir(
         for hook in entry["hooks"]
         if "/venv/bin/python" in hook["command"]
     ]
-    assert len(python_commands) == 18
+    assert len(python_commands) == 17
     expected_tmpdir = f"env TMPDIR={shlex.quote(str(runner_tmpdir))}"
     assert all(expected_tmpdir in command for command in python_commands)
 
@@ -6575,126 +6472,6 @@ async def test_start_tool_relay_accepts_codex_native_bridge_root(
         )
         relay_info = json.loads(relay_file.read_text(encoding="utf-8"))
         assert relay_info["tools"][0]["name"] == "list_comments"
-    finally:
-        if relay is not None:
-            relay.close()
-
-
-@pytest.mark.asyncio
-async def test_start_tool_relay_accepts_antigravity_native_bridge_root(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    Relay startup accepts Antigravity-native's persistent bridge root (#1194).
-
-    Antigravity-native reuses the Claude MCP relay but stores bridge files in
-    ``~/.omnigent/antigravity-native`` (the same ``$HOME/.omnigent/<harness>``
-    shape codex uses). A regression in :func:`_trusted_parent_for_bridge_dir`
-    would reject the bridge dir, the relay would fail to write
-    ``tool_relay.json``, and the wrapped agy would get no ``sys_*`` tools.
-
-    :param tmp_path: Pytest temp directory used as an isolated user
-        state parent.
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :returns: None.
-    """
-    from omnigent.harnesses.antigravity_native import bridge as antigravity_native_bridge
-
-    antigravity_root = tmp_path / ".omnigent" / "antigravity-native"
-    monkeypatch.setattr(
-        "omnigent.harnesses.antigravity_native.bridge._BRIDGE_ROOT", antigravity_root
-    )
-    bridge_dir = antigravity_native_bridge.prepare_bridge_dir("conv_agy")
-    relay_file = bridge_dir / claude_native_bridge._TOOL_RELAY_FILE
-
-    async def _executor(name: str, arguments: dict[str, object]) -> dict[str, object]:
-        """
-        Return an empty result for the unused relay tool callback.
-
-        :param name: Tool name, e.g. ``"sys_session_list"``.
-        :param arguments: Tool arguments.
-        :returns: Empty tool result.
-        """
-        del name, arguments
-        return {}
-
-    relay = None
-    try:
-        relay = start_tool_relay(
-            bridge_dir=bridge_dir,
-            tools=[
-                {
-                    "name": "sys_session_create",
-                    "description": "Spawn an Omnigent sub-agent session.",
-                    "parameters": {"type": "object", "properties": {}},
-                }
-            ],
-            tool_executor=_executor,
-            loop=asyncio.get_running_loop(),
-        )
-
-        assert relay_file.exists(), (
-            "Antigravity-native relay did not write tool_relay.json under the "
-            "persistent bridge root"
-        )
-        relay_info = json.loads(relay_file.read_text(encoding="utf-8"))
-        assert relay_info["tools"][0]["name"] == "sys_session_create"
-    finally:
-        if relay is not None:
-            relay.close()
-
-
-@pytest.mark.asyncio
-async def test_start_tool_relay_accepts_opencode_native_bridge_root(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    Relay startup accepts OpenCode-native's persistent bridge root.
-
-    opencode-native reuses the Claude MCP relay but stores bridge files in
-    ``~/.omnigent/opencode-native`` (the same ``$HOME/.omnigent/<harness>``
-    shape codex/antigravity use). The missing allowlist entry made ``serve-mcp``
-    crash on startup (``_ensure_secure_dir`` → "not under an allowed bridge
-    root"), which opencode surfaced as ``MCP error -32000: Connection closed``
-    and the wrapped opencode got no ``sys_*`` tools. Guards the regression.
-
-    :param tmp_path: Pytest temp directory used as an isolated user state parent.
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :returns: None.
-    """
-    from omnigent.harnesses.opencode_native import bridge as opencode_native_bridge
-
-    opencode_root = tmp_path / ".omnigent" / "opencode-native"
-    monkeypatch.setattr("omnigent.harnesses.opencode_native.bridge._BRIDGE_ROOT", opencode_root)
-    bridge_dir = opencode_native_bridge.prepare_bridge_dir("conv_oc")
-    relay_file = bridge_dir / claude_native_bridge._TOOL_RELAY_FILE
-
-    async def _executor(name: str, arguments: dict[str, object]) -> dict[str, object]:
-        """Return an empty result for the unused relay tool callback."""
-        del name, arguments
-        return {}
-
-    relay = None
-    try:
-        relay = start_tool_relay(
-            bridge_dir=bridge_dir,
-            tools=[
-                {
-                    "name": "sys_session_list",
-                    "description": "List Omnigent sessions.",
-                    "parameters": {"type": "object", "properties": {}},
-                }
-            ],
-            tool_executor=_executor,
-            loop=asyncio.get_running_loop(),
-        )
-        assert relay_file.exists(), (
-            "OpenCode-native relay did not write tool_relay.json under the persistent bridge root"
-        )
-        relay_info = json.loads(relay_file.read_text(encoding="utf-8"))
-        assert relay_info["tools"][0]["name"] == "sys_session_list"
     finally:
         if relay is not None:
             relay.close()

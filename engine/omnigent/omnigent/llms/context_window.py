@@ -66,8 +66,7 @@ def find_model_context_window(model: str) -> int | None:
 
     Same resolution as :func:`get_model_context_window` (env override,
     model-id markers, catalog, litellm) but with no default fallback, for
-    callers that must omit the window rather than report a guessed one
-    (e.g. the kimi-native forwarder's context ring).
+    callers that must omit the window rather than report a guessed one.
 
     :param model: The model identifier, e.g. ``"openai/gpt-4o"``.
     :returns: Context window size in tokens, or ``None`` when no

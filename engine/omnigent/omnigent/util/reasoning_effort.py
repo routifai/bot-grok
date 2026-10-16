@@ -31,13 +31,6 @@ CODEX_EFFORTS = OPENAI_EFFORTS
 CODEX_NATIVE_EFFORTS = frozenset(
     {"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"}
 )
-OPENAI_AGENTS_EFFORTS = OPENAI_EFFORTS
-GEMINI_EFFORTS = frozenset({"low", "medium", "high"})
-ANTIGRAVITY_EFFORTS = GEMINI_EFFORTS
-# The GitHub Copilot SDK's ``create_session(reasoning_effort=...)`` accepts
-# exactly these levels (``copilot.session.ReasoningEffort`` literal); per-model
-# support is gated by the Copilot backend (``list_models()``).
-COPILOT_EFFORTS = frozenset({"low", "medium", "high", "xhigh"})
 # pi's ``--thinking`` ladder is ``off|minimal|low|medium|high|xhigh|max``. Its
 # ``off`` is omnigent's ``none`` — ``off`` is reserved here as a
 # clear-to-default sentinel — so :func:`to_pi_thinking_level` translates.
@@ -140,8 +133,6 @@ def efforts_for_harness(harness: str | None) -> frozenset[str] | None:
     return {
         EffortFamily.ANTHROPIC: ANTHROPIC_EFFORTS,
         EffortFamily.OPENAI: OPENAI_EFFORTS,
-        EffortFamily.GEMINI: GEMINI_EFFORTS,
-        EffortFamily.COPILOT: COPILOT_EFFORTS,
         EffortFamily.PI: PI_EFFORTS,
         EffortFamily.CODEX_NATIVE: CODEX_NATIVE_EFFORTS,
     }.get(capabilities.effort, frozenset())

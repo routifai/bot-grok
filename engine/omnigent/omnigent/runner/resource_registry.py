@@ -62,19 +62,6 @@ _DEFAULT_WORKSPACE_ROOT = os.path.join(
 CODEX_NATIVE_TERMINAL_ROLE = "codex-native"
 CLAUDE_NATIVE_TERMINAL_ROLE = "claude-native"
 PI_NATIVE_TERMINAL_ROLE = "pi-native"
-OPENCODE_NATIVE_TERMINAL_ROLE = "opencode-native"
-CURSOR_NATIVE_TERMINAL_ROLE = "cursor-native"
-KIRO_NATIVE_TERMINAL_ROLE = "kiro-native"
-GOOSE_NATIVE_TERMINAL_ROLE = "goose-native"
-# Role marker for the runner-owned native Antigravity (agy) TUI terminal.
-# A generic terminal launched with ``terminal=antigravity`` shares the same
-# public resource id, so the ensure path uses this private marker to tell a
-# runner-owned agy TUI apart from an arbitrary terminal before reusing it.
-ANTIGRAVITY_NATIVE_TERMINAL_ROLE = "antigravity-native"
-QWEN_NATIVE_TERMINAL_ROLE = "qwen-native"
-KIMI_NATIVE_TERMINAL_ROLE = "kimi-native"
-HERMES_NATIVE_TERMINAL_ROLE = "hermes-native"
-DEVIN_NATIVE_TERMINAL_ROLE = "devin-native"
 
 #: Terminal roles whose PTY-activity watcher drives the session's working
 #: status (pane activity → ``running``, quiescence → ``idle``), not just the
@@ -82,25 +69,11 @@ DEVIN_NATIVE_TERMINAL_ROLE = "devin-native"
 #: and returns immediately, leaving pane activity as their only running/idle
 #: source — without membership here the web "Working…" badge never clears and the
 #: turn times out. A generic shell's role is absent so its output can't move the
-#: session status. A harness whose own forwarder posts authoritative running/idle
-#: edges (devin-native, from its hook stream) is excluded instead, because pane
-#: quiescence would clobber them; ``tests/runner/test_native_terminal_lock_coverage.py``
-#: guards both sides.
+#: session status; ``tests/runner/test_native_terminal_lock_coverage.py`` guards it.
 _STATUS_EMITTING_TERMINAL_ROLES: frozenset[str] = frozenset(
     {
         CLAUDE_NATIVE_TERMINAL_ROLE,
         PI_NATIVE_TERMINAL_ROLE,
-        CURSOR_NATIVE_TERMINAL_ROLE,
-        KIRO_NATIVE_TERMINAL_ROLE,
-        GOOSE_NATIVE_TERMINAL_ROLE,
-        QWEN_NATIVE_TERMINAL_ROLE,
-        KIMI_NATIVE_TERMINAL_ROLE,
-        HERMES_NATIVE_TERMINAL_ROLE,
-        # devin-native is deliberately ABSENT: its hook stream carries exact turn
-        # boundaries (UserPromptSubmit -> Stop), so its forwarder posts
-        # running/idle itself. Pane quiescence would flip the session to idle
-        # after ~1s of any mid-turn lull and clobber that, which makes a follow-up
-        # bypass the queue and always steer.
     }
 )
 # Role marker for the embedded Omnigent REPL terminal auto-created for
@@ -293,7 +266,7 @@ def _native_input_ready_probe(
         return None
     try:
         return resolve_hook_for_key(agent.key, "input_ready_probe")
-    except Exception:  # noqa: BLE001 - see docstring.
+    except Exception:
         _logger.warning(
             "Native input-ready probe unavailable for %s; native_input_ready will not be logged",
             resource_role,
@@ -1421,7 +1394,7 @@ class SessionResourceRegistry:
                             expected_socket_path=str(instance.socket_path),
                             expected_tmux_target=instance.tmux_target,
                         )
-                except Exception:  # noqa: BLE001 - keep lifecycle observation running.
+                except Exception:
                     _logger.debug(
                         "Claude auto-mode billing notice acknowledgement failed",
                         exc_info=True,

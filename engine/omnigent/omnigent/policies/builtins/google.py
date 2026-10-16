@@ -39,7 +39,7 @@ Databricks-hosted ``google__*`` server; override per-policy via ``tool_prefixes`
 
     - **Shell / code execution** (e.g. ``sys_os_shell``) calling the Google
       REST API directly (``https://www.googleapis.com/...``) with a token.
-    - **``web_fetch`` / ``web_search``** reading a public or link-shared
+    - **``web_search``** reading a public or link-shared
       document by URL.
     - **HTTP-gateway / raw HTTP** access, or **UC functions / custom tools**
       that wrap Google internally under a non-``google__`` tool name.

@@ -70,7 +70,7 @@ class Host:
         Used as the host's last-seen for the liveness freshness gate
         (see :data:`HOST_LIVENESS_TTL_S`).
     :param sandbox_provider: Sandbox provider backing a SERVER-MANAGED
-        host (``host_type="managed"`` sessions), e.g. ``"modal"``.
+        host (``host_type="managed"`` sessions), e.g. ``"computer"``.
         ``None`` for external (user-connected) hosts — non-``None``
         marks the host as server-managed.
     :param sandbox_id: Provider-assigned id of the sandbox generation
@@ -935,7 +935,7 @@ class HostStore:
             ``"alice@example.com"``.
         :param token: The RAW launch token (hashed here, never stored),
             e.g. the value of ``secrets.token_urlsafe(32)``.
-        :param provider: Sandbox provider name, e.g. ``"modal"``.
+        :param provider: Sandbox provider name, e.g. ``"computer"``.
         :param sandbox_id: Provider-assigned sandbox id, e.g.
             ``"sb-a1b2c3"``.
         :param token_expires_at: Unix epoch seconds after which the

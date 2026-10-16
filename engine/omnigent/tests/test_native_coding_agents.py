@@ -7,13 +7,12 @@ from pathlib import Path
 import pytest
 
 from omnigent._wrapper_labels import (
-    KIRO_NATIVE_WRAPPER_VALUE,
-    PI_NATIVE_WRAPPER_VALUE,
+    CLAUDE_NATIVE_WRAPPER_VALUE,
     UI_MODE_LABEL_KEY,
     UI_MODE_TERMINAL_VALUE,
     WRAPPER_LABEL_KEY,
 )
-from omnigent.harness_plugins import KIRO_NATIVE_CODING_AGENT, PI_NATIVE_CODING_AGENT
+from omnigent.harness_plugins import CLAUDE_NATIVE_CODING_AGENT
 from omnigent.native.native_coding_agents import (
     native_coding_agent_for_harness,
     native_coding_agent_for_wrapper_label,
@@ -23,62 +22,33 @@ from omnigent.native.native_coding_agents import (
 )
 
 
-def test_native_pi_alias_resolves_like_canonical() -> None:
-    """``native-pi`` resolves to the same native agent as ``pi-native``.
+def test_native_claude_alias_resolves_like_canonical() -> None:
+    """``native-claude`` resolves to the same native agent as ``claude-native``.
 
     ``AgentSpec.harness_kind`` returns the raw ``executor.config.harness``, so
-    an agent authored as ``native-pi`` must still resolve — else fork/switch
+    an agent authored as ``native-claude`` must still resolve — else fork/switch
     would drop its terminal-first presentation labels. ``canonicalize_harness``
     folds the alias before the lookup.
     """
-    agent = native_coding_agent_for_harness("native-pi")
-    assert agent is PI_NATIVE_CODING_AGENT
-    assert agent is native_coding_agent_for_harness("pi-native")
+    agent = native_coding_agent_for_harness("native-claude")
+    assert agent is CLAUDE_NATIVE_CODING_AGENT
+    assert agent is native_coding_agent_for_harness("claude-native")
     assert agent.presentation_labels == {
         UI_MODE_LABEL_KEY: UI_MODE_TERMINAL_VALUE,
-        WRAPPER_LABEL_KEY: PI_NATIVE_WRAPPER_VALUE,
+        WRAPPER_LABEL_KEY: CLAUDE_NATIVE_WRAPPER_VALUE,
     }
 
 
-def test_canonical_native_harnesses_resolve() -> None:
-    """The canonical native spellings all resolve to their agents."""
-    for harness in (
-        "claude-native",
-        "codex-native",
-        "pi-native",
-        "cursor-native",
-        "kimi-native",
-        "kiro-native",
-    ):
-        assert native_coding_agent_for_harness(harness) is not None
-
-
-def test_native_kimi_alias_resolves_like_canonical() -> None:
-    """``native-kimi`` resolves to the same native agent as ``kimi-native``.
-
-    Mirrors the ``native-pi`` fold: ``canonicalize_harness`` maps the reversed
-    spelling to the canonical id so a forked/switched kimi-native agent keeps
-    its terminal-first presentation labels.
-    """
-    agent = native_coding_agent_for_harness("native-kimi")
-    assert agent is not None
-    assert agent is native_coding_agent_for_harness("kimi-native")
-    assert agent.terminal_name == "kimi"
-
-
-def test_kiro_native_agent_metadata_and_aliases() -> None:
-    """Kiro has a canonical native identity and reversed alias."""
-    assert KIRO_NATIVE_CODING_AGENT.key == "kiro"
-    assert KIRO_NATIVE_CODING_AGENT.display_name == "Kiro"
-    assert KIRO_NATIVE_CODING_AGENT.agent_name == "kiro-native-ui"
-    assert KIRO_NATIVE_CODING_AGENT.harness == "kiro-native"
-    assert KIRO_NATIVE_CODING_AGENT.wrapper_label == KIRO_NATIVE_WRAPPER_VALUE
-    assert KIRO_NATIVE_CODING_AGENT.terminal_name == "kiro"
-    assert native_coding_agent_for_harness("native-kiro") is KIRO_NATIVE_CODING_AGENT
-    assert native_coding_agent_for_harness("kiro-native") is KIRO_NATIVE_CODING_AGENT
+def test_claude_native_agent_metadata() -> None:
+    """Claude is the native coding agent, reachable by harness and wrapper label."""
+    assert CLAUDE_NATIVE_CODING_AGENT.key == "claude"
+    assert CLAUDE_NATIVE_CODING_AGENT.display_name == "Claude"
+    assert CLAUDE_NATIVE_CODING_AGENT.agent_name == "claude-native-ui"
+    assert CLAUDE_NATIVE_CODING_AGENT.harness == "claude-native"
+    assert CLAUDE_NATIVE_CODING_AGENT.terminal_name == "claude"
     assert (
-        native_coding_agent_for_wrapper_label(KIRO_NATIVE_WRAPPER_VALUE)
-        is KIRO_NATIVE_CODING_AGENT
+        native_coding_agent_for_wrapper_label(CLAUDE_NATIVE_WRAPPER_VALUE)
+        is CLAUDE_NATIVE_CODING_AGENT
     )
 
 
@@ -93,13 +63,10 @@ def test_public_agent_name_hides_native_ui_wrapper_names() -> None:
 
     The raw ``<tool>-native-ui`` name is an internal implementation detail; a
     session describing itself (``sys_session_get_info``) must surface the
-    display name (e.g. ``Pi``) so the model never repeats ``pi-native-ui`` to
-    the user.
+    display name (e.g. ``Claude``) so the model never repeats
+    ``claude-native-ui`` to the user.
     """
-    assert public_agent_name("pi-native-ui") == "Pi"
     assert public_agent_name("claude-native-ui") == "Claude"
-    assert public_agent_name("codex-native-ui") == "Codex"
-    assert public_agent_name("cursor-native-ui") == "Cursor"
 
 
 def test_public_agent_name_passes_through_regular_names() -> None:

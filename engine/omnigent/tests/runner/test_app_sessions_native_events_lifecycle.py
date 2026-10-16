@@ -6,7 +6,6 @@ import asyncio
 import logging
 import sys
 import uuid
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
@@ -19,13 +18,9 @@ from omnigent.harnesses.claude_native.bridge import (
     bridge_dir_for_conversation_id,
 )
 from omnigent.harnesses.codex_native import bridge as codex_native_bridge
-from omnigent.harnesses.cursor_native import bridge as cursor_native_bridge
-from omnigent.harnesses.cursor_native import main as cursor_native
-from omnigent.harnesses.kiro_native import bridge as kiro_native_bridge
-from omnigent.harnesses.kiro_native import main as kiro_native
 from omnigent.runner import create_runner_app
 from omnigent.runner.resource_registry import (
-    KIRO_NATIVE_TERMINAL_ROLE,
+    PI_NATIVE_TERMINAL_ROLE,
 )
 from omnigent.spec.types import AgentSpec, ExecutorSpec
 from omnigent.terminals import TerminalRegistry
@@ -491,311 +486,6 @@ async def test_events_codex_native_model_change_without_bridge_fails_loud(
 
     assert resp.status_code == 503, resp.text
     assert resp.json()["error"] == "codex_native_settings_update_failed"
-
-
-@pytest.mark.asyncio
-async def test_kiro_native_model_options_use_cli_catalog(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    conv_id = "a7e721bf0e124d2fb5bc1bc36772864e"
-    expected = [
-        {
-            "id": "provider-latest",
-            "displayName": "Provider Latest",
-            "isDefault": True,
-        }
-    ]
-    monkeypatch.setattr(kiro_native, "list_kiro_cli_model_options", lambda: expected)
-    spec = AgentSpec(
-        spec_version=1,
-        name="t",
-        executor=ExecutorSpec(type="omnigent", config={"harness": "kiro-native"}),
-    )
-
-    async def _resolver(agent_id: str, session_id: str | None = None) -> AgentSpec:
-        del agent_id, session_id
-        return spec
-
-    app = create_runner_app(
-        process_manager=_FakeProcessManager(_ScriptedHarnessClient([])),  # type: ignore[arg-type]
-        spec_resolver=_resolver,
-        server_client=NullServerClient(),  # type: ignore[arg-type]
-    )
-    async with _runner_client(app) as client:
-        create_resp = await client.post(
-            "/v1/sessions",
-            json={"session_id": conv_id, "agent_id": "ag_1"},
-        )
-        assert create_resp.status_code == 201, create_resp.text
-        response = await client.get(f"/v1/sessions/{conv_id}/kiro-model-options")
-
-    assert response.status_code == 200
-    assert response.json() == {"models": expected}
-
-
-@pytest.mark.asyncio
-async def test_kiro_native_model_options_failure_is_retryable(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Discovery failures return 503 so the server leaves its cache cold."""
-    conv_id = "b29b45fd569245b2bc0dd79694e73886"
-
-    def _fail_discovery() -> list[dict[str, object]]:
-        raise RuntimeError("catalog unavailable")
-
-    monkeypatch.setattr(kiro_native, "list_kiro_cli_model_options", _fail_discovery)
-    spec = AgentSpec(
-        spec_version=1,
-        name="t",
-        executor=ExecutorSpec(type="omnigent", config={"harness": "kiro-native"}),
-    )
-
-    async def _resolver(agent_id: str, session_id: str | None = None) -> AgentSpec:
-        del agent_id, session_id
-        return spec
-
-    app = create_runner_app(
-        process_manager=_FakeProcessManager(_ScriptedHarnessClient([])),  # type: ignore[arg-type]
-        spec_resolver=_resolver,
-        server_client=NullServerClient(),  # type: ignore[arg-type]
-    )
-    async with _runner_client(app) as client:
-        create_resp = await client.post(
-            "/v1/sessions",
-            json={"session_id": conv_id, "agent_id": "ag_1"},
-        )
-        assert create_resp.status_code == 201, create_resp.text
-        response = await client.get(f"/v1/sessions/{conv_id}/kiro-model-options")
-
-    assert response.status_code == 503, response.text
-    assert response.json()["error"] == "kiro_native_model_options_failed"
-
-
-@pytest.mark.asyncio
-async def test_cursor_native_model_options_use_cli_catalog(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    conv_id = "c7e721bf0e124d2fb5bc1bc36772864e"
-    expected = [
-        {
-            "id": "provider-latest",
-            "displayName": "Provider Latest",
-            "isDefault": True,
-            "isCurrent": False,
-        }
-    ]
-    monkeypatch.setattr(cursor_native, "list_cursor_cli_model_options", lambda: expected)
-    injected: list[tuple[str, str | None]] = []
-
-    def _inject_model(
-        _bridge_dir: Path,
-        *,
-        model: str,
-        expected_display_name: str | None,
-        timeout_s: float,
-    ) -> None:
-        del timeout_s
-        injected.append((model, expected_display_name))
-
-    monkeypatch.setattr(cursor_native_bridge, "inject_model_command", _inject_model)
-    spec = AgentSpec(
-        spec_version=1,
-        name="t",
-        executor=ExecutorSpec(type="omnigent", config={"harness": "cursor-native"}),
-    )
-
-    async def _resolver(agent_id: str, session_id: str | None = None) -> AgentSpec:
-        del agent_id, session_id
-        return spec
-
-    app = create_runner_app(
-        process_manager=_FakeProcessManager(_ScriptedHarnessClient([])),  # type: ignore[arg-type]
-        spec_resolver=_resolver,
-        server_client=NullServerClient(),  # type: ignore[arg-type]
-    )
-    async with _runner_client(app) as client:
-        create_resp = await client.post(
-            "/v1/sessions",
-            json={"session_id": conv_id, "agent_id": "ag_1"},
-        )
-        assert create_resp.status_code == 201, create_resp.text
-        response = await client.get(f"/v1/sessions/{conv_id}/cursor-model-options")
-        event_response = await client.post(
-            f"/v1/sessions/{conv_id}/events",
-            json={"type": "model_change", "model": "provider-latest"},
-        )
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "models": [
-            {
-                **expected[0],
-                "source": {
-                    "kind": "subscription",
-                    "label": "Subscription",
-                    "name": "cursor-agent",
-                },
-            }
-        ]
-    }
-    assert event_response.status_code == 204
-    assert injected == [("provider-latest", "Provider Latest")]
-
-
-@pytest.mark.asyncio
-async def test_cursor_native_model_options_failure_is_retryable(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Discovery failures return 503 so the server leaves its cache cold."""
-    conv_id = "d29b45fd569245b2bc0dd79694e73886"
-
-    def _fail_discovery() -> list[dict[str, object]]:
-        raise RuntimeError("catalog unavailable")
-
-    monkeypatch.setattr(cursor_native, "list_cursor_cli_model_options", _fail_discovery)
-    spec = AgentSpec(
-        spec_version=1,
-        name="t",
-        executor=ExecutorSpec(type="omnigent", config={"harness": "cursor-native"}),
-    )
-
-    async def _resolver(agent_id: str, session_id: str | None = None) -> AgentSpec:
-        del agent_id, session_id
-        return spec
-
-    app = create_runner_app(
-        process_manager=_FakeProcessManager(_ScriptedHarnessClient([])),  # type: ignore[arg-type]
-        spec_resolver=_resolver,
-        server_client=NullServerClient(),  # type: ignore[arg-type]
-    )
-    async with _runner_client(app) as client:
-        create_resp = await client.post(
-            "/v1/sessions",
-            json={"session_id": conv_id, "agent_id": "ag_1"},
-        )
-        assert create_resp.status_code == 201, create_resp.text
-        response = await client.get(f"/v1/sessions/{conv_id}/cursor-model-options")
-
-    assert response.status_code == 503, response.text
-    assert response.json()["error"] == "cursor_native_model_options_failed"
-
-
-@pytest.mark.asyncio
-async def test_opencode_native_model_options_uses_cli_catalog(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    from omnigent.harnesses.opencode_native import app_server as opencode_native_app_server
-    from omnigent.harnesses.opencode_native import bridge as opencode_native_bridge
-    from omnigent.harnesses.opencode_native.bridge import OpenCodeNativeBridgeState
-    from omnigent.spec.types import ExecutorSpec
-
-    conv_id = "conv_opencode_native_model_options"
-    monkeypatch.setattr(opencode_native_bridge, "_BRIDGE_ROOT", tmp_path)
-    monkeypatch.setattr(
-        opencode_native_bridge,
-        "read_bridge_state",
-        lambda _dir: OpenCodeNativeBridgeState(
-            session_id=conv_id,
-            server_base_url="http://127.0.0.1:49231",
-            opencode_session_id="ses_1",
-        ),
-    )
-    captured_envs: list[Mapping[str, str] | None] = []
-
-    def _fake_list_options(*, env: Mapping[str, str] | None = None) -> list[dict[str, object]]:
-        captured_envs.append(env)
-        return [{"id": "opencode-go/glm-5.2", "displayName": "opencode-go/glm-5.2"}]
-
-    monkeypatch.setattr(
-        opencode_native_app_server,
-        "list_opencode_cli_model_options",
-        _fake_list_options,
-    )
-    spec = AgentSpec(
-        spec_version=1,
-        name="t",
-        executor=ExecutorSpec(type="omnigent", config={"harness": "opencode-native"}),
-    )
-
-    async def _resolver(agent_id: str, session_id: str | None = None) -> AgentSpec:
-        del agent_id, session_id
-        return spec
-
-    app = create_runner_app(
-        process_manager=_FakeProcessManager(_ScriptedHarnessClient([])),  # type: ignore[arg-type]
-        spec_resolver=_resolver,
-        server_client=NullServerClient(),  # type: ignore[arg-type]
-    )
-    async with _runner_client(app) as client:
-        create_resp = await client.post(
-            "/v1/sessions",
-            json={"session_id": conv_id, "agent_id": "ag_1"},
-        )
-        assert create_resp.status_code == 201, create_resp.text
-        response = await client.get(f"/v1/sessions/{conv_id}/codex-model-options")
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "models": [{"id": "opencode-go/glm-5.2", "displayName": "opencode-go/glm-5.2"}]
-    }
-    assert len(captured_envs) == 1
-    cli_env = captured_envs[0]
-    assert cli_env is not None
-    bridge_dir = opencode_native_bridge.bridge_dir_for_bridge_id(conv_id)
-    assert cli_env["XDG_DATA_HOME"] == str(bridge_dir / "xdg-data")
-    assert cli_env["XDG_CONFIG_HOME"] == str(bridge_dir / "xdg-config")
-
-
-@pytest.mark.asyncio
-async def test_bound_opencode_switch_qualifies_the_literal_gateway_id(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from unittest.mock import Mock
-
-    from omnigent.inference_config import inference_config_scope
-    from omnigent.spec.types import ExecutorSpec
-
-    update = Mock(return_value=True)
-    monkeypatch.setattr("omnigent.harnesses.opencode_native.bridge.update_model_override", update)
-    spec = AgentSpec(
-        spec_version=1,
-        name="bound-opencode",
-        executor=ExecutorSpec(type="omnigent", config={"harness": "opencode-native"}),
-    )
-
-    async def resolve(_agent: str, session_id: str | None = None) -> AgentSpec:
-        return spec
-
-    app = create_runner_app(
-        process_manager=_FakeProcessManager(_ScriptedHarnessClient([])),  # type: ignore[arg-type]
-        spec_resolver=resolve,
-        server_client=NullServerClient(),  # type: ignore[arg-type]
-    )
-    profile = {
-        "providers": {"gateway": {"kind": "gateway"}},
-        "inference": {
-            "harnesses": {
-                "opencode-native": {
-                    "provider": "gateway",
-                    "default_model": "omnigent/literal",
-                    "model_allowlist": ["omnigent/literal"],
-                }
-            }
-        },
-    }
-    async with _runner_client(app) as client:
-        response = await client.post(
-            "/v1/sessions", json={"session_id": "bound-opencode", "agent_id": "agent-1"}
-        )
-        assert response.status_code == 201, response.text
-        with inference_config_scope(profile):
-            response = await client.post(
-                "/v1/sessions/bound-opencode/events",
-                json={"type": "model_change", "model": "omnigent/literal"},
-            )
-    assert response.status_code == 200, response.text
-    assert update.call_args.args[1] == "omnigent/omnigent/literal"
 
 
 @pytest.mark.asyncio
@@ -2810,7 +2500,7 @@ async def test_events_model_change_on_pi_native_enqueues_bridge_model_change(
     the extension applies live via Pi's ``setModel``.
 
     Regression guard: the ``model_change`` branch originally enumerated only
-    claude/codex/cursor/opencode/kiro, so pi-native fell through to the no-op
+    claude/codex, so pi-native fell through to the no-op
     and a web-picked model never reached the running Pi process.
 
     Pins:
@@ -3840,87 +3530,6 @@ async def test_auxiliary_codex_tui_exit_preserves_app_server(
     assert not [event for event in events if event.get("type") == "session.status"]
 
 
-@pytest.mark.parametrize("terminal_name", ["qwen", "antigravity"])
-@pytest.mark.asyncio
-async def test_required_terminal_clean_quit_publishes_idle_not_failed(
-    terminal_name: str,
-) -> None:
-    """A clean ``/quit`` of qwen/antigravity-native is not a crash.
-
-    Both harnesses leave the exit-classification memo stuck on ``running`` at
-    quit time — qwen's "powering down" redraw trips the PTY-activity watcher,
-    and antigravity-native is deliberately excluded from the PTY ``emit_status``
-    role set (the RPC reader owns working-status). So ``session_was_idle`` is
-    ``False`` even though the user quit normally. The runner must special-case
-    these terminals: publish a final ``idle`` (to clear the web "Working…"
-    spinner) and release the harness, but never render the spurious red
-    ``required_terminal_exited`` failure card.
-
-    :param terminal_name: The native terminal that the user quit cleanly.
-    """
-    from omnigent.runner import app as runner_app
-    from omnigent.runner.app import _session_event_queues_ref
-    from omnigent.runner.resource_registry import (
-        TerminalExitEvent,
-        TerminalLifecycle,
-    )
-
-    conv_id = uuid.uuid4().hex
-    pm = _FakeProcessManager(_ScriptedHarnessClient([]))
-    pm._sessions.add(conv_id)
-    app = create_runner_app(
-        process_manager=pm,  # type: ignore[arg-type]
-        server_client=NullServerClient(),  # type: ignore[arg-type]
-    )
-    resource_registry = app.state.session_resource_registry
-    # Grab the runner's terminal-exit publisher (the branch under test) and
-    # drive it directly, mimicking the registry firing on a clean quit.
-    publish_exit = resource_registry._terminal_exit_publisher
-    assert callable(publish_exit)
-
-    try:
-        publish_exit(
-            TerminalExitEvent(
-                session_id=conv_id,
-                terminal_id=f"terminal_{terminal_name}_main",
-                terminal_name=terminal_name,
-                session_key="main",
-                lifecycle=TerminalLifecycle.REQUIRED,
-                # The memo never flipped to idle, so the generic guard would
-                # otherwise misclassify this normal quit as a crash.
-                session_was_idle=False,
-            )
-        )
-        queued_events: list[dict[str, Any]] = []
-        for _ in range(1000):
-            queued_events.extend(
-                _drain_session_event_queue(_session_event_queues_ref.get(conv_id))
-            )
-            if pm.released:
-                break
-            await asyncio.sleep(0)
-    finally:
-        _session_event_queues_ref.pop(conv_id, None)
-        runner_app.unregister_child_session(conv_id)
-
-    # The terminal resource is removed and a final idle clears the spinner...
-    assert {
-        "type": "session.resource.deleted",
-        "resource_id": f"terminal_{terminal_name}_main",
-        "resource_type": "terminal",
-        "session_id": conv_id,
-    } in queued_events
-    assert {"type": "session.status", "status": "idle"} in queued_events
-    # ...but no spurious failure card renders — the user quit normally.
-    assert [
-        event
-        for event in queued_events
-        if event.get("type") == "session.status" and event.get("status") == "failed"
-    ] == []
-    # The harness subprocess is still released — the terminal is gone.
-    assert pm.released == [conv_id]
-
-
 @pytest.mark.asyncio
 async def test_required_terminal_voluntary_exit_publishes_idle_not_failed() -> None:
     """A voluntary /exit (exit 0 + resume banner) is not a crash.
@@ -4146,11 +3755,11 @@ async def test_external_idle_status_makes_required_terminal_exit_clean(tmp_path:
     """
     A structured native ``idle`` status prevents a later pane close from failing.
 
-    Kiro completion is observed from its persisted JSONL session, not only from
-    PTY diff-idle. After a web turn marks the required terminal ``running``, the
+    Pi completion is reported by its extension's structured status, not only
+    from PTY diff-idle. After a web turn marks the required terminal ``running``, the
     forwarded ``external_session_status: idle`` must update the same exit memo
     used by the required-terminal watcher; otherwise a normal user close after
-    Kiro answered is misclassified as ``required_terminal_exited``.
+    Pi answered is misclassified as ``required_terminal_exited``.
 
     :param tmp_path: Temporary directory for fake terminal paths.
     """
@@ -4159,8 +3768,8 @@ async def test_external_idle_status_makes_required_terminal_exit_clean(tmp_path:
 
     conv_id = uuid.uuid4().hex
     terminal_registry = TerminalRegistry()
-    instance = make_test_terminal_instance("kiro", "main", tmp_path)
-    terminal_registry._by_conversation.setdefault(conv_id, {})[("kiro", "main")] = instance
+    instance = make_test_terminal_instance("pi", "main", tmp_path)
+    terminal_registry._by_conversation.setdefault(conv_id, {})[("pi", "main")] = instance
     callbacks: dict[str, Any] = {}
 
     def _capture_watcher(
@@ -4189,10 +3798,10 @@ async def test_external_idle_status_makes_required_terminal_exit_clean(tmp_path:
     try:
         await resource_registry.observe_required_terminal(
             conv_id,
-            "kiro",
+            "pi",
             "main",
             instance,
-            resource_role=KIRO_NATIVE_TERMINAL_ROLE,
+            resource_role=PI_NATIVE_TERMINAL_ROLE,
         )
         resource_registry.note_session_turn_started(conv_id)
         async with _runner_client(app) as client:
@@ -4219,7 +3828,7 @@ async def test_external_idle_status_makes_required_terminal_exit_clean(tmp_path:
 
         deleted_event = {
             "type": "session.resource.deleted",
-            "resource_id": "terminal_kiro_main",
+            "resource_id": "terminal_pi_main",
             "resource_type": "terminal",
             "session_id": conv_id,
         }
@@ -4227,7 +3836,7 @@ async def test_external_idle_status_makes_required_terminal_exit_clean(tmp_path:
     finally:
         _session_event_queues_ref.pop(conv_id, None)
 
-    assert terminal_registry.get(conv_id, "kiro", "main") is None
+    assert terminal_registry.get(conv_id, "pi", "main") is None
     assert deleted_event in queued_events
     assert [
         event
@@ -4359,290 +3968,4 @@ async def test_events_effort_change_on_native_session_types_slash_command(
         f"effort_change must not publish session events; got "
         f"{queued_events!r}. If non-empty, the native handler is "
         f"emitting spurious status events."
-    )
-
-
-async def test_events_interrupt_on_kiro_native_routes_to_escape(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """interrupt on a kiro-native session sends Escape via the kiro bridge.
-
-    Regression for #1137: kiro-native had no entry in the interrupt dispatch
-    ladder, so the web Stop button fell through to the in-process cancel floor —
-    a no-op for a TUI turn the harness task already returned from — and silently
-    did nothing. This pins that the dispatch routes kiro-native to
-    ``kiro_native_bridge.inject_interrupt`` with the snappy 1.0s timeout.
-    """
-    from omnigent.spec.types import ExecutorSpec
-
-    captured: list[Any] = []
-    monkeypatch.setattr(
-        kiro_native_bridge,
-        "inject_interrupt",
-        lambda bridge_dir, *, timeout_s: captured.append((bridge_dir, timeout_s)),
-    )
-
-    native_spec = AgentSpec(
-        spec_version=1,
-        name="t",
-        executor=ExecutorSpec(type="omnigent", config={"harness": "kiro-native"}),
-    )
-
-    async def _resolver(agent_id: str, session_id: str | None = None) -> AgentSpec:
-        del agent_id
-        return native_spec
-
-    pm = _FakeProcessManager(_ScriptedHarnessClient([]))
-    app = create_runner_app(
-        process_manager=pm,  # type: ignore[arg-type]
-        spec_resolver=_resolver,
-        server_client=NullServerClient(),  # type: ignore[arg-type]
-    )
-
-    async with _runner_client(app) as client:
-        create_resp = await client.post(
-            "/v1/sessions",
-            json={
-                "session_id": "cd6b589814147431cc1a92ec2c979998",
-                "agent_id": "880b5afda28ad55ff74cbeb9b5fc67fb",
-            },
-        )
-        assert create_resp.status_code == 201, create_resp.text
-        int_resp = await client.post(
-            "/v1/sessions/cd6b589814147431cc1a92ec2c979998/events",
-            json={"type": "interrupt"},
-        )
-
-    assert int_resp.status_code == 204, int_resp.text
-    # 0 = the dispatch fell through to the generic path (the silent no-op bug);
-    # 2+ = the handler ran twice.
-    assert len(captured) == 1, (
-        f"Expected one inject_interrupt call, got {len(captured)}. If 0, the "
-        f"kiro-native interrupt dispatch entry is missing."
-    )
-    bridge_dir, timeout_s = captured[0]
-    assert bridge_dir == kiro_native_bridge.bridge_dir_for_session_id(
-        "cd6b589814147431cc1a92ec2c979998"
-    )
-    assert timeout_s == 1.0
-
-
-async def test_events_stop_session_on_kiro_native_kills_tmux_and_publishes_idle(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """stop_session on a kiro-native session kills the tmux pane and clears the spinner.
-
-    Mirrors the goose/claude-native stop path: route to
-    ``kiro_native_bridge.kill_session`` and enqueue exactly one
-    ``session.status: idle`` (kiro-cli has no Stop hook on a hard kill).
-    """
-    from omnigent.runner.app import _session_event_queues_ref
-    from omnigent.spec.types import ExecutorSpec
-
-    captured: list[Any] = []
-    monkeypatch.setattr(
-        kiro_native_bridge,
-        "kill_session",
-        lambda bridge_dir, *, timeout_s: captured.append((bridge_dir, timeout_s)),
-    )
-
-    native_spec = AgentSpec(
-        spec_version=1,
-        name="t",
-        executor=ExecutorSpec(type="omnigent", config={"harness": "kiro-native"}),
-    )
-
-    async def _resolver(agent_id: str, session_id: str | None = None) -> AgentSpec:
-        del agent_id
-        return native_spec
-
-    pm = _FakeProcessManager(_ScriptedHarnessClient([]))
-    app = create_runner_app(
-        process_manager=pm,  # type: ignore[arg-type]
-        spec_resolver=_resolver,
-        server_client=NullServerClient(),  # type: ignore[arg-type]
-    )
-
-    async with _runner_client(app) as client:
-        create_resp = await client.post(
-            "/v1/sessions",
-            json={
-                "session_id": "cd2a2b575af18bbc3a38fd025e379be0",
-                "agent_id": "880b5afda28ad55ff74cbeb9b5fc67fb",
-            },
-        )
-        assert create_resp.status_code == 201, create_resp.text
-        stop_resp = await client.post(
-            "/v1/sessions/cd2a2b575af18bbc3a38fd025e379be0/events",
-            json={"type": "stop_session"},
-        )
-        queue = _session_event_queues_ref.get("cd2a2b575af18bbc3a38fd025e379be0")
-        queued_events: list[dict[str, Any]] = []
-        while queue is not None and not queue.empty():
-            item = queue.get_nowait()
-            if isinstance(item, dict):
-                queued_events.append(item)
-
-    assert stop_resp.status_code == 204, stop_resp.text
-    assert len(captured) == 1, (
-        f"Expected one kill_session call, got {len(captured)}. If 0, the "
-        f"kiro-native stop dispatch entry is missing."
-    )
-    bridge_dir, timeout_s = captured[0]
-    assert bridge_dir == kiro_native_bridge.bridge_dir_for_session_id(
-        "cd2a2b575af18bbc3a38fd025e379be0"
-    )
-    assert timeout_s == 1.0
-    idle_events = [
-        e for e in queued_events if e.get("type") == "session.status" and e.get("status") == "idle"
-    ]
-    assert len(idle_events) == 1, f"stop must publish exactly one idle; got {queued_events!r}"
-
-
-async def test_events_interrupt_on_kiro_native_503_skips_idle_when_inject_fails(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """interrupt returns 503 and publishes no idle when Escape can't reach tmux.
-
-    Failure-path parity with the sibling harnesses (e.g.
-    ``..._interrupt_on_native_session_503_skips_cleanup_when_inject_fails``): if
-    the bridge can't deliver Escape (pane gone, bridge dir not advertised), the
-    runner must surface a 503 and must NOT publish ``session.status: idle`` — idle
-    would clear the web-UI spinner while the kiro turn keeps generating. Guards
-    against a reorder that moves the idle publish ahead of the ``try``.
-    """
-    from omnigent.runner.app import _session_event_queues_ref
-    from omnigent.spec.types import ExecutorSpec
-
-    def _fake_inject(bridge_dir: Any, *, timeout_s: float) -> None:
-        """Simulate the bridge-not-ready path."""
-        del bridge_dir, timeout_s
-        raise RuntimeError("tmux target is not advertised")
-
-    monkeypatch.setattr(kiro_native_bridge, "inject_interrupt", _fake_inject)
-
-    native_spec = AgentSpec(
-        spec_version=1,
-        name="t",
-        executor=ExecutorSpec(type="omnigent", config={"harness": "kiro-native"}),
-    )
-
-    async def _resolver(agent_id: str, session_id: str | None = None) -> AgentSpec:
-        del agent_id
-        return native_spec
-
-    pm = _FakeProcessManager(_ScriptedHarnessClient([]))
-    app = create_runner_app(
-        process_manager=pm,  # type: ignore[arg-type]
-        spec_resolver=_resolver,
-        server_client=NullServerClient(),  # type: ignore[arg-type]
-    )
-
-    async with _runner_client(app) as client:
-        create_resp = await client.post(
-            "/v1/sessions",
-            json={
-                "session_id": "b756aafcdc68c0ed2cf92b34085be5bb",
-                "agent_id": "880b5afda28ad55ff74cbeb9b5fc67fb",
-            },
-        )
-        assert create_resp.status_code == 201, create_resp.text
-        int_resp = await client.post(
-            "/v1/sessions/b756aafcdc68c0ed2cf92b34085be5bb/events",
-            json={"type": "interrupt"},
-        )
-        queue = _session_event_queues_ref.get("b756aafcdc68c0ed2cf92b34085be5bb")
-        queued_events: list[dict[str, Any]] = []
-        while queue is not None and not queue.empty():
-            item = queue.get_nowait()
-            if isinstance(item, dict):
-                queued_events.append(item)
-
-    assert int_resp.status_code == 503, (
-        f"kiro-native interrupt with inject_interrupt failure must return 503; "
-        f"got {int_resp.status_code}: {int_resp.text}"
-    )
-    body = int_resp.json()
-    assert body.get("error") == "kiro_native_interrupt_failed", (
-        f"503 body must carry the bridge-failure error code; got {body!r}"
-    )
-    status_idle = [
-        e for e in queued_events if e.get("type") == "session.status" and e.get("status") == "idle"
-    ]
-    assert status_idle == [], (
-        f"No session.status: idle should be enqueued when Escape injection "
-        f"failed; got {status_idle!r}."
-    )
-
-
-async def test_events_stop_session_on_kiro_native_503_when_kill_fails(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """stop_session returns 503 and publishes no idle when the kill can't reach tmux.
-
-    Failure-path parity with ``..._stop_session_on_native_returns_503_when_kill_fails``:
-    a failed kill must surface 503 rather than lie to the web UI with 204 + idle
-    while the ``kiro-cli`` process may still be alive.
-    """
-    from omnigent.runner.app import _session_event_queues_ref
-    from omnigent.spec.types import ExecutorSpec
-
-    def _fake_kill(bridge_dir: Any, *, timeout_s: float) -> None:
-        """Simulate the bridge-not-ready path."""
-        del bridge_dir, timeout_s
-        raise RuntimeError("tmux target is not advertised")
-
-    monkeypatch.setattr(kiro_native_bridge, "kill_session", _fake_kill)
-
-    native_spec = AgentSpec(
-        spec_version=1,
-        name="t",
-        executor=ExecutorSpec(type="omnigent", config={"harness": "kiro-native"}),
-    )
-
-    async def _resolver(agent_id: str, session_id: str | None = None) -> AgentSpec:
-        del agent_id
-        return native_spec
-
-    pm = _FakeProcessManager(_ScriptedHarnessClient([]))
-    app = create_runner_app(
-        process_manager=pm,  # type: ignore[arg-type]
-        spec_resolver=_resolver,
-        server_client=NullServerClient(),  # type: ignore[arg-type]
-    )
-
-    async with _runner_client(app) as client:
-        create_resp = await client.post(
-            "/v1/sessions",
-            json={
-                "session_id": "695c27b61206353f312efe5f6a7ca0f6",
-                "agent_id": "880b5afda28ad55ff74cbeb9b5fc67fb",
-            },
-        )
-        assert create_resp.status_code == 201, create_resp.text
-        stop_resp = await client.post(
-            "/v1/sessions/695c27b61206353f312efe5f6a7ca0f6/events",
-            json={"type": "stop_session"},
-        )
-        queue = _session_event_queues_ref.get("695c27b61206353f312efe5f6a7ca0f6")
-        queued_events: list[dict[str, Any]] = []
-        while queue is not None and not queue.empty():
-            item = queue.get_nowait()
-            if isinstance(item, dict):
-                queued_events.append(item)
-
-    assert stop_resp.status_code == 503, (
-        f"kiro-native stop_session with kill failure must return 503; "
-        f"got {stop_resp.status_code}: {stop_resp.text}"
-    )
-    body = stop_resp.json()
-    assert body.get("error") == "kiro_native_stop_failed", (
-        f"503 body must carry the stop-failure error code; got {body!r}"
-    )
-    status_idle = [
-        e for e in queued_events if e.get("type") == "session.status" and e.get("status") == "idle"
-    ]
-    assert status_idle == [], (
-        f"No session.status: idle should be enqueued when kill_session failed; "
-        f"got {status_idle!r}."
     )

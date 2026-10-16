@@ -30,8 +30,13 @@ from omnigent.stores.scheduled_task_store.sqlalchemy_store import (
     SqlAlchemyScheduledTaskStore,
 )
 from tests.server.conftest import ControllableMockClient
+from tests.server.helpers import build_agent_bundle
 
 pytestmark = pytest.mark.asyncio
+
+# A second, non-Claude built-in the agent-switch tests rebind tasks to.
+_PI_AGENT_NAME = "pi-ui"
+_PI_AGENT_ID = builtin_agent_id(_PI_AGENT_NAME)
 
 
 @pytest.fixture(autouse=True)
@@ -76,7 +81,24 @@ def auth_app(runtime_init: None, db_uri: str, tmp_path: Path) -> FastAPI:
     )
     _make_user(db_uri)
     _register_host(app, "4b653f6031f35d168cc0b37caa1306d1", "alice@example.com")
+    _register_pi_builtin(app, artifact_store)
     return app
+
+
+def _register_pi_builtin(app: FastAPI, artifact_store: LocalArtifactStore) -> None:
+    """Register a built-in (``session_id IS NULL``) agent on the ``pi`` harness.
+
+    Startup seeds only the Claude Code native built-in, so the agent-switch
+    tests need a second, non-Claude built-in to switch to.
+    """
+    bundle = build_agent_bundle(
+        name=_PI_AGENT_NAME,
+        executor={"type": "omnigent", "config": {"harness": "pi"}},
+        include_llm=False,
+    )
+    bundle_key = f"{_PI_AGENT_ID}/bundle.tar.gz"
+    artifact_store.put(bundle_key, bundle)
+    app.state.agent_store.create(_PI_AGENT_ID, _PI_AGENT_NAME, bundle_key)
 
 
 def _register_host(app: FastAPI, host_id: str, owner: str) -> None:
@@ -467,7 +489,7 @@ async def test_rejects_existing_sandbox_before_workspace_rpc(
         name="existing-sandbox",
         user_id="alice@example.com",
         token="test-launch-token",
-        provider="agent_sandbox",
+        provider="computer",
         sandbox_id="sandbox-existing",
         token_expires_at=2_000_000_000,
     )
@@ -527,7 +549,7 @@ async def test_existing_sandbox_pin_checks_ownership_first(
         name="bobs-sandbox",
         user_id="bob@example.com",
         token="test-launch-token",
-        provider="agent_sandbox",
+        provider="computer",
         sandbox_id="sandbox-bob",
         token_expires_at=2_000_000_000,
     )
@@ -595,8 +617,6 @@ async def test_update_switches_the_bound_agent(
     An existing automation must be switchable in place — the alternative is
     recreating it, which loses the task id and its run history.
     """
-    from omnigent.native.native_coding_agents import CODEX_NATIVE_AGENT_NAME
-
     _make_user(db_uri)
     created = (
         await auth_client.post("/v1/scheduled-tasks", json=_create_body(), headers=_headers())
@@ -604,7 +624,7 @@ async def test_update_switches_the_bound_agent(
     task_id = created["id"]
     assert created["agent_id"] == builtin_agent_id(CLAUDE_NATIVE_AGENT_NAME)
 
-    target = builtin_agent_id(CODEX_NATIVE_AGENT_NAME)
+    target = _PI_AGENT_ID
     patched = await auth_client.patch(
         f"/v1/scheduled-tasks/{task_id}",
         json={"agent_id": target},
@@ -625,11 +645,9 @@ async def test_update_agent_switch_clears_the_old_harnesss_settings(
     """A switch drops per-agent settings the new harness can't use.
 
     ``permission_mode`` is a Claude-only flag and a model id is provider-bound,
-    so carrying them onto a codex task would break the fire with an unknown
+    so carrying them onto a pi task would break the fire with an unknown
     ``--permission-mode`` / a model its CLI has never heard of.
     """
-    from omnigent.native.native_coding_agents import CODEX_NATIVE_AGENT_NAME
-
     _make_user(db_uri)
     created = (
         await auth_client.post(
@@ -647,7 +665,7 @@ async def test_update_agent_switch_clears_the_old_harnesss_settings(
 
     patched = await auth_client.patch(
         f"/v1/scheduled-tasks/{task_id}",
-        json={"agent_id": builtin_agent_id(CODEX_NATIVE_AGENT_NAME)},
+        json={"agent_id": _PI_AGENT_ID},
         headers=_headers(),
     )
     assert patched.status_code == 200, patched.text
@@ -670,8 +688,6 @@ async def test_update_agent_switch_revalidates_workspace_against_the_new_agent(
     boundary check runs against — asserting a 200 alone would pass even if the
     route kept checking the old agent.
     """
-    from omnigent.native.native_coding_agents import CODEX_NATIVE_AGENT_NAME
-
     _make_user(db_uri)
     created = (
         await auth_client.post("/v1/scheduled-tasks", json=_create_body(), headers=_headers())
@@ -690,7 +706,7 @@ async def test_update_agent_switch_revalidates_workspace_against_the_new_agent(
         scheduled_tasks_routes, "validate_existing_host_workspace", _recording_validate
     )
 
-    target = builtin_agent_id(CODEX_NATIVE_AGENT_NAME)
+    target = _PI_AGENT_ID
     patched = await auth_client.patch(
         f"/v1/scheduled-tasks/{created['id']}",
         json={"agent_id": target},
@@ -705,13 +721,11 @@ async def test_update_agent_switch_keeps_settings_resent_in_the_same_patch(
     auth_client: httpx.AsyncClient, db_uri: str
 ) -> None:
     """Settings sent alongside a switch are kept and gated on the NEW agent."""
-    from omnigent.native.native_coding_agents import CODEX_NATIVE_AGENT_NAME
-
     _make_user(db_uri)
     created = (
         await auth_client.post(
             "/v1/scheduled-tasks",
-            json=_create_body(agent_id=builtin_agent_id(CODEX_NATIVE_AGENT_NAME)),
+            json=_create_body(agent_id=_PI_AGENT_ID),
             headers=_headers(),
         )
     ).json()
@@ -731,9 +745,7 @@ async def test_update_agent_switch_keeps_settings_resent_in_the_same_patch(
 async def test_update_agent_switch_gates_permission_mode_on_the_new_agent(
     auth_client: httpx.AsyncClient, db_uri: str
 ) -> None:
-    """A Claude-only mode sent with a switch to codex is rejected, not persisted."""
-    from omnigent.native.native_coding_agents import CODEX_NATIVE_AGENT_NAME
-
+    """A Claude-only mode sent with a switch to pi is rejected, not persisted."""
     _make_user(db_uri)
     created = (
         await auth_client.post("/v1/scheduled-tasks", json=_create_body(), headers=_headers())
@@ -742,7 +754,7 @@ async def test_update_agent_switch_gates_permission_mode_on_the_new_agent(
     resp = await auth_client.patch(
         f"/v1/scheduled-tasks/{created['id']}",
         json={
-            "agent_id": builtin_agent_id(CODEX_NATIVE_AGENT_NAME),
+            "agent_id": _PI_AGENT_ID,
             "permission_mode": "acceptEdits",
         },
         headers=_headers(),
@@ -790,18 +802,16 @@ async def test_create_rejects_permission_mode_for_non_claude_agent(
     """A valid mode on a non-Claude agent is rejected (server capability gate).
 
     The web dialog only shows the permission control for Claude Code; the server
-    enforces the same gate so a codex/cursor/etc. task can't persist a mode the
+    enforces the same gate so a pi/etc. task can't persist a mode the
     fire path would inject as an unknown ``--permission-mode`` flag. The value
     itself is a valid Claude mode — the rejection is purely about the agent's
     harness.
     """
-    from omnigent.native.native_coding_agents import CODEX_NATIVE_AGENT_NAME
-
     _make_user(db_uri)
     resp = await auth_client.post(
         "/v1/scheduled-tasks",
         json=_create_body(
-            agent_id=builtin_agent_id(CODEX_NATIVE_AGENT_NAME),
+            agent_id=_PI_AGENT_ID,
             permission_mode="acceptEdits",
         ),
         headers=_headers(),

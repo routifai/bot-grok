@@ -1563,15 +1563,10 @@ def create_app(
         if _pane_reaper is not None:
             await _pane_reaper.shutdown()
         # Host shutdown skips per-session deletion, so close native servers here.
-        from omnigent.runner.native import (
-            teardown_all_codex_native_app_servers,
-            teardown_all_opencode_native_servers,
-        )
+        from omnigent.runner.native import teardown_all_codex_native_app_servers
 
         with contextlib.suppress(Exception):
             await teardown_all_codex_native_app_servers()
-        with contextlib.suppress(Exception):
-            await teardown_all_opencode_native_servers()
         await pm.shutdown()
         await _terminal_registry.shutdown()
         if mcp_manager is not None:

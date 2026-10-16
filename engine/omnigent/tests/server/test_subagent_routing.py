@@ -1254,7 +1254,7 @@ def test_ensure_session_router_is_idempotent_and_advertises_everywhere(
         assert read_router_endpoint(first_dir) == read_router_endpoint(second_dir)
         env = session_router_env("conv_lifecycle")
         assert env["OMNIGENT_SUBAGENT_ROUTER_SESSION_ID"] == "conv_lifecycle"
-        assert env["OMNIGENT_CODEX_SUBAGENT_ROUTER_DIR"] == str(first_dir)
+        assert env["OMNIGENT_SUBAGENT_ROUTER_DIR"] == str(first_dir)
         shutdown_session_router("conv_lifecycle")
         assert session_router_env("conv_lifecycle") == {}
 

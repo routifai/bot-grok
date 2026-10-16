@@ -327,51 +327,6 @@ def test_materialize_bundle_then_load_roundtrip_yaml(tmp_path: Path) -> None:
     assert spec.executor.type == "omnigent"
 
 
-def test_load_omnigent_yaml_preserves_use_responses_bool(tmp_path: Path) -> None:
-    """
-    ``use_responses: false`` in an omnigent YAML must land as Python ``False``
-    on ``spec.executor.config["use_responses"]``, not the string ``"false"``.
-
-    What breaks if this fails: ``_build_openai_agents_sdk_spawn_env`` encodes the
-    config value with ``bool(use_responses)`` — but ``bool("false") is True``, so a
-    string ``"false"`` inverts the flag and the executor is launched with
-    ``HARNESS_OPENAI_AGENTS_USE_RESPONSES=true``, causing silent API failures for
-    models that require ``use_responses=False`` (e.g. Kimi K2 via Databricks).
-
-    How it's guarded: ``_omnigent_compat.load_omnigent_yaml`` reads the raw YAML
-    with ``_OmnigentYamlLoader`` (not ``yaml.safe_load``) so this raw read resolves
-    booleans the same way ``load_agent_def``'s own parsing does — both loaders keep
-    ``on``/``off`` as plain strings and parse unquoted ``false`` as bool ``False``.
-    """
-    yaml_text = textwrap.dedent("""\
-        name: kimi-test
-        prompt: You are a helpful assistant.
-
-        executor:
-          harness: openai-agents
-          model: databricks-kimi-k2-6
-          use_responses: false
-    """)
-    (tmp_path / "kimi-test.yaml").write_text(yaml_text)
-    spec = load_omnigent_yaml(tmp_path / "kimi-test.yaml")
-    assert spec.executor.config.get("use_responses") is False
-
-
-def test_load_omnigent_yaml_preserves_reasoning_item_id_policy(tmp_path: Path) -> None:
-    yaml_text = textwrap.dedent("""\
-        name: reasoning-replay-test
-        prompt: You are a helpful assistant.
-
-        executor:
-          harness: openai-agents
-          model: databricks-gpt-5-4-mini
-          reasoning_item_id_policy: preserve
-    """)
-    (tmp_path / "reasoning-replay-test.yaml").write_text(yaml_text)
-    spec = load_omnigent_yaml(tmp_path / "reasoning-replay-test.yaml")
-    assert spec.executor.config["reasoning_item_id_policy"] == "preserve"
-
-
 def test_load_omnigent_yaml_threads_executor_extra_max_tokens_to_llm_extra(
     tmp_path: Path,
 ) -> None:
@@ -382,19 +337,18 @@ def test_load_omnigent_yaml_threads_executor_extra_max_tokens_to_llm_extra(
     forward them to the inner LLM executor.
     """
     yaml_text = textwrap.dedent("""\
-        name: kimi-test
+        name: extra-test
         prompt: You are a helpful assistant.
 
         executor:
-          harness: openai-agents
+          harness: pi
           model: databricks-kimi-k2-6
-          use_responses: false
           extra:
             max_tokens: 65536
     """)
-    (tmp_path / "kimi-test.yaml").write_text(yaml_text)
+    (tmp_path / "extra-test.yaml").write_text(yaml_text)
 
-    spec = load_omnigent_yaml(tmp_path / "kimi-test.yaml")
+    spec = load_omnigent_yaml(tmp_path / "extra-test.yaml")
 
     assert spec.llm is not None
     assert spec.llm.extra["max_tokens"] == 65536
@@ -457,13 +411,13 @@ def test_load_omnigent_yaml_missing_harness_omits_version_skew_hint(
 
 # ── prune_invalid_sub_agents (execution-path backwards compat) ──────────
 #
-# The motivating incident: a newer server bumped polly to a definition with an
-# ``opencode`` sub-agent, and older clients failed to launch *any* polly
-# because the unknown ``opencode-native`` harness failed the whole spec's
-# validation. ``opencode-native`` is itself a recognized harness now, so these
-# tests use a deliberately-synthetic harness name to stand in for "whatever the
-# next server adds that this client doesn't know yet" — the mechanism must
-# survive that class of skew regardless of which specific harness triggers it.
+# The motivating incident: a newer server bumped an agent to a definition with
+# a sub-agent on a harness older clients did not know, and those clients failed
+# to launch the agent at all because the unknown harness failed the whole spec's
+# validation. These tests use a deliberately-synthetic harness name to stand in
+# for "whatever the next server adds that this client doesn't know yet" — the
+# mechanism must survive that class of skew regardless of which specific
+# harness triggers it.
 _UNKNOWN_HARNESS = "harness-from-a-newer-server"
 
 

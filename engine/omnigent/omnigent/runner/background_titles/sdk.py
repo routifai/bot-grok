@@ -28,22 +28,9 @@ def final_text_block(text: str) -> str | None:
 async def generate_background_title(context: BackgroundTitleContext) -> str | None:
     """Generate a title with a synthetic tool-free SDK harness session."""
     spawn_env = dict(context.spawn_env)
-    if context.harness == "codex":
-        spawn_env.update(
-            {
-                "HARNESS_CODEX_DISABLE_NATIVE_TOOLS": "1",
-                "HARNESS_CODEX_ENABLE_WEB_SEARCH": "0",
-                "HARNESS_CODEX_MINIMAL_CONFIG": "1",
-                "HARNESS_CODEX_SKILLS_FILTER": json.dumps("none"),
-                "HARNESS_CODEX_SKILLS_DIR": "",
-            }
-        )
-        spawn_env.pop("HARNESS_CODEX_AGENT_NAME", None)
-        spawn_env.pop("HARNESS_CODEX_BUNDLE_DIR", None)
-    else:
-        spawn_env["HARNESS_CLAUDE_SDK_SKILLS_FILTER"] = json.dumps("none")
-        spawn_env.pop("HARNESS_CLAUDE_SDK_AGENT_NAME", None)
-        spawn_env.pop("HARNESS_CLAUDE_SDK_BUNDLE_DIR", None)
+    spawn_env["HARNESS_CLAUDE_SDK_SKILLS_FILTER"] = json.dumps("none")
+    spawn_env.pop("HARNESS_CLAUDE_SDK_AGENT_NAME", None)
+    spawn_env.pop("HARNESS_CLAUDE_SDK_BUNDLE_DIR", None)
 
     process_key = uuid.uuid4().hex
     event_body = {

@@ -1,11 +1,11 @@
-"""Integration tests for the manual "Add Agent" / "Add Codex reviewer" flow.
+"""Integration tests for the manual "Add Agent" / "Add Pi reviewer" flow.
 
 A separately-registered agent is attached as a child of an existing
 session via ``POST /v1/sessions`` (``parent_session_id`` set, arbitrary
 ``agent_id``, no ``sub_agent_name``). Tests run against the in-process
 ASGI ``client`` with no runner bound, so they cover the persistence-layer
 primitive (child row, parent link, seeded history, scoping) without an
-LLM. Runner execution of a heterogeneous Codex child is an e2e concern
+LLM. Runner execution of a heterogeneous Pi child is an e2e concern
 and out of scope here.
 """
 
@@ -24,8 +24,8 @@ pytestmark = pytest.mark.asyncio
 # Unique marker proving the seeded text reached the child's history only.
 _REVIEW_MARKER = "review impl against designs/feature-x.md [marker-7f3a]"
 
-# A Codex reviewer is just another agent with a codex executor block.
-_CODEX_EXECUTOR: dict[str, Any] = {"type": "omnigent", "config": {"harness": "codex"}}
+# A Pi reviewer is just another agent with a pi executor block.
+_PI_EXECUTOR: dict[str, Any] = {"type": "omnigent", "config": {"harness": "pi"}}
 
 
 # ── Helpers ──────────────────────────────────────────────
@@ -65,7 +65,7 @@ async def _add_child_agent(
     :param client: The test HTTP client.
     :param parent_session_id: Existing parent session id.
     :param child_agent_id: Durable id of the agent to attach.
-    :param title: Child title in ``"{tool}:{name}"`` form, e.g. ``"codex:reviewer"``.
+    :param title: Child title in ``"{tool}:{name}"`` form, e.g. ``"pi:reviewer"``.
     :param initial_message: Optional user message to seed the child with.
     :param terminal_launch_args: Optional native-terminal launch args to
         persist on the child, e.g.
@@ -100,19 +100,19 @@ async def test_add_agent_attaches_arbitrary_agent_as_child(
 ) -> None:
     """A separately registered agent attaches as a child, bound to itself."""
     parent = await _create_parent_session(client, agent_name="parent-coder")
-    reviewer = await create_test_agent(client, name="codex-reviewer", executor=_CODEX_EXECUTOR)
+    reviewer = await create_test_agent(client, name="pi-reviewer", executor=_PI_EXECUTOR)
     assert reviewer["id"] != parent["agent_id"]
     # GET /v1/sessions/{id}/agent (the create_test_agent return) reports
     # the harness, consistent with the GET /v1/agents catalog. A None or
     # missing value here means the session-agent endpoint dropped the
-    # field the Add Agent picker relies on to badge Codex vs Claude.
-    assert reviewer["harness"] == "codex"
+    # field the Add Agent picker relies on to badge Pi vs Claude.
+    assert reviewer["harness"] == "pi"
 
     resp = await _add_child_agent(
         client,
         parent_session_id=parent["id"],
         child_agent_id=reviewer["id"],
-        title="codex:reviewer",
+        title="pi:reviewer",
     )
     assert resp.status_code == 201, f"add-agent failed: {resp.text}"
     child = resp.json()
@@ -129,12 +129,12 @@ async def test_added_child_appears_in_parent_child_sessions(
 ) -> None:
     """A manually-added child surfaces in ``GET /{parent}/child_sessions``."""
     parent = await _create_parent_session(client, agent_name="parent-coder-2")
-    reviewer = await create_test_agent(client, name="codex-reviewer-2", executor=_CODEX_EXECUTOR)
+    reviewer = await create_test_agent(client, name="pi-reviewer-2", executor=_PI_EXECUTOR)
     add = await _add_child_agent(
         client,
         parent_session_id=parent["id"],
         child_agent_id=reviewer["id"],
-        title="codex:reviewer",
+        title="pi:reviewer",
     )
     assert add.status_code == 201, add.text
     child_id = add.json()["id"]
@@ -145,7 +145,7 @@ async def test_added_child_appears_in_parent_child_sessions(
     assert child_id in rows, f"added child {child_id} missing from {list(rows)}"
     row = rows[child_id]
     # Title parses into tool/session_name the UI badges the child with.
-    assert row["tool"] == "codex"
+    assert row["tool"] == "pi"
     assert row["session_name"] == "reviewer"
     assert row["parent_session_id"] == parent["id"]
 
@@ -242,12 +242,12 @@ async def test_initial_task_is_scoped_to_the_added_child(
 ) -> None:
     """The prompt seeded on the child lands only in the child, not the parent."""
     parent = await _create_parent_session(client, agent_name="parent-coder-3")
-    reviewer = await create_test_agent(client, name="codex-reviewer-3", executor=_CODEX_EXECUTOR)
+    reviewer = await create_test_agent(client, name="pi-reviewer-3", executor=_PI_EXECUTOR)
     add = await _add_child_agent(
         client,
         parent_session_id=parent["id"],
         child_agent_id=reviewer["id"],
-        title="codex:reviewer",
+        title="pi:reviewer",
         initial_message=_REVIEW_MARKER,
     )
     assert add.status_code == 201, add.text
@@ -273,12 +273,12 @@ async def test_added_child_history_and_resources_resolve_independently(
 ) -> None:
     """The child's snapshot and resources resolve for the child id directly."""
     parent = await _create_parent_session(client, agent_name="parent-coder-4")
-    reviewer = await create_test_agent(client, name="codex-reviewer-4", executor=_CODEX_EXECUTOR)
+    reviewer = await create_test_agent(client, name="pi-reviewer-4", executor=_PI_EXECUTOR)
     add = await _add_child_agent(
         client,
         parent_session_id=parent["id"],
         child_agent_id=reviewer["id"],
-        title="codex:reviewer",
+        title="pi:reviewer",
         initial_message=_REVIEW_MARKER,
     )
     assert add.status_code == 201, add.text

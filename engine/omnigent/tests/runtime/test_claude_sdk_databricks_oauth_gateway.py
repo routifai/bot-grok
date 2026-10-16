@@ -27,9 +27,7 @@ static token fails with::
     from the gateway base URL / auth command or a valid ~/.databrickscfg
     profile.
 
-…making the documented ``type: databricks`` credential unusable for Claude,
-while the identical pattern works for ``openai-agents`` (which defers all
-credential resolution to request time).
+…making the documented ``type: databricks`` credential unusable for Claude.
 """
 
 from __future__ import annotations
@@ -233,36 +231,3 @@ def test_executor_constructs_with_oauth_profile(
     assert executor._extra_env["ANTHROPIC_BASE_URL"] == (
         f"{WORKSPACE_HOST}/ai-gateway/anthropic"
     ), "The executor must route to the profile workspace's AI Gateway"
-
-
-def test_openai_agents_databricks_auth_works_for_contrast(
-    oauth_databrickscfg: Path,
-) -> None:
-    """Confirm openai-agents handles the same OAuth profile without error (contrast).
-
-    The identical credential pattern has always worked for ``openai-agents``:
-    it defers all credential resolution to request time (via the Databricks
-    SDK's full OAuth support), so it never fails at spawn time. This test
-    preserves that invariant so a fix cannot accidentally break it.
-
-    :param oauth_databrickscfg: Fixture providing the OAuth U2M config.
-    """
-    from omnigent.runtime.workflow import _build_openai_agents_sdk_spawn_env
-
-    spec = AgentSpec(
-        spec_version=1,
-        name="test-openai-databricks",
-        instructions="You are a test agent.",
-        executor=ExecutorSpec(
-            type="omnigent",
-            config={"harness": "openai-agents"},
-            model="gpt-5-6-luna",
-            auth=DatabricksAuth(profile="my-profile"),
-        ),
-        llm=LLMConfig(model="gpt-5-6-luna"),
-    )
-    # Must not raise — openai-agents handles OAuth profiles correctly.
-    env = _build_openai_agents_sdk_spawn_env(spec)
-    assert env.get("HARNESS_OPENAI_AGENTS_DATABRICKS_PROFILE") == "my-profile", (
-        "openai-agents must still thread the profile env var for token refresh"
-    )

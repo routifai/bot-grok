@@ -122,7 +122,7 @@ def policies_yaml(tmp_path: Path) -> Path:
         "prompt": "I have policies.",
         "executor": {
             "model": "databricks-gpt-5-mini",
-            "harness": "openai-agents",
+            "harness": "pi",
         },
         "policies": {
             "block_foo": {
@@ -939,7 +939,7 @@ def test_cancellable_function_parameters_forward_trip_preserves_input_schema() -
         prompt="p",
         executor=OmniExecutorSpec(
             model="databricks-gpt-5-mini",
-            harness="openai-agents",
+            harness="pi",
         ),
         tools={
             "sleep": CancellableFunctionTool(
@@ -993,7 +993,7 @@ def test_function_tool_parameters_round_trip_preserves_input_schema(
         prompt="p",
         executor=OmniExecutorSpec(
             model="databricks-gpt-5-mini",
-            harness="openai-agents",
+            harness="pi",
         ),
         tools={
             "sleep": FunctionTool(
@@ -1179,7 +1179,7 @@ def test_inline_agent_tool_inherit_resolves_to_parent_os_env() -> None:
         prompt="",
         executor=OmniExecutorSpec(
             model="databricks-gpt-5-mini",
-            harness="openai-agents",
+            harness="pi",
             profile="test-profile",
         ),
         os_env=parent_os_env,
@@ -1236,7 +1236,7 @@ def test_inline_agent_tool_concrete_os_env_not_overridden_by_parent() -> None:
         prompt="",
         executor=OmniExecutorSpec(
             model="databricks-gpt-5-mini",
-            harness="openai-agents",
+            harness="pi",
         ),
         os_env=parent_os_env,
         tools={
@@ -1282,7 +1282,7 @@ def test_inline_agent_tool_inherit_with_no_parent_os_env_yields_none() -> None:
         prompt="",
         executor=OmniExecutorSpec(
             model="databricks-gpt-5-mini",
-            harness="openai-agents",
+            harness="pi",
         ),
         # No os_env on the parent.
         os_env=None,
@@ -1364,7 +1364,7 @@ def test_instructions_yaml_loads_through_full_pipeline(tmp_path: Path) -> None:
         "prompt: dummy placeholder\n"
         "instructions: AGENTS.md\n"
         "executor:\n"
-        "  harness: openai-agents\n"
+        "  harness: pi\n"
         "  model: gpt-4o\n"
     )
     (tmp_path / "AGENTS.md").write_text("FROM AGENTS DOT MD")
@@ -1420,7 +1420,7 @@ def test_terminals_thread_through_translator() -> None:
         tools={},
         executor=OmniExecutorSpec(
             model="databricks-gpt-5-mini",
-            harness="openai-agents",
+            harness="pi",
         ),
         terminals={
             "bash": bash_terminal,
@@ -1463,7 +1463,7 @@ def test_terminals_none_when_parent_has_no_terminals() -> None:
         tools={},
         executor=OmniExecutorSpec(
             model="databricks-gpt-5-mini",
-            harness="openai-agents",
+            harness="pi",
         ),
         # No terminals.
     )
@@ -1517,7 +1517,7 @@ def test_inline_agent_tool_inherits_parent_terminals() -> None:
         prompt="p",
         executor=OmniExecutorSpec(
             model="databricks-gpt-5-mini",
-            harness="openai-agents",
+            harness="pi",
         ),
         terminals={"bash": TerminalEnvSpec(command="bash")},
         tools={
@@ -1557,10 +1557,6 @@ def test_inline_agent_tool_inherits_parent_terminals() -> None:
         ("databricks-claude-sonnet-4", "claude-sdk"),
         ("databricks-claude-opus-4-7", "claude-sdk"),
         ("anthropic/claude-sonnet-4-20250514", "claude-sdk"),
-        ("databricks-gpt-5-4", "openai-agents"),
-        ("databricks-gpt-5-mini", "openai-agents"),
-        ("openai/gpt-4o", "openai-agents"),
-        ("gpt-4-turbo", "openai-agents"),
     ],
 )
 def test_harness_auto_picks_from_model_prefix(
@@ -1617,11 +1613,11 @@ def test_harness_auto_pick_doesnt_override_explicit_declaration() -> None:
         tools={},
         executor=OmniExecutorSpec(
             model="databricks-claude-sonnet-4",
-            harness="openai-agents",
+            harness="pi",
         ),
     )
     spec = agent_def_to_agent_spec(agent_def)
-    assert spec.executor.config["harness"] == "openai-agents", (
+    assert spec.executor.config["harness"] == "pi", (
         "Explicit harness in the YAML was overridden by auto-pick "
         "— auto-pick must only fill in *missing* harness values."
     )
@@ -1680,7 +1676,7 @@ def test_inline_agent_tool_without_executor_inherits_parent_harness() -> None:
         prompt="",
         executor=OmniExecutorSpec(
             model="databricks-gpt-5-mini",
-            harness="openai-agents",
+            harness="pi",
             profile="test-profile",
         ),
         tools={
@@ -1694,7 +1690,7 @@ def test_inline_agent_tool_without_executor_inherits_parent_harness() -> None:
 
     assert len(spec.sub_agents) == 1
     sub = spec.sub_agents[0]
-    assert sub.executor.config["harness"] == "openai-agents", (
+    assert sub.executor.config["harness"] == "pi", (
         "Sub-agent's harness should inherit from parent when the "
         "inline AgentTool omits ``executor:``."
     )
@@ -1715,7 +1711,7 @@ def test_inline_agent_tool_explicit_harness_wins_over_parent() -> None:
         prompt="",
         executor=OmniExecutorSpec(
             model="databricks-gpt-5-mini",
-            harness="openai-agents",
+            harness="pi",
         ),
         tools={
             "worker": AgentTool(
@@ -1748,7 +1744,7 @@ def test_inline_agent_tool_falls_through_to_model_auto_pick() -> None:
     parent = AgentDef(
         name="supervisor",
         prompt="",
-        executor=OmniExecutorSpec(model="databricks-gpt-5-mini"),
+        executor=OmniExecutorSpec(model="databricks-claude-sonnet-4"),
         tools={
             "worker": AgentTool(
                 name="worker",
@@ -1761,7 +1757,7 @@ def test_inline_agent_tool_falls_through_to_model_auto_pick() -> None:
     )
     spec = agent_def_to_agent_spec(parent)
 
-    assert spec.executor.config["harness"] == "openai-agents"
+    assert spec.executor.config["harness"] == "claude-sdk"
     assert spec.sub_agents[0].executor.config["harness"] == "claude-sdk", (
         "Child with a Claude model and no harness (and no parent "
         "harness to inherit) should resolve through model auto-pick."
@@ -1837,7 +1833,7 @@ def _build_agent_def_with_raw_yaml(
         prompt="p",
         executor=OmniExecutorSpec(
             model="databricks-gpt-5-mini",
-            harness="openai-agents",
+            harness="pi",
         ),
     )
     raw: dict[str, Any] = {"name": "polled", "prompt": "p"}
@@ -2042,7 +2038,7 @@ def test_databricks_slash_model_without_profile_leaves_connection_none() -> None
         prompt="You are helpful.",
         executor=OmniExecutorSpec(
             model="databricks/databricks-gpt-5-mini",
-            harness="openai-agents",
+            harness="pi",
             profile=None,
         ),
     )
@@ -2141,7 +2137,7 @@ def test_executor_extra_field_propagates_to_llm_config() -> None:
     agent_def, raw_yaml = _build_agent_def_with_raw_yaml()
     raw_yaml["executor"] = {
         "model": "databricks-gpt-5-mini",
-        "harness": "openai-agents",
+        "harness": "pi",
         "extra": {"max_turns": 3, "temperature": 0.1},
     }
     spec = agent_def_to_agent_spec(agent_def, raw_yaml=raw_yaml)
@@ -2160,101 +2156,6 @@ def test_executor_extra_absent_yields_empty_llm_extra() -> None:
     spec = agent_def_to_agent_spec(agent_def, raw_yaml=raw_yaml)
     assert spec.llm is not None
     assert spec.llm.extra == {}
-
-
-def test_use_responses_false_propagates_to_executor_config() -> None:
-    """
-    ``use_responses: false`` in an omnigent YAML executor block lands on
-    ``spec.executor.config["use_responses"]`` as ``False`` after
-    ``agent_def_to_agent_spec``.
-
-    The inner ``ExecutorSpec`` dataclass (``omnigent.inner.datamodel``)
-    has no ``use_responses`` field, so the omnigent YAML loader silently
-    drops it. We must read it from the raw YAML dict and carry it forward
-    explicitly.
-
-    What breaks if this fails: ``_build_openai_agents_sdk_spawn_env`` finds
-    ``spec.executor.config.get("use_responses")`` is ``None``, so it skips
-    setting ``HARNESS_OPENAI_AGENTS_USE_RESPONSES``. The harness subprocess
-    then defaults to ``use_responses=True`` (Responses API), which Databricks
-    does not support for models like Kimi K2 — the REPL shows no response.
-    """
-    agent_def, raw_yaml = _build_agent_def_with_raw_yaml()
-    raw_yaml["executor"] = {
-        "model": "databricks-kimi-k2-6",
-        "harness": "openai-agents",
-        "use_responses": False,
-    }
-    spec = agent_def_to_agent_spec(agent_def, raw_yaml=raw_yaml)
-    assert spec.executor.config.get("use_responses") is False
-
-
-def test_use_responses_true_propagates_to_executor_config() -> None:
-    """
-    ``use_responses: true`` similarly propagates as ``True``.
-
-    Complement of ``test_use_responses_false_propagates_to_executor_config``
-    — verifies both boolean values are preserved exactly, not coerced.
-    """
-    agent_def, raw_yaml = _build_agent_def_with_raw_yaml()
-    raw_yaml["executor"] = {
-        "model": "databricks-gpt-5-4-mini",
-        "harness": "openai-agents",
-        "use_responses": True,
-    }
-    spec = agent_def_to_agent_spec(agent_def, raw_yaml=raw_yaml)
-    assert spec.executor.config.get("use_responses") is True
-
-
-def test_use_responses_absent_omits_key_from_executor_config() -> None:
-    """
-    When the omnigent YAML omits ``use_responses``, the key is absent
-    from ``spec.executor.config`` (not ``None``, not ``True``/``False``).
-
-    ``_build_openai_agents_sdk_spawn_env`` uses ``config.get("use_responses")
-    is not None`` to decide whether to set the env var; a missing key means
-    the harness default applies unchanged.
-    """
-    agent_def, raw_yaml = _build_agent_def_with_raw_yaml()
-    raw_yaml["executor"] = {
-        "model": "databricks-gpt-5-4-mini",
-        "harness": "openai-agents",
-    }
-    spec = agent_def_to_agent_spec(agent_def, raw_yaml=raw_yaml)
-    assert "use_responses" not in spec.executor.config
-
-
-def test_reasoning_item_id_policy_propagates_to_executor_config() -> None:
-    agent_def, raw_yaml = _build_agent_def_with_raw_yaml()
-    raw_yaml["executor"] = {
-        "model": "databricks-gpt-5-4-mini",
-        "harness": "openai-agents",
-        "reasoning_item_id_policy": "preserve",
-    }
-    spec = agent_def_to_agent_spec(agent_def, raw_yaml=raw_yaml)
-    assert spec.executor.config["reasoning_item_id_policy"] == "preserve"
-
-
-def test_reasoning_item_id_policy_absent_omits_key_from_executor_config() -> None:
-    agent_def, raw_yaml = _build_agent_def_with_raw_yaml()
-    raw_yaml["executor"] = {
-        "model": "databricks-gpt-5-4-mini",
-        "harness": "openai-agents",
-    }
-    spec = agent_def_to_agent_spec(agent_def, raw_yaml=raw_yaml)
-    assert "reasoning_item_id_policy" not in spec.executor.config
-
-
-def test_malformed_acp_agent_propagates_for_runtime_validation() -> None:
-    agent_def, raw_yaml = _build_agent_def_with_raw_yaml()
-    raw_yaml["executor"] = {
-        "harness": "acp:helper",
-        "acp_agent": "not-a-mapping",
-    }
-
-    spec = agent_def_to_agent_spec(agent_def, raw_yaml=raw_yaml)
-
-    assert spec.executor.config["acp_agent"] == "not-a-mapping"
 
 
 def test_unknown_policy_type_rejected_with_clear_message() -> None:
@@ -2579,7 +2480,7 @@ def test_compat_yaml_executor_api_key_auth_is_not_dropped(tmp_path: Path) -> Non
                 "name": "openai_agent",
                 "prompt": "You are a test agent.",
                 "executor": {
-                    "harness": "openai-agents",
+                    "harness": "pi",
                     "auth": {"type": "api_key", "api_key": "sk-test-key"},
                 },
             }

@@ -38,12 +38,6 @@ NATIVE_WRITE_TOOLS: frozenset[str] = frozenset({"Write", "Edit", "MultiEdit", "N
 # inside the CLI subprocess.
 _NATIVE_OS_TOOLS = NATIVE_WRITE_TOOLS | {"Bash", "Read", "Glob", "Grep"}
 
-# Cursor SDK native tool names surfaced via the preToolUse hook
-# (see ``omnigent.inner.cursor_policy_hook``). Cursor uses ``Shell``
-# for its terminal tool (not ``Bash``). ``Read`` / ``Write`` / ``Edit``
-# are already in ``_NATIVE_OS_TOOLS`` above.
-_CURSOR_NATIVE_OS_TOOLS = frozenset({"Shell"})
-
 # Pi native tool names (lowercase), surfaced via the pi ``tool_call``
 # extension hook (see ``omnigent.inner.pi_executor._gate_native_tool``).
 # Pi runs these in-process and routes them through the same TOOL_CALL
@@ -52,38 +46,6 @@ _CURSOR_NATIVE_OS_TOOLS = frozenset({"Shell"})
 # as the Omnigent ``sys_os_*`` tools (``path`` / ``command``), so the
 # previews below resolve without a Pi-specific arg branch.
 _PI_NATIVE_OS_TOOLS = frozenset({"read", "bash", "write", "edit"})
-
-# Hermes Agent tool names surfaced via the ``pre_tool_call`` shell hook
-# (see ``omnigent.inner.hermes_policy_hook``). Hermes uses its own naming
-# convention for file/shell operations.
-_HERMES_OS_TOOLS = frozenset(
-    {"terminal", "execute_code", "read_file", "write_file", "search_files"}
-)
-
-# Goose native tool names. Goose namespaces its built-in "developer" extension
-# tools as ``developer__<tool>``; ``shell`` is the terminal tool and
-# ``write`` / ``edit`` / ``text_editor`` / ``read_image`` / ``tree`` are the file
-# tools (names vary slightly by Goose version, so cover both the split write/edit
-# and the unified text_editor spellings).
-_GOOSE_NATIVE_OS_TOOLS = frozenset(
-    {
-        "developer__shell",
-        "developer__write",
-        "developer__edit",
-        "developer__text_editor",
-        "developer__read_image",
-        "developer__tree",
-    }
-)
-
-# opencode-native permission CATEGORIES (the ``permission`` field of a
-# ``permission.asked`` event, mapped to the policy-event tool name by the SSE
-# forwarder — live-verified against 1.17.7). opencode collapses write/edit/patch
-# into ``edit``; ``bash`` is its shell tool (``ShellID.ToolID``). ``bash`` /
-# ``read`` / ``edit`` overlap the lowercase pi set above, but list them
-# explicitly so opencode coverage does not silently depend on that set, and add
-# the file-search categories (``grep`` / ``glob``) pi lacks.
-_OPENCODE_NATIVE_OS_TOOLS = frozenset({"bash", "edit", "read", "grep", "glob"})
 
 # Codex in-process harness tool names surfaced as observational
 # ``ToolCallRequest`` events. The codex app-server executor translates
@@ -238,7 +200,7 @@ def detect_loop(window: int = 10, threshold: int = 3) -> PolicyCallable:
 def ask_on_os_tools(event: PolicyEvent) -> PolicyResponse:
     """ASK for user approval before any file or shell tool call.
 
-    Covers six tool-name families:
+    Covers five tool-name families:
 
     - **Omnigent built-in OS tools** (``sys_os_read``,
       ``sys_os_write``, ``sys_os_edit``, ``sys_os_shell``).
@@ -247,22 +209,11 @@ def ask_on_os_tools(event: PolicyEvent) -> PolicyResponse:
       surfaced via the ``PreToolUse`` hook contract.
     - **Codex native tools** — uses the same ``PreToolUse`` hook
       contract with the same tool names (e.g. ``Bash``).
-    - **Cursor SDK native tools** (``Shell``) — surfaced via the
-      ``preToolUse`` hook (see ``cursor_policy_hook.py``). Cursor
-      uses ``Shell`` instead of ``Bash`` for its terminal tool.
     - **Pi native tools** (``read``, ``bash``, ``write``, ``edit``)
       — surfaced via the pi ``tool_call`` extension hook. Lowercase
       and distinct from the Claude/Codex casing.
-    - **Goose native tools** (``developer__shell`` and the
-      ``developer__*`` file tools) — surfaced via the goose
-      extension hook.
-    - **Hermes Agent tools** (``terminal``, ``execute_code``,
-      ``read_file``, ``write_file``, ``search_files``) — surfaced
-      via the ``pre_tool_call`` shell hook.
-    - **opencode native tools** (``bash``, ``edit``, ``read``,
-      ``grep``, ``glob``) — opencode's permission CATEGORIES, surfaced
-      via the SSE forwarder's ``permission.asked`` → policy-evaluate
-      path. opencode collapses write/edit/patch into ``edit``.
+    - **Codex in-process tools** (``shell``) — observational
+      ``ToolCallRequest`` events from the codex app-server executor.
 
     Returns ASK so the user sees an approval prompt before the tool
     executes.
@@ -278,14 +229,7 @@ def ask_on_os_tools(event: PolicyEvent) -> PolicyResponse:
         return _ALLOW
     tool = data.get("name", "")
     _all_os_tools = (
-        _SYS_OS_TOOLS
-        | _NATIVE_OS_TOOLS
-        | _CURSOR_NATIVE_OS_TOOLS
-        | _PI_NATIVE_OS_TOOLS
-        | _HERMES_OS_TOOLS
-        | _GOOSE_NATIVE_OS_TOOLS
-        | _OPENCODE_NATIVE_OS_TOOLS
-        | _CODEX_IN_PROCESS_OS_TOOLS
+        _SYS_OS_TOOLS | _NATIVE_OS_TOOLS | _PI_NATIVE_OS_TOOLS | _CODEX_IN_PROCESS_OS_TOOLS
     )
     if tool in _all_os_tools:
         args = data.get("arguments", {})
@@ -294,17 +238,11 @@ def ask_on_os_tools(event: PolicyEvent) -> PolicyResponse:
             "sys_os_shell",
             "Bash",
             "bash",
-            "Shell",
-            "terminal",
-            "developer__shell",
             "shell",
         ):
             preview = args.get("command", "") if isinstance(args, dict) else ""
-        elif tool in ("Grep", "Glob", "search_files", "grep", "glob"):
+        elif tool in ("Grep", "Glob"):
             preview = args.get("pattern", "") if isinstance(args, dict) else ""
-        elif tool == "execute_code":
-            code = args.get("code") if isinstance(args, dict) else None
-            preview = code[:80] if isinstance(code, str) else ""
         else:
             # Omnigent tools use ``path``; Claude native tools use ``file_path``,
             # except NotebookEdit which uses ``notebook_path``.
@@ -776,10 +714,7 @@ POLICY_REGISTRY: list[dict[str, object]] = [
         "description": "Asks for user approval before any file or shell tool call — "
         "covers Omnigent sys_os_* tools, Claude Code and Codex native tools "
         "(Bash, Read, Write, Edit, MultiEdit, NotebookEdit, Glob, Grep), "
-        "Cursor native tools (Shell), Pi native tools (read, bash, write, edit), "
-        "opencode native tools (bash, edit, read, grep, glob), "
-        "Goose native tools (developer__shell and the developer__* file tools), "
-        "and Hermes Agent tools (terminal, execute_code, read_file, write_file, search_files)",
+        "Pi native tools (read, bash, write, edit), and the Codex in-process shell",
         "params_schema": None,
     },
     {

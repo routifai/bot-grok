@@ -694,7 +694,7 @@ POLICY_REGISTRY: list[dict[str, object]] = [
         "name": "Block Dangerous Shell Commands",
         "description": "Allows safe shell commands, applies a configurable ASK or DENY action "
         "to recoverable risky commands, and always denies catastrophic commands such as "
-        "force-push or rm -rf /. Supports Omnigent, Claude/Codex, Cursor, Pi, Hermes, and Goose.",
+        "force-push or rm -rf /. Supports Omnigent, Claude/Codex, and Pi.",
         "params_schema": {
             "type": "object",
             "properties": {

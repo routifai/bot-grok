@@ -321,11 +321,11 @@ async def test_drain_session_streams_enqueues_done_sentinel() -> None:
         _session_event_queues_ref.pop("conv_drain_b", None)
 
 
-async def _native_app_with_session(conv_id: str, harness: str = "pi-native") -> FastAPI:
+async def _native_app_with_session(conv_id: str, harness: str = "claude-native") -> FastAPI:
     """Build a runner app whose spec resolves to *harness* for *conv_id*.
 
     :param conv_id: Session id the caller will create, e.g. ``"conv_native"``.
-    :param harness: Executor harness the spec declares, e.g. ``"pi-native"``.
+    :param harness: Executor harness the spec declares, e.g. ``"claude-native"``.
     :returns: Fresh FastAPI runner app.
     """
     from omnigent.spec.types import AgentSpec, ExecutorSpec
@@ -490,7 +490,7 @@ async def test_sdk_session_status_does_not_pin_idle_watchdog() -> None:
     from tests.runner.conftest import _runner_client
 
     conv_id = "conv_sdk_status"
-    app = await _native_app_with_session(conv_id, harness="openai-agents")
+    app = await _native_app_with_session(conv_id, harness="claude-sdk")
     async with _runner_client(app) as client:
         resp = await client.post(
             f"/v1/sessions/{conv_id}/events",

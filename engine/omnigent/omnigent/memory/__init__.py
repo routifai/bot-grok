@@ -39,8 +39,7 @@ def memory_extra_available() -> bool:
 
     Probes via :func:`importlib.util.find_spec` (not ``import``) so the check
     never loads txtai or its transitive deps (torch, faiss) — they stay lazy
-    until a search/write actually runs. Mirrors
-    ``omnigent.tools.builtins._hindsight_available``.
+    until a search/write actually runs.
     """
     return importlib.util.find_spec("txtai") is not None
 

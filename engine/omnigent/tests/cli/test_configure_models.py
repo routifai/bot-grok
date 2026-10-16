@@ -1,4 +1,4 @@
-"""Tests for ``omnigent setup --no-internal-beta`` (CLI model-provider config).
+"""Tests for ``omnigent setup`` (CLI model-provider config).
 
 Drives the click command tree with :class:`click.testing.CliRunner` and
 piped stdin, then asserts on the **exact config mutations** written to a
@@ -10,11 +10,8 @@ add/set-default/remove write paths surfaces here rather than silently.
 
 ``configure harnesses`` is a **three-level** picker. Level 1 shows every
 harness on a single compact row — the name on the left, then an aligned
-``✓``/``✗`` status column — in 0.3 priority order: ``1=Claude``,
-``2=Codex``, ``3=Cursor``, ``4=OpenCode``, ``5=Hermes``, ``6=Pi``,
-``7=Antigravity``, ``8=Qwen Code``, ``9=Goose``, ``10=Copilot``, ``11=Kiro``,
-``12=Kimi Code``, ``13=Import from OpenClaw``, ``14=Custom ACP agent``,
-``15=Quit``. There is no "More" folding — every harness is visible at once —
+``✓``/``✗`` status column — in priority order: ``1=Claude``, ``2=Codex``,
+``3=Pi``, ``4=Quit``. There is no "More" folding — every harness is visible at once —
 and the actionable hint (install command / next step)
 renders only for the highlighted row, as the selector's description line.
 Selecting a harness drills into level 2 — its configured credentials, then ``+ Add a
@@ -38,7 +35,6 @@ load-bearing behavior — it has dedicated coverage below.
 from __future__ import annotations
 
 import os
-from unittest.mock import Mock
 
 import pytest
 import tomllib
@@ -58,7 +54,6 @@ from omnigent.onboarding.configure_models import (
 )
 from omnigent.onboarding.provider_config import (
     ANTHROPIC_FAMILY,
-    GEMINI_FAMILY,
     OPENAI_FAMILY,
     get_default_provider,
     load_config,
@@ -84,11 +79,8 @@ def isolated_config(tmp_path, monkeypatch):
     for var in (
         "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY",
-        "GEMINI_API_KEY",
-        "ANTIGRAVITY_API_KEY",
         "OPENROUTER_API_KEY",
         "DATABRICKS_TOKEN",
-        "CURSOR_API_KEY",
     ):
         monkeypatch.delenv(var, raising=False)
     # Redirect CLI-detected credential homes so a developer's real
@@ -248,7 +240,7 @@ def test_configure_models_add_key_provider_writes_entry_and_secret(isolated_conf
     # 1="Anthropic — API key" → paste key → default model blank (= catalog
     # default) → L2: q=back → L1: q=exit.
     stdin = "\n".join(["1", "1", "1", "sk-ant-test-key", "", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
     cfg = _config_yaml(isolated_config)
@@ -290,7 +282,7 @@ def test_configure_models_add_key_persists_catalog_default_when_declined(
     # default model blank (declined) → L2 q=back → L1 q=exit. Blank model
     # must still persist the catalog default rather than no pin.
     stdin = "\n".join(["1", "1", "1", "sk-ant-test-key", "", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
     cfg = _config_yaml(isolated_config)
@@ -334,7 +326,7 @@ def test_configure_models_readd_key_does_not_drop_default(isolated_config) -> No
     # L1 1=Claude → L2 (1=anthropic 2=+Add): re-add via 2=+Add → anthropic
     # menu 1=Anthropic key → key → blank model → L2 q=back → L1 q=exit.
     stdin = "\n".join(["1", "2", "1", "sk-ant-new-key", "", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
     cfg = _config_yaml(isolated_config)
@@ -376,7 +368,7 @@ def test_configure_models_add_gateway_openrouter_chat_wire(isolated_config) -> N
         )
         + "\n"
     )
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
     cfg = _config_yaml(isolated_config)
@@ -435,7 +427,7 @@ def test_configure_models_set_default_preserves_other_family(isolated_config) ->
     # L1 2=Codex → L2 (1=openai 2=+Add): select openai (1) → L3 1=Make default
     # → back to L2 q=back → L1 q=exit.
     stdin = "\n".join(["2", "1", "1", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
     cfg = load_config()
@@ -483,7 +475,7 @@ def test_configure_models_set_default_replaces_same_family_default(isolated_conf
     # select openrouter (2) → L3 1=Make default → it replaces openai as the
     # Codex default → back to L2 q=back → L1 q=exit.
     stdin = "\n".join(["2", "2", "1", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
     cfg = load_config()
@@ -524,7 +516,7 @@ def test_configure_models_remove_drops_entry(isolated_config) -> None:
     # L1 1=Claude → L2 (1=anthropic 2=+Add): select anthropic (1) → L3
     # (1=Make default 2=Remove): 2=Remove → back to L2 q=back → L1 q=exit.
     stdin = "\n".join(["1", "1", "2", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
     cfg = _config_yaml(isolated_config)
@@ -576,13 +568,12 @@ def test_add_menu_options_ordering() -> None:
     and Databricks sits just above the catch-all "Other". A regression to
     the old interleaved order (or Other above Databricks) fails here.
     """
-    # Full menu: first-party keys (OpenAI, Anthropic, Gemini), then
+    # Full menu: first-party keys (OpenAI, Anthropic), then
     # subscriptions, then Gateway, OpenRouter, Databricks, Other.
     full = [o.label.split(None, 1)[1] for o in add_menu_options()]
     assert full == [
         "OpenAI — API key",
         "Anthropic — API key",
-        "Gemini — API key",
         "ChatGPT — subscription",
         "Claude — subscription (Pro/Max)",
         "Pi — original auth",
@@ -617,12 +608,6 @@ def test_add_menu_options_ordering() -> None:
         "Databricks — workspace",
         "AWS Bedrock — API key",
     ]
-
-    # Gemini (antigravity) scoped: API key only — Gemini is key-only (no
-    # subscription/gateway/Databricks), and it must NOT appear in the
-    # openai-family "Other provider" catch-all (asserted via `codex` above).
-    gemini = [o.label.split(None, 1)[1] for o in add_menu_options_for_family(GEMINI_FAMILY)]
-    assert gemini == ["Gemini — API key"]
 
 
 def test_add_menu_databricks_option_gated_on_extra(monkeypatch) -> None:
@@ -697,7 +682,7 @@ def test_configure_models_add_databricks_aborts_without_extra(
     # ("q") would be consumed as the workspace URL and the login stub would
     # raise, failing the invoke with a non-zero exit code.
     stdin = "\n".join(["1", "1", "4", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
     # No provider entry was persisted — the add aborted cleanly.
@@ -780,7 +765,7 @@ def test_configure_models_add_subscription_via_flat_menu(isolated_config) -> Non
     # subscription (Pro/Max)" → harness login (stubbed True by the autouse
     # fixture) → name derived "<cli>-subscription", auto-default → L2 q → L1 q.
     stdin = "\n".join(["1", "1", "2", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
     cfg = _config_yaml(isolated_config)
@@ -805,7 +790,7 @@ def test_add_subscription_invokes_harness_login(isolated_config, monkeypatch) ->
         lambda family: calls.append(family) or True,
     )
     stdin = "\n".join(["1", "1", "2", "q", "q"]) + "\n"  # Claude → +Add → subscription
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
     # Logged into Claude (anthropic) exactly once, before recording the entry.
     assert calls == ["anthropic"]
@@ -822,7 +807,7 @@ def test_add_subscription_aborts_when_login_fails(isolated_config, monkeypatch) 
     """
     monkeypatch.setattr("omnigent.onboarding.harness_install.harness_login", lambda family: False)
     stdin = "\n".join(["1", "1", "2", "q", "q"]) + "\n"  # Claude → +Add → subscription
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
     cfg = _config_yaml(isolated_config)
     # Nothing persisted — the failed login aborted the add.
@@ -849,7 +834,7 @@ def test_remove_subscription_signs_out_and_removes(isolated_config, monkeypatch)
     # L1 1=Claude → L2 1=select the subscription → L3 2=Remove → confirm 1=Yes
     # (sign out + remove) → L2 q → L1 q.
     stdin = "\n".join(["1", "1", "2", "1", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
     # Signed out of Claude (anthropic) …
     assert calls == ["anthropic"]
@@ -876,7 +861,7 @@ def test_remove_subscription_declined_keeps_it_and_login(isolated_config, monkey
     monkeypatch.setattr("omnigent.onboarding.harness_install.harness_logout", _no_logout)
     # L1 1=Claude → L2 1=select → L3 2=Remove → confirm 2=No → L2 q → L1 q.
     stdin = "\n".join(["1", "1", "2", "2", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
     cfg = _config_yaml(isolated_config)
     # The subscription survived the declined removal.
@@ -928,7 +913,7 @@ def test_remove_databricks_cleans_ucode_wiring_without_asking(isolated_config) -
     # L1 1=Claude → L2 1=select databricks → L3 2=Remove (acts immediately)
     # → L2 q → L1 q.
     stdin = "\n".join(["1", "1", "2", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
     cfg = _config_yaml(isolated_config)
     # The provider entry is gone from config.yaml.
@@ -955,7 +940,7 @@ def test_remove_databricks_without_ucode_wiring_still_removes(isolated_config) -
     _write_databricks_provider(isolated_config)
     # L1 1=Claude → L2 1=select databricks → L3 2=Remove → L2 q → L1 q.
     stdin = "\n".join(["1", "1", "2", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
     cfg = _config_yaml(isolated_config)
     # The provider entry is gone despite there being nothing to clean.
@@ -986,7 +971,9 @@ def test_render_listing_excludes_configured_subscription_clis(
         DetectedProvider(
             name="claude", kind="subscription", family="anthropic", source="claude CLI login"
         ),
-        DetectedProvider(name="gemini", kind="key", family="openai", source="$GEMINI_API_KEY"),
+        DetectedProvider(
+            name="openrouter", kind="key", family="openai", source="$OPENROUTER_API_KEY"
+        ),
     ]
 
     render_provider_listing(config, providers, detected)
@@ -998,7 +985,7 @@ def test_render_listing_excludes_configured_subscription_clis(
     assert "claude CLI login" not in out
     # …while an unrelated ambient detection still surfaces as a hint.
     assert "Detected (not configured)" in out
-    assert "gemini" in out
+    assert "openrouter" in out
 
 
 @pytest.mark.parametrize(
@@ -1074,7 +1061,7 @@ def test_add_subscription_replaces_existing_for_same_cli(isolated_config) -> Non
     # L1 1=Claude → L2 2=+Add → anthropic menu 2=Claude subscription → replace
     # prompt 1=Replace it → L2 q=back → L1 q=exit.
     stdin = "\n".join(["1", "2", "2", "1", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
     cfg = _config_yaml(isolated_config)
@@ -1100,7 +1087,7 @@ def test_add_subscription_keep_current_aborts(isolated_config) -> None:
     # L1 1=Claude → L2 2=+Add → anthropic menu 2=Claude subscription → replace
     # prompt 2=Keep the current one (abort) → L2 q=back → L1 q=exit.
     stdin = "\n".join(["1", "2", "2", "2", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
     cfg = _config_yaml(isolated_config)
@@ -1136,7 +1123,7 @@ def test_add_second_key_different_source_keeps_both(isolated_config) -> None:
     # env reuse — the add takes the paste path. L1 1=Claude → L2 2=+Add →
     # anthropic menu 1=Anthropic key → paste key → blank model → q, q.
     stdin = "\n".join(["1", "2", "1", "sk-ant-second", "", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
     cfg = _config_yaml(isolated_config)
@@ -1174,7 +1161,7 @@ def test_readd_same_source_key_updates_in_place(isolated_config, monkeypatch) ->
     # L1 1=Claude → L2 2=+Add → anthropic menu 1=Anthropic key → "y" reuse the
     # detected env var → blank model → q, q.
     stdin = "\n".join(["1", "2", "1", "y", "", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
     cfg = _config_yaml(isolated_config)
@@ -1214,7 +1201,7 @@ def test_multiple_keys_show_source_bracket(isolated_config) -> None:
     )
     # L1 1=Claude renders the level-2 credential rows; q=back, q=exit.
     stdin = "\n".join(["1", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
     # Both source hints render, so the two keys are told apart.
@@ -1244,7 +1231,7 @@ def test_configure_models_add_other_provider_prompts_for_name(
     # provider → xAI(1) → NAME "my-xai" → key → default model blank → L2
     # q=back → L1 q=exit.
     stdin = "\n".join(["2", "1", "6", "1", "my-xai", "sk-xai-test", "", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
     cfg = _config_yaml(isolated_config)
@@ -1271,7 +1258,7 @@ def test_configure_models_add_key_free_form_model(isolated_config) -> None:
     # L1 1=Claude → L2 1=+Add → anthropic menu 1=Anthropic key → key →
     # default model = <novel> (typed, not from catalog) → L2 q=back → L1 q=exit.
     stdin = "\n".join(["1", "1", "1", "sk-ant-test-key", novel, "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
     cfg = _config_yaml(isolated_config)
@@ -1282,7 +1269,7 @@ def test_configure_models_add_gateway_serves_both_harnesses(isolated_config) -> 
     """A gateway can serve BOTH harness surfaces (Codex + Claude) in one add.
 
     Per the feedback that a gateway / custom endpoint (LiteLLM-style) should
-    be usable from both the claude-sdk and codex/openai-agents harnesses, the
+    be usable from both the claude-sdk and codex harnesses, the
     add flow asks for each surface (defaulting to both). Accepting both writes
     an `openai` AND an `anthropic` family block pointing at the same base_url.
     """
@@ -1309,7 +1296,7 @@ def test_configure_models_add_gateway_serves_both_harnesses(isolated_config) -> 
         )
         + "\n"
     )
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
     entry = _config_yaml(isolated_config)["providers"]["litellm"]
@@ -1341,7 +1328,7 @@ def test_configure_models_add_openrouter_key_uses_vendor_endpoint_and_chat_wire(
     # ChatGPT sub, Gateway, OpenRouter, Databricks, Other) → key → default
     # model blank → L2 q=back → L1 q=exit.
     stdin = "\n".join(["2", "1", "4", "sk-or-test", "", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
     entry = _config_yaml(isolated_config)["providers"]["openrouter"]["openai"]
@@ -1489,7 +1476,7 @@ def test_configure_harnesses_add_databricks_normalizes_url_and_persists(
     # L1 1=Claude → L2 1=+Add → add menu <db>=Databricks → workspace URL (no
     # scheme + trailing slash, to exercise normalization) → L2 q=back → L1 q=exit.
     stdin = "\n".join(["1", "1", str(db), "example.cloud.databricks.com/", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
     normalized = "https://example.cloud.databricks.com"
@@ -1544,7 +1531,7 @@ def test_configure_harnesses_add_databricks_fails_loud_when_ucode_records_no_sta
 
     db = _databricks_add_menu_index()
     stdin = "\n".join(["1", "1", str(db), "https://example.cloud.databricks.com", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
 
     # The branch raised ClickException → non-zero exit with an explanatory message.
     assert result.exit_code != 0
@@ -1583,7 +1570,7 @@ def test_configure_harnesses_add_databricks_under_codex_scopes_to_codex(
     db = next(i for i, o in enumerate(codex_opts) if o.kind == DATABRICKS_KIND) + 1
     # L1 2=Codex → L2 1=+Add → add menu <db>=Databricks → URL → q → q.
     stdin = "\n".join(["2", "1", str(db), "https://example.cloud.databricks.com", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
     assert ucode_calls == [("https://example.cloud.databricks.com", ["codex"])]
@@ -1604,7 +1591,9 @@ def test_uninstalled_harness_shows_x_and_not_installed(isolated_config, monkeypa
     monkeypatch.setattr(
         "omnigent.onboarding.harness_install.harness_cli_installed", lambda family: False
     )
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input="q\n")
+    # No binary on PATH either — an on-PATH but rejected CLI reads "Needs upgrade".
+    monkeypatch.setattr("omnigent._platform.resolve_cli_binary", lambda _binary: None)
+    result = CliRunner().invoke(cli, ["setup"], input="q\n")
     assert result.exit_code == 0, result.output
     out = result.output
     assert "✗" in out
@@ -1642,7 +1631,7 @@ def test_overview_marks_unconfigured_with_x_and_configured_without_checkmark(
             f,
         )
 
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input="q\n")
+    result = CliRunner().invoke(cli, ["setup"], input="q\n")
     assert result.exit_code == 0, result.output
     out = result.output
     # Configured Claude: the green ✓ rides the aligned status column, not the
@@ -1692,7 +1681,7 @@ def _capture_setup_overview(
         return -1
 
     monkeypatch.setattr("omnigent.onboarding.interactive.select", _capture_select)
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"])
+    result = CliRunner().invoke(cli, ["setup"])
     assert result.exit_code == 0, result.output
     return (
         captured["options"],  # type: ignore[return-value]
@@ -1724,41 +1713,17 @@ def _overview_row_names(options: list[str], selectable: list[bool]) -> list[str]
 
 
 def test_overview_lists_all_harnesses_in_priority_order(isolated_config, monkeypatch) -> None:
-    """The overview shows every harness on one compact row, in 0.3 priority order.
+    """The overview shows every harness on one compact row, in priority order.
 
     No "More" folding: all harness actions are visible at once, followed by
-    Quit. A regression that hides a harness, reorders the core six, or
-    reintroduces a collapse row fails here. The menu also opts into the compact
-    top-level rendering.
+    Quit. A regression that hides a harness, reorders them, or reintroduces a
+    collapse row fails here. The menu also opts into the compact top-level
+    rendering.
     """
     from omnigent.onboarding import interactive
 
     options, selectable, descriptions, compact, max_visible = _capture_setup_overview(monkeypatch)
-    expected = [
-        "Claude",
-        "Codex",
-        "Cursor",
-        "OpenCode",
-        "Hermes",
-        "Pi",
-        "Antigravity",
-        "Qwen Code",
-        "Goose",
-        # Devin's NATIVE row (devin-native) renders in the slot its former builtin
-        # ACP row held. The ACP harness is deprecated: it stays resolvable via
-        # `--harness devin-acp` but is no longer offered here, so native Devin is
-        # the sole "Devin" row. The remaining builtin ACP CLI rows follow, sorted
-        # by id, before the non-ACP harnesses.
-        "Devin",
-        "Grok Build",
-        "Jcode",
-        "Copilot",
-        "Kiro",
-        "Kimi Code",
-        "Import from OpenClaw",
-        "Custom ACP agent",
-        "Quit",
-    ]
+    expected = ["Claude", "Codex", "Pi", "Quit"]
     assert _overview_row_names(options, selectable) == expected
     assert compact is True
     assert max_visible is None
@@ -1777,200 +1742,6 @@ def test_overview_lists_all_harnesses_in_priority_order(isolated_config, monkeyp
     assert "more" not in rendered.lower()
 
 
-def test_overview_lists_configured_acp_agents_as_rows(isolated_config, monkeypatch) -> None:
-    """Each configured ACP agent gets its own top-level overview row.
-
-    Promotes the generic-ACP agents out of the drill-in so they sit alongside
-    the built-in harnesses (matching the web picker, which lists each
-    ``acp:<slug>``), followed by an "Add custom ACP agent" row. A regression that
-    re-buries them under a single opaque "Custom ACP agent" row fails here.
-    """
-    config_path = os.path.join(isolated_config, "config.yaml")
-    with open(config_path, "w") as f:
-        yaml.safe_dump(
-            {
-                "acp": {
-                    "agents": [
-                        {"name": "Gemini CLI", "command": "gemini --experimental-acp"},
-                        {"name": "My Goose", "command": "goose acp"},
-                    ]
-                }
-            },
-            f,
-        )
-    options, selectable, _descriptions, _compact, _max_visible = _capture_setup_overview(
-        monkeypatch
-    )
-    names = _overview_row_names(options, selectable)
-    assert "Gemini CLI" in names
-    assert "My Goose" in names
-    assert "Add custom ACP agent" in names
-    # Once agents exist, the single opaque "Custom ACP agent" row is gone.
-    assert "Custom ACP agent" not in names
-
-
-def test_overview_shows_one_row_when_acp_agent_shadows_builtin(
-    isolated_config, monkeypatch
-) -> None:
-    """A configured agent named after a builtin ACP row replaces it, not doubles it.
-
-    "Grok" slugifies to ``grok``, which is also an ``ACP_CLI_HARNESSES`` id, so
-    both sources want a row. The configured one wins — it names the exact command,
-    which the fixed row argv cannot express — and the builtin is dropped so the
-    list never shows two identically labeled rows from different sources.
-
-    Devin is the contrast: its ACP row is keyed ``devin-acp`` and the bare
-    ``devin`` spelling belongs to the native wrap, so a configured ``acp:devin``
-    agent adds its own row rather than shadowing either.
-    """
-    from rich.text import Text
-
-    config_path = os.path.join(isolated_config, "config.yaml")
-    with open(config_path, "w") as f:
-        yaml.safe_dump(
-            {"acp": {"agents": [{"name": "Grok", "command": "grok agent stdio --verbose"}]}},
-            f,
-        )
-    options, selectable, _descriptions, _compact, _max_visible = _capture_setup_overview(
-        monkeypatch
-    )
-    names = _overview_row_names(options, selectable)
-    assert names.count("Grok") == 1, f"expected exactly one Grok row, got {names}"
-    # The builtin row it shadowed is gone: the ``grok`` row's own label is
-    # "Grok Build", so its absence proves the row was dropped rather than
-    # rendered alongside the user's.
-    assert "Grok Build" not in names, f"builtin grok row should be shadowed, got {names}"
-    # Devin is unaffected by a collision elsewhere: its native row stays. The ACP
-    # row is deprecated, so it is not offered here regardless of this collision.
-    assert names.count("Devin") == 1, f"expected the native Devin row, got {names}"
-    assert "Devin (ACP)" not in names
-    # The surviving row is the user's: its status carries the configured command,
-    # not the builtin's "own auth" label.
-    # (the status is width-capped, so match its head rather than the full command)
-    grok_row = next(o for o in options if Text.from_markup(o).plain.startswith("Grok "))
-    assert "ACP · grok agent" in Text.from_markup(grok_row).plain
-
-
-def test_setup_reports_invalid_acp_omnigent_mcp(isolated_config) -> None:
-    config_path = os.path.join(isolated_config, "config.yaml")
-    with open(config_path, "w") as f:
-        yaml.safe_dump(
-            {
-                "acp": {
-                    "agents": [
-                        {
-                            "name": "OpenClaw",
-                            "command": "openclaw acp",
-                            "omnigent_mcp": "false",
-                        }
-                    ]
-                }
-            },
-            f,
-        )
-
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input="q\n")
-
-    assert result.exit_code != 0
-    assert (
-        "Invalid acp.agents configuration: acp agent omnigent_mcp must be a boolean"
-        in result.output
-    )
-
-
-def test_overview_always_lists_openclaw_import_row(isolated_config, monkeypatch) -> None:
-    """OpenClaw import remains available even when discovery finds nothing."""
-    options, selectable, _descriptions, _compact, _max_visible = _capture_setup_overview(
-        monkeypatch
-    )
-    names = _overview_row_names(options, selectable)
-
-    assert "Import from OpenClaw" in names
-    assert names.index("Import from OpenClaw") < names.index("Custom ACP agent")
-
-
-def test_overview_hints_at_automatically_discovered_openclaw_agents(
-    isolated_config, monkeypatch
-) -> None:
-    """The always-visible import action hints at canonical-path discoveries."""
-    acpx_dir = isolated_config / ".acpx"
-    acpx_dir.mkdir()
-    (acpx_dir / "config.json").write_text(
-        '{"agents": {"Gemini CLI": {"command": "gemini", "args": ["--experimental-acp"]}}}',
-        encoding="utf-8",
-    )
-
-    options, _selectable, _descriptions, _compact, _max_visible = _capture_setup_overview(
-        monkeypatch
-    )
-    from rich.text import Text
-
-    rendered = [Text.from_markup(option).plain for option in options]
-    assert any(
-        "Import from OpenClaw" in option and "1 agent found automatically" in option
-        for option in rendered
-    )
-
-
-def test_setup_imports_openclaw_agents(isolated_config) -> None:
-    """Selecting the OpenClaw import row writes the generic ``acp:`` block."""
-    acpx_dir = isolated_config / ".acpx"
-    acpx_dir.mkdir()
-    (acpx_dir / "config.json").write_text(
-        '{"agents": {"Gemini CLI": {"command": "gemini", "args": ["--experimental-acp"]}}}',
-        encoding="utf-8",
-    )
-
-    # 16 is the OpenClaw import row: hiding Devin's builtin ACP row moved every
-    # row after it one lower (see the dispatch table's note).
-    stdin = "\n".join(["16", "", "", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
-
-    assert result.exit_code == 0, result.output
-    assert "~/.acpx/config.json" in result.output
-    assert "1 agent" in result.output
-    assert "Import coding agents from OpenClaw?" in result.output
-    assert "Imported 1 OpenClaw/acpx agent" in result.output
-    assert _config_yaml(isolated_config)["acp"] == {
-        "agents": [{"name": "Gemini CLI", "command": "gemini --experimental-acp"}]
-    }
-
-
-def test_setup_imports_openclaw_agents_from_user_selected_path(isolated_config) -> None:
-    """The import action accepts a non-canonical OpenClaw/acpx config path."""
-    selected = isolated_config / "downloads" / "agents.json"
-    selected.parent.mkdir()
-    selected.write_text(
-        '{"agents": {"My Goose": {"command": "goose", "args": ["acp"]}}}',
-        encoding="utf-8",
-    )
-
-    stdin = "\n".join(["16", "", str(selected), "", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
-
-    assert result.exit_code == 0, result.output
-    assert "Choose another file" in result.output
-    assert "OpenClaw/acpx config path" in result.output
-    assert "Imported 1 OpenClaw/acpx agent" in result.output
-    assert _config_yaml(isolated_config)["acp"] == {
-        "agents": [{"name": "My Goose", "command": "goose acp"}]
-    }
-
-
-def test_setup_rejects_user_selected_unrelated_file(isolated_config) -> None:
-    """A selected JSON file must contain an acpx or wrapped OpenClaw registry."""
-    selected = isolated_config / "package.json"
-    selected.write_text('{"name": "unrelated"}', encoding="utf-8")
-
-    stdin = "\n".join(["16", "", str(selected), "2", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
-
-    assert result.exit_code == 0, result.output
-    assert "file is not an OpenClaw/acpx agent registry" in result.output
-    config = _config_yaml(isolated_config)
-    assert "acp" not in config
-
-
 def test_overview_rows_are_single_line(isolated_config, monkeypatch) -> None:
     """Every overview row is a single selectable line — no skipped sub-lines.
 
@@ -1986,128 +1757,16 @@ def test_overview_rows_are_single_line(isolated_config, monkeypatch) -> None:
     assert len(descriptions) == len(options)
 
 
-def test_overview_lists_kiro_row(isolated_config, monkeypatch) -> None:
-    """Kiro is a first-class harness row with its own status + selection hint.
-
-    Kiro (``kiro-native``) is a native CLI harness with its own auth
-    (``kiro-cli login``). Absent the CLI the row reads ``✗ Not installed`` and
-    its selection-only description names the curl installer; installed, it still
-    reads ``✗ Not configured`` because there is no reliable auth probe. A
-    regression that drops the Kiro row or overstates readiness fails here.
-    """
-    from rich.text import Text
-
-    monkeypatch.setattr(
-        "omnigent.onboarding.harness_install.harness_cli_installed", lambda family: False
-    )
-    options, selectable, descriptions, _, _max_visible = _capture_setup_overview(monkeypatch)
-    names = _overview_row_names(options, selectable)
-    kiro = names.index("Kiro")
-    assert "Not installed" in Text.from_markup(options[kiro]).plain
-    assert "cli.kiro.dev/install" in Text.from_markup(descriptions[kiro]).plain
-
-    monkeypatch.setattr(
-        "omnigent.onboarding.harness_install.harness_cli_installed", lambda family: True
-    )
-    options, selectable, descriptions, _, _max_visible = _capture_setup_overview(monkeypatch)
-    names = _overview_row_names(options, selectable)
-    kiro = names.index("Kiro")
-    assert "Not configured" in Text.from_markup(options[kiro]).plain
-    assert "kiro-cli login" in Text.from_markup(descriptions[kiro]).plain
-
-
-def test_overview_reports_missing_cursor_cli_despite_sdk_api_key(
-    isolated_config, monkeypatch
-) -> None:
-    """A Cursor SDK key must not make the native Cursor CLI look ready."""
-    from rich.text import Text
-
-    monkeypatch.setenv("CURSOR_API_KEY", "crsr_sdk_only")
-    monkeypatch.setattr(
-        "omnigent.onboarding.harness_install.harness_cli_installed",
-        lambda key: key != "cursor",
-    )
-
-    options, selectable, descriptions, _, _max_visible = _capture_setup_overview(monkeypatch)
-    names = _overview_row_names(options, selectable)
-
-    assert "Cursor CLI" not in names
-    assert "Cursor SDK" not in names
-    cursor = names.index("Cursor")
-    assert "CLI not installed" in Text.from_markup(options[cursor]).plain
-    assert "SDK ready" in Text.from_markup(options[cursor]).plain
-    assert "cursor.com/install" in Text.from_markup(descriptions[cursor]).plain
-
-
-def test_missing_cursor_cli_drillin_shows_install_and_login(isolated_config, monkeypatch) -> None:
-    """The consolidated Cursor setup gives both steps needed by the web agent."""
-    monkeypatch.setattr(
-        "omnigent.onboarding.harness_install.harness_cli_installed",
-        lambda key: key != "cursor",
-    )
-
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input="3\n1\nq\nq\n")
-
-    assert result.exit_code == 0, result.output
-    assert "curl https://cursor.com/install -fsS | bash" in result.output
-    assert "cursor-agent login" in result.output
-
-
-def test_overview_hermes_row_reflects_configured_model(isolated_config, monkeypatch) -> None:
-    """Hermes reads ready (with its picked model) once ``hermes model`` has run.
-
-    Regression for the overview hardcoding an installed Hermes to
-    ``✗ Not configured`` regardless of ``~/.hermes/config.yaml``. With the
-    ``hermes`` binary present:
-
-    * a fresh scaffold (``model.provider: auto`` — nothing picked yet) still
-      reads a yellow ``✗ Not configured`` and points at ``hermes model``;
-    * a finished ``hermes model`` run (a concrete ``provider`` + ``default``
-      model) reads a green ✓ with ``"<provider> / <model>"``.
-
-    HOME is the isolated tmp dir (``isolated_config``), so the probe reads the
-    config written here, not the developer's real ``~/.hermes``. The probe
-    binds ``harness_cli_installed`` at import, so patch the ``hermes_auth``
-    symbol it actually calls rather than relying on the install fixture.
-    """
-    from rich.text import Text
-
-    monkeypatch.setattr("omnigent.onboarding.hermes_auth.hermes_cli_installed", lambda: True)
-    hermes_dir = os.path.join(isolated_config, ".hermes")
-    os.makedirs(hermes_dir, exist_ok=True)
-    hermes_config = os.path.join(hermes_dir, "config.yaml")
-
-    # Fresh scaffold: provider "auto" (auto-detect), nothing picked → unconfigured.
-    with open(hermes_config, "w") as f:
-        yaml.safe_dump({"model": {"default": "anthropic/claude-opus-4.6", "provider": "auto"}}, f)
-    options, selectable, descriptions, _, _max_visible = _capture_setup_overview(monkeypatch)
-    names = _overview_row_names(options, selectable)
-    hermes = names.index("Hermes")
-    assert "[yellow]✗ Not configured[/]" in options[hermes]
-    assert "hermes model" in Text.from_markup(descriptions[hermes]).plain
-
-    # Configured: a concrete provider + model picked → green ✓ with the model.
-    with open(hermes_config, "w") as f:
-        yaml.safe_dump({"model": {"default": "z-ai/glm-5.2", "provider": "openrouter"}}, f)
-    options, selectable, _descriptions, _, _max_visible = _capture_setup_overview(monkeypatch)
-    names = _overview_row_names(options, selectable)
-    hermes = names.index("Hermes")
-    assert "[green]✓" in options[hermes]
-    plain = Text.from_markup(options[hermes]).plain
-    assert "openrouter" in plain
-    assert "z-ai/glm-5.2" in plain
-
-
 def test_overview_truncates_long_status_for_narrow_terminal(isolated_config, monkeypatch) -> None:
     """Verbose ready statuses are capped from the terminal width before rendering.
 
     The compact overview promises one row per harness. A fixed status cap still
     lets rows wrap at the selector's 40-column minimum, so the cap must derive
-    from the actual terminal width. This forces a long OpenCode summary and a
-    40-column terminal, then renders the captured rows to prove the OpenCode row
-    remains within the terminal-cell width and carries an ellipsis. The summary
-    includes wide CJK / emoji text so this catches regressions back to Python
-    ``len()`` slicing.
+    from the actual terminal width. This seeds a Claude gateway credential with
+    a long name and a 40-column terminal, then renders the captured rows
+    to prove the Claude row remains within the terminal-cell width and carries
+    an ellipsis. The name includes wide CJK / emoji text so this catches
+    regressions back to Python ``len()`` slicing.
     """
     import os
     import re
@@ -2115,25 +1774,26 @@ def test_overview_truncates_long_status_for_narrow_terminal(isolated_config, mon
     from rich.cells import cell_len
 
     from omnigent.onboarding import interactive
-    from omnigent.onboarding.opencode_auth import OpenCodeAuthSummary
 
-    monkeypatch.setattr(
-        "omnigent.cli.shutil.get_terminal_size", lambda fallback: os.terminal_size((40, 24))
+    _seed_config(
+        isolated_config,
+        {
+            "データブリックス-🚀-长模型供应商-gateway": {
+                "kind": "gateway",
+                "default": True,
+                "anthropic": {"base_url": "https://gw.example.com", "api_key_ref": "env:GW_KEY"},
+            }
+        },
     )
     monkeypatch.setattr(
-        "omnigent.onboarding.opencode_auth.opencode_auth_summary",
-        lambda: OpenCodeAuthSummary(
-            installed=True,
-            stored_providers=("anthropic", "データブリックス", "🚀provider"),
-            env_providers=("OpenAI", "长模型供应商", "OpenRouter"),
-        ),
+        "omnigent.cli.shutil.get_terminal_size", lambda fallback: os.terminal_size((40, 24))
     )
 
     options, selectable, descriptions, compact, max_visible = _capture_setup_overview(monkeypatch)
     rendered = interactive._render_menu(
         "Configure harnesses",
         options,
-        _overview_row_names(options, selectable).index("OpenCode"),
+        _overview_row_names(options, selectable).index("Claude"),
         descriptions=descriptions,
         width=40,
         selectable=selectable,
@@ -2141,51 +1801,9 @@ def test_overview_truncates_long_status_for_narrow_terminal(isolated_config, mon
         max_visible=max_visible,
     )
     plain = re.sub(r"\x1b\[[0-9;]*m", "", rendered)
-    opencode_line = next(line for line in plain.splitlines() if "OpenCode" in line)
-    assert "…" in opencode_line
-    assert cell_len(opencode_line) <= 40
-
-
-@pytest.mark.parametrize(
-    "choice,manager_attr",
-    [
-        ("4", "_manage_opencode_harness"),
-        ("5", "_manage_hermes_harness"),
-        ("8", "_manage_qwen_harness"),
-        ("9", "_manage_goose_harness"),
-        # 10 is Devin's NATIVE row (devin-native), in the slot its builtin ACP
-        # row used to hold. The ACP path is deprecated (not offered), so 11-12
-        # are the remaining builtin ACP CLI rows (Grok Build, Jcode; sorted by
-        # id); every row after them sits one lower.
-        ("10", "_manage_devin_harness"),
-        ("11", "_show_acp_cli_harness"),
-        ("12", "_show_acp_cli_harness"),
-        ("13", "_manage_copilot_harness"),
-        ("14", "_manage_kiro_harness"),
-        ("15", "_manage_kimi_harness"),
-        ("17", "_add_acp_agent"),
-    ],
-)
-def test_overview_dispatches_to_correct_manager(
-    isolated_config, monkeypatch, choice: str, manager_attr: str
-) -> None:
-    """Selecting a harness routes to its drill-in, pinning position→sentinel→manager.
-
-    The ordering test asserts row *names* only, so a copy-paste slip that paired
-    the wrong sentinel with a name (e.g. ``(_QWEN, "Goose", …)``) would route
-    "Goose" to ``_manage_qwen_harness`` yet still pass the name check. This drives
-    the real numbered-fallback dispatch end-to-end for the seven harnesses whose
-    positions no other scripted-stdin test exercises (Claude/Codex/Cursor/Pi/
-    Antigravity are covered by the add/remove/key tests), so a misrouted row is
-    caught here.
-    """
-    called: list[str] = []
-    monkeypatch.setattr(
-        f"omnigent.cli_config.{manager_attr}", lambda *a, **k: called.append(manager_attr)
-    )
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=f"{choice}\nq\n")
-    assert result.exit_code == 0, result.output
-    assert called == [manager_attr]
+    claude_line = next(line for line in plain.splitlines() if "Claude" in line)
+    assert "…" in claude_line
+    assert cell_len(claude_line) <= 40
 
 
 def test_overview_status_color_distinguishes_missing_from_unconfigured(
@@ -2221,100 +1839,15 @@ def test_overview_status_color_distinguishes_missing_from_unconfigured(
     assert "[red]✗ Not installed[/]" in codex
 
 
-@pytest.mark.parametrize("name", ["Kiro", "Kimi Code"])
-def test_installed_native_cli_auth_unknown_rows_are_not_configured(
-    isolated_config, monkeypatch, name: str
-) -> None:
-    """Installed native CLIs with opaque auth/config state must not render ready.
-
-    Kiro and Kimi expose installation separately from their own provider/login
-    configuration. Since setup has no reliable local auth probe for them yet, an
-    installed binary should be yellow ``Not configured`` with a next-step hint —
-    not a green ``Installed`` row that implies the harness is ready to use.
-    (Hermes, like Goose, *does* have a config probe now — its ``model`` is read
-    from ``~/.hermes/config.yaml`` — so its ready/unconfigured split is covered
-    by ``test_overview_hermes_row_reflects_configured_model`` instead. Kimi now
-    has a file-based login + API-key config probe too, so its signed-in split is
-    covered by ``test_overview_kimi_row_reflects_detected_login`` — here we pin
-    the not-configured case, so ``kimi_auth_configured`` is forced ``False``.)
-    """
-    monkeypatch.setattr(
-        "omnigent.onboarding.harness_install.harness_cli_installed", lambda family: True
-    )
-    # Kimi's row now consults a combined auth probe; force "not configured" so
-    # the assertion is deterministic regardless of the dev machine.
-    monkeypatch.setattr("omnigent.onboarding.kimi_auth.kimi_auth_configured", lambda: False)
-    options, selectable, descriptions, _compact, _max_visible = _capture_setup_overview(
-        monkeypatch
-    )
-    row_index = _overview_row_names(options, selectable).index(name)
-    assert "[yellow]✗ Not configured[/]" in options[row_index]
-    assert "[green]✓ Installed[/]" not in options[row_index]
-    assert descriptions[row_index]
-
-
-def test_overview_kimi_row_reflects_detected_login(isolated_config, monkeypatch) -> None:
-    """An installed kimi with detected auth renders green "Signed in".
-
-    Bug fix: the kimi row was hardcoded to yellow "Not configured" whenever the
-    CLI was installed, so a successful ``kimi login`` never showed. It now
-    consults the combined auth probe ``kimi_auth_configured`` and renders a green
-    ready row when a login credential or a pay-per-use API key is present.
-    """
-    monkeypatch.setattr(
-        "omnigent.onboarding.harness_install.harness_cli_installed", lambda family: True
-    )
-    monkeypatch.setattr("omnigent.onboarding.kimi_auth.kimi_auth_configured", lambda: True)
-    options, selectable, descriptions, _compact, _max_visible = _capture_setup_overview(
-        monkeypatch
-    )
-    row_index = _overview_row_names(options, selectable).index("Kimi Code")
-    assert "[green]✓ Signed in[/]" in options[row_index]
-    assert "[yellow]✗ Not configured[/]" not in options[row_index]
-    # A ready row carries no next-step hint.
-    assert descriptions[row_index] == ""
-
-
 def test_overview_descriptions_map_to_their_rows(isolated_config, monkeypatch) -> None:
     """Each compact row keeps the next-step hint attached to the same harness.
 
     The visible overview is intentionally compact, so the row description is
-    where the user learns the specific next action. This pins representative
-    descriptions across provider-backed rows, SDK-extra rows, and native CLI
-    rows so a future row/description ordering slip can't put (for example)
-    Goose's hint under Qwen.
+    where the user learns the specific next action. This pins the description
+    of every row so a future row/description ordering slip can't put one
+    harness's hint under another.
     """
     from rich.text import Text
-
-    from omnigent.onboarding.goose_auth import GooseConfigSummary
-    from omnigent.onboarding.hermes_auth import HermesConfigSummary
-    from omnigent.onboarding.opencode_auth import OpenCodeAuthSummary
-
-    monkeypatch.setattr("omnigent.onboarding.cursor_auth.cursor_sdk_installed", lambda: True)
-    monkeypatch.setattr(
-        "omnigent.onboarding.antigravity_auth.antigravity_sdk_installed", lambda: True
-    )
-    monkeypatch.setattr(
-        "omnigent.onboarding.harness_install.harness_cli_installed",
-        lambda family: family != GEMINI_FAMILY,
-    )
-    monkeypatch.setattr("omnigent.onboarding.copilot_auth.copilot_sdk_installed", lambda: True)
-    # Kimi's row consults a combined auth probe; force "not configured" so the
-    # hint is asserted deterministically.
-    monkeypatch.setattr("omnigent.onboarding.kimi_auth.kimi_auth_configured", lambda: False)
-    monkeypatch.setattr(
-        "omnigent.onboarding.opencode_auth.opencode_auth_summary",
-        lambda: OpenCodeAuthSummary(installed=True, stored_providers=(), env_providers=()),
-    )
-    monkeypatch.setattr(
-        "omnigent.onboarding.goose_auth.goose_config_summary",
-        lambda: GooseConfigSummary(installed=True, provider=None, model=None),
-    )
-    # Installed but no provider picked → the "Open to configure" warn hint.
-    monkeypatch.setattr(
-        "omnigent.onboarding.hermes_auth.hermes_config_summary",
-        lambda: HermesConfigSummary(installed=True, provider=None, model=None),
-    )
 
     options, selectable, descriptions, _compact, _max_visible = _capture_setup_overview(
         monkeypatch
@@ -2323,25 +1856,12 @@ def test_overview_descriptions_map_to_their_rows(isolated_config, monkeypatch) -
         name: Text.from_markup(desc).plain
         for name, desc in zip(_overview_row_names(options, selectable), descriptions, strict=True)
     }
-    assert desc_by_name["Claude"] == "Open to add a credential."
-    assert desc_by_name["Codex"] == "Open to add a credential."
-    assert desc_by_name["Cursor"] == ""
-    assert desc_by_name["OpenCode"] == "Open to sign in (opencode auth login)."
-    assert desc_by_name["Hermes"] == "Open to configure with `hermes model`."
-    assert desc_by_name["Pi"] == "Open to add a credential."
-    assert (
-        desc_by_name["Antigravity"] == "Open to sign in with Antigravity, or add a Gemini API key."
-    )
-    assert desc_by_name["Qwen Code"] == "Open to set up auth (/auth or env vars)."
-    assert desc_by_name["Goose"] == "Open to run `goose configure`."
-    assert desc_by_name["Copilot"] == "Open to add the GitHub token."
-    assert desc_by_name["Kiro"] == "Sign in with `kiro-cli login`."
-    assert (
-        desc_by_name["Kimi Code"]
-        == "Sign in with `kimi login`, or (pay-per-use) set a Kimi API key in"
-        " `~/.kimi-code/config.toml`."
-    )
-    assert desc_by_name["Quit"] == ""
+    assert desc_by_name == {
+        "Claude": "Open to add a credential.",
+        "Codex": "Open to add a credential.",
+        "Pi": "Open to add a credential.",
+        "Quit": "",
+    }
 
 
 def test_drill_into_uninstalled_installs_then_proceeds(isolated_config, monkeypatch) -> None:
@@ -2363,7 +1883,7 @@ def test_drill_into_uninstalled_installs_then_proceeds(isolated_config, monkeypa
     # L1 1=Claude → install prompt 1=Yes (install) → L2 credential menu q=back
     # → L1 q=exit.
     stdin = "\n".join(["1", "1", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
     assert installed == ["anthropic"]  # installed exactly the drilled-in harness
 
@@ -2382,7 +1902,7 @@ def test_decline_install_returns_without_installing(isolated_config, monkeypatch
     )
     # L1 1=Claude → install prompt 2=No → L1 q=exit.
     stdin = "\n".join(["1", "2", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
 
@@ -2454,10 +1974,10 @@ def test_configure_harnesses_pi_page_sets_explicit_pi_default(isolated_config) -
             f,
         )
 
-    # L1 6=Pi → L2 (1=anthropic 2=openai 3=+Add): select openai (2) → L3
+    # L1 3=Pi → L2 (1=anthropic 2=openai 3=+Add): select openai (2) → L3
     # 1=Make default for Pi → back to L2 q=back → L1 q=exit.
-    stdin = "\n".join(["6", "2", "1", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    stdin = "\n".join(["3", "2", "1", "q", "q"]) + "\n"
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
     cfg = load_config()
@@ -2506,10 +2026,10 @@ def test_configure_harnesses_pi_page_excludes_subscription_rows(isolated_config)
             f,
         )
 
-    # L1 6=Pi → L2 renders its rows → q=back → L1 q=exit. The L2 frame is
+    # L1 3=Pi → L2 renders its rows → q=back → L1 q=exit. The L2 frame is
     # cleared on exit under a TTY but the numbered fallback echoes options.
-    stdin = "\n".join(["6", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    stdin = "\n".join(["3", "q", "q"]) + "\n"
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
     # Isolate the Pi level-2 frame (after the "Pi — select or add" title).
@@ -2554,9 +2074,9 @@ def test_configure_harnesses_add_databricks_under_pi_scopes_to_pi(
     # Databricks position within the Pi add menu, computed live.
     pi_opts = add_menu_options_for_family(PI_SURFACE)
     db = next(i for i, o in enumerate(pi_opts) if o.kind == DATABRICKS_KIND) + 1
-    # L1 6=Pi → L2 1=+Add → add menu <db>=Databricks → URL → q → q.
-    stdin = "\n".join(["6", "1", str(db), "https://example.cloud.databricks.com", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    # L1 3=Pi → L2 1=+Add → add menu <db>=Databricks → URL → q → q.
+    stdin = "\n".join(["3", "1", str(db), "https://example.cloud.databricks.com", "q", "q"]) + "\n"
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
     # ucode ran once, for the pi agent only — not the legacy claude,codex,pi.
@@ -2606,7 +2126,7 @@ def test_add_key_does_not_steal_pi_from_fallback_default(isolated_config) -> Non
     # L1 2=Codex → L2 1=+Add → 1=OpenAI key → decline detected env (none set)
     # → paste key → accept catalog default model (blank) → L2 q → L1 q.
     stdin = "\n".join(["2", "1", "1", "sk-test-openai", "", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
     cfg = load_config()
@@ -2707,7 +2227,7 @@ def test_remove_cli_config_credential_dismisses_detection(isolated_config) -> No
     _write_codex_config_toml(isolated_config)
 
     # Open 1: plain open auto-adopts the detected config provider.
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input="q\n")
+    result = CliRunner().invoke(cli, ["setup"], input="q\n")
     assert result.exit_code == 0, result.output
     cfg = _config_yaml(isolated_config)
     # Adopted as a real entry — the feature's golden path. Absence means
@@ -2717,7 +2237,7 @@ def test_remove_cli_config_credential_dismisses_detection(isolated_config) -> No
     # Open 2: L1 2=Codex → L2 1=the credential → L3 1=Remove (it is the
     # codex default, so no "Make default" row precedes Remove) → q → q.
     stdin = "\n".join(["2", "1", "1", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
     cfg = _config_yaml(isolated_config)
     assert "codex-databricks" not in cfg["providers"]
@@ -2725,7 +2245,7 @@ def test_remove_cli_config_credential_dismisses_detection(isolated_config) -> No
     assert cfg["dismissed_detections"] == ["codex-databricks"]
 
     # Open 3: a plain reopen must NOT re-adopt the dismissed detection.
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input="q\n")
+    result = CliRunner().invoke(cli, ["setup"], input="q\n")
     assert result.exit_code == 0, result.output
     cfg = _config_yaml(isolated_config)
     assert "codex-databricks" not in cfg.get("providers", {})
@@ -2752,7 +2272,7 @@ def test_add_menu_readds_dismissed_cli_config_credential(isolated_config) -> Non
     # L1 2=Codex → L2 1=+Add (no credentials yet) → add menu: the appended
     # detected-config row → back to L2 q → L1 q.
     stdin = "\n".join(["2", "1", detected_row, "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
     cfg = _config_yaml(isolated_config)
@@ -2767,581 +2287,6 @@ def test_add_menu_readds_dismissed_cli_config_credential(isolated_config) -> Non
     # The dismissal is cleared, so the credential behaves like an ordinary
     # detection again instead of staying half-dismissed.
     assert cfg["dismissed_detections"] == []
-
-
-# ── Cursor API-key flow ─────────────────────────────────────────────────────
-# Cursor runs via the ``cursor-sdk`` package and authenticates with a
-# ``CURSOR_API_KEY``; it has no provider/gateway family. Its drill-in is under
-# the consolidated Cursor row (L1 row 3, then Cursor SDK).
-# stores the key in the secret store + a dedicated ``cursor:`` config block,
-# mirroring the other harnesses' api-key persistence. The menu is API-key-only
-# (Set/Replace/Remove), so it touches neither the ``cursor-agent`` binary nor a
-# login probe. ``isolated_config`` clears any ambient ``CURSOR_API_KEY``.
-
-
-@pytest.fixture()
-def _cursor_sdk_present(monkeypatch):
-    """Force ``cursor-sdk`` detection to report installed.
-
-    The key-management tests below script the Cursor drill-in assuming no
-    install-offer. ``cursor-sdk`` is an opt-in extra (absent in CI), so without
-    this the drill-in's install-offer fires — consuming a scripted menu token
-    (desyncing the input) and even running a real ``uv pip install``. Patching the
-    source-module attribute is seen at every call site (it's resolved at call
-    time). Mirror of :func:`_cursor_sdk_absent`.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    """
-    monkeypatch.setattr(
-        "omnigent.onboarding.cursor_auth.cursor_sdk_installed",
-        lambda: True,
-    )
-
-
-def test_cursor_set_api_key_paste_writes_block_and_secret(
-    isolated_config, _cursor_sdk_present
-) -> None:
-    """Pasting a ``crsr_`` key stores the secret + writes the ``cursor:`` block.
-
-    Proves the api-key path: the secret lands in the store (never plaintext in
-    config) and the config references it via ``keychain:cursor``.
-    """
-    # L1 Cursor → Cursor SDK → Set API key → paste key → back through both menus.
-    stdin = "\n".join(["3", "2", "1", "crsr_test_key_123", "q", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
-    assert result.exit_code == 0, result.output
-
-    cfg = _config_yaml(isolated_config)
-    assert cfg["cursor"] == {"api_key_ref": "keychain:cursor"}
-    # The pasted secret reached the store under the ``cursor`` name; config
-    # holds only the reference.
-    assert secrets.load_secret("cursor") == "crsr_test_key_123"
-
-
-def test_cursor_adopt_env_api_key_writes_env_ref(
-    isolated_config, monkeypatch, _cursor_sdk_present
-) -> None:
-    """Adopting an existing ``$CURSOR_API_KEY`` records an ``env:`` ref only.
-
-    The env path must NOT copy the secret into the store — it points the config
-    at the live environment variable so the key never leaves the user's shell.
-    """
-    monkeypatch.setenv("CURSOR_API_KEY", "crsr_env_key_456")
-    # L1 Cursor → Cursor SDK → Set API key → adopt detected env key → back.
-    stdin = "\n".join(["3", "2", "1", "y", "q", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
-    assert result.exit_code == 0, result.output
-
-    cfg = _config_yaml(isolated_config)
-    assert cfg["cursor"] == {"api_key_ref": "env:CURSOR_API_KEY"}
-    assert secrets.load_secret("cursor") is None
-
-
-def test_cursor_remove_api_key_drops_block_and_secret(
-    isolated_config, _cursor_sdk_present
-) -> None:
-    """Removing a Cursor key deletes the stored secret AND drops the config block."""
-    # Seed a stored key: the keychain secret + the ``cursor:`` block referencing it.
-    secrets.store_secret("cursor", "crsr_seeded")
-    config_path = os.path.join(isolated_config, "config.yaml")
-    with open(config_path, "w") as f:
-        yaml.safe_dump({"cursor": {"api_key_ref": "keychain:cursor"}}, f)
-
-    # L1 Cursor → Cursor SDK → Remove → back through both menus.
-    stdin = "\n".join(["3", "2", "2", "q", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
-    assert result.exit_code == 0, result.output
-
-    cfg = _config_yaml(isolated_config)
-    assert "cursor" not in cfg
-    assert secrets.load_secret("cursor") is None
-
-
-def test_cursor_set_api_key_non_crsr_declined_is_not_stored(
-    isolated_config, _cursor_sdk_present
-) -> None:
-    """A non-``crsr_`` paste that the user declines to force is NOT persisted.
-
-    The soft prefix check warns and asks to store anyway; declining must leave
-    both the secret store and the config untouched.
-    """
-    # L1 Cursor → Cursor SDK → Set → decline the non-crsr_ warning → back.
-    stdin = "\n".join(["3", "2", "1", "sk-not-a-cursor-key", "n", "q", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
-    assert result.exit_code == 0, result.output
-
-    cfg = _config_yaml(isolated_config)
-    assert "cursor" not in cfg
-    assert secrets.load_secret("cursor") is None
-
-
-# ── Cursor SDK-extra install offer (the optional ``cursor`` extra) ───────────
-# ``cursor-sdk`` is now an OPTIONAL extra, so a key can be set with no SDK and
-# setup must offer to install it (like antigravity post-#322). These tests force
-# detection absent (the SDK is actually present in the test venv).
-
-
-@pytest.fixture()
-def _cursor_sdk_absent(monkeypatch):
-    """Force ``cursor-sdk`` detection to report missing.
-
-    Both the overview row and the drill-in resolve ``cursor_sdk_installed`` from
-    the source module at call time, so patching the module attribute covers both.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    """
-    monkeypatch.setattr(
-        "omnigent.onboarding.cursor_auth.cursor_sdk_installed",
-        lambda: False,
-    )
-
-
-def test_cursor_overview_stays_cli_ready_when_sdk_missing(
-    isolated_config, _cursor_sdk_absent, monkeypatch
-) -> None:
-    """A missing SDK does not duplicate or downgrade a ready Cursor CLI row."""
-    from rich.text import Text
-
-    options, selectable, descriptions, _, _max_visible = _capture_setup_overview(monkeypatch)
-    names = _overview_row_names(options, selectable)
-    assert names.count("Cursor") == 1
-    cursor = names.index("Cursor")
-    assert "CLI ready" in Text.from_markup(options[cursor]).plain
-    assert Text.from_markup(descriptions[cursor]).plain == ""
-
-
-def test_cursor_drillin_offers_install_when_sdk_missing(
-    isolated_config, _cursor_sdk_absent
-) -> None:
-    """Drilling into Cursor with the SDK absent presents the install offer.
-
-    Here the user picks "show the command" (choice 3), which prints it and falls
-    through to the key menu, then backs out.
-    """
-    # Cursor → Cursor SDK → show command → back through both menus.
-    stdin = "\n".join(["3", "2", "3", "q", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
-    assert result.exit_code == 0, result.output
-    out = result.output
-    assert "isn't installed" in out
-    assert "omnigent[cursor]" in out
-
-
-def test_cursor_key_settable_when_sdk_missing(isolated_config, _cursor_sdk_absent) -> None:
-    """The Cursor key is still storable when the SDK is absent (no hard block).
-
-    The deliberate divergence from pi: the drill-in offers the install but does
-    NOT gate key management on it. Here the user declines ("set the key anyway" =
-    choice 2), then sets the key — which must persist as it does with the SDK.
-    """
-    # Cursor → Cursor SDK → set key anyway → Set → paste key → back.
-    stdin = "\n".join(["3", "2", "2", "1", "crsr_key_no_sdk", "q", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
-    assert result.exit_code == 0, result.output
-
-    cfg = _config_yaml(isolated_config)
-    assert cfg["cursor"] == {"api_key_ref": "keychain:cursor"}
-    assert secrets.load_secret("cursor") == "crsr_key_no_sdk"
-
-
-def test_cursor_install_now_invokes_runner_without_index(
-    isolated_config, _cursor_sdk_absent, monkeypatch
-) -> None:
-    """Choosing "install it now" shells the install with ``omnigent[cursor]``.
-
-    Mocks the subprocess and asserts the argv targets the extra and carries NO
-    hardcoded index URL / proxy. Forces the ``uv``-absent path for determinism.
-    """
-    import subprocess
-
-    calls: list[list[str]] = []
-
-    def _run(argv: list[str], *, check: bool = False, timeout: float | None = None):
-        calls.append(argv)
-        return subprocess.CompletedProcess(args=argv, returncode=0)
-
-    monkeypatch.setattr("omnigent.onboarding.extra_install._is_uv_tool_install", lambda: False)
-    monkeypatch.setattr("omnigent.onboarding.extra_install.shutil.which", lambda name: None)
-    monkeypatch.setattr("omnigent.onboarding.cursor_auth.subprocess.run", _run)
-
-    # Cursor → Cursor SDK → install now → back through both menus.
-    stdin = "\n".join(["3", "2", "1", "q", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
-    assert result.exit_code == 0, result.output
-
-    assert len(calls) == 1, f"expected exactly one install invocation, got {calls}"
-    argv = calls[0]
-    assert "omnigent[cursor]" in argv
-    assert "install" in argv
-    # No index URL / proxy is baked into committed code.
-    assert not any("index" in part or "://" in part for part in argv)
-
-
-# ── Antigravity auth flow ───────────────────────────────────────────────────
-# Antigravity (Gemini-native, no provider family) is row 7 on the overview (it
-# follows Pi) and stores its key in the secret store + the ``antigravity:``
-# config block. The same drill-in also exposes native ``agy`` sign-in;
-# ``isolated_config`` clears ambient GEMINI_API_KEY / ANTIGRAVITY_API_KEY.
-
-
-@pytest.fixture()
-def _antigravity_sdk_present(monkeypatch):
-    """Force ``google-antigravity`` detection to report installed.
-
-    The key-management tests below script the Antigravity drill-in assuming no
-    install-offer. The optional ``antigravity`` extra is absent in CI, so without
-    this the drill-in's install-offer fires — consuming a scripted menu token
-    (desyncing the input) and even running a real ``uv pip install``. Patching the
-    source-module attribute is seen at every call site (it's resolved at call
-    time). Mirror of :func:`_antigravity_sdk_absent`.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    """
-    monkeypatch.setattr(
-        "omnigent.onboarding.antigravity_auth.antigravity_sdk_installed",
-        lambda: True,
-    )
-
-
-def test_antigravity_set_api_key_paste_writes_block_and_secret(
-    isolated_config, _antigravity_sdk_present
-) -> None:
-    """Pasting an ``AIza`` key stores the secret + writes the ``antigravity:`` block.
-
-    Proves the api-key path: the secret lands in the store (never plaintext in
-    config) and the config references it via ``keychain:antigravity``.
-    """
-    # L1 7=Antigravity → antigravity menu 1=Set API key →
-    # paste key (AIza → no warn) → antigravity menu q=back → L1 q=quit.
-    stdin = "\n".join(["7", "1", "AIza_test_key_123", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
-    assert result.exit_code == 0, result.output
-
-    cfg = _config_yaml(isolated_config)
-    assert cfg["antigravity"] == {"api_key_ref": "keychain:antigravity"}
-    # The pasted secret reached the store under the ``antigravity`` name; config
-    # holds only the reference.
-    assert secrets.load_secret("antigravity") == "AIza_test_key_123"
-
-
-def test_antigravity_adopt_env_api_key_writes_env_ref(
-    isolated_config, monkeypatch, _antigravity_sdk_present
-) -> None:
-    """Adopting an existing ``$GEMINI_API_KEY`` records an ``env:`` ref only.
-
-    The env path must NOT copy the secret into the store — it points the config
-    at the live environment variable so the key never leaves the user's shell.
-    """
-    monkeypatch.setenv("GEMINI_API_KEY", "AIza_env_key_456")
-    # L1 7=Antigravity → 1=Set API key →
-    # "y" adopt detected $GEMINI_API_KEY → q back → q quit.
-    stdin = "\n".join(["7", "1", "y", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
-    assert result.exit_code == 0, result.output
-
-    cfg = _config_yaml(isolated_config)
-    assert cfg["antigravity"] == {"api_key_ref": "env:GEMINI_API_KEY"}
-    assert secrets.load_secret("antigravity") is None
-
-
-def test_antigravity_sign_in_runs_agy_auth_service(
-    isolated_config, monkeypatch, _antigravity_sdk_present
-) -> None:
-    """Selecting Antigravity sign-in launches bare ``agy`` through harness auth."""
-    login = Mock(return_value=True)
-    monkeypatch.setattr("omnigent.onboarding.harness_install.harness_login", login)
-
-    # L1 7=Antigravity → 2=Sign in → q back → q quit.
-    result = CliRunner().invoke(
-        cli,
-        ["setup", "--no-internal-beta"],
-        input="\n".join(["7", "2", "q", "q"]) + "\n",
-    )
-
-    assert result.exit_code == 0, result.output
-    login.assert_called_once_with(GEMINI_FAMILY)
-
-
-def test_antigravity_sign_in_skips_sdk_install_prompt(isolated_config, monkeypatch) -> None:
-    """An installed agy can sign in even when the optional SDK is absent."""
-    monkeypatch.setattr(
-        "omnigent.onboarding.antigravity_auth.antigravity_sdk_installed",
-        lambda: False,
-    )
-    prompt = Mock()
-    monkeypatch.setattr("omnigent.cli_config._prompt_install_antigravity", prompt)
-    login = Mock(return_value=True)
-    monkeypatch.setattr("omnigent.onboarding.harness_install.harness_login", login)
-
-    result = CliRunner().invoke(
-        cli,
-        ["setup", "--no-internal-beta"],
-        input="\n".join(["7", "2", "q", "q"]) + "\n",
-    )
-
-    assert result.exit_code == 0, result.output
-    prompt.assert_not_called()
-    login.assert_called_once_with(GEMINI_FAMILY)
-
-
-def test_antigravity_remove_api_key_drops_block_and_secret(
-    isolated_config, _antigravity_sdk_present
-) -> None:
-    """Removing a Gemini key deletes the stored secret AND drops the config block."""
-    # Seed a stored key: the keychain secret + the ``antigravity:`` block.
-    secrets.store_secret("antigravity", "AIza_seeded")
-    config_path = os.path.join(isolated_config, "config.yaml")
-    with open(config_path, "w") as f:
-        yaml.safe_dump({"antigravity": {"api_key_ref": "keychain:antigravity"}}, f)
-
-    # L1 7=Antigravity → antigravity menu (key set:
-    # 1=Replace 2=Remove 3=Back) → 2=Remove → q back → q quit.
-    stdin = "\n".join(["7", "2", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
-    assert result.exit_code == 0, result.output
-
-    cfg = _config_yaml(isolated_config)
-    assert "antigravity" not in cfg
-    assert secrets.load_secret("antigravity") is None
-
-
-def test_antigravity_remove_does_not_delete_foreign_keychain_secret(
-    isolated_config, _antigravity_sdk_present
-) -> None:
-    """Removing antigravity drops the block but spares a shared ``keychain:<other>``.
-
-    A hand-edited ``antigravity:`` block may point at a secret we don't own
-    (here ``keychain:shared-gemini``). Remove must NOT clobber that secret —
-    only the config block is dropped. Against the old over-broad delete (any
-    ``keychain:`` ref) the shared secret would have been destroyed.
-    """
-    # Seed a foreign shared secret referenced by a hand-edited block.
-    secrets.store_secret("shared-gemini", "AIza_shared_seeded")
-    config_path = os.path.join(isolated_config, "config.yaml")
-    with open(config_path, "w") as f:
-        yaml.safe_dump({"antigravity": {"api_key_ref": "keychain:shared-gemini"}}, f)
-
-    # L1 7=Antigravity → antigravity menu 2=Remove →
-    # q back → q quit.
-    stdin = "\n".join(["7", "2", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
-    assert result.exit_code == 0, result.output
-
-    cfg = _config_yaml(isolated_config)
-    # Block dropped, but the secret we don't own is left intact.
-    assert "antigravity" not in cfg
-    assert secrets.load_secret("shared-gemini") == "AIza_shared_seeded"
-
-
-def test_antigravity_set_api_key_non_aiza_declined_is_not_stored(
-    isolated_config, _antigravity_sdk_present
-) -> None:
-    """A non-``AIza`` paste that the user declines to force is NOT persisted.
-
-    The soft prefix check warns and asks to store anyway; declining must leave
-    both the secret store and the config untouched.
-    """
-    # L1 7=Antigravity → 1=Set API key →
-    # paste non-AIza key → "n" decline warning → q back → q quit.
-    stdin = "\n".join(["7", "1", "sk-not-a-gemini-key", "n", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
-    assert result.exit_code == 0, result.output
-
-    cfg = _config_yaml(isolated_config)
-    assert "antigravity" not in cfg
-    assert secrets.load_secret("antigravity") is None
-
-
-# ── Antigravity SDK-extra install offer (the optional ``antigravity`` extra) ──
-# The antigravity SDK ships in an OPTIONAL extra, so a user can paste a key and still
-# have no SDK; setup must detect that and offer to install. These tests force detection
-# absent (the SDK is actually present in the test venv).
-
-
-@pytest.fixture()
-def _antigravity_sdk_absent(monkeypatch):
-    """Force ``google-antigravity`` and native ``agy`` detection to report missing.
-
-    Both call sites (overview row + drill-in) resolve ``antigravity_sdk_installed``
-    from the source module at call time, so patching the module attribute is seen by
-    both. The autouse harness fixture marks CLIs installed by default, so this
-    also clears only the Gemini/agy install bit to exercise the SDK-install hint
-    instead of the native sign-in row.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    """
-    monkeypatch.setattr(
-        "omnigent.onboarding.antigravity_auth.antigravity_sdk_installed",
-        lambda: False,
-    )
-    monkeypatch.setattr(
-        "omnigent.onboarding.harness_install.harness_cli_installed",
-        lambda family: family != GEMINI_FAMILY,
-    )
-
-
-def test_antigravity_overview_install_command_is_selection_only(
-    isolated_config, _antigravity_sdk_absent, monkeypatch
-) -> None:
-    """With the antigravity extra absent, the Antigravity row's install command is its description.
-
-    The install command (dynamically computed) is the selection-only hint —
-    the selector's per-row description — not baked into the always-visible row.
-    Without the SDK-detection branch the hint never appears.
-    """
-    from rich.text import Text
-
-    options, selectable, descriptions, _, _max_visible = _capture_setup_overview(monkeypatch)
-    names = _overview_row_names(options, selectable)
-    antigravity = names.index("Antigravity")
-    assert "omnigent[antigravity]" in Text.from_markup(descriptions[antigravity]).plain
-    assert "omnigent[antigravity]" not in Text.from_markup(options[antigravity]).plain
-
-
-@pytest.fixture()
-def _copilot_sdk_absent(monkeypatch):
-    """Force the ``github-copilot-sdk`` extra absent and clear ambient Copilot tokens.
-
-    Copilot is the third soft-SDK-extra harness (like Cursor / Antigravity): its
-    readiness is a GitHub token, and a missing SDK is surfaced as an install
-    hint rather than a hard block. This drives the unconfigured + SDK-absent
-    state so the overview row reads "Not installed" with the extra's install
-    command as its selection-only description.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    """
-    for var in ("COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"):
-        monkeypatch.delenv(var, raising=False)
-    monkeypatch.setattr("omnigent.onboarding.copilot_auth.copilot_sdk_installed", lambda: False)
-
-
-def test_copilot_overview_install_command_is_selection_only(
-    isolated_config, _copilot_sdk_absent, monkeypatch
-) -> None:
-    """With the copilot extra absent, the Copilot row's install command is its description.
-
-    Mirrors the Cursor / Antigravity selection-only-hint contract for the third
-    soft-SDK-extra harness: the ``omnigent[copilot]`` install command is the
-    per-row description (shown only when highlighted), never baked into the
-    always-visible row label.
-    """
-    from rich.text import Text
-
-    options, selectable, descriptions, _, _max_visible = _capture_setup_overview(monkeypatch)
-    names = _overview_row_names(options, selectable)
-    copilot = names.index("Copilot")
-    assert "omnigent[copilot]" in Text.from_markup(descriptions[copilot]).plain
-    assert "pip install" not in Text.from_markup(options[copilot]).plain
-
-
-@pytest.mark.parametrize(
-    "choice,sdk_probe,unexpected_header",
-    [
-        (
-            "3\n2",
-            "omnigent.onboarding.cursor_auth.cursor_sdk_installed",
-            "Cursor — no API key yet",
-        ),
-        (
-            "7",
-            "omnigent.onboarding.antigravity_auth.antigravity_sdk_installed",
-            "Antigravity — no Gemini API key yet",
-        ),
-        (
-            "10",
-            "omnigent.onboarding.copilot_auth.copilot_sdk_installed",
-            "Copilot — no GitHub token yet",
-        ),
-    ],
-)
-def test_soft_sdk_install_prompt_abort_returns_to_overview(
-    isolated_config, monkeypatch, choice: str, sdk_probe: str, unexpected_header: str
-) -> None:
-    """Esc/q on a soft-SDK install prompt backs out instead of entering key setup.
-
-    Cursor, Antigravity, and Copilot can store their key/token even when the SDK
-    extra is absent, but that should happen only when the user explicitly picks
-    "Set ... anyway". Aborting the install offer should return to the harness
-    overview, matching the other setup drill-ins' Esc behavior.
-    """
-    monkeypatch.setattr(sdk_probe, lambda: False)
-
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=f"{choice}\nq\nq\nq\n")
-
-    assert result.exit_code == 0, result.output
-    assert unexpected_header not in result.output
-
-
-def test_antigravity_drillin_offers_install_when_sdk_missing(
-    isolated_config, _antigravity_sdk_absent
-) -> None:
-    """Drilling into Antigravity with the SDK absent presents the install offer.
-
-    The user picks "show the command" (choice 3), which prints the command and falls
-    through to the key menu, then backs out.
-    """
-    # L1 7=Antigravity → install offer 3=show command →
-    # key menu q=back → L1 q.
-    stdin = "\n".join(["7", "3", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
-    assert result.exit_code == 0, result.output
-    out = result.output
-    assert "isn't installed" in out
-    assert "omnigent[antigravity]" in out
-
-
-def test_antigravity_key_settable_when_sdk_missing(
-    isolated_config, _antigravity_sdk_absent
-) -> None:
-    """The Gemini key is still storable when the SDK is absent (no hard block).
-
-    The deliberate divergence from pi: the drill-in offers the install but does NOT
-    gate key management on it. The user declines ("set the key anyway" = choice 2),
-    then sets the key, which must persist as it does with the SDK present.
-    """
-    # L1 7=Antigravity → install offer 2=set key anyway →
-    # key menu 1=Set → paste AIza key → key menu q=back → L1 q=quit.
-    stdin = "\n".join(["7", "2", "1", "AIza_key_no_sdk", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
-    assert result.exit_code == 0, result.output
-
-    cfg = _config_yaml(isolated_config)
-    assert cfg["antigravity"] == {"api_key_ref": "keychain:antigravity"}
-    assert secrets.load_secret("antigravity") == "AIza_key_no_sdk"
-
-
-def test_antigravity_install_now_invokes_runner_without_index(
-    isolated_config, _antigravity_sdk_absent, monkeypatch
-) -> None:
-    """Choosing "install it now" shells the install with ``omnigent[antigravity]``.
-
-    Mocks the subprocess and asserts the argv targets the extra and carries NO
-    hardcoded index URL / proxy. Forces the ``uv``-absent path for a deterministic argv.
-    """
-    import subprocess
-
-    calls: list[list[str]] = []
-
-    def _run(argv: list[str], *, check: bool = False, timeout: float | None = None):
-        calls.append(argv)
-        return subprocess.CompletedProcess(args=argv, returncode=0)
-
-    monkeypatch.setattr("omnigent.onboarding.extra_install._is_uv_tool_install", lambda: False)
-    monkeypatch.setattr("omnigent.onboarding.extra_install.shutil.which", lambda name: None)
-    monkeypatch.setattr("omnigent.onboarding.antigravity_auth.subprocess.run", _run)
-
-    # L1 7=Antigravity → install offer 1=install now →
-    # key menu q=back → L1 q.
-    stdin = "\n".join(["7", "1", "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
-    assert result.exit_code == 0, result.output
-
-    assert len(calls) == 1, f"expected exactly one install invocation, got {calls}"
-    argv = calls[0]
-    assert "omnigent[antigravity]" in argv
-    assert "install" in argv
-    # No index URL / proxy is baked into committed code.
-    assert not any("index" in part or "://" in part for part in argv)
 
 
 def _other_key_add_menu_index(family: str) -> int:
@@ -3386,9 +2331,9 @@ def test_configure_harnesses_add_other_key_no_remaining_providers_aborts_cleanly
     monkeypatch.setattr("omnigent.onboarding.configure_models.other_key_providers", list)
 
     other = _other_key_add_menu_index(PI_SURFACE)
-    # L1 6=Pi → L2 1=+Add → add menu <other>=Other provider — API key → L2 q=back → L1 q=exit.
-    stdin = "\n".join(["6", "1", str(other), "q", "q"]) + "\n"
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    # L1 3=Pi → L2 1=+Add → add menu <other>=Other provider — API key → L2 q=back → L1 q=exit.
+    stdin = "\n".join(["3", "1", str(other), "q", "q"]) + "\n"
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
 
     # Pre-fix this exited non-zero with a ValueError; the guard makes it graceful.
     assert result.exit_code == 0, result.output
@@ -3446,7 +2391,7 @@ def test_configure_models_add_bedrock_writes_entry_and_secret(
         )
         + "\n"
     )
-    result = CliRunner().invoke(cli, ["setup", "--no-internal-beta"], input=stdin)
+    result = CliRunner().invoke(cli, ["setup"], input=stdin)
     assert result.exit_code == 0, result.output
 
     cfg = _config_yaml(isolated_config)

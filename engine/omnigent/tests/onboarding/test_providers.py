@@ -311,11 +311,11 @@ def test_find_catalog_models_resolves_provider_and_vendor_namespaces(
     assert [(match.provider, match.name) for match in matches] == [(provider, name)]
 
 
-def test_kimi_native_forwarder_ids_price_and_size_from_the_catalog() -> None:
-    """The ids the kimi-native forwarder reports resolve through the catalog.
+def test_kimi_model_ids_price_and_size_from_the_catalog() -> None:
+    """Kimi model ids resolve pricing and context window through the catalog.
 
     ``system.ai.kimi-k3`` (Databricks Unity Catalog system model) prices at
-    its ``databricks-kimi-k3`` serving row; a kimi CLI alias such as
+    its ``databricks-kimi-k3`` serving row; an alias such as
     ``kimi-k3-databricks`` resolves to the Moonshot family row.
     """
     from omnigent.llms.context_window import fetch_model_pricing, find_model_context_window

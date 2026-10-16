@@ -235,35 +235,35 @@ def _deployment(
 
 async def test_sweep_reaps_stale_host_rows_without_scanning_sessions() -> None:
     now = 4_000_000
-    modal = _RecordingLauncher("modal")
-    e2b = _RecordingLauncher("e2b")
+    alpha = _RecordingLauncher("alpha")
+    beta = _RecordingLauncher("beta")
     hosts = _FakeHostStore(
         {
             7: [
                 _host(
                     "host_recent",
-                    provider="modal",
+                    provider="alpha",
                     sandbox_id="sb-recent",
                     updated_at=now - _DAY_S + 1,
                 ),
                 _host(
-                    "host_modal",
-                    provider="modal",
-                    sandbox_id="sb-modal",
+                    "host_alpha",
+                    provider="alpha",
+                    sandbox_id="sb-alpha",
                     updated_at=now - _DAY_S - 1,
                 ),
                 _host(
-                    "host_modal_2",
-                    provider="modal",
-                    sandbox_id="sb-modal-2",
+                    "host_alpha_2",
+                    provider="alpha",
+                    sandbox_id="sb-alpha-2",
                     updated_at=now - 2 * _DAY_S,
                 ),
             ],
             9: [
                 _host(
-                    "host_e2b",
-                    provider="e2b",
-                    sandbox_id="sb-e2b",
+                    "host_beta",
+                    provider="beta",
+                    sandbox_id="sb-beta",
                     updated_at=now - 2 * _DAY_S,
                     status="online",
                 )
@@ -272,25 +272,25 @@ async def test_sweep_reaps_stale_host_rows_without_scanning_sessions() -> None:
     )
     reaper = ManagedSandboxReaper(
         host_store=hosts,  # type: ignore[arg-type]
-        sandbox_config=_deployment([modal, e2b]),
+        sandbox_config=_deployment([alpha, beta]),
     )
 
     assert await reaper.sweep_once(now=now) == 3
 
-    assert modal.terminated == ["sb-modal-2", "sb-modal"]
-    assert e2b.terminated == ["sb-e2b"]
+    assert alpha.terminated == ["sb-alpha-2", "sb-alpha"]
+    assert beta.terminated == ["sb-beta"]
     assert hosts.detached == [
-        (7, "host_modal_2", "sb-modal-2"),
-        (7, "host_modal", "sb-modal"),
-        (9, "host_e2b", "sb-e2b"),
+        (7, "host_alpha_2", "sb-alpha-2"),
+        (7, "host_alpha", "sb-alpha"),
+        (9, "host_beta", "sb-beta"),
     ]
     assert hosts.cleared == hosts.detached
-    assert modal.factory_calls == 1
-    assert modal.identity_entries == [7]
-    assert e2b.factory_calls == 1
-    assert e2b.identity_entries == [9]
-    assert hosts.hosts[7]["host_modal"].sandbox_id is None
-    assert hosts.hosts[7]["host_modal"].terminating_sandbox_id is None
+    assert alpha.factory_calls == 1
+    assert alpha.identity_entries == [7]
+    assert beta.factory_calls == 1
+    assert beta.identity_entries == [9]
+    assert hosts.hosts[7]["host_alpha"].sandbox_id is None
+    assert hosts.hosts[7]["host_alpha"].terminating_sandbox_id is None
     assert hosts.hosts[7]["host_recent"].sandbox_id == "sb-recent"
     assert hosts.terminating_page_queries == [(None, 500)]
     assert hosts.current_page_queries == [(None, 500)]
@@ -298,45 +298,45 @@ async def test_sweep_reaps_stale_host_rows_without_scanning_sessions() -> None:
 
 async def test_sweep_completely_traverses_bounded_slot_pages() -> None:
     now = 4_000_000
-    modal = _RecordingLauncher("modal")
+    alpha = _RecordingLauncher("alpha")
     hosts = _FakeHostStore(
         {
             7: [
                 _host(
                     "host_current_a",
-                    provider="modal",
+                    provider="alpha",
                     sandbox_id="sb-current-a",
                     updated_at=now - 2 * _DAY_S,
                 ),
                 _host(
                     "host_current_b",
-                    provider="modal",
+                    provider="alpha",
                     sandbox_id="sb-current-b",
                     updated_at=now - 3 * _DAY_S,
                 ),
                 _host(
                     "host_current_c",
-                    provider="modal",
+                    provider="alpha",
                     sandbox_id="sb-current-c",
                     updated_at=now - 4 * _DAY_S,
                 ),
                 _host(
                     "host_pending_a",
-                    provider="modal",
+                    provider="alpha",
                     sandbox_id=None,
                     terminating_sandbox_id="sb-pending-a",
                     updated_at=now,
                 ),
                 _host(
                     "host_pending_b",
-                    provider="modal",
+                    provider="alpha",
                     sandbox_id=None,
                     terminating_sandbox_id="sb-pending-b",
                     updated_at=now,
                 ),
                 _host(
                     "host_pending_c",
-                    provider="modal",
+                    provider="alpha",
                     sandbox_id=None,
                     terminating_sandbox_id="sb-pending-c",
                     updated_at=now,
@@ -346,12 +346,12 @@ async def test_sweep_completely_traverses_bounded_slot_pages() -> None:
     )
     reaper = ManagedSandboxReaper(
         host_store=hosts,  # type: ignore[arg-type]
-        sandbox_config=_deployment([modal]),
+        sandbox_config=_deployment([alpha]),
         scan_batch_size=2,
     )
 
     assert await reaper.sweep_once(now=now) == 6
-    assert set(modal.terminated) == {
+    assert set(alpha.terminated) == {
         "sb-current-a",
         "sb-current-b",
         "sb-current-c",
@@ -371,21 +371,21 @@ async def test_sweep_completely_traverses_bounded_slot_pages() -> None:
 
 async def test_provider_failure_does_not_stop_other_sandboxes() -> None:
     now = 4_000_000
-    modal = _RecordingLauncher("modal", fail=True)
-    e2b = _RecordingLauncher("e2b")
+    alpha = _RecordingLauncher("alpha", fail=True)
+    beta = _RecordingLauncher("beta")
     hosts = _FakeHostStore(
         {
             7: [
                 _host(
-                    "host_modal",
-                    provider="modal",
-                    sandbox_id="sb-modal",
+                    "host_alpha",
+                    provider="alpha",
+                    sandbox_id="sb-alpha",
                     updated_at=now - 2 * _DAY_S,
                 ),
                 _host(
-                    "host_e2b",
-                    provider="e2b",
-                    sandbox_id="sb-e2b",
+                    "host_beta",
+                    provider="beta",
+                    sandbox_id="sb-beta",
                     updated_at=now - 2 * _DAY_S,
                 ),
             ]
@@ -393,25 +393,25 @@ async def test_provider_failure_does_not_stop_other_sandboxes() -> None:
     )
     reaper = ManagedSandboxReaper(
         host_store=hosts,  # type: ignore[arg-type]
-        sandbox_config=_deployment([modal, e2b]),
+        sandbox_config=_deployment([alpha, beta]),
     )
 
     assert await reaper.sweep_once(now=now) == 1
-    assert hosts.hosts[7]["host_modal"].sandbox_id is None
-    assert hosts.hosts[7]["host_modal"].terminating_sandbox_id == "sb-modal"
-    assert hosts.hosts[7]["host_e2b"].sandbox_id is None
-    assert e2b.terminated == ["sb-e2b"]
+    assert hosts.hosts[7]["host_alpha"].sandbox_id is None
+    assert hosts.hosts[7]["host_alpha"].terminating_sandbox_id == "sb-alpha"
+    assert hosts.hosts[7]["host_beta"].sandbox_id is None
+    assert beta.terminated == ["sb-beta"]
 
 
 async def test_deleted_host_cleanup_retries_without_offline_age() -> None:
     now = 4_000_000
-    modal = _RecordingLauncher("modal", fail=True)
+    alpha = _RecordingLauncher("alpha", fail=True)
     hosts = _FakeHostStore(
         {
             7: [
                 _host(
                     "host_deleted",
-                    provider="modal",
+                    provider="alpha",
                     sandbox_id="sb-deleted",
                     updated_at=now,
                     status="online",
@@ -422,35 +422,35 @@ async def test_deleted_host_cleanup_retries_without_offline_age() -> None:
     )
     reaper = ManagedSandboxReaper(
         host_store=hosts,  # type: ignore[arg-type]
-        sandbox_config=_deployment([modal]),
+        sandbox_config=_deployment([alpha]),
     )
 
     assert await reaper.sweep_once(now=now) == 0
     assert hosts.hosts[7]["host_deleted"].sandbox_id == "sb-deleted"
 
-    modal.fail = False
+    alpha.fail = False
     assert await reaper.sweep_once(now=now) == 1
-    assert modal.terminated == ["sb-deleted"]
+    assert alpha.terminated == ["sb-deleted"]
     assert "host_deleted" not in hosts.hosts[7]
 
 
 async def test_provider_identity_failure_does_not_stop_other_sandboxes() -> None:
     now = 4_000_000
-    modal = _RecordingLauncher("modal", identity_fail=True)
-    e2b = _RecordingLauncher("e2b")
+    alpha = _RecordingLauncher("alpha", identity_fail=True)
+    beta = _RecordingLauncher("beta")
     hosts = _FakeHostStore(
         {
             7: [
                 _host(
-                    "host_modal",
-                    provider="modal",
-                    sandbox_id="sb-modal",
+                    "host_alpha",
+                    provider="alpha",
+                    sandbox_id="sb-alpha",
                     updated_at=now - 2 * _DAY_S,
                 ),
                 _host(
-                    "host_e2b",
-                    provider="e2b",
-                    sandbox_id="sb-e2b",
+                    "host_beta",
+                    provider="beta",
+                    sandbox_id="sb-beta",
                     updated_at=now - 2 * _DAY_S,
                 ),
             ]
@@ -458,40 +458,40 @@ async def test_provider_identity_failure_does_not_stop_other_sandboxes() -> None
     )
     reaper = ManagedSandboxReaper(
         host_store=hosts,  # type: ignore[arg-type]
-        sandbox_config=_deployment([modal, e2b]),
+        sandbox_config=_deployment([alpha, beta]),
     )
 
     assert await reaper.sweep_once(now=now) == 1
-    assert modal.terminated == []
-    assert e2b.terminated == ["sb-e2b"]
-    assert hosts.hosts[7]["host_modal"].sandbox_id == "sb-modal"
-    assert hosts.hosts[7]["host_e2b"].sandbox_id is None
+    assert alpha.terminated == []
+    assert beta.terminated == ["sb-beta"]
+    assert hosts.hosts[7]["host_alpha"].sandbox_id == "sb-alpha"
+    assert hosts.hosts[7]["host_beta"].sandbox_id is None
 
 
 async def test_reaper_rereads_liveness_before_termination() -> None:
     now = 4_000_000
-    modal = _RecordingLauncher("modal")
+    alpha = _RecordingLauncher("alpha")
     hosts = _FakeHostStore(
         {
             7: [
                 _host(
-                    "host_modal",
-                    provider="modal",
-                    sandbox_id="sb-modal",
+                    "host_alpha",
+                    provider="alpha",
+                    sandbox_id="sb-alpha",
                     updated_at=now - 2 * _DAY_S,
                 )
             ]
         }
     )
-    hosts.refresh_on_detach.add("host_modal")
+    hosts.refresh_on_detach.add("host_alpha")
     reaper = ManagedSandboxReaper(
         host_store=hosts,  # type: ignore[arg-type]
-        sandbox_config=_deployment([modal]),
+        sandbox_config=_deployment([alpha]),
     )
 
     assert await reaper.sweep_once(now=now) == 0
-    assert modal.terminated == []
-    assert hosts.hosts[7]["host_modal"].sandbox_id == "sb-modal"
+    assert alpha.terminated == []
+    assert hosts.hosts[7]["host_alpha"].sandbox_id == "sb-alpha"
 
 
 async def test_successful_termination_preserves_new_active_generation() -> None:
@@ -500,9 +500,9 @@ async def test_successful_termination_preserves_new_active_generation() -> None:
         {
             7: [
                 _host(
-                    "host_modal",
-                    provider="modal",
-                    sandbox_id="sb-modal",
+                    "host_alpha",
+                    provider="alpha",
+                    sandbox_id="sb-alpha",
                     updated_at=now - 2 * _DAY_S,
                 )
             ]
@@ -510,27 +510,27 @@ async def test_successful_termination_preserves_new_active_generation() -> None:
     )
 
     def _launch_new_generation(sandbox_id: str) -> None:
-        assert sandbox_id == "sb-modal"
-        current = hosts.hosts[7]["host_modal"]
+        assert sandbox_id == "sb-alpha"
+        current = hosts.hosts[7]["host_alpha"]
         assert current.sandbox_id is None
-        assert current.terminating_sandbox_id == "sb-modal"
-        hosts.hosts[7]["host_modal"] = replace(
+        assert current.terminating_sandbox_id == "sb-alpha"
+        hosts.hosts[7]["host_alpha"] = replace(
             current,
-            sandbox_id="sb-modal-new",
+            sandbox_id="sb-alpha-new",
             status="online",
             updated_at=now,
         )
 
-    modal = _RecordingLauncher("modal", on_terminate=_launch_new_generation)
+    alpha = _RecordingLauncher("alpha", on_terminate=_launch_new_generation)
     reaper = ManagedSandboxReaper(
         host_store=hosts,  # type: ignore[arg-type]
-        sandbox_config=_deployment([modal]),
+        sandbox_config=_deployment([alpha]),
     )
 
     assert await reaper.sweep_once(now=now) == 1
-    assert modal.terminated == ["sb-modal"]
-    assert hosts.hosts[7]["host_modal"].sandbox_id == "sb-modal-new"
-    assert hosts.hosts[7]["host_modal"].terminating_sandbox_id is None
+    assert alpha.terminated == ["sb-alpha"]
+    assert hosts.hosts[7]["host_alpha"].sandbox_id == "sb-alpha-new"
+    assert hosts.hosts[7]["host_alpha"].terminating_sandbox_id is None
 
 
 async def test_pending_termination_retries_without_detaching_active_generation() -> None:
@@ -539,27 +539,27 @@ async def test_pending_termination_retries_without_detaching_active_generation()
         {
             7: [
                 _host(
-                    "host_modal",
-                    provider="modal",
-                    sandbox_id="sb-modal-new",
-                    terminating_sandbox_id="sb-modal-old",
+                    "host_alpha",
+                    provider="alpha",
+                    sandbox_id="sb-alpha-new",
+                    terminating_sandbox_id="sb-alpha-old",
                     updated_at=now,
                     status="online",
                 )
             ]
         }
     )
-    modal = _RecordingLauncher("modal")
+    alpha = _RecordingLauncher("alpha")
     reaper = ManagedSandboxReaper(
         host_store=hosts,  # type: ignore[arg-type]
-        sandbox_config=_deployment([modal]),
+        sandbox_config=_deployment([alpha]),
     )
 
     assert await reaper.sweep_once(now=now) == 1
-    assert modal.terminated == ["sb-modal-old"]
+    assert alpha.terminated == ["sb-alpha-old"]
     assert hosts.detached == []
-    assert hosts.hosts[7]["host_modal"].sandbox_id == "sb-modal-new"
-    assert hosts.hosts[7]["host_modal"].terminating_sandbox_id is None
+    assert hosts.hosts[7]["host_alpha"].sandbox_id == "sb-alpha-new"
+    assert hosts.hosts[7]["host_alpha"].terminating_sandbox_id is None
 
 
 async def test_pending_id_equal_to_active_id_is_not_terminated() -> None:
@@ -568,40 +568,40 @@ async def test_pending_id_equal_to_active_id_is_not_terminated() -> None:
         {
             7: [
                 _host(
-                    "host_blaxel",
-                    provider="blaxel",
-                    sandbox_id="managed-host_blaxel",
-                    terminating_sandbox_id="managed-host_blaxel",
+                    "host_reused",
+                    provider="reused",
+                    sandbox_id="managed-host_reused",
+                    terminating_sandbox_id="managed-host_reused",
                     updated_at=now,
                     status="online",
                 )
             ]
         }
     )
-    blaxel = _RecordingLauncher("blaxel")
+    reused = _RecordingLauncher("reused")
     reaper = ManagedSandboxReaper(
         host_store=hosts,  # type: ignore[arg-type]
-        sandbox_config=_deployment([blaxel]),
+        sandbox_config=_deployment([reused]),
     )
 
     assert await reaper.sweep_once(now=now) == 0
-    assert blaxel.terminated == []
-    current = hosts.hosts[7]["host_blaxel"]
-    assert current.sandbox_id == "managed-host_blaxel"
-    assert current.terminating_sandbox_id == "managed-host_blaxel"
+    assert reused.terminated == []
+    current = hosts.hosts[7]["host_reused"]
+    assert current.sandbox_id == "managed-host_reused"
+    assert current.terminating_sandbox_id == "managed-host_reused"
 
 
 async def test_identity_and_termination_run_off_event_loop_thread() -> None:
     now = 4_000_000
     event_loop_thread = threading.get_ident()
-    modal = _RecordingLauncher("modal")
+    alpha = _RecordingLauncher("alpha")
     hosts = _FakeHostStore(
         {
             7: [
                 _host(
-                    "host_modal",
-                    provider="modal",
-                    sandbox_id="sb-modal",
+                    "host_alpha",
+                    provider="alpha",
+                    sandbox_id="sb-alpha",
                     updated_at=now - 2 * _DAY_S,
                 )
             ]
@@ -609,9 +609,9 @@ async def test_identity_and_termination_run_off_event_loop_thread() -> None:
     )
     reaper = ManagedSandboxReaper(
         host_store=hosts,  # type: ignore[arg-type]
-        sandbox_config=_deployment([modal]),
+        sandbox_config=_deployment([alpha]),
     )
 
     assert await reaper.sweep_once(now=now) == 1
-    assert modal.identity_threads == modal.termination_threads
-    assert modal.identity_threads[0] != event_loop_thread
+    assert alpha.identity_threads == alpha.termination_threads
+    assert alpha.identity_threads[0] != event_loop_thread

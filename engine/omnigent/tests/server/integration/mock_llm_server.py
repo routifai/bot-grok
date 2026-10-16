@@ -799,7 +799,7 @@ class QueuedResponse:
     # ``/v1/chat/completions`` returned verbatim as the OpenAI ``usage``
     # object (JSON body and, when the client requests
     # ``stream_options.include_usage``, the final stream chunk) so a test can
-    # script the token accounting an openai-wire harness (e.g. kimi) records.
+    # script the token accounting an openai-wire harness records.
     usage: dict | None = None
     # When set, ``/v1/messages`` returns a safeguard-refusal SSE stream with
     # this category (e.g. ``"cyber"``) instead of text — used to exercise
@@ -1370,7 +1370,7 @@ async def create_chat_completion(
         # OpenAI stream-usage semantics: when the client requests
         # ``stream_options.include_usage``, a final chunk with empty
         # ``choices`` carries the ``usage`` object right before ``[DONE]``.
-        # Harnesses on this wire (e.g. kimi-code) read their per-turn token
+        # Harnesses on this wire read their per-turn token
         # accounting from exactly this chunk.
         stream_options = parsed.get("stream_options") if isinstance(parsed, dict) else None
         if isinstance(stream_options, dict) and stream_options.get("include_usage"):

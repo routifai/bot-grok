@@ -65,7 +65,7 @@ async def test_interrupt_inserts_cancellation_items_in_history() -> None:
                 "role": "user",
                 "model": "test-agent",
                 "content": [{"type": "input_text", "text": "do something"}],
-                "harness": "openai-agents",
+                "harness": "claude-sdk",
             },
         )
         assert resp.status_code == 202
@@ -174,7 +174,7 @@ async def test_interrupt_cancel_floor_finalizes_stuck_turn() -> None:
                 "role": "user",
                 "model": "test-agent",
                 "content": [{"type": "input_text", "text": "do something"}],
-                "harness": "openai-agents",
+                "harness": "claude-sdk",
             },
         )
         assert resp.status_code == 202
@@ -229,7 +229,7 @@ async def test_stop_session_cancels_inprocess_turn() -> None:
                 "role": "user",
                 "model": "test-agent",
                 "content": [{"type": "input_text", "text": "do something"}],
-                "harness": "openai-agents",
+                "harness": "claude-sdk",
             },
         )
         assert resp.status_code == 202
@@ -305,7 +305,7 @@ async def test_interrupt_during_setup_phase_recovers_stuck_turn() -> None:
         "model": "test-agent",
         "agent_id": "880b5afda28ad55ff74cbeb9b5fc67fb",
         "content": [{"type": "input_text", "text": "do something"}],
-        "harness": "openai-agents",
+        "harness": "claude-sdk",
     }
     fresh_turn_started = False
     async with _runner_client(app) as client:
@@ -382,7 +382,7 @@ async def test_interrupt_marker_instructs_model_to_disregard_abandoned_request()
                 "role": "user",
                 "model": "test-agent",
                 "content": [{"type": "input_text", "text": "delete all my files"}],
-                "harness": "openai-agents",
+                "harness": "claude-sdk",
             },
         )
         assert resp.status_code == 202
@@ -1113,7 +1113,7 @@ def test_stop_after_completed_does_not_downgrade_status() -> None:
     runner_app.register_subagent_work(
         parent_session_id=parent_id,
         child_session_id=child_id,
-        agent="cursor-native",
+        agent="claude-native",
         title="task",
     )
 
@@ -1170,7 +1170,7 @@ def test_stop_after_failed_does_not_downgrade_status() -> None:
     runner_app.register_subagent_work(
         parent_session_id=parent_id,
         child_session_id=child_id,
-        agent="cursor-native",
+        agent="claude-native",
         title="failing-task",
     )
 
@@ -1492,7 +1492,7 @@ async def test_subagent_completion_during_parent_wake_turn_posts_followup_wake()
                     "role": "user",
                     "agent_id": "3006a2a399391aa72a65a507ff92dae3",
                     "model": "test-agent",
-                    "harness": "openai-agents",
+                    "harness": "claude-sdk",
                     "content": [{"type": "input_text", "text": "wake notice"}],
                 },
             )
@@ -1611,7 +1611,7 @@ async def test_parent_idle_with_stuck_wake_flag_posts_recovery_wake() -> None:
                     "role": "user",
                     "agent_id": "7c04e18ef7e3a769f7eecca21b049374",
                     "model": "test-agent",
-                    "harness": "openai-agents",
+                    "harness": "claude-sdk",
                     "content": [{"type": "input_text", "text": "wake notice"}],
                 },
             )
@@ -1826,7 +1826,7 @@ async def test_parent_idle_with_stuck_wake_flag_and_drained_inbox_clears_flag() 
                     "role": "user",
                     "agent_id": "d99814e82ffc3ad874ca24f44a86ffc7",
                     "model": "test-agent",
-                    "harness": "openai-agents",
+                    "harness": "claude-sdk",
                     "content": [{"type": "input_text", "text": "wake notice"}],
                 },
             )
@@ -2042,7 +2042,7 @@ async def test_repeat_identical_recovery_wake_is_suppressed() -> None:
                 "role": "user",
                 "agent_id": "c1d2e3f4a5b60718293a4b5c6d7e8f90",
                 "model": "test-agent",
-                "harness": "openai-agents",
+                "harness": "claude-sdk",
                 "content": [{"type": "input_text", "text": "wake notice"}],
             },
         )
@@ -2209,7 +2209,7 @@ async def test_recovery_wake_fires_again_for_an_episode_after_a_full_drain() -> 
                 "role": "user",
                 "agent_id": "c1d2e3f4a5b60718293a4b5c6d7e8f90",
                 "model": "test-agent",
-                "harness": "openai-agents",
+                "harness": "claude-sdk",
                 "content": [{"type": "input_text", "text": "wake notice"}],
             },
         )
@@ -2633,15 +2633,9 @@ async def test_events_interrupt_on_native_session_injects_escape_without_marker(
         # runner's idle edge because the injection task completes before
         # the user-visible Codex turn.
         ("codex-native", ["running"]),
-        # antigravity-native shares codex's shape: the executor's
-        # SendUserCascadeMessage returns as soon as agy accepts the turn, so the
-        # RPC read driver (not the runner injection task) owns idle. Publishing
-        # the runner's idle here fires ~2s before agy's output streams and
-        # prematurely completes the response (the live-e2e "double-idle").
-        ("antigravity-native", ["running"]),
         # Non-terminal harnesses have no external lifecycle observer; the
         # runner turn remains their source of truth.
-        ("openai-agents", ["running", "idle"]),
+        ("claude-sdk", ["running", "idle"]),
     ],
 )
 @pytest.mark.asyncio

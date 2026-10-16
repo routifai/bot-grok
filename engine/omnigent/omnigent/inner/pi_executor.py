@@ -1771,9 +1771,7 @@ def _aggregate_pi_turn_usage(
 
     A single Omnigent turn drives Pi's full agent loop, which may make
     several LLM calls (one assistant message per iteration of a tool-use
-    loop), each forwarded as its own ``message_end``. Mirrors the
-    openai-agents executor's billing/context split (see
-    ``openai_agents_sdk_executor``): token counts are SUMMED across those
+    loop), each forwarded as its own ``message_end``. Token counts are SUMMED across those
     calls because each call is billed for the full input it sends, while
     ``context_tokens`` reflects only the LAST call's total — the proxy for
     how full the context window is going into the next request (summing
@@ -2313,7 +2311,7 @@ class PiExecutor(Executor):
                 workspace_url,
                 self._databricks_token,
             )
-        except Exception:  # noqa: BLE001 — catalog outage uses conservative routing
+        except Exception:
             logger.warning(
                 "Pi could not fetch Databricks model metadata; "
                 "the picker will show only the selected model",
@@ -2327,7 +2325,7 @@ class PiExecutor(Executor):
                 model_catalog.catalog_model_entries,
                 "databricks",
             )
-        except Exception:  # noqa: BLE001 — live availability remains authoritative
+        except Exception:
             logger.info(
                 "Pi could not enrich the live Databricks model list with MLflow metadata",
                 exc_info=True,
@@ -2514,7 +2512,7 @@ class PiExecutor(Executor):
                 {"type": "get_available_thinking_levels", "id": "thinking_levels"},
                 "get_available_thinking_levels",
             )
-        except Exception:  # noqa: BLE001 — a probe failure must not sink the turn
+        except Exception:
             logger.debug("PiExecutor: get_available_thinking_levels failed", exc_info=True)
             return None
         data = response.get("data") if response else None

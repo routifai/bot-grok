@@ -18,8 +18,8 @@ def test_harness_override_absent_returns_none() -> None:
 
 
 def test_harness_override_extracted() -> None:
-    args = {"args": {"input": "hi", "harness": "opencode-native"}}
-    assert _subagent_harness_override_from_args(args) == "opencode-native"
+    args = {"args": {"input": "hi", "harness": "pi"}}
+    assert _subagent_harness_override_from_args(args) == "pi"
 
 
 def test_harness_override_non_string_raises() -> None:
@@ -36,10 +36,10 @@ def _spec_with(allowed: object) -> SimpleNamespace:
 
 
 def test_allowed_harnesses_reads_and_canonicalizes() -> None:
-    spec = _spec_with(["codex-native", "native-opencode"])
+    spec = _spec_with(["codex-native", "native-claude"])
     allowed = _subagent_allowed_harnesses("codex", spec)
-    # native-opencode canonicalizes to opencode-native.
-    assert allowed == frozenset({"codex-native", "opencode-native"})
+    # native-claude canonicalizes to claude-native.
+    assert allowed == frozenset({"codex-native", "claude-native"})
 
 
 def test_allowed_harnesses_empty_when_undeclared() -> None:

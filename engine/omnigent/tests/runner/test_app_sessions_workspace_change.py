@@ -102,7 +102,7 @@ async def test_tool_calls_use_the_new_directory_after_workspace_change(
                 "agent_id": AGENT,
                 "model": "probe-agent",
                 "content": [{"type": "input_text", "text": "hi"}],
-                "harness": "openai-agents",
+                "harness": "claude-sdk",
             },
         )
         assert resp.status_code == 202

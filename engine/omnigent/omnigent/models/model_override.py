@@ -25,22 +25,8 @@ MODEL_OVERRIDE_MAX_LEN = 256
 # and bracket suffixes ("claude-opus-4-8[1m]").
 _MODEL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/\[\]-]*$")
 
-# SDK harnesses whose model override lands in the spawn env — must stay
-# in sync with ``_HARNESS_MODEL_ENV_KEY`` in ``omnigent/runner/app.py``.
-_SDK_MODEL_OVERRIDE_HARNESSES: frozenset[str] = frozenset(
-    {
-        "claude-sdk",
-        "codex",
-        "pi",
-        "openai-agents",
-        "cursor",
-        "antigravity",
-        "kimi",
-        "qwen",
-        "goose",
-        "copilot",
-    }
-)
+# SDK harnesses whose model override lands in the spawn env (their
+# ``HARNESS_<H>_MODEL`` key is declared by the harness registry).
 _SDK_MODEL_OVERRIDE_HARNESSES = frozenset(model_env_keys())
 
 
@@ -67,7 +53,7 @@ def validate_model_override(value: str) -> str:
 
 
 # Single-vendor harnesses only run their own vendor's models; multi-model
-# harnesses (pi, openai-agents) accept any validated id.
+# harnesses (pi) accept any validated id.
 # Reversed native spellings are valid harness ids (NATIVE_HARNESSES)
 # that canonicalize_harness passes through, so list them explicitly —
 # likewise the executor-type spelling ("claude_sdk") that spec_harness()
@@ -80,34 +66,6 @@ _CLAUDE_FAMILY_HARNESSES: frozenset[str] = frozenset(
 # Anthropic-incompatible Responses wire, and codex >= 0.137 dropped the
 # chat/completions wire that was the only path to Claude — so a codex x Claude
 # dispatch is genuinely broken and must fail loud here.
-# openai-agents (and its "openai-agents-sdk" / "agents_sdk" spellings) is
-# intentionally not included: a live SDK probe completed a Claude
-# tool-calling turn on the gateway over the chat wire, so the harness is
-# multi-model like pi and accepts any validated id (no family rejection).
-# antigravity is Gemini-native: it authenticates a direct Gemini API key /
-# Vertex AI and has no Databricks/gateway path (see _build_antigravity_spawn_env
-# in omnigent/runtime/workflow.py). So unlike the single-vendor harnesses above,
-# the rule here is framed as a *reject-list* of the families it definitively
-# cannot serve (Claude / GPT, and any ``databricks-``-prefixed gateway id),
-# rather than a strict Gemini allow-list — bare/ambiguous ids (e.g. a future
-# ``gemini-pro`` alias the SDK accepts) still pass through to the Gemini-native
-# SDK path. Mirrors how the cross-family rejection above fails loud at the
-# dispatch gate instead of leaking a ``HARNESS_ANTIGRAVITY_MODEL`` the SDK can
-# never route.
-_ANTIGRAVITY_FAMILY_HARNESSES: frozenset[str] = frozenset(
-    {
-        "antigravity",
-        "agy",
-        "google-antigravity",
-        # The native agy TUI bridge is equally Gemini-native (it drives the
-        # same Gemini-backed ``agy`` runtime), so it shares the reject-list.
-        "antigravity-native",
-        "native-antigravity",
-    }
-)
-# A ``databricks-`` gateway prefix marks an id bound to the Databricks gateway,
-# which antigravity never reaches — a definitive mismatch on its own.
-_DATABRICKS_GATEWAY_PREFIX = "databricks-"
 
 
 # Vendor tokens matched anywhere in the id — the long-standing rule for the
@@ -158,10 +116,7 @@ def model_family_mismatch(harness: str, model: str) -> str | None:
     Single-vendor harnesses reject the other family and ids whose family
     cannot be determined — failing loud at dispatch beats an opaque
     harness/gateway error after spawn.
-    The Gemini-native ``antigravity`` harness rejects the Claude/GPT
-    families and any ``databricks-`` gateway id (it has no gateway path),
-    but accepts Gemini shapes and bare/ambiguous ids the SDK may honor.
-    Multi-model harnesses (pi, openai-agents) accept any validated id.
+    Multi-model harnesses (pi) accept any validated id.
 
     :param harness: Harness id from the sub-agent spec, alias or
         canonical, e.g. ``"claude-native"``.
@@ -172,30 +127,19 @@ def model_family_mismatch(harness: str, model: str) -> str | None:
     canon = canonicalize_harness(harness)
     lower = model.lower()
     is_claude = "claude" in lower
-    # Antigravity's reject-list stays the narrow GPT/codex rule: GLM and Kimi
-    # ids carry no Gemini-native verdict, so they are not newly excluded here.
-    is_gpt = "gpt" in lower or "codex" in lower
     if canon in _CLAUDE_FAMILY_HARNESSES and not is_claude:
         return (
             f"harness {canon!r} only runs Claude models (id containing "
             f"'claude'); got {model!r}. Use the codex worker for GPT / GLM / "
-            "Kimi models or the pi / openai-agents worker for any other "
+            "Kimi models or the pi worker for any other "
             "gateway model."
         )
     if canon in CODEX_CANONICAL_HARNESSES and not is_codex_compatible_model(model):
         return (
             f"harness {canon!r} only runs codex-compatible models (id naming "
             f"'gpt', 'codex', 'glm', or 'kimi'); got {model!r}. Use the "
-            "claude_code worker for Claude models or the pi / openai-agents "
-            "worker for any other gateway model."
-        )
-    if canon in _ANTIGRAVITY_FAMILY_HARNESSES and (
-        is_claude or is_gpt or lower.startswith(_DATABRICKS_GATEWAY_PREFIX)
-    ):
-        return (
-            f"harness {canon!r} is Gemini-native and cannot run Claude/GPT or "
-            f"Databricks-gateway models; got {model!r}. Use a Gemini id "
-            "or the claude_code / codex / pi worker for those families."
+            "claude_code worker for Claude models or the pi worker for any "
+            "other gateway model."
         )
     return None
 

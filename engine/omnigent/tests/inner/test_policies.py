@@ -224,7 +224,7 @@ class TestPromptPolicy(unittest.TestCase):
                 PolicyRuntimeContext(
                     default_executor_spec=ExecutorSpec(
                         model="base-model",
-                        harness="open-responses",
+                        harness="pi",
                         profile="default-profile",
                     ),
                     executor_factory=make_executor,
@@ -236,7 +236,7 @@ class TestPromptPolicy(unittest.TestCase):
                 captured["executor"],
                 ExecutorSpec(
                     model="policy-model",
-                    harness="open-responses",
+                    harness="pi",
                     profile="default-profile",
                 ),
             )

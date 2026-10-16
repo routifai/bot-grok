@@ -71,19 +71,12 @@ def _family(provider: ProviderEntry, harness: str, model: str | None = None) -> 
     canonical = canonicalize_harness(normalize_inference_harness(harness))
     if canonical in {"claude-native", "claude-sdk"}:
         family = "anthropic"
-    elif canonical in {
-        "codex",
-        "codex-native",
-        "openai-agents",
-        "qwen",
-        "jcode",
-        "opencode-native",
-    }:
+    elif canonical == "codex-native":
         family = "openai"
-    elif canonical in {"pi", "pi-native", "acp"}:
+    elif canonical in {"pi", "pi-native"}:
         preferred = (
             ("openai", "anthropic")
-            if canonical in {"pi", "pi-native"} and model and "claude" not in model.lower()
+            if model and "claude" not in model.lower()
             else ("anthropic", "openai")
         )
         family = next((name for name in preferred if name in provider.families), "")
@@ -100,29 +93,9 @@ def _wire(provider: ProviderEntry, harness: str, model: str | None = None) -> Mo
         return ModelWireAPI.ANTHROPIC_MESSAGES
     protocol = provider.families[family].wire_api
     canonical = canonicalize_harness(normalize_inference_harness(harness))
-    if canonical in {"codex", "codex-native"} and protocol == "chat":
+    if canonical == "codex-native" and protocol == "chat":
         raise _invalid("Codex requires a Responses endpoint; configure wire_api: responses.")
-    if canonical in {"opencode-native", "jcode", "qwen"}:
-        if protocol == "responses":
-            raise _invalid(
-                f"{harness} requires a Chat Completions gateway with wire_api: chat. "
-                "Configure a separate named gateway provider for this harness."
-            )
-        return ModelWireAPI.OPENAI_CHAT
     return ModelWireAPI.OPENAI_CHAT if protocol == "chat" else ModelWireAPI.OPENAI_RESPONSES
-
-
-def _configured_wires(provider: ProviderEntry) -> set[ModelWireAPI]:
-    wires = set()
-    if "anthropic" in provider.families:
-        wires.add(ModelWireAPI.ANTHROPIC_MESSAGES)
-    if "openai" in provider.families:
-        wires.add(
-            ModelWireAPI.OPENAI_CHAT
-            if provider.families["openai"].wire_api == "chat"
-            else ModelWireAPI.OPENAI_RESPONSES
-        )
-    return wires
 
 
 def _alias(model: str, tiers: dict[str, str]) -> str:
@@ -160,7 +133,7 @@ def _binding_key(config: dict[str, Any], harness: str) -> str:
     for key in config["inference"]["harnesses"]:
         if normalize_inference_harness(key) == canonical:
             return key
-    return "acp"
+    return harness
 
 
 def _resolve_alias(provider: ProviderEntry, harness: str, model: str) -> str:
@@ -168,7 +141,7 @@ def _resolve_alias(provider: ProviderEntry, harness: str, model: str) -> str:
     canonical = canonicalize_harness(normalize_inference_harness(harness))
     families = (
         [name for name in ("anthropic", "openai") if name in provider.families]
-        if canonical in {"pi", "pi-native", "acp"}
+        if canonical in {"pi", "pi-native"}
         else [_family(provider, harness)]
     )
     resolved = {
@@ -398,7 +371,7 @@ class SandboxInferenceService:
                 "Managed inference requires a gateway, API key, or connected Unity provider."
             )
         for name in providers:
-            for family_name in ("anthropic", "openai", "gemini"):
+            for family_name in ("anthropic", "openai"):
                 original_family = raw["providers"][name].get(family_name, {})
                 if original_family.get("api_key") is not None:
                     raise _invalid("Keep inference credentials in api_key_ref or auth_command.")
@@ -610,11 +583,7 @@ class SandboxInferenceService:
                 if not _unfit(harness, entry.id, connection=connection)
                 and (
                     not entry.metadata.wire_apis
-                    or (
-                        bool(_configured_wires(provider) & entry.metadata.wire_apis)
-                        if canonicalize_harness(normalize_inference_harness(harness)) == "acp"
-                        else _wire(provider, harness, entry.id) in entry.metadata.wire_apis
-                    )
+                    or _wire(provider, harness, entry.id) in entry.metadata.wire_apis
                 )
                 and entry.metadata.supports(ModelCapability.TOOL_USE) is not False
             }

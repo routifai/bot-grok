@@ -1,7 +1,7 @@
 """
 Shared :class:`HarnessApp` adapter that drives any inner :class:`Executor`.
 
-The four per-harness wraps (claude-sdk, codex, pi, openai-agents-sdk) all use this adapter —
+The per-harness wraps (claude-sdk, pi) both use this adapter —
 they differ only in the executor they construct. The adapter handles lazy executor construction,
 per-turn message/event translation, tool/elicitation/policy bridging, cancellation propagation,
 injection forwarding, and shutdown cleanup.
@@ -16,7 +16,7 @@ import logging
 import secrets
 import uuid
 from collections import deque
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from typing import Any
 
 from fastapi import Response
@@ -35,9 +35,6 @@ from omnigent.inner.executor import (
     Message,
     ReasoningChunk,
     SteerOutcome,
-    SubAgentCompleted,
-    SubAgentStarted,
-    SubAgentToolCall,
     TextChunk,
     ToolCallComplete,
     ToolCallRequest,
@@ -238,15 +235,6 @@ class ExecutorAdapter(HarnessApp):
             executor._tool_executor = self._stable_tool_executor  # type: ignore[attr-defined]
         if getattr(executor, "_elicitation_handler", None) is None:
             executor._elicitation_handler = self._stable_elicitation_handler  # type: ignore[attr-defined]
-        # ACP-shaped executors also accept a choice bridge, to offer the agent's own
-        # permission scopes; the others don't define the attribute at all.
-        if (
-            hasattr(executor, "_elicitation_choice_handler")
-            and executor._elicitation_choice_handler is None  # type: ignore[attr-defined]
-        ):
-            executor._elicitation_choice_handler = (  # type: ignore[attr-defined]
-                self._stable_elicitation_choice_handler
-            )
         if getattr(executor, "_policy_evaluator", None) is None:
             executor._policy_evaluator = self._stable_policy_evaluator  # type: ignore[attr-defined]
         self._current_ctx = ctx
@@ -711,14 +699,8 @@ class ExecutorAdapter(HarnessApp):
         self,
         tool_name: str,
         tool_input: dict[str, Any],
-        *,
-        requested_schema: dict[str, Any] | None = None,
     ) -> ElicitationRequestParams:
-        """Build the approval-card params for a tool-permission elicitation.
-
-        With *requested_schema* the card renders one button per choice instead of
-        Approve/Reject; without it, the usual binary card.
-        """
+        """Build the Approve/Reject card params for a tool-permission elicitation."""
         # Build a concise preview: truncate long args so the UI widget
         # stays readable. 300 chars matches AP's policy-engine preview.
         try:
@@ -731,58 +713,12 @@ class ExecutorAdapter(HarnessApp):
         return ElicitationRequestParams(
             mode="form",
             message=f"{label} wants to use **{tool_name}**",
-            requestedSchema=requested_schema,
+            requestedSchema=None,
             url=None,
             phase="tool_call",
             policy_name=f"{label.lower()}_sdk_permission",
             content_preview=f"{tool_name}({preview})",
         )
-
-    async def _stable_elicitation_choice_handler(
-        self,
-        tool_name: str,
-        tool_input: dict[str, Any],
-        options: Sequence[str],
-    ) -> str | None:
-        """Stable bridge for a multiple-choice tool-permission elicitation.
-
-        Same gate as :meth:`_stable_elicitation_handler`, but the card offers the
-        harness's own permission scopes as buttons and the chosen label comes back,
-        so the user can grant the scope the agent already supports instead of
-        re-approving the same action every time.
-
-        :returns: The chosen label, or ``None`` when declined, cancelled, or the
-            reply carried no readable answer.
-        """
-        ctx = self._current_ctx
-        if ctx is None:
-            # No active turn — decline by default, as the binary card does.
-            _logger.error(
-                "elicitation choice callback fired with no active turn context "
-                "(tool=%s); declining by default",
-                tool_name,
-            )
-            return None
-
-        elicitation_id = f"elicit_{secrets.token_hex(16)}"
-        # An ``answer`` enum is what the approval card renders as one button per
-        # option, and the reply names the chosen label in ``content["answer"]``.
-        params = self._permission_card(
-            tool_name,
-            tool_input,
-            requested_schema={
-                "type": "object",
-                "properties": {"answer": {"type": "string", "enum": list(options)}},
-                "required": ["answer"],
-            },
-        )
-        result = await ctx.elicit(elicitation_id, params)
-        if result.action != "accept":
-            if result.action == "decline":
-                ctx.cancelled.set()
-            return None
-        answer = (result.content or {}).get("answer")
-        return answer if isinstance(answer, str) else None
 
     async def _stable_policy_evaluator(
         self,
@@ -904,7 +840,7 @@ class ExecutorAdapter(HarnessApp):
             )
         elif isinstance(event, ToolCallComplete):
             # Suppress dispatched ids (dispatch_tool already emitted their output) and empty ids
-            # (unpaiable — they'd render a ghost card). Internally-run tools (e.g. antigravity)
+            # (unpaiable — they'd render a ghost card). Internally-run tools
             # stamp real ids and are the sole output source; they must not be suppressed.
             call_id = _call_id_from_metadata(getattr(event, "metadata", None)) or ""
             if not call_id:
@@ -996,40 +932,6 @@ class ExecutorAdapter(HarnessApp):
                     compacted_messages=event.compacted_messages,
                 )
             )
-        elif isinstance(event, SubAgentStarted):
-            from omnigent.server.schemas import SubagentStartedEvent
-
-            ctx.emit(
-                SubagentStartedEvent(
-                    type="subagent.started",
-                    child_key=event.child_key,
-                    title=event.title,
-                    task=event.task,
-                )
-            )
-        elif isinstance(event, SubAgentCompleted):
-            from omnigent.server.schemas import SubagentCompletedEvent
-
-            ctx.emit(
-                SubagentCompletedEvent(
-                    type="subagent.completed",
-                    child_key=event.child_key,
-                    ok=event.ok,
-                    summary=event.summary,
-                )
-            )
-        elif isinstance(event, SubAgentToolCall):
-            from omnigent.server.schemas import SubagentToolCallEvent
-
-            ctx.emit(
-                SubagentToolCallEvent(
-                    type="subagent.tool_call",
-                    child_key=event.child_key,
-                    call_id=event.call_id,
-                    name=event.name,
-                    arguments=_serialize_args(event.args),
-                )
-            )
         # ExecutorError handled by the caller (re-raises so the
         # scaffold can build a response.failed terminal event).
 
@@ -1040,17 +942,8 @@ class ExecutorAdapter(HarnessApp):
         Unknown types fall back to base class (``type(exception).__name__``).
         """
         from omnigent.errors import OmnigentError
-        from omnigent.inner.model_auth import ProviderAuthRequired
         from omnigent.server.schemas import ErrorDetail
 
-        if isinstance(exception, ProviderAuthRequired):
-            return ErrorDetail(
-                code=exception.code,
-                message=str(exception),
-                title=exception.title,
-                cause=exception.cause,
-                remediation=exception.remediation,
-            )
         if isinstance(exception, InnerExecutorError):
             return ErrorDetail(
                 code=exception.code,

@@ -90,14 +90,13 @@ def test_ask_on_os_tools_asks_for_native_tools(
     assert expected_preview in result["reason"]
 
 
-def test_ask_on_os_tools_handles_non_string_code() -> None:
-    """A non-string ``code`` payload must still ASK, not raise.
+def test_ask_on_os_tools_handles_non_string_command() -> None:
+    """A non-string ``command`` payload must still ASK, not raise.
 
-    ``None[:80]`` raises TypeError, which the engine turns into a
-    ``policy '<name>' failed`` DENY — a confusing failure instead of the
-    approval prompt the user attached the policy for.
+    A raise would surface as a ``policy '<name>' failed`` DENY — a confusing
+    failure instead of the approval prompt the user attached the policy for.
     """
-    result = ask_on_os_tools(tc("execute_code", {"code": None}))
+    result = ask_on_os_tools(tc("bash", {"command": None}))
     assert result["result"] == "ASK"
 
 
@@ -135,80 +134,6 @@ def test_ask_on_os_tools_asks_for_pi_native_tools(
     arg path.
 
     :param tool: Pi native tool name, e.g. ``"bash"``.
-    :param args: Tool arguments dict.
-    :param expected_preview: Substring that must appear in the reason.
-    """
-    result = ask_on_os_tools(tc(tool, args))
-    assert result["result"] == "ASK"
-    assert tool in result["reason"]
-    assert expected_preview in result["reason"]
-
-
-# ── ask_on_os_tools: Goose native tools (developer__ namespace) ───────────────
-
-
-@pytest.mark.parametrize(
-    "tool,args,expected_preview",
-    [
-        ("developer__shell", {"command": "rm -rf /"}, "rm -rf /"),
-        ("developer__write", {"path": "/tmp/out.txt"}, "/tmp/out.txt"),
-        ("developer__edit", {"path": "main.py"}, "main.py"),
-        ("developer__text_editor", {"path": "main.py"}, "main.py"),
-    ],
-    ids=["shell", "write", "edit", "text_editor"],
-)
-def test_ask_on_os_tools_asks_for_goose_native_tools(
-    tool: str,
-    args: dict[str, str],
-    expected_preview: str,
-) -> None:
-    """Goose's ``developer__*`` tools trigger ASK via the ``PreToolUse`` hook.
-
-    Goose namespaces its built-in developer tools (``developer__shell`` etc.).
-    Without these names the standard ``ask_on_os_tools`` policy would silently
-    fail to gate a native goose session's shell/file tools — so a card would
-    never appear. ``developer__shell`` resolves the ``command`` preview branch;
-    the file tools use Goose's ``path`` arg, matching the default branch.
-
-    :param tool: Goose native tool name, e.g. ``"developer__shell"``.
-    :param args: Tool arguments dict.
-    :param expected_preview: Substring that must appear in the reason.
-    """
-    result = ask_on_os_tools(tc(tool, args))
-    assert result["result"] == "ASK"
-    assert tool in result["reason"]
-    assert expected_preview in result["reason"]
-
-
-# ── ask_on_os_tools: opencode native permission categories ────────────────────
-
-
-@pytest.mark.parametrize(
-    "tool,args,expected_preview",
-    [
-        ("bash", {"command": "rm -rf /"}, "rm -rf /"),
-        ("read", {"path": "/etc/passwd"}, "/etc/passwd"),
-        ("edit", {"path": "main.py"}, "main.py"),
-        ("grep", {"pattern": "secret"}, "secret"),
-        ("glob", {"pattern": "**/*.py"}, "**/*.py"),
-    ],
-    ids=["bash", "read", "edit", "grep", "glob"],
-)
-def test_ask_on_os_tools_asks_for_opencode_native_tools(
-    tool: str,
-    args: dict[str, str],
-    expected_preview: str,
-) -> None:
-    """opencode's permission categories trigger ASK via the SSE forwarder's
-    ``permission.asked`` → policy-evaluate path.
-
-    The forwarder maps opencode's ``permission`` field (e.g. ``"bash"``) onto
-    the policy tool name. Without these in the OS-tool set, enabling "Require
-    Approval for File & Shell Operations" never prompted in an opencode session
-    (the policy returned ALLOW). ``grep`` / ``glob`` are the categories the
-    overlapping lowercase pi set does not cover.
-
-    :param tool: opencode permission category, e.g. ``"bash"``.
     :param args: Tool arguments dict.
     :param expected_preview: Substring that must appear in the reason.
     """

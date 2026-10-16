@@ -198,15 +198,6 @@ async def test_loop_disabled_when_timeout_non_positive() -> None:
     assert f.reaped == []
 
 
-def test_kimi_is_exempt_from_pane_reaping() -> None:
-    # kimi records no resumable chat id, so a reaped pane cannot be re-created
-    # with its context; the name filter must never offer kimi panes to the reaper.
-    from omnigent.terminals.pane_reaper import NATIVE_PANE_TERMINAL_NAMES
-
-    assert "kimi" not in NATIVE_PANE_TERMINAL_NAMES
-    assert "claude" in NATIVE_PANE_TERMINAL_NAMES
-
-
 async def test_runner_busy_check_spares_a_pane_parked_on_an_approval(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

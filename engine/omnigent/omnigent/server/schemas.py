@@ -190,7 +190,7 @@ class NativeModelOption(BaseModel):
 
     id: str
     model: str | None = None
-    # Optional: Codex model/list and OpenCode /api/model rows are
+    # Optional: Codex model/list rows are
     # provider-supplied and may omit it; the UI falls back to ``id``.
     displayName: str | None = None
     defaultReasoningEffort: str | None = None
@@ -921,7 +921,7 @@ class Usage(BaseModel):
         LLM sub-calls for this turn (billing total).
     :param context_tokens: Context-fill estimate for the next turn —
         set only by executors that make multiple LLM sub-calls per
-        turn (e.g. ``openai-agents``).  For single-call executors
+        turn.  For single-call executors
         this is absent and ``total_tokens`` serves the same purpose.
         The toolbar context ring and ``/context`` command use this
         field when present, falling back to ``total_tokens``.
@@ -943,8 +943,7 @@ class Usage(BaseModel):
         ``None`` when the executor doesn't report it; the cost path
         then falls back to the session override / spec model.
     :param cost_usd: Authoritative per-turn cost in USD reported
-        directly by the harness/provider (e.g. GitHub Copilot's
-        AI-credit total). When present, the server-side cost path uses
+        directly by the harness/provider. When present, the server-side cost path uses
         it in preference to the catalog token-price estimate; ``None``
         when the harness doesn't report a cost (the common case, where
         cost is computed from token counts x catalog pricing).
@@ -1486,7 +1485,7 @@ class _SessionCreateRequestBase(BaseModel):
         send launch frame). ``None`` for CLI-initiated sessions.
         Must be ``None`` when ``host_type`` is ``"managed"``.
     :param sandbox_provider: Which configured sandbox provider to
-        provision on, e.g. ``"modal"`` — one of the names ``GET /v1/info``
+        provision on, e.g. ``"computer"`` — one of the names ``GET /v1/info``
         reports in ``sandbox_providers``. Only valid with
         ``host_type: "managed"``; ``None`` takes the server's first.
     :param workspace: Where the session works. For external hosts:
@@ -1561,7 +1560,7 @@ class _SessionCreateRequestBase(BaseModel):
         mid-session via ``PATCH /v1/sessions/{id}``.
     :param harness_override: Optional per-session brain-harness
         override to persist at create time, e.g. ``"pi"`` or
-        ``"openai-agents"``. Set by the web UI's new-chat harness
+        ``"claude-sdk"``. Set by the web UI's new-chat harness
         picker; the runner uses it instead of the agent spec's
         ``executor.config.harness`` when spawning the harness for
         this session. Validated server-side: must canonicalize into
@@ -2137,7 +2136,7 @@ class SessionResponse(BaseModel):
         ``"anthropic/claude-sonnet-4-6"``. ``None`` when neither
         exists.
     :param harness: The bound agent's canonical harness, e.g.
-        ``"claude-sdk"`` or ``"openai-agents"``. Lets the client
+        ``"claude-sdk"`` or ``"pi"``. Lets the client
         render the active credential for the correct provider
         family instead of inferring it from the model string (which
         is wrong when the agent declares no model). ``None`` when
@@ -5160,87 +5159,12 @@ class PolicyEvaluationRequestEvent(_SSEEventBase):
     data: dict[str, Any]
 
 
-class SubagentStartedEvent(_SSEEventBase):
-    """
-    Runner-internal marker: the harness agent spawned a sub-agent.
-
-    ACP agents that delegate report it in their own dialect (see
-    :mod:`omnigent.inner.acp_subagents`); the executor normalizes that to a
-    :class:`~omnigent.inner.executor.SubAgentStarted`, which the adapter emits as
-    this event. The runner intercepts it in ``proxy_stream`` and POSTs
-    ``external_subagent_start`` to the Omnigent server, minting a child session so
-    the web "Subagents" panel lists one row per child. **Never** relayed to
-    external clients — the client learns of the child via ``session.created``.
-
-    :param type: Always ``"subagent.started"``.
-    :param child_key: Stable, per-turn-unique id for the sub-agent — the
-        idempotency key when the child is minted and the correlation key for the
-        later :class:`SubagentCompletedEvent`.
-    :param title: Short human label for the row, e.g. ``"mathutils"``.
-    :param task: The instruction the sub-agent was given.
-    """
-
-    type: Literal["subagent.started"]
-    child_key: str
-    title: str
-    task: str = ""
-
-
-class SubagentCompletedEvent(_SSEEventBase):
-    """
-    Runner-internal marker: a previously-announced sub-agent finished.
-
-    Emitted by the adapter from a
-    :class:`~omnigent.inner.executor.SubAgentCompleted`. The runner records the
-    outcome on the child session minted for the matching ``child_key`` (status +
-    the summary as its output). **Never** relayed to external clients.
-
-    :param type: Always ``"subagent.completed"``.
-    :param child_key: Matches the :attr:`SubagentStartedEvent.child_key`.
-    :param ok: Whether the sub-agent reported success.
-    :param summary: The sub-agent's closing summary.
-    """
-
-    type: Literal["subagent.completed"]
-    child_key: str
-    ok: bool = True
-    summary: str = ""
-
-
-class SubagentToolCallEvent(_SSEEventBase):
-    """
-    Runner-internal marker: an ACP sub-agent ran a tool call.
-
-    Emitted by the adapter from a
-    :class:`~omnigent.inner.executor.SubAgentToolCall` — a call the sub-agent
-    made inside its delegated work, which belongs in the child's transcript, not
-    the parent stream. The runner appends it as a ``function_call`` conversation
-    item on the child session minted for the matching ``child_key``. **Never**
-    relayed to external clients.
-
-    :param type: Always ``"subagent.tool_call"``.
-    :param child_key: Matches the :attr:`SubagentStartedEvent.child_key`.
-    :param call_id: The tool call's id, used as the child item's ``call_id``.
-    :param name: Human tool label for the card, e.g. ``"Wrote mathutils.py"``.
-    :param arguments: JSON-encoded arguments string (the tool's raw input).
-    """
-
-    type: Literal["subagent.tool_call"]
-    child_key: str
-    call_id: str
-    name: str
-    arguments: str = ""
-
-
 HarnessStreamEvent = (
     ServerStreamEvent
     | InjectionConsumedEvent
     | InjectionRefusedEvent
     | InjectionOfferedEvent
     | PolicyEvaluationRequestEvent
-    | SubagentStartedEvent
-    | SubagentCompletedEvent
-    | SubagentToolCallEvent
 )
 
 

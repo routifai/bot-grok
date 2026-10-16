@@ -55,10 +55,6 @@ _JSON_ONLY_ENDPOINTS = [
         id="codex_elicitation_request_hook",
     ),
     pytest.param(
-        "/v1/sessions/5eca720dc2bc6cdc3a99028d7bd0f917/hooks/antigravity-elicitation-request",
-        id="antigravity_elicitation_request_hook",
-    ),
-    pytest.param(
         "/v1/sessions/5eca720dc2bc6cdc3a99028d7bd0f917/policies/evaluate",
         id="evaluate_policy",
     ),
@@ -367,7 +363,7 @@ async def test_multipart_managed_create_reaches_managed_launch(
     bundle = build_agent_bundle(name="managed-multipart-agent")
     resp = await client.post(
         "/v1/sessions",
-        data={"metadata": json.dumps({"host_type": "managed", "sandbox_provider": "lakebox"})},
+        data={"metadata": json.dumps({"host_type": "managed", "sandbox_provider": "computer"})},
         files={"bundle": ("agent.tar.gz", bundle, "application/gzip")},
     )
     # Reached the managed branch → the not-configured guard fires.

@@ -12,12 +12,8 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from omnigent.entities.session_resources import SessionResourceView
 from omnigent.harnesses.claude_native import bridge as claude_native_bridge
 from omnigent.runner import create_runner_app
-from omnigent.runner.resource_registry import (
-    SessionResourceRegistry,
-)
 from omnigent.spec.types import AgentSpec, ExecutorSpec
 from tests.runner.conftest import (
     _BlockingHarnessClient,
@@ -85,7 +81,7 @@ async def test_proxy_stream_relays_non_json_sse_frame() -> None:
                 "role": "user",
                 "model": "test-agent",
                 "content": [{"type": "input_text", "text": "hello"}],
-                "harness": "openai-agents",
+                "harness": "claude-sdk",
             },
         )
 
@@ -122,7 +118,7 @@ async def test_turn_sequencing_buffers_concurrent_message() -> None:
                     "content": [
                         {"type": "input_text", "text": "first"},
                     ],
-                    "harness": "openai-agents",
+                    "harness": "claude-sdk",
                 },
             )
             async for _ in resp.aiter_text():
@@ -143,7 +139,7 @@ async def test_turn_sequencing_buffers_concurrent_message() -> None:
                 "content": [
                     {"type": "input_text", "text": "second"},
                 ],
-                "harness": "openai-agents",
+                "harness": "claude-sdk",
             },
         )
         assert resp2.status_code == 202, (
@@ -194,7 +190,7 @@ async def test_turn_lifecycle_events() -> None:
                 "role": "user",
                 "model": "test-agent",
                 "content": [{"type": "input_text", "text": "hi"}],
-                "harness": "openai-agents",
+                "harness": "claude-sdk",
             },
         )
         async for _ in resp.aiter_text():
@@ -243,7 +239,7 @@ async def test_delete_during_active_turn_cleans_state() -> None:
                 "role": "user",
                 "model": "test-agent",
                 "content": [{"type": "input_text", "text": "hi"}],
-                "harness": "openai-agents",
+                "harness": "claude-sdk",
             },
         )
 
@@ -255,7 +251,7 @@ async def test_delete_during_active_turn_cleans_state() -> None:
                 "role": "user",
                 "model": "test-agent",
                 "content": [{"type": "input_text", "text": "bye"}],
-                "harness": "openai-agents",
+                "harness": "claude-sdk",
             },
         )
 
@@ -291,7 +287,7 @@ async def test_post_turn_continuation() -> None:
                     "role": "user",
                     "model": "test-agent",
                     "content": [{"type": "input_text", "text": "first"}],
-                    "harness": "openai-agents",
+                    "harness": "claude-sdk",
                 },
             )
             async for _ in resp.aiter_text():
@@ -308,7 +304,7 @@ async def test_post_turn_continuation() -> None:
                 "role": "user",
                 "model": "test-agent",
                 "content": [{"type": "input_text", "text": "second"}],
-                "harness": "openai-agents",
+                "harness": "claude-sdk",
             },
         )
         assert resp2.status_code == 202
@@ -490,7 +486,7 @@ async def test_midturn_message_not_double_delivered_to_harness() -> None:
                 "role": "user",
                 "model": "test-agent",
                 "content": [{"type": "input_text", "text": "first"}],
-                "harness": "openai-agents",
+                "harness": "claude-sdk",
             },
         )
         assert resp1.status_code == 202
@@ -506,7 +502,7 @@ async def test_midturn_message_not_double_delivered_to_harness() -> None:
                 "role": "user",
                 "model": "test-agent",
                 "content": [{"type": "input_text", "text": "second"}],
-                "harness": "openai-agents",
+                "harness": "claude-sdk",
             },
         )
         # 202 "buffered" confirms turn 1 was still active — the precondition
@@ -753,7 +749,7 @@ async def test_messages_reach_harness_in_submission_order() -> None:
                         },
                         {"type": "input_text", "text": "alpha-first"},
                     ],
-                    "harness": "openai-agents",
+                    "harness": "claude-sdk",
                 },
             )
 
@@ -777,7 +773,7 @@ async def test_messages_reach_harness_in_submission_order() -> None:
                     "role": "user",
                     "model": "test-agent",
                     "content": [{"type": "input_text", "text": "bravo-second"}],
-                    "harness": "openai-agents",
+                    "harness": "claude-sdk",
                 },
             )
 
@@ -1050,7 +1046,7 @@ async def test_buffered_continuation_skips_transient_idle() -> None:
                     "role": "user",
                     "model": "test-agent",
                     "content": [{"type": "input_text", "text": "first"}],
-                    "harness": "openai-agents",
+                    "harness": "claude-sdk",
                 },
             )
             async for _ in resp.aiter_text():
@@ -1066,7 +1062,7 @@ async def test_buffered_continuation_skips_transient_idle() -> None:
                 "role": "user",
                 "model": "test-agent",
                 "content": [{"type": "input_text", "text": "second"}],
-                "harness": "openai-agents",
+                "harness": "claude-sdk",
             },
         )
 
@@ -1131,7 +1127,7 @@ async def test_cancelled_turn_publishes_idle_so_client_unsticks() -> None:
                     "role": "user",
                     "model": "test-agent",
                     "content": [{"type": "input_text", "text": "blocked"}],
-                    "harness": "openai-agents",
+                    "harness": "claude-sdk",
                 },
             )
             async for _ in resp.aiter_text():
@@ -1213,26 +1209,13 @@ class _FakeServerClient:
 
 def _build_recovery_app(
     history_items: list[dict[str, Any]],
-    *,
-    harness_name: str | None = None,
 ) -> tuple[FastAPI, _FakeProcessManager, _ScriptedHarnessClient]:
     """Build a runner app with a fake server_client returning history.
 
     :param history_items: Items returned by GET /v1/sessions/{id}/items.
-    :param harness_name: Optional harness override for the resolved spec,
-        e.g. ``"codex-native"``.
     :returns: ``(app, process_manager, harness_client)`` tuple.
     """
-    spec_kwargs: dict[str, Any] = {
-        "spec_version": 1,
-        "name": "recovery-test",
-    }
-    if harness_name is not None:
-        spec_kwargs["executor"] = ExecutorSpec(
-            type="omnigent",
-            config={"harness": harness_name},
-        )
-    spec = AgentSpec(**spec_kwargs)
+    spec = AgentSpec(spec_version=1, name="recovery-test")
     sse_frames = [
         _sse({"type": "response.created", "response": {"id": "resp_r1"}}),
         _sse({"type": "response.output_text.delta", "delta": "recovered"}),
@@ -1252,32 +1235,6 @@ def _build_recovery_app(
         server_client=server_client,  # type: ignore[arg-type]
     )
     return app, pm, hc
-
-
-async def _fake_auto_create_codex_terminal(
-    session_id: str,
-    resource_registry: SessionResourceRegistry,
-    publish_event: Any,
-    **kwargs: Any,
-) -> SessionResourceView:
-    """
-    Return a fake Codex terminal without launching native processes.
-
-    :param session_id: Session whose Codex terminal would be created.
-    :param resource_registry: Runner resource registry passed by the
-        production call site.
-    :param publish_event: Event publisher passed by the production call
-        site.
-    :param kwargs: Auto-create keyword-only arguments.
-    :returns: Fake Codex terminal resource for the requested session.
-    """
-    del resource_registry, publish_event, kwargs
-    return SessionResourceView(
-        id="terminal_codex_main",
-        type="terminal",
-        session_id=session_id,
-        name="Codex",
-    )
 
 
 @pytest.mark.asyncio
@@ -1335,164 +1292,6 @@ async def test_session_creation_auto_starts_turn_for_unanswered_user_message() -
         "Recovery turn body must contain the unanswered user message "
         "from history. Empty content means _load_history_as_input "
         "failed or _session_histories wasn't populated."
-    )
-
-
-@pytest.mark.asyncio
-async def test_session_creation_does_not_replay_trailing_user_for_codex_native(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    Codex-native startup must not replay a trailing user item as recovery.
-
-    Native transcripts are mirrored from Codex. If a Codex turn errors before
-    producing an assistant item, Omnigent history can end with the user prompt even
-    though Codex already consumed it. Generic crash recovery would treat that
-    as an unanswered Omnigent turn and resend the same prompt when ``omnigent
-    codex`` reattaches.
-
-    :param monkeypatch: Pytest monkeypatch fixture used to bypass real
-        terminal auto-create.
-    """
-    import asyncio as _aio
-
-    from omnigent.runner import app as runner_app_mod
-
-    session_id = "c5bceafbef391eeff567c144d1d33f3f"
-    runner_app_mod._session_histories_ref.pop(session_id, None)
-
-    monkeypatch.setattr(
-        runner_app_mod,
-        "_auto_create_codex_terminal",
-        _fake_auto_create_codex_terminal,
-    )
-
-    history = [
-        {
-            "id": "item_user_failed",
-            "type": "message",
-            "role": "user",
-            "content": [{"type": "input_text", "text": "errored prompt"}],
-        },
-    ]
-    app, _pm, hc = _build_recovery_app(history, harness_name="codex-native")
-
-    try:
-        async with _runner_client(app) as client:
-            resp = await client.post(
-                "/v1/sessions",
-                json={"session_id": session_id, "agent_id": "880b5afda28ad55ff74cbeb9b5fc67fb"},
-            )
-            assert resp.status_code == 201
-            assert resp.json()["status"] == "idle"
-            await _aio.sleep(0.1)
-    finally:
-        runner_app_mod._session_histories_ref.pop(session_id, None)
-
-    assert hc.posted_bodies == [], (
-        "Codex-native session startup must not POST a recovery turn for a "
-        "mirrored trailing user item. A POST here means the previous failed "
-        "prompt was resent to Codex."
-    )
-
-
-@pytest.mark.asyncio
-async def test_catch_up_scan_skips_codex_native_history_entries(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    Catch-up scan must not replay mirrored Codex-native transcript items.
-
-    Native sessions can enter ``_session_histories`` through normal turn
-    processing, not only through ``POST /v1/sessions`` history recovery.
-    If catch-up scan treats that native history like a runner-native
-    conversation, a tunnel reconnect can fetch a mirrored trailing user
-    item and dispatch a duplicate recovery turn to Codex.
-
-    :param monkeypatch: Pytest monkeypatch fixture used to bypass real
-        terminal auto-create.
-    """
-    import asyncio as _aio
-
-    from omnigent.runner import app as runner_app_mod
-
-    session_id = "97990a9c3b849bb4710a9fb1e9fdc6c8"
-    saved_histories = dict(runner_app_mod._session_histories_ref)
-    runner_app_mod._session_histories_ref.clear()
-    missed_user_item = {
-        "id": "item_missed_user",
-        "type": "message",
-        "role": "user",
-        "content": [{"type": "input_text", "text": "already typed natively"}],
-    }
-    server_client = _FakeServerClient([missed_user_item])
-    spec = AgentSpec(
-        spec_version=1,
-        name="catchup-codex-native",
-        executor=ExecutorSpec(
-            type="omnigent",
-            config={"harness": "codex-native"},
-        ),
-    )
-    hc = _ScriptedHarnessClient(
-        [
-            _sse({"type": "response.created", "response": {"id": "resp_catchup"}}),
-            _sse({"type": "response.completed", "response": {"id": "resp_catchup"}}),
-        ]
-    )
-    pm = _FakeProcessManager(hc)
-
-    async def _resolver(agent_id: str, session_id: str | None = None) -> AgentSpec:
-        del agent_id, session_id
-        return spec
-
-    monkeypatch.setattr(
-        runner_app_mod,
-        "_auto_create_codex_terminal",
-        _fake_auto_create_codex_terminal,
-    )
-
-    app = create_runner_app(
-        process_manager=pm,  # type: ignore[arg-type]
-        spec_resolver=_resolver,
-        server_client=server_client,  # type: ignore[arg-type]
-    )
-
-    try:
-        async with _runner_client(app) as client:
-            resp = await client.post(
-                "/v1/sessions",
-                json={"session_id": session_id, "agent_id": "880b5afda28ad55ff74cbeb9b5fc67fb"},
-            )
-            assert resp.status_code == 201
-            assert resp.json()["status"] == "idle"
-
-            # Simulate the turn-processing paths that already populated
-            # native in-memory history before a tunnel reconnect.
-            runner_app_mod._session_histories_ref[session_id] = [
-                {
-                    "type": "message",
-                    "role": "assistant",
-                    "content": [{"type": "output_text", "text": "prior native output"}],
-                }
-            ]
-
-            server_client.get_calls.clear()
-            await app.state.catch_up_scan()
-            await _aio.sleep(0.1)
-    finally:
-        runner_app_mod._session_histories_ref.clear()
-        runner_app_mod._session_histories_ref.update(saved_histories)
-
-    assert server_client.get_calls == [], (
-        "Catch-up scan must skip Codex-native sessions before fetching Omnigent "
-        "items. A GET here means reconnect recovery can observe mirrored "
-        "native transcript items and replay them."
-    )
-    assert hc.posted_bodies == [], (
-        "Catch-up scan must not dispatch a recovery turn for a Codex-native "
-        "session already present in _session_histories. A POST here means the "
-        "mirrored native user item was resent to Codex."
     )
 
 
@@ -2257,7 +2056,7 @@ async def test_interrupt_forwards_to_harness_before_cancelling() -> None:
                 "role": "user",
                 "model": "test-agent",
                 "content": [{"type": "input_text", "text": "go"}],
-                "harness": "openai-agents",
+                "harness": "claude-sdk",
             },
         )
         assert resp.status_code == 202

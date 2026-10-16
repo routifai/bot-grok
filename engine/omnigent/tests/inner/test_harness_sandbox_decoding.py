@@ -25,16 +25,8 @@ from omnigent.inner.sandbox import resolve_sandbox
 from omnigent.runtime.workflow import _serialize_os_env
 
 _HARNESSES = [
-    "acp",
     "claude_sdk",
-    "codex",
-    "copilot",
-    "cursor",
-    "goose",
-    "hermes",
-    "kimi",
     "pi",
-    "qwen",
 ]
 
 

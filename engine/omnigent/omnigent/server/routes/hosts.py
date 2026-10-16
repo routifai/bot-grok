@@ -61,7 +61,7 @@ from omnigent.server.auth import AuthProvider
 from omnigent.server.feature_flags import Feature, FeatureFlags, resolve_feature_flags
 from omnigent.server.host_registry import HostConnection, HostRegistry
 from omnigent.server.routes._auth_helpers import require_user
-from omnigent.server.routes._host_launch import host_absent_error, resolve_host_launch
+from omnigent.server.routes._host_launch import host_offline_error, resolve_host_launch
 from omnigent.server.routes._workspace_validation import (
     _is_windows_absolute_path,
     restore_host_filesystem_url_path,
@@ -119,12 +119,6 @@ _MODEL_OPTIONS_TIMEOUT_S = 15.0
 # headroom) keeps a genuine slow install from timing out at the server while
 # the host is still succeeding — a "504 but actually installed" outcome.
 _INSTALL_HARNESS_TIMEOUT_S = 420.0
-
-
-# ``/v1/hosts/{id}/*`` routes share the wrong-replica-vs-offline classification
-# with the runner-launch and import paths; the one implementation lives in
-# ``_host_launch`` so the sites can't drift.
-_host_absent_error = host_absent_error
 
 
 async def _proxy_model_options(
@@ -655,7 +649,7 @@ def create_hosts_router(
                     "owner": host.user_id,
                     "status": "online" if host_is_live(host, now=now) else "offline",
                     # Non-None marks a server-managed sandbox host (e.g.
-                    # "modal"). Clients use it to hide sandbox-backed
+                    # "computer"). Clients use it to hide sandbox-backed
                     # hosts from manual host pickers — they are launch
                     # targets the server creates on demand, not
                     # user-connectable machines.
@@ -703,7 +697,7 @@ def create_hosts_router(
             "owner": host.user_id,
             "status": "online" if host_is_live(host) else "offline",
             # Same semantics as list_hosts: non-None marks a
-            # server-managed sandbox host (e.g. "modal").
+            # server-managed sandbox host (e.g. "computer").
             "sandbox_provider": host.sandbox_provider,
             "configured_harnesses": host.configured_harnesses,
             # Same semantics as list_hosts: reported on connect and held in
@@ -733,7 +727,7 @@ def create_hosts_router(
             raise HTTPException(status_code=403, detail="not your host")
         conn = host_registry.get(host.host_id)
         if conn is None:
-            raise _host_absent_error(host)
+            raise host_offline_error()
 
         result = await _proxy_model_options(
             host_registry=host_registry,
@@ -1257,7 +1251,7 @@ def create_hosts_router(
 
         conn = host_registry.get(host.host_id)
         if conn is None:
-            raise _host_absent_error(host)
+            raise host_offline_error()
 
         result = await _proxy_list_dir(
             host_registry=host_registry,
@@ -1348,7 +1342,7 @@ def create_hosts_router(
 
         conn = host_registry.get(host.host_id)
         if conn is None:
-            raise _host_absent_error(host)
+            raise host_offline_error()
 
         result = await _proxy_create_dir(
             host_registry=host_registry,
@@ -1389,7 +1383,7 @@ def create_hosts_router(
         install a harness the connected host is missing without dropping to a
         terminal. Owner-scoped like the other host actions: only the host owner
         may install onto it. Scoped to the UI-installable allowlist (claude,
-        codex, pi, opencode, qwen) — curl/brew and interactive-auth harnesses
+        codex, pi) — curl/brew and interactive-auth harnesses
         are refused. The whole route is gated behind
         ``harness_install`` in ``OMNIGENT_FEATURES`` (default off): when
         disabled it returns 404 so the feature is invisible until opted in.
@@ -1436,7 +1430,7 @@ def create_hosts_router(
 
         conn = host_registry.get(host.host_id)
         if conn is None:
-            raise _host_absent_error(host)
+            raise host_offline_error()
 
         # Coalesce concurrent installs of the same harness FAMILY onto one
         # in-flight request so a double-click (or `codex` + `codex-native`, which
@@ -1530,10 +1524,9 @@ def create_hosts_router(
             raise HTTPException(status_code=404, detail="not found")
 
         # Allowlist before ownership (403) so error codes can't enumerate
-        # ownership. Gate on the credential-CONFIGURABLE set (Claude/Codex/Pi),
-        # not merely installable — opencode/qwen are installable but env-auth,
-        # so the host can't write a credential for them. Rejecting here gives a
-        # clean 400 instead of forwarding a frame the host bounces as a 502.
+        # ownership. Gate on the credential-CONFIGURABLE set (Claude/Codex/Pi).
+        # Rejecting here gives a clean 400 instead of forwarding a frame the
+        # host bounces as a 502.
         if harness not in ui_credential_configurable_harnesses():
             raise HTTPException(
                 status_code=400,
@@ -1552,7 +1545,7 @@ def create_hosts_router(
 
         conn = host_registry.get(host.host_id)
         if conn is None:
-            raise _host_absent_error(host)
+            raise host_offline_error()
 
         frame = HostStoreSecretFrame(
             request_id=secrets.token_hex(8),
@@ -1632,7 +1625,7 @@ def create_hosts_router(
 
         conn = host_registry.get(host.host_id)
         if conn is None:
-            raise _host_absent_error(host)
+            raise host_offline_error()
 
         result = await _proxy_detect_credentials(host_registry=host_registry, host_conn=conn)
         return {
@@ -1688,7 +1681,7 @@ def create_hosts_router(
 
         conn = host_registry.get(host.host_id)
         if conn is None:
-            raise _host_absent_error(host)
+            raise host_offline_error()
 
         try:
             worktrees = await list_worktrees_on_host(

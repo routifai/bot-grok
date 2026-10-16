@@ -44,8 +44,6 @@ from omnigent.tools.builtins.load_skill import (
     format_skill_meta_text,
     list_skill_resources,
 )
-from omnigent.tools.builtins.nimble_extract import NimbleExtractTool
-from omnigent.tools.builtins.nimble_research import NimbleResearchTool
 from omnigent.tools.builtins.read_skill_file import (
     ReadSkillFileTool,
 )
@@ -78,8 +76,6 @@ __all__ = [
     "INSTANTIABLE_BUILTINS",
     "ListCommentsTool",
     "LoadSkillTool",
-    "NimbleExtractTool",
-    "NimbleResearchTool",
     "ReadSkillFileTool",
     "SessionHistoryTool",
     "SysAdviseModelsTool",
@@ -120,7 +116,7 @@ __all__ = [
 # Factory type: each constructor accepts a config dict and returns
 # a Tool. Callable is used instead of type[Tool] because the base
 # Tool.__init__ does not declare a config parameter — only some
-# subclasses (web search, nimble research, nimble extract) do.
+# subclasses (e.g. web search) do.
 _BuiltinFactory = Callable[[dict[str, str]], Tool]
 
 
@@ -174,67 +170,6 @@ def _create_download_file(config: dict[str, str]) -> Tool:
     return DownloadFileTool()
 
 
-def _create_export_agent(config: dict[str, str]) -> Tool:
-    """
-    Lazy factory for ExportAgentTool.
-
-    :param config: Tool config (unused).
-    :returns: An ExportAgentTool instance.
-    """
-    from omnigent.tools.builtins.export_agent import ExportAgentTool
-
-    return ExportAgentTool()
-
-
-def _hindsight_available() -> bool:
-    """
-    Return ``True`` if the optional ``hindsight-client`` SDK is installed.
-
-    Probes via :func:`importlib.util.find_spec` (not ``import``) so the check
-    never loads the SDK or its transitive deps — they stay lazy until a
-    Hindsight tool is actually constructed.
-    """
-    import importlib.util
-
-    return importlib.util.find_spec("hindsight_client") is not None
-
-
-def _create_hindsight_retain(config: dict[str, str]) -> Tool:
-    """
-    Lazy factory for HindsightRetainTool.
-
-    :param config: Tool config (Hindsight api_key, bank_id, etc.).
-    :returns: A HindsightRetainTool instance.
-    """
-    from omnigent.tools.builtins.hindsight import HindsightRetainTool
-
-    return HindsightRetainTool(config=config)
-
-
-def _create_hindsight_recall(config: dict[str, str]) -> Tool:
-    """
-    Lazy factory for HindsightRecallTool.
-
-    :param config: Tool config (Hindsight api_key, bank_id, etc.).
-    :returns: A HindsightRecallTool instance.
-    """
-    from omnigent.tools.builtins.hindsight import HindsightRecallTool
-
-    return HindsightRecallTool(config=config)
-
-
-def _create_hindsight_reflect(config: dict[str, str]) -> Tool:
-    """
-    Lazy factory for HindsightReflectTool.
-
-    :param config: Tool config (Hindsight api_key, bank_id, etc.).
-    :returns: A HindsightReflectTool instance.
-    """
-    from omnigent.tools.builtins.hindsight import HindsightReflectTool
-
-    return HindsightReflectTool(config=config)
-
-
 # Unified registry for every reserved builtin name. The value
 # is either a factory callable (for user-enablable tools) or
 # ``None`` for framework-owned names that occupy the name-space
@@ -252,21 +187,16 @@ def _create_hindsight_reflect(config: dict[str, str]) -> Tool:
 _BUILTIN_REGISTRY: dict[str, _BuiltinFactory | None] = {
     # User-enablable tools (factory present).
     "web_search": lambda config: WebSearchTool(config=config),
-    "nimble_research": lambda config: NimbleResearchTool(config=config),
-    "nimble_extract": lambda config: NimbleExtractTool(config=config),
     "upload_file": _create_upload_file,
     "list_files": _create_list_files,
     "download_file": _create_download_file,
     "search_conversations": _create_search_conversations,
-    "export_agent": _create_export_agent,
-    # Framework-owned: need runtime context. ``web_fetch`` is
-    # constructed by ToolManager before reaching this registry.
+    # Framework-owned: need runtime context.
     # ``list_comments`` and ``update_comment`` are auto-registered by
     # ``ToolManager._register_comment_tools`` — they are reserved
     # here so user specs cannot shadow them. (Policy ASKs are
     # surfaced as MCP-shape elicitations on the SSE stream — not
     # via the tool registry — see omnigent/runtime/policies/approval.py.)
-    "web_fetch": None,
     "list_comments": None,
     "update_comment": None,
     # ``session_history`` is auto-registered by
@@ -315,18 +245,6 @@ _BUILTIN_REGISTRY: dict[str, _BuiltinFactory | None] = {
     "browser_screenshot": None,
 }
 
-# Hindsight long-term memory (optional ``hindsight`` extra). Registered only
-# when ``hindsight-client`` is installed, so the tools are absent from the
-# builtin list on installs without the extra.
-if _hindsight_available():
-    _BUILTIN_REGISTRY.update(
-        {
-            "hindsight_retain": _create_hindsight_retain,
-            "hindsight_recall": _create_hindsight_recall,
-            "hindsight_reflect": _create_hindsight_reflect,
-        }
-    )
-
 # Canonical set of every reserved builtin name. Derived from
 # the registry so there is a single source of truth — no drift
 # between the reserved-name check and the factory dispatch.
@@ -334,11 +252,6 @@ BUILTIN_NAMES: frozenset[str] = frozenset(_BUILTIN_REGISTRY.keys())
 
 # Subset of names that have a user-facing factory: the tools an
 # agent spec can actually enable via ``tools.builtins``.
-# The onboarding ``list_builtin_tools`` helper covers the same
-# ground but keeps its own hand-maintained table, because it must
-# not import this package (see that module's docstring), so a new
-# builtin, or a new optional-extra gate, has to be added in both
-# places.
 INSTANTIABLE_BUILTINS: frozenset[str] = frozenset(
     name for name, factory in _BUILTIN_REGISTRY.items() if factory is not None
 )

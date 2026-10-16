@@ -4,8 +4,7 @@ Tests for ``_build_claude_sdk_spawn_env`` in
 
 The spawn-env builder maps ``spec.executor`` fields to
 ``HARNESS_CLAUDE_SDK_*`` env vars that the claude-sdk harness wrap reads
-at executor-construction time.  Mirrors the pattern of
-``test_openai_agents_sdk_spawn_env.py`` for the openai-agents harness.
+at executor-construction time.
 
 This is a unit test — no subprocess spawn, no real claude CLI.
 """
@@ -161,8 +160,7 @@ def test_global_config_databricks_auth_applied_when_spec_has_no_auth(
     and a global ``auth: {type: databricks, profile: …}`` is applied.
 
     Failure means ``omnigent setup`` auth configuration is silently
-    ignored for claude-sdk agents (it was applied to openai-agents but
-    not claude-sdk before this fix).
+    ignored for claude-sdk agents.
     """
     cfg_path = tmp_path / "config.yaml"
     cfg_path.write_text(_yaml.dump({"auth": {"type": "databricks", "profile": "global-profile"}}))

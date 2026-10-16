@@ -901,7 +901,7 @@ async def _keepalive_loop(runner_id: str) -> None:
             # touch is already fail-safe, but a bug here must not silently stop
             # refreshes for the tunnel's remaining life.
             _logger.exception("managed keepalive touch failed for runner %s", runner_id)
-        await asyncio.sleep(managed_host_keepalive.keepalive_interval_s(runner_id))
+        await asyncio.sleep(managed_host_keepalive.keepalive_interval_s())
 
 
 async def _ping_loop(

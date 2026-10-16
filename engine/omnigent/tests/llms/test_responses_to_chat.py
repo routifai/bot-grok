@@ -30,14 +30,10 @@ def test_instructions_become_system_message() -> None:
     assert messages == [{"role": "system", "content": "Be helpful."}]
 
 
-@pytest.mark.parametrize("provider", ["anthropic", "bedrock", "gemini", "databricks"])
-def test_resize_notice_stays_system_context_across_providers(provider: str) -> None:
+def test_resize_notice_stays_system_context_for_anthropic() -> None:
     from omnigent.entities import ConversationItem, MessageData
     from omnigent.inner.native_attachments import framework_notice_block, resize_notice
     from omnigent.llms.adapters.anthropic import _chat_to_anthropic
-    from omnigent.llms.adapters.bedrock import _messages_to_converse
-    from omnigent.llms.adapters.databricks import DatabricksAdapter
-    from omnigent.llms.adapters.gemini import _chat_to_gemini
     from omnigent.runtime.prompt import history_to_input_items
 
     dimensions = {"width": 6000, "height": 4000}
@@ -53,23 +49,9 @@ def test_resize_notice_stays_system_context_across_providers(provider: str) -> N
         {"role": "system", "content": notice},
         {"role": "user", "content": "inspect this"},
     ]
-    if provider == "anthropic":
-        payload = _chat_to_anthropic(messages, "claude-test", None, {})
-        assert payload["system"] == f"Be helpful.\n{notice}"
-        assert payload["messages"] == [{"role": "user", "content": "inspect this"}]
-    elif provider == "bedrock":
-        conversation, system = _messages_to_converse(messages)
-        assert system == [{"text": "Be helpful."}, {"text": notice}]
-        assert conversation == [{"role": "user", "content": [{"text": "inspect this"}]}]
-    elif provider == "gemini":
-        payload = _chat_to_gemini(messages, None, {})
-        assert payload["system_instruction"] == {
-            "parts": [{"text": "Be helpful."}, {"text": notice}]
-        }
-        assert payload["contents"] == [{"role": "user", "parts": [{"text": "inspect this"}]}]
-    else:
-        payload = DatabricksAdapter()._build_payload(messages, "test-model", None, False, {})
-        assert payload["messages"] == messages
+    payload = _chat_to_anthropic(messages, "claude-test", None, {})
+    assert payload["system"] == f"Be helpful.\n{notice}"
+    assert payload["messages"] == [{"role": "user", "content": "inspect this"}]
 
 
 def test_no_instructions_no_system_message() -> None:

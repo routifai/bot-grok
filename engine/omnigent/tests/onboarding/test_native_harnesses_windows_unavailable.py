@@ -15,13 +15,6 @@ from omnigent.harness_aliases import NATIVE_HARNESSES
 @pytest.fixture(autouse=True)
 def _isolate_credentials(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("OMNIGENT_CONFIG_HOME", str(tmp_path))
-    monkeypatch.delenv("CURSOR_API_KEY", raising=False)
-    for var in ("COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"):
-        monkeypatch.delenv(var, raising=False)
-
-    import omnigent.onboarding.copilot_auth as _ca
-
-    monkeypatch.setattr(_ca, "gh_cli_github_token", lambda host=None: None)
 
     import omnigent._platform as _plat
 
@@ -34,15 +27,9 @@ def _all_clis_installed(monkeypatch: pytest.MonkeyPatch) -> None:
 
     def _stub_run(argv: list[str], **k: object) -> subprocess.CompletedProcess[str]:
         if len(argv) >= 2 and argv[1] == "--version":
-            if argv[0].endswith("opencode"):
-                version = "1.17.7\n"
-            elif argv[0].endswith("cursor-agent") or argv[0].endswith("hermes"):
-                version = "2026.07.01\n"
-            else:
-                version = "9.9.9\n"
-            return subprocess.CompletedProcess(args=argv, returncode=0, stdout=version, stderr="")
-        if argv[:3] == ["gh", "auth", "token"]:
-            return subprocess.CompletedProcess(args=argv, returncode=1, stdout="", stderr="")
+            return subprocess.CompletedProcess(
+                args=argv, returncode=0, stdout="9.9.9\n", stderr=""
+            )
         raise AssertionError(f"unexpected subprocess in readiness tests: {argv!r}")
 
     monkeypatch.setattr(hi.subprocess, "run", _stub_run)
@@ -75,13 +62,11 @@ def test_sdk_harnesses_remain_available_on_windows(
     monkeypatch.setattr(readiness, "IS_WINDOWS", True)
     # SDK readiness is credential-based (True only when a locally visible
     # credential source could serve the harness, else "needs-auth"), so give
-    # each family an ambient key: this test asserts the *Windows gate* never
-    # knocks the in-process SDK harnesses out, not that they are ready on a
-    # credential-less host.
+    # it an ambient key: this test asserts the *Windows gate* never knocks the
+    # in-process SDK harness out, not that it is ready on a credential-less host.
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-windows-test")
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-openai-windows-test")
 
     result = readiness.configured_harness_map()
 
-    for sdk_harness in ("claude-sdk", "claude_sdk", "openai-agents", "openai-agents-sdk"):
+    for sdk_harness in ("claude-sdk", "claude_sdk", "claude"):
         assert result.get(sdk_harness) is True

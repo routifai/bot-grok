@@ -529,7 +529,7 @@ def login_databricks_workspace(workspace_url: str, *, console: Console | None = 
     persist a ``kind: databricks`` provider keyed on it. This is the only
     place Omnigent triggers a Databricks CLI login: it fires solely when
     a user explicitly adds a Databricks provider in
-    ``omnigent setup --no-internal-beta``, never on a bare ``omnigent run``.
+    ``omnigent setup``, never on a bare ``omnigent run``.
 
     Idempotent: when a profile already points at this host (the OAuth token
     cache is host-keyed, so the login is still valid), it is reused without

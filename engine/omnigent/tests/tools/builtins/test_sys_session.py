@@ -242,7 +242,7 @@ def test_send_schema_gates_harness_field_behind_allowlist_opt_in() -> None:
     }
 
     # Opted in: a sub-agent whose executor.config.allowed_harnesses declares a
-    # non-empty allowlist (the polly/debby `codex`/`opencode` worker shape) →
+    # non-empty allowlist (the polly/debby `codex` worker shape) →
     # the schema adds the gated `harness` field.
     opted_in_spec = AgentSpec(
         spec_version=1,
@@ -252,7 +252,7 @@ def test_send_schema_gates_harness_field_behind_allowlist_opt_in() -> None:
             type="omnigent",
             config={
                 "harness": "codex-native",
-                "allowed_harnesses": ["codex-native", "opencode-native"],
+                "allowed_harnesses": ["codex-native", "claude-native"],
             },
         ),
     )

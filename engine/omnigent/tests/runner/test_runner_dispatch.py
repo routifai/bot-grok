@@ -1947,43 +1947,6 @@ def test_build_spawn_env_applies_model_override(
     assert overridden["HARNESS_CLAUDE_SDK_MODEL"] == "claude-sonnet-4-6"
 
 
-def test_build_spawn_env_routes_hermes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The dispatch chain routes ``hermes`` to its builder.
-
-    Regression: hermes had no arm here, so this returned ``None`` and the
-    subprocess got no spawn env at all — the session's sandbox fell back to the
-    wrap's ``sandbox=none`` default and its workspace to the runner's launch
-    directory, both silently. Having the builder is not enough; the chain has
-    to reach it.
-
-    :param tmp_path: Pytest temp dir for an isolated provider config.
-    :param monkeypatch: Pytest monkeypatch fixture.
-    """
-    from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec
-
-    monkeypatch.setenv("OMNIGENT_CONFIG_HOME", str(tmp_path))
-    monkeypatch.setenv("OMNIGENT_DISABLE_KEYRING", "1")
-    monkeypatch.delenv("OMNIGENT_HERMES_PATH", raising=False)
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    spec = AgentSpec(
-        spec_version=1,
-        name="x",
-        executor=ExecutorSpec(type="omnigent", config={"harness": "hermes"}),
-        os_env=OSEnvSpec(type="caller_process", sandbox=OSEnvSandboxSpec(type="linux_bwrap")),
-    )
-
-    env = _build_spawn_env_from_spec(spec, "hermes", cwd=workspace)
-
-    assert env is not None, "hermes is not routed to a spawn-env builder"
-    assert env["HARNESS_HERMES_CWD"] == str(workspace)
-    assert json.loads(env["HARNESS_HERMES_OS_ENV"])["sandbox"]["type"] == "linux_bwrap"
-    # The /model override reaches hermes through the same model env key.
-    overridden = _build_spawn_env_from_spec(spec, "hermes", model_override="hermes-4-70b")
-    assert overridden is not None
-    assert overridden["HARNESS_HERMES_MODEL"] == "hermes-4-70b"
-
-
 @pytest.mark.asyncio
 @pytest.mark.asyncio
 @pytest.mark.asyncio
@@ -3633,7 +3596,6 @@ def _spec_with_subagent_harness(harness: str) -> SimpleNamespace:
     ("harness", "model"),
     [
         pytest.param("claude-native", "databricks-claude-sonnet-4-6", id="claude-native"),
-        pytest.param("codex-native", "databricks-gpt-5-4", id="codex-native"),
         pytest.param("claude-sdk", "databricks-claude-sonnet-4-6", id="claude-sdk"),
     ],
 )
@@ -4398,12 +4360,6 @@ async def test_sys_session_send_model_rejected_for_unplumbed_harness(
             "claude-native", "databricks-gpt-5-4", "only runs Claude models", id="gpt-on-claude"
         ),
         pytest.param(
-            "codex-native",
-            "databricks-claude-sonnet-4-6",
-            "only runs codex-compatible models",
-            id="claude-on-codex",
-        ),
-        pytest.param(
             "claude-native",
             "databricks-meta-llama-3.3-70b-instruct",
             "only runs Claude models",
@@ -4675,9 +4631,6 @@ async def _dispatch_model_send(
             id="canonical-claude-localized",
         ),
         pytest.param(
-            "codex-native", "gpt-5-4", "databricks-gpt-5-4", id="canonical-gpt-localized"
-        ),
-        pytest.param(
             "claude-native",
             "databricks-claude-sonnet-4-6",
             "databricks-claude-sonnet-4-6",
@@ -4770,58 +4723,6 @@ async def test_sys_session_send_strips_gateway_prefix_for_vendor_direct_child(
     assert len(result.create_bodies) == 1
     # Stripped: the vendor API only routes the bare canonical id.
     assert result.create_bodies[0]["model_override"] == "claude-opus-4-8"
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("harness", ["acp", "acp:synthetic"])
-async def test_sys_session_send_preserves_acp_model_id_through_launch(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, harness: str
-) -> None:
-    """ACP dispatch metadata and launch preserve the command's literal model namespace."""
-    from omnigent.models.model_catalog import validate_acp_model
-    from omnigent.runner.app import _build_spawn_env_from_spec
-    from omnigent.spec.types import ProviderAuth
-
-    model = "databricks-gpt-5-4"
-    _isolate_model_providers(
-        monkeypatch,
-        tmp_path,
-        "providers:\n"
-        "  acp-key:\n"
-        "    kind: key\n"
-        "    openai:\n"
-        "      base_url: https://gateway.example.invalid/v1\n"
-        "      api_key: synthetic-test-key\n"
-        "      models:\n"
-        "        default: model-a\n"
-        f"        alternate: {model}\n",
-    )
-    parent_spec = _spec_with_real_subagent(harness)
-    worker_spec = parent_spec.sub_agents[0]
-    worker_spec.executor.auth = ProviderAuth(name="acp-key")
-    worker_spec.executor.config["acp_agent"] = {
-        "name": "Synthetic ACP",
-        "command": "synthetic-acp",
-        "model": "model-a",
-        "send_model": True,
-    }
-
-    result = await _dispatch_model_send(
-        monkeypatch,
-        agent_spec=parent_spec,
-        model=model,
-        conv_id="conv_parent_acp_literal_model",
-    )
-
-    assert json.loads(result.output)["status"] == "launching"
-    assert len(result.create_bodies) == 1
-    selected_model = result.create_bodies[0]["model_override"]
-    assert selected_model == model
-    validate_acp_model(worker_spec, selected_model)
-    env = _build_spawn_env_from_spec(worker_spec, harness, model_override=selected_model)
-    assert env is not None
-    assert env["HARNESS_ACP_MODEL"] == model
-    assert env["HARNESS_ACP_DEFAULT_MODEL"] == "model-a"
 
 
 @pytest.mark.asyncio
@@ -4984,7 +4885,7 @@ async def test_sys_session_send_by_id_rejects_closed_child(
                 200,
                 json={
                     "id": "conv_closed",
-                    "title": "researcher:auth",
+                    "title": "reviewer:auth",
                     "parent_session_id": "conv_parent",
                     "labels": {CLOSED_LABEL_KEY: CLOSED_LABEL_VALUE},
                     "busy": False,
@@ -5029,7 +4930,7 @@ _BY_ID_CHILD_IDENTITY_SCENARIOS = [
     # A named child continued by id: the "<agent>:<title>" parse wins, so
     # the parent's agent_name never leaks into the label.
     pytest.param(
-        "researcher:auth", "orchestrator", "researcher", "researcher", "auth", id="parsed-title"
+        "reviewer:auth", "orchestrator", "reviewer", "reviewer", "auth", id="parsed-title"
     ),
     # An Add-agent child continued by id: the "ui:<agent>:<label>" form
     # parses the same way.
@@ -5040,7 +4941,7 @@ _BY_ID_CHILD_IDENTITY_SCENARIOS = [
     # reports the parent when the sub-spec did not resolve, so
     # sub_agent_name must outrank it.
     pytest.param(
-        "wake-check", "orchestrator", "researcher", "researcher", "wake-check", id="sub-agent-name"
+        "wake-check", "orchestrator", "reviewer", "reviewer", "wake-check", id="sub-agent-name"
     ),
     # No title at all: the agent still comes from the snapshot and the
     # instance title stays empty.
@@ -6026,76 +5927,6 @@ async def test_sys_cancel_task_stops_subagent_and_dedupes_late_completion(
 
 
 @pytest.mark.asyncio
-async def test_sys_cancel_task_reports_codex_native_cancel_as_best_effort() -> None:
-    """
-    Unconfirmed codex-native cancel must not promise terminal inbox status.
-
-    Codex-native has no runner-side hard-stop path (stop aliases to
-    interrupt), so the cancel routes to ``interrupt`` and the tool result
-    must say cancellation is best-effort instead of telling the parent to
-    wait forever for a terminal inbox item.
-    """
-    from omnigent.runner import app as runner_app
-    from omnigent.runner.tool_dispatch import execute_tool
-
-    parent_id = "conv_parent_codex_cancel"
-    child_id = "conv_child_codex_cancel"
-    runner_app.register_subagent_work(
-        parent_session_id=parent_id,
-        child_session_id=child_id,
-        agent="codex_impl",
-        title="native",
-        wrapper_label="codex-native-ui",
-    )
-    stops: list[dict[str, Any]] = []
-
-    async def _server_handler(request: httpx.Request) -> httpx.Response:
-        """
-        Accept the interrupt without marking the child terminal (codex no-op).
-
-        :param request: Request sent to the child session events route.
-        :returns: Accepted response.
-        """
-        if request.method == "POST" and request.url.path == f"/v1/sessions/{child_id}/events":
-            stops.append(json.loads(request.content))
-            return httpx.Response(204)
-        return httpx.Response(404, json={"error": str(request.url)})
-
-    try:
-        async with httpx.AsyncClient(
-            transport=httpx.MockTransport(_server_handler),
-            base_url="http://server",
-        ) as server_client:
-            cancel_output = json.loads(
-                await execute_tool(
-                    tool_name="sys_cancel_task",
-                    arguments=json.dumps({"task_id": child_id}),
-                    server_client=server_client,
-                    conversation_id=parent_id,
-                    session_async_tasks={},
-                )
-            )
-    finally:
-        runner_app.unregister_subagent_work(child_id)
-
-    # Codex-native routes to interrupt; ``data`` rides along for
-    # SessionEventInput compatibility with older servers.
-    assert stops == [{"type": "interrupt", "data": {}}]
-    assert cancel_output == {
-        "cancel_requested": True,
-        "cancel_confirmed": False,
-        "best_effort": True,
-        "task_id": child_id,
-        "status": "launching",
-        "message": (
-            "Interrupt forwarded, but no runner-side hard-stop is wired for "
-            "this harness; the child may keep running and no terminal inbox "
-            "status is guaranteed."
-        ),
-    }
-
-
-@pytest.mark.asyncio
 async def test_sys_cancel_task_interrupts_non_native_subagent() -> None:
     """
     A non-native (in-process) sub-agent cancel must post ``interrupt``.
@@ -6116,7 +5947,7 @@ async def test_sys_cancel_task_interrupts_non_native_subagent() -> None:
     runner_app.register_subagent_work(
         parent_session_id=parent_id,
         child_session_id=child_id,
-        agent="researcher",
+        agent="reviewer",
         title="analysis",
         wrapper_label=None,  # in-process child has no native wrapper label
     )
@@ -6347,7 +6178,7 @@ async def test_sys_cancel_task_rejects_foreign_tracked_entry() -> None:
     runner_app.register_subagent_work(
         parent_session_id="conv_real_parent",
         child_session_id=child_id,
-        agent="researcher",
+        agent="reviewer",
         title="auth",
     )
     posts: list[dict[str, Any]] = []
@@ -6541,39 +6372,6 @@ def _assert_unconfirmed_hard_stop(output: Any, *, task_id: str) -> None:
             None,
         ),
         (
-            "goose_running_stop_session",
-            "goose-native-ui",
-            "running",
-            None,
-            204,
-            "stop_session",
-            False,
-            "running",
-            None,
-        ),
-        (
-            "opencode_running_best_effort",
-            "opencode-native-ui",
-            "running",
-            None,
-            204,
-            "interrupt",
-            True,
-            "running",
-            None,
-        ),
-        (
-            "antigravity_running_best_effort",
-            "antigravity-native-ui",
-            "running",
-            None,
-            204,
-            "interrupt",
-            True,
-            "running",
-            None,
-        ),
-        (
             "failed_dead_pane_cached_failure",
             "claude-code-native-ui",
             "failed",
@@ -6586,7 +6384,7 @@ def _assert_unconfirmed_hard_stop(output: Any, *, task_id: str) -> None:
         ),
         (
             "failed_live_pane_stop",
-            "goose-native-ui",
+            "claude-code-native-ui",
             "failed",
             True,
             204,
@@ -6608,7 +6406,7 @@ def _assert_unconfirmed_hard_stop(output: Any, *, task_id: str) -> None:
         ),
         (
             "running_stop_503_unconfirmed",
-            "goose-native-ui",
+            "claude-code-native-ui",
             "running",
             None,
             503,
@@ -6617,28 +6415,13 @@ def _assert_unconfirmed_hard_stop(output: Any, *, task_id: str) -> None:
             "unconfirmed",
             False,
         ),
-        (
-            "failed_opencode_cached",
-            "opencode-native-ui",
-            "failed",
-            None,
-            204,
-            None,
-            False,
-            "failed",
-            False,
-        ),
     ],
     ids=[
         "claude_running_stop_session",
-        "goose_running_stop_session",
-        "opencode_running_best_effort",
-        "antigravity_running_best_effort",
         "failed_dead_pane_cached_failure",
         "failed_live_pane_stop",
         "failed_live_pane_503_unconfirmed",
         "running_stop_503_unconfirmed",
-        "failed_opencode_cached",
     ],
 )
 async def test_sys_cancel_task_native_harness_cancel_matrix(
@@ -6656,24 +6439,17 @@ async def test_sys_cancel_task_native_harness_cancel_matrix(
     """Parent cancel must follow the native stop registry, not a Claude label.
 
     Rows:
-    * ``claude_running_stop_session`` / ``goose_running_stop_session`` — both
-      stop-capable natives must POST ``stop_session``. On main, Goose is
-      routed to ``interrupt``.
-    * ``opencode_running_best_effort`` / ``antigravity_running_best_effort`` —
-      no runner-side hard-stop; result is best-effort/unconfirmed, not a
-      fake kill.
+    * ``claude_running_stop_session`` — a stop-capable native must POST
+      ``stop_session``.
     * ``failed_dead_pane_cached_failure`` — a failed Claude entry whose pane
       is gone must return the cached failure. Routing ``stop_session`` at a
       dead pane answers 503; that must not replace the terminal status.
-    * ``failed_live_pane_stop`` — a failed Goose entry whose pane still
-      answers must POST ``stop_session``. On main, non-Claude failed entries
-      return cached status and never stop.
+    * ``failed_live_pane_stop`` — a failed entry whose pane still answers
+      must POST ``stop_session``.
     * ``failed_live_pane_503_unconfirmed`` / ``running_stop_503_unconfirmed``
       — a ``stop_session`` 503 is a failed kill, not a gone pane. Must
       report explicit unconfirmed/best-effort, never the cached
       ``failed`` / ``absent`` 3-key terminal shapes.
-    * ``failed_opencode_cached`` — a failed OpenCode entry stays cached;
-      there is no hard-stop to apply.
     """
     parent_id = f"conv_parent_{row_id}"
     child_id = f"conv_child_{row_id}"
@@ -6735,10 +6511,10 @@ async def test_sys_cancel_task_native_harness_cancel_matrix(
 @pytest.mark.parametrize(
     ("row_id", "requesting_parent", "expect_stop"),
     [
-        ("evicted_goose_owned_stop", "conv_owner_evicted_goose", True),
-        ("evicted_goose_foreign_refused", "conv_someone_else", False),
+        ("evicted_claude_owned_stop", "conv_owner_evicted_claude", True),
+        ("evicted_claude_foreign_refused", "conv_someone_else", False),
     ],
-    ids=["evicted_goose_owned_stop", "evicted_goose_foreign_refused"],
+    ids=["evicted_claude_owned_stop", "evicted_claude_foreign_refused"],
 )
 async def test_cancel_evicted_native_subagent_ownership_matrix(
     row_id: str,
@@ -6746,12 +6522,12 @@ async def test_cancel_evicted_native_subagent_ownership_matrix(
     expect_stop: bool,
 ) -> None:
     """Evicted-work recovery keeps the parent ownership check for every stop-capable native."""
-    owner = "conv_owner_evicted_goose"
+    owner = "conv_owner_evicted_claude"
     child_id = f"conv_child_{row_id}"
     posts, output = await _drive_cancel_matrix_row(
         parent_id=owner,
         child_id=child_id,
-        wrapper_label="goose-native-ui",
+        wrapper_label="claude-code-native-ui",
         status="running",
         http_status=204,
         evicted=True,
@@ -6759,7 +6535,7 @@ async def test_cancel_evicted_native_subagent_ownership_matrix(
     )
     if expect_stop:
         assert posts == [{"type": "stop_session", "data": {}}], (
-            f"{row_id}: owned Goose evicted work must hard-stop"
+            f"{row_id}: owned Claude evicted work must hard-stop"
         )
         assert output == {"cancelled": True, "task_id": child_id, "status": "cancelled"}
         return
@@ -6775,7 +6551,7 @@ async def test_cancel_evicted_native_subagent_503_is_unconfirmed() -> None:
     posts, output = await _drive_cancel_matrix_row(
         parent_id="conv_owner_evicted_503",
         child_id=child_id,
-        wrapper_label="goose-native-ui",
+        wrapper_label="claude-code-native-ui",
         status="running",
         http_status=503,
         evicted=True,
@@ -6833,14 +6609,14 @@ def test_register_unregister_child_session_roundtrip() -> None:
     register_child_session(
         child_id,
         parent_session_id="conv_parent_roundtrip_unique",
-        title="researcher:auth",
-        tool="researcher",
+        title="reviewer:auth",
+        tool="reviewer",
         session_name="auth",
     )
     meta = _child_session_parents.get(child_id)
     assert meta is not None
     assert meta.parent_id == "conv_parent_roundtrip_unique"
-    assert meta.title == "researcher:auth"
+    assert meta.title == "reviewer:auth"
     assert meta.last_busy is None
 
     unregister_child_session(child_id)
@@ -6850,7 +6626,7 @@ def test_register_unregister_child_session_roundtrip() -> None:
 # ── sys_session_get_history / _list / _close runner dispatch ────────
 #
 # These verify the runner-local handler that makes get_history/list/close
-# work for harness agents (claude-sdk/codex/openai-agents), whose
+# work for harness agents (claude-sdk/pi), whose
 # Omnigent tool calls surface as action_required and route through
 # the runner — NOT the in-process inner Session. Confirmed empirically:
 # without this dispatch the runner returns "not in local dispatch
@@ -6898,8 +6674,8 @@ async def test_session_list_maps_children_and_skips_closed() -> None:
                 "data": [
                     {
                         "id": "c1",
-                        "title": "researcher:auth",
-                        "tool": "researcher",
+                        "title": "reviewer:auth",
+                        "tool": "reviewer",
                         "session_name": "auth",
                     },
                     {
@@ -6910,8 +6686,8 @@ async def test_session_list_maps_children_and_skips_closed() -> None:
                     },
                     {
                         "id": "c3",
-                        "title": "researcher:done",
-                        "tool": "researcher",
+                        "title": "reviewer:done",
+                        "tool": "reviewer",
                         "session_name": "done",
                         "labels": {
                             CLOSED_LABEL_KEY: CLOSED_LABEL_VALUE,
@@ -6920,8 +6696,8 @@ async def test_session_list_maps_children_and_skips_closed() -> None:
                     },
                     {
                         "id": "c5",
-                        "title": "researcher:legacy:closed:c5",
-                        "tool": "researcher",
+                        "title": "reviewer:legacy:closed:c5",
+                        "tool": "reviewer",
                         "session_name": "legacy",
                     },
                     {
@@ -6945,7 +6721,7 @@ async def test_session_list_maps_children_and_skips_closed() -> None:
     # (no colon) dropped; the ui:-added child surfaces under its bound
     # agent + label.
     assert out["sub_agents"] == [
-        {"agent": "researcher", "title": "auth", "conversation_id": "c1"},
+        {"agent": "reviewer", "title": "auth", "conversation_id": "c1"},
         {"agent": "claude-native-ui", "title": "1", "conversation_id": "c2"},
     ]
 
@@ -6983,8 +6759,8 @@ async def test_session_list_adds_main_and_siblings_for_child_caller() -> None:
                         },
                         {
                             "id": "conv_sib",
-                            "title": "researcher:auth",
-                            "tool": "researcher",
+                            "title": "reviewer:auth",
+                            "tool": "reviewer",
                             "session_name": "auth",
                         },
                     ],
@@ -7002,7 +6778,7 @@ async def test_session_list_adds_main_and_siblings_for_child_caller() -> None:
     # excluded from the sibling list.
     assert out["sub_agents"] == [
         {"agent": "main", "title": None, "conversation_id": "conv_main"},
-        {"agent": "researcher", "title": "auth", "conversation_id": "conv_sib"},
+        {"agent": "reviewer", "title": "auth", "conversation_id": "conv_sib"},
     ]
 
 
@@ -7039,7 +6815,7 @@ async def test_session_peek_returns_chronological_projected_items() -> None:
                 },
             )
         if request.url.path == "/v1/sessions/conv_target":
-            return httpx.Response(200, json={"id": "conv_target", "title": "researcher:auth"})
+            return httpx.Response(200, json={"id": "conv_target", "title": "reviewer:auth"})
         raise AssertionError(f"unexpected path {request.url.path}")
 
     async with _session_query_client(handler) as client:
@@ -7052,7 +6828,7 @@ async def test_session_peek_returns_chronological_projected_items() -> None:
             )
         )
     assert out["conversation_id"] == "conv_target"
-    assert out["agent"] == "researcher"
+    assert out["agent"] == "reviewer"
     assert out["title"] == "auth"
     # Reversed to chronological (user ask first), and message text is
     # extracted from the content blocks — proves the projection ran.
@@ -7114,7 +6890,7 @@ async def test_session_peek_rest_content_limit_scenario(
                 },
             )
         if request.url.path == "/v1/sessions/conv_target":
-            return httpx.Response(200, json={"id": "conv_target", "title": "researcher:auth"})
+            return httpx.Response(200, json={"id": "conv_target", "title": "reviewer:auth"})
         raise AssertionError(f"unexpected path {request.url.path}")
 
     async with _session_query_client(handler) as client:
@@ -7165,7 +6941,7 @@ async def test_session_peek_rest_offset_pages_through_long_item() -> None:
                 },
             )
         if request.url.path == "/v1/sessions/conv_target":
-            return httpx.Response(200, json={"id": "conv_target", "title": "researcher:auth"})
+            return httpx.Response(200, json={"id": "conv_target", "title": "reviewer:auth"})
         raise AssertionError(f"unexpected path {request.url.path}")
 
     window = 12000
@@ -7250,7 +7026,7 @@ async def test_session_peek_appends_pending_elicitation_from_snapshot() -> None:
                 200,
                 json={
                     "id": "conv_target",
-                    "title": "researcher:auth",
+                    "title": "reviewer:auth",
                     "pending_elicitations": [
                         {
                             "type": "response.elicitation_request",
@@ -7344,7 +7120,7 @@ async def test_session_close_patches_tombstoned_title() -> None:
                 200,
                 json={
                     "id": "conv_target",
-                    "title": "researcher:auth",
+                    "title": "reviewer:auth",
                     "root_conversation_id": "conv_root",
                     "parent_session_id": "conv_caller",
                 },
@@ -7371,12 +7147,12 @@ async def test_session_close_patches_tombstoned_title() -> None:
     # Tombstone embeds the conv id so repeated closes stay unique, and
     # the explicit label makes the closed state observable without
     # exposing the suffix as UI text.
-    assert patched["title"] == "researcher:auth:closed:conv_target"
+    assert patched["title"] == "reviewer:auth:closed:conv_target"
     assert patched["labels"] == {CLOSED_LABEL_KEY: CLOSED_LABEL_VALUE}
     assert out == {
         "closed": True,
         "conversation_id": "conv_target",
-        "agent": "researcher",
+        "agent": "reviewer",
         "title": "auth",
     }
 
@@ -7406,7 +7182,7 @@ async def test_session_close_rejects_out_of_tree_target_without_patch() -> None:
                 200,
                 json={
                     "id": "conv_target",
-                    "title": "researcher:auth",
+                    "title": "reviewer:auth",
                     "root_conversation_id": "conv_other_root",
                     "parent_session_id": "conv_other_parent",
                 },
@@ -7591,8 +7367,8 @@ def test_native_relay_builtin_set_matches_toolmanager_gating(
     if opt_in == "agents":
         spec = AgentSpec(
             spec_version=1,
-            tools=ToolsConfig(agents=["researcher"]),
-            sub_agents=[AgentSpec(spec_version=1, name="researcher")],
+            tools=ToolsConfig(agents=["reviewer"]),
+            sub_agents=[AgentSpec(spec_version=1, name="reviewer")],
         )
     elif opt_in == "spawn":
         spec = AgentSpec(spec_version=1, spawn=True)
@@ -7748,7 +7524,7 @@ async def test_session_list_global_sessions_filter_and_connectivity() -> None:
                     "data": [
                         {
                             "id": "s1",
-                            "agent_name": "researcher",
+                            "agent_name": "reviewer",
                             "title": "auth",
                             "status": "running",
                             "runner_id": "r1",
@@ -7756,7 +7532,7 @@ async def test_session_list_global_sessions_filter_and_connectivity() -> None:
                         },
                         {
                             "id": "s2",
-                            "agent_name": "researcher",
+                            "agent_name": "reviewer",
                             "title": "payments",
                             "status": "idle",
                             "runner_id": "r1",
@@ -7774,21 +7550,21 @@ async def test_session_list_global_sessions_filter_and_connectivity() -> None:
         out = json.loads(
             await _execute_session_query_tool(
                 "sys_session_list",
-                json.dumps({"agent_name": "researcher"}),
+                json.dumps({"agent_name": "reviewer"}),
                 conversation_id="conv_x",
                 server_client=client,
             )
         )
 
     # agent_name forwarded to the server-side filter.
-    assert sessions_params.get("agent_name") == "researcher"
+    assert sessions_params.get("agent_name") == "reviewer"
     assert sessions_params.get("visibility") == "all"
     # Both sessions projected with status + connectivity from the single
     # shared-runner status lookup.
     assert out["sessions"] == [
         {
             "session_id": "s1",
-            "agent_name": "researcher",
+            "agent_name": "reviewer",
             "title": "auth",
             "status": "running",
             "runner_id": "r1",
@@ -7797,7 +7573,7 @@ async def test_session_list_global_sessions_filter_and_connectivity() -> None:
         },
         {
             "session_id": "s2",
-            "agent_name": "researcher",
+            "agent_name": "reviewer",
             "title": "payments",
             "status": "idle",
             "runner_id": "r1",
@@ -7962,7 +7738,7 @@ async def test_sys_agent_get_projects_agent_metadata() -> None:
                 json={
                     "id": "ag_777",
                     "object": "agent",
-                    "name": "researcher",
+                    "name": "reviewer",
                     "version": 4,
                     "description": "Finds things",
                     "created_at": 1,
@@ -7987,7 +7763,7 @@ async def test_sys_agent_get_projects_agent_metadata() -> None:
     info = json.loads(output)
     # agent_id comes from AgentObject.id (not a top-level "agent_id").
     assert info["agent_id"] == "ag_777"
-    assert info["name"] == "researcher"
+    assert info["name"] == "reviewer"
     assert info["version"] == 4
     assert info["harness"] == "claude-sdk"
     # MCP/policy summaries pass through as-is so the orchestrator sees
@@ -8158,7 +7934,7 @@ async def test_sys_session_create_spawns_child_under_caller() -> None:
                 json={
                     "id": "conv_child",
                     "agent_id": "ag_x",
-                    "agent_name": "researcher",
+                    "agent_name": "reviewer",
                     "status": "idle",
                 },
             )
@@ -8184,7 +7960,7 @@ async def test_sys_session_create_spawns_child_under_caller() -> None:
     handle = json.loads(output)
     assert handle["conversation_id"] == "conv_child"
     assert handle["agent_id"] == "ag_x"
-    assert handle["agent_name"] == "researcher"
+    assert handle["agent_name"] == "reviewer"
 
 
 @pytest.mark.asyncio
@@ -8259,7 +8035,7 @@ async def test_sys_session_create_forwards_superside_chat_mode_to_child() -> Non
         if request.method == "POST" and request.url.path == "/v1/sessions":
             captured.update(json.loads(request.content))
             return httpx.Response(
-                201, json={"id": "conv_child", "agent_id": "ag_x", "agent_name": "researcher"}
+                201, json={"id": "conv_child", "agent_id": "ag_x", "agent_name": "reviewer"}
             )
         return httpx.Response(404, json={"error": str(request.url)})
 
@@ -8293,7 +8069,7 @@ async def test_sys_session_create_omits_labels_without_context_mode() -> None:
         if request.method == "POST" and request.url.path == "/v1/sessions":
             captured.update(json.loads(request.content))
             return httpx.Response(
-                201, json={"id": "conv_child", "agent_id": "ag_x", "agent_name": "researcher"}
+                201, json={"id": "conv_child", "agent_id": "ag_x", "agent_name": "reviewer"}
             )
         return httpx.Response(404, json={"error": str(request.url)})
 
@@ -9196,7 +8972,7 @@ async def test_sys_session_get_info_projects_metadata_and_runner_connectivity() 
                 json={
                     "id": "conv_target",
                     "agent_id": "ag_xyz",
-                    "agent_name": "researcher",
+                    "agent_name": "reviewer",
                     "status": "running",
                     "created_at": 1,
                     "updated_at": 84,
@@ -9205,7 +8981,7 @@ async def test_sys_session_get_info_projects_metadata_and_runner_connectivity() 
                     "host_id": "host_1",
                     "reasoning_effort": "high",
                     "parent_session_id": "conv_parent",
-                    "sub_agent_name": "researcher",
+                    "sub_agent_name": "reviewer",
                     "llm_model": "anthropic/claude-sonnet-4-6",
                     "model_override": "claude-opus-4-8",
                     "workspace": "/repo",
@@ -9218,7 +8994,7 @@ async def test_sys_session_get_info_projects_metadata_and_runner_connectivity() 
         if request.method == "GET" and request.url.path == "/v1/hosts/host_1":
             return httpx.Response(
                 200,
-                json={"configured_harnesses": {"codex-native": True, "cursor-native": False}},
+                json={"configured_harnesses": {"claude-native": True, "pi": False}},
             )
         return httpx.Response(404, json={"error": str(request.url)})
 
@@ -9239,15 +9015,15 @@ async def test_sys_session_get_info_projects_metadata_and_runner_connectivity() 
     assert info["last_activity_at"] == 84
     assert info["title"] == "auth flow"
     assert info["agent_id"] == "ag_xyz"
-    assert info["agent_name"] == "researcher"
+    assert info["agent_name"] == "reviewer"
     assert info["runner_id"] == "runner_1"
     # Live connectivity folded in from the runners status endpoint —
     # None here would mean the best-effort status call was skipped.
     assert info["runner_online"] is True
     assert info["host_id"] == "host_1"
     assert info["configured_harnesses"] == {
-        "codex-native": True,
-        "cursor-native": False,
+        "claude-native": True,
+        "pi": False,
     }
     assert info["parent_session_id"] == "conv_parent"
     # Effective model: the per-session override wins over the spec
@@ -9327,21 +9103,21 @@ async def test_sys_session_get_info_hides_native_ui_wrapper_agent_name() -> None
     """A native-UI session describes itself with its clean public name.
 
     Regression for the leak where ``sys_session_get_info`` returned the raw
-    bound ``agent_name`` ``"pi-native-ui"``, which the Pi agent then repeated to
-    the user ("I'm pi (agent name: pi-native-ui)"). The projection must map the
-    internal ``-native-ui`` wrapper name to its display name (``"Pi"``) so the
+    bound ``agent_name`` ``"claude-native-ui"``, which the agent then repeated to
+    the user ("I'm claude (agent name: claude-native-ui)"). The projection must map
+    the internal ``-native-ui`` wrapper name to its display name (``"Claude"``) so the
     implementation detail never reaches the model.
     """
     from omnigent.runner.tool_dispatch import execute_tool
 
     async def _server_handler(request: httpx.Request) -> httpx.Response:
-        if request.method == "GET" and request.url.path == "/v1/sessions/conv_pi":
+        if request.method == "GET" and request.url.path == "/v1/sessions/conv_claude":
             return httpx.Response(
                 200,
                 json={
-                    "id": "conv_pi",
-                    "agent_id": "ag_pi",
-                    "agent_name": "pi-native-ui",
+                    "id": "conv_claude",
+                    "agent_id": "ag_claude",
+                    "agent_name": "claude-native-ui",
                     "status": "running",
                     "title": "hi what agent are you?",
                     "runner_id": "runner_1",
@@ -9357,16 +9133,16 @@ async def test_sys_session_get_info_hides_native_ui_wrapper_agent_name() -> None
     ) as server_client:
         output = await execute_tool(
             tool_name="sys_session_get_info",
-            arguments=json.dumps({"session_id": "conv_pi"}),
+            arguments=json.dumps({"session_id": "conv_claude"}),
             server_client=server_client,
-            conversation_id="conv_pi",
+            conversation_id="conv_claude",
         )
 
     info = json.loads(output)
     # The internal wrapper name is rewritten to the public display name; the
-    # raw ``pi-native-ui`` must not appear anywhere in the tool output.
-    assert info["agent_name"] == "Pi"
-    assert "pi-native-ui" not in output
+    # raw ``claude-native-ui`` must not appear anywhere in the tool output.
+    assert info["agent_name"] == "Claude"
+    assert "claude-native-ui" not in output
 
 
 @pytest.mark.asyncio
@@ -9396,7 +9172,7 @@ async def test_sys_session_send_failed_continuation_receipts_its_dispatch(
                 json={
                     "id": "conv_child",
                     "parent_session_id": "conv_caller",
-                    "title": "researcher:auth",
+                    "title": "reviewer:auth",
                 },
             )
         if request.method == "PATCH" and request.url.path == "/v1/sessions/conv_child":
@@ -9416,7 +9192,7 @@ async def test_sys_session_send_failed_continuation_receipts_its_dispatch(
                 arguments=json.dumps({"session_id": "conv_child", "args": "continue please"}),
                 server_client=server_client,
                 conversation_id="conv_caller",
-                agent_spec=SimpleNamespace(sub_agents=[SimpleNamespace(name="researcher")]),
+                agent_spec=SimpleNamespace(sub_agents=[SimpleNamespace(name="reviewer")]),
                 session_inbox=asyncio.Queue(),
             )
         finally:
@@ -9461,7 +9237,7 @@ async def test_sys_session_send_session_id_posts_to_direct_child(
                 json={
                     "id": "conv_child",
                     "parent_session_id": "conv_caller",
-                    "title": "researcher:auth",
+                    "title": "reviewer:auth",
                 },
             )
         if request.method == "PATCH" and request.url.path == "/v1/sessions/conv_child":
@@ -9481,7 +9257,7 @@ async def test_sys_session_send_session_id_posts_to_direct_child(
                 arguments=json.dumps({"session_id": "conv_child", "args": "continue please"}),
                 server_client=server_client,
                 conversation_id="conv_caller",
-                agent_spec=SimpleNamespace(sub_agents=[SimpleNamespace(name="researcher")]),
+                agent_spec=SimpleNamespace(sub_agents=[SimpleNamespace(name="reviewer")]),
                 session_inbox=session_inbox,
             )
         finally:
@@ -9538,7 +9314,7 @@ async def test_sys_session_send_session_id_rejects_non_child() -> None:
                 arguments=json.dumps({"session_id": "conv_other", "args": "hi"}),
                 server_client=server_client,
                 conversation_id="conv_caller",
-                agent_spec=SimpleNamespace(sub_agents=[SimpleNamespace(name="researcher")]),
+                agent_spec=SimpleNamespace(sub_agents=[SimpleNamespace(name="reviewer")]),
                 session_inbox=session_inbox,
             )
         finally:
@@ -10296,89 +10072,6 @@ async def test_spawn_async_tool_phase_tool_call_policy_allow(
     item = inbox.get_nowait()
     assert item["status"] == "completed"
     assert item["output"] == "ok"
-
-
-@pytest.mark.asyncio
-async def test_web_fetch_dispatch_admits_researcher_without_harness_override(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """web_fetch's synthesized ``__web_researcher`` passes the dispatch gate,
-    and the child create carries no ``harness_override`` / ``model_override``
-    (#2426).
-
-    The runner never persists ``__web_researcher``, so before the gate/lookup
-    reconciliation the dispatch aborted with "sub-agent '__web_researcher' not
-    found in agent spec". After it, the gate admits the researcher AND the
-    create body is unchanged: ``harness_override`` stays absent (it comes only
-    from an explicit ``args.harness``, never set on the web_fetch path), so the
-    server-side reconstruction that resolves the researcher spec remains
-    authoritative. This locks down that the fix reconciled the local resolvers
-    without altering what is POSTed to ``/v1/sessions``.
-    """
-    import shutil
-
-    from omnigent.runner import app as runner_app
-    from omnigent.runner.tool_dispatch import execute_tool
-    from omnigent.spec.types import BuiltinToolConfig, LLMConfig, ToolsConfig
-    from omnigent.tools.builtins.web_fetch import RESEARCHER_NAME
-
-    # Hermetic bwrap probe: ``build_researcher_spec`` probes PATH for a
-    # no-``os_env`` parent; don't depend on bubblewrap on the test host.
-    monkeypatch.setattr(shutil, "which", lambda cmd: f"/usr/bin/{cmd}")
-    monkeypatch.setattr(runner_app, "get_session_agent_id", lambda _sid: "ag_parent")
-
-    parent = AgentSpec(
-        spec_version=1,
-        name="coordinator",
-        llm=LLMConfig(model="openai/gpt-5.4"),
-        executor=ExecutorSpec(max_iterations=40, config={"harness": "claude-sdk"}),
-        tools=ToolsConfig(builtins=[BuiltinToolConfig(name="web_fetch")]),
-    )
-    # Precondition: the re-parsed bundle does not carry the researcher.
-    assert RESEARCHER_NAME not in [s.name for s in parent.sub_agents]
-
-    create_bodies: list[dict[str, Any]] = []
-    session_inbox: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-
-    async def _server_handler(request: httpx.Request) -> httpx.Response:
-        if (
-            request.method == "GET"
-            and request.url.path == "/v1/sessions/conv_wf_parent/child_sessions"
-        ):
-            return httpx.Response(200, json={"data": []})
-        if request.method == "POST" and request.url.path == "/v1/sessions":
-            create_bodies.append(json.loads(request.content))
-            return httpx.Response(201, json={"id": "conv_wf_child"})
-        if request.method == "POST" and request.url.path == "/v1/sessions/conv_wf_child/events":
-            return httpx.Response(202, json={"queued": True})
-        return httpx.Response(404, json={"error": str(request.url)})
-
-    async with httpx.AsyncClient(
-        transport=httpx.MockTransport(_server_handler),
-        base_url="http://server",
-    ) as server_client:
-        try:
-            output = await execute_tool(
-                tool_name="web_fetch",
-                arguments=json.dumps({"query": "latest score"}),
-                server_client=server_client,
-                conversation_id="conv_wf_parent",
-                agent_spec=parent,
-                task_id="t1",
-                session_inbox=session_inbox,
-            )
-        finally:
-            runner_app.unregister_subagent_work("conv_wf_child")
-            runner_app._session_inboxes_ref.pop("conv_wf_parent", None)
-
-    # The gate admitted the researcher -- no "not found in agent spec" error.
-    assert "not found in agent spec" not in output
-    assert len(create_bodies) == 1, "web_fetch must create exactly one researcher child"
-    body = create_bodies[0]
-    assert body["sub_agent_name"] == RESEARCHER_NAME
-    # Acceptance C: server-side reconstruction stays authoritative.
-    assert "harness_override" not in body
-    assert "model_override" not in body
 
 
 # ── cross-process lifecycle desync recovery ── ──────────────────────────
@@ -12025,19 +11718,19 @@ async def test_get_client_signals_resync_on_model_and_agent_switch(
 
     signals.clear()
     pm._in_flight_response_ids[conv] = "resp_live_2"
-    await pm.get_client(conv, "openai-agents", env={})
+    await pm.get_client(conv, "pi", env={})
     assert signals == [(conv, "harness_respawn_agent_switch", "resp_live_2")]
 
     signals.clear()
-    pm._entries[conv] = _fake_entry("openai-agents", "model-A")
+    pm._entries[conv] = _fake_entry("pi", "model-A")
     pm._in_flight_response_ids.pop(conv, None)
-    await pm.get_client(conv, "openai-agents", env={model_key: "model-B"})
+    await pm.get_client(conv, "pi", env={model_key: "model-B"})
     assert signals == []
 
     signals.clear()
-    pm._entries[conv] = _fake_entry("openai-agents", None, returncode=1)
+    pm._entries[conv] = _fake_entry("pi", None, returncode=1)
     pm._in_flight_response_ids[conv] = "resp_dead"
-    await pm.get_client(conv, "openai-agents", env={})
+    await pm.get_client(conv, "pi", env={})
     assert signals == []
 
 
@@ -12292,14 +11985,14 @@ def _contract_root_spec(*, with_child: bool) -> AgentSpec:
         spec_version=1,
         name=_CONTRACT_PARENT_WITH_CHILD["name"],
         instructions=_CONTRACT_PARENT_WITH_CHILD["instructions"],
-        executor=ExecutorSpec(type="omnigent", config={"harness": "hermes"}),
+        executor=ExecutorSpec(type="omnigent", config={"harness": "pi"}),
         sub_agents=(
             [
                 AgentSpec(
                     spec_version=1,
                     name=_CONTRACT_PARENT_WITH_CHILD["child"],
                     instructions=_CONTRACT_PARENT_WITH_CHILD["child_instructions"],
-                    executor=ExecutorSpec(type="omnigent", config={"harness": "hermes"}),
+                    executor=ExecutorSpec(type="omnigent", config={"harness": "pi"}),
                 )
             ]
             if with_child
@@ -12371,7 +12064,7 @@ async def _contract_run_known_harness(
             "type": "message",
             "role": "user",
             "agent_id": "ag_contract_root",
-            "harness": "hermes",
+            "harness": "pi",
             "model": "x",
             "content": [],
             "instructions": _CONTRACT_CALLER_INSTRUCTIONS,
@@ -13313,7 +13006,7 @@ _SIGNED_IN_SCREENS = {
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("harness", ["codex-native", "claude-native"])
+@pytest.mark.parametrize("harness", ["claude-native"])
 async def test_sign_in_pending_failure_posts_a_notice_once_the_agent_is_ready(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

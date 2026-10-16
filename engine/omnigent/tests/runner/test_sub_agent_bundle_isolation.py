@@ -9,10 +9,9 @@ tools it has no claim to.
 These tests cover the harness-facing surfaces that carry a bundle dir:
 
 * the SDK / subprocess harnesses, via ``HARNESS_*_BUNDLE_DIR`` in the
-  spawn-env (claude-sdk, codex, pi, cursor, copilot);
-* the native TUI harnesses, via the launch inputs of the auto-create
-  paths (claude-native's ``--plugin-dir``, codex-native's
-  ``CODEX_HOME`` skills source);
+  spawn-env (claude-sdk, codex, pi);
+* the native TUI harness, via the launch inputs of the auto-create
+  path (claude-native's ``--plugin-dir``);
 * the turn-dispatch spec cache, which must keep the resolved entry
   wrapped so a "no bundle" answer is not re-widened downstream.
 """
@@ -53,8 +52,6 @@ _BUNDLE_DIR_ENV = {
     "claude-sdk": "HARNESS_CLAUDE_SDK_BUNDLE_DIR",
     "codex": "HARNESS_CODEX_BUNDLE_DIR",
     "pi": "HARNESS_PI_BUNDLE_DIR",
-    "cursor": "HARNESS_CURSOR_BUNDLE_DIR",
-    "copilot": "HARNESS_COPILOT_BUNDLE_DIR",
 }
 
 
@@ -234,7 +231,6 @@ async def _no_terminal(self: object, session_id: str, terminal_id: str) -> None:
     ("terminal", "target"),
     [
         ("claude", "_auto_create_claude_terminal"),
-        ("codex", "_auto_create_codex_terminal"),
     ],
 )
 async def test_native_terminal_ensure_launches_against_child_bundle(
@@ -245,8 +241,7 @@ async def test_native_terminal_ensure_launches_against_child_bundle(
 ) -> None:
     """The native ensure paths launch rooted at the CHILD's bundle dir.
 
-    ``bundle_dir`` is what becomes claude-native's ``--plugin-dir`` root
-    and codex-native's ``CODEX_HOME`` skills source. The ensure endpoint
+    ``bundle_dir`` is what becomes claude-native's ``--plugin-dir`` root. The ensure endpoint
     resolves the session spec from the bound ``agent_id``, which is the
     PARENT — so without re-resolving the workdir alongside the sub-agent
     swap, the child's TUI comes up carrying the parent's skills.
@@ -563,7 +558,7 @@ async def test_top_level_bare_spec_still_dispatches_in_runner_workspace(
                 "agent_id": "31ebfedf721b44dabd76f662cb70a400",
                 "model": "plain-agent",
                 "content": [{"type": "input_text", "text": "hi"}],
-                "harness": "openai-agents",
+                "harness": "claude-sdk",
             },
         )
         assert resp.status_code == 202
@@ -592,7 +587,7 @@ async def _seed_and_execute(
                 "agent_id": "31ebfedf721b44dabd76f662cb70a400",
                 "model": "probe-agent",
                 "content": [{"type": "input_text", "text": "seed"}],
-                "harness": "openai-agents",
+                "harness": "claude-sdk",
             },
         )
         assert seed.status_code == 202

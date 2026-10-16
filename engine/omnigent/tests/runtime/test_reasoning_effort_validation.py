@@ -5,7 +5,6 @@ import pytest
 from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
 from omnigent.inner.codex_executor import CodexExecutor
 from omnigent.inner.executor import ExecutorConfig, ExecutorError, TurnComplete
-from omnigent.inner.openai_agents_sdk_executor import OpenAIAgentsSDKExecutor
 from omnigent.llms.adapters.anthropic import _effort_to_budget
 from omnigent.llms.errors import PermanentLLMError
 
@@ -67,53 +66,3 @@ async def test_codex_coerces_max_to_xhigh() -> None:
     ]
     assert not any(isinstance(e, ExecutorError) for e in events)
     assert calls[0]["reasoning_effort"] == "xhigh"
-
-
-@pytest.mark.asyncio
-async def test_openai_agents_coerces_max_to_xhigh(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The deprecated ``max`` alias is coerced to ``xhigh`` for the OpenAI Agents SDK.
-
-    Its ladder tops out at ``xhigh`` (no ``max``); ``EFFORT_ALIASES`` coerces
-    the deprecated value rather than rejecting it. The session state is
-    stubbed to a fresh, un-started ``_AgentsSessionState`` (skipping the real
-    ``SQLiteSession``) and ``_get_or_create_agent`` — the first call that
-    consumes the resolved effort — is stubbed to capture its
-    ``reasoning_effort`` kwarg and raise a sentinel exception, so the turn
-    never reaches the real SDK/network call.
-    """
-    import types
-
-    from omnigent.inner.openai_agents_sdk_executor import _AgentsSessionState
-
-    fake_agents = types.SimpleNamespace(OpenAIProvider=lambda **kwargs: types.SimpleNamespace())
-    monkeypatch.setattr(
-        "omnigent.inner.openai_agents_sdk_executor._ensure_agents_sdk", lambda: fake_agents
-    )
-    executor = OpenAIAgentsSDKExecutor(client=object())
-    monkeypatch.setattr(
-        executor,
-        "_get_or_create_session_state",
-        lambda agents_sdk, session_key: _AgentsSessionState(sdk_session=None),
-    )
-
-    captured: dict[str, object] = {}
-
-    class _StopTurn(Exception):
-        pass
-
-    def _fake_get_or_create_agent(self, agents_sdk, state, **kwargs):
-        captured["reasoning_effort"] = kwargs.get("reasoning_effort")
-        raise _StopTurn()
-
-    monkeypatch.setattr(OpenAIAgentsSDKExecutor, "_get_or_create_agent", _fake_get_or_create_agent)
-
-    with pytest.raises(_StopTurn):
-        async for _ in executor.run_turn(
-            messages=[{"role": "user", "content": "hi"}],
-            tools=[],
-            system_prompt="",
-            config=ExecutorConfig(model="test-model", extra={"reasoning_effort": "max"}),
-        ):
-            pass
-
-    assert captured["reasoning_effort"] == "xhigh"

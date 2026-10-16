@@ -255,7 +255,7 @@ async def test_streaming_response_survives_post_body_read() -> None:
         HelloFrame(
             runner_version="0.1.0-test",
             frame_protocol_version=1,
-            harnesses=["openai-agents"],
+            harnesses=["claude-sdk"],
             envs=["os_sandbox"],
         ),
     )
@@ -353,7 +353,7 @@ def test_response_frames_from_second_event_loop_wake_transport_waiters() -> None
                 HelloFrame(
                     runner_version="0.1.0-test",
                     frame_protocol_version=1,
-                    harnesses=["openai-agents"],
+                    harnesses=["claude-sdk"],
                     envs=["os_sandbox"],
                 ),
             )

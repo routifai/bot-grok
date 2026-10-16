@@ -125,7 +125,7 @@ class _ReturnsTextClient:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("harness", ["claude-native", "codex-native", "openai-agents-sdk"])
+@pytest.mark.parametrize("harness", ["claude-native", "codex-native", "claude-sdk"])
 async def test_downscaled_images_preserve_compaction_boundaries(
     monkeypatch: pytest.MonkeyPatch, harness: str
 ) -> None:

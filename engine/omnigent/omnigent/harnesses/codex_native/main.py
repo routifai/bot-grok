@@ -240,8 +240,8 @@ def _codex_auth_unavailable_reason() -> HarnessUnavailableReason | None:
     gating on it is a false negative (the launch works). Only when the launch
     defers to Codex's *own* login is ``auth.json`` the credential that decides
     availability, so that is the only case gated on it. This mirrors the
-    fail-open the ``claude-sdk`` / ``openai-agents`` gateway harnesses already
-    rely on: their gateway token is a runtime mint the daemon can't observe.
+    fail-open the ``claude-sdk`` gateway harness already
+    relies on: its gateway token is a runtime mint the daemon can't observe.
 
     "Defers to Codex" is not the same as "uses ``auth.json``", though: when the
     launch leaves Codex's provider selection alone, Codex resolves its own
@@ -292,7 +292,7 @@ def _codex_auth_unavailable_reason() -> HarnessUnavailableReason | None:
             or native_codex_launch_base_url(launch) is not None
         )
         defers_to_codex_config = not native_codex_launch_pins_model_provider(launch)
-    except Exception:  # noqa: BLE001 - readiness must never raise; fail onto auth.json.
+    except Exception:
         _logger.debug("codex readiness: launch resolve failed; using auth.json", exc_info=True)
         routes_through_provider = False
     if routes_through_provider and not defers_to_codex_config:
@@ -311,7 +311,7 @@ def _codex_auth_unavailable_reason() -> HarnessUnavailableReason | None:
         if not _codex_auth_json_has_available_credential(source.auth_path):
             return HARNESS_NEEDS_AUTH
         return None
-    except Exception:  # noqa: BLE001 - readiness must never raise.
+    except Exception:
         _logger.debug("codex readiness: local auth check failed", exc_info=True)
         return HARNESS_NEEDS_AUTH
 
@@ -653,7 +653,7 @@ def _wrapper_spec_raw_instructions(spec_path: Path) -> str | None:
 
     try:
         spec = load_agent_spec(spec_path, expand_env=False)
-    except Exception:  # noqa: BLE001 — best-effort; never block the launch
+    except Exception:
         _logger.warning(
             "Could not resolve raw instructions from wrapper spec %s",
             spec_path,

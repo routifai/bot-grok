@@ -146,11 +146,11 @@ def test_runner_dispatch_harness_reads_explicit_harness() -> None:
     spec = _agent_spec(
         executor=ExecutorSpec(
             type="omnigent",
-            config={"harness": "codex"},
+            config={"harness": "claude-sdk"},
         ),
     )
 
-    assert runner_dispatch_harness(spec) == "codex"
+    assert runner_dispatch_harness(spec) == "claude-sdk"
 
 
 def test_runner_dispatch_harness_ignores_unmapped_harness() -> None:
@@ -158,7 +158,7 @@ def test_runner_dispatch_harness_ignores_unmapped_harness() -> None:
     spec = _agent_spec(
         executor=ExecutorSpec(
             type="omnigent",
-            config={"harness": "open-responses"},
+            config={"harness": "not-a-harness"},
         ),
     )
 
@@ -169,13 +169,13 @@ def test_runner_dispatch_harness_ignores_unmapped_harness() -> None:
 async def test_runner_router_requires_existing_runner_binding() -> None:
     """Dispatch fails when a conversation has not been PATCH-bound."""
     registry = TunnelRegistry()
-    registry.register("runner_one", _FakeWebSocket(), _hello(harnesses=["codex"]))
+    registry.register("runner_one", _FakeWebSocket(), _hello(harnesses=["claude-sdk"]))
     conversation = _conversation()
     store = _ConversationStore({"conv_test": conversation})
     router = RunnerRouter(registry=registry, conversation_store=store)  # type: ignore[arg-type]
     try:
         with pytest.raises(OmnigentError) as excinfo:
-            router.client_for_conversation(conversation_id="conv_test", harness="codex")
+            router.client_for_conversation(conversation_id="conv_test", harness="claude-sdk")
 
         _assert_omnigent_error(excinfo, code=ErrorCode.CONFLICT)
         assert conversation.runner_id is None
@@ -193,7 +193,7 @@ async def test_runner_router_wait_for_runner_resolves_when_runner_registers() ->
 
         waiter = asyncio.create_task(router.wait_for_runner("runner_one", timeout_s=5.0))
         await asyncio.sleep(0)
-        registry.register("runner_one", _FakeWebSocket(), _hello(harnesses=["codex"]))
+        registry.register("runner_one", _FakeWebSocket(), _hello(harnesses=["claude-sdk"]))
 
         assert await waiter is True
     finally:
@@ -204,12 +204,12 @@ async def test_runner_router_wait_for_runner_resolves_when_runner_registers() ->
 async def test_runner_router_requires_pinned_runner_to_be_online() -> None:
     """A pinned offline runner fails instead of silently rerouting."""
     registry = TunnelRegistry()
-    registry.register("runner_other", _FakeWebSocket(), _hello(harnesses=["codex"]))
+    registry.register("runner_other", _FakeWebSocket(), _hello(harnesses=["claude-sdk"]))
     store = _ConversationStore({"conv_test": _conversation(runner_id="runner_missing")})
     router = RunnerRouter(registry=registry, conversation_store=store)  # type: ignore[arg-type]
     try:
         with pytest.raises(OmnigentError) as excinfo:
-            router.client_for_conversation(conversation_id="conv_test", harness="codex")
+            router.client_for_conversation(conversation_id="conv_test", harness="claude-sdk")
 
         _assert_omnigent_error(excinfo, code=ErrorCode.RUNNER_UNAVAILABLE)
     finally:
@@ -220,12 +220,12 @@ async def test_runner_router_requires_pinned_runner_to_be_online() -> None:
 async def test_runner_router_uses_pinned_runner_when_multiple_online() -> None:
     """A pinned conversation keeps hard affinity with multiple runners online."""
     registry = TunnelRegistry()
-    registry.register("runner_one", _FakeWebSocket(), _hello(harnesses=["codex"]))
-    registry.register("runner_two", _FakeWebSocket(), _hello(harnesses=["codex"]))
+    registry.register("runner_one", _FakeWebSocket(), _hello(harnesses=["claude-sdk"]))
+    registry.register("runner_two", _FakeWebSocket(), _hello(harnesses=["claude-sdk"]))
     store = _ConversationStore({"conv_test": _conversation(runner_id="runner_two")})
     router = RunnerRouter(registry=registry, conversation_store=store)  # type: ignore[arg-type]
     try:
-        routed = router.client_for_conversation(conversation_id="conv_test", harness="codex")
+        routed = router.client_for_conversation(conversation_id="conv_test", harness="claude-sdk")
 
         assert routed.runner_id == "runner_two"
     finally:
@@ -241,7 +241,7 @@ async def test_runner_router_fails_when_no_runner_supports_harness() -> None:
     router = RunnerRouter(registry=registry, conversation_store=store)  # type: ignore[arg-type]
     try:
         with pytest.raises(OmnigentError) as excinfo:
-            router.client_for_conversation(conversation_id="conv_test", harness="codex")
+            router.client_for_conversation(conversation_id="conv_test", harness="pi")
 
         _assert_omnigent_error(excinfo, code=ErrorCode.RUNNER_CAPABILITY_MISMATCH)
     finally:
@@ -252,7 +252,7 @@ async def test_runner_router_fails_when_no_runner_supports_harness() -> None:
 async def test_runner_router_resources_require_existing_runner_binding() -> None:
     """Resource access fails instead of lazily pinning an unbound session."""
     registry = TunnelRegistry()
-    registry.register("runner_one", _FakeWebSocket(), _hello(harnesses=["codex"]))
+    registry.register("runner_one", _FakeWebSocket(), _hello(harnesses=["claude-sdk"]))
     conversation = _conversation()
     store = _ConversationStore({"conv_test": conversation})
     router = RunnerRouter(registry=registry, conversation_store=store)  # type: ignore[arg-type]
@@ -270,7 +270,7 @@ async def test_runner_router_resources_require_existing_runner_binding() -> None
 async def test_runner_router_resources_reuses_preloaded_conversation() -> None:
     """Resource routing can reuse the row already loaded for authorization."""
     registry = TunnelRegistry()
-    registry.register("runner_one", _FakeWebSocket(), _hello(harnesses=["codex"]))
+    registry.register("runner_one", _FakeWebSocket(), _hello(harnesses=["claude-sdk"]))
     conversation = _conversation(runner_id="runner_one")
     router = RunnerRouter(
         registry=registry,

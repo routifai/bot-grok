@@ -83,17 +83,10 @@ def test_validate_model_override_rejects_unsafe_values(value: str) -> None:
     "harness",
     [
         "claude-native",
-        "codex-native",
         "claude-sdk",
         # The user-facing alias for claude-sdk must resolve too.
         "claude",
-        "codex",
         "pi",
-        "openai-agents",
-        "cursor",
-        "antigravity",
-        "kiro-native",
-        "native-kiro",
     ],
 )
 def test_harness_supports_model_override_for_plumbed_harnesses(harness: str) -> None:
@@ -151,38 +144,13 @@ class TestModelFamilyMismatch:
             ("native-codex", "system.ai.glm-5-2"),
             ("codex-native", "databricks-kimi-k2-6"),
             ("codex", "kimi-for-coding"),
-            ("openai-agents", "gpt-5.4-mini"),
-            # openai-agents is multi-model like pi (a live SDK probe completed a
-            # Claude tool-calling turn over the chat wire), so it accepts the
-            # Claude / Kimi / Llama families the gateway also serves it.
-            ("openai-agents", "databricks-claude-sonnet-4-6"),
-            ("openai-agents", "databricks-kimi-k2-6"),
-            ("openai-agents", "databricks-meta-llama-3.3-70b-instruct"),
-            # The "-sdk" / executor-type spellings canonicalize_harness
-            # passes through must be multi-model too — an earlier change had
-            # added them to the GPT-only set; a later change removes every
-            # openai-agents spelling so none of them family-reject a non-GPT id.
-            ("openai-agents-sdk", "databricks-claude-sonnet-4-6"),
-            ("openai-agents-sdk", "gpt-5.4-mini"),
-            ("agents_sdk", "databricks-meta-llama-3.3-70b-instruct"),
-            ("agents_sdk", "databricks-claude-opus-4-8"),
             ("pi", "databricks-claude-opus-4-8"),
             ("pi", "databricks-gpt-5-4-mini"),
             ("pi", "databricks-meta-llama-3.3-70b-instruct"),
-            # antigravity is Gemini-native: expected Gemini shapes pass, and
-            # so do bare/ambiguous ids the SDK legitimately accepts (only the
-            # Claude/GPT/databricks-gateway families are rejected below).
-            ("antigravity", "gemini-3.5-flash"),
-            ("antigravity", "gemini-2.5-flash"),
-            ("agy", "gemini-3.5-flash"),
-            ("google-antigravity", "gemini-2.5-flash"),
-            ("antigravity", "gemini-2.5-pro"),
-            ("kiro-native", "claude-sonnet-4.5"),
-            ("native-kiro", "gpt-5.4-mini"),
         ],
     )
     def test_compatible_pairs_pass(self, harness: str, model: str) -> None:
-        """A matching family (or a multi-model harness: pi, openai-agents) returns None."""
+        """A matching family (or the multi-model pi harness) returns None."""
         assert model_family_mismatch(harness, model) is None
 
     @pytest.mark.parametrize(
@@ -208,16 +176,6 @@ class TestModelFamilyMismatch:
             ),
             # A segment merely containing the letters is not the GLM family.
             ("codex", "glmqlfit-eval", "only runs codex-compatible models"),
-            # antigravity is Gemini-native: syntactically valid non-Gemini ids
-            # must fail loud at the dispatch gate rather than be persisted as
-            # model_override and land in HARNESS_ANTIGRAVITY_MODEL only to fail
-            # later in the Gemini-native SDK path. The databricks-claude case
-            # also covers the no-gateway-path prefix rejection.
-            ("antigravity", "gpt-5.4-mini", "Gemini-native"),
-            ("antigravity", "databricks-claude-sonnet-4-6", "Gemini-native"),
-            ("antigravity", "claude-opus-4-8", "Gemini-native"),
-            ("agy", "gpt-5.4-mini", "Gemini-native"),
-            ("google-antigravity", "databricks-gpt-5-4", "Gemini-native"),
         ],
     )
     def test_wrong_or_unknown_family_is_rejected(
@@ -228,23 +186,20 @@ class TestModelFamilyMismatch:
         The alias case (``native-claude``) proves canonicalization is
         applied before the family lookup; the llama cases prove an
         undeterminable family fails loud on single-vendor harnesses
-        rather than passing through to a gateway error after spawn. The
-        ``agy`` / ``google-antigravity`` cases prove the antigravity rule
-        applies after harness canonicalization too.
+        rather than passing through to a gateway error after spawn.
         """
         msg = model_family_mismatch(harness, model)
         assert msg is not None
         assert expected_rule in msg
         assert model in msg
 
-    def test_rejection_names_both_multi_model_fallbacks(self) -> None:
-        """Both single-vendor rejections name pi and openai-agents as multi-model fallbacks."""
+    def test_rejection_names_the_multi_model_fallback(self) -> None:
+        """Both single-vendor rejections name pi as the multi-model fallback."""
         claude_msg = model_family_mismatch("claude-native", "databricks-gpt-5-4")
         codex_msg = model_family_mismatch("codex-native", "databricks-claude-sonnet-4-6")
         for msg in (claude_msg, codex_msg):
             assert msg is not None
             assert "pi" in msg
-            assert "openai-agents" in msg
 
 
 @pytest.mark.parametrize(

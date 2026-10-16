@@ -14,15 +14,10 @@ from omnigent.errors import ErrorCode, OmnigentError
 
 # Known providers and their default base URLs.
 # API keys come from connection_params at call time (llm.connection config),
-# not from environment variables. Providers that require connection_params
-# for their base URL (Bedrock, Vertex, Databricks) have None here.
+# not from environment variables.
 PROVIDER_CONFIGS: dict[str, str | None] = {
     "openai": "https://api.openai.com/v1",
     "anthropic": "https://api.anthropic.com/v1",
-    "gemini": "https://generativelanguage.googleapis.com/v1beta",
-    "bedrock": None,
-    "vertex": None,
-    "databricks": None,
     "groq": "https://api.groq.com/openai/v1",
     "deepseek": "https://api.deepseek.com/v1",
     "xai": "https://api.x.ai/v1",
@@ -84,49 +79,7 @@ def parse_model_string(model: str) -> RoutedModel:
 _HARNESS_FOR_MODEL_PREFIX: dict[str, str] = {
     "databricks-claude-": "claude-sdk",
     "anthropic/claude-": "claude-sdk",
-    "databricks-gpt-": "openai-agents",
-    "openai/gpt-": "openai-agents",
-    "gpt-": "openai-agents",
-    # xAI is OpenAI-compatible; provider prefix required (bare grok- defaults to openai).
-    "xai/grok-": "openai-agents",
 }
-
-
-def web_search_native_passthrough_provider(
-    model: str | None,
-    harness: str | None,
-) -> str | None:
-    """
-    Return the LLM provider for ``WebSearchTool`` when the harness supports
-    the OpenAI-native ``web_search_preview`` passthrough, else ``None``.
-
-    Only OpenAI Responses-compatible harnesses (``openai-agents`` / ``codex``)
-    can execute the passthrough server-side; every other harness must get the
-    function-tool schema or the tool is silently dropped (the schema has no
-    ``name``). ``databricks-*`` models never use the passthrough (Databricks
-    rejects it with HTTP 400). Shared by session-setup advertisement
-    (``ToolManager._create_web_search``) and runner dispatch
-    (``_execute_web_search_tool``) so the two sites cannot drift.
-
-    :param model: The spec's ``executor.model``, or ``None``.
-    :param harness: The spec's harness kind (``AgentSpec.harness_kind``);
-        empty/``"omnigent"`` falls back to :func:`infer_harness_from_model`.
-    :returns: The provider name for :class:`WebSearchTool`'s
-        ``llm_provider`` (e.g. ``"openai"``), or ``None`` for
-        function-tool mode.
-    """
-    if not model or model.startswith("databricks-"):
-        return None
-    from omnigent.harness_aliases import canonicalize_harness
-    from omnigent.onboarding.provider_config import _EXECUTOR_TYPE_HARNESS_ALIASES
-
-    if not harness or harness == "omnigent":
-        harness = infer_harness_from_model(model) or harness
-    canonical = canonicalize_harness(harness) or harness or ""
-    canonical = _EXECUTOR_TYPE_HARNESS_ALIASES.get(canonical, canonical)
-    if canonical in ("openai-agents", "codex"):
-        return parse_model_string(model).provider
-    return None
 
 
 def infer_harness_from_model(model: str) -> str:
@@ -141,8 +94,8 @@ def infer_harness_from_model(model: str) -> str:
 
     :param model: Model string from the spec's ``llm.model`` or
         ``executor.model`` field, e.g. ``"databricks-claude-sonnet-4"``.
-    :returns: A harness name such as ``"claude-sdk"`` or
-        ``"openai-agents"``, or ``""`` when *model* is unrecognised.
+    :returns: A harness name such as ``"claude-sdk"``, or ``""`` when
+        *model* is unrecognised.
     """
     for prefix, harness in _HARNESS_FOR_MODEL_PREFIX.items():
         if model.startswith(prefix):

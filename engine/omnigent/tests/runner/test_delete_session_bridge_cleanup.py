@@ -7,8 +7,8 @@ Each native session's bridge dir holds a per-conversation bridge token + MCP
 config (secret material). ``DELETE /v1/sessions/{id}`` closes the pane but
 historically never removed this SEPARATE dir, so token-bearing
 ``/tmp/omnigent-*`` (and ``~/.omnigent``) dirs accumulated even on a clean
-delete. The delete path must now ``rmtree`` it — for ALL 11 native families,
-not just the original 5.
+delete. The delete path must now ``rmtree`` it — for every native family
+(claude, codex, pi).
 
 #3728 — spec-fill generation guard prevents ABA cache repopulation.
 Session ids are caller-supplied and can be reused.  A spec fill parked across
@@ -33,9 +33,6 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from omnigent.harnesses.antigravity_native.bridge import (
-    bridge_dir_for_bridge_id as antigravity_bridge_dir,
-)
 from omnigent.harnesses.claude_native.bridge import bridge_dir_for_bridge_id, prepare_bridge_dir
 from omnigent.harnesses.claude_native.bridge import (
     bridge_dir_for_bridge_id as claude_bridge_dir,
@@ -43,29 +40,8 @@ from omnigent.harnesses.claude_native.bridge import (
 from omnigent.harnesses.codex_native.bridge import (
     bridge_dir_for_bridge_id as codex_bridge_dir,
 )
-from omnigent.harnesses.cursor_native.bridge import (
-    bridge_dir_for_session_id as cursor_bridge_dir,
-)
-from omnigent.harnesses.goose_native.bridge import (
-    bridge_dir_for_session_id as goose_bridge_dir,
-)
-from omnigent.harnesses.hermes_native.bridge import (
-    bridge_dir_for_session_id as hermes_bridge_dir,
-)
-from omnigent.harnesses.kimi_native.bridge import (
-    bridge_dir_for_session_id as kimi_bridge_dir,
-)
-from omnigent.harnesses.kiro_native.bridge import (
-    bridge_dir_for_session_id as kiro_bridge_dir,
-)
-from omnigent.harnesses.opencode_native.bridge import (
-    bridge_dir_for_bridge_id as opencode_bridge_dir,
-)
 from omnigent.harnesses.pi_native.bridge import (
     bridge_dir_for_session_id as pi_bridge_dir,
-)
-from omnigent.harnesses.qwen_native.bridge import (
-    bridge_dir_for_session_id as qwen_bridge_dir,
 )
 from omnigent.inner.native_attachments import attachment_cache_dir, materialize_attachment
 from omnigent.runner import create_runner_app
@@ -76,19 +52,11 @@ from tests.runner.helpers import NullServerClient
 # One resolver per native family — the session_id-keyed dir each harness leaves
 # behind. _delete_native_bridge_dirs falls back to session_id for every family
 # (label-rotated ids resolve to the same dir under the NullServerClient stub),
-# so keying purely on session_id exercises the cleanup for all 11.
+# so keying purely on session_id exercises the cleanup for every family.
 BRIDGE_DIR_RESOLVERS: dict[str, Callable[[str], Path]] = {
-    "antigravity": antigravity_bridge_dir,
     "claude": claude_bridge_dir,
     "codex": codex_bridge_dir,
-    "cursor": cursor_bridge_dir,
-    "goose": goose_bridge_dir,
-    "hermes": hermes_bridge_dir,
-    "kimi": kimi_bridge_dir,
-    "kiro": kiro_bridge_dir,
-    "opencode": opencode_bridge_dir,
     "pi": pi_bridge_dir,
-    "qwen": qwen_bridge_dir,
 }
 
 
@@ -145,8 +113,8 @@ async def test_cleanup_resources_removes_native_bridge_dir(
     Server-side session delete drives ``DELETE /v1/sessions/{id}/resources``
     (``cleanup_session_resources``), NOT the bare ``DELETE /v1/sessions/{id}``
     route — so the token-bearing bridge dir must be removed there too, else the
-    #1350 leak persists in real deletes. All 11 native families create such a
-    dir, so all 11 must be cleaned up.
+    #1350 leak persists in real deletes. Every native family creates such a
+    dir, so every one must be cleaned up.
     """
     session_id = f"conv_{uuid.uuid4().hex}"
     bridge_dir = BRIDGE_DIR_RESOLVERS[family](session_id)

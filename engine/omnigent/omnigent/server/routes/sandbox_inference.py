@@ -32,10 +32,8 @@ def inference_service(request: Request) -> Any:
 
 
 def actual_harness(spec: Any, override: str | None = None) -> str:
-    """Preserve ACP slugs and native identities when selecting a profile binding."""
+    """Resolve the harness identity used to select a profile binding."""
     declared = spec.executor.config.get("harness") or spec.executor.type
-    if override == "acp" and declared.startswith("acp:"):
-        return declared
     return normalize_inference_harness(override or declared)
 
 

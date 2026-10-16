@@ -26,7 +26,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, SupportsIndex, SupportsInt, TypeVar, cast
 
-import click
 import httpx
 import psutil
 import websockets.asyncio.client
@@ -651,19 +650,15 @@ _RUNNER_ENV_ALLOWLIST: frozenset[str] = frozenset(
         # fail with "dial unix: missing address".
         "SSH_AUTH_SOCK",
         # gcloud Application Default Credentials selectors, same class as
-        # KUBECONFIG above: AGY_ADC_AUTH is the boolean the Antigravity CLI
-        # (agy) reads to pick ADC auth, GOOGLE_APPLICATION_CREDENTIALS is a
-        # filesystem path to the ADC file (not the credential itself), and the
-        # project ids are plain selectors. Without them the CLI->daemon->runner
-        # strips drop the user's gcloud login, so every antigravity-native pane
-        # dispatched through a background host blocks at agy's interactive
-        # "Select login method" menu despite a valid ADC credential.
+        # KUBECONFIG above: GOOGLE_APPLICATION_CREDENTIALS is a filesystem path
+        # to the ADC file (not the credential itself), and the project ids are
+        # plain selectors. Without them the CLI->daemon->runner strips drop the
+        # user's gcloud login for tooling inside the agent's shell.
         # CLOUDSDK_CONFIG / CLOUDSDK_ACTIVE_CONFIG_NAME select a non-default
         # gcloud config dir/name. Deliberately exact names, NOT a CLOUDSDK_
         # prefix: gcloud also defines CLOUDSDK_AUTH_ACCESS_TOKEN /
         # CLOUDSDK_AUTH_REFRESH_TOKEN, which are live credentials and must not
         # ride an open-ended prefix into the runner/harness environment.
-        "AGY_ADC_AUTH",
         "GOOGLE_APPLICATION_CREDENTIALS",
         "GOOGLE_CLOUD_PROJECT",
         "GOOGLE_CLOUD_QUOTA_PROJECT",
@@ -702,7 +697,6 @@ _RUNNER_ENV_ALLOWLIST: frozenset[str] = frozenset(
         # Credential-env denylists must survive both daemon and runner hops.
         # This carries variable names only; their values still follow normal forwarding.
         "OMNIGENT_PI_ENV_UNSET",
-        "OMNIGENT_ACP_ENV_UNSET",
         # Keep host and spawned-runner routing decisions aligned when the
         # host-slice-key kill switch is explicitly disabled.
         "OMNIGENT_HOST_SLICE_KEY_ENABLED",
@@ -730,7 +724,7 @@ _RUNNER_ENV_ALLOWLIST_PREFIXES: tuple[str, ...] = ("LC_", "MLFLOW_", "OTEL_", "O
 # key/endpoint, else native Claude launches with a default the gateway
 # rejects), AWS_BEARER_TOKEN_BEDROCK + ANTHROPIC_BEDROCK_BASE_URL for Bedrock mode,
 # and CLAUDE_CODE_OAUTH_TOKEN for `claude setup-token` subscription auth),
-# OPENAI_* for codex / openai-agents (CODEX_ACCESS_TOKEN is the codex
+# OPENAI_* for codex / pi (CODEX_ACCESS_TOKEN is the codex
 # CLI's headless ChatGPT-workspace credential, minted in the ChatGPT
 # admin console — Business/Enterprise plans), GEMINI_API_KEY for the
 # gemini family. GIT_TOKEN / GIT_USERNAME feed the sandbox host
@@ -1314,7 +1308,7 @@ class HostProcess:
                 self._reap_orphans_once(child_pids)
             except asyncio.CancelledError:
                 raise
-            except Exception:  # noqa: BLE001 — a reaper must never die on a stray error
+            except Exception:
                 _logger.debug("orphan reaper sweep failed", exc_info=True)
 
     def _reap_orphans_once(self, child_pids: Iterable[int] | None = None) -> int:
@@ -2156,7 +2150,7 @@ class HostProcess:
         )
         try:
             await self._stop_runner_and_trigger(proc, "runner_spawn_abandoned")
-        except Exception:  # noqa: BLE001 — detached cleanup must be observed
+        except Exception:
             _logger.warning(
                 "Failed to stop abandoned runner pid=%s",
                 proc.pid,
@@ -2223,7 +2217,7 @@ class HostProcess:
                     runner_id,
                     session_id,
                 )
-            except Exception:  # noqa: BLE001 — must never die unobserved
+            except Exception:
                 _logger.warning(
                     "Failed to stop superseded runner %s for session %s; "
                     "the process may linger until it exits on its own",
@@ -2457,7 +2451,7 @@ class HostProcess:
             try:
                 await ws.send(frame)
                 return
-            except Exception:  # noqa: BLE001 — any send failure parks the report
+            except Exception:
                 _logger.debug(
                     "Could not send runner_exited for %s; queueing for reconnect",
                     runner_id,
@@ -3260,7 +3254,7 @@ class HostProcess:
 
         try:
             rows = await codex_launch_catalog()
-        except Exception:  # noqa: BLE001 — no catalog, never a crash
+        except Exception:
             _logger.warning("Codex model catalog unavailable", exc_info=True)
             return None
         if rows is None:
@@ -3287,7 +3281,7 @@ class HostProcess:
         try:
             config = await asyncio.to_thread(resolve_native_claude_config, spec=None)
             rows = await claude_launch_catalog(config)
-        except Exception:  # noqa: BLE001 — no catalog, never a crash
+        except Exception:
             _logger.warning("Claude model catalog unavailable", exc_info=True)
             return None
         if rows is None:
@@ -3336,7 +3330,7 @@ class HostProcess:
                 from omnigent.harnesses.pi_native.credentials import pi_native_model_options
 
                 pi_models = await asyncio.to_thread(pi_native_model_options)
-            except Exception:  # noqa: BLE001 — no catalog, never a crash
+            except Exception:
                 _logger.warning("Pi model catalog unavailable", exc_info=True)
                 return HostModelOptionsResultFrame(
                     request_id=frame.request_id,
@@ -3347,36 +3341,6 @@ class HostProcess:
                 request_id=frame.request_id,
                 status="ok",
                 models=with_source(pi_models),
-            )
-
-        if harness == "devin-native":
-            # devin authenticates through its own CLI login; the host shells
-            # ``devin models list`` (list_devin_cli_model_options) to preview the
-            # family catalog before a session exists. Effort is a separate axis
-            # the runner recombines at launch, so the families are the picker rows.
-            try:
-                from omnigent.harnesses.devin_native.main import list_devin_cli_model_options
-
-                devin_models = await asyncio.to_thread(list_devin_cli_model_options)
-            except click.ClickException as exc:
-                # A missing optional CLI is an expected picker result, even when
-                # an older client keeps requesting its catalog.
-                return HostModelOptionsResultFrame(
-                    request_id=frame.request_id,
-                    status="failed",
-                    error=str(exc),
-                )
-            except Exception:  # noqa: BLE001 — no catalog, never a crash
-                _logger.warning("Devin model catalog unavailable", exc_info=True)
-                return HostModelOptionsResultFrame(
-                    request_id=frame.request_id,
-                    status="failed",
-                    error="failed to resolve Devin model options",
-                )
-            return HostModelOptionsResultFrame(
-                request_id=frame.request_id,
-                status="ok",
-                models=with_source(devin_models),
             )
 
         if is_claude_sdk_harness_name(harness):
@@ -4394,7 +4358,7 @@ class HostProcess:
                     self._auth_token_factory_resolved = True
             if self._auth_token_factory is not None:
                 return self._auth_token_factory()
-        except Exception:  # noqa: BLE001
+        except Exception:
             _logger.debug("Could not obtain auth token", exc_info=True)
         return None
 
@@ -4765,12 +4729,7 @@ def _generate_ucode_configs() -> None:
     do we drive ucode, passing the broker command in the configure env so ucode
     mints per request and nothing lands on disk. The reusable run lives in
     :func:`omnigent.onboarding.ucode_setup.configure_ucode_for_sandbox` (a
-    background, best-effort populate of ``~/.ucode/state.json``), which the
-    managed lakebox launcher shares with ``use_pat=True`` against its injected PAT.
-
-    Configures opencode too (alongside claude/codex/pi), overlapping host boot, so
-    the runner never has to fall back to a synchronous on-demand ``ucode
-    configure`` when opencode first launches — the slow path for opencode startup.
+    background, best-effort populate of ``~/.ucode/state.json``).
     """
     from omnigent.host.databricks_credential import (
         HOST_DATABRICKS_PROFILE,
@@ -4791,9 +4750,8 @@ def _generate_ucode_configs() -> None:
     providers = config.get("providers")
     identities = {
         "claude": ("claude-native", "claude-sdk"),
-        "codex": ("codex-native", "codex"),
+        "codex": ("codex-native",),
         "pi": ("pi-native", "pi"),
-        "opencode": ("opencode-native",),
     }
     agents: list[str] = []
     for agent, harnesses in identities.items():
@@ -4813,9 +4771,6 @@ def _generate_ucode_configs() -> None:
                 break
     if not agents:
         return
-    # opencode is included here (unlike lakebox's claude/codex/pi ``--use-pat``
-    # wrappers) so its config is ready at first launch instead of forcing a
-    # synchronous on-demand ``ucode configure`` on the runner.
     configure_ucode_for_sandbox(
         HOST_DATABRICKS_PROFILE,
         agents=tuple(agents),

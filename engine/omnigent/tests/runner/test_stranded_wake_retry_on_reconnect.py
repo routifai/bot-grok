@@ -130,7 +130,7 @@ async def test_reconnect_redelivers_wake_stranded_by_server_outage(
     runner_app.register_subagent_work(
         parent_session_id=parent_id,
         child_session_id=child_id,
-        agent="researcher",
+        agent="reviewer",
         title="wake-loss",
     )
     try:
@@ -189,7 +189,7 @@ async def test_reconnect_skips_stranded_wake_for_drained_inbox(
     runner_app.register_subagent_work(
         parent_session_id=parent_id,
         child_session_id=child_id,
-        agent="researcher",
+        agent="reviewer",
         title="wake-loss",
     )
     try:

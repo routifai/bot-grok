@@ -7,6 +7,7 @@ shape using minimal real-type stubs — no MagicMock.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -30,6 +31,7 @@ from omnigent.server.auth import AuthProvider, UnifiedAuthProvider
 from omnigent.server.managed_hosts import (
     MANAGED_REPO_LABEL_KEY,
     ManagedLaunchTracker,
+    ManagedSandboxDeployment,
     parse_sandbox_config,
     resolve_managed_agent_label,
 )
@@ -40,6 +42,7 @@ from omnigent.server.routes._sessions.orchestration import (
 )
 from omnigent.server.routes.sessions import create_sessions_router, routes_core
 from omnigent.stores.conversation_store import _FORK_ONLY_DROPPED_LABEL_KEYS
+from tests.server.helpers import FakeSandboxLauncher
 
 # ── Minimal store stubs ──────────────────────────────────────────
 
@@ -1506,50 +1509,6 @@ async def test_fork_side_chat_of_superside_chat_keeps_mode_label() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fork_codex_bypass_stamps_label_on_codex_target(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The bypass opt-in stamps the codex label via ``extra_labels``.
-
-    The source's own bypass label is always dropped (instance-scoped), so this
-    explicit, banner-gated request field is the ONLY path that arms bypass on a
-    fork — and the store applies ``extra_labels`` AFTER the drop, so the opt-in
-    wins. Gated on the target actually being codex-native.
-    """
-    conv = _make_conversation()
-    conv_store = _ConversationStore(
-        conversations={"e9f8f58523cec9a57d3bdf93be543e8c": conv},
-        items_by_conv={
-            "e9f8f58523cec9a57d3bdf93be543e8c": [
-                _make_item("9980c8a9248139f14f4165e5d53088aa", "Hi")
-            ]
-        },
-    )
-    # The codex target (44b4…) must report codex-native so the route stamps.
-    monkeypatch.setattr(
-        "omnigent.server.routes.sessions.get_agent_cache",
-        lambda: _StubAgentCache(
-            {
-                "087b7cb7ac30abf4debfaa578d052ec6": "claude_sdk",
-                "44b4151dd6cdfed6ee19430832398e05": "codex-native",
-            }
-        ),
-    )
-    client = TestClient(_build_app(conv_store, agent_store=_switch_agent_store()))
-
-    resp = client.post(
-        "/v1/sessions/e9f8f58523cec9a57d3bdf93be543e8c/fork",
-        json={"agent_id": "44b4151dd6cdfed6ee19430832398e05", "codex_bypass_sandbox": True},
-    )
-
-    assert resp.status_code == 201, f"got {resp.status_code}: {resp.text}"
-    extra = conv_store.fork_calls[0]["extra_labels"]
-    assert extra == {"omnigent.codex_native.bypass_sandbox": "1"}, (
-        f"bypass opt-in must stamp the codex bypass label, got {extra!r}"
-    )
-
-
-@pytest.mark.asyncio
 async def test_fork_codex_bypass_rejected_on_non_codex_target(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1644,69 +1603,15 @@ async def test_fork_switch_404_unknown_target() -> None:
             True,
             {"omnigent.ui": "terminal", "omnigent.wrapper": "claude-code-native-ui"},
         ),
-        # cross-family into a native target: model id is meaningless across
-        # providers → reset. History still carries — the runner rebuilds the
-        # native transcript from the copied Omnigent items — but the source's
-        # native session id must NOT be stamped (wrong transcript format for
-        # the target; a doomed clone attempt would launch fresh instead).
-        # Still terminal-first, but the codex wrapper.
-        (
-            "claude_sdk",
-            "codex-native",
-            False,
-            True,
-            False,
-            {"omnigent.ui": "terminal", "omnigent.wrapper": "codex-native-ui"},
-        ),
-        # cursor target carries history via a text preamble (its conversation
-        # is server-backed, so the runner can't seed a local store for --resume),
-        # so carry_history_into_native IS stamped — the runner branches on the
-        # harness to choose preamble vs transcript rebuild.
-        (
-            "claude_sdk",
-            "cursor-native",
-            False,
-            True,
-            False,
-            {"omnigent.ui": "terminal", "omnigent.wrapper": "cursor-native-ui"},
-        ),
-        # pi-native CAN carry fork history: the runner rebuilds Pi's JSONL
-        # session file from the copied Omnigent items. Cross-family from a
-        # claude SDK source, so model settings reset and the source's native
-        # session id is NOT stamped (Pi rebuilds from items, not a source
-        # file) — same shape as the codex-native cross-family case.
-        (
-            "claude_sdk",
-            "pi-native",
-            False,
-            True,
-            False,
-            {"omnigent.ui": "terminal", "omnigent.wrapper": "pi-native-ui"},
-        ),
-        # qwen-native CAN carry fork history: the runner rebuilds qwen's on-disk
-        # chat recording (+ runtime/meta sidecars) from the copied Omnigent items
-        # (see write_qwen_session_recording). Cross-family here (claude SDK source
-        # is anthropic, qwen is openai-family), so model settings reset and the
-        # source's native session id is NOT stamped — same shape as the pi-native
-        # cross-family case.
-        (
-            "claude_sdk",
-            "qwen-native",
-            False,
-            True,
-            False,
-            {"omnigent.ui": "terminal", "omnigent.wrapper": "qwen-native-ui"},
-        ),
         # native → SDK, same family: model carries, but an SDK target
         # replays the transcript itself so no native-rebuild marker is set.
         # The clone drops terminal-first mode (chat) — the bug this fixes.
         ("claude-native", "claude_sdk", True, False, True, {}),
-        # cross-family into native (openai source → anthropic native): reset
+        # cross-family into native (pi source → anthropic native): reset
         # model settings, carry history via rebuild-from-items, skip the
-        # source-session directive — same as the SDK cross-family case.
-        # Terminal-first.
+        # source-session directive. Terminal-first.
         (
-            "openai-agents",
+            "pi",
             "claude-native",
             False,
             True,
@@ -1729,8 +1634,8 @@ async def test_fork_switch_model_and_carry_gating(
 
     A model id is provider-bound, so ``copy_model_settings`` must be True
     only within a family. ``carry_history_into_native`` must be True for
-    native targets that carry fork history (claude/codex/pi rebuild a
-    transcript, cursor replays a text preamble), and SDK targets replay
+    native targets that carry fork history (claude-native rebuilds a
+    transcript), and SDK targets replay
     history themselves so they never set it. ``resume_source_native_session``
     must be False on a cross-family switch so the store skips the fork-source
     directive (the source's native transcript is the wrong format; a clone
@@ -1842,66 +1747,10 @@ async def test_fork_no_switch_native_source_carries_history(
 @pytest.mark.parametrize(
     "harness,expect_carry",
     [
-        # cursor carries history via a text preamble the runner replays on the
-        # first message (its conversation is server-backed, so no local store to
-        # seed for --resume) — so a same-agent fork DOES mark native carry.
-        ("cursor-native", True),
-        # pi rebuilds its JSONL session file from the copied Omnigent items
-        # (it is in _FORK_HISTORY_NATIVE_HARNESSES), so a same-agent fork marks
-        # native carry — parity with claude/codex.
-        ("pi-native", True),
-    ],
-)
-@pytest.mark.asyncio
-async def test_fork_cursor_pi_native_carry_gating(
-    monkeypatch: pytest.MonkeyPatch,
-    harness: str,
-    expect_carry: bool,
-) -> None:
-    """A same-agent fork marks native carry for both cursor and pi.
-
-    cursor carries fork history via a text preamble (its conversation is
-    server-backed, so no local store to seed for --resume); pi rebuilds its
-    JSONL session file from the copied Omnigent items. Both therefore mark
-    ``carry_history_into_native``.
-    """
-    conv = _make_conversation()
-    conv_store = _ConversationStore(
-        conversations={"e9f8f58523cec9a57d3bdf93be543e8c": conv},
-        items_by_conv={
-            "e9f8f58523cec9a57d3bdf93be543e8c": [
-                _make_item("9980c8a9248139f14f4165e5d53088aa", "Hi")
-            ]
-        },
-    )
-    monkeypatch.setattr(
-        "omnigent.server.routes.sessions.get_agent_cache",
-        lambda: _StubAgentCache({"087b7cb7ac30abf4debfaa578d052ec6": harness}),
-    )
-    client = TestClient(_build_app(conv_store))
-
-    resp = client.post("/v1/sessions/e9f8f58523cec9a57d3bdf93be543e8c/fork", json={})
-
-    assert resp.status_code == 201, f"Expected 201, got {resp.status_code}: {resp.text}"
-    fork_call = conv_store.fork_calls[0]
-    assert fork_call["carry_history_into_native"] is expect_carry, (
-        f"A {harness} fork should set carry_history_into_native={expect_carry}."
-    )
-
-
-@pytest.mark.parametrize(
-    "harness,expect_carry",
-    [
-        # Reversed native spellings ("native-claude" / "native-codex") are
-        # valid harness ids that canonicalize_harness passes through unchanged,
-        # so the carry gate must recognize them just like their canonical
-        # spellings — otherwise an identically-behaving agent silently loses
-        # fork history. cursor carries (preamble); ``native-pi`` IS aliased to
-        # ``pi-native`` (which is in the set), so it carries too (rebuild).
+        # The reversed native spelling ("native-claude") is a valid harness id,
+        # so the carry gate must recognize it just like its canonical spelling
+        # — otherwise an identically-behaving agent silently loses fork history.
         ("native-claude", True),
-        ("native-codex", True),
-        ("native-cursor", True),
-        ("native-pi", True),
     ],
 )
 @pytest.mark.asyncio
@@ -1912,10 +1761,8 @@ async def test_fork_reversed_native_spelling_carry_gating(
 ) -> None:
     """The carry gate honors reversed native spellings like the canonical ones.
 
-    ``canonicalize_harness`` aliases ``native-pi`` to ``pi-native``; the other
-    reversed spellings pass through unchanged, so the predicate lists both
-    forms explicitly. claude/codex/cursor/pi all carry fork history (claude /
-    codex / pi via transcript rebuild, cursor via preamble).
+    ``native-claude`` must carry fork history (transcript rebuild) exactly like
+    ``claude-native``.
     """
     conv = _make_conversation()
     conv_store = _ConversationStore(
@@ -1945,8 +1792,16 @@ async def test_fork_reversed_native_spelling_carry_gating(
 # ── Managed-sandbox fork ─────────────────────────────────────────
 
 
+class _MultiRepoLauncher(FakeSandboxLauncher):
+    """A fake launcher declaring the ``multi_repo`` capability."""
+
+    @property
+    def capabilities(self) -> Any:
+        return replace(super().capabilities, multi_repo=True)
+
+
 def _arm_managed_app(
-    app: FastAPI, monkeypatch: pytest.MonkeyPatch, *, provider: str = "modal"
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch, *, multi_repo: bool = False
 ) -> list[dict[str, Any]]:
     """
     Wire the app for managed forks and capture the scheduled launches.
@@ -1958,13 +1813,20 @@ def _arm_managed_app(
 
     :param app: The app under test.
     :param monkeypatch: Fixture used to swap the background launch.
-    :param provider: Sandbox provider to configure. ``"modal"`` (default) is
-        single-repo; pass ``"kubernetes"`` for a multi-repo provider.
+    :param multi_repo: ``False`` (default) configures the single-repo ``computer``
+        provider; ``True`` swaps in a launcher declaring ``multi_repo``.
     :returns: The list the recorder appends each launch's kwargs to.
     """
-    app.state.sandbox_config = parse_sandbox_config(
-        {"provider": provider, "server_url": "https://managed-test.example.com"}
+    deployment = parse_sandbox_config(
+        {"provider": "computer", "server_url": "https://managed-test.example.com"}
     )
+    assert deployment is not None
+    if multi_repo:
+        launcher = _MultiRepoLauncher()
+        deployment = ManagedSandboxDeployment.single(
+            replace(deployment.default, launcher_factory=lambda: launcher)
+        )
+    app.state.sandbox_config = deployment
     # Never dereferenced: the recorder replaces the only consumer.
     app.state.host_store = object()
     app.state.managed_launches = ManagedLaunchTracker()
@@ -2007,7 +1869,7 @@ async def test_fork_managed_schedules_sandbox_launch(
 
     resp = client.post(
         "/v1/sessions/e9f8f58523cec9a57d3bdf93be543e8c/fork",
-        json={"host_type": "managed", "sandbox_provider": "modal"},
+        json={"host_type": "managed", "sandbox_provider": "computer"},
     )
 
     assert resp.status_code == 201, f"got {resp.status_code}: {resp.text}"
@@ -2015,7 +1877,7 @@ async def test_fork_managed_schedules_sandbox_launch(
     assert len(launches) == 1, "a managed fork must schedule exactly one sandbox launch"
     launch = launches[0]
     assert launch["session_id"] == body["id"]
-    assert launch["provider"] == "modal"
+    assert launch["provider"] == "computer"
     # No repository on either side, so the clone gets an empty sandbox.
     assert launch["repos"] == []
     assert _repo_label_writes(conv_store) == []
@@ -2188,7 +2050,7 @@ async def test_fork_managed_inherits_all_source_repositories(
     app = _build_app(conv_store)
     # Multi-repo provider — inheriting several repos is only allowed where the
     # provider supports it (a single-repo provider rejects it; see the guard test).
-    launches = _arm_managed_app(app, monkeypatch, provider="kubernetes")
+    launches = _arm_managed_app(app, monkeypatch, multi_repo=True)
     client = TestClient(app)
 
     resp = client.post(
@@ -2367,7 +2229,7 @@ async def test_fork_managed_rejects_unoffered_provider(
 
     resp = client.post(
         "/v1/sessions/e9f8f58523cec9a57d3bdf93be543e8c/fork",
-        json={"host_type": "managed", "sandbox_provider": "daytona"},
+        json={"host_type": "managed", "sandbox_provider": "nope"},
     )
 
     assert resp.status_code == 400, f"got {resp.status_code}: {resp.text}"
@@ -2380,7 +2242,7 @@ async def test_fork_managed_rejects_multiple_repos_on_single_repo_provider(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A multi-repo source forked onto a single-repo provider fails the POST with
-    a clear 400 (modal is exec-model → single-repo), rather than a background
+    a clear 400 (computer is exec-model → single-repo), rather than a background
     clone failure. The web picker caps this per provider; this guards the API."""
     conv = _make_conversation(
         labels={
@@ -2390,7 +2252,7 @@ async def test_fork_managed_rejects_multiple_repos_on_single_repo_provider(
     )
     conv_store = _ConversationStore(conversations={"e9f8f58523cec9a57d3bdf93be543e8c": conv})
     app = _build_app(conv_store)
-    launches = _arm_managed_app(app, monkeypatch)  # provider "modal" (single-repo)
+    launches = _arm_managed_app(app, monkeypatch)  # provider "computer" (single-repo)
     client = TestClient(app)
 
     resp = client.post(
@@ -2487,12 +2349,9 @@ def _attachment_fork_client(
 @pytest.mark.parametrize(
     "target_harness,expected_status",
     [
-        ("openai-agents", 400),
+        ("pi", 400),
         ("claude-sdk", 400),
-        ("pi-native", 400),
-        ("cursor-native", 400),
         ("claude-native", 201),
-        ("codex-native", 201),
     ],
 )
 def test_fork_checks_attachment_history_before_creating_session(
@@ -2536,7 +2395,7 @@ def test_fork_attachment_check_honors_retained_history(
     expected_status: int,
 ) -> None:
     """Only retained file references constrain the fork target; image/text remain portable."""
-    client, conv_store, _ = _attachment_fork_client(monkeypatch, filename, "openai-agents")
+    client, conv_store, _ = _attachment_fork_client(monkeypatch, filename, "pi")
     source_id = "e9f8f58523cec9a57d3bdf93be543e8c"
     if not referenced:
         conv_store._items[source_id] = conv_store._items[source_id][:1]
@@ -2550,7 +2409,7 @@ def test_fork_attachment_check_honors_retained_history(
 @pytest.mark.parametrize(
     "target_harness,policy,expected_status",
     [
-        ("openai-agents", {}, 400),
+        ("pi", {}, 400),
         ("claude-native", {"filesystem_attachment_denied_extensions": ["zip"]}, 415),
     ],
 )
@@ -2624,7 +2483,7 @@ def test_fork_enforces_current_policy_before_creating_destination(
 ) -> None:
     """All copied files count, including unsent uploads and files beyond the cutoff."""
     client, conv_store, file_store = _attachment_fork_client(
-        monkeypatch, "sample.zip", "codex-native"
+        monkeypatch, "sample.zip", "claude-native"
     )
     source_id = "e9f8f58523cec9a57d3bdf93be543e8c"
     for index, (filename, size) in enumerate(

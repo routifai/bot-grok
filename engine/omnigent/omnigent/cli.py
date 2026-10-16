@@ -19,7 +19,7 @@ import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
-from importlib import import_module, resources
+from importlib import resources
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, BinaryIO, Literal, TypeAlias, cast
 
@@ -33,25 +33,16 @@ from rich.table import Table
 
 from omnigent._platform import IS_WINDOWS, resolve_repo_symlink
 from omnigent._startup_events import capture_cli_entry, record_startup_event
-from omnigent.cli_common import (
-    RESUME_PICKER_SENTINEL as _RESUME_PICKER_SENTINEL,
-)
 
 # Interactive harness/credential configuration lives in omnigent.cli_config; the
 # config/setup Click commands and the first-run plan call these entry points.
 from omnigent.cli_config import (
     _adopt_ambient_credentials,
     _credential_label,
-    _isolated_databricks_cfg,
     _print_credentials_by_harness,
-    _run_configure_databricks,
     _run_configure_harnesses_interactive,
-    _warn_missing_harness_dependencies,
 )
 from omnigent.cli_invocation import WRAPPER_COMMAND_ENV, cli_invocation
-from omnigent.cli_native import register_native_commands as _register_native_commands
-from omnigent.cli_sandbox import lakebox as _lakebox_alias_group
-from omnigent.cli_sandbox import sandbox as _sandbox_group
 from omnigent.config import (
     _merge_effective_config,
     global_config_path,
@@ -92,7 +83,6 @@ from omnigent.host.local_server import (
 )
 from omnigent.inner import _proc, ui
 from omnigent.integration_daemon import IntegrationDaemon
-from omnigent.onboarding.sandboxes import available_providers as _sandbox_providers
 from omnigent.process_logging import (
     LOG_LEVEL_ENV_VAR,
     LOG_TO_STDERR_ENV_VAR,
@@ -110,11 +100,14 @@ if TYPE_CHECKING:
     import httpx
 
     from omnigent.install_ledger import InstallLedger
-    from omnigent.onboarding.acp_auth import AcpAgentEntry
     from omnigent.server.smart_routing import LLMRoutingClient
     from omnigent.smart_routing_cli import ArmedSession
     from omnigent.spec.types import LLMConfig
     from omnigent.update_check import _InstalledWheelInfo
+
+
+# Click ``flag_value`` for bare ``--resume`` (no arg).
+_RESUME_PICKER_SENTINEL = "__resume_picker__"
 
 
 # Any: YAML configs have heterogeneous value types (str, int, list, etc.)
@@ -632,9 +625,6 @@ _GLOBAL_CONFIG_KEYS: frozenset[str] = frozenset(
         "default_agent",
         "harness",
         "model",
-        # OpenCode-specific default model (``provider/model``) the native
-        # ``omni opencode`` TUI launches on; set via `omni setup` → OpenCode.
-        "opencode_model",
         "server",
         "session_title_instructions",
         _AUTO_OPEN_CONVERSATION_CONFIG_KEY,
@@ -648,12 +638,6 @@ _ConfigValue: TypeAlias = (
     str | int | float | bool | None | list["_ConfigValue"] | dict[str, "_ConfigValue"]
 )
 
-_GLOBAL_AGENTS_DIR: Path = Path.home() / ".omnigent" / "agents"
-_INTERNAL_BETA_DEFAULT_AGENT_NAME: str = "databricks_coding_agent.yaml"
-_INTERNAL_BETA_BUNDLED_AGENTS: tuple[str, ...] = (
-    "databricks_coding_agent.yaml",
-    "knowledge_work_agent.yaml",
-)
 _HOST_DAEMON_STOP_GRACE_S = 5.0
 _HOST_SESSION_STOP_MAX_WORKERS = 8
 _HOST_SESSION_ACTIVE_STATUSES = frozenset({"running", "waiting"})
@@ -862,7 +846,7 @@ def _peek_default_agent_harness(target: str) -> str | None:
 
     :param target: The configured ``default_agent`` value, e.g.
         ``"/Users/me/.omnigent/agents/databricks_coding_agent.yaml"``.
-    :returns: The canonical harness, e.g. ``"openai-agents-sdk"``, or ``None``.
+    :returns: The canonical harness, e.g. ``"claude-sdk"``, or ``None``.
     """
     if "://" in target:
         return None
@@ -893,7 +877,7 @@ class _FirstRunPlan:
 
     :param harness: The canonical harness id to launch, e.g. ``"claude-sdk"``.
     :param agent: The default agent target to launch (the bundled polly path
-        for Claude), or ``None`` for a bare harness REPL (codex / pi).
+        for Claude), or ``None`` for a bare harness REPL (pi).
     """
 
     harness: str
@@ -921,9 +905,9 @@ def _bundled_example_path(name: str) -> str:
 def _pick_first_run_harness() -> _FirstRunPlan | None:
     """Pick the harness a bare first ``run`` should launch, by configured creds.
 
-    Priority Claude → Codex → Pi over the ambient-merged config (a detected env
+    Priority Claude → Pi over the ambient-merged config (a detected env
     key / CLI login counts as configured). Claude gets the bundled polly
-    orchestrator as its default agent; Codex / Pi launch a bare harness REPL.
+    orchestrator as its default agent; Pi launches a bare harness REPL.
     Shared with ``configure harnesses`` via
     :func:`~omnigent.onboarding.provider_config.default_provider_for_harness`,
     so the two surfaces agree on "what's configured".
@@ -940,19 +924,8 @@ def _pick_first_run_harness() -> _FirstRunPlan | None:
     config = effective_config_with_detected(load_config())
     if default_provider_for_harness(config, "claude-sdk") is not None:
         return _FirstRunPlan(harness="claude-sdk", agent=_bundled_example_path("polly"))
-    if default_provider_for_harness(config, "codex") is not None:
-        return _FirstRunPlan(harness="codex", agent=None)
     if default_provider_for_harness(config, "pi") is not None:
         return _FirstRunPlan(harness="pi", agent=None)
-    # Kimi authenticates against its own backend (``kimi login`` OAuth or a
-    # Moonshot API key) rather than the ambient-detected provider config, so
-    # ``default_provider_for_harness`` can't gate it. Fall back to "binary
-    # installed" as the readiness proxy: the executor will fail loud at the
-    # first turn if no provider is actually configured.
-    from omnigent.onboarding.harness_install import KIMI_KEY, harness_cli_installed
-
-    if harness_cli_installed(KIMI_KEY):
-        return _FirstRunPlan(harness="kimi", agent=None)
     return None
 
 
@@ -960,13 +933,13 @@ def _resolve_first_run_plan() -> _FirstRunPlan | None:
     """Resolve the harness + default agent for a bare ``omnigent run``.
 
     Adopts ambient-detected credentials, then picks a harness from what's
-    configured (Claude→polly / Codex / Pi). When nothing is configured,
+    configured (Claude→polly / Pi). When nothing is configured,
     prints a notice, drops the user into ``configure harnesses``, then
     re-checks once.
 
     The pick is **deliberately not persisted** as a global default: it is
     derived state, recomputed on every bare ``run`` from the *current*
-    credentials. So a user who starts with only Codex (→ a codex REPL) and
+    credentials. So a user who starts with only Pi (→ a pi REPL) and
     later adds Claude is promoted to polly on their next bare ``run`` —
     keeping polly as the primary experience — rather than being pinned to
     the earlier fallback. An *explicit* default (a user-set global
@@ -1147,9 +1120,8 @@ def _save_global_config(  # type: ignore[explicit-any]
     keys listed in *unset_keys*.
 
     Creates the ``~/.omnigent/`` directory if it does not exist.
-    Values may be plain strings, booleans, or nested mappings (the
-    ``auth:`` block written by ``omnigent setup``, or a ``providers:``
-    block written by ``omnigent setup --no-internal-beta``).
+    Values may be plain strings, booleans, or nested mappings (e.g. the
+    ``providers:`` block written by ``omnigent setup``).
 
     By default every key in *settings* **replaces** the existing value
     wholesale (a shallow ``dict.update``). For keys listed in
@@ -1188,53 +1160,6 @@ def _save_global_config(  # type: ignore[explicit-any]
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         yaml.safe_dump(cfg, f, default_flow_style=False, sort_keys=True)
-
-
-def _materialize_bundled_example(name: str) -> Path:
-    """
-    Copy a single bundled example YAML into the user config dir.
-
-    ``uv tool install`` installs package files, not the repository checkout, so the
-    top-level ``examples/<name>`` paths are not available to users. Materialize a
-    user-editable copy under ``~/.omnigent/agents`` and never overwrite an
-    existing file so local edits survive reinstalls and reruns.
-
-    :param name: Filename of the bundled example (e.g.
-        ``"databricks_coding_agent.yaml"``).
-    :returns: Absolute path to the materialized agent YAML.
-    """
-    agent_path = _GLOBAL_AGENTS_DIR / name
-    if agent_path.exists():
-        return agent_path
-
-    agent_path.parent.mkdir(parents=True, exist_ok=True)
-    resource = resources.files("omnigent.resources.examples").joinpath(name)
-    text = resource.read_text(encoding="utf-8")
-    executable_placeholder = "__OMNIGENT_PYTHON_EXECUTABLE__"
-    text = text.replace('"${OMNIGENT_HOME:-$PWD}/.venv/bin/python"', executable_placeholder)
-    text = text.replace("${OMNIGENT_HOME:-$PWD}/.venv/bin/python", executable_placeholder)
-    text = text.replace(".venv/bin/python", sys.executable)
-    text = text.replace(executable_placeholder, sys.executable)
-    agent_path.write_text(text, encoding="utf-8")
-    return agent_path
-
-
-def _materialize_internal_beta_agents() -> Path:
-    """
-    Materialize every bundled internal-beta example and return the default's path.
-
-    :returns: Absolute path to the default agent YAML
-        (:data:`_INTERNAL_BETA_DEFAULT_AGENT_NAME`).
-    """
-    default_path: Path | None = None
-    for name in _INTERNAL_BETA_BUNDLED_AGENTS:
-        path = _materialize_bundled_example(name)
-        if name == _INTERNAL_BETA_DEFAULT_AGENT_NAME:
-            default_path = path
-    assert default_path is not None, (
-        f"_INTERNAL_BETA_BUNDLED_AGENTS must include {_INTERNAL_BETA_DEFAULT_AGENT_NAME}"
-    )
-    return default_path
 
 
 def _save_local_config(
@@ -1748,26 +1673,7 @@ def _print_version_callback(ctx: click.Context, _param: click.Parameter, value: 
 # ``omnigent --help`` so the long harness roster doesn't drown out the
 # management commands. Keep in sync with the harness launch commands
 # decorated below.
-_HARNESS_COMMANDS: frozenset[str] = frozenset(
-    {
-        "agy",
-        "antigravity",
-        "claude",
-        "codex",
-        "copilot",
-        "cursor",
-        "debby",
-        "devin",
-        "goose",
-        "hermes",
-        "kimi",
-        "kiro",
-        "opencode",
-        "pi",
-        "polly",
-        "qwen",
-    }
-)
+_HARNESS_COMMANDS: frozenset[str] = frozenset({"debby", "polly"})
 
 
 # Brand accent (Otto's magenta-pink, ``ui.ACCENT`` / ``#F43BA6``) as an
@@ -1780,25 +1686,7 @@ _ACCENT_RGB = (244, 59, 166)
 # object registered under a second name, e.g. ``update`` -> ``upgrade``).
 # Kept runnable/registered but omitted from the ``--help`` listing so the
 # alias isn't shown as a duplicate line.
-_ALIAS_COMMANDS: frozenset[str] = frozenset({"update", "antigravity"})
-
-
-def _harness_extra_checks() -> dict[str, Callable[[], bool]]:
-    """Map extras-gated harness commands to their SDK-installed predicate.
-
-    Harnesses that ride an optional pip extra (lazily imported on first
-    turn) are hidden from ``omnigent --help`` until the extra is
-    importable, so the listing only advertises harnesses ready to launch.
-    The predicates use ``importlib.util.find_spec`` (no heavy import).
-    Commands absent from this map are always listed.
-    """
-    from omnigent.onboarding.copilot_auth import copilot_sdk_installed
-    from omnigent.onboarding.cursor_auth import cursor_sdk_installed
-
-    return {
-        "copilot": copilot_sdk_installed,
-        "cursor": cursor_sdk_installed,
-    }
+_ALIAS_COMMANDS: frozenset[str] = frozenset({"update"})
 
 
 def _cli_style(text: str, **style: object) -> str:
@@ -1814,12 +1702,9 @@ def _cli_style(text: str, **style: object) -> str:
 
 
 class _OmnigentCLI(click.Group):
-    """Top-level group that prints the brand lockup above its help.
+    """Top-level group with brand-tinted help.
 
-    The Otto + wordmark lockup is drawn on stderr (decoration) and is
-    TTY-gated by :func:`omnigent.inner.ui.show_banner`, so ``omnigent
-    --help`` shows the banner interactively while piped/CI help stays
-    clean. Only the top-level group overrides help; subcommand help
+    Only the top-level group overrides help formatting; subcommand help
     (``omnigent run --help``) is untouched.
     """
 
@@ -1852,8 +1737,6 @@ class _OmnigentCLI(click.Group):
         """
         harness_rows: list[tuple[str, click.Command]] = []
         other_rows: list[tuple[str, click.Command]] = []
-        any_hidden = False
-        extra_checks = _harness_extra_checks()
         for subcommand in self.list_commands(ctx):
             cmd = self.get_command(ctx, subcommand)
             if cmd is None or cmd.hidden:
@@ -1863,12 +1746,6 @@ class _OmnigentCLI(click.Group):
             if subcommand in _ALIAS_COMMANDS:
                 continue
             if subcommand in _HARNESS_COMMANDS:
-                # Hide extras-gated harnesses whose SDK isn't installed;
-                # they remain runnable (running them offers the install).
-                check = extra_checks.get(subcommand)
-                if check is not None and not check():
-                    any_hidden = True
-                    continue
                 harness_rows.append((subcommand, cmd))
             else:
                 other_rows.append((subcommand, cmd))
@@ -1894,28 +1771,7 @@ class _OmnigentCLI(click.Group):
                 )
 
         _emit("Harnesses", harness_rows, _ACCENT_RGB)
-        if any_hidden:
-            formatter.write_paragraph()
-            formatter.write_text(
-                _cli_style(
-                    f"Some harnesses need an optional extra — run `{cli_invocation()} setup` "
-                    "to enable them.",
-                    dim=True,
-                )
-            )
         _emit("Commands", other_rows, "cyan")
-
-    def format_help(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
-        from omnigent.inner import ui
-
-        if ui.show_banner():
-            from omnigent.version import VERSION
-
-            epilogue = [("Get started", "omnigent setup")]
-            if VERSION:
-                epilogue.insert(0, ("Version", VERSION))
-            ui.print_landing(tagline="all your agents, one cli", epilogue=epilogue)
-        super().format_help(ctx, formatter)
 
 
 def _set_debug_logging(
@@ -2096,40 +1952,24 @@ def cli() -> None:
 # Keep in sync with ``@cli.command()`` decorations below.
 _CLICK_SUBCOMMANDS: frozenset[str] = frozenset(
     {
-        "agy",
-        "antigravity",
         "attach",
-        "claude",
-        "codex",
         "config",
-        "copilot",
-        "cursor",
         "debby",
         "debug",
-        "devin",
         "diagnose",
         "doctor",
         "extensions",
-        "goose",
-        "hermes",
         "host",
         "import",
         "integration",
         "_internal",
-        "kimi",
-        "kiro",
-        "lakebox",
         "login",
-        "opencode",
         "pane-picker",
         "pane-split",
-        "pi",
         "polly",
-        "qwen",
         "resume",
         "run",
         "session",
-        "sandbox",
         "server",
         "setup",
         "start",
@@ -2220,11 +2060,8 @@ def _wrapper_guard_error(env: Mapping[str, str], prog: str) -> str | None:
 
 def _enforce_wrapper_guard() -> None:
     """Exit early when a naked ``omni``/``omnigent`` call is blocked by an operator."""
-    # argv[0] is the console-script name (``omni``/``omnigent``); ``python -m
-    # omnigent`` reports ``__main__.py``, so fall back to the canonical name.
-    prog = os.path.basename(sys.argv[0])
-    if not prog or prog == "__main__.py":
-        prog = "omnigent"
+    # argv[0] is the console-script name (``omni``/``omnigent``).
+    prog = os.path.basename(sys.argv[0]) or "omnigent"
     message = _wrapper_guard_error(os.environ, prog)
     if message is not None:
         click.echo(message, err=True)
@@ -3768,8 +3605,8 @@ def _ensure_databricks_server_auth(server: str, *, non_interactive: bool = False
 def _ensure_backend(server: str | None) -> str:
     """Ensure the host daemon is running and return the Omnigent server URL.
 
-    The daemon is the single backend for ``attach`` / ``run`` / ``claude`` /
-    ``codex``: it spawns the runner and, in local mode, the Omnigent server too.
+    The daemon is the single backend for ``attach`` / ``run``:
+    it spawns the runner and, in local mode, the Omnigent server too.
     The CLI is a pure client of the returned URL.
 
     :param server: ``--server`` value after config fallback. A non-empty
@@ -4273,7 +4110,7 @@ def server(
     Bare ``omnigent server`` runs the server in the FOREGROUND (Ctrl-C to
     stop) — for deploys / Docker. Pass ``--background`` to spawn it as a
     detached background process instead (the managed local server that
-    ``run`` / ``claude`` / ``codex`` reuse). Subcommands manage that
+    ``run`` reuses). Subcommands manage that
     background server: ``stop`` (stop it and the local host daemon),
     ``status`` (is it up?).
 
@@ -6370,20 +6207,6 @@ def debby(run_args: tuple[str, ...]) -> None:
     _run_bundled_agent("debby", run_args)
 
 
-@cli.command(
-    context_settings={
-        "ignore_unknown_options": True,
-        "allow_extra_args": True,
-    }
-)
-@click.argument("run_args", nargs=-1, type=click.UNPROCESSED)
-def copilot(run_args: tuple[str, ...]) -> None:
-    """Launch GitHub Copilot with Omnigent.
-
-    Shorthand for ``omnigent run --harness copilot``; every ``run`` option is forwarded."""
-    _run_harness_shorthand("copilot", run_args)
-
-
 @cli.command()
 @click.argument("target", required=False, metavar="[CONV_ID]")
 @click.option(
@@ -6410,8 +6233,8 @@ def resume(
 
     \b
     With CONV_ID: looks up the conversation and dispatches to the
-    matching wrapper. claude-native sessions land in
-    ``omnigent claude``; everything else surfaces a clear hint to
+    matching wrapper. claude-native sessions reopen in the native
+    Claude terminal; everything else surfaces a clear hint to
     use ``omnigent run --resume <id> <agent.yaml>``.
 
     \b
@@ -6456,7 +6279,7 @@ class _SessionImportResult:
 @click.option(
     "--harness",
     type=click.Choice(
-        ["all", "claude", "codex", "kimi", "kiro", "opencode", "pi", "qwen"],
+        ["all", "claude", "codex", "pi"],
         case_sensitive=False,
     ),
     required=True,
@@ -6501,18 +6324,15 @@ def import_session_command(
     """Import chats from supported local coding harnesses.
 
     The source transcript is converted to ordinary Omnigent items and stored
-    as a normal session. Qwen, Kiro, and Kimi currently preserve visible
-    messages but not native tool activity; OpenCode and Pi preserve exported
-    tool activity. Use --session for one chat or --last for a bounded batch. A
-    source session can only be imported once unless --force is used to replace
-    the previous import.
+    as a normal session. Use --session for one chat or --last for a bounded
+    batch. A source session can only be imported once unless --force is used
+    to replace the previous import.
 
     \b
     Examples:
       omnigent import --harness claude --session <session-id>
       omnigent import --harness codex --session <session-id>
-      omnigent import --harness opencode --session <session-id>
-      omnigent import --harness qwen --session <session-id>
+      omnigent import --harness pi --session <session-id>
       omnigent import --harness claude --last 10
       omnigent import --harness claude --session <session-id> --force
     """
@@ -7229,17 +7049,10 @@ def session_import(input_path: str, title: str | None, server: str | None) -> No
 # choose model/harness without editing the agent file. See
 # ``omnigent.chat.run_chat`` for how local-agent options get baked
 # into a materialized copy of the spec before the server starts.
-_HARNESS_CHOICES_HELP = (
-    "'claude' (alias for 'claude-sdk'), 'claude-sdk', 'codex', "
-    "'cursor', 'kimi', "
-    "'openai-agents', 'open-responses', 'pi', 'antigravity', 'qwen', 'goose', or 'copilot'"
-)
+_HARNESS_CHOICES_HELP = "'claude' (alias for 'claude-sdk'), 'claude-sdk', or 'pi'"
 _HARNESS_HELP = f"Harness to use for a local agent: {_HARNESS_CHOICES_HELP}."
 _RUN_HARNESS_HELP = (
     f"Harness to use: {_HARNESS_CHOICES_HELP}. Without AGENT, launches that harness directly."
-)
-_FROM_OPENCLAW_HELP = (
-    "Launch one agent from the OpenClaw/acpx registry without saving it to Omnigent config."
 )
 _MODEL_HELP = "Model to use for the agent."
 _PROMPT_HELP = "Send this as the first message when the REPL starts."
@@ -7257,11 +7070,7 @@ _NO_SESSION_HELP = "Use a fresh temporary local session store for this run."
 #: moved. Remove the option (and the check that raises this) in 0.11.
 def _run_smart_routing_removed() -> str:
     # Wrapper resolved at call time so the hint honors OMNIGENT_WRAPPER_COMMAND.
-    return (
-        "CLI smart routing is per-harness first-message only; use the web UI for "
-        f"router-picked harnesses. Run `{cli_invocation()} claude --smart-routing` or "
-        f"`{cli_invocation()} codex --smart-routing` to route this harness's first typed message."
-    )
+    return "CLI smart routing has moved; use the web UI for router-picked harnesses."
 
 
 _FORK_HELP = "Fork an existing session by id and open the REPL on the fork."
@@ -7273,23 +7082,6 @@ _DEFAULT_HARNESS_PROMPTS = {
         "You are Claude Code, running through Omnigent. "
         "Help the user with software engineering tasks."
     ),
-    "codex": (
-        "You are Codex, running through Omnigent. Help the user with software engineering tasks."
-    ),
-    "cursor": (
-        "You are Cursor, running through Omnigent. Help the user with software engineering tasks."
-    ),
-    "kimi": (
-        "You are Kimi Code, running through Omnigent. "
-        "Help the user with software engineering tasks."
-    ),
-    "qwen": (
-        "You are Qwen Code, running through Omnigent. "
-        "Help the user with software engineering tasks."
-    ),
-    "goose": (
-        "You are Goose, running through Omnigent. Help the user with software engineering tasks."
-    ),
 }
 _DEFAULT_HARNESS_PROMPT = "You are a helpful coding agent running through Omnigent."
 
@@ -7299,12 +7091,7 @@ _DEFAULT_HARNESS_PROMPT = "You are a helpful coding agent running through Omnige
 # operations route through the Omnigent dispatch path (runner
 # visibility, timeouts, error recovery) instead of the harness's
 # internal built-in tools.
-# Membership is tested on the canonical id, so "acp" covers every
-# acp:<slug> launcher: without os_env the runner 404s the session's
-# environment resource and the web UI unmounts the Files panel.
-_OS_ENV_HARNESSES: frozenset[str] = frozenset(
-    {"claude-sdk", "codex", "pi", "qwen", "goose", "kimi", "acp"}
-)
+_OS_ENV_HARNESSES: frozenset[str] = frozenset({"claude-sdk", "pi"})
 
 
 def _validate_harness(harness: str) -> None:
@@ -7333,34 +7120,11 @@ def _default_harness_prompt(harness: str) -> str:
     return _DEFAULT_HARNESS_PROMPTS.get(harness, _DEFAULT_HARNESS_PROMPT)
 
 
-def _resolve_openclaw_run_agent(identifier: str) -> AcpAgentEntry:
-    """Resolve one OpenClaw/acpx agent for an ephemeral ``run`` launch."""
-    from omnigent.onboarding.openclaw_config import (
-        discover_openclaw_agents,
-        openclaw_agents_to_acp_entries,
-        resolve_openclaw_acp_agent,
-    )
-
-    discovery = discover_openclaw_agents()
-    entry = resolve_openclaw_acp_agent(identifier, discovery=discovery)
-    if entry is not None:
-        return entry
-
-    available = openclaw_agents_to_acp_entries(discovery.agents)
-    hint = ", ".join(f"{entry.name} ({entry.slug})" for entry in available)
-    detail = f" Available agents: {hint}." if hint else " No agents were discovered."
-    if discovery.errors:
-        paths = ", ".join(str(error.path) for error in discovery.errors)
-        detail += f" Unreadable config: {paths}."
-    raise click.ClickException(f"OpenClaw/acpx agent {identifier!r} was not found.{detail}")
-
-
 def _materialize_harness_launcher_file(
     *,
     harness: str,
     model: str | None,
     system_prompt: str | None,
-    acp_agent: AcpAgentEntry | None = None,
 ) -> Path:
     """
     Create a temporary standalone Omnigent YAML for no-AGENT ``run``.
@@ -7380,57 +7144,21 @@ def _materialize_harness_launcher_file(
     :param model: Optional model value to bake into ``executor``.
     :param system_prompt: Optional instructions text to use as the
         YAML's top-level ``prompt``.
-    :param acp_agent: Optional one-shot ACP agent embedded in the temporary
-        spec instead of resolved from global config.
     :returns: Path to the generated ``*.yaml`` file.
     :raises click.ClickException: If *harness* is unsupported.
     """
     _validate_harness(harness)
     canonical = canonicalize_harness(harness) or harness
-    # An acp:<slug> harness id carries a colon: it canonicalizes to the base
-    # `acp` harness, but the slug selects a user-configured ACP agent resolved
-    # at spawn and must be preserved. So the effective harness id written to
-    # executor.harness is the FULL acp:<slug> (keep the slug), or the canonical
-    # id for every other harness (so aliases still resolve, e.g. kimi ->
-    # kimi-code). The agent NAME and temp filename must be path-safe /
-    # [a-zA-Z0-9_-]+, so the colon is sanitized there only.
-    effective_harness = harness if canonical == "acp" and ":" in harness else canonical
-    # Name preserves the user's input (matching the pre-acp behavior, e.g.
-    # --harness claude -> name "claude"), sanitized for the colon so acp:<slug>
-    # yields a valid [a-zA-Z0-9_-]+ name. Filename uses the canonical/effective
-    # id (also colon-sanitized) as before.
-    display_name = harness.replace(":", "-")
 
     tmpdir = Path(tempfile.mkdtemp(prefix="omnigent-harness-launcher-"))
-    yaml_path = tmpdir / f"{effective_harness.replace(':', '-')}.yaml"
+    yaml_path = tmpdir / f"{canonical}.yaml"
 
-    executor: dict[str, object] = {"harness": effective_harness}
+    executor: dict[str, object] = {"harness": canonical}
     if model is not None:
         executor["model"] = model
-    if acp_agent is not None:
-        if canonical != "acp":
-            raise click.ClickException("An ephemeral ACP agent requires the acp harness.")
-        # Embed all fields that affect spawn so the remote server sees the same
-        # agent config as the client. Preserve session_id_mode, send_model,
-        # omnigent_mcp, env_passthrough, and model.
-        agent_dict: dict[str, object] = {
-            "name": acp_agent.name,
-            "command": acp_agent.command,
-        }
-        if acp_agent.model is not None:
-            agent_dict["model"] = acp_agent.model
-        if acp_agent.session_id_mode != "server":
-            agent_dict["session_id_mode"] = acp_agent.session_id_mode
-        if acp_agent.send_model:
-            agent_dict["send_model"] = acp_agent.send_model
-        if not acp_agent.omnigent_mcp:
-            agent_dict["omnigent_mcp"] = acp_agent.omnigent_mcp
-        if acp_agent.env_passthrough:
-            agent_dict["env_passthrough"] = list(acp_agent.env_passthrough)
-        executor["acp_agent"] = agent_dict
 
     raw = {
-        "name": display_name,
+        "name": harness,
         "prompt": system_prompt or _default_harness_prompt(canonical),
         "executor": executor,
     }
@@ -7449,7 +7177,7 @@ def _missing_run_agent_message() -> str:
         "  omnigent run examples/hello_world.yaml\n"
         "  omnigent run --server http://localhost:6767\n"
         "  omnigent run --harness claude-sdk\n"
-        "  omnigent run --harness codex"
+        "  omnigent run --harness pi"
     )
 
 
@@ -7551,97 +7279,11 @@ def _build_resume_parts() -> list[str]:
     return parts
 
 
-@dataclass(frozen=True)
-class _NativeTerminalDispatchSpec:
-    module: str
-    function: str
-    args_param: str
-    model_strategy: Literal["passthrough", "first_class", "explicit_passthrough"] = "passthrough"
-    prompt_param: str | None = None
-
-
-_NATIVE_TERMINAL_DISPATCH_SPECS: dict[str, _NativeTerminalDispatchSpec] = {
-    "claude": _NativeTerminalDispatchSpec(
-        module="omnigent.harnesses.claude_native.main",
-        function="run_claude_native",
-        args_param="extra_args",
-        prompt_param="prompt",
-    ),
-    "codex": _NativeTerminalDispatchSpec(
-        module="omnigent.harnesses.codex_native.main",
-        function="run_codex_native",
-        args_param="extra_args",
-        model_strategy="first_class",
-        prompt_param="prompt",
-    ),
-    "pi": _NativeTerminalDispatchSpec(
-        module="omnigent.harnesses.pi_native.main",
-        function="run_pi_native",
-        args_param="extra_args",
-    ),
-    "opencode": _NativeTerminalDispatchSpec(
-        module="omnigent.harnesses.opencode_native.main",
-        function="run_opencode_native",
-        args_param="extra_args",
-        model_strategy="first_class",
-    ),
-    "cursor": _NativeTerminalDispatchSpec(
-        module="omnigent.harnesses.cursor_native.main",
-        function="run_cursor_native",
-        args_param="extra_args",
-    ),
-    "kimi": _NativeTerminalDispatchSpec(
-        module="omnigent.harnesses.kimi_native.main",
-        function="run_kimi_native",
-        args_param="extra_args",
-    ),
-    "devin": _NativeTerminalDispatchSpec(
-        module="omnigent.harnesses.devin_native.main",
-        function="run_devin_native",
-        args_param="extra_args",
-        model_strategy="first_class",
-        prompt_param="prompt",
-    ),
-    "kiro": _NativeTerminalDispatchSpec(
-        module="omnigent.harnesses.kiro_native.main",
-        function="run_kiro_native",
-        args_param="extra_args",
-        model_strategy="first_class",
-        prompt_param="prompt",
-    ),
-    "goose": _NativeTerminalDispatchSpec(
-        module="omnigent.harnesses.goose_native.main",
-        function="run_goose_native",
-        args_param="extra_args",
-        model_strategy="explicit_passthrough",
-    ),
-    "antigravity": _NativeTerminalDispatchSpec(
-        module="omnigent.harnesses.antigravity_native.main",
-        function="run_antigravity_native",
-        args_param="extra_args",
-        model_strategy="first_class",
-    ),
-    "qwen": _NativeTerminalDispatchSpec(
-        module="omnigent.harnesses.qwen_native.main",
-        function="run_qwen_native",
-        args_param="extra_args",
-        model_strategy="explicit_passthrough",
-    ),
-    "hermes": _NativeTerminalDispatchSpec(
-        module="omnigent.harnesses.hermes_native.main",
-        function="run_hermes_native",
-        args_param="extra_args",
-        model_strategy="explicit_passthrough",
-    ),
-}
-
-
 def _dispatch_native_terminal_harness(
     *,
     harness: str,
     server: str | None,
     model: str | None,
-    model_from_cli: bool,
     prompt: str | None,
     system_prompt: str | None,
     tools: str | None,
@@ -7657,14 +7299,13 @@ def _dispatch_native_terminal_harness(
     """
     Launch a ``*-native`` terminal harness via its TUI wrapper directly.
 
-    ``run --harness cursor-native`` (and the claude/codex/pi equivalents)
+    ``run --harness claude-native`` (and the codex/pi equivalents)
     must NOT go through the materialized-launcher REPL: that drives an
     Omnigent turn per message — which persists its own user item — *while*
     the harness forwarder mirrors the same message back from the TUI's
     transcript, recording every user message twice. These harnesses are
     terminal-mirror sessions whose turns originate in the TUI, so dispatch
-    straight to the native wrapper (the same code ``omnigent cursor`` /
-    ``omnigent claude`` / etc. run), keeping the TUI the single source of
+    straight to the native wrapper, keeping the TUI the single source of
     turns. A top-level ``--model`` is forwarded in the shape each wrapper
     expects; wrappers with their own config receive it only when explicitly
     provided on the command line.
@@ -7682,10 +7323,6 @@ def _dispatch_native_terminal_harness(
     native_agent = native_coding_agent_for_harness(harness)
     if native_agent is None:
         return False
-    spec = _NATIVE_TERMINAL_DISPATCH_SPECS.get(native_agent.key)
-    if spec is None:  # pragma: no cover - new native agent added without a dispatch spec
-        raise click.ClickException(f"No native terminal launcher wired for harness {harness!r}.")
-
     # The native TUI wrappers attach to a tmux pane and own their own turn
     # loop, so REPL-only options have no analog there. Reject them loudly
     # rather than silently dropping them, and point at the dedicated
@@ -7694,7 +7331,6 @@ def _dispatch_native_terminal_harness(
     unsupported = [
         flag
         for flag, active in (
-            ("-p/--prompt", prompt is not None and spec.prompt_param is None),
             ("--system-prompt", system_prompt is not None),
             ("--tools", tools is not None),
             ("--log", log),
@@ -7744,19 +7380,9 @@ def _dispatch_native_terminal_harness(
         "resume_picker": resume_picker,
         "auto_open_conversation": auto_open_conversation,
     }
-    launcher_kwargs: dict[str, object] = dict(common)
-    if spec.model_strategy == "first_class":
-        launcher_kwargs[spec.args_param] = ()
-        launcher_kwargs["model"] = model
-    elif spec.model_strategy == "explicit_passthrough":
-        launcher_kwargs[spec.args_param] = passthrough if model_from_cli else ()
-    else:
-        launcher_kwargs[spec.args_param] = passthrough
-    if spec.prompt_param is not None:
-        launcher_kwargs[spec.prompt_param] = prompt
+    from omnigent.harnesses.claude_native.main import run_claude_native
 
-    launcher = getattr(import_module(spec.module), spec.function)
-    launcher(**launcher_kwargs)
+    run_claude_native(**common, extra_args=passthrough, prompt=prompt)
     return True
 
 
@@ -7911,8 +7537,6 @@ def _dispatch_run(
     resume_parts: list[str] | None = None,
     auto_open_conversation: bool = False,
     server_from_cli: bool = False,
-    model_from_cli: bool = False,
-    acp_agent: AcpAgentEntry | None = None,
 ) -> None:
     """
     Route ``omnigent run`` to the right impl.
@@ -7955,10 +7579,6 @@ def _dispatch_run(
     :param server_from_cli: ``True`` when ``--server`` was explicitly
         provided on the command line. Used to distinguish direct-server
         mode from a configured default server.
-    :param model_from_cli: ``True`` when ``--model`` was explicitly provided
-        on the command line rather than loaded from config.
-    :param acp_agent: Optional one-shot ACP agent carried in the generated
-        temporary spec instead of loaded from global config.
     """
     if target is not None and _is_server_url(target):
         raise click.ClickException(
@@ -8055,7 +7675,6 @@ def _dispatch_run(
             harness=harness,
             server=server,
             model=model,
-            model_from_cli=model_from_cli,
             prompt=prompt,
             system_prompt=system_prompt,
             tools=tools,
@@ -8079,7 +7698,6 @@ def _dispatch_run(
                 harness=harness,
                 model=model,
                 system_prompt=system_prompt,
-                acp_agent=acp_agent,
             )
         )
         harness = None
@@ -8373,14 +7991,7 @@ def attach(
     is_flag=True,
     default=False,
     hidden=True,
-    help=f"[REMOVED] Use `{cli_invocation()} claude|codex --smart-routing` or the web UI.",
-)
-@click.option(
-    "--from-openclaw",
-    "from_openclaw",
-    default=None,
-    metavar="AGENT",
-    help=_FROM_OPENCLAW_HELP,
+    help="[REMOVED] Use the web UI.",
 )
 @click.option("--model", default=None, help=_MODEL_HELP)
 @click.option("-p", "--prompt", default=None, help=_PROMPT_HELP)
@@ -8451,7 +8062,6 @@ def run(
     tools: str | None,
     harness: str | None,
     smart_routing: bool,
-    from_openclaw: str | None,
     model: str | None,
     prompt: str | None,
     system_prompt: str | None,
@@ -8480,10 +8090,9 @@ def run(
     \b
     Examples:
       omnigent run --harness claude-sdk
-      omnigent run --harness codex -p "review the last commit"
-      omnigent run --from-openclaw "Gemini CLI" -p "review the last commit"
+      omnigent run --harness pi -p "review the last commit"
       omnigent run examples/hello_world.yaml
-      omnigent run examples/hello_world.yaml --harness codex --model gpt-5.4-mini
+      omnigent run examples/hello_world.yaml --harness pi --model gpt-5.4-mini
       omnigent run --server http://localhost:6767
       omnigent run --server local  # local server, ignoring any configured default
       omnigent run examples/databricks_coding_agent.yaml --server https://<app>.databricksapps.com
@@ -8527,40 +8136,15 @@ def run(
     if local_server_requested:
         server = None
         server_from_cli = False
-    model_source = click.get_current_context().get_parameter_source("model")
-    model_from_cli = model_source is click.core.ParameterSource.COMMANDLINE
     harness_source = click.get_current_context().get_parameter_source("harness")
     harness_from_cli = harness_source is not None and harness_source.name == "COMMANDLINE"
 
-    acp_agent: AcpAgentEntry | None = None
-    if from_openclaw is not None:
-        if target is not None:
-            raise click.ClickException("--from-openclaw cannot be combined with an AGENT path.")
-        if harness_from_cli:
-            raise click.ClickException("--from-openclaw cannot be combined with --harness.")
-        acp_agent = _resolve_openclaw_run_agent(from_openclaw)
-        harness = f"acp:{acp_agent.slug}"
-    # Client-side harness resolution for acp:<slug>: resolve the slug before
-    # embedding in the spec so it works with remote servers. The server would resolve
-    # the slug from ITS config (if present), but fails when the agent is only
-    # configured locally on the client. Embedding the resolved agent avoids this gap.
-    # Preserve the existing config-lookup path as fallback; specs authored by hand
-    # still use it.
-    if acp_agent is None and harness is not None and harness.startswith("acp:"):
-        from omnigent.onboarding.acp_auth import resolve_acp_agent
-
-        slug = harness.split(":", 1)[1]
-        acp_agent = resolve_acp_agent(slug)
     direct_server_cli = (
-        target is None
-        and server_from_cli
-        and bool(server)
-        and not harness_from_cli
-        and acp_agent is None
+        target is None and server_from_cli and bool(server) and not harness_from_cli
     )
 
     _global_cfg = _load_effective_config()
-    if target is None and not direct_server_cli and acp_agent is None:
+    if target is None and not direct_server_cli:
         # Harness-aware default-agent resolution (this branch) under main's
         # direct-`--server` guard: skip the configured default_agent when the
         # invocation is a bare `--server` (no AGENT, no --harness), else pick
@@ -8626,8 +8210,6 @@ def run(
         resume_parts=resume_parts,
         auto_open_conversation=auto_open_conversation,
         server_from_cli=server_from_cli,
-        model_from_cli=model_from_cli,
-        acp_agent=acp_agent,
     )
 
 
@@ -10799,28 +10381,6 @@ def _format_harness_for_display(
     return str(value) if value is not None else "(none)", []
 
 
-def _resolve_harness_startup_args(
-    cfg: Mapping[str, object],
-    harness: str,
-    cli_args: tuple[str, ...],
-) -> tuple[str, ...]:
-    """Resolve the launch args for a native harness: config base + CLI args.
-
-    Config ``harness.<canonical>.args`` form the base; the CLI pass-through
-    *cli_args* append *after* so a per-invocation flag wins for last-wins CLIs.
-    Returns a tuple suitable for the ``<name>_args`` param of
-    ``run_<name>_native`` (persisted as ``terminal_launch_args``).
-
-    :param cfg: Effective config dict.
-    :param harness: A harness id (canonical or alias), e.g. ``"codex-native"``.
-    :param cli_args: Explicit CLI pass-through args (may be empty).
-    :returns: The combined arg tuple: config base + CLI pass-through.
-    """
-    from omnigent.harness_startup_config import resolve_harness_args
-
-    return tuple(resolve_harness_args(harness, cli_args, cfg=cfg))
-
-
 def _print_config_default_rows(
     cfg: dict[str, object],
 ) -> None:
@@ -11242,99 +10802,17 @@ def config_unset(is_global: bool, keys: tuple[str, ...]) -> None:
 
 
 @cli.command("setup")
-@click.option(
-    "--internal-beta/--no-internal-beta",
-    default=False,
-    help="Run the standard model/credential setup (default): choose a "
-    "provider for each harness and set your defaults. Pass --internal-beta "
-    "to configure Databricks internal-beta defaults and authentication.",
-)
-def setup(internal_beta: bool) -> None:
+def setup() -> None:
     """
     Launch the Omnigent first-time setup flow.
 
-    By default this runs the standard model/credential picker — choose a
-    provider for each harness and set your defaults, then start a session
-    with ``omnigent run``. (List configured credentials with
-    ``omnigent config list``.) Pass ``--internal-beta`` to configure
-    Databricks internal-beta defaults and authentication instead.
+    Runs the model/credential picker — choose a provider for each harness
+    and set your defaults, then start a session with ``omnigent run``.
+    (List configured credentials with ``omnigent config list``.)
     """
-    from omnigent.inner import ui
-
-    # Brand the first-run experience without pushing the actual picker below a
-    # typical 80×24 terminal. The full lockup is great in roomy terminals, but
-    # on short terminals it combines with the missing-tool warning and scrolls
-    # the menu off the first screen.
-    if shutil.get_terminal_size(fallback=(80, 24)).lines >= 32:
-        ui.print_landing(tagline="all your agents, one cli")
-    else:
-        ui.print_brandmark("setup")
-
-    if internal_beta:
-        # The internal-beta workspace defaults are excluded from the public OSS
-        # build. Fail loud with a clear message instead of an ImportError deep
-        # in the onboarding flow when someone passes --internal-beta there.
-        try:
-            import omnigent.onboarding.internal_beta  # type: ignore[import-not-found]  # noqa: F401
-        except ImportError:
-            raise click.ClickException(
-                "Databricks internal-beta setup is not available in this build. "
-                f"Run `{cli_invocation()} setup` for the standard model/credential setup."
-            ) from None
-        # Internal-beta routing mints workspace OAuth tokens via
-        # databricks-sdk at runtime, and the SDK ships in the `databricks`
-        # extra rather than the default install. Fail loud up front instead
-        # of completing the whole login flow and breaking on the first turn.
-        from omnigent.onboarding.databricks_config import (
-            DATABRICKS_EXTRA_INSTALL_HINT,
-            databricks_sdk_installed,
-        )
-
-        if not databricks_sdk_installed():
-            raise click.ClickException(
-                "Databricks internal-beta setup needs the databricks extra "
-                f"(databricks-sdk). Reinstall with:\n  {DATABRICKS_EXTRA_INSTALL_HINT}"
-            )
-        # Surface missing external tooling (Node, tmux) before the Databricks
-        # bootstrap so a fresh machine sees every gap at once.
-        _warn_missing_harness_dependencies()
-        from omnigent.onboarding.internal_beta import _INTERNAL_BETA_DEFAULT_SERVER
-        from omnigent.onboarding.sandboxes.lakebox import (  # type: ignore[import-not-found]
-            install_demo_databricks_cli,
-        )
-        from omnigent.onboarding.setup import run_onboarding
-
-        # Install the demo `databricks` CLI (with the `lakebox`
-        # subcommand) BEFORE profile onboarding — `run_onboarding`
-        # shells out to `databricks auth login`, and a fresh machine
-        # might not have the binary on PATH at all. Idempotent: skips
-        # the installer when the demo CLI is already present, but
-        # still persists ~/.local/bin in the user's shell rc files.
-        install_demo_databricks_cli()
-        with _isolated_databricks_cfg():
-            if not run_onboarding():
-                raise click.ClickException("onboarding did not complete; see output above.")
-            _run_configure_databricks()
-        agent_path = _materialize_internal_beta_agents()
-        _save_global_config(
-            {
-                "default_agent": str(agent_path),
-                "profile": "oss",
-                "server": _INTERNAL_BETA_DEFAULT_SERVER,
-                # auth: block provides the default executor credentials for
-                # agents that do not declare executor.auth themselves.
-                "auth": {"type": "databricks", "profile": "oss"},
-            }
-        )
-        click.echo(f"Set default_agent={agent_path} in {_GLOBAL_CONFIG_PATH}")
-        click.echo(
-            f"Type `{cli_invocation()} claude` to get started with Claude Code on omnigent."
-        )
-        return
-
-    # --no-internal-beta: validate existing providers before entering the
-    # picker so malformed user config is reported as an actionable CLI error,
-    # not an application crash from the picker's ambient-adoption step.
+    # Validate existing providers before entering the picker so malformed
+    # user config is reported as an actionable CLI error, not an application
+    # crash from the picker's ambient-adoption step.
     from omnigent.errors import ErrorCode, OmnigentError
     from omnigent.onboarding.provider_config import load_providers
 
@@ -11351,17 +10829,6 @@ def setup(internal_beta: bool) -> None:
     # ``omnigent run``.
     _run_configure_harnesses_interactive()
 
-
-# ─── sandbox group ────────────────────────────────────────────────
-# The provider-agnostic sandbox CLI lives in omnigent/cli_sandbox.py.
-# Provider launcher modules are optional and may be absent from a given
-# distribution; hide the group when none are available.
-# `omnigent lakebox` is kept as an alias for `omnigent sandbox …
-# --provider lakebox`, registered only when the lakebox provider ships.
-if _sandbox_providers():
-    cli.add_command(_sandbox_group)
-    if "lakebox" in _sandbox_providers():
-        cli.add_command(_lakebox_alias_group)
 
 # ─── debug group ──────────────────────────────────────────────────
 #
@@ -13221,14 +12688,14 @@ def _ensure_bundled_agent_brain_credential(name: str) -> None:
 #: Brain-fallback harness priority for bundled agents — mirrors
 #: :func:`_pick_first_run_harness` so the shorthands and bare ``omnigent``
 #: agree on which credentialed harness a launch falls back to.
-_BUNDLED_BRAIN_FALLBACK_PRIORITY = ("claude-sdk", "codex", "pi")
+_BUNDLED_BRAIN_FALLBACK_PRIORITY = ("claude-sdk", "pi")
 
 
 def _bundled_agent_brain_harness_fallback(name: str) -> str | None:
     """Pick a credentialed fallback harness when the brain's family has none.
 
     Polly's and Debby's brains pin ``claude-sdk``; a user whose only
-    credential serves another family (e.g. a Codex subscription) would
+    credential serves another family (e.g. an OpenAI key for pi) would
     otherwise launch a brain with no credential at all — the session starts
     and every turn dies with another CLI's login error, even though bare
     ``omnigent`` routes the same config to a working harness. Mirror
@@ -13243,7 +12710,7 @@ def _bundled_agent_brain_harness_fallback(name: str) -> str | None:
     error degrades to a no-op so the launch surfaces its own error.
 
     :param name: Bundled example directory name, e.g. ``"polly"``.
-    :returns: The canonical fallback harness id, e.g. ``"codex"``, or
+    :returns: The canonical fallback harness id, e.g. ``"pi"``, or
         ``None`` when the brain should keep its declared harness.
     """
     from omnigent.errors import OmnigentError
@@ -13340,54 +12807,6 @@ def _bundled_brain_fallback_applies(run_args: tuple[str, ...]) -> bool:
     return True
 
 
-def _reject_reserved_devin_resume_args(devin_args: tuple[str, ...]) -> None:
-    """Reject Devin-owned resume/session flags in passthrough args.
-
-    Omnigent owns resume: it maps a conversation id to Devin's own session id
-    and passes ``--resume <devin_session_id>`` itself, so a user-supplied
-    ``--resume``/``-c`` would fight it and reattach the wrong session. Same for
-    ``--config``/``--export``, which carry the Omnigent hook wiring.
-    """
-    reserved = {"--resume", "-r", "--continue", "-c", "--config", "--export"}
-    if any(arg == flag or arg.startswith(f"{flag}=") for arg in devin_args for flag in reserved):
-        raise click.UsageError(
-            "Devin resume/config flags are reserved for Omnigent handling; use "
-            "`omnigent devin --resume [CONVERSATION]` instead."
-        )
-
-
-def _reject_reserved_kiro_resume_args(kiro_args: tuple[str, ...]) -> None:
-    """Reject Kiro-owned resume flags in passthrough args."""
-    reserved = {"--resume", "--resume-id", "--resume-picker"}
-    if any(arg == flag or arg.startswith(f"{flag}=") for arg in kiro_args for flag in reserved):
-        raise click.UsageError(
-            "Kiro resume flags are reserved for Omnigent resume handling; use "
-            f"`{cli_invocation()} kiro --resume [CONVERSATION]` instead."
-        )
-
-
-def _build_kiro_launch_args(
-    *,
-    effort: str | None,
-    kiro_agent: str | None,
-    trust_tools: tuple[str, ...],
-    trust_all_tools: bool,
-    passthrough_args: tuple[str, ...],
-) -> tuple[str, ...]:
-    """Build mapped Kiro CLI args for the runner-owned terminal launch."""
-    args: list[str] = []
-    if effort:
-        args.extend(["--effort", effort])
-    if kiro_agent:
-        args.extend(["--agent", kiro_agent])
-    for tool in trust_tools:
-        args.extend(["--trust-tools", tool])
-    if trust_all_tools:
-        args.append("--trust-all-tools")
-    args.extend(passthrough_args)
-    return tuple(args)
-
-
 def _run_bundled_agent(name: str, run_args: tuple[str, ...]) -> None:
     """Forward a bundled-agent subcommand to ``run`` on its packaged path.
 
@@ -13409,7 +12828,7 @@ def _run_bundled_agent(name: str, run_args: tuple[str, ...]) -> None:
     # Polly/Debby launch with the first available credential for their
     # brain's family when no specific one is configured up front.
     _ensure_bundled_agent_brain_credential(name)
-    # When NO credential serves the brain's family at all (e.g. a Codex-only
+    # When NO credential serves the brain's family at all (e.g. a pi-only
     # user launching polly's claude-sdk brain), reroute the brain to the first
     # credentialed harness — mirroring bare ``omnigent``'s first-run pick — so
     # the session doesn't start with a credential-less brain whose every turn
@@ -13429,28 +12848,6 @@ def _run_bundled_agent(name: str, run_args: tuple[str, ...]) -> None:
         prog_name="omnigent run",
         standalone_mode=False,
     )
-
-
-def _run_harness_shorthand(harness: str, run_args: tuple[str, ...]) -> None:
-    """Forward a harness shorthand (``omnigent copilot``) to ``run --harness``, the
-    way :func:`_run_bundled_agent` forwards ``polly``; an explicit ``--harness`` in
-    *run_args* is a usage error rather than a silent override."""
-    if any(arg == "--harness" or arg.startswith("--harness=") for arg in run_args):
-        raise click.UsageError(
-            f"`{cli_invocation()} {harness}` always uses the {harness} harness; drop "
-            f"--harness, or use `{cli_invocation()} run --harness <name>` to pick another."
-        )
-    run.main(
-        args=["--harness", harness, *run_args],
-        prog_name="omnigent run",
-        standalone_mode=False,
-    )
-
-
-# Native coding-agent (TUI) subcommands (claude/codex/pi/…) live in
-# omnigent.cli_native; register them on the group here, at module bottom, so the
-# shared launch helpers their bodies close over are already defined.
-_register_native_commands(cli)
 
 
 if __name__ == "__main__":

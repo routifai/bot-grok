@@ -664,13 +664,8 @@ def _build_native_app(
     """Build a runner app whose session resolves to a claude-native harness.
 
     The spec_resolver returns a spec whose executor harness is
-    ``codex-native``; the first turn's ``_run_turn_bg`` caches it (before
-    streaming), so subsequent buffer decisions take the native path. We use
-    ``codex-native`` rather than ``claude-native`` because both share the
-    identical runner-side ordering path (``_is_native_harness`` covers
-    both), but claude-native's turn additionally awaits a live MCP
-    comment-tool relay (``_ensure_comment_relay_started``) that a fake
-    harness can't satisfy — orthogonal to message ordering.
+    ``claude-native``; the first turn's ``_run_turn_bg`` caches it (before
+    streaming), so subsequent buffer decisions take the native path.
 
     :param gate: Event that unblocks the first turn.
     :returns: ``(app, process_manager, harness_client)``.
@@ -678,7 +673,7 @@ def _build_native_app(
     spec = AgentSpec(
         spec_version=1,
         name="t",
-        executor=ExecutorSpec(type="omnigent", config={"harness": "codex-native"}),
+        executor=ExecutorSpec(type="omnigent", config={"harness": "claude-native"}),
     )
     harness_client = _NativeBlockingHarnessClient(gate)
     pm = _FakeProcessManager(harness_client)

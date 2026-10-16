@@ -24,8 +24,7 @@ from omnigent.runner.tool_dispatch import (
 def _spec_with_model(model: str) -> SimpleNamespace:
     """Minimal agent_spec stub: an executor model + a web_search builtin config.
 
-    Uses the in-tree ``perplexity`` backend so this test stands alone (the
-    dispatch fix is provider-agnostic; the invariants under test are too).
+    Uses the Tavily backend, the only ``search_provider`` web_search supports.
     """
     return SimpleNamespace(
         executor=SimpleNamespace(model=model),
@@ -33,7 +32,7 @@ def _spec_with_model(model: str) -> SimpleNamespace:
             builtins=[
                 SimpleNamespace(
                     name="web_search",
-                    config={"search_provider": "perplexity", "api_key": "k"},
+                    config={"search_provider": "tavily", "api_key": "k"},
                 )
             ]
         ),
@@ -41,7 +40,7 @@ def _spec_with_model(model: str) -> SimpleNamespace:
 
 
 def test_web_search_is_runner_local() -> None:
-    """``web_search`` dispatches locally, like ``web_fetch``."""
+    """``web_search`` dispatches locally."""
     assert "web_search" in _ALL_LOCAL_TOOLS
     assert should_dispatch_locally("web_search") is True
 
@@ -51,29 +50,21 @@ def test_web_search_not_relayed_to_native_harnesses() -> None:
     assert "web_search" not in _NATIVE_RELAY_BUILTIN_TOOLS
 
 
-def test_dispatch_preserves_openai_passthrough_fence() -> None:
-    """
-    For an OpenAI model the handler builds the tool in passthrough mode, so
-    ``invoke()`` raises its fence — the third-party backend is NEVER called.
-    """
-    spec = _spec_with_model("gpt-5.4-mini")  # provider → openai
-    with patch("omnigent.tools.builtins.web_search_perplexity.httpx.post") as mock_post:
-        with pytest.raises(RuntimeError, match="passthrough"):
-            asyncio.run(
-                _execute_web_search_tool({"query": "x"}, agent_spec=spec, conversation_id="c")
-            )
-    assert mock_post.call_count == 0, "OpenAI passthrough must never hit a search backend."
-
-
-def test_dispatch_databricks_model_uses_function_mode() -> None:
-    """A ``databricks-*`` model skips passthrough and runs the configured backend."""
-    spec = _spec_with_model("databricks-claude-sonnet-4-6")
+@pytest.mark.parametrize("model", ["gpt-5.4-mini", "claude-sonnet-4-6"])
+def test_dispatch_runs_tavily_backend_for_any_model(model: str) -> None:
+    """The handler runs the spec's Tavily backend whatever the executor model."""
+    spec = _spec_with_model(model)
     fake_response = MagicMock()
-    fake_response.json.return_value = {"choices": [{"message": {"content": "answer"}}]}
-    with patch("omnigent.tools.builtins.web_search_perplexity.httpx.post") as mock_post:
+    fake_response.json.return_value = {
+        "answer": "answer",
+        "results": [{"title": "T", "url": "https://example.com", "content": "snippet"}],
+    }
+    with patch("omnigent.tools.builtins.web_search_tavily.httpx.post") as mock_post:
         mock_post.return_value = fake_response
         result = asyncio.run(
             _execute_web_search_tool({"query": "x"}, agent_spec=spec, conversation_id="c")
         )
-    assert mock_post.call_count == 1, "databricks-* must run the backend (function mode)."
-    assert "answer" in result
+    assert mock_post.call_count == 1
+    assert mock_post.call_args.kwargs["json"]["query"] == "x"
+    assert result.startswith("answer")
+    assert "https://example.com" in result

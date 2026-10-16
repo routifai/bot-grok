@@ -142,9 +142,6 @@ _REMOTE_AUTH_TOKEN_ENV = "OMNIGENT_REMOTE_AUTH_TOKEN"
 # the legacy ``_default_cli_model`` at
 # ``omnigent/inner/cli.py:344``.
 _OMNIGENT_MODEL_ENV_VAR = "OMNIGENT_MODEL"
-_OPENAI_API_KEY_ENV_VAR = "OPENAI_API_KEY"
-_OPENAI_BASE_URL_ENV_VAR = "OPENAI_BASE_URL"
-_OPENAI_AGENTS_HARNESSES = frozenset({"openai-agents", "openai-agents-sdk"})
 _MATERIALIZED_OVERRIDE_DIRS: dict[Path, Path] = {}
 
 
@@ -1751,7 +1748,7 @@ def _stop_headless_session(*, base_url: str, session_id: str) -> None:
     # Teardown must never turn a completed run into a failed one.
     try:
         _stop_session_on_server(base_url=base_url, session_id=session_id)
-    except Exception:  # noqa: BLE001 — best-effort cleanup
+    except Exception:
         logger.debug("could not stop session %s after one-shot run", session_id, exc_info=True)
 
 
@@ -3019,12 +3016,8 @@ def _materialize_override_bundle(source: Path, overrides: ChatOverrides) -> Path
         original *source* or a rewritten copy under a tempdir.
     """
     raw_peek = _load_yaml_if_single_file(source)
-    raw_override_peek = _load_yaml_for_override_peek(source)
     needs_fallback = raw_peek is not None and not _spec_declares_harness_or_model(raw_peek)
-    needs_openai_env_auth = raw_override_peek is not None and _should_materialize_openai_env_auth(
-        raw_override_peek, overrides
-    )
-    if not overrides.has_any and not needs_fallback and not needs_openai_env_auth:
+    if not overrides.has_any and not needs_fallback:
         return source
 
     # ``_cleanup_materialized_override_bundle`` removes this tempdir
@@ -3082,28 +3075,6 @@ def _cleanup_materialized_override_bundle(materialized: Path) -> None:
     shutil.rmtree(tempdir, ignore_errors=True)
 
 
-def _load_yaml_for_override_peek(source: Path) -> _YamlMapping | None:
-    """
-    Load the YAML that override materialization would rewrite.
-
-    Single-file specs rewrite the file itself. Agent-image
-    directories rewrite ``config.yaml``. Invalid or non-mapping YAML
-    returns ``None`` so the normal validation path can surface the
-    precise user-facing error later.
-
-    :param source: Path to a YAML file or agent directory.
-    :returns: Parsed top-level YAML mapping, or ``None`` when no
-        rewrite target can be inspected.
-    """
-    if source.is_dir():
-        config = source / "config.yaml"
-        if not config.is_file():
-            return None
-        parsed = yaml.safe_load(config.read_text(encoding="utf-8"))
-        return parsed if isinstance(parsed, dict) else None
-    return _load_yaml_if_single_file(source)
-
-
 def _load_yaml_if_single_file(source: Path) -> _YamlMapping | None:
     """
     Load the YAML at *source* if it's a single-file spec; else None.
@@ -3148,168 +3119,6 @@ def _spec_declares_harness_or_model(raw: _YamlMapping) -> bool:
         return True
     config = executor.get("config")
     return isinstance(config, dict) and bool(config.get("harness"))
-
-
-def _should_materialize_openai_env_auth(
-    raw: _YamlMapping,
-    overrides: ChatOverrides,
-) -> bool:
-    """
-    Return whether materialization would inject OpenAI env credentials.
-
-    Daemon-backed local runs launch a daemon-owned runner whose
-    environment intentionally strips provider secrets. Specs that rely
-    only on ambient ``OPENAI_API_KEY`` therefore need those credentials
-    baked into ``executor.auth`` before bundling, but only when the
-    effective harness is OpenAI-compatible and no explicit spec/provider
-    auth already wins.
-
-    :param raw: Parsed top-level YAML mapping.
-    :param overrides: CLI overrides that will be applied to ``raw``.
-    :returns: ``True`` when a rewritten bundle is needed solely to add
-        ``executor.auth`` from ``OPENAI_API_KEY`` / ``OPENAI_BASE_URL``.
-    """
-    executor = raw.get("executor")
-    executor_block = executor if isinstance(executor, dict) else {}
-    harness = _effective_openai_auth_harness(raw, executor_block, overrides)
-    return _should_inject_openai_env_auth_for_executor(executor_block, harness)
-
-
-def _effective_openai_auth_harness(
-    raw: _YamlMapping,
-    executor_block: _YamlMapping,
-    overrides: ChatOverrides,
-) -> str | None:
-    """
-    Resolve the harness relevant to OpenAI env-auth injection.
-
-    This mirrors the edge of the normal spec path closely enough for
-    materialization decisions: explicit CLI harness wins, then YAML
-    harness, then model-prefix inference from the effective model.
-
-    :param raw: Parsed top-level YAML mapping.
-    :param executor_block: Parsed ``executor`` mapping from ``raw``.
-    :param overrides: CLI overrides that will be applied.
-    :returns: Canonical harness name, e.g. ``"openai-agents"``, or
-        ``None`` when no harness can be inferred.
-    """
-    raw_harness = executor_block.get("harness")
-    harness = overrides.harness if overrides.harness is not None else raw_harness
-    if isinstance(harness, str) and harness:
-        return canonicalize_harness(harness) or harness
-
-    model = _effective_openai_auth_model(raw, executor_block, overrides)
-    if model is None:
-        return None
-    from omnigent.llms.routing import infer_harness_from_model
-
-    inferred = infer_harness_from_model(model)
-    return inferred or None
-
-
-def _effective_openai_auth_model(
-    raw: _YamlMapping,
-    executor_block: _YamlMapping,
-    overrides: ChatOverrides,
-) -> str | None:
-    """
-    Resolve the model relevant to OpenAI env-auth injection.
-
-    :param raw: Parsed top-level YAML mapping.
-    :param executor_block: Parsed ``executor`` mapping from ``raw``.
-    :param overrides: CLI overrides that will be applied.
-    :returns: Effective model string, e.g. ``"databricks-gpt-5-4-mini"``,
-        or ``None`` when neither CLI nor YAML names a model.
-    """
-    if overrides.model is not None:
-        return overrides.model
-    raw_model = executor_block.get("model")
-    if isinstance(raw_model, str) and raw_model:
-        return raw_model
-    llm = raw.get("llm")
-    if isinstance(llm, dict):
-        llm_model = llm.get("model")
-        if isinstance(llm_model, str) and llm_model:
-            return llm_model
-    return None
-
-
-def _should_inject_openai_env_auth_for_executor(
-    executor_block: _YamlMapping,
-    harness: str | None,
-) -> bool:
-    """
-    Return whether ``executor.auth`` should be populated from env.
-
-    :param executor_block: Effective parsed ``executor`` mapping.
-    :param harness: Effective harness name, e.g. ``"openai-agents"``.
-    :returns: ``True`` when ambient OpenAI-compatible credentials are
-        present and no explicit auth/profile/provider declaration
-        should take precedence.
-    """
-    if harness is None or harness not in _OPENAI_AGENTS_HARNESSES:
-        return False
-    if not os.environ.get(_OPENAI_API_KEY_ENV_VAR):
-        return False
-    if executor_block.get("auth") is not None:
-        return False
-    if executor_block.get("connection") is not None:
-        return False
-    if executor_block.get("profile"):
-        return False
-    config = executor_block.get("config")
-    if isinstance(config, dict) and config.get("profile"):
-        return False
-    # A configured credential — a provider default serving this harness's
-    # family, or the legacy global ``auth:`` block — is the user's explicit
-    # setup choice; an ambient env key must NOT be baked over it (a shell
-    # with OPENAI_API_KEY exported would silently hijack the configured
-    # Databricks/gateway routing). Configured sources reach the runner via
-    # OMNIGENT_CONFIG_HOME, so skipping injection loses nothing. The env
-    # bake remains only for users whose SOLE credential is the env key.
-    from omnigent.onboarding.provider_config import (
-        default_provider_for_harness,
-        load_config,
-    )
-    from omnigent.runtime.workflow import _load_global_auth
-
-    if default_provider_for_harness(load_config(), harness) is not None:
-        return False
-    if _load_global_auth() is not None:
-        return False
-    return True
-
-
-def _inject_openai_env_auth_if_needed(raw: _YamlMapping) -> None:
-    """
-    Add explicit OpenAI-compatible auth to ``raw`` when env fallback is unsafe.
-
-    Daemon-owned runners do not inherit provider secret environment
-    variables. For an OpenAI-compatible harness that otherwise relies on
-    ``OPENAI_API_KEY`` / ``OPENAI_BASE_URL``, bake the resolved values into
-    the materialized spec so the uploaded bundle remains self-contained.
-
-    :param raw: Parsed top-level YAML mapping, mutated in place.
-    :returns: None.
-    """
-    executor = raw.get("executor")
-    executor_block: _YamlMapping
-    if isinstance(executor, dict):
-        executor_block = executor
-    else:
-        executor_block = {}
-        raw["executor"] = executor_block
-    harness = _effective_openai_auth_harness(raw, executor_block, ChatOverrides())
-    if not _should_inject_openai_env_auth_for_executor(executor_block, harness):
-        return
-    auth: dict[str, str] = {
-        "type": "api_key",
-        "api_key": os.environ[_OPENAI_API_KEY_ENV_VAR],
-    }
-    base_url = os.environ.get(_OPENAI_BASE_URL_ENV_VAR)
-    if base_url:
-        auth["base_url"] = base_url
-    executor_block["auth"] = auth
 
 
 def _apply_overrides_to_raw(raw: _YamlMapping, overrides: ChatOverrides) -> None:
@@ -3359,7 +3168,6 @@ def _apply_overrides_to_raw(raw: _YamlMapping, overrides: ChatOverrides) -> None
     # Resolve once before bundling so the runner receives a self-contained spec.
     if not _spec_declares_harness_or_model(raw):
         executor_block["model"] = _default_cli_model()
-    _inject_openai_env_auth_if_needed(raw)
     if overrides.system_prompt is not None:
         raw["prompt"] = overrides.system_prompt
 
@@ -3909,7 +3717,7 @@ def _spec_used_families(agent_yaml: Path | None) -> list[str]:
         from omnigent.spec import parse
 
         spec = parse(root, expand_env=False)
-    except Exception:  # noqa: BLE001 — best-effort startup-header hint: a spec parse must never break `run`
+    except Exception:
         logger.debug("startup-header family parse failed for %s", agent_yaml, exc_info=True)
         return []
 

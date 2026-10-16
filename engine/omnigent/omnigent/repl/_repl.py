@@ -1587,7 +1587,7 @@ class _SessionsChatReplAdapter:
     @property
     def harness(self) -> str | None:
         """
-        The bound agent's canonical harness, e.g. ``"openai-agents"``.
+        The bound agent's canonical harness, e.g. ``"claude-sdk"``.
 
         Populated from the server's ``SessionResponse.harness`` on the first
         session fetch. The ``/model`` readout uses it to describe the active
@@ -3922,7 +3922,7 @@ async def run_repl(
             # Update the toolbar context-ring with the best available
             # estimate of next-turn context fill.
             # ``context_tokens`` is populated by multi-call executors
-            # (e.g. openai-agents) with the last sub-turn's total, which
+            # with the last sub-turn's total, which
             # correctly reflects context fill without over-counting the
             # repeated history across sub-turns. Single-call executors
             # don't set it, so we fall back to ``total_tokens`` (= input
@@ -5018,8 +5018,7 @@ def _model_readout_harness(active_model: str | None) -> str:
     :param active_model: The override or spec model, e.g.
         ``"openai/gpt-5.5"`` or ``"claude-sonnet-4-6"``, or ``None`` when
         neither is set.
-    :returns: A canonical harness name, e.g. ``"claude-sdk"`` or
-        ``"openai-agents"``.
+    :returns: A canonical harness name, e.g. ``"claude-sdk"`` or ``"pi"``.
     """
     from omnigent.llms.routing import infer_harness_from_model
 
@@ -5036,16 +5035,15 @@ def _session_readout_harness(session: _ReplSession) -> str:
     Prefers the session's actual bound harness
     (:attr:`SessionResponse.harness`, threaded through the client into
     ``session.harness``) so the readout reflects the real provider family —
-    anthropic for claude-sdk, openai for codex / openai-agents. Falls back
+    anthropic for claude-sdk, openai for an OpenAI-backed pi. Falls back
     to inferring from the active model string (:func:`_model_readout_harness`)
     only when the server reported no harness (older sessions / not yet
     hydrated). Inference is unreliable when the agent declares no model (a
     generic-provider launcher), which is exactly when it wrongly defaulted
-    to claude-sdk and reported the anthropic family for an openai-agents run.
+    to claude-sdk and reported the anthropic family for an OpenAI-backed run.
 
     :param session: The REPL session.
-    :returns: A canonical harness name, e.g. ``"openai-agents"`` or
-        ``"claude-sdk"``.
+    :returns: A canonical harness name, e.g. ``"pi"`` or ``"claude-sdk"``.
     """
     harness = getattr(session, "harness", None)
     if harness:
@@ -5070,7 +5068,7 @@ def _build_model_readout_lines(
     configured:`` line lists them (friendly names + glyphs) with honest
     guidance: ``/model`` only changes the model within the active
     provider — switching the active provider mid-session is not wired, so
-    it goes through ``omnigent setup --no-internal-beta`` + a restart. Falls
+    it goes through ``omnigent setup`` + a restart. Falls
     back to the legacy ``(agent default)`` line when nothing is configured
     for the harness's surface.
 
@@ -5099,22 +5097,11 @@ def _build_model_readout_lines(
         PI_SURFACE,
         describe_active_credential,
         harness_family,
-        harness_owns_its_credential,
         load_providers,
         provider_families,
     )
 
     lines: list[str] = []
-    if harness and harness_owns_its_credential(harness):
-        # The external agent authenticates itself, so there is no Omnigent
-        # credential to name. An in-session override is still shown (it's
-        # real, and e.g. goose applies it as GOOSE_MODEL); whether it reaches
-        # the agent varies per ACP agent, so no claim is made either way.
-        model_label = model_override or "(the agent's own model)"
-        return [
-            f"Active:  {model_label}  ·  🤖 ACP agent (agent's own auth)",
-            "usage: /model <name> · /model default | off | reset to clear",
-        ]
     cred = describe_active_credential(config, harness, model_override=model_override)
     if cred is None:
         # Nothing resolves for this harness's surface — not in the explicit
@@ -5127,10 +5114,7 @@ def _build_model_readout_lines(
             lines.append(f"Active:  {model_override}  ·  (provider unresolved)")
         else:
             lines.append("Active:  None  ·  None")
-            lines.append(
-                f"no model configured — run `{cli_invocation()} setup --no-internal-beta` "
-                "to add one"
-            )
+            lines.append(f"no model configured — run `{cli_invocation()} setup` to add one")
         lines.append("usage: /model <name> · /model default | off | reset to clear")
         return lines
 
@@ -5296,7 +5280,7 @@ async def _cmd_model(
     a bare ``/model <active-provider>`` resolves that provider's default
     model. A value naming a **different** configured provider fails loud
     with guidance — switching the active provider mid-session is not wired
-    (it goes through ``omnigent setup --no-internal-beta`` + a restart).
+    (it goes through ``omnigent setup`` + a restart).
     ``/model default|off|reset`` clears the override.
     """
     from rich.text import Text
@@ -5371,7 +5355,7 @@ async def _cmd_model(
         host.output(
             Text.from_markup(
                 f"  [{fmt.muted}]Active provider: {active_label}. To use {target_label}, run "
-                f"`{cli_invocation()} setup --no-internal-beta` and select it as the "
+                f"`{cli_invocation()} setup` and select it as the "
                 f"default, then restart. "
                 f"(You can still change the model within {active_label}: /model <model-name>.)"
                 f"[/{fmt.muted}]"

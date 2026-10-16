@@ -1,6 +1,6 @@
 """Tests for the built-in agent bundle builders in ``omnigent/server/app.py``.
 
-The server seeds Web-UI-launchable agents (claude-native, codex-native, and
+The server seeds Web-UI-launchable agents (claude-native and
 the shipped ``debby`` / ``polly`` examples) by materializing each spec into a
 gzipped tarball at startup. These builders were previously exercised only
 transitively by the agents' e2e suites; a packaging regression (a dropped
@@ -27,9 +27,8 @@ from omnigent.spec import load, materialize_bundle
 
 # Native built-ins are seeded through one registry-driven builder,
 # ``_build_native_bundle(provider)`` (PR 1.7). We exercise EVERY native agent
-# (not a sample) so each harness's materialize path — and both model-arg shapes
-# (codex requires keyword-only model, kiro/opencode default it, the rest take
-# just tmpdir) — is covered directly rather than only transitively via e2e.
+# (not a sample) so each harness's materialize path is covered directly rather
+# than only transitively via e2e.
 # Each spec entry is ``<agent_name>.yaml``, proving the right spec materialized.
 _NATIVE_BUILDERS = [(agent.key, f"{agent.agent_name}.yaml") for agent in _NATIVE_CODING_AGENTS]
 
@@ -131,11 +130,6 @@ def test_bundle_builder_is_reproducible(
 
 # (name, bundle source dir, sub-agents the shipped definition declares today)
 _SHIPPED_SUB_AGENT_EXAMPLES = [
-    (
-        "polly",
-        app._POLLY_BUNDLE_SOURCE,
-        {"claude_code", "codex", "opencode", "cursor", "hermes", "pi"},
-    ),
     ("debby", app._DEBBY_BUNDLE_SOURCE, {"claude", "gpt"}),
 ]
 
@@ -172,13 +166,12 @@ def test_shipped_example_survives_unknown_harness_sub_agent(
 ) -> None:
     """A newer-server sub-agent the old client can't validate is dropped, not fatal.
 
-    Reproduces matei's incident on the real bundles: a server bumped polly to a
-    definition with an ``opencode`` sub-agent, and older runners/hosts failed to
-    launch *any* polly because the then-unknown ``opencode-native`` harness
-    failed the whole spec's validation. ``opencode-native`` is a recognized
-    harness now, so we inject a deliberately-synthetic harness — the stand-in
-    for "whatever the next server adds that this client doesn't know yet" — as a
-    worker referenced from the parent's ``tools.agents``, and assert:
+    Reproduces matei's incident on the real bundles: a server added a sub-agent
+    on a harness older runners/hosts did not know, and they failed to launch the
+    whole agent because that harness failed the spec's validation. We inject a
+    deliberately-synthetic harness — the stand-in for "whatever the next server
+    adds that this client doesn't know yet" — as a worker referenced from the
+    parent's ``tools.agents``, and assert:
 
     - the strict (authoring/upload) load still fails loud — unchanged behavior;
     - the execution-path load (``prune_invalid_sub_agents=True``) drops ONLY the
@@ -239,20 +232,6 @@ def test_shipped_example_survives_unknown_harness_sub_agent(
 # value to blindly update.
 _EXPECTED_BUILTIN_AGENT_IDS = {
     "claude-native-ui": "58a1bc5bf0bba6d31ceeb7661f8d751c",
-    "codex-native-ui": "16a06503889b0c3034496821afd41b9e",
-    "pi-native-ui": "a1b7caa17404f6716180ba69aa37c592",
-    "opencode-native-ui": "cf65137fc096a61a6434956c92093549",
-    "cursor-native-ui": "a5fac3a24c1961af2dbb1cafe0a81425",
-    "kiro-native-ui": "cc8fef6623a8792be9c039cf2673ce93",
-    "goose-native-ui": "93dd98c4a79bd26a1dd5dc592ee38afb",
-    "antigravity-native-ui": "db097e89797b66fb7e30699813ae09d2",
-    "qwen-native-ui": "2cffe181a2fc6cf417a49e1cf8b28d77",
-    "kimi-native-ui": "9e7d109e7da66e8b5ed4ec3ecb54cef1",
-    "hermes-native-ui": "32113910cf31fcc63dc96bbde428b97c",
-    # Added with the devin-native harness. This is an ADDITION, not a drift:
-    # every id above is byte-identical to before, so no persisted
-    # conversation.agent_id row is orphaned and no migration is owed.
-    "devin-native-ui": "010b5eea4b105dc0af6fb62f46065894",
 }
 
 
@@ -261,7 +240,7 @@ def test_native_seed_ids_are_byte_stable() -> None:
 
     Guards the redeploy-safety invariant the seeding loop must preserve: the
     id is a hash of the agent name, so the set of names AND their ids must not
-    drift when the 11 hand-written seed helpers collapse into one loop.
+    drift.
     """
     from omnigent.db.utils import builtin_agent_id
     from omnigent.native.native_coding_agents import NATIVE_CODING_AGENTS

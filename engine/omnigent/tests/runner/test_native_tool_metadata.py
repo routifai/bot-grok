@@ -143,7 +143,7 @@ async def test_cold_turn_schemas_preserve_local_tools_without_os_environment(
                 "type": "message",
                 "role": "user",
                 "agent_id": "ag_metadata",
-                "harness": "openai-agents",
+                "harness": "claude-sdk",
                 "content": [{"type": "input_text", "text": "hello"}],
             },
         )

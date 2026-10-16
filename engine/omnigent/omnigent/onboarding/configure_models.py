@@ -1,9 +1,9 @@
-"""Rendering + flow helpers for ``omnigent setup --no-internal-beta``.
+"""Rendering + flow helpers for ``omnigent setup``.
 
 The user-facing model-selection surface (chunk 2b of
 ``designs/oss-cuj/04-model-selection-implementation.md``) has two pieces:
 
-- the ``omnigent setup --no-internal-beta`` CLI command (interactive
+- the ``omnigent setup`` CLI command (interactive
   add/set-default/remove + a scriptable ``list`` subcommand), and
 - the ``/model`` REPL readout/switch (in :mod:`omnigent.repl._repl`).
 
@@ -38,7 +38,6 @@ from omnigent.onboarding.provider_config import (
     CLI_CONFIG_KIND,
     DATABRICKS_KIND,
     GATEWAY_KIND,
-    GEMINI_FAMILY,
     KEY_KIND,
     LOCAL_KIND,
     OPENAI_FAMILY,
@@ -100,13 +99,11 @@ _KIND_STYLE: dict[str, str] = {
 
 # Human label per harness surface, for the "(default · Claude)" /
 # "(default · Codex)" / "(default · Pi)" markers. Anthropic powers the
-# Claude surface; openai powers the Codex surface (and the OpenAI-Agents
-# SDK harness); the pi surface is the pi harness itself (it consumes both
+# Claude surface; openai powers the Codex surface; the pi surface is the pi harness itself (it consumes both
 # model families).
 _FAMILY_LABEL: dict[str, str] = {
     ANTHROPIC_FAMILY: "Claude",
     OPENAI_FAMILY: "Codex",
-    GEMINI_FAMILY: "Gemini",
     PI_SURFACE: "Pi",
 }
 
@@ -115,8 +112,7 @@ _FAMILY_LABEL: dict[str, str] = {
 # ("Claude") is honest about which harnesses it covers.
 _FAMILY_HARNESS_IDS: dict[str, str] = {
     ANTHROPIC_FAMILY: "claude-sdk, native-claude",
-    OPENAI_FAMILY: "codex, native-codex, openai-agents",
-    GEMINI_FAMILY: "antigravity, antigravity-native",
+    OPENAI_FAMILY: "native-codex",
     PI_SURFACE: "pi",
 }
 
@@ -150,10 +146,6 @@ def family_harness_ids(family: str) -> str:
 _FAMILY_DEFAULT_BASE_URL: dict[str, str] = {
     ANTHROPIC_FAMILY: "https://api.anthropic.com",
     OPENAI_FAMILY: "https://api.openai.com/v1",
-    # Gemini's OpenAI-compatible endpoint, used as the listing base URL for a
-    # ``key``-kind gemini provider (the antigravity harness drives the SDK
-    # directly with the key, so this only feeds model enumeration).
-    GEMINI_FAMILY: "https://generativelanguage.googleapis.com/v1beta/openai",
 }
 
 # Maps a catalog provider name (from
@@ -165,9 +157,6 @@ _FAMILY_DEFAULT_BASE_URL: dict[str, str] = {
 _CATALOG_PROVIDER_FAMILY: dict[str, str] = {
     "anthropic": ANTHROPIC_FAMILY,
     "openai": OPENAI_FAMILY,
-    # ``gemini`` serves the Gemini surface (the antigravity harness drives the
-    # SDK directly with a GEMINI_API_KEY).
-    "gemini": GEMINI_FAMILY,
     "openrouter": OPENAI_FAMILY,
     "groq": OPENAI_FAMILY,
     "deepseek": OPENAI_FAMILY,
@@ -265,8 +254,6 @@ _PROVIDER_DISPLAY_NAME: dict[str, str] = {
     "mistral": "Mistral",
     "together_ai": "Together AI",
     "fireworks_ai": "Fireworks AI",
-    "gemini": "Google Gemini",
-    "google": "Google Gemini",
     "databricks": "Databricks",
     "ollama": "Ollama",
 }
@@ -419,11 +406,7 @@ class AddOption:
 
 # Catalog providers surfaced as their own top-level add option; the rest
 # are reachable via the "Other provider" catch-all so the menu stays short.
-# ``gemini`` has its own "Gemini — API key" entry (it is the antigravity
-# surface, a distinct family), so it must be excluded here too — otherwise it
-# leaks into the openai-family "Other provider" catch-all, whose tail is
-# documented as "all openai-family" (see :func:`_add_option_families`).
-_PRESET_KEY_PROVIDERS: tuple[str, ...] = ("openai", "anthropic", "openrouter", "gemini")
+_PRESET_KEY_PROVIDERS: tuple[str, ...] = ("openai", "anthropic", "openrouter")
 
 
 def add_menu_options() -> list[AddOption]:
@@ -471,12 +454,6 @@ def add_menu_options() -> list[AddOption]:
             "Use an Anthropic API key (console.anthropic.com).",
             KEY_KIND,
             provider="anthropic",
-        ),
-        _opt(
-            "Gemini — API key",
-            "Use a Google Gemini API key (aistudio.google.com) for the antigravity harness.",
-            KEY_KIND,
-            provider="gemini",
         ),
         _opt(
             "ChatGPT — subscription",
@@ -544,18 +521,16 @@ def _add_option_families(opt: AddOption) -> frozenset[str]:
     """Return the surfaces an add-menu *opt* can serve.
 
     Used to scope the add menu to the harness the user drilled into
-    (``configure harness`` → Claude / Codex / Gemini / Pi → "Add a
-    provider"): a Claude add should not offer an OpenAI-only key, and vice
-    versa. Gateways and Databricks serve the anthropic / openai / pi surfaces —
-    but NOT Gemini, which is key-only (the antigravity harness needs a real
-    GEMINI_API_KEY, not a proxy). An anthropic / openai API key can also drive
-    pi (it consumes both model families); a gemini key serves ONLY the Gemini
-    surface; subscriptions never drive pi (a CLI login is unusable outside its
+    (``configure harness`` → Claude / Codex / Pi → "Add a provider"): a
+    Claude add should not offer an OpenAI-only key, and vice versa. Gateways
+    and Databricks serve the anthropic / openai / pi surfaces. An anthropic /
+    openai API key can also drive pi (it consumes both model families);
+    subscriptions never drive pi (a CLI login is unusable outside its
     own CLI).
 
     :param opt: One add-menu option.
     :returns: The surfaces this option can configure — a subset of
-        ``{"anthropic", "openai", "gemini", "pi"}``.
+        ``{"anthropic", "openai", "pi"}``.
     """
     if opt.kind == GATEWAY_KIND or opt.kind == DATABRICKS_KIND:
         return frozenset({ANTHROPIC_FAMILY, OPENAI_FAMILY, PI_SURFACE})
@@ -576,14 +551,7 @@ def _add_option_families(opt: AddOption) -> frozenset[str]:
             # The catch-all tail (Groq, DeepSeek, …) are all openai-family.
             return frozenset({OPENAI_FAMILY, PI_SURFACE})
         if opt.provider is not None:
-            family = family_for_key_provider(opt.provider)
-            # The Gemini surface (antigravity) is not a pi model family — pi
-            # consumes the anthropic / openai families only. So a gemini key
-            # serves ONLY the Gemini surface; anthropic / openai keys also drive
-            # pi.
-            if family == GEMINI_FAMILY:
-                return frozenset({GEMINI_FAMILY})
-            return frozenset({family, PI_SURFACE})
+            return frozenset({family_for_key_provider(opt.provider), PI_SURFACE})
     return frozenset()
 
 
@@ -610,8 +578,8 @@ def other_key_providers() -> list[str]:
     :func:`add_menu_options` entry. The ``"Other provider"`` option is scoped
     to the openai family (see :func:`_add_option_families`), so the tail is
     filtered to ``OPENAI_FAMILY`` rather than only excluding the preset list:
-    that way a future non-openai catalog family (the gemini case) cannot leak
-    into the openai-only catch-all even if it is omitted from
+    that way a future non-openai catalog family cannot leak into the
+    openai-only catch-all even if it is omitted from
     :data:`_PRESET_KEY_PROVIDERS`.
 
     :returns: openai-family catalog provider ids excluding
@@ -648,7 +616,7 @@ def render_provider_listing_by_harness(
     if not providers:
         console.print("  [dim]none configured yet[/dim]")
         return
-    for family in (ANTHROPIC_FAMILY, OPENAI_FAMILY, GEMINI_FAMILY, PI_SURFACE):
+    for family in (ANTHROPIC_FAMILY, OPENAI_FAMILY, PI_SURFACE):
         console.print(f"  [bold]{_FAMILY_LABEL[family]}[/]")
         serving = [
             (name, entry)
@@ -684,10 +652,10 @@ def _provider_default_families(entry: ProviderEntry, config: dict[str, object]) 
     :param config: The parsed config mapping (``providers:`` block), used
         to resolve each surface's default.
     :returns: Surface names this entry is the default for, in
-        ``[anthropic, openai, gemini, pi]`` order, e.g. ``["anthropic", "pi"]``.
+        ``[anthropic, openai, pi]`` order, e.g. ``["anthropic", "pi"]``.
     """
     result: list[str] = []
-    for family in (ANTHROPIC_FAMILY, OPENAI_FAMILY, GEMINI_FAMILY, PI_SURFACE):
+    for family in (ANTHROPIC_FAMILY, OPENAI_FAMILY, PI_SURFACE):
         default = surface_default_provider(config, family)
         if default is not None and default.name == entry.name:
             result.append(family)
@@ -743,7 +711,7 @@ def _entry_models_summary(entry: ProviderEntry) -> str:
     # base_url is set (a gateway without a pinned default model still works
     # — the spec/override picks the model).
     models: list[str] = []
-    for family in (ANTHROPIC_FAMILY, OPENAI_FAMILY, GEMINI_FAMILY):
+    for family in (ANTHROPIC_FAMILY, OPENAI_FAMILY):
         default_model = entry.family_default_model(family)
         if default_model:
             models.append(default_model)
@@ -884,11 +852,10 @@ def build_bedrock_provider_entry(
 def default_base_url_for_family(family: str) -> str:
     """Return the canonical vendor base URL for a ``key`` provider family.
 
-    :param family: ``"anthropic"``, ``"openai"``, or ``"gemini"``.
+    :param family: ``"anthropic"`` or ``"openai"``.
     :returns: The default endpoint base URL, e.g.
-        ``"https://api.anthropic.com"`` (anthropic),
-        ``"https://api.openai.com/v1"`` (openai), or Gemini's
-        OpenAI-compatible endpoint (gemini).
+        ``"https://api.anthropic.com"`` (anthropic) or
+        ``"https://api.openai.com/v1"`` (openai).
     :raises KeyError: If *family* is not a known family.
     """
     return _FAMILY_DEFAULT_BASE_URL[family]

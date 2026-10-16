@@ -105,7 +105,7 @@ CLAUDE_NATIVE_LAUNCH_PERMISSION_MODES: frozenset[str] = frozenset(
 
 # The only harness that accepts a ``--permission-mode`` launch arg — the same
 # ``permissionMode`` capability the web dialog gates its permission control on.
-# Other native CLIs (codex / cursor / …) use different flags, so injecting
+# Other native CLIs (codex / pi) use different flags, so injecting
 # ``--permission-mode`` there would be an unknown flag that breaks the launch.
 _PERMISSION_MODE_HARNESS = "claude-native"
 
@@ -121,7 +121,7 @@ async def validate_permission_mode_agent_support(
     Mirrors the web dialog's capability gate on the server so the REST endpoint
     and agent tools enforce the same rule the UI does: only a ``claude-native``
     agent may carry a ``permission_mode``. Without this, a task on a codex /
-    cursor agent could persist a mode the fire path would inject as an unknown
+    pi agent could persist a mode the fire path would inject as an unknown
     ``--permission-mode`` flag, breaking the launch.
 
     This is an early, friendly 4xx at persist time. A ``None`` mode is always

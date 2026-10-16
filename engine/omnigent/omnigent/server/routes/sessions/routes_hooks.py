@@ -91,7 +91,6 @@ from omnigent.server.routes._sessions.orchestration import (
     _hold_native_ask_gate,
     _publish_and_wait_for_harness_elicitation,
     _spawn_gateway_backed,
-    _spawn_native_blocked_notice_forward,
 )
 from omnigent.server.schemas import (
     ElicitationRequestParams,
@@ -102,11 +101,6 @@ from omnigent.spec.types import (
 )
 from omnigent.stores import AgentStore, ConversationStore
 from omnigent.stores.permission_store import PermissionStore
-
-#: Policy-name vendor for a native agent key, where the two differ. Mirrors
-#: ``POLICY_NAME_VENDORS`` in ``web/src/lib/nativeCodingAgents.ts``, which resolves
-#: a card's glyph and name from the ``<vendor>_native_`` prefix.
-_NATIVE_POLICY_VENDORS: dict[str, str] = {"antigravity": "agy"}
 
 
 def _create_route_decision_id(
@@ -167,11 +161,11 @@ def register_hooks_routes(
         session_id: str,
     ) -> Response:
         """
-        Claude Code ``PermissionRequest`` HTTP hook endpoint, also used by Kimi and Devin.
+        Claude Code ``PermissionRequest`` HTTP hook endpoint.
 
-        Kimi and Devin identify callbacks with namespaced elicitation ids. Reject a
-        callback targeting a different known native harness before publishing
-        a card; legacy sessions without native metadata retain compatibility.
+        Reject a callback targeting a different known native harness before
+        publishing a card; legacy sessions without native metadata retain
+        compatibility.
 
         Receives Claude Code's PermissionRequest hook payload (tool
         name + input the user would otherwise see a TUI prompt for),
@@ -263,22 +257,10 @@ def register_hooks_routes(
         )
         # Check ownership after the metadata awaits, without yielding before registration.
         elicitation_id = _client_supplied_hook_elicitation_id(payload, session_id)
-        hook_vendor = "claude"
-        if elicitation_id:
-            for vendor in ("kimi", "devin"):
-                if elicitation_id.startswith(f"elicit_{vendor}_"):
-                    hook_vendor = vendor
-                    break
-        elif native_agent is not None and native_agent.key == "devin":
-            # Older Devin hooks send no id; retain their session-derived identity.
-            hook_vendor = "devin"
-        hook_harness = f"{hook_vendor}-native"
-        hook_label = hook_vendor.capitalize()
-        is_claude = hook_vendor == "claude"
         # Legacy sessions may lack native metadata; a known native session must match.
-        if native_agent is not None and native_agent.harness != hook_harness:
+        if native_agent is not None and native_agent.harness != "claude-native":
             raise OmnigentError(
-                f"{hook_label} permission hook does not match the session's "
+                "Claude permission hook does not match the session's "
                 f"{native_agent.display_name} harness.",
                 code=ErrorCode.CONFLICT,
             )
@@ -303,13 +285,13 @@ def register_hooks_routes(
             extras["cwd"] = cwd
         if permission_mode is not None:
             extras["permission_mode"] = permission_mode
-        if is_claude and _allow_auto_mode_eligible(tool_name, permission_mode):
+        if _allow_auto_mode_eligible(tool_name, permission_mode):
             extras["allow_auto_mode"] = True
         # Edit tools → "Accept & allow all edits" (switches the session to
         # acceptEdits via setMode). Stamped only for edit-tool prompts
         # under a still-prompting mode — see _allow_all_edits_eligible.
         # The verdict site re-checks the same predicate before honoring it.
-        if is_claude and _allow_all_edits_eligible(tool_name, permission_mode):
+        if _allow_all_edits_eligible(tool_name, permission_mode):
             extras["allow_all_edits"] = True
         # Non-edit eligible tools → "don't ask again" (installs a
         # session-scoped allow rule via addRules). Stamped only when the
@@ -318,7 +300,7 @@ def register_hooks_routes(
         # request host so the UI can label the button ("… for github.com"
         # vs "… for WebFetch"); the verdict site re-derives the same scope
         # before honoring the flag, never trusting a client-supplied rule.
-        if is_claude and _allow_remember_eligible(tool_name, permission_mode):
+        if _allow_remember_eligible(tool_name, permission_mode):
             remember_scope: dict[str, Any] = {"tool": tool_name}
             remember_host = _claude_native_remember_host(tool_name, tool_input)
             if remember_host is not None:
@@ -333,7 +315,7 @@ def register_hooks_routes(
         # ``content_preview`` keeps its 1024-char cap for the
         # binary-card fallback; the structured field is the
         # authoritative source the UI consumes when present.
-        if is_claude and tool_name == "AskUserQuestion":
+        if tool_name == "AskUserQuestion":
             ask_payload = _structured_ask_user_question(tool_input)
             if ask_payload is not None:
                 extras["ask_user_question"] = ask_payload
@@ -346,26 +328,16 @@ def register_hooks_routes(
         # filtering: every field the hook carried natively reaches
         # the UI. An empty/absent input stamps nothing, leaving the
         # binary-card fallback.
-        if (
-            is_claude
-            and tool_name == "ExitPlanMode"
-            and isinstance(tool_input, dict)
-            and tool_input
-        ):
+        if tool_name == "ExitPlanMode" and isinstance(tool_input, dict) and tool_input:
             extras["exit_plan_mode"] = tool_input
-        asking_name = native_agent.display_name if native_agent is not None else hook_label
-        asking_vendor = (
-            _NATIVE_POLICY_VENDORS.get(native_agent.key, native_agent.key)
-            if native_agent is not None
-            else hook_vendor
-        )
+        asking_name = native_agent.display_name if native_agent is not None else "Claude"
         params = ElicitationRequestParams(
             mode="form",
             message=f"{asking_name} wants to call **{tool_name}**",
             requestedSchema=None,
             url=None,
             phase="pre_tool_use",
-            policy_name=f"{asking_vendor}_native_permission",
+            policy_name="claude_native_permission",
             content_preview=f"{tool_name}({preview_str})",
             **extras,
         )
@@ -404,12 +376,6 @@ def register_hooks_routes(
             feedback = result.content.get("feedback")
             if isinstance(feedback, str) and feedback.strip():
                 decision["message"] = feedback
-        if not is_claude:
-            # These bridges consume the verdict without Claude's input/permission updates.
-            return Response(
-                content=json.dumps({"hookSpecificOutput": {"decision": decision}}),
-                media_type="application/json",
-            )
         # When the gated tool is AskUserQuestion AND the user accepted
         # with selections, propagate those selections back to Claude
         # via ``decision.updatedInput``. Claude reads
@@ -561,13 +527,8 @@ def register_hooks_routes(
     # string there is a malformed call. REQUEST carries prompt text and is
     # the only phase where a bare string is a legitimate wire form.
     #
-    # Tool name containers are listed in precedence order because two
-    # first-party producers spell it differently: claude-native and the
-    # in-process tool dispatch send ``request_data.name``, while the OpenCode
-    # plugin sends the tool in ``event.target``. Both are established wire
-    # shapes; requiring one spelling 400s the other, and that producer treats
-    # any non-2xx as ALLOW — so a stricter guard silently disabled its
-    # policies instead of tightening them.
+    # claude-native and the in-process tool dispatch send the result's tool
+    # name in ``request_data.name``.
     class _PhaseSchema(NamedTuple):
         phase: Phase
         data_must_be_object: bool
@@ -582,10 +543,7 @@ def register_hooks_routes(
         "PHASE_TOOL_RESULT": _PhaseSchema(
             phase=Phase.TOOL_RESULT,
             data_must_be_object=True,
-            tool_name_sources=(
-                ("request_data", "event.request_data.name"),
-                ("target", "event.target"),
-            ),
+            tool_name_sources=(("request_data", "event.request_data.name"),),
         ),
         "PHASE_LLM_REQUEST": _PhaseSchema(
             phase=Phase.LLM_REQUEST,
@@ -1049,15 +1007,6 @@ def register_hooks_routes(
             add_audit_attrs(
                 policy=getattr(result.deciding_policy, "name", None) or str(result.deciding_policy)
             )
-        # A request-phase HARD DENY (no approve option) — surface the reason as a
-        # dismissable tmux popup on the native pane. opencode hard-blocks the
-        # prompt by its plugin throwing (rendered as a generic error), so this is
-        # the clean explanation; the runner dispatch only pops for opencode
-        # (claude/codex already show a clean UserPromptSubmit block). Best-effort.
-        if result.action == PolicyAction.DENY and phase == Phase.REQUEST and not is_read_only:
-            _spawn_native_blocked_notice_forward(
-                session_id, result.reason or "Blocked by policy.", result.deciding_policy
-            )
         # A tool-call DENY is decided synchronously here, so nothing else on the
         # stream reflects that the native tool was blocked. Publish a positive
         # signal so observers (web UI, capability bench) see the decision rather
@@ -1167,343 +1116,6 @@ def register_hooks_routes(
         body = codex_request.build_response(result)
         return Response(
             content=json.dumps(body),
-            media_type="application/json",
-        )
-
-    # ── POST /sessions/{session_id}/hooks/antigravity-elicitation-request ──
-
-    @router.post(
-        "/sessions/{session_id}/hooks/antigravity-elicitation-request",
-        # Internal harness callback webhook — hidden from the public API reference.
-        include_in_schema=False,
-        response_model=None,
-        # CSRF hardening: body is parsed via request.json(); require a JSON
-        # Content-Type so a cross-site text/plain request can't reach it.
-        dependencies=[Depends(require_json_content_type)],
-    )
-    async def antigravity_elicitation_request_hook(
-        request: Request,
-        session_id: str,
-    ) -> Response:
-        """
-        Antigravity (agy) elicitation request endpoint.
-
-        Receives ``{"elicitation_id": <str>, "params": <ElicitationRequestParams>}``
-        from the interaction bridge (Task 8), which POSTs here when it
-        surfaces an agy WAITING interaction for the web UI. Parks the call
-        on the shared harness elicitation registry, emits the standard
-        ``response.elicitation_request`` SSE event, waits for the session
-        ``approval`` verdict, then returns the raw
-        :class:`~omnigent.server.schemas.ElicitationResult` so the bridge
-        can forward it to agy via ``HandleCascadeUserInteraction``.
-
-        This is intentionally simpler than the Codex hook: the bridge
-        (not the endpoint) builds the agy interaction payload via
-        ``to_interaction_payload``, so this endpoint only passes back
-        the verdict as-is.  The body shape is minimal and symmetric:
-        ``elicitation_id`` from the bridge's deterministic id function
-        (``agy_elicitation_id``), ``params`` as an
-        :class:`~omnigent.server.schemas.ElicitationRequestParams` dict.
-
-        :param request: FastAPI request carrying the agy elicitation body.
-        :param session_id: Omnigent conversation id from the URL path.
-        :returns: ``ElicitationResult`` JSON on user verdict; ``200`` with
-            empty body on timeout/disconnect (bridge interprets as ``None``).
-        :raises OmnigentError: 404 if the session does not exist, 400 if
-            the request body is malformed.
-        """
-        user_id = _get_user_id(request, auth_provider)
-        await _require_access(
-            user_id, session_id, LEVEL_READ, permission_store, conversation_store
-        )
-        try:
-            payload = await request.json()
-        except json.JSONDecodeError as exc:
-            raise OmnigentError(
-                f"Invalid JSON in antigravity elicitation hook body: {exc}",
-                code=ErrorCode.INVALID_INPUT,
-            ) from exc
-        if not isinstance(payload, dict):
-            raise OmnigentError(
-                "Antigravity elicitation hook body must be a JSON object.",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        elicitation_id = payload.get("elicitation_id")
-        if not isinstance(elicitation_id, str) or not elicitation_id:
-            raise OmnigentError(
-                "Antigravity elicitation hook body must include a non-empty"
-                " 'elicitation_id' string.",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        raw_params = payload.get("params")
-        if not isinstance(raw_params, dict):
-            raise OmnigentError(
-                "Antigravity elicitation hook body must include a 'params' object.",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        try:
-            params = ElicitationRequestParams.model_validate(raw_params)
-        except Exception as exc:
-            raise OmnigentError(
-                f"Invalid 'params' in antigravity elicitation hook body: {exc}",
-                code=ErrorCode.INVALID_INPUT,
-            ) from exc
-        from omnigent.server.routes import sessions as _sf
-
-        result = await _publish_and_wait_for_harness_elicitation(
-            request,
-            session_id=session_id,
-            params=params,
-            timeout_s=_sf._ANTIGRAVITY_NATIVE_ELICITATION_HOOK_TIMEOUT_S,
-            conversation_store=conversation_store,
-            elicitation_id=elicitation_id,
-        )
-        if result is None:
-            return Response(status_code=status.HTTP_200_OK)
-        if result.action == "decline":
-            # Explicit user decline: interrupt the native harness before
-            # returning the decline so the abort signal arrives first.
-            await _forward_session_change_to_runner(
-                session_id,
-                get_server_runner_router(),
-                {"type": "interrupt"},
-            )
-        return Response(
-            content=result.model_dump_json(),
-            media_type="application/json",
-        )
-
-    # ── POST /sessions/{session_id}/hooks/cursor-permission-request ─
-
-    @router.post(
-        "/sessions/{session_id}/hooks/cursor-permission-request",
-        # Internal harness callback webhook — hidden from the public API reference.
-        include_in_schema=False,
-        response_model=None,
-        # CSRF hardening: body is parsed via request.json(); require a JSON
-        # Content-Type so a cross-site text/plain request can't reach it.
-        dependencies=[Depends(require_json_content_type)],
-    )
-    async def cursor_permission_request_hook(
-        request: Request,
-        session_id: str,
-    ) -> Response:
-        """
-        Cursor-native tool-approval hook (TUI → web elicitation).
-
-        Receives a tool-approval prompt detected on the ``cursor-agent`` TUI
-        pane by the runner-side mirror
-        (:mod:`omnigent.harnesses.cursor_native.permissions`), publishes the standard
-        ``response.elicitation_request`` event for the web UI, then parks for
-        the session ``approval`` verdict — the same registry / publish /
-        cleanup path as the Codex- and Claude-native hooks, so pending badges
-        and disconnect handling stay consistent across native harnesses. An
-        empty ``200`` (no web verdict — the prompt was answered in the TUI, or
-        the wait timed out) leaves cursor's native prompt authoritative.
-
-        :param request: FastAPI request carrying the detected prompt
-            (``elicitation_id`` plus the ``message`` / ``content_preview`` /
-            ``operation_type`` to render).
-        :param session_id: Omnigent conversation id from the URL path.
-        :returns: An ``ElicitationResult`` (``{"action": …}``) on a web
-            verdict, or ``200`` with empty body on TUI-resolution / timeout /
-            disconnect.
-        :raises OmnigentError: 404 if the session does not exist, 400 if the
-            body is malformed.
-        """
-        user_id = _get_user_id(request, auth_provider)
-        await _require_access(
-            user_id, session_id, LEVEL_READ, permission_store, conversation_store
-        )
-        try:
-            payload = await request.json()
-        except json.JSONDecodeError as exc:
-            raise OmnigentError(
-                f"Invalid JSON in cursor permission hook body: {exc}",
-                code=ErrorCode.INVALID_INPUT,
-            ) from exc
-        if not isinstance(payload, dict):
-            raise OmnigentError(
-                "Cursor permission hook body must be a JSON object.",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        elicitation_id = payload.get("elicitation_id")
-        if not isinstance(elicitation_id, str) or not elicitation_id:
-            raise OmnigentError(
-                "Cursor permission hook body must include 'elicitation_id'.",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        message = payload.get("message")
-        if not isinstance(message, str) or not message:
-            message = "Cursor wants approval to run a tool"
-        content_preview = payload.get("content_preview")
-        if not isinstance(content_preview, str):
-            content_preview = None
-        operation_type = payload.get("operation_type")
-        if not isinstance(operation_type, str) or not operation_type:
-            operation_type = "tool"
-        # Structured AskQuestion payload (cursor's multiple-choice tool): when
-        # present, stamp it as the ``ask_user_question`` extra so the web UI
-        # renders the interactive form from it directly. ``content_preview`` is
-        # hard-capped at 1024 chars, which truncates a multi-question payload and
-        # breaks the preview-parse fallback — the structured field has no such
-        # cap and is the authoritative source the UI consumes when present.
-        extras: dict[str, Any] = {}
-        ask_user_question = payload.get("ask_user_question")
-        if isinstance(ask_user_question, dict) and isinstance(
-            ask_user_question.get("questions"), list
-        ):
-            extras["ask_user_question"] = ask_user_question
-        params = ElicitationRequestParams(
-            mode="form",
-            message=message,
-            requestedSchema=None,
-            url=None,
-            phase="pre_tool_use",
-            policy_name="cursor_native_permission",
-            content_preview=content_preview,
-            **extras,
-        )
-        from omnigent.server.routes import sessions as _sf
-
-        result = await _publish_and_wait_for_harness_elicitation(
-            request,
-            session_id=session_id,
-            params=params,
-            timeout_s=_sf._CURSOR_NATIVE_PERMISSION_HOOK_TIMEOUT_S,
-            conversation_store=conversation_store,
-            elicitation_id=elicitation_id,
-            tool_name=f"Cursor({operation_type})",
-        )
-        if result is None:
-            return Response(status_code=status.HTTP_200_OK)
-        if result.action == "decline":
-            # Explicit user decline: interrupt the native harness before
-            # returning the decline so the abort signal arrives first.
-            await _forward_session_change_to_runner(
-                session_id,
-                get_server_runner_router(),
-                {"type": "interrupt"},
-            )
-        return Response(
-            content=json.dumps(result.model_dump(exclude_none=True)),
-            media_type="application/json",
-        )
-
-    # ── POST /sessions/{session_id}/hooks/native-permission-request ─
-
-    @router.post(
-        "/sessions/{session_id}/hooks/native-permission-request",
-        # Internal harness callback webhook — hidden from the public API reference.
-        include_in_schema=False,
-        response_model=None,
-        dependencies=[Depends(require_json_content_type)],
-    )
-    async def native_permission_request_hook(
-        request: Request,
-        session_id: str,
-    ) -> Response:
-        """
-        Generic native-TUI tool-approval hook (TUI → web elicitation).
-
-        The vendor-agnostic counterpart of
-        :func:`cursor_permission_request_hook`, used by the hermes- and
-        goose-native approval mirrors. The runner-side mirror detects the
-        vendor's in-terminal approval prompt, POSTs it here, and the server
-        publishes ``response.elicitation_request`` and parks for the web verdict
-        — the same registry/publish/cleanup path as the cursor/codex/claude
-        hooks. An empty ``200`` (TUI answered, or timeout) leaves the vendor's
-        native prompt authoritative.
-
-        Unlike the cursor hook, the card label / policy name come from the
-        payload (``agent`` / ``policy_name``) so a Hermes or Goose approval is
-        labelled as such, not "Cursor".
-
-        :param request: FastAPI request carrying the detected prompt
-            (``elicitation_id``, ``message``, ``content_preview``,
-            ``operation_type``, optional ``agent`` / ``policy_name``).
-        :param session_id: Omnigent conversation id from the URL path.
-        :returns: An ``ElicitationResult`` (``{"action": …}``) on a web verdict,
-            or ``200`` with empty body on TUI-resolution / timeout / disconnect.
-        :raises OmnigentError: 404 if the session does not exist, 400 if the
-            body is malformed.
-        """
-        user_id = _get_user_id(request, auth_provider)
-        await _require_access(
-            user_id, session_id, LEVEL_READ, permission_store, conversation_store
-        )
-        try:
-            payload = await request.json()
-        except json.JSONDecodeError as exc:
-            raise OmnigentError(
-                f"Invalid JSON in native permission hook body: {exc}",
-                code=ErrorCode.INVALID_INPUT,
-            ) from exc
-        if not isinstance(payload, dict):
-            raise OmnigentError(
-                "Native permission hook body must be a JSON object.",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        elicitation_id = payload.get("elicitation_id")
-        if not isinstance(elicitation_id, str) or not elicitation_id:
-            raise OmnigentError(
-                "Native permission hook body must include 'elicitation_id'.",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        agent = payload.get("agent")
-        if not isinstance(agent, str) or not agent:
-            agent = "Agent"
-        message = payload.get("message")
-        if not isinstance(message, str) or not message:
-            message = f"{agent} wants approval to run a tool"
-        content_preview = payload.get("content_preview")
-        if not isinstance(content_preview, str):
-            content_preview = None
-        operation_type = payload.get("operation_type")
-        if not isinstance(operation_type, str) or not operation_type:
-            operation_type = "tool"
-        policy_name = payload.get("policy_name")
-        if not isinstance(policy_name, str) or not policy_name:
-            policy_name = "native_permission"
-        extras: dict[str, Any] = {}
-        ask_user_question = payload.get("ask_user_question")
-        if isinstance(ask_user_question, dict) and isinstance(
-            ask_user_question.get("questions"), list
-        ):
-            extras["ask_user_question"] = ask_user_question
-        params = ElicitationRequestParams(
-            mode="form",
-            message=message,
-            requestedSchema=None,
-            url=None,
-            phase="pre_tool_use",
-            policy_name=policy_name,
-            content_preview=content_preview,
-            **extras,
-        )
-        from omnigent.server.routes import sessions as _sf
-
-        result = await _publish_and_wait_for_harness_elicitation(
-            request,
-            session_id=session_id,
-            params=params,
-            timeout_s=_sf._NATIVE_PERMISSION_HOOK_TIMEOUT_S,
-            conversation_store=conversation_store,
-            elicitation_id=elicitation_id,
-            tool_name=f"{agent}({operation_type})",
-        )
-        if result is None:
-            return Response(status_code=status.HTTP_200_OK)
-        if result.action == "decline":
-            # Explicit user decline: interrupt the native harness before
-            # returning the decline so the abort signal arrives first.
-            await _forward_session_change_to_runner(
-                session_id,
-                get_server_runner_router(),
-                {"type": "interrupt"},
-            )
-        return Response(
-            content=json.dumps(result.model_dump(exclude_none=True)),
             media_type="application/json",
         )
 

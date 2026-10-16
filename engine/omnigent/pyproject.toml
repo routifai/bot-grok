@@ -145,14 +145,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Retained as no-op aliases so existing `--extra` invocations keep
+# Retained as a no-op alias so existing `--extra` invocations keep
 # working; the underlying packages are now default deps above.
 claude-sdk = []
-openai-agents = []
-cockroachdb = [
-    "psycopg[binary]>=3.1,<4",
-    "sqlalchemy-cockroachdb>=2.0,<3",
-]
 # `all` carries dependencies moved out of the default install that internal
 # CI / dev workflows still exercise.
 all = [
@@ -164,116 +159,14 @@ all = [
     "opentelemetry-instrumentation-httpx>=0,<1",
     "opentelemetry-instrumentation-sqlalchemy>=0,<1",
 ]
-# From omnigent.
-bedrock = ["boto3>=1.30,<2", "botocore>=1.30,<2"]
 # The credential store's AWS KMS backend (omnigent/stores/credential_store/secret_cipher.py)
 # imports boto3 lazily, only when OMNIGENT_CREDENTIAL_KMS_KEY_ID is set. Its own extra, so a
-# KMS deployment installs `omnigent[kms]`; the Vault backend uses `vault` (hvac) instead, and
-# the backend-agnostic base store needs neither.
+# KMS deployment installs `omnigent[kms]`; the backend-agnostic base store does not need it.
 kms = ["boto3>=1.30,<2", "botocore>=1.30,<2"]
 # S3-compatible artifact store (AWS S3, Cloudflare R2, MinIO, …). Selected
 # with ``OMNIGENT_ARTIFACT_URI=s3://bucket/prefix``; the store imports boto3
 # lazily, so only users of this backend need the extra.
 s3 = ["boto3>=1.30,<2", "botocore>=1.30,<2"]
-vertex = ["google-auth>=2.0,<3"]
-# Modal sandbox launcher (`omnigent sandbox --provider modal`). The
-# launcher module ships in the base package and imports the SDK lazily,
-# so only users of the provider need this extra.
-modal = ["modal>=1.0,<2"]
-# Daytona sandbox launcher (`omnigent sandbox --provider daytona` and
-# server-managed `sandbox.provider: daytona`).
-# Same lazy-import posture as the modal extra. Pre-1.0 SDK: pin minor.
-daytona = ["daytona>=0.180,<1"]
-# Blaxel sandbox launcher (`omnigent sandbox --provider blaxel` and
-# server-managed `sandbox.provider: blaxel`).
-blaxel = ["blaxel>=0.4.1,<0.5"]
-# Boxlite sandbox launcher: server-managed `sandbox.provider: boxlite`, either
-# local embedded micro-VMs (KVM/HVF, no daemon) or a remote `boxlite serve`
-# pool. Same lazy-import posture as the modal/daytona extras. Pre-1.0 SDK: pin
-# minor.
-boxlite = ["boxlite>=0.9.5,<1"]
-# Microsandbox launcher: local libkrun microVMs with an optional embedded SDK.
-# Require 0.6.9 for upstream bug fixes and pin the beta SDK's minor version.
-microsandbox = ["microsandbox>=0.6.9,<0.7"]
-# CoreWeave Sandbox launcher (`omnigent sandbox --provider cwsandbox` and
-# server-managed `sandbox.provider: cwsandbox`).
-# Same lazy-import posture as above. Pre-1.0 SDK: pin minor.
-cwsandbox = ["cwsandbox>=0.24,<1"]
-# E2B sandbox launcher (`omnigent sandbox --provider e2b` and
-# server-managed `sandbox.provider: e2b`).
-# Same lazy-import posture as above.
-e2b = ["e2b>=2.26,<3"]
-# Islo sandbox launcher (`omnigent sandbox --provider islo` and
-# server-managed `sandbox.provider: islo`). The launcher module ships in
-# the base package and imports the SDK lazily, so only users of the
-# provider need this extra.
-islo = ["islo>=0.3.5,<0.4"]
-# NVIDIA OpenShell launcher (`omnigent sandbox --provider openshell`).
-# Self-hosted gRPC gateway; the SDK pulls grpcio + protobuf. Same
-# lazy-import posture as above. Pre-1.0 SDK: pin minor.
-openshell = ["openshell>=0.0.88,<1"]
-# On-demand Kubernetes runner Pod launcher (server-managed
-# `sandbox.provider: kubernetes`). The launcher module ships in the base
-# package and imports the official client lazily, so only users of the
-# provider need this extra.
-kubernetes = ["kubernetes>=36,<37"]
-# Vault Transit backend for the credential store's SecretCipher — the
-# non-AWS alternative to the built-in KMS cipher (selected by
-# OMNIGENT_CREDENTIAL_VAULT_KEY). hvac is imported lazily, like boto3, so
-# only deployments that pick the Vault backend need this extra.
-vault = ["hvac>=2,<3"]
-# OpenTelemetry tracing is opt-in so the exporters and automatic
-# instrumentors do not inflate the default install.
-tracing = [
-    "opentelemetry-sdk>=1.20,<2",
-    "opentelemetry-exporter-otlp-proto-grpc>=1.20,<2",
-    "opentelemetry-exporter-otlp-proto-http>=1.20,<2",
-    "opentelemetry-instrumentation-fastapi>=0,<1",
-    "opentelemetry-instrumentation-httpx>=0,<1",
-    "opentelemetry-instrumentation-sqlalchemy>=0,<1",
-]
-agents-sdk = [
-    "openai-agents>=0.1,<1",
-    "opentelemetry-instrumentation-openai-agents-v2>=0.1",
-]
-# Google Antigravity SDK harness (`harness: antigravity`). Optional: the
-# harness module imports the SDK lazily on first turn, so only users of the
-# harness need this extra. Early SDK (v0.1.x) — pin minor.
-# google-antigravity ships proto gencode compiled against protobuf 7.x, so
-# the runtime must satisfy >=7 when this extra is installed; the core allows
-# >=6,<8, so this constraint selects the 7.x slot and prevents the
-# "gencode/runtime version mismatch" error at import time.
-antigravity = ["google-antigravity>=0.1,<1", "protobuf>=7,<8"]
-# GitHub Copilot SDK harness (`harness: copilot`). Optional: the harness module
-# imports the SDK lazily on first turn, so only users of the harness need this
-# extra. The wheel bundles the Copilot CLI binary it drives (~90MB), which is
-# why it is not part of the baseline install. Pin major.
-copilot = ["github-copilot-sdk>=1,<2"]
-# Server-side streaming dictation (`WS /v1/dictation/stream`,
-# designs/server-dictation.md). Local CPU speech-to-text via sherpa-onnx;
-# the engine module imports it lazily, so only servers offering dictation
-# need the extra. Models are fetched separately
-# (scripts/fetch-dictation-models.sh). sherpa-onnx-core (the native
-# onnxruntime payload) is pinned explicitly because sherpa-onnx's wheel
-# metadata declares it inconsistently across platforms — without the
-# explicit pin it is missing from uv.lock, which breaks both the hashed
-# OSV audit and aarch64 installs.
-dictation = [
-    "sherpa-onnx>=1.13,<2",
-    "sherpa-onnx-core>=1.13,<2",
-    # The engine converts PCM frames with numpy directly; declare it
-    # rather than riding whichever extra happens to pull it in.
-    "numpy>=1.24,<3",
-]
-# Cursor SDK harness (`harness: cursor`). Optional like antigravity: the
-# harness imports the cursor-sdk lazily on first turn, so only `--harness
-# cursor` users need this extra (`omnigent[cursor]`). Was a baseline dependency;
-# now opt-in to keep the default install lean.
-cursor = ["cursor-sdk>=0.1.7"]
-# Hindsight long-term memory built-in tools (hindsight_retain / _recall /
-# _reflect). The tools import the client lazily, so only users who enable a
-# Hindsight memory tool need this extra.
-hindsight = ["hindsight-client>=0.4.0"]
 # Omnigent's own long-term memory (the memory_* built-in tools backing
 # rollover/MEMORY-PLAN.md). txtai (hybrid BM25 + dense search) and litellm
 # (its embeddings backend) are imported lazily, so only servers that wire a
@@ -281,62 +174,13 @@ hindsight = ["hindsight-client>=0.4.0"]
 # transformers/torch, unused at runtime since the index uses the pure-numpy
 # ANN backend, but still a txtai import-time dependency).
 memory = ["txtai>=8,<9", "litellm>=1,<2"]
-# The Nimble builtins (`nimble_research`, `nimble_extract`). nimble_research
-# imports the nimble-python client lazily; nimble_extract talks raw httpx and
-# needs no client at runtime. Installing this extra is the opt-in signal that
-# surfaces both tools in the onboarding assistant's builtin list.
-nimble = ["nimble-python>=1.2.0,<2"]
-# Slack integration (`omni integration slack`). The @omnigent socket-mode bot
-# lives in the separate `omnigent-slack` package (heavy deps — slack_bolt /
-# aiohttp — kept out of the baseline install). The CLI launches it as a
-# subprocess (`python -m omnigent_slack`), so it must be importable in the same
-# environment; installing `omnigent[slack]` puts it there. Local/editable
-# installs resolve it from `integrations/slack` via [tool.uv.sources] below;
-# publishing `omnigent[slack]` to an index additionally requires publishing
-# `omnigent-slack` there (not yet wired into the release pipeline).
-# Version-locked (==) with the lockstep cycle — `scripts/update_versions.py`
-# keeps this pin in sync with the other sibling `==` pins
-# (`omnigent-client`, `omnigent-ui-sdk`) and the sub-package's own
-# `[project].version` in `integrations/slack/pyproject.toml`.
-slack = [
-    "omnigent-slack==0.17.0.dev0",
-]
 # PostgreSQL storage backend. The server builds a psycopg engine whenever
 # the database URI is Postgres (``OMNIGENT_DATABASE_URI=postgresql+psycopg://…``
 # / ``--database-uri``). That is a general-purpose escape hatch — any
-# standalone Postgres deployment needs the driver, not only Databricks — so it
-# gets its own extra rather than being reachable only via `databricks`.
+# standalone Postgres deployment needs the driver — so it gets its own extra.
 # ``_create_engine`` raises an actionable "install omnigent[postgres]" error
 # when the URI is Postgres but this driver is absent.
 postgres = ["psycopg[binary]>=3.1,<4"]
-databricks = [
-    # Floor matches what core code was tested against when the SDK was a
-    # default dependency (it moved here from `dependencies` above).
-    "databricks-sdk>=0.56.0,<1",
-    "opentelemetry-distro>=0,<1",
-    # Databricks uses a Postgres control plane (Lakebase); reuse the single
-    # psycopg pin from the `postgres` extra so the two never drift.
-    "omnigent[postgres]",
-    "pymysql>=1.1,<2",
-    # Databricks-specific MCP servers. Not imported by core Omnigent
-    # code, so it is opt-in here rather than a default dependency. Floored
-    # at 0.9.0 (the release the lock already resolves): with the old >=0.1.0
-    # floor, a fresh install could satisfy the ai-bridge floor below by
-    # dropping mcp to 0.1.0, which pulls no mlflow/pyarrow at all.
-    "databricks-mcp>=0.9.0",
-    # Floor the transitive databricks-ai-bridge: older releases pull a
-    # databricks-vectorsearch that pins protobuf 5.x (conflicts with our
-    # protobuf>=6), so the resolver backtracks to an ai-bridge that caps
-    # mlflow at 3.2 and pyarrow<22 — and pyarrow 21 has no cp314 wheel, so a
-    # fresh install on Python 3.14 tries (and fails) to build it from source.
-    "databricks-ai-bridge>=0.19",
-]
-# Load testing (dev/loadtest/). Locust drives the concurrency and the
-# openai-agents harness runs the mocked turns. Opt-in — only load-test users
-# need it.
-loadtest = [
-    "locust>=2.30,<3",
-]
 
 # Repository-only workflows use PEP 735 dependency groups so development
 # tooling is not published as an installable Omnigent capability.

@@ -13,7 +13,6 @@ from omnigent.server.managed_hosts import (
     parse_repo_workspace,
     parse_sandbox_config,
     relaunch_managed_host,
-    resume_managed_host,
 )
 from omnigent.stores.host_store import HostStore
 from tests.server.helpers import FakeSandboxLauncher, HostStartInvocation
@@ -22,7 +21,7 @@ from tests.server.helpers import FakeSandboxLauncher, HostStartInvocation
 @pytest.mark.parametrize("block", [None, {}, {"depth": None, "single_branch": None}])
 def test_default_clone_policy(block: object) -> None:
     config = parse_sandbox_config(
-        {"provider": "agent_sandbox", "server_url": "https://example.test", "git_clone": block}
+        {"provider": "computer", "server_url": "https://example.test", "git_clone": block}
     )
     assert config is not None
     assert config.for_provider(None).git_clone == GitCloneOptions()
@@ -52,11 +51,11 @@ def test_default_clone_policy(block: object) -> None:
 def test_invalid_clone_policy(block: object) -> None:
     with pytest.raises(ValueError, match=r"sandbox\.git_clone"):
         parse_sandbox_config(
-            {"provider": "modal", "server_url": "https://example.test", "git_clone": block}
+            {"provider": "computer", "server_url": "https://example.test", "git_clone": block}
         )
 
 
-def test_shared_policy_and_provider_override() -> None:
+def test_shared_policy_applies_to_provider_entries() -> None:
     config = parse_sandbox_config(
         {
             "server_url": "https://example.test",
@@ -66,18 +65,29 @@ def test_shared_policy_and_provider_override() -> None:
                 "filter": "blob:none",
                 "tags": False,
             },
-            "providers": [{"provider": "agent_sandbox"}, {"provider": "gensee", "git_clone": {}}],
+            "providers": [{"provider": "computer"}],
         }
     )
     assert config is not None
-    assert config.for_provider("agent_sandbox").git_clone == GitCloneOptions(
+    assert config.for_provider("computer").git_clone == GitCloneOptions(
         50, True, "blob:none", False
     )
-    assert config.for_provider("gensee").git_clone == GitCloneOptions()
+
+
+def test_provider_entry_overrides_shared_policy() -> None:
+    config = parse_sandbox_config(
+        {
+            "server_url": "https://example.test",
+            "git_clone": {"depth": 50},
+            "providers": [{"provider": "computer", "git_clone": {}}],
+        }
+    )
+    assert config is not None
+    assert config.for_provider("computer").git_clone == GitCloneOptions()
 
 
 @pytest.mark.asyncio
-async def test_policy_reaches_launch_relaunch_and_missing_workspace_wake(db_uri: str) -> None:
+async def test_policy_reaches_launch_and_relaunch(db_uri: str) -> None:
     store = HostStore(db_uri)
 
     def connected(invocation: HostStartInvocation) -> None:
@@ -85,8 +95,7 @@ async def test_policy_reaches_launch_relaunch_and_missing_workspace_wake(db_uri:
             host_id=invocation.host_id, name=invocation.host_name, user_id="alice"
         )
 
-    fake = FakeSandboxLauncher(on_host_start=connected, can_resume=True)
-    fake.provider = "agent_sandbox"
+    fake = FakeSandboxLauncher(on_host_start=connected)
     options = GitCloneOptions(50, True, "blob:none", False)
     config = ManagedSandboxDeployment.single(
         ManagedSandboxConfig("https://example.test", lambda: fake, 3600, git_clone=options)
@@ -96,10 +105,8 @@ async def test_policy_reaches_launch_relaunch_and_missing_workspace_wake(db_uri:
     host = store.get_host(launch.host_id)
     assert host is not None
     await relaunch_managed_host(host=host, config=config, host_store=store, repos=repos)
-    store.set_offline(launch.host_id)
-    await resume_managed_host(launch.host_id, store, config, repos=repos)
     clones = [cmd for cmd in fake.commands if cmd.startswith("git clone")]
-    assert len(clones) == 3
+    assert len(clones) == 2
     assert all(
         "--branch main --single-branch --depth 50 --filter=blob:none --no-tags --" in cmd
         for cmd in clones
@@ -108,7 +115,7 @@ async def test_policy_reaches_launch_relaunch_and_missing_workspace_wake(db_uri:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("operation", ["launch", "relaunch", "resume"])
+@pytest.mark.parametrize("operation", ["launch", "relaunch"])
 async def test_unsupported_policy_rejected_before_lifecycle_changes(
     db_uri: str, operation: str
 ) -> None:
@@ -137,10 +144,8 @@ async def test_unsupported_policy_rejected_before_lifecycle_changes(
     with pytest.raises(HTTPException, match=r"does not support sandbox\.git_clone") as exc:
         if operation == "launch":
             await launch_managed_host(config=config, owner="alice", host_store=store)
-        elif operation == "relaunch":
-            await relaunch_managed_host(host=host, config=config, host_store=store)
         else:
-            await resume_managed_host(first.host_id, store, config)
+            await relaunch_managed_host(host=host, config=config, host_store=store)
     assert exc.value.status_code == 400
     assert fake.provisioned_names == []
     assert fake.terminated == []

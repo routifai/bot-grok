@@ -9,7 +9,6 @@ harness process spawns on the session's first turn.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -65,7 +64,7 @@ def _stub_runner_client(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     return captured
 
 
-@pytest.mark.parametrize("override", ["pi", "acp:goose"])
+@pytest.mark.parametrize("override", ["pi"])
 async def test_create_with_harness_override_persists_and_snapshot_reflects(
     client: httpx.AsyncClient,
     override: str,
@@ -120,7 +119,7 @@ async def test_create_without_harness_override_reports_spec_default(
 async def test_create_harness_override_alias_canonicalizes(
     client: httpx.AsyncClient,
 ) -> None:
-    """The ``openai-agents-sdk`` alias persists as canonical ``openai-agents``.
+    """The ``native-claude`` alias persists as canonical ``claude-native``.
 
     A raw alias on the row would miss the runner's harness-module
     registry at dispatch (it keys on canonical names).
@@ -131,11 +130,11 @@ async def test_create_harness_override_alias_canonicalizes(
         json={
             "agent_id": agent["id"],
             "initial_items": [],
-            "harness_override": "openai-agents-sdk",
+            "harness_override": "native-claude",
         },
     )
     assert resp.status_code == 201, resp.text
-    assert resp.json().get("harness") == "openai-agents"
+    assert resp.json().get("harness") == "claude-native"
 
 
 async def test_create_rejects_unknown_harness_override(
@@ -153,7 +152,7 @@ async def test_create_rejects_unknown_harness_override(
     assert "bogus" in resp.text
 
 
-@pytest.mark.parametrize("override", ["pi", "acp:goose"])
+@pytest.mark.parametrize("override", ["pi"])
 async def test_create_rejects_harness_override_for_non_omnigent_agent(
     client: httpx.AsyncClient,
     override: str,
@@ -184,7 +183,7 @@ async def test_create_rejects_harness_override_for_non_omnigent_agent(
     assert "agents_sdk" in resp.text
 
 
-@pytest.mark.parametrize("override", ["pi", "acp:goose"])
+@pytest.mark.parametrize("override", ["pi"])
 async def test_runner_first_event_forwards_harness_override(
     client: httpx.AsyncClient,
     override: str,
@@ -231,7 +230,7 @@ async def test_runner_first_event_forwards_harness_override(
     )
 
 
-@pytest.mark.parametrize("override", ["pi", "acp:goose"])
+@pytest.mark.parametrize("override", ["pi"])
 async def test_create_session_init_carries_harness_override(
     client: httpx.AsyncClient,
     override: str,
@@ -290,7 +289,7 @@ async def test_create_session_init_carries_harness_override(
     )
 
 
-@pytest.mark.parametrize("override", ["pi", "acp:goose"])
+@pytest.mark.parametrize("override", ["pi"])
 async def test_patch_rebind_init_carries_harness_override(
     client: httpx.AsyncClient,
     override: str,
@@ -379,101 +378,3 @@ async def test_runner_body_omits_harness_override_when_unset(
     assert event.status_code == 202, event.text
     assert captured.get("body") is not None
     assert "harness_override" not in captured["body"]
-
-
-async def test_acp_selection_does_not_require_server_configuration(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    monkeypatch.setenv("OMNIGENT_CONFIG_HOME", str(tmp_path))
-    (tmp_path / "config.yaml").write_text("{}\n")
-    agent = await create_test_agent(client)
-    response = await client.post(
-        "/v1/sessions", json={"agent_id": agent["id"], "harness_override": "acp:runner-only"}
-    )
-    assert response.status_code == 201, response.text
-    assert response.json()["harness"] == "acp:runner-only"
-
-
-@pytest.mark.parametrize("override", ["acp:", "acp:Goose", "acp:goose/other", "acp: goose"])
-async def test_rejects_malformed_acp_selection(client: httpx.AsyncClient, override: str) -> None:
-    agent = await create_test_agent(client)
-    response = await client.post(
-        "/v1/sessions", json={"agent_id": agent["id"], "harness_override": override}
-    )
-    assert response.status_code == 400, response.text
-    assert "invalid ACP agent identifier" in response.text
-
-
-@pytest.mark.parametrize("extra", [0, 1, 100])
-@pytest.mark.parametrize("with_other_overrides", [False, True])
-@pytest.mark.parametrize("seed_effort", [False, True])
-async def test_override_storage_limit_is_checked_before_create(
-    client: httpx.AsyncClient, extra: int, with_other_overrides: bool, seed_effort: bool
-) -> None:
-    import json
-
-    from omnigent.db.db_models import SqlConversation
-    from omnigent.runtime import get_conversation_store
-
-    executor = {"type": "omnigent", "config": {"harness": "claude-sdk"}}
-    if seed_effort:
-        executor["reasoning_effort"] = "high"
-    agent = await create_test_agent(client, executor=executor)
-    overrides = {"harness_override": "acp:"}
-    if seed_effort:
-        overrides["reasoning_effort"] = "high"
-    if with_other_overrides:
-        overrides.update(
-            {
-                "model_override": "model-" + "a" * 120,
-                "reasoning_effort": "high",
-                "cost_control_mode_override": "off",
-                "subagent_routing_override": "on",
-            }
-        )
-    limit = SqlConversation.__table__.c.session_overrides.type.length
-    overhead = len(json.dumps(overrides, separators=(",", ":")))
-    overrides["harness_override"] += "a" * (limit - overhead + extra)
-    store = get_conversation_store()
-    before = {conv.id for conv in store.list_conversations().data}
-    requested = dict(overrides)
-    if seed_effort:
-        requested.pop("reasoning_effort", None)
-    response = await client.post("/v1/sessions", json={"agent_id": agent["id"], **requested})
-    after = {conv.id for conv in store.list_conversations().data}
-    if extra:
-        assert after == before, "Oversized input left a persisted session"
-        assert response.status_code == 400, response.text
-        assert "session overrides" in response.text.lower()
-    else:
-        assert response.status_code == 201, response.text
-        assert after - before == {response.json()["id"]}
-        assert response.json()["harness"] == overrides["harness_override"]
-
-
-async def test_override_growth_rejects_patch_without_mutation(client: httpx.AsyncClient) -> None:
-    import json
-
-    from omnigent.db.db_models import SqlConversation
-    from omnigent.runtime import get_conversation_store
-
-    agent = await create_test_agent(client)
-    limit = SqlConversation.__table__.c.session_overrides.type.length
-    harness = "acp:" + "a" * (
-        limit - len(json.dumps({"harness_override": "acp:"}, separators=(",", ":")))
-    )
-    created = await client.post(
-        "/v1/sessions", json={"agent_id": agent["id"], "harness_override": harness}
-    )
-    assert created.status_code == 201, created.text
-    session = created.json()["id"]
-    response = await client.patch(
-        f"/v1/sessions/{session}",
-        json={"model_override": "another-model", "title": "must not persist"},
-    )
-    assert response.status_code == 400, response.text
-    assert "session overrides" in response.text.lower()
-    conv = get_conversation_store().get_conversation(session)
-    assert conv.harness_override == harness
-    assert conv.model_override is None
-    assert conv.title != "must not persist"

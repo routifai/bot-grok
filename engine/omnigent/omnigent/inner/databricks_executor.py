@@ -238,35 +238,6 @@ def _read_databrickscfg_file_fallback(profile: str | None = None) -> DatabricksC
     return None
 
 
-def _databricks_sdk_token_command(host: str, profile: str | None) -> str:
-    """Auth-command fallback that mints a bearer via the databricks-sdk.
-
-    ``databricks auth token`` (the mint in :func:`databricks_bearer_token_command`)
-    supports U2M only, so an OAuth **M2M** / service-principal profile — an agent
-    authenticating as a workload identity, e.g. on a self-hosted Fargate host —
-    yields no CLI token and the gateway request fails. The
-    :mod:`omnigent.inner.databricks_token` entrypoint resolves the bearer through
-    the databricks-sdk's unified ``Config.authenticate()``, which does the
-    client-credentials exchange (and also covers env / file OIDC and a static
-    PAT), so it reuses the SDK rather than reimplementing any OAuth. Runs only
-    after the CLI mint (and, for the connect profile, the broker) yield nothing.
-
-    ``--host`` is always passed (the gateway's workspace) so the entrypoint can
-    fail closed when a named profile resolves to a *different* workspace; a named
-    ``--profile`` is added on top and pins identity to that section.
-
-    :param host: Databricks workspace host, e.g.
-        ``"https://example.databricks.com"``.
-    :param profile: ``~/.databrickscfg`` profile name, or ``None`` to select by
-        host (env / OIDC service-principal credentials against that workspace).
-    :returns: Shell command that prints a bearer token on stdout, or nothing.
-    """
-    args = f"--host {shlex.quote(host.rstrip('/'))}"
-    if profile:
-        args += f" --profile {shlex.quote(profile)}"
-    return f"python3 -m omnigent.inner.databricks_token {args}"
-
-
 def databricks_bearer_token_command(
     host: str,
     profile: str | None = None,
@@ -296,13 +267,9 @@ def databricks_bearer_token_command(
     failure is still visible. ``--force-refresh`` only exists in Databricks CLI
     >= v0.296.0, so it stays behind the ``--help`` capability probe.
 
-    **Fallbacks.** After the CLI mint, empty-token fallbacks run in order. A
+    **Fallback.** After the CLI mint, an empty token falls back to a
     caller-supplied command (the one ucode recorded, pinned to the named
-    profile) or the managed-connect broker runs first. The databricks-sdk mint
-    (:func:`_databricks_sdk_token_command`) is always appended last, so an M2M /
-    service-principal (or OIDC / PAT) profile the U2M CLI can't mint still
-    resolves — for every harness, including one that passed its own
-    ``fallback_command``.
+    profile) or, for the managed-connect profile, the credential broker.
 
     **Ambient bearer.** Prefer the configured profile because
     ``DATABRICKS_BEARER`` may be stale. Bound and silence that mint attempt so
@@ -314,14 +281,11 @@ def databricks_bearer_token_command(
     :param profile: ``~/.databrickscfg`` profile name, e.g. ``"oss"``, or
         ``None`` to select the workspace by host.
     :param fallback_command: Shell command printing a bearer token on stdout,
-        run (before the databricks-sdk mint) when the profile above yields an
-        empty token.
+        run when the profile above yields an empty token.
     :returns: Shell command that prints a bearer token on stdout.
     """
     # Fallbacks tried in order after the CLI mint, each only while the token is
-    # still empty. A caller-supplied command or the managed-connect broker runs
-    # first; the databricks-sdk mint is always the last resort so an M2M / OIDC /
-    # PAT profile the U2M CLI can't mint still resolves — for every harness.
+    # still empty: a caller-supplied command or the managed-connect broker.
     fallbacks: list[str] = []
     if fallback_command is not None:
         fallbacks.append(fallback_command)
@@ -345,7 +309,6 @@ def databricks_bearer_token_command(
                 broker = None
             if broker is not None:
                 fallbacks.append(broker)
-    fallbacks.append(_databricks_sdk_token_command(host, profile))
 
     selector = (
         f"--profile {json.dumps(profile)}" if profile else f"--host {json.dumps(host.rstrip('/'))}"
@@ -1134,6 +1097,12 @@ def databrickscfg_workspace_id_for_profile(profile: str) -> str | None:
     return workspace_id if workspace_id else None
 
 
+# Placeholder for the OpenAI SDK's ``api_key`` kwarg on OpenAI-compatible
+# endpoints (e.g. Databricks model serving) that authenticate through a
+# separate mechanism and ignore the key.
+_OPENAI_KEY_PLACEHOLDER = "unused"
+
+
 def _get_openai_client(profile: str | None = None) -> OpenAI:
     """Lazily import and construct the OpenAI client.
 
@@ -1151,21 +1120,16 @@ def _get_openai_client(profile: str | None = None) -> OpenAI:
 
     # Direct OpenAI-compatible config takes precedence
     if os.environ.get("OPENAI_BASE_URL"):
-        from .open_responses_sdk import _OPENAI_KEY_PLACEHOLDER
-
         return OpenAI(
             base_url=os.environ["OPENAI_BASE_URL"],
-            # See _OPENAI_KEY_PLACEHOLDER docstring in open_responses_sdk.
             api_key=os.environ.get("OPENAI_API_KEY", _OPENAI_KEY_PLACEHOLDER),
         )
-
-    from .open_responses_sdk import _OPENAI_KEY_PLACEHOLDER as _placeholder
 
     auth, host = _resolve_databricks_auth(profile)
     base_url = host.rstrip("/") + "/serving-endpoints"
     return OpenAI(
         base_url=base_url,
-        api_key=_placeholder,
+        api_key=_OPENAI_KEY_PLACEHOLDER,
         http_client=httpx.Client(auth=auth),
     )
 

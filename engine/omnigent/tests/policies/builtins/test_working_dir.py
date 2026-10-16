@@ -80,8 +80,7 @@ def test_cd_family_denied_by_default(command: str) -> None:
 def test_shell_surface_covers_every_harness(tool: str) -> None:
     """Every harness's shell tool is inspected by default, not just sys_os_shell/Bash.
 
-    The old default omitted Cursor's ``Shell``, Pi's ``bash``, Hermes's
-    ``terminal`` and Goose's ``developer__shell``, so the worktree confinement
+    The old default omitted Pi's ``bash``, so the worktree confinement
     was silently inert on those sessions. An ALLOW here means one of them is
     uninspected again.
 

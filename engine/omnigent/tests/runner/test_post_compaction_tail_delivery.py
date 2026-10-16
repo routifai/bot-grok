@@ -193,7 +193,7 @@ async def test_non_native_harness_is_untouched() -> None:
     app, harness_client = _build_app(server_client)
 
     async with _runner_client(app) as client:
-        await _post(client, "conv_c", "openai-agents", "hello")
+        await _post(client, "conv_c", "claude-sdk", "hello")
 
     assert harness_client.posted_bodies[0]["content"] == [{"type": "input_text", "text": "hello"}]
 

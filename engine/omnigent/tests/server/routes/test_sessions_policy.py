@@ -1064,7 +1064,7 @@ def test_build_evaluation_context_request_accepts_string_data() -> None:
     """
     ctx = _build_evaluation_context(Phase.REQUEST, "delete the prod database", {})
     # REQUEST content is the structured dict ({"user_content", "attachments"}); the
-    # native / opencode path carries no attachments.
+    # native path carries no attachments.
     assert ctx.content == {"user_content": "delete the prod database", "attachments": []}
 
 

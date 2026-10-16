@@ -207,7 +207,7 @@ def _child_snapshot(
     *,
     sub_agent_name: str | None,
     parent_session_id: str | None,
-    agent_name: str | None = "cursor-native-ui",
+    agent_name: str | None = "codex-native-ui",
 ) -> dict[str, Any]:
     """Build a child ``SessionResponse``-shaped body."""
     return {
@@ -328,7 +328,7 @@ async def test_sys_session_create_child_without_sub_agent_name_delivers(
 ) -> None:
     """A ``sys_session_create`` child (no ``sub_agent_name``) still wakes the parent.
 
-    The child has ``agent_name: cursor-native-ui`` but ``sub_agent_name: null``,
+    The child has ``agent_name: codex-native-ui`` but ``sub_agent_name: null``,
     and the dispatch never registered a work entry. The fix recovers the parent
     link from the snapshot (keying on ``parent_session_id``) and labels the work
     with the agent name.
@@ -337,7 +337,7 @@ async def test_sys_session_create_child_without_sub_agent_name_delivers(
         child_body=_child_snapshot(
             sub_agent_name=None,
             parent_session_id=PARENT_SESSION_ID,
-            agent_name="cursor-native-ui",
+            agent_name="codex-native-ui",
         ),
         seed_parent_inbox=True,
         register_work=False,
@@ -347,7 +347,7 @@ async def test_sys_session_create_child_without_sub_agent_name_delivers(
         f"sys_session_create child reported idle but the parent inbox stayed empty. (http={http})"
     )
     assert items[0]["status"] == "completed"
-    assert items[0]["agent"] == "cursor-native-ui"
+    assert items[0]["agent"] == "codex-native-ui"
 
 
 @pytest.mark.asyncio
@@ -847,7 +847,7 @@ async def test_routed_child_off_its_native_spec_still_delivers(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("harness_name", ["cursor-native", "claude-sdk"])
+@pytest.mark.parametrize("harness_name", ["codex-native", "claude-sdk"])
 @pytest.mark.parametrize("error_code", [None, "runner_disconnected", "runner_failed_to_start"])
 @pytest.mark.parametrize("previous_execution", ["new", "finished", "active", "messaged"])
 async def test_recovered_child_continues_same_dispatch_before_delivering_result(
@@ -970,7 +970,7 @@ async def test_recovered_child_continues_same_dispatch_before_delivering_result(
                 "interrupted child must receive one continuation turn"
             )
             assert "Continue the existing task" in str(harness.posted_bodies[0]["content"])
-        if harness_name == "cursor-native" or previous_execution == "active":
+        if harness_name == "codex-native" or previous_execution == "active":
             # A surviving turn completes through its existing status forwarder.
             await client.post(
                 f"/v1/sessions/{CHILD_SESSION_ID}/events",

@@ -249,12 +249,6 @@ def _resolve_module_path(harness: str) -> str:
     module_path = _HARNESS_MODULES.get(harness)
     if module_path is not None:
         return module_path
-    # Generic-ACP ids (``acp:<slug>``) all resolve to the base ``acp`` module;
-    # the slug selecting the concrete agent is read from the spec at spawn.
-    if harness.startswith("acp:"):
-        acp_module = _HARNESS_MODULES.get("acp")
-        if acp_module is not None:
-            return acp_module
     package = missing_install_packages().get(harness)
     if package:
         raise RuntimeError(f"unknown harness {harness!r}; install `{package}` to add this harness")
@@ -460,12 +454,9 @@ class _SubprocessEntry:
         idle reaper to detect abandoned entries.
         :param model: The ``HARNESS_<H>_MODEL`` value this subprocess
         was spawned with (or ``None`` when the spawn env set no
-        model). Most harnesses fix the model at spawn, so
+        model). Harnesses fix the model at spawn, so
         :meth:`HarnessProcessManager.get_client` re-spawns on a
-        later model change. Harnesses in
-        :data:`_LIVE_MODEL_CONFIG_HARNESSES` and explicitly curated ACP agents
-        apply it in-process.
-    :param acp_config: ACP startup options, excluding the live model selection.
+        later model change.
     """
 
     def __init__(
@@ -475,14 +466,12 @@ class _SubprocessEntry:
         endpoint: _HarnessEndpoint,
         harness: str,
         model: str | None = None,
-        acp_config: dict[str, str] | None = None,
     ) -> None:
         self.process = process
         self.client = client
         self.endpoint = endpoint
         self.harness = harness
         self.model = model
-        self.acp_config = acp_config or {}
         self.last_used_at: float = 0.0
         self.serial = next(_ENTRY_SERIALS)
 
@@ -496,23 +485,11 @@ def _model_env_key(harness: str) -> str:
     requests a different model than the running subprocess was started with.
 
     :param harness: Canonical harness name, e.g. ``"claude-sdk"`` or
-        ``"codex"``.
+        ``"pi"``.
     :returns: The env-var key, e.g. ``"HARNESS_CLAUDE_SDK_MODEL"`` for
-        ``"claude-sdk"`` or ``"HARNESS_CODEX_MODEL"`` for ``"codex"``.
+        ``"claude-sdk"`` or ``"HARNESS_PI_MODEL"`` for ``"pi"``.
     """
     return f"HARNESS_{harness.upper().replace('-', '_')}_MODEL"
-
-
-_LIVE_MODEL_CONFIG_HARNESSES = frozenset({"qwen"})
-
-
-def _acp_startup_config(env: dict[str, str] | None) -> dict[str, str]:
-    """Keep ACP command, policy, and defaults stable while switching models live."""
-    return {
-        key: value
-        for key, value in (env or {}).items()
-        if key.startswith("HARNESS_ACP_") and key != "HARNESS_ACP_MODEL"
-    }
 
 
 def _build_harness_spawn_env(env: dict[str, str] | None) -> dict[str, str]:
@@ -723,8 +700,7 @@ class HarnessProcessManager:
         runner subprocess of the right harness type, waits for the
         Unix socket to appear, and constructs an
         :class:`httpx.AsyncClient` over it. Subsequent calls
-        return the cached client. Model changes restart harnesses without live
-        switching support; changes to ACP startup options also require a restart.
+        return the cached client. Model changes restart the harness.
 
         Crash detection: if the previously-spawned subprocess has
         exited (``returncode is not None``), the entry is dropped
@@ -830,7 +806,7 @@ class HarnessProcessManager:
                 # (it is not a real harness — see ``get_client(conv, "any")``
                 # call sites). It must NOT count as a mismatch, or every such
                 # call would tear down and respawn the running harness
-                # mid-turn (killing in-flight openai-agents/claude turns).
+                # mid-turn (killing in-flight claude turns).
                 _logger.info(
                     "harness for conversation %s changed %r -> %r; respawning",
                     conversation_id,
@@ -841,27 +817,9 @@ class HarnessProcessManager:
                 await self._close_entry(entry)
                 entry = None
                 respawn_reason = "harness_respawn_agent_switch"
-            if (
-                entry is not None
-                and harness == "acp"
-                and env is not None
-                and entry.acp_config != _acp_startup_config(env)
-            ):
-                _logger.info(
-                    "ACP startup config changed for conversation %s; respawning",
-                    conversation_id,
-                )
-                replaced_response_id = self._in_flight_response_ids.get(conversation_id)
-                await self._close_entry(entry)
-                entry = None
-                respawn_reason = "harness_respawn_agent_switch"
-            if entry is not None and not (
-                harness in _LIVE_MODEL_CONFIG_HARNESSES
-                or (harness == "acp" and entry.acp_config.get("HARNESS_ACP_MODEL_LIST"))
-            ):
-                # Most harnesses bake the model into the subprocess env. A
-                # later model change respawns them; curated ACP and harnesses
-                # in the live-config set instead apply it in-session.
+            if entry is not None:
+                # Harnesses bake the model into the subprocess env, so a
+                # later model change respawns them.
                 requested_model = (env or {}).get(_model_env_key(harness))
                 if requested_model is not None and requested_model != entry.model:
                     _logger.info(
@@ -1358,7 +1316,6 @@ class HarnessProcessManager:
                 # triggers a respawn in ``get_client`` — the model is a fixed
                 # process env var, not re-read per turn.
                 model=(env or {}).get(_model_env_key(harness)),
-                acp_config=_acp_startup_config(env) if harness == "acp" else None,
             )
         except BaseException:
             # From spawn onward the process must have exactly one owner:

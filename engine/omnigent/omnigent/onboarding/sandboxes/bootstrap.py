@@ -20,9 +20,7 @@ in inside the sandbox makes it the sole token holder and sidesteps all
 three.
 
 Everything provider-specific (transport, image quirks, pip flags) lives
-behind the launcher; see
-:mod:`omnigent.onboarding.sandboxes.lakebox` for the reference
-implementation.
+behind the launcher.
 """
 
 from __future__ import annotations
@@ -63,7 +61,7 @@ DEFAULT_WHEELS_TGZ: str = "/tmp/oa-wheels.tgz"
 every bootstrap so the sandbox always gets exactly the current
 checkout's code."""
 
-DEFAULT_BUILD_LOG: str = "/tmp/lakebox-build.log"
+DEFAULT_BUILD_LOG: str = "/tmp/omnigent-sandbox-build.log"
 """Default ``uv build`` log location."""
 
 DEFAULT_SANDBOX_NAME: str = "omnigent-host"
@@ -347,11 +345,8 @@ class DerivedWorkspace:
     Databricks workspace coordinates derived from unauthenticated
     probes of an Omnigent server URL.
 
-    Consumed in two places: seeding the sandbox's ``~/.databrickscfg``
-    before the in-sandbox login, and pinning the LOCAL ``databricks
-    lakebox`` calls to the server's workspace (so the sandbox is
-    created where the server lives, regardless of the ambient default
-    profile).
+    Used to seed the sandbox's ``~/.databrickscfg``
+    before the in-sandbox login.
 
     :param host: Workspace host fronting the server, e.g.
         ``"https://example.databricks.com"``.
@@ -390,11 +385,8 @@ def derive_workspace(server_url: str) -> DerivedWorkspace | None:
     Return the Databricks workspace fronting *server_url*, if any.
 
     Runs the same unauthenticated detection ``omnigent login``
-    performs — but from the LOCAL machine. Two consumers: the in-sandbox
-    login step seeds the sandbox's ``~/.databrickscfg`` with the result,
-    and the sandbox CLI commands pin their local ``databricks lakebox``
-    calls to the derived workspace (so the sandbox is created and
-    reached where the server lives).
+    performs — but from the LOCAL machine. The in-sandbox
+    login step seeds the sandbox's ``~/.databrickscfg`` with the result.
 
     :param server_url: The server URL, e.g.
         ``"https://myapp-123.aws.databricksapps.com"``.
@@ -430,8 +422,7 @@ def login_app_oauth_in_sandbox(
     machine.
 
     Databricks Apps front their HTTP/WS endpoints with an OAuth edge —
-    workspace PATs (including the Lakebox image's baked credential)
-    are rejected; only workspace OAuth tokens pass. ``omnigent
+    workspace PATs are rejected; only workspace OAuth tokens pass. ``omnigent
     login`` owns the credential inference used everywhere else: it
     probes *server_url*, discovers the fronting workspace
     from the probe response, mints a workspace OAuth grant (running
@@ -482,8 +473,7 @@ def login_app_oauth_in_sandbox(
         unless *skip*.
     :param workspace: The workspace fronting *server_url*, from
         :func:`derive_workspace` (the CLI derives once per command and
-        threads it down — to here for the cfg seed, and to the lakebox
-        launcher for its local workspace pin). ``None`` means the
+        threads it down for the cfg seed). ``None`` means the
         server is not Databricks-fronted — the cfg seed is skipped and
         the in-sandbox login runs the server's native (accounts /
         OIDC) flow.
@@ -496,7 +486,7 @@ def login_app_oauth_in_sandbox(
         click.echo("▸ Skipping the in-sandbox server login")
         return
     # Fail fast for providers that can't bridge the OAuth callback port
-    # (e.g. Modal) — BEFORE validating flags or touching the sandbox, so
+    # — BEFORE validating flags or touching the sandbox, so
     # the user gets the --no-auth hint instead of a misleading error
     # from a doomed in-sandbox login.
     if not launcher.capabilities.local_port_forward:
@@ -654,14 +644,13 @@ def connect_sandbox_host(
     <url>``: ``omnigent host`` no longer takes a ``--profile`` flag
     — it resolves credentials itself, via a stored
     ``omnigent login`` token or the sandbox's ambient Databricks
-    credentials (e.g. the Lakebox image's baked workspace PAT, which
-    authenticates to servers in the sandbox's own workspace).
+    credentials.
 
     When *host_name* is set, the sandbox's
     ``~/.omnigent/config.yaml`` is updated so the host registers
     with that name instead of the default ``socket.gethostname()``.
-    This matters for Lakebox sandboxes because all of them share the
-    hostname ``databricks``, and the server's ``hosts`` table is
+    This matters for providers whose sandboxes share one hostname,
+    because the server's ``hosts`` table is
     primary-keyed on ``(owner, name)`` — collisions overwrite each
     other and (with existing conversations) FK-violate. Pick a unique
     name per sandbox to avoid the clash.

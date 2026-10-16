@@ -21,8 +21,6 @@ Per-harness env-var routing
 
 The server inherits credentials by harness:
 
-- ``--harness=open-responses`` / ``--harness=openai-agents`` →
-  ``OPENAI_API_KEY=<--llm-api-key>``.
 - ``--harness=claude-sdk`` → ``ANTHROPIC_API_KEY=<--llm-api-key>``,
   OR Databricks-routed via ``HARNESS_CLAUDE_SDK_GATEWAY=true`` +
   ``HARNESS_CLAUDE_SDK_DATABRICKS_PROFILE=<--profile>`` when
@@ -75,8 +73,7 @@ class HarnessCredentials:
     Per-harness credentials and config the live server needs.
 
     :param harness: Harness identifier, e.g. ``"databricks"``,
-        ``"claude-sdk"``, ``"open-responses"``, ``"openai-agents"``,
-        ``"codex"``.
+        ``"claude-sdk"``, ``"codex"``.
     :param profile: Databricks CLI profile name, e.g. ``"test-profile"``.
         ``None`` when not using a Databricks-backed harness.
     :param llm_api_key: Direct API key for the harness's provider,
@@ -103,10 +100,7 @@ def _compute_harness_env(creds: HarnessCredentials) -> dict[str, str]:
     """
     env: dict[str, str] = {}
     h = creds.harness
-    if h in ("open-responses", "openai-agents"):
-        if creds.llm_api_key is not None:
-            env["OPENAI_API_KEY"] = creds.llm_api_key
-    elif h == "claude-sdk":
+    if h == "claude-sdk":
         if creds.profile:
             # Claude SDK harness wrap reads these to route through
             # the Databricks gateway instead of Anthropic direct.

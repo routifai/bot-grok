@@ -19,8 +19,8 @@ Enumeration is deterministic per provider kind:
 - ``key`` (openai family) / ``gateway`` / ``local`` →
   ``GET <base_url>/v1/models`` with a bearer token (source
   ``"openai-compatible"``).
-- ``subscription`` → live CLI discovery for Cursor; curated static aliases for
-  CLIs without a listing API (source ``"static"``, ``verified: false``).
+- ``subscription`` → curated static aliases for CLIs without a listing API
+  (source ``"static"``, ``verified: false``).
 - ``cli-config`` → the codex curated static list (source ``"static"``,
   ``verified: false`` — the credential lives in the CLI's own config
   file and is resolved by the CLI at launch).
@@ -38,7 +38,7 @@ import re
 import subprocess
 import threading
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any, Literal, TypeAlias, cast
+from typing import TYPE_CHECKING, Literal, TypeAlias, cast
 from urllib.parse import urlsplit
 
 import click
@@ -111,16 +111,7 @@ _MODEL_SERVICES_PARENT = "schemas/system.ai"
 _MODEL_SERVICES_MAX_RESULTS = 100
 _MODEL_SERVICES_MAX_PAGES = 100
 
-_ProviderHarness: TypeAlias = Literal[
-    "claude-sdk",
-    "codex",
-    "pi",
-    "openai-agents-sdk",
-    "antigravity",
-    "kimi",
-    "qwen",
-    "acp",
-]
+_ProviderHarness: TypeAlias = Literal["claude-sdk", "codex", "pi"]
 
 # Harness spellings -> the workflow harness whose provider resolution they
 # share; natives resolve via their SDK sibling (the resolve_native_* rule).
@@ -136,52 +127,12 @@ _PROVIDER_RESOLUTION_HARNESS: dict[str, _ProviderHarness] = {
     "pi": "pi",
     "pi-native": "pi",
     "native-pi": "pi",
-    "openai-agents": "openai-agents-sdk",
-    "openai-agents-sdk": "openai-agents-sdk",
-    "agents_sdk": "openai-agents-sdk",
-    "antigravity": "antigravity",
-    "agy": "antigravity",
-    "google-antigravity": "antigravity",
-    # Kimi Code CLI is multi-provider; it shares no resolution path with an
-    # existing harness. The identity entry keeps callers that iterate this
-    # map (e.g. ``list_models_for_worker``) finding the harness so they
-    # don't fall through to a noisy "unknown harness" branch.
-    "kimi": "kimi",
-    "kimi-code": "kimi",
-    # Native Kimi TUI harness shares the multi-provider kimi resolution path.
-    "kimi-native": "kimi",
-    # Generic ACP (and its acp:<slug> ids, canonicalized before lookup) is
-    # family-agnostic like kimi; the curated picker reads every family's
-    # models: map from the resolved entry (see acp_curated_models).
-    "acp": "acp",
-    "qwen": "qwen",
-    # The native agy TUI bridge resolves its provider via the SDK sibling,
-    # mirroring the claude-native -> claude-sdk rule above.
-    "antigravity-native": "antigravity",
-    "native-antigravity": "antigravity",
-    "agy-native": "antigravity",
-    "native-agy": "antigravity",
 }
-
-# cursor-agent always routes through its own stored login — there is no
-# omnigent-side provider config for it to resolve (or fail), so resolution
-# short-circuits to a subscription-style readout instead of reporting the
-# harness as having "no model-provider resolution".
-_CURSOR_HARNESSES: frozenset[str] = frozenset({"cursor", "cursor-native", "native-cursor"})
-
-# devin authenticates through its own ``devin auth login`` (Omnigent stores no
-# Devin credential), so — like cursor-agent — the CLI is the authority on which
-# models the account may use and the listing is a live CLI probe, not a
-# provider-config lookup.
-_DEVIN_HARNESSES: frozenset[str] = frozenset({"devin-native", "native-devin"})
 
 # Preferred inline family per single-family harness (pi consumes both).
 _KEY_AUTH_FAMILY: dict[str, str] = {
     "claude-sdk": ANTHROPIC_FAMILY,
     "codex": OPENAI_FAMILY,
-    "openai-agents-sdk": OPENAI_FAMILY,
-    "antigravity": OPENAI_FAMILY,
-    "qwen": OPENAI_FAMILY,
 }
 
 # Multi-family providers (pi): anthropic first, matching _apply_provider_to_pi.
@@ -248,7 +199,7 @@ class ResolvedModelProvider:
         Never serialized into tool output.
     :param auth_command: Shell command printing a bearer token, for
         providers configured with a dynamic credential.
-    :param cli: ``"claude"`` / ``"codex"`` / ``"cursor-agent"`` for
+    :param cli: ``"claude"`` / ``"codex"`` / ``"pi"`` for
         ``kind="subscription"``; ``"codex"`` for ``kind="cli-config"``.
     :param detail: Non-secret descriptor of how the provider resolved,
         e.g. ``"provider 'openrouter'"`` — used in listing notes.
@@ -598,7 +549,7 @@ def resolve_model_provider(spec: object, harness: str | None) -> ResolvedModelPr
     """
     try:
         return _resolve_model_provider_unsafe(spec, harness)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         from omnigent.errors import OmnigentError
 
         _logger.debug("model provider resolution failed for harness %r", harness, exc_info=True)
@@ -628,13 +579,6 @@ def _resolve_model_provider_unsafe(spec: object, harness: str | None) -> Resolve
     from omnigent.runtime.workflow import _resolve_provider_for_build
 
     canonical_harness = canonicalize_harness(harness) or harness
-    if (canonical_harness or "") in _CURSOR_HARNESSES:
-        return ResolvedModelProvider(
-            kind=SUBSCRIPTION_KIND, cli="cursor-agent", detail="cursor-agent CLI login"
-        )
-    if (harness or "") in _DEVIN_HARNESSES:
-        return ResolvedModelProvider(kind=SUBSCRIPTION_KIND, cli="devin", detail="devin CLI login")
-
     harness_type = _PROVIDER_RESOLUTION_HARNESS.get(canonical_harness or "")
     if harness_type is None:
         return ResolvedModelProvider(
@@ -643,12 +587,8 @@ def _resolve_model_provider_unsafe(spec: object, harness: str | None) -> Resolve
         )
 
     agent_spec = cast("AgentSpec", spec)
-    entry = (
-        _acp_provider_entry(agent_spec)
-        if harness_type == "acp"
-        else _resolve_provider_for_build(
-            agent_spec, harness_type=harness_type, actual_harness=harness
-        )
+    entry = _resolve_provider_for_build(
+        agent_spec, harness_type=harness_type, actual_harness=harness
     )
     if entry is not None:
         return _provider_from_entry(entry, harness_type)
@@ -661,8 +601,7 @@ def _provider_from_legacy_auth(
     """Mirror the per-harness legacy fallthrough of ``_build_*_spawn_env``.
 
     The builders diverge: claude-sdk consumes spec/global ``auth:``
-    blocks AND legacy profiles; openai-agents consumes ``auth:`` blocks
-    and ``config["profile"]``; codex and pi consume ONLY
+    blocks AND legacy profiles; codex and pi consume ONLY
     ``config["profile"]`` plus the ``databricks-*`` model prefix — their
     builders never read ``auth:`` blocks, so reporting one as usable
     would list models the spawned child cannot actually reach.
@@ -673,18 +612,6 @@ def _provider_from_legacy_auth(
     """
     if harness_type == "claude-sdk":
         return _legacy_claude_sdk_provider(spec)
-    if harness_type == "acp":
-        # The generic-ACP spawn builder consumes no legacy auth/profile fields
-        # at all -- the vendor CLI owns its auth. Curation comes from named
-        # providers (spec/global ``providers:``), not the legacy fields.
-        return _legacy_acp_provider(spec)
-    if harness_type in ("openai-agents-sdk", "antigravity"):
-        # Both resolve spec/global ``auth:`` api-key blocks via this branch.
-        # NB: the antigravity spawn-env builder (unlike openai-agents) ignores
-        # ``config["profile"]`` — it's Gemini-native with no Databricks/gateway
-        # path — so for a profile-only antigravity spec this readout can
-        # over-report; api-key (and Vertex) specs resolve correctly.
-        return _legacy_openai_agents_provider(spec)
     return _legacy_profile_only_provider(spec, harness_type)
 
 
@@ -750,48 +677,6 @@ def _legacy_claude_sdk_provider(spec: AgentSpec) -> ResolvedModelProvider:
     return ResolvedModelProvider(kind=NONE_KIND, detail="no model provider configured")
 
 
-def _legacy_openai_agents_provider(spec: AgentSpec) -> ResolvedModelProvider:
-    """Mirror ``_build_openai_agents_sdk_spawn_env``'s legacy auth branch.
-
-    Spec ``auth:`` (api_key with its base_url / databricks) → global
-    ``auth:`` (only when the spec declares no auth or legacy profile) →
-    ``config["profile"]`` → ``databricks-*`` model prefix → none.
-
-    :param spec: The worker's (sub-)agent spec.
-    :returns: A :class:`ResolvedModelProvider`.
-    """
-    from omnigent.onboarding.configure_models import default_base_url_for_family
-    from omnigent.runtime.workflow import _load_global_auth
-    from omnigent.spec.types import ApiKeyAuth, DatabricksAuth
-
-    spec_auth = spec.executor.auth
-    auth = spec_auth if isinstance(spec_auth, (ApiKeyAuth, DatabricksAuth)) else None
-    has_legacy_profile = bool(spec.executor.profile or spec.executor.config.get("profile"))
-    if auth is None and not has_legacy_profile:
-        auth = _load_global_auth()
-    if isinstance(auth, ApiKeyAuth) and auth.api_key:
-        return ResolvedModelProvider(
-            kind=KEY_KIND,
-            family=OPENAI_FAMILY,
-            base_url=auth.base_url or default_base_url_for_family(OPENAI_FAMILY),
-            api_key=auth.api_key,
-            detail="api_key auth",
-        )
-    if isinstance(auth, DatabricksAuth):
-        return ResolvedModelProvider(
-            kind=DATABRICKS_KIND, profile=auth.profile or None, detail="databricks auth"
-        )
-    profile = spec.executor.config.get("profile")
-    if profile:
-        return ResolvedModelProvider(
-            kind=DATABRICKS_KIND, profile=str(profile), detail="spec profile"
-        )
-    prefix = _databricks_prefix_provider(spec)
-    if prefix is not None:
-        return prefix
-    return ResolvedModelProvider(kind=NONE_KIND, detail="no model provider configured")
-
-
 def _legacy_profile_only_provider(
     spec: AgentSpec, harness_type: _ProviderHarness
 ) -> ResolvedModelProvider:
@@ -822,190 +707,6 @@ def _legacy_profile_only_provider(
             ),
         )
     return ResolvedModelProvider(kind=NONE_KIND, detail="no model provider configured")
-
-
-def _legacy_acp_provider(spec: AgentSpec) -> ResolvedModelProvider:
-    """Mirror the ACP builder's legacy branch: it consumes nothing legacy.
-
-    ``_build_acp_spawn_env`` never reads ``auth:`` blocks, ``executor.profile``,
-    ``config["profile"]``, or the ``databricks-*`` model prefix — the vendor
-    CLI owns its auth, so curation of the picker comes from named providers
-    (the ``providers:`` block), not from legacy fields.
-
-    :param spec: The worker's (sub-)agent spec.
-    :returns: A ``"none"`` provider naming the right config surface.
-    """
-    if spec.executor.auth is not None or spec.executor.profile:
-        return ResolvedModelProvider(
-            kind=NONE_KIND,
-            detail=(
-                "the acp spawn path does not consume legacy auth:/profile "
-                "fields; configure a 'providers:' entry instead"
-            ),
-        )
-    return ResolvedModelProvider(kind=NONE_KIND, detail="no model provider configured")
-
-
-def _acp_launch_model(spec: AgentSpec) -> str | None:
-    """The model an ACP worker launches with, mirroring the spawn builder.
-
-    :param spec: The worker's (sub-)agent spec.
-    :returns: The spec model, else the embedded/configured agent's model,
-        else the explicitly selected provider's default. Uncurated sessions
-        retain the legacy filtering of inherited Databricks spec models.
-    """
-    model = getattr(spec.executor, "model", None)
-    from omnigent.inference_config import (
-        binding_for_harness,
-        load_runtime_inference_config,
-        resolve_bound_model,
-    )
-
-    config = load_runtime_inference_config()
-    harness = str(spec.executor.config.get("harness") or "acp")
-    if binding_for_harness(config, harness) is not None:
-        return resolve_bound_model(config, harness, model)
-    if isinstance(model, str) and model:
-        if not model.startswith(("databricks-", "databricks/")) or acp_curated_models(spec):
-            return model
-    # Imported lazily: the onboarding config read should stay off the
-    # listing hot path (mirrors the cursor builder's own lazy read).
-    from omnigent.onboarding.acp_auth import acp_agents, resolve_acp_agent
-
-    cfg = getattr(spec.executor, "config", None)
-    if isinstance(cfg, dict) and "acp_agent" in cfg:
-        embedded = cfg.get("acp_agent")
-        embedded_model = embedded.get("model") if isinstance(embedded, dict) else None
-        if isinstance(embedded_model, str) and embedded_model:
-            return embedded_model
-    else:
-        raw_harness = str(cfg.get("harness") or "") if isinstance(cfg, dict) else ""
-        slug = raw_harness.split(":", 1)[1] if raw_harness.startswith("acp:") else ""
-        agent = resolve_acp_agent(slug) if slug else None
-        if agent is None:
-            agents = acp_agents()
-            agent = agents[0] if agents else None
-        if agent is not None and agent.model:
-            return agent.model
-    entry = _acp_provider_entry(spec)
-    if entry is not None:
-        return _acp_provider_default(entry) or next(iter(acp_curated_models(spec)), None)
-    return None
-
-
-def _acp_provider_entry(spec: AgentSpec) -> ProviderEntry | None:
-    """Resolve only a provider explicitly selected for this ACP agent.
-
-    :param spec: The worker's agent spec.
-    :returns: The named provider, or ``None`` when the vendor owns its config.
-    :raises OmnigentError: If the explicitly selected provider cannot be resolved.
-    """
-    from omnigent.errors import ErrorCode, OmnigentError
-    from omnigent.inference_config import load_runtime_inference_config, resolve_bound_provider
-    from omnigent.runtime.workflow import _resolve_provider_for_build
-    from omnigent.spec.types import ProviderAuth
-
-    bound = resolve_bound_provider(
-        load_runtime_inference_config(),
-        str(spec.executor.config.get("harness") or "acp"),
-        spec.executor.auth,
-    )
-    if bound is not None:
-        return bound
-
-    if not isinstance(spec.executor.auth, ProviderAuth):
-        return None
-    try:
-        return _resolve_provider_for_build(spec, harness_type=cast(Any, "acp"))
-    except OmnigentError:
-        raise
-    except Exception as exc:
-        raise OmnigentError(
-            f"Cannot resolve ACP provider {spec.executor.auth.name!r}. "
-            "Check the provider configuration.",
-            code=ErrorCode.INTERNAL_ERROR,
-        ) from exc
-
-
-def _acp_provider_default(entry: ProviderEntry) -> str | None:
-    """Return the first configured provider default with tier aliases resolved.
-
-    :param entry: The provider explicitly selected for an ACP agent.
-    :returns: The concrete default model id, or ``None``.
-    """
-    for family in entry.families.values():
-        if family.default_model:
-            return family.resolve_model_tier(family.default_model)
-    return None
-
-
-def acp_curated_models(spec: object) -> tuple[str, ...]:
-    """Curated model shortlist for a generic-ACP worker's picker.
-
-    Only an explicitly selected ``executor.auth`` provider supplies models.
-    Its default leads, followed by the family ``models:`` values in config
-    order, deduplicated after resolving aliases. Session overrides and ACP
-    agent defaults never expand or reorder the deployment's configured set.
-    Credentials are not consulted: the vendor CLI authenticates itself.
-
-    :param spec: The worker's (sub-)agent spec.
-    :returns: At least two distinct configured model ids, provider default
-        first; empty for unbound, unconfigured, or default-only providers.
-    :raises OmnigentError: If an explicitly selected provider cannot be resolved.
-    """
-    from omnigent.inference_config import binding_for_harness, load_runtime_inference_config
-
-    agent_spec = cast("AgentSpec", spec)
-    binding = binding_for_harness(
-        load_runtime_inference_config(),
-        str(agent_spec.executor.config.get("harness") or "acp"),
-    )
-    entry = _acp_provider_entry(agent_spec)
-    if binding is not None and binding.model_allowlist is not None:
-        return binding.model_allowlist
-    if entry is None:
-        return ()
-    default = _acp_provider_default(entry)
-    models = [default] if default else []
-    models.extend(
-        family.resolve_model_tier(model_id)
-        for family in entry.families.values()
-        for model_id in family.models.values()
-        if model_id
-    )
-    curated = tuple(dict.fromkeys(models))
-    return curated if len(curated) > 1 else ()
-
-
-def validate_acp_model(spec: object, model: str | None) -> None:
-    """Reject a requested model outside the ACP agent's configured shortlist.
-
-    :param spec: The worker's (sub-)agent spec.
-    :param model: Requested model id, or ``None`` to reset to the default.
-    :raises OmnigentError: If the provider cannot be resolved or excludes the model.
-    """
-    from omnigent.errors import ErrorCode, OmnigentError
-    from omnigent.inference_config import (
-        binding_for_harness,
-        load_runtime_inference_config,
-        resolve_bound_model,
-    )
-
-    agent_spec = cast("AgentSpec", spec)
-    config = load_runtime_inference_config()
-    harness = str(agent_spec.executor.config.get("harness") or "acp")
-    if binding_for_harness(config, harness) is not None:
-        _acp_provider_entry(agent_spec)
-        resolve_bound_model(config, harness, model)
-        return
-
-    curated = acp_curated_models(spec)
-    if model is not None and curated and model not in curated:
-        raise OmnigentError(
-            f"Model {model!r} is not in this ACP agent's configured model list. "
-            "Choose a listed model or add it to the provider's models configuration.",
-            code=ErrorCode.INVALID_INPUT,
-        )
 
 
 def _provider_from_entry(entry: ProviderEntry, harness_type: str) -> ResolvedModelProvider:
@@ -1041,12 +742,8 @@ def _provider_from_entry(entry: ProviderEntry, harness_type: str) -> ResolvedMod
             ),
         )
     # Inline-family kinds: single-family harnesses get exactly their family;
-    # pi and generic acp take the first whose credential resolves, anthropic
-    # preferred (acp vendors own their routing, so no single key family exists).
-    if harness_type in ("pi", "acp"):
-        preferred = None
-    else:
-        preferred = _KEY_AUTH_FAMILY[harness_type]
+    # pi takes the first whose credential resolves, anthropic preferred.
+    preferred = None if harness_type == "pi" else _KEY_AUTH_FAMILY[harness_type]
     candidates = (preferred,) if preferred is not None else _FAMILY_PREFERENCE
     for family_name in candidates:
         try:
@@ -1085,8 +782,7 @@ def list_models_for_worker(
     cache) its unfiltered model listing, then applies the harness's
     family rule from :func:`~omnigent.models.model_override.model_family_mismatch`
     — claude harnesses keep Claude ids, codex harnesses keep GPT ids,
-    pi keeps everything. Curated generic ACP workers return their configured
-    shortlist without resolving credentials or querying the gateway.
+    pi keeps everything.
 
     :param spec: The worker's (sub-)agent spec.
     :param harness: The worker's harness id, e.g. ``"codex-native"``.
@@ -1094,18 +790,6 @@ def list_models_for_worker(
         the HTTP boundary; ``None`` uses the default transport.
     :returns: The worker's :class:`ModelListing`.
     """
-    if canonicalize_harness(harness) == "acp":
-        curated = acp_curated_models(spec)
-        if curated:
-            return ModelListing(
-                source="static",
-                verified=False,
-                models=tuple(
-                    ModelEntry(id=model_id, family=model_family_token(model_id))
-                    for model_id in curated
-                ),
-                note="Configured ACP provider model shortlist; vendor CLI owns authentication.",
-            )
     provider = resolve_model_provider(spec, harness)
     # Pi harnesses use system.ai.* ids (via the Unity Catalog model-services API)
     # so supervisors see the ids Pi can actually route. Other harnesses use the
@@ -1191,7 +875,7 @@ def _worker_row(
     harness = spec_harness(spec)
     try:
         listing = list_models_for_worker(spec, harness, transport=transport)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         _logger.debug("worker model enumeration failed", exc_info=True)
         listing = ModelListing(
             source=NONE_KIND,
@@ -1317,7 +1001,7 @@ def _listing_for_provider(
                 "this worker cannot run here"
             ),
         )
-    if provider.kind == SUBSCRIPTION_KIND and provider.cli not in ("cursor-agent", "devin"):
+    if provider.kind == SUBSCRIPTION_KIND:
         return _static_subscription_listing(provider)
     if provider.kind == CLI_CONFIG_KIND:
         return _static_cli_config_listing(provider)
@@ -1328,13 +1012,7 @@ def _listing_for_provider(
     if cached is not None:
         return cached
     try:
-        if provider.kind == SUBSCRIPTION_KIND:
-            listing = (
-                _fetch_devin_cli_listing(provider)
-                if provider.cli == "devin"
-                else _fetch_cursor_cli_listing(provider)
-            )
-        elif provider.kind == DATABRICKS_KIND:
+        if provider.kind == DATABRICKS_KIND:
             listing = _fetch_databricks_listing(provider, transport=transport)
         elif provider.kind == KEY_KIND and provider.family == ANTHROPIC_FAMILY:
             listing = _fetch_anthropic_listing(provider, transport=transport)
@@ -1350,22 +1028,6 @@ def _listing_for_provider(
         _logger.debug(
             "model enumeration failed for %s", provider.detail or provider.kind, exc_info=True
         )
-        if provider.kind == SUBSCRIPTION_KIND:
-            # A failed cursor-agent listing probe says nothing about
-            # dispatchability: the CLI brings its own stored login, so the
-            # worker still runs. Degrade to the usable pre-launch shape the
-            # other subscription CLI logins report, not the dead-worker
-            # "none" that tells orchestrators the worker cannot run here.
-            return ModelListing(
-                source="static",
-                verified=False,
-                models=(),
-                note=(
-                    f"model listing failed for {provider.detail or provider.kind} "
-                    f"({_redacted_failure_reason(exc)}); the CLI launches with its "
-                    "own stored login, so dispatches to this worker can still run"
-                ),
-            )
         return ModelListing(
             source=NONE_KIND,
             verified=False,
@@ -1378,44 +1040,6 @@ def _listing_for_provider(
     with _listing_cache_lock:
         _listing_cache[cache_key] = listing
     return listing
-
-
-def _fetch_cursor_cli_listing(provider: ResolvedModelProvider) -> ModelListing:
-    """Build a live listing from the installed Cursor CLI."""
-    from omnigent.harnesses.cursor_native.main import list_cursor_cli_model_options
-
-    options = list_cursor_cli_model_options()
-    return ModelListing(
-        source="cli",
-        verified=True,
-        models=tuple(
-            ModelEntry(id=str(option["id"]), family=model_family_token(str(option["id"])))
-            for option in options
-        ),
-        note=f"live models advertised by the {provider.cli or 'cursor-agent'} CLI",
-    )
-
-
-def _fetch_devin_cli_listing(provider: ResolvedModelProvider) -> ModelListing:
-    """Build a live listing from the installed Devin CLI.
-
-    Lists Devin model *families* (``claude-opus-5``, ``swe-2``, …) rather than
-    the ~400 raw variants: a variant id encodes the reasoning effort as a
-    suffix, and Omnigent carries effort as its own axis which
-    ``resolve_devin_launch_model`` recombines at launch.
-    """
-    from omnigent.harnesses.devin_native.main import list_devin_cli_model_options
-
-    options = list_devin_cli_model_options()
-    return ModelListing(
-        source="cli",
-        verified=True,
-        models=tuple(
-            ModelEntry(id=str(option["id"]), family=model_family_token(str(option["id"])))
-            for option in options
-        ),
-        note=f"live models advertised by the {provider.cli or 'devin'} CLI",
-    )
 
 
 def _static_subscription_listing(provider: ResolvedModelProvider) -> ModelListing:

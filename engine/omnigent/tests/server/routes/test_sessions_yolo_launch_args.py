@@ -1,14 +1,12 @@
 """Unit tests for native-worker YOLO ``terminal_launch_args`` derivation.
 
-Nessie's native sub-agent workers (claude-native / codex-native /
-cursor-native / kimi-native / antigravity-native) launch in a headless
-pane where no human can answer an approval prompt. The server translates
-a worker's bypass stance into the per-session ``terminal_launch_args``
-the runner appends to the native CLI argv: claude-native and
-antigravity-native opt in via ``permission_mode``, kimi-native opts in
-via ``yolo: true``, while codex-native and cursor-native default to full
-bypass (issue #171 / cursor ``--yolo``) because the headless seam has no
-safe non-bypass default, with ``yolo: false`` as the opt-out.
+Native sub-agent workers (claude-native / codex-native) launch in a
+headless pane where no human can answer an approval prompt. The server
+translates a worker's bypass stance into the per-session
+``terminal_launch_args`` the runner appends to the native CLI argv:
+claude-native opts in via ``permission_mode``, while codex-native defaults
+to full bypass (issue #171) because the headless seam has no safe
+non-bypass default, with ``yolo: false`` as the opt-out.
 
 These tests exercise the pure translation helper
 ``_derive_terminal_launch_args_from_spec`` directly with real
@@ -20,7 +18,7 @@ stringifies every ``executor.config`` value, so ``yolo: true`` becomes
 Top-level / self-resolved creates use the same helper with
 ``headless_defaults=False``: those sessions are interactive (a human can
 answer an ApprovalCard), so only the spec's EXPLICIT declarations
-translate and the codex-native / cursor-native headless default bypass
+translate and the codex-native headless default bypass
 does not apply. The ``*_without_headless_defaults`` tests pin that mode.
 """
 
@@ -149,53 +147,16 @@ def test_codex_native_yolo_false_string_opts_out_of_bypass() -> None:
     assert _derive_terminal_launch_args_from_spec(spec) is None
 
 
-def test_cursor_native_defaults_to_yolo_flag() -> None:
-    """
-    A headless cursor-native sub-agent defaults to ``--yolo``.
-
-    Polly's cursor worker launches in a pane where no human answers
-    cursor-agent's in-terminal approval prompts (also mirrored as web
-    elicitation cards). Without ``--yolo`` the worker stalls on the first
-    gated tool call — the same headless seam that forced codex's default
-    bypass (issue #171).
-    """
-    cursor = _spec_with_config({"harness": "cursor-native"})
-    assert _derive_terminal_launch_args_from_spec(cursor) == ["--yolo"]
-
-
-def test_cursor_native_yolo_true_translates_to_yolo_flag() -> None:
-    """cursor-native + ``yolo: true`` (string ``"True"``) -> ``--yolo``."""
-    spec = _spec_with_config({"harness": "cursor-native", "yolo": "True"})
-    assert _derive_terminal_launch_args_from_spec(spec) == ["--yolo"]
-
-
-def test_cursor_native_yolo_false_opts_out() -> None:
-    """``yolo: false`` keeps cursor-native prompting (no launch args)."""
-    spec = _spec_with_config({"harness": "cursor-native", "yolo": "False"})
-    assert _derive_terminal_launch_args_from_spec(spec) is None
-
-
-def test_cursor_native_permission_mode_auto_uses_auto_review() -> None:
-    """
-    cursor-native + ``permission_mode: auto`` -> ``--auto-review``.
-
-    Mirrors Claude's ``permission_mode: auto`` for bundles that want Smart
-    Auto rather than full don't-ask YOLO.
-    """
-    spec = _spec_with_config({"harness": "cursor-native", "permission_mode": "auto"})
-    assert _derive_terminal_launch_args_from_spec(spec) == ["--auto-review"]
-
-
 @pytest.mark.parametrize(
     "harness",
-    ["claude-sdk", "codex", "openai-agents", "cursor"],
+    ["claude-sdk", "pi"],
 )
 def test_non_native_harness_with_bypass_fields_is_ignored(harness: str) -> None:
     """
     Non-native harnesses never get terminal args, even with bypass fields.
 
-    ``terminal_launch_args`` is a native-terminal (claude/codex/cursor TUI)
-    concept; a claude-sdk / cursor-sdk worker sets bypass via the SDK
+    ``terminal_launch_args`` is a native-terminal (claude/codex TUI)
+    concept; a claude-sdk / pi worker sets bypass via the SDK
     permission mode spawn env, not a CLI flag. Translating these fields for
     a non-native harness would emit a flag the runner has no terminal to
     apply it to. A failure means the harness gate leaked. Both bypass
@@ -204,111 +165,6 @@ def test_non_native_harness_with_bypass_fields_is_ignored(harness: str) -> None:
     spec = _spec_with_config(
         {"harness": harness, "permission_mode": "bypassPermissions", "yolo": "True"}
     )
-    assert _derive_terminal_launch_args_from_spec(spec) is None
-
-
-def test_kimi_native_without_yolo_field_returns_none() -> None:
-    """
-    kimi-native bypass is opt-IN: an absent ``yolo`` leaves args unset.
-
-    Unlike codex/cursor's headless default-bypass, kimi keeps its current
-    prompting behavior unless the bundle explicitly declares ``yolo: true``.
-    ``None`` (not ``[]``) is the leave-unset contract.
-    """
-    spec = _spec_with_config({"harness": "kimi-native"})
-    assert _derive_terminal_launch_args_from_spec(spec) is None
-
-
-@pytest.mark.parametrize(
-    ("yolo", "expected"),
-    [
-        # Accepted spellings: real bool (programmatic spec) + the parser's
-        # stringified form, case-insensitive with no whitespace tolerance.
-        (True, ["--yolo"]),
-        ("True", ["--yolo"]),
-        ("true", ["--yolo"]),
-        # Rejected: padded strings, bool False, the parser's "False", and
-        # truthy-LOOKING spellings that are NOT part of the contract — they
-        # must silently (debug-logged) leave args unset rather than
-        # half-enable bypass.
-        (" TRUE ", None),
-        (False, None),
-        ("False", None),
-        ("1", None),
-        ("yes", None),
-        ("on", None),
-        ("", None),
-    ],
-)
-def test_kimi_native_yolo_spelling_boundary(yolo: object, expected: list[str] | None) -> None:
-    """
-    Pin the accepted-vs-rejected spelling boundary for the kimi opt-in.
-
-    Only a real bool ``True`` or a case-insensitive, unpadded ``"true"``
-    string enables ``--yolo`` (kimi's auto-approve-tools flag — ``--auto``
-    full autonomy is deliberately NOT mapped); every other present value
-    (including YAML-1.1-style ``yes``/``on`` and numeric ``1``) leaves
-    launch args unset. A failure here means the opt-in boundary drifted —
-    either silently enabling bypass for a spelling the contract rejects, or
-    dropping one it accepts and parking a YOLO kimi worker on approval
-    cards no headless pane can answer.
-    """
-    spec = _spec_with_config({"harness": "kimi-native", "yolo": yolo})
-    assert _derive_terminal_launch_args_from_spec(spec) == expected
-
-
-@pytest.mark.parametrize(
-    ("mode", "expected"),
-    [
-        # permission_mode is matched exactly (no whitespace tolerance),
-        # mirroring the runner's should_skip_permissions comparison and
-        # claude-native's verbatim pass-through.
-        ("bypassPermissions", ["--dangerously-skip-permissions"]),
-        (" bypassPermissions ", None),
-        ("bypasspermissions", None),
-        ("BYPASSPERMISSIONS", None),
-        ("acceptEdits", None),
-        ("", None),
-    ],
-)
-def test_antigravity_native_mode_spelling_boundary(mode: str, expected: list[str] | None) -> None:
-    """
-    Pin exact-match semantics for the agy ``permission_mode`` opt-in.
-
-    ``--dangerously-skip-permissions`` is agy's only pre-emptive permission
-    control, so ``bypassPermissions`` is the only mode that maps to a flag —
-    non-bypass modes (``acceptEdits``, ...) have no agy analogue and must
-    leave args unset. A wrong-case or padded spelling must NOT enable the
-    flag either: the runner's own ``should_skip_permissions`` compares the
-    mode exactly, so a lenient server-side match would create a mode string
-    that bypasses here but prompts on other agy paths.
-    """
-    spec = _spec_with_config({"harness": "antigravity-native", "permission_mode": mode})
-    assert _derive_terminal_launch_args_from_spec(spec) == expected
-
-
-def test_antigravity_native_without_permission_mode_returns_none() -> None:
-    """antigravity-native bypass is opt-IN: absent mode leaves args unset."""
-    spec = _spec_with_config({"harness": "antigravity-native"})
-    assert _derive_terminal_launch_args_from_spec(spec) is None
-
-
-def test_antigravity_native_non_string_mode_is_fail_closed() -> None:
-    """
-    A non-string ``permission_mode`` must never enable the bypass flag.
-
-    ``executor.config`` is ``dict[str, Any]``, so the value can be an
-    arbitrary object — including one whose ``__eq__`` answers True for any
-    comparison. Only a real string match may emit the all-or-nothing flag.
-    """
-
-    class _EqAnything:
-        def __eq__(self, other: object) -> bool:
-            return True
-
-        __hash__ = object.__hash__
-
-    spec = _spec_with_config({"harness": "antigravity-native", "permission_mode": _EqAnything()})
     assert _derive_terminal_launch_args_from_spec(spec) is None
 
 
@@ -347,26 +203,6 @@ def test_codex_native_yolo_false_stays_unset_without_headless_defaults() -> None
     """An explicit ``yolo: false`` opt-out also holds on top-level creates."""
     spec = _spec_with_config({"harness": "codex-native", "yolo": "False"})
     assert _derive_terminal_launch_args_from_spec(spec, headless_defaults=False) is None
-
-
-def test_cursor_native_explicit_yolo_translates_without_headless_defaults() -> None:
-    """cursor-native ``yolo: true`` is an explicit opt-in and still maps."""
-    spec = _spec_with_config({"harness": "cursor-native", "yolo": "True"})
-    assert _derive_terminal_launch_args_from_spec(spec, headless_defaults=False) == ["--yolo"]
-
-
-def test_cursor_native_undeclared_yolo_stays_unset_without_headless_defaults() -> None:
-    """cursor-native's headless ``--yolo`` default is worker-only."""
-    spec = _spec_with_config({"harness": "cursor-native"})
-    assert _derive_terminal_launch_args_from_spec(spec, headless_defaults=False) is None
-
-
-def test_cursor_native_auto_mode_translates_without_headless_defaults() -> None:
-    """An explicit Smart Auto mode is a declaration, not a headless default."""
-    spec = _spec_with_config({"harness": "cursor-native", "permission_mode": "auto"})
-    assert _derive_terminal_launch_args_from_spec(spec, headless_defaults=False) == [
-        "--auto-review",
-    ]
 
 
 def test_claude_native_permission_mode_translates_without_headless_defaults() -> None:

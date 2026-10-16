@@ -134,15 +134,6 @@ from omnigent.server.routes._session_create_validation import (
 # ``__all__`` and the facade's explicit re-exports, preserving its real runtime
 # bindings so a facade-level monkeypatch is honoured in this module too.
 from omnigent.server.routes._sessions.common import (  # noqa: F401
-    _ACP_SUBAGENT_DESCRIPTION_LABEL_KEY,
-    _ACP_SUBAGENT_ID_LABEL_KEY,
-    _ANTIGRAVITY_NATIVE_HARNESS,
-    _ANTIGRAVITY_NATIVE_SUBAGENT_CASCADE_ID_LABEL_KEY,
-    _ANTIGRAVITY_NATIVE_SUBAGENT_DISPLAY_FALLBACK,
-    _ANTIGRAVITY_NATIVE_SUBAGENT_ROLE_LABEL_KEY,
-    _ANTIGRAVITY_NATIVE_SUBAGENT_TOOL_CALL_ID_LABEL_KEY,
-    _ANTIGRAVITY_NATIVE_SUBAGENT_TYPE_LABEL_KEY,
-    _ANTIGRAVITY_NATIVE_SUBAGENT_WRAPPER_LABEL_VALUE,
     _APPROVAL_TYPE,
     _CHILD_PREVIEW_LIMIT,
     _CLAUDE_NATIVE_DESCRIPTION_LABEL_KEY,
@@ -170,20 +161,12 @@ from omnigent.server.routes._sessions.common import (  # noqa: F401
     _CODEX_NATIVE_SUBAGENT_THREAD_ID_LABEL_KEY,
     _CODEX_NATIVE_SUBAGENT_TOOL_CALL_ID_LABEL_KEY,
     _CODEX_NATIVE_SUBAGENT_WRAPPER_LABEL_VALUE,
-    _CURSOR_FORK_HISTORY_HARNESSES,
-    _CURSOR_NATIVE_HARNESS,
     _DENY_SENTINEL_PREFIX,
-    _DEVIN_NATIVE_SUBAGENT_AGENT_ID_LABEL_KEY,
-    _DEVIN_NATIVE_SUBAGENT_DISPLAY_FALLBACK,
-    _DEVIN_NATIVE_SUBAGENT_TITLE_LABEL_KEY,
-    _DEVIN_NATIVE_SUBAGENT_TOOL_USE_ID_LABEL_KEY,
-    _DEVIN_NATIVE_SUBAGENT_WRAPPER_LABEL_VALUE,
     _ELICITATION_MODE,
     _EXTERNAL_STATUS_ASSISTANT_SCAN_LIMIT,
     _FORK_HISTORY_NATIVE_HARNESSES,
     _HOOK_ELICITATION_ID_RE,
     _HOST_LAUNCH_RESULT_TIMEOUT_S,
-    _KIMI_NATIVE_HARNESS,
     _LABEL_VALUE_MAX_LEN,
     _LAST_TASK_ERROR_AGENT_NAME_LABEL_KEY,
     _LAST_TASK_ERROR_CAUSE_LABEL_KEY,
@@ -1891,14 +1874,14 @@ def _resolve_harness_impl(
     (``executor.config["harness"]``, else ``executor.type``), canonicalized.
     Surfacing this on :class:`SessionResponse` lets the REPL render the
     active credential for the correct provider *family* — anthropic for
-    claude-sdk, openai for codex / openai-agents — instead of guessing the
+    claude-sdk, openai for pi — instead of guessing the
     family from the model string (which is wrong when the agent declares no
     model, e.g. a generic-provider launcher).
 
     :param conv: The conversation entity, or ``None``.
     :param agent_store: Optional store for resolving the bound agent.
     :param agent_cache: Optional cache for loading the bound agent spec.
-    :returns: The canonical harness (e.g. ``"openai-agents"`` or
+    :returns: The canonical harness (e.g. ``"pi"`` or
         ``"claude-sdk"``), or ``None`` when unavailable.
     """
     if conv is None:
@@ -1971,10 +1954,10 @@ def _validated_harness_override(value: str | None, agent: Agent) -> str | None:
     spec — other executor types have no ``config.harness``, so an
     override there would be a silent no-op.
 
-    :param value: The raw override from the request body, e.g. ``"pi"``
-        or the ``"openai-agents-sdk"`` alias. ``None`` means no override.
+    :param value: The raw override from the request body, e.g. ``"pi"``.
+        ``None`` means no override.
     :param agent: The bound agent row (already fetched by the caller).
-    :returns: The canonical id, preserving a namespaced ACP selection.
+    :returns: The canonical harness id.
     :raises OmnigentError: ``invalid_input`` for an unknown harness, a
         non-omnigent executor type, or an unloadable agent bundle.
     """
@@ -1992,13 +1975,6 @@ def _validated_harness_override(value: str | None, agent: Agent) -> str | None:
         raise OmnigentError(
             f"invalid harness_override: must be one of "
             f"{sorted(OMNIGENT_HARNESSES)}, got {value!r}",
-            code=ErrorCode.INVALID_INPUT,
-        )
-    # The runner owns ACP configuration; the server only validates its syntax.
-    namespaced_acp = value.startswith("acp:")
-    if namespaced_acp and not re.fullmatch(r"acp:[a-z0-9]+(?:-[a-z0-9]+)*", value):
-        raise OmnigentError(
-            f"invalid harness_override: invalid ACP agent identifier {value!r}",
             code=ErrorCode.INVALID_INPUT,
         )
     try:
@@ -2019,7 +1995,7 @@ def _validated_harness_override(value: str | None, agent: Agent) -> str | None:
             f"declares executor.type {executor_type!r}",
             code=ErrorCode.INVALID_INPUT,
         )
-    return value if namespaced_acp else canonical
+    return canonical
 
 
 def _validated_harness_override_executor_type(agent: Agent) -> None:
@@ -2359,7 +2335,6 @@ async def _persist_external_model_change(
         allowed = binding.model_allowlist if binding is not None else None
         if allowed is not None and model not in allowed:
             prefixes = {
-                "opencode-native": ("omnigent/",),
                 "pi-native": ("omnigent/", "omnigent-openai/", "omnigent-completions/"),
             }.get(snapshot["harness"], ())
             model = next(
@@ -3101,7 +3076,7 @@ def _publish_external_output_reasoning_delta(session_id: str, body: SessionEvent
     Broadcast a terminal-observed reasoning (chain-of-thought) delta.
 
     The reasoning analogue of :func:`_publish_external_output_text_delta`:
-    terminal-backed integrations (the antigravity-native reader) observe a
+    terminal-backed integrations (the codex-native forwarder) observe a
     streaming ``thinking`` block before the completed assistant item exists. This
     publishes the standard reasoning SSE events the SPA already renders —
     ``response.reasoning.started`` once (when ``data.started`` is true, marking a
@@ -3409,139 +3384,6 @@ def _find_claude_native_subagent_child(
 
 
 @restart_on_stale_cursor
-def _find_acp_subagent_child(
-    conversation_store: ConversationStore,
-    parent_id: str,
-    subagent_id: str,
-) -> Conversation | None:
-    """
-    Look up an existing ACP sub-agent child by its harness-side id.
-
-    Mirrors :func:`_find_claude_native_subagent_child` (including its
-    pagination, so a parent with many sub-agents still finds an older row)
-    but keys on :data:`_ACP_SUBAGENT_ID_LABEL_KEY`.
-
-    :param conversation_store: Store to query.
-    :param parent_id: Parent conversation id, e.g. ``"conv_parent987"``.
-    :param subagent_id: The agent's own sub-agent id, e.g. ``"a0ac9364"``.
-    :returns: The matching child :class:`Conversation`, or ``None``.
-    """
-    after: str | None = None
-    while True:
-        page = conversation_store.list_conversations(
-            kind="sub_agent",
-            parent_conversation_id=parent_id,
-            limit=100,
-            after=after,
-        )
-        for child in page.data:
-            if child.labels.get(_ACP_SUBAGENT_ID_LABEL_KEY) == subagent_id:
-                return child
-        if not page.has_more or page.last_id is None:
-            return None
-        after = page.last_id
-
-
-async def _persist_external_acp_subagent_start(
-    parent_id: str,
-    parent_conv: Conversation,
-    body: SessionEventInput,
-    conversation_store: ConversationStore,
-) -> str:
-    """
-    Mint a child :class:`Conversation` for an ACP agent's sub-agent.
-
-    The ACP counterpart of :func:`_persist_external_subagent_start`. An ACP
-    agent (e.g. Devin) runs its sub-agents inside its own single session, so the
-    child is a display row: it inherits the parent's ``agent_id`` and, crucially,
-    carries **no** ``omnigent.wrapper`` value. That absence is load-bearing — a
-    native subagent wrapper value makes the UI label the child with that vendor's
-    name (a Devin sub-agent minted through the claude path renders as "Claude
-    Code"), whereas with none the child's harness resolves through
-    :func:`_resolve_harness_impl` to the parent's (e.g. ``devin``) and the UI
-    labels it from the harness catalog.
-
-    Idempotent: a redelivery with the same ``subagent_id`` returns the existing
-    child id, with a title-collision recovery path matching the native helpers.
-
-    :param parent_id: Parent conversation id, e.g. ``"conv_parent987"``.
-    :param parent_conv: Pre-fetched parent row; its ``agent_id`` / ``runner_id``
-        are copied onto the child.
-    :param body: The POST event body. Required ``data`` keys: ``subagent_id``
-        (the agent's own id) and ``title`` (the row label). Optional:
-        ``description`` (the delegated task).
-    :param conversation_store: Store used to read existing children and create
-        the new row.
-    :returns: The child conversation id, e.g. ``"conv_child456"``.
-    :raises OmnigentError: 400 when a required key is missing or the parent has
-        no ``agent_id``.
-    """
-    subagent_id = body.data.get("subagent_id")
-    title_raw = body.data.get("title")
-    description = body.data.get("description") or ""
-    if not isinstance(subagent_id, str) or not subagent_id:
-        raise OmnigentError(
-            "external_acp_subagent_start requires non-empty data.subagent_id",
-            code=ErrorCode.INVALID_INPUT,
-        )
-    if not isinstance(title_raw, str) or not title_raw:
-        raise OmnigentError(
-            "external_acp_subagent_start requires non-empty data.title",
-            code=ErrorCode.INVALID_INPUT,
-        )
-    if not isinstance(description, str):
-        raise OmnigentError(
-            "external_acp_subagent_start data.description must be a string",
-            code=ErrorCode.INVALID_INPUT,
-        )
-    if parent_conv.agent_id is None:
-        raise OmnigentError(
-            f"parent session {parent_id!r} has no agent_id; cannot create an ACP sub-agent child",
-            code=ErrorCode.INVALID_INPUT,
-        )
-
-    existing = await asyncio.to_thread(
-        _find_acp_subagent_child, conversation_store, parent_id, subagent_id
-    )
-    if existing is not None:
-        return existing.id
-
-    labels = {
-        _ACP_SUBAGENT_ID_LABEL_KEY: subagent_id,
-        _ACP_SUBAGENT_DESCRIPTION_LABEL_KEY: description,
-    }
-    # ``(parent_conversation_id, title)`` is unique, and an agent can give two
-    # parallel sub-agents the same label, so the stable id disambiguates. The
-    # rail hides the post-colon half, so the user still reads just the label.
-    title = f"{title_raw}:{subagent_id}"
-    try:
-        child = await asyncio.to_thread(
-            conversation_store.create_conversation,
-            kind="sub_agent",
-            title=title,
-            parent_conversation_id=parent_id,
-            agent_id=parent_conv.agent_id,
-            runner_id=parent_conv.runner_id,
-            sub_agent_name=title_raw,
-        )
-    except NameAlreadyExistsError:
-        # The unique index fired but the label lookup missed — a concurrent POST
-        # won the insert, or an earlier one died before ``set_labels``. Adopt the
-        # row and re-stamp, mirroring the native helpers' recovery.
-        adopted = await asyncio.to_thread(
-            _find_subagent_child_by_title, conversation_store, parent_id, title
-        )
-        if adopted is None:
-            raise
-        await asyncio.to_thread(conversation_store.set_labels, adopted.id, labels)
-        _publish_session_created(parent_id, adopted.id, parent_conv.agent_id)
-        return adopted.id
-    await asyncio.to_thread(conversation_store.set_labels, child.id, labels)
-    _publish_session_created(parent_id, child.id, parent_conv.agent_id)
-    return child.id
-
-
-@restart_on_stale_cursor
 def _find_subagent_child_by_title(
     conversation_store: ConversationStore,
     parent_id: str,
@@ -3762,105 +3604,6 @@ async def _persist_external_subagent_start(
         # duplicate event is a harmless extra cache invalidation.
         _publish_session_created(parent_id, adopted.id, parent_conv.agent_id)
         return adopted.id
-    await asyncio.to_thread(conversation_store.set_labels, child.id, labels)
-    _publish_session_created(parent_id, child.id, parent_conv.agent_id)
-    return child.id
-
-
-def _antigravity_subagent_title(role: str, cascade_id: str) -> str:
-    """
-    Build the child row title for an agy sub-agent.
-
-    ``"<role>:<cascade id>"``. The Agents rail splits a child title on its FIRST
-    colon into ``tool`` / ``session_name``, so this renders the role as the agent
-    name and the cascade id as the correlation handle with no rail-side special
-    case — unlike claude/codex children, which need a display helper each. Any
-    colon inside the role is folded to a dash so that split lands where intended.
-
-    The cascade id is agy's own stable per-sub-agent id, which also makes the
-    title the idempotency key: a redelivered start trips the
-    ``(parent_conversation_id, title)`` unique index instead of minting a second
-    row for the same sub-agent.
-
-    :param role: agy ``subagentSpec`` role, e.g. ``"App Router Code Reviewer"``.
-    :param cascade_id: agy child conversation id, e.g. ``"1eca7625-…"``.
-    :returns: Child conversation title.
-    """
-    head = role.replace(":", "-").strip() or _ANTIGRAVITY_NATIVE_SUBAGENT_DISPLAY_FALLBACK
-    return f"{head}:{cascade_id}"
-
-
-def _antigravity_subagent_labels_from_body(
-    cascade_id: str,
-    body: SessionEventInput,
-) -> dict[str, str]:
-    """
-    Build the label dict for an agy sub-agent child row.
-
-    :param cascade_id: agy child conversation id, e.g. ``"1eca7625-…"``.
-    :param body: Validated ``external_antigravity_subagent_start`` event body.
-    :returns: Labels to upsert on the child conversation row.
-    """
-    labels: dict[str, str] = {
-        _CLAUDE_NATIVE_WRAPPER_LABEL_KEY: _ANTIGRAVITY_NATIVE_SUBAGENT_WRAPPER_LABEL_VALUE,
-        _ANTIGRAVITY_NATIVE_SUBAGENT_CASCADE_ID_LABEL_KEY: cascade_id,
-    }
-    for data_key, label_key in (
-        ("tool_call_id", _ANTIGRAVITY_NATIVE_SUBAGENT_TOOL_CALL_ID_LABEL_KEY),
-        ("role", _ANTIGRAVITY_NATIVE_SUBAGENT_ROLE_LABEL_KEY),
-        ("agent_type", _ANTIGRAVITY_NATIVE_SUBAGENT_TYPE_LABEL_KEY),
-    ):
-        value = body.data.get(data_key)
-        if isinstance(value, str) and value:
-            labels[label_key] = value
-    return labels
-
-
-async def _create_and_publish_antigravity_child(
-    parent_id: str,
-    parent_conv: Conversation,
-    title: str,
-    agent_type: str,
-    labels: dict[str, str],
-    conversation_store: ConversationStore,
-) -> str:
-    """
-    Create an agy sub-agent child row and publish ``session.created``.
-
-    :param parent_id: Parent antigravity-native conversation id.
-    :param parent_conv: Parent row whose ``agent_id`` / ``runner_id`` the child
-        inherits.
-    :param title: Child title from :func:`_antigravity_subagent_title`.
-    :param agent_type: agy ``subagentSpec`` type, e.g. ``"research"``.
-    :param labels: Labels to stamp on the new child row.
-    :param conversation_store: Store used to create the child row.
-    :returns: New child conversation id, e.g. ``"conv_child456"``.
-    """
-    try:
-        child = await asyncio.to_thread(
-            conversation_store.create_conversation,
-            kind="sub_agent",
-            title=title,
-            parent_conversation_id=parent_id,
-            agent_id=parent_conv.agent_id,
-            runner_id=parent_conv.runner_id,
-            sub_agent_name=agent_type or _ANTIGRAVITY_NATIVE_SUBAGENT_DISPLAY_FALLBACK,
-        )
-    except NameAlreadyExistsError:
-        # The (parent, title) unique index fired: a concurrent start, or a
-        # redelivery that arrived before ``set_labels`` ran. Adopt the row and
-        # upsert labels rather than 500ing the sub-agent out of the rail.
-        existing = await asyncio.to_thread(
-            _find_subagent_child_by_title, conversation_store, parent_id, title
-        )
-        if existing is None:
-            raise
-        await asyncio.to_thread(conversation_store.set_labels, existing.id, labels)
-        # An orphaned row's creator died before publishing, so live clients have
-        # never heard about this child; a duplicate publish in the race case is a
-        # harmless extra cache invalidation.
-        _publish_session_created(parent_id, existing.id, parent_conv.agent_id)
-        return existing.id
     await asyncio.to_thread(conversation_store.set_labels, child.id, labels)
     _publish_session_created(parent_id, child.id, parent_conv.agent_id)
     return child.id
@@ -4146,137 +3889,6 @@ async def _create_and_publish_codex_child(
     await asyncio.to_thread(conversation_store.set_labels, child.id, labels)
     _publish_session_created(parent_id, child.id, parent_conv.agent_id)
     return child.id
-
-
-def _find_devin_native_subagent_child(
-    conversation_store: ConversationStore,
-    parent_id: str,
-    agent_id: str,
-) -> Conversation | None:
-    """Look up an existing devin-native sub-agent child by Devin's ``agent_id``.
-
-    Makes :func:`_persist_external_devin_subagent_start` idempotent: the forwarder
-    re-posts a sub-agent whenever it reconstructs the (already finished, stable)
-    transcript, so a redelivery must resolve to the same child row.
-
-    :param conversation_store: Store to query.
-    :param parent_id: Parent devin-native conversation id, e.g. ``"conv_parent987"``.
-    :param agent_id: Devin sub-agent id, e.g. ``"690d786b"``.
-    :returns: Matching child :class:`Conversation`, or ``None``.
-    """
-    after: str | None = None
-    while True:
-        page = conversation_store.list_conversations(
-            kind="sub_agent",
-            parent_conversation_id=parent_id,
-            limit=100,
-            after=after,
-        )
-        for child in page.data:
-            if child.labels.get(_DEVIN_NATIVE_SUBAGENT_AGENT_ID_LABEL_KEY) == agent_id:
-                return child
-        if not page.has_more or page.last_id is None:
-            return None
-        after = page.last_id
-
-
-def _devin_subagent_labels_from_body(agent_id: str, body: SessionEventInput) -> dict[str, str]:
-    """Build the label dict for a devin-native sub-agent child row.
-
-    :param agent_id: Devin sub-agent id (idempotency key + display source).
-    :param body: Validated ``external_devin_subagent_start`` event body.
-    :returns: Labels to upsert on the child conversation row.
-    """
-    labels: dict[str, str] = {
-        _CLAUDE_NATIVE_WRAPPER_LABEL_KEY: _DEVIN_NATIVE_SUBAGENT_WRAPPER_LABEL_VALUE,
-        _DEVIN_NATIVE_SUBAGENT_AGENT_ID_LABEL_KEY: agent_id,
-    }
-    for data_key, label_key in (
-        ("title", _DEVIN_NATIVE_SUBAGENT_TITLE_LABEL_KEY),
-        ("tool_use_id", _DEVIN_NATIVE_SUBAGENT_TOOL_USE_ID_LABEL_KEY),
-    ):
-        value = body.data.get(data_key)
-        if isinstance(value, str) and value:
-            labels[label_key] = value
-    return labels
-
-
-async def _create_and_publish_devin_child(
-    parent_id: str,
-    parent_conv: Conversation,
-    agent_id: str,
-    labels: dict[str, str],
-    conversation_store: ConversationStore,
-) -> str:
-    """Create a new devin-native sub-agent child row and publish ``session.created``.
-
-    :param parent_id: Parent devin-native conversation id.
-    :param parent_conv: Parent row whose ``agent_id`` + ``runner_id`` the child inherits.
-    :param agent_id: Devin sub-agent id, the title's unique half.
-    :param labels: Labels to stamp on the new child row.
-    :param conversation_store: Store used to create the child row.
-    :returns: New child conversation id.
-    """
-    # Stable title so the (parent, title) unique index prevents duplicate rows
-    # when the forwarder retries a registration.
-    title = f"{_DEVIN_NATIVE_SUBAGENT_WRAPPER_LABEL_VALUE}:{agent_id}"
-    try:
-        child = await asyncio.to_thread(
-            conversation_store.create_conversation,
-            kind="sub_agent",
-            title=title,
-            parent_conversation_id=parent_id,
-            agent_id=parent_conv.agent_id,
-            runner_id=parent_conv.runner_id,
-            sub_agent_name=_DEVIN_NATIVE_SUBAGENT_DISPLAY_FALLBACK,
-        )
-    except NameAlreadyExistsError:
-        existing = await asyncio.to_thread(
-            _find_devin_native_subagent_child, conversation_store, parent_id, agent_id
-        )
-        if existing is None:
-            existing = await asyncio.to_thread(
-                _find_subagent_child_by_title, conversation_store, parent_id, title
-            )
-        if existing is not None:
-            await asyncio.to_thread(conversation_store.set_labels, existing.id, labels)
-            _publish_session_created(parent_id, existing.id, parent_conv.agent_id)
-            return existing.id
-        raise
-    await asyncio.to_thread(conversation_store.set_labels, child.id, labels)
-    _publish_session_created(parent_id, child.id, parent_conv.agent_id)
-    return child.id
-
-
-def _is_devin_native_subagent(conv: Conversation) -> bool:
-    """Return whether a child conversation tracks a Devin sub-agent.
-
-    :param conv: Conversation row to inspect.
-    :returns: ``True`` when the row carries the devin-native sub-agent wrapper label.
-    """
-    return (
-        conv.kind == "sub_agent"
-        and conv.labels.get(_CLAUDE_NATIVE_WRAPPER_LABEL_KEY)
-        == _DEVIN_NATIVE_SUBAGENT_WRAPPER_LABEL_VALUE
-    )
-
-
-def _devin_subagent_display_tool(labels: dict[str, str]) -> str:
-    """Return the UI-facing label for a Devin sub-agent child.
-
-    Uses the ``run_subagent`` title Devin assigned (e.g. "Write alpha.txt"), else
-    a generic ``"Devin"`` fallback.
-
-    :param labels: Conversation labels from a Devin child row.
-    :returns: Display label.
-    """
-    title = labels.get(_DEVIN_NATIVE_SUBAGENT_TITLE_LABEL_KEY)
-    return title or _DEVIN_NATIVE_SUBAGENT_DISPLAY_FALLBACK
-
-
-def _is_kiro_native_session(conv: Conversation) -> bool:
-    """Return whether a conversation is backed by the native Kiro terminal."""
-    return conv.labels.get("omnigent.wrapper") == "kiro-native-ui"
 
 
 # Claude Code writes this record into its own transcript when a turn is
@@ -5999,8 +5611,8 @@ async def _provision_managed_sandbox(
         ``None`` for the default. Ignored on a relaunch, which stays on
         the host row's recorded provider.
     :param agent_name: Server-resolved built-in agent name the session
-        runs, stamped as the runner Pod's ``omnigent.ai/agent`` classifier
-        (Kubernetes only), or ``None`` to leave it unstamped.
+        runs, passed to providers that classify runners by agent, or
+        ``None`` to leave it unstamped.
     :param labels: The session's current labels, forwarded to the launcher's
         ``prepare_for_launch`` — see :func:`omnigent.server.managed_hosts.launch_managed_host`.
     :returns: The launch result, or ``None`` when the launch failed
@@ -8309,10 +7921,9 @@ def _agent_is_native_impl(agent: Agent) -> bool:
     """Return whether an agent runs a native CLI harness.
 
     Loads the agent's spec to read its ``harness_kind``. Native targets run
-    a vendor TUI in a terminal (claude-native / codex-native / pi-native /
-    cursor-native). This is broader than "can replay fork history" — every
-    native harness except cursor-native carries the session-file-rebuild path;
-    use ``_agent_carries_native_fork_history`` for that narrower gate. Returns
+    a vendor TUI in a terminal (claude-native / codex-native / pi-native).
+    This is broader than "can replay fork history"; use
+    ``_agent_carries_native_fork_history`` for that narrower gate. Returns
     ``False`` when the bundle can't be loaded (treated as non-native).
 
     :param agent: The agent whose harness to classify.
@@ -8344,11 +7955,7 @@ def _agent_carries_native_fork_history_impl(agent: Agent) -> bool:
     claude-native / codex-native / pi-native each record a resumable native
     session file that the runner rebuilds from the copied Omnigent items on
     fork/resume, so a fork bound to one of them carries prior history into the
-    native CLI. Used by both fork and switch-agent. cursor-native is a native
-    CLI but has no resumable session file to rebuild; it carries fork history a
-    different way (a text preamble, fork-only — see
-    :func:`_agent_carries_cursor_fork_history`), so stamping
-    ``carry_history_into_native`` for it here would be a false promise. Returns
+    native CLI. Used by both fork and switch-agent. Returns
     ``False`` when the bundle can't be loaded (treated as non-carrying).
 
     :param agent: The agent whose harness to classify.
@@ -8365,32 +7972,6 @@ def _agent_carries_native_fork_history_impl(agent: Agent) -> bool:
     except Exception:  # noqa: BLE001
         return False
     return canonicalize_harness(spec.executor.harness_kind) in _FORK_HISTORY_NATIVE_HARNESSES
-
-
-def _agent_carries_cursor_fork_history(agent: Agent) -> bool:
-    """Return whether *agent*'s native harness carries FORK history via preamble.
-
-    Cursor's conversation is server-backed and opencode has no history-import
-    API, so neither can seed a local store for a rebuilt resume; instead the
-    runner replays prior turns as a text preamble on the fork (cursor: the
-    first message; opencode: a ``noReply`` context message). Fork-only —
-    switch-agent does not call this, so switching into one still launches fresh.
-    Returns ``False`` when the bundle can't be loaded.
-
-    :param agent: The agent whose harness to classify.
-    :returns: ``True`` for the cursor-native / opencode-native harnesses.
-    """
-    from omnigent.harness_aliases import canonicalize_harness
-
-    try:
-        spec = (
-            get_agent_cache()
-            .load(agent.id, agent.bundle_location, expand_env=agent.session_id is None)
-            .spec
-        )
-    except Exception:  # noqa: BLE001
-        return False
-    return canonicalize_harness(spec.executor.harness_kind) in _CURSOR_FORK_HISTORY_HARNESSES
 
 
 def _filesystem_attachment_in_history(
@@ -8752,7 +8333,7 @@ def _build_evaluation_context(
         )
     # REQUEST / RESPONSE — content is the user/assistant text. The wire ``data``
     # is a dict for every current first-party producer (``{"text"|"content":
-    # ...}``, including OpenCode's plugin, which sends ``{"text": ...}``), but
+    # ...}``), but
     # a bare string is still accepted for ``PHASE_REQUEST`` for compatibility
     # with older or third-party callers that send the prompt text directly.
     # Accept both, and NEVER raise here: a crash 500s the evaluate endpoint,
@@ -9768,10 +9349,9 @@ def _derive_terminal_launch_args_from_spec(
     """
     Derive native-terminal YOLO pass-through args from a trusted sub-spec.
 
-    polly's native workers (claude-native / codex-native / cursor-native /
-    kimi-native / antigravity-native)
-    launch in a headless pane where no human can answer an ApprovalCard, so
-    every Edit/Write/Bash that prompts stalls the worker. This translates a
+    polly's native workers (claude-native / codex-native) launch in a headless
+    pane where no human can answer an ApprovalCard, so every Edit/Write/Bash
+    that prompts stalls the worker. This translates a
     worker bundle's declared full-bypass intent into the per-session
     ``terminal_launch_args`` the runner already appends to the native CLI
     argv:
@@ -9791,41 +9371,20 @@ def _derive_terminal_launch_args_from_spec(
       and the codex-sdk executor's ``approvalPolicy="never"``). An explicit
       ``executor.config.yolo: false`` opts back out for a read-only / must
       -keep-prompting sub-agent. See issue #171.
-    - cursor-native -> ``["--yolo"]`` by DEFAULT. Headless cursor workers
-      otherwise stall on cursor-agent's in-terminal approval prompts (also
-      mirrored as web elicitation cards). ``--yolo`` is cursor-agent's
-      don't-ask / full-bypass flag (``--auto-review`` still prompts for
-      some calls). An explicit ``executor.config.yolo: false`` opts back
-      out. When ``executor.config.permission_mode`` / ``exec_mode`` is set
-      to ``auto`` or ``auto-review``, emit ``["--auto-review"]`` instead
-      (Smart Auto) so a bundle can choose Claude-style auto without full
-      yolo.
-    - kimi-native + ``executor.config.yolo: true`` -> ``["--yolo"]``
-      (kimi's auto-approve-tools flag; ``--auto`` full autonomy is NOT
-      mapped). Opt-IN: absent / false leaves args unset.
-    - antigravity-native + ``executor.config.permission_mode:
-      bypassPermissions`` -> ``["--dangerously-skip-permissions"]``, agy's
-      only pre-emptive permission control. Opt-IN like claude-native;
-      other / absent modes leave args unset.
 
-    Value-matching policy: enabling values are matched without whitespace
-    tolerance. Flag-valued keys (``yolo``) accept a real bool or the
-    case-insensitive strings ``"true"`` / ``"false"``. Mode-valued keys
-    (``permission_mode``) are matched exactly, mirroring claude-native's
-    verbatim pass-through and the runner's exact ``bypassPermissions``
-    comparison (``should_skip_permissions`` in
-    :mod:`omnigent.harnesses.antigravity_native.launch`). A present-but-unrecognized
-    value logs at debug and leaves args unset.
+    Flag-valued keys (``yolo``) accept a real bool or the case-insensitive
+    strings ``"true"`` / ``"false"``; ``permission_mode`` passes through
+    verbatim.
 
     Only those native harnesses are translated; for any other harness
-    (e.g. ``claude-sdk`` / ``cursor``, whose bypass is set via the SDK
+    (e.g. ``claude-sdk``, whose bypass is set via the SDK
     ``permissionMode`` / ``auto_review`` spawn path, not a terminal flag)
     this returns ``None`` so no terminal args are set. ``None`` is also
     returned when the relevant field is absent / falsey.
 
     ``headless_defaults`` selects the stance for a spec that declares
     nothing: named-worker / bundled-child creates keep the headless
-    default above (codex-native / cursor-native bypass by DEFAULT, because
+    default above (codex-native bypasses by DEFAULT, because
     nobody can answer their prompts). Top-level and self-resolved-agent
     creates pass ``headless_defaults=False``: those sessions are
     interactive — a human can answer an ApprovalCard — so only the spec's
@@ -9836,8 +9395,8 @@ def _derive_terminal_launch_args_from_spec(
     :param spec: A trusted, server-loaded spec: a named worker's sub-spec
         (via :func:`_resolve_subagent_spec`), a bundled child's spec, or —
         with ``headless_defaults=False`` — the session's own agent spec.
-    :param headless_defaults: Whether an undeclared codex-native /
-        cursor-native spec falls back to the headless full-bypass default.
+    :param headless_defaults: Whether an undeclared codex-native
+        spec falls back to the headless full-bypass default.
         ``True`` for headless worker creates; ``False`` for top-level /
         self-resolved creates, where only explicit opt-ins translate.
     :returns: A flat CLI-arg list to store as the child session's
@@ -9865,61 +9424,6 @@ def _derive_terminal_launch_args_from_spec(
         if not headless_defaults and not _spec_config_flag_explicitly_enabled(spec, "yolo"):
             return None
         return _validate_terminal_launch_args(["--dangerously-bypass-approvals-and-sandbox"])
-    if harness == _CURSOR_NATIVE_HARNESS:
-        # Prefer an explicit Smart Auto mode when the bundle asks for it
-        # (mirrors Claude's ``permission_mode: auto``), else full --yolo
-        # by default so headless polly workers don't stall on mirrored
-        # approval cards. ``yolo: false`` is the keep-prompting opt-out.
-        mode = (
-            spec.executor.config.get("permission_mode")
-            or spec.executor.config.get("exec_mode")
-            or ""
-        )
-        mode_norm = str(mode).strip().lower()
-        if mode_norm in ("auto", "auto-review"):
-            return _validate_terminal_launch_args(["--auto-review"])
-        if _spec_config_flag_explicitly_disabled(spec, "yolo"):
-            return None
-        if not headless_defaults and not _spec_config_flag_explicitly_enabled(spec, "yolo"):
-            return None
-        return _validate_terminal_launch_args(["--yolo"])
-    if harness == _KIMI_NATIVE_HARNESS:
-        # Opt-IN (unlike codex/cursor's headless default-bypass). The bool
-        # arm covers programmatically built specs; the string arm covers the
-        # parser's stringified ``"True"`` (see the value-matching policy).
-        yolo = spec.executor.config.get("yolo")
-        if yolo is True or (isinstance(yolo, str) and yolo.lower() == "true"):
-            return _validate_terminal_launch_args(["--yolo"])
-        if (
-            yolo is not None
-            and yolo is not False
-            and not _spec_config_flag_explicitly_disabled(spec, "yolo")
-        ):
-            _logger.debug(
-                "kimi-native sub-spec has unrecognized yolo=%r; launching without --yolo.",
-                yolo,
-            )
-        return None
-    if harness == _ANTIGRAVITY_NATIVE_HARNESS:
-        # Opt-IN, matched exactly like the runner's should_skip_permissions;
-        # other modes have no agy analogue and leave args unset.
-        mode = spec.executor.config.get("permission_mode")
-        if isinstance(mode, str):
-            if mode == "bypassPermissions":
-                return _validate_terminal_launch_args(["--dangerously-skip-permissions"])
-            if mode:
-                _logger.debug(
-                    "antigravity-native sub-spec permission_mode=%r has no agy analogue; "
-                    "launching without --dangerously-skip-permissions.",
-                    mode,
-                )
-        elif mode is not None:
-            _logger.debug(
-                "antigravity-native sub-spec has unrecognized permission_mode=%r; "
-                "launching without --dangerously-skip-permissions.",
-                mode,
-            )
-        return None
     return None
 
 
@@ -10545,12 +10049,6 @@ def _child_session_summary_from_conversation(
         # ``session_name`` for correlation.
         tool = _claude_subagent_display_tool(conv, labels)
         session_name = labels.get(_CLAUDE_NATIVE_SUBAGENT_ID_LABEL_KEY)
-    elif _is_devin_native_subagent(conv):
-        # Devin-native child: the title is "devin-native-ui-subagent:{agent_id}",
-        # an opaque uniqueness key. Surface the run_subagent title as ``tool`` and
-        # the raw Devin agent_id as ``session_name`` for correlation.
-        tool = _devin_subagent_display_tool(labels)
-        session_name = labels.get(_DEVIN_NATIVE_SUBAGENT_AGENT_ID_LABEL_KEY)
     elif display_title and ":" in display_title:
         head, _, tail = display_title.partition(":")
         if head == _UI_ADDED_AGENT_TITLE_PREFIX and ":" in tail:
@@ -11245,7 +10743,7 @@ async def _load_model_options(
         ``"/v1/sessions/conv_abc/model-options"``.
     :param fallback_path: Legacy harness-named route to fall back to when
         *path* 404s (an older runner without the unified route), e.g.
-        ``"/v1/sessions/conv_abc/cursor-model-options"``. ``None`` disables
+        ``"/v1/sessions/conv_abc/codex-model-options"``. ``None`` disables
         the fallback.
     """
     # Read the retry schedule off the facade so tests patching
@@ -11269,8 +10767,8 @@ async def _load_model_options(
             if resp.status_code == 404 and fallback_path and path != fallback_path:
                 path = fallback_path
                 continue
-            # 503 means the native backend (Codex app-server bridge / cursor
-            # login) is still booting. Keep the background single-flight alive
+            # 503 means the native backend (Codex app-server bridge) is still
+            # booting. Keep the background single-flight alive
             # so the web picker fills without a second manual refresh.
             if resp.status_code == 503 and attempt < len(delays):
                 await asyncio.sleep(delays[attempt])
@@ -11503,7 +11001,6 @@ __all__ = [
     "_RunnerForwardResult",
     "_SessionEventDispatchResult",
     "_add_model_usage_delta",
-    "_agent_carries_cursor_fork_history",
     "_agent_carries_native_fork_history",
     "_agent_carries_native_fork_history_impl",
     "_agent_is_native",
@@ -11513,8 +11010,6 @@ __all__ = [
     "_allow_remember_eligible",
     "_ancestor_session_ids",
     "_announce_session_added",
-    "_antigravity_subagent_labels_from_body",
-    "_antigravity_subagent_title",
     "_apply_liveness_to_items",
     "_apply_pending_policy_ask_writes",
     "_attachment_disposition",
@@ -11538,15 +11033,11 @@ __all__ = [
     "_coerce_cumulative_field",
     "_collect_descendant_conversation_ids",
     "_consume_pre_resolved_harness_elicitation",
-    "_create_and_publish_antigravity_child",
     "_create_and_publish_codex_child",
-    "_create_and_publish_devin_child",
     "_create_session_worktree",
     "_delete_stored_session_bundle_after_failure",
     "_derive_terminal_launch_args_from_spec",
     "_descendant_sessions",
-    "_devin_subagent_display_tool",
-    "_devin_subagent_labels_from_body",
     "_discovery_key",
     "_dispatch_skill_slash_command_to_runner",
     "_emit_server_routing_decision",
@@ -11560,7 +11051,6 @@ __all__ = [
     "_file_content_etag",
     "_find_claude_native_subagent_child",
     "_find_codex_native_subagent_child",
-    "_find_devin_native_subagent_child",
     "_find_subagent_child_by_title",
     "_flush_relay_text",
     "_format_sse",
@@ -11577,8 +11067,6 @@ __all__ = [
     "_invalidate_runner_backed_snapshot_state",
     "_is_claude_native_subagent",
     "_is_codex_native_subagent",
-    "_is_devin_native_subagent",
-    "_is_kiro_native_session",
     "_last_task_error_from_labels",
     "_latest_assistant_text_from_store",
     "_latest_message_preview",

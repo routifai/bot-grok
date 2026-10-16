@@ -1,8 +1,8 @@
 """Sandbox launchers: run Omnigent hosts in remote sandboxes.
 
 Public API for the ``omnigent sandbox`` CLI and anything else that
-bootstraps a sandbox-backed host. Core Omnigent contributes built-in
-providers directly; third-party packages can contribute providers through
+bootstraps a sandbox-backed host. Core Omnigent contributes the built-in
+``computer`` provider directly; third-party packages can contribute providers through
 the ``omnigent.sandbox_providers`` entry point group.
 """
 
@@ -91,29 +91,11 @@ __all__ = [
 ]
 
 
-def get_launcher(
-    provider: str,
-    *,
-    workspace_host: str | None = None,
-    server_url: str | None = None,
-) -> SandboxHostLauncher:
+def get_launcher(provider: str) -> SandboxHostLauncher:
     """
     Resolve a provider name to a launcher instance.
 
-    :param provider: Provider name, e.g. ``"lakebox"``.
-    :param workspace_host: Databricks workspace fronting the target
-        server (derived from ``--server`` via
-        :func:`~omnigent.onboarding.sandboxes.bootstrap.derive_workspace`),
-        e.g. ``"https://example.databricks.com"``. Consumed only by
-        the lakebox launcher, which pins its local ``databricks
-        lakebox`` calls to it so sandboxes are created in the server's
-        workspace. Other providers' sandboxes don't live in a
-        Databricks workspace, so the value is meaningless for them and
-        deliberately not forwarded — the CLI derives it from --server
-        for every provider, so rejecting it here would break them.
-    :param server_url: Normalized CLI target URL. Microsandbox uses it to
-        scope guest-to-host access to a local server's port; other providers
-        ignore it.
+    :param provider: Provider name, e.g. ``"computer"``.
     :returns: A fresh launcher for the provider.
     :raises click.ClickException: If the provider is unknown or its
         launcher module is not present in this build.
@@ -124,6 +106,6 @@ def get_launcher(
             f"Unknown or unavailable sandbox provider '{provider}'. Available: {offered}."
         )
     try:
-        return instantiate(provider, workspace_host=workspace_host, server_url=server_url)
+        return instantiate(provider)
     except SandboxRegistryError as exc:
         raise click.ClickException(str(exc)) from exc

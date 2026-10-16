@@ -99,10 +99,6 @@ if TYPE_CHECKING:
         TurnComplete as TurnComplete,
     )
     from omnigent.inner.loader import load_agent_def as load_agent_def
-    from omnigent.inner.open_responses_sdk import OpenResponsesExecutor as OpenResponsesExecutor
-    from omnigent.inner.openai_agents_sdk_executor import (
-        OpenAIAgentsSDKExecutor as OpenAIAgentsSDKExecutor,
-    )
     from omnigent.inner.policies import (
         FunctionPolicy as FunctionPolicy,
     )
@@ -197,8 +193,6 @@ _LAZY_EXPORTS = {
 _OPTIONAL_EXPORTS = {
     "DatabricksExecutor": ("omnigent.inner.databricks_executor", (OSError, ImportError)),
     "ClaudeSDKExecutor": ("omnigent.inner.claude_sdk_executor", (ImportError,)),
-    "OpenResponsesExecutor": ("omnigent.inner.open_responses_sdk", (ImportError,)),
-    "OpenAIAgentsSDKExecutor": ("omnigent.inner.openai_agents_sdk_executor", (ImportError,)),
     "CodexExecutor": ("omnigent.inner.codex_executor", (ImportError,)),
 }
 
@@ -257,8 +251,6 @@ __all__ = [
     "Memory",
     "MemoryConfig",
     "Message",
-    "OpenAIAgentsSDKExecutor",
-    "OpenResponsesExecutor",
     "ParamDef",
     "Policy",
     "PolicyAction",

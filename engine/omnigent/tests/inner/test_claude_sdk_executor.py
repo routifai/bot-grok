@@ -4495,8 +4495,7 @@ async def test_context_tokens_uses_last_call_not_cumulative_on_multi_iteration_t
     Context-window FILL is a single prompt's size, not a billing sum: the
     final call's prompt already contains the full conversation that carries
     into the next turn. The executor captures each ``message_start``'s
-    per-call usage and uses the LAST one for ``context_tokens`` (mirroring
-    the openai-agents executor's ``raw_responses[-1]`` choice), while still
+    per-call usage and uses the LAST one for ``context_tokens``, while still
     reporting the cumulative totals for billing.
 
     Regression guard: before this fix ``context_tokens`` was

@@ -5,7 +5,7 @@
 threaded into ``resolve_pi_native_provider(model=...)`` — which renders it
 into the runner-owned Pi ``models.json`` (and the appended ``--model``).
 
-Unlike cursor-native, a gateway-routed id (``databricks-*``) is KEPT: the
+A gateway-routed id (``databricks-*``) is KEPT: the
 runner-owned Pi process routes through the Databricks AI Gateway, whose
 ``models.json`` selects the model by its gateway id.
 """

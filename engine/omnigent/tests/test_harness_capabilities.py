@@ -30,10 +30,7 @@ from omnigent.harness_plugins import (
     native_agents,
     valid_harnesses,
 )
-from omnigent.models.model_override import (
-    _ANTIGRAVITY_FAMILY_HARNESSES,
-    _CLAUDE_FAMILY_HARNESSES,
-)
+from omnigent.models.model_override import _CLAUDE_FAMILY_HARNESSES
 
 _NATIVE_MODES = frozenset({IntegrationMode.NATIVE_TUI, IntegrationMode.NATIVE_SERVER})
 
@@ -66,21 +63,15 @@ def test_model_family_matches_model_override_sets() -> None:
             assert family is ModelFamily.CLAUDE, harness
         elif harness in CODEX_CANONICAL_HARNESSES:
             assert family is ModelFamily.GPT, harness
-        elif harness in _ANTIGRAVITY_FAMILY_HARNESSES:
-            assert family is ModelFamily.GEMINI, harness
         else:
             assert family is ModelFamily.MULTI, harness
 
 
 def test_subagents_matches_its_implementing_mechanism() -> None:
-    """``subagents`` is derivable — from the two mechanisms that implement it.
+    """``subagents`` is derivable — from the mechanism that implements it.
 
-    1. A **native** agent with a ``subagent_wrapper_label``: Omnigent intercepts
-       the vendor's own spawn and mints the child session.
-    2. An **ACP vendor extension** carrying a sub-agent dialect: the agent
-       reports its sub-agent lifecycle in its own ``_meta`` and the runner mints
-       the child from that. No built-in row uses this today — the mechanism
-       stays for a community ACP plugin — so nothing is added below.
+    A **native** agent with a ``subagent_wrapper_label``: Omnigent intercepts
+    the vendor's own spawn and mints the child session.
 
     Keeping the derivation here means a harness cannot publish a ``subagents``
     capability on ``/v1/harnesses`` that nothing implements, or implement one it
@@ -100,23 +91,22 @@ def test_native_harnesses_resume_warm() -> None:
 
 
 def test_p0_bench_harnesses_declare_interrupt_and_streaming() -> None:
-    # The harness bench live-probes these four and declares them SUPPORTED for
+    # The harness bench live-probes these and declares them SUPPORTED for
     # interrupt + streaming; the capability declaration must match so the bench
     # can derive its expected matrix from capabilities without contradiction.
     caps = harness_capabilities()
-    for harness in ("claude-sdk", "codex", "pi", "openai-agents"):
+    for harness in ("claude-sdk", "pi"):
         assert caps[harness].interrupt is True, harness
         assert caps[harness].streaming is True, harness
 
 
-def test_pi_harnesses_declare_the_pi_effort_family() -> None:
-    """Both pi harnesses advertise pi's 7-level ladder, not "no effort knob"."""
+def test_pi_harness_declares_the_pi_effort_family() -> None:
+    """The pi harness advertises pi's 7-level ladder, not "no effort knob"."""
     from omnigent.util.reasoning_effort import EFFORT_VALUES, PI_EFFORTS
 
     caps = harness_capabilities()
-    for harness in ("pi", "pi-native"):
-        assert caps[harness].effort is EffortFamily.PI, harness
-        assert caps[harness].as_dict()["effort"] == "pi", harness
+    assert caps["pi"].effort is EffortFamily.PI
+    assert caps["pi"].as_dict()["effort"] == "pi"
     assert PI_EFFORTS == EFFORT_VALUES
 
 
@@ -201,32 +191,6 @@ def test_catalog_rows_include_capabilities() -> None:
                 assert value is None or isinstance(value, (str, bool))
 
 
-def test_catalog_includes_hermes() -> None:
-    """Hermes must appear in the web picker catalog (regression: it was a
-    valid harness with capabilities but had no ``harness_labels`` entry, so
-    ``harness_catalog`` — which iterates labels — dropped it)."""
-    rows = harness_catalog()
-    hermes = next((row for row in rows if row["id"] == "hermes"), None)
-    assert hermes is not None, "hermes missing from harness_catalog()"
-    assert hermes["label"] == "Hermes"
-    # The catalog only lists valid harnesses and hermes declares capabilities,
-    # so the row must carry the feature matrix like its subprocess peers.
-    assert "capabilities" in hermes
-
-
-def test_hermes_picker_row_has_spawn_env_plumbing() -> None:
-    """A picker row is only honest if the session's choices reach the harness.
-
-    Hermes' model env key is what both threads ``/model`` into the spawn env and
-    (via ``_SDK_MODEL_OVERRIDE_HARNESSES``) makes the server accept the override
-    instead of rejecting it up front."""
-    from omnigent.harness_plugins import model_env_keys
-    from omnigent.models.model_override import harness_supports_model_override
-
-    assert model_env_keys()["hermes"] == "HARNESS_HERMES_MODEL"
-    assert harness_supports_model_override("hermes")
-
-
 def test_catalog_rows_carry_setup_steps() -> None:
     """Every row exposes an ordered, JSON-serializable setup checklist."""
     rows = {row["id"]: row for row in harness_catalog()}
@@ -239,10 +203,11 @@ def test_catalog_rows_carry_setup_steps() -> None:
             # JSON-serializable primitives only.
             for value in step.values():
                 assert value is None or isinstance(value, str)
-    # Codex is a first-class harness: install (one-click) then a UI-authable
-    # auth step. The step opens the credential form (action "auth"); its
-    # subscription option still carries the `codex login` command.
-    codex = rows["codex"]["setup_steps"]
+    # Codex keeps its setup checklist (resolved by spelling, it is not a picker
+    # row): install (one-click) then a UI-authable auth step. The step opens the
+    # credential form (action "auth"); its subscription option still carries the
+    # `codex login` command.
+    codex = harness_setup_steps_by_spelling()["codex"]
     assert [s["action"] for s in codex] == ["install", "auth"]
     assert codex[1]["command"] == "codex login"
 
@@ -252,33 +217,27 @@ def test_setup_steps_by_spelling_covers_native_and_installable_ids() -> None:
     rows — native wrappers and installable non-picker ids included."""
     by_spelling = harness_setup_steps_by_spelling()
     # Native wrappers (what a session actually declares) resolve to steps...
-    for native in ("codex-native", "claude-native", "opencode-native", "qwen-native"):
+    for native in ("codex-native", "claude-native"):
         assert native in by_spelling, native
         assert len(by_spelling[native]) >= 1
     # ...and match their bare-id counterpart's steps (same ui_setup_steps source).
     assert by_spelling["codex-native"] == by_spelling["codex"]
     # Installable ids that are NOT picker rows still resolve.
-    assert "opencode" in by_spelling
-    assert "qwen" in by_spelling
+    assert "codex" in by_spelling
 
 
 def test_fork_history_axis_matches_canonical_declarations() -> None:
     """fork_history is the source of truth for the server's fork-history gating.
 
     The two frozensets in ``_sessions/common`` are DERIVED from this axis; the
-    canonical harness id is in the rebuild set iff it declares REBUILD, the
-    preamble set iff PREAMBLE. (The sets also carry reversed ``native-<x>``
-    spellings — asserted separately below.)
+    canonical harness id is in the rebuild set iff it declares REBUILD. (The set
+    also carries reversed ``native-<x>`` spellings — asserted separately below.)
     """
-    from omnigent.server.routes._sessions.common import (
-        _CURSOR_FORK_HISTORY_HARNESSES,
-        _FORK_HISTORY_NATIVE_HARNESSES,
-    )
+    from omnigent.server.routes._sessions.common import _FORK_HISTORY_NATIVE_HARNESSES
 
     for harness, capability in harness_capabilities().items():
         fh = capability.fork_history
         assert (harness in _FORK_HISTORY_NATIVE_HARNESSES) == (fh is ForkHistory.REBUILD), harness
-        assert (harness in _CURSOR_FORK_HISTORY_HARNESSES) == (fh is ForkHistory.PREAMBLE), harness
 
 
 def test_fork_history_derivation_preserves_prior_membership() -> None:
@@ -289,49 +248,25 @@ def test_fork_history_derivation_preserves_prior_membership() -> None:
     present, or a fork silently loses history. The derived set may add extra
     reversed spellings that canonicalize into it (harmless at the read site).
     """
-    from omnigent.server.routes._sessions.common import (
-        _CURSOR_FORK_HISTORY_HARNESSES,
-        _FORK_HISTORY_NATIVE_HARNESSES,
-    )
+    from omnigent.server.routes._sessions.common import _FORK_HISTORY_NATIVE_HARNESSES
 
-    prior_rebuild = frozenset(
-        {
-            "claude-native",
-            "native-claude",
-            "codex-native",
-            "native-codex",
-            "hermes-native",
-            "native-hermes",
-            "pi-native",
-            "qwen-native",
-        }
-    )
-    prior_preamble = frozenset(
-        {"cursor-native", "native-cursor", "opencode-native", "native-opencode"}
-    )
+    prior_rebuild = frozenset({"claude-native", "native-claude"})
     assert prior_rebuild <= _FORK_HISTORY_NATIVE_HARNESSES
-    assert prior_preamble <= _CURSOR_FORK_HISTORY_HARNESSES
 
 
 def test_reversed_native_spellings_classify_fork_history() -> None:
     """Reversed ``native-<x>`` spellings that don't canonicalize are still gated.
 
-    ``native-claude`` / ``native-codex`` / ``native-cursor`` are valid harness
-    ids that ``canonicalize_harness`` passes through unchanged (they are NOT
-    registered aliases). The read sites match on the canonicalized id, so the
+    A reversed spelling such as ``native-claude`` must classify the same as its
+    canonical ``claude-native`` id. The read sites match on the canonicalized id, so the
     derived sets must contain these literal spellings — this guards the
     regression where an identically-behaving reversed-spelling agent silently
     loses fork history. Mirrors test_fork_reversed_native_spelling_carry_gating.
     """
     from omnigent.harness_aliases import canonicalize_harness
-    from omnigent.server.routes._sessions.common import (
-        _CURSOR_FORK_HISTORY_HARNESSES,
-        _FORK_HISTORY_NATIVE_HARNESSES,
-    )
+    from omnigent.server.routes._sessions.common import _FORK_HISTORY_NATIVE_HARNESSES
 
-    for spelling in ("native-claude", "native-codex"):
-        assert canonicalize_harness(spelling) in _FORK_HISTORY_NATIVE_HARNESSES, spelling
-    assert canonicalize_harness("native-cursor") in _CURSOR_FORK_HISTORY_HARNESSES
+    assert canonicalize_harness("native-claude") in _FORK_HISTORY_NATIVE_HARNESSES
 
 
 def test_native_tui_harnesses_declare_shell_tool_provocation() -> None:
@@ -339,16 +274,11 @@ def test_native_tui_harnesses_declare_shell_tool_provocation() -> None:
 
     The bench derives its provocation from these fields (was a hardcoded table);
     a prompt must carry the ``omnigent-bench-ok`` placeholder the probe
-    token-swaps. cursor-native is intentionally probe-skipped (no shell tool),
-    matching its prior absence from the table.
+    token-swaps.
     """
     caps = harness_capabilities()
-    probe_skipped = {"cursor-native"}
     for harness, capability in caps.items():
         if capability.integration_mode is not IntegrationMode.NATIVE_TUI:
-            continue
-        if harness in probe_skipped:
-            assert capability.shell_tool_name is None, harness
             continue
         assert capability.shell_tool_name, harness
         assert capability.shell_tool_prompt, harness
@@ -359,14 +289,3 @@ def test_every_canonical_harness_declares_instruction_delivery() -> None:
     caps = harness_capabilities()
     for harness in valid_harnesses():
         assert caps[harness].instruction_delivery is not InstructionDelivery.UNKNOWN, harness
-
-
-def test_hermes_and_hermes_native_deliver_differently() -> None:
-    caps = harness_capabilities()
-    assert caps["hermes"].instruction_delivery is InstructionDelivery.FIRST_USER_PREFIX
-    assert caps["hermes-native"].instruction_delivery is InstructionDelivery.NOT_DELIVERED
-
-
-def test_kiro_native_is_not_delivered() -> None:
-    caps = harness_capabilities()
-    assert caps["kiro-native"].instruction_delivery is InstructionDelivery.NOT_DELIVERED

@@ -92,7 +92,7 @@ def clean_agent_env(
 ) -> dict[str, str]:
     """Filter an environment down to the base plus this harness's own families.
 
-    :param allow_prefixes: Prefix families this harness owns, e.g. ``("QWEN_",)``.
+    :param allow_prefixes: Prefix families this harness owns, e.g. ``("PI_",)``.
         Added to :data:`BASE_ALLOW_PREFIXES`.
     :param allow_exact: Extra exact names this harness needs. Added to
         :data:`BASE_ALLOW_EXACT`.

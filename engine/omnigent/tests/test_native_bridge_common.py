@@ -138,8 +138,7 @@ def test_reap_invokes_prune_for_every_native_agent(monkeypatch: pytest.MonkeyPat
     agents = (
         SimpleNamespace(key="claude"),
         SimpleNamespace(key="codex"),
-        SimpleNamespace(key="antigravity"),
-        SimpleNamespace(key="opencode"),
+        SimpleNamespace(key="pi"),
     )
     monkeypatch.setattr("omnigent.harness_plugins.native_agents", lambda: agents)
 
@@ -160,18 +159,13 @@ def test_reap_invokes_prune_for_every_native_agent(monkeypatch: pytest.MonkeyPat
         "omnigent.harnesses.codex_native.bridge.prune_orphaned_bridge_dirs", _recorder("codex", 2)
     )
     monkeypatch.setattr(
-        "omnigent.harnesses.antigravity_native.bridge.prune_orphaned_bridge_dirs",
-        _recorder("antigravity", 3),
-    )
-    monkeypatch.setattr(
-        "omnigent.harnesses.opencode_native.bridge.prune_orphaned_bridge_dirs",
-        _recorder("opencode", 4),
+        "omnigent.harnesses.pi_native.bridge.prune_orphaned_bridge_dirs", _recorder("pi", 3)
     )
 
     total = native_bridge_common.reap_orphaned_native_bridge_dirs()
 
-    assert set(called) == {"claude", "codex", "antigravity", "opencode"}
-    assert total == 1 + 2 + 3 + 4
+    assert set(called) == {"claude", "codex", "pi"}
+    assert total == 1 + 2 + 3
 
 
 def test_reap_skips_agents_without_a_prune_and_bad_modules(

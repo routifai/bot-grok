@@ -72,7 +72,7 @@ class _Rig:
         runner_app.register_subagent_work(
             parent_session_id=self.parent_id,
             child_session_id=self.child_id,
-            agent="researcher",
+            agent="reviewer",
             title="cite-check",
         )
 
@@ -151,7 +151,7 @@ async def test_quiescence_idle_for_legacy_native_harness_still_completes() -> No
     Their quiescence edge is the only completion signal they have; requiring
     ``turn_completed`` from them would strand every dispatch as waiting.
     """
-    rig = _Rig("cursor-native")
+    rig = _Rig("codex-native")
     try:
         async with _runner_client(rig.app) as client:
             await rig.create_child_session(client)
@@ -273,7 +273,7 @@ async def test_grace_timer_cancel_does_not_settle_reused_dispatch() -> None:
         entry_a = runner_app.register_subagent_work(
             parent_session_id=parent_id,
             child_session_id=child_id,
-            agent="researcher",
+            agent="reviewer",
             title="turn-a",
         )
         work_id_a = entry_a.work_id
@@ -282,7 +282,7 @@ async def test_grace_timer_cancel_does_not_settle_reused_dispatch() -> None:
         entry_b = runner_app.register_subagent_work(
             parent_session_id=parent_id,
             child_session_id=child_id,
-            agent="researcher",
+            agent="reviewer",
             title="turn-b",
         )
         assert entry_b.work_id != work_id_a
@@ -316,15 +316,15 @@ def test_cancelled_inbox_line_surfaces_output_before_cancellation() -> None:
     payload = {
         "type": "sub_agent",
         "handle_id": "task1",
-        "agent": "researcher",
+        "agent": "reviewer",
         "title": "cite-check",
         "status": "cancelled",
         "output": "the verdict",
     }
     line = _format_async_task_item(payload)
     assert line == (
-        "[System: sub-agent task task1 cancelled — researcher:cite-check; "
+        "[System: sub-agent task task1 cancelled — reviewer:cite-check; "
         "output before cancellation: the verdict]"
     )
     silent = _format_async_task_item({**payload, "output": ""})
-    assert silent == "[System: sub-agent task task1 cancelled — researcher:cite-check]"
+    assert silent == "[System: sub-agent task task1 cancelled — reviewer:cite-check]"

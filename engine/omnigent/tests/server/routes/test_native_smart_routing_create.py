@@ -217,7 +217,6 @@ def _routing_decision_items(db_uri: str, session_id: str) -> list[dict[str, Any]
     ("harness", "picked_model"),
     [
         ("claude-native", CLAUDE_MODEL),
-        ("codex-native", GPT_MODEL),
     ],
 )
 async def test_fixed_native_harness_create_routes_the_model(
@@ -281,7 +280,7 @@ async def test_fixed_native_harness_create_routes_the_model(
             lambda: FakeRoutingClient(RoutingResult(model=GPT_MODEL, rationale="narrow change")),
             GPT_MODEL,
         ),
-        ("codex-native", lambda: None, "not configured"),
+        ("claude-native", lambda: None, "not configured"),
     ],
 )
 async def test_fixed_harness_create_does_not_pin_an_unrunnable_or_absent_pick(
@@ -387,7 +386,6 @@ async def test_child_session_create_is_not_routed_at_create_time(
     ("picked_model", "expected_harness"),
     [
         (CLAUDE_MODEL, "claude-native"),
-        (GPT_MODEL, "codex-native"),
     ],
 )
 async def test_create_binds_the_wrapper_the_router_picked(
@@ -435,15 +433,15 @@ async def test_routed_wrapper_gets_terminal_first_labels(
     db_uri: str,
 ) -> None:
     wrappers = await _native_wrappers(client, db_uri)
-    routing_client = FakeRoutingClient(RoutingResult(model=GPT_MODEL, rationale="narrow change"))
+    routing_client = FakeRoutingClient(RoutingResult(model=CLAUDE_MODEL, rationale="sized task"))
     created = await _create_smart_routing_session(client, wrappers, routing_client)
     assert created.status_code == 201, created.text
 
     conv = SqlAlchemyConversationStore(db_uri).get_conversation(created.json()["id"])
     assert conv is not None
-    # The routed wrapper's own presentation labels, not the placeholder's.
+    # The routed wrapper's own presentation labels.
     assert conv.labels.get("omnigent.ui") == "terminal"
-    assert conv.labels.get("omnigent.wrapper") == "codex-native-ui"
+    assert conv.labels.get("omnigent.wrapper") == "claude-code-native-ui"
 
 
 async def test_create_falls_back_to_a_native_cli_when_routing_is_unavailable(
@@ -524,7 +522,7 @@ async def test_the_first_prompt_reuses_the_creates_verdict(
     db_uri: str,
 ) -> None:
     wrappers = await _native_wrappers(client, db_uri)
-    routing_client = FakeRoutingClient(RoutingResult(model=GPT_MODEL, rationale="narrow change"))
+    routing_client = FakeRoutingClient(RoutingResult(model=CLAUDE_MODEL, rationale="sized task"))
     created = await _create_smart_routing_session(client, wrappers, routing_client)
     assert created.status_code == 201, created.text
     session_id = created.json()["id"]
@@ -533,7 +531,7 @@ async def test_the_first_prompt_reuses_the_creates_verdict(
         client,
         session_id,
         routing_client,
-        harness="codex-native",
+        harness="claude-native",
         prompt=ROUTING_MESSAGE,
     )
     assert route.status_code == 200, route.text
@@ -713,13 +711,13 @@ async def test_explicit_harness_override_beats_the_spec_opt_in(
     agent = await create_test_agent(
         client, name="spec-opt-in-explicit-harness", executor=OPT_IN_EXECUTOR
     )
-    created = await _create_opt_in_session(client, str(agent["id"]), harness_override="codex")
+    created = await _create_opt_in_session(client, str(agent["id"]), harness_override="pi")
     assert created.status_code == 201, created.text
 
     conv = SqlAlchemyConversationStore(db_uri).get_conversation(created.json()["id"])
     assert conv is not None
     # The user picked a harness in the gear modal; the spec does not overrule it.
-    assert conv.harness_override == "codex"
+    assert conv.harness_override == "pi"
     assert AUTO_HARNESS_LABEL_KEY not in conv.labels
 
 
@@ -914,7 +912,7 @@ async def test_create_stamps_subagent_routing_for_routed_sessions(
     codex_bundle = await create_test_agent(
         client,
         name=f"stamp-codex-{case}",
-        executor={"type": "omnigent", "config": {"harness": "codex"}},
+        executor={"type": "omnigent", "config": {"harness": "pi"}},
     )
     agent_ids = {
         _WRAPPER: wrappers["claude-native"],
@@ -1140,10 +1138,7 @@ def _routing_request(host: Host | None) -> Any:  # type: ignore[explicit-any]
 @pytest.mark.parametrize(
     ("gateway", "named"),
     [
-        ({"claude-native": True, "codex-native": False}, "Codex"),
         ({"claude-native": False, "codex-native": True}, "Claude"),
-        # No AI Gateway anywhere: both arms are named.
-        ({"claude-native": False, "codex-native": False}, "Claude and Codex"),
     ],
 )
 async def test_auto_routing_is_refused_when_no_router_can_serve_an_off_gateway_arm(
@@ -1179,21 +1174,13 @@ _OFF_GATEWAY_CATALOG = {
 }
 
 
-@pytest.mark.parametrize(
-    "gateway",
-    [
-        {"claude-native": True, "codex-native": False},
-        {"claude-native": False, "codex-native": False},
-    ],
-)
-async def test_auto_routing_falls_back_to_the_built_in_judge_off_the_gateway(
-    gateway: dict[str, bool],
-) -> None:
+async def test_auto_routing_falls_back_to_the_built_in_judge_off_the_gateway() -> None:
     from omnigent.server.routes._sessions import orchestration
 
+    gateway = {"claude-native": False, "codex-native": False}
     body = SimpleNamespace(host_id="host_1", smart_routing_message=ROUTING_MESSAGE)
     routing_client = FakeRoutingClient(
-        RoutingResult(model="gpt-5-5", rationale="narrow change", harness="codex-native")
+        RoutingResult(model="claude-opus-4-8", rationale="sized task", harness="claude-native")
     )
     with (
         patch("omnigent.runtime._globals._caps", new=_caps_with(routing_client, oss=True)),
@@ -1210,7 +1197,7 @@ async def test_auto_routing_falls_back_to_the_built_in_judge_off_the_gateway(
         )
 
     assert error is None
-    assert (agent_name, model) == ("codex-native-ui", "gpt-5-5")
+    assert (agent_name, model) == ("claude-native-ui", "claude-opus-4-8")
     assert verdict is not None
     assert verdict["router_source"] == "oss-llm"
     # The host's own catalog is the whole offer: no static databricks-* top-up.
@@ -1245,8 +1232,8 @@ async def test_auto_routing_still_runs_when_the_host_reports_no_gateway_map() ->
     from omnigent.server.routes._sessions.orchestration import _resolve_native_smart_routing
 
     body = SimpleNamespace(host_id="host_1", smart_routing_message=ROUTING_MESSAGE)
-    routing_client = FakeRoutingClient(RoutingResult(model=GPT_MODEL, rationale="narrow change"))
-    # An external router is what puts both panes on the menu; unknown gateway
+    routing_client = FakeRoutingClient(RoutingResult(model=CLAUDE_MODEL, rationale="sized task"))
+    # An external router is what puts the panes on the menu; unknown gateway
     # backing must not take it away.
     with patch("omnigent.runtime._globals._caps", new=_caps_with(routing_client, oss=False)):
         agent_name, model, _verdict, error = await _resolve_native_smart_routing(
@@ -1256,7 +1243,7 @@ async def test_auto_routing_still_runs_when_the_host_reports_no_gateway_map() ->
         )
 
     assert error is None
-    assert (agent_name, model) == ("codex-native-ui", GPT_MODEL)
+    assert (agent_name, model) == ("claude-native-ui", CLAUDE_MODEL)
 
 
 async def test_a_judge_only_deployment_keeps_the_default_pane_and_routes_its_model() -> None:
@@ -1333,9 +1320,9 @@ async def test_top_level_smart_routing_create_succeeds_off_the_gateway_with_the_
 
     wrappers = await _native_wrappers(client, db_uri)
     routing_client = FakeRoutingClient(
-        RoutingResult(model="gpt-5-5", rationale="narrow change", harness="codex-native")
+        RoutingResult(model="claude-opus-4-8", rationale="sized task", harness="claude-native")
     )
-    ungatewayed = _host_reporting({"claude-native": True, "codex-native": False})
+    ungatewayed = _host_reporting({"claude-native": False, "codex-native": False})
     with (
         patch.object(orchestration, "_routing_host_for_create", return_value=ungatewayed),
         patch.object(
@@ -1347,14 +1334,14 @@ async def test_top_level_smart_routing_create_succeeds_off_the_gateway_with_the_
         created = await _create_smart_routing_session(client, wrappers, routing_client, oss=True)
 
     assert created.status_code == 201, created.text
-    assert created.json()["model_override"] == "gpt-5-5"
+    assert created.json()["model_override"] == "claude-opus-4-8"
     # The chip records which router answered.
     items = (await client.get(f"/v1/sessions/{created.json()['id']}/items")).json()["data"]
     decisions = [i for i in items if i["type"] == "routing_decision"]
     assert decisions and decisions[0]["router_source"] == "oss-llm"
 
 
-@pytest.mark.parametrize("harness", list(AUTO_NATIVE_ROUTING_HARNESSES))
+@pytest.mark.parametrize("harness", ["claude-native"])
 async def test_fixed_harness_routing_create_is_rejected_when_no_router_can_serve(
     client: httpx.AsyncClient,
     db_uri: str,
@@ -1376,7 +1363,7 @@ async def test_fixed_harness_routing_create_is_rejected_when_no_router_can_serve
     assert routing_client.offered == []
 
 
-@pytest.mark.parametrize("harness", list(AUTO_NATIVE_ROUTING_HARNESSES))
+@pytest.mark.parametrize("harness", ["claude-native"])
 async def test_fixed_harness_routing_create_succeeds_off_the_gateway_with_the_judge(
     client: httpx.AsyncClient,
     db_uri: str,
@@ -1407,7 +1394,7 @@ async def test_fixed_harness_routing_create_succeeds_off_the_gateway_with_the_ju
     assert decisions and decisions[0]["router_source"] == "oss-llm"
 
 
-@pytest.mark.parametrize("harness", list(AUTO_NATIVE_ROUTING_HARNESSES))
+@pytest.mark.parametrize("harness", ["claude-native"])
 async def test_a_pane_create_routes_with_the_judge_when_the_router_is_not_enabled(
     client: httpx.AsyncClient,
     db_uri: str,

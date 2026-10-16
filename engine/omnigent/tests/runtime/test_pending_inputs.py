@@ -178,7 +178,7 @@ def test_resolve_oldest_returns_content_with_file_blocks() -> None:
 
 
 def test_resolve_matching_text_skips_older_unmatched_entries() -> None:
-    """Kiro can match the accepted prompt and identify older failed inputs."""
+    """A native harness can match the accepted prompt and identify older failed inputs."""
     first = pending_inputs.record(
         "conv_a", [_text_block("!!!! XOXOX !!!!")], created_by="alice@example.com"
     )
@@ -196,7 +196,7 @@ def test_resolve_matching_text_skips_older_unmatched_entries() -> None:
 
 
 def test_resolve_matching_text_leaves_entries_when_no_text_matches() -> None:
-    """A direct Kiro TUI prompt must not consume unrelated web pending entries."""
+    """A direct native TUI prompt must not consume unrelated web pending entries."""
     first = pending_inputs.record("conv_a", [_text_block("web input")])
 
     drained = pending_inputs.resolve_matching_text("conv_a", "typed in terminal")

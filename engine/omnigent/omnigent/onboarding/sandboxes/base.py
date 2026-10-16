@@ -1,8 +1,8 @@
 """
 Provider-agnostic interface for running Omnigent hosts in remote sandboxes.
 
-A *sandbox launcher* wraps one sandbox provider (Databricks Lakebox, Modal,
-Daytona, …) behind the small set of transport / lifecycle primitives that the
+A *sandbox launcher* wraps one sandbox provider (e.g. the Docker-backed
+``computer``) behind the small set of transport / lifecycle primitives that the
 generic bootstrap flow in :mod:`omnigent.onboarding.sandboxes.bootstrap`
 composes: provision a sandbox, run commands in it, ship files into it, stream
 a PTY-backed process out of it, forward a local port into it, and hold a
@@ -58,37 +58,25 @@ _logger = logging.getLogger(__name__)
 MANAGED_KEEPALIVE_INTERVAL_ENV_VAR: str = "OMNIGENT_MANAGED_KEEPALIVE_INTERVAL_S"
 """Environment variable overriding the managed-sandbox keepalive cadence (seconds)."""
 
-# Global default keepalive cadence, used by every managed provider except
-# agent_sandbox. Providers whose keep_alive is idempotent ("configure once")
-# don't need a fast cadence, so the default stays cheap.
+# Default keepalive cadence. Providers' keep_alive is idempotent ("configure
+# once"), so a slow cadence keeps provider calls cheap.
 _DEFAULT_MANAGED_KEEPALIVE_INTERVAL_S: float = 600.0
-# agent_sandbox pushes an absolute shutdownTime forward and runs a SHORT window,
-# so it must refresh fast (its window floor is twice this). Scoped to the
-# provider so lowering it does not multiply every other provider's write load.
-_AGENT_SANDBOX_KEEPALIVE_INTERVAL_S: float = 60.0
 _MIN_MANAGED_KEEPALIVE_INTERVAL_S: float = 5.0
 # Ceiling so a finite-but-huge override (e.g. 1e308) cannot overflow the
 # window-floor math (ceil(2 * interval)); an hour is already far past useful.
 _MAX_MANAGED_KEEPALIVE_INTERVAL_S: float = 3600.0
 
 
-def resolve_managed_keepalive_interval_s(provider: str | None = None) -> float:
+def resolve_managed_keepalive_interval_s() -> float:
     """
     How often the server refreshes a live managed sandbox's liveness, in seconds.
 
-    Provider-scoped default: ``agent_sandbox`` refreshes fast (60s) because it
-    pushes an absolute deadline forward under a short window; every other
-    provider uses the cheaper 600s default. :data:`MANAGED_KEEPALIVE_INTERVAL_ENV_VAR`
-    overrides both when set (advanced/experimental — the operator-facing knob is
+    Defaults to 600s. :data:`MANAGED_KEEPALIVE_INTERVAL_ENV_VAR` overrides it
+    when set (advanced/experimental — the operator-facing knob is
     ``keep_warm_s``), floored at a small minimum so a typo cannot spin the loop.
-    Resolved live from the env on each call (no snapshot), so the server loop
-    cadence and the ``agent_sandbox`` window floor cannot disagree.
+    Resolved live from the env on each call (no snapshot).
     """
-    default = (
-        _AGENT_SANDBOX_KEEPALIVE_INTERVAL_S
-        if provider == "agent_sandbox"
-        else _DEFAULT_MANAGED_KEEPALIVE_INTERVAL_S
-    )
+    default = _DEFAULT_MANAGED_KEEPALIVE_INTERVAL_S
     raw = os.environ.get(MANAGED_KEEPALIVE_INTERVAL_ENV_VAR, "").strip()
     if not raw:
         return default
@@ -144,8 +132,8 @@ def host_image_wheel_install_command(remote_tgz_path: str) -> str:
     onto a sandbox booted from the prebaked host image
     (:data:`DEFAULT_HOST_IMAGE`).
 
-    Shared by every launcher whose sandboxes boot from that image
-    (Modal, Daytona): the right pip flags are a property of the image,
+    Shared by every launcher whose sandboxes boot from that image:
+    the right pip flags are a property of the image,
     not the provider.
 
     ``--force-reinstall`` is required because the host image bakes
@@ -189,8 +177,7 @@ def foreground_pidfile() -> tuple[str, str]:
     """Allocate a private, unpredictably-named pidfile under ``/tmp``.
 
     Used by :meth:`SandboxLauncher.exec_foreground` implementations whose
-    SDK cannot kill an exec'd process through its handle (Modal,
-    CoreWeave, OpenShell). The caller records the remote pid with
+    SDK cannot kill an exec'd process through its handle. The caller records the remote pid with
     :func:`foreground_record_prefix` and tears it down with
     :func:`foreground_kill_command`, both of which operate on the paths
     returned here.
@@ -354,7 +341,7 @@ def render_host_config_write_command(host_config: dict[str, object]) -> str:
     across the next replacement. An empty *host_config* renders a pure cleanup
     command. A missing or corrupt marker skips removal rather than guessing
     ownership. Shared by both launch seams — the exec-model
-    :meth:`SandboxLauncher.start_host` and the Kubernetes init container — so the
+    :meth:`SandboxLauncher.start_host` and entrypoint-as-host launchers — so the
     behavior cannot drift between providers.
 
     Both config and marker writes use a fully-written, fsynced temporary file
@@ -386,7 +373,7 @@ class SandboxCapabilityError(click.ClickException, _sandbox_types.SandboxError):
 
     The only optional primitive today is
     :meth:`SandboxLauncher.forward_local_port` — providers without a
-    local-to-sandbox forwarding path (e.g. Modal) raise this, and the
+    local-to-sandbox forwarding path raise this, and the
     OAuth flow surfaces the message (which should name the ``--no-auth``
     escape hatch) to the user.
     """
@@ -474,13 +461,12 @@ class SandboxLifecycle(ABC):
     """
 
     # Short provider name used in CLI ``--provider`` choices and error
-    # messages, e.g. ``"lakebox"``.
+    # messages, e.g. ``"computer"``.
     provider: ClassVar[str]
 
     # Package index URL exported as ``UV_INDEX_URL`` for the local wheel
     # build, or ``None`` to use ambient uv configuration. Providers tied
-    # to networks where public PyPI is unreachable (Lakebox on the
-    # Databricks corp network) override this.
+    # to networks where public PyPI is unreachable override this.
     wheel_build_index_url: ClassVar[str | None] = None
 
     # Legacy class vars — kept for backward compat while providers migrate
@@ -633,7 +619,7 @@ class SandboxLifecycle(ABC):
 
         Optional capability: the default implementation raises
         :class:`SandboxCapabilityError`. Providers with an inbound
-        forwarding path (Lakebox over SSH) override it AND set
+        forwarding path override it AND set
         :attr:`supports_local_port_forward` to ``True``.
 
         :param sandbox_id: Target sandbox.
@@ -801,9 +787,7 @@ def supervise_host_command(command: str, *, host_id: str | None = None) -> str:
     A path that means to STOP the host must therefore signal the supervisor too,
     not just the host — otherwise the loop faithfully restarts it. Both in-sandbox
     stop paths already do: ``foreground_kill_command`` signals the process the
-    pidfile recorded (the supervisor, which is what ``exec``s under it), and
-    islo's preserved-daemon stop matches ``"omnigent host"`` against full argv,
-    which the supervisor's own ``sh -c <script>`` argv contains.
+    pidfile recorded (the supervisor, which is what ``exec``s under it).
 
     The attempt counter in the restart log makes a persistently-crashing host
     observable — the loop never gives up, so a wedged box would otherwise be
@@ -852,11 +836,10 @@ class SandboxExecTransport(SandboxLifecycle):
     """
     Exec-transport primitives for providers that exec into a running sandbox.
 
-    Providers whose sandbox is a bare box the server execs into (Modal,
-    Daytona, E2B, …) inherit this via :class:`ExecModelHostLauncher`.
-    Entrypoint-as-host providers (e.g. Kubernetes, whose Pod boots running the
-    host) inherit :class:`SandboxHostLauncher` instead and need NOT implement
-    any of these methods.
+    Providers whose sandbox is a bare box the server execs into (e.g.
+    ``computer``) inherit this via :class:`ExecModelHostLauncher`.
+    Entrypoint-as-host providers (whose sandbox boots running the host) inherit
+    :class:`SandboxHostLauncher` instead and need NOT implement any of these methods.
     """
 
     @abstractmethod
@@ -911,7 +894,7 @@ class SandboxExecTransport(SandboxLifecycle):
         ``ENV=val`` ("No such file or directory"). Re-parsing the command under
         ``sh -c`` lets the inner shell apply the assignments before running the
         program. Providers where backgrounded processes are reaped on exec
-        return (e.g. OpenShell) override this to hold the exec stream open
+        return override this to hold the exec stream open
         instead — they supervise too, just without the detach.
 
         :param sandbox_id: Target sandbox.
@@ -1024,8 +1007,8 @@ class SandboxExecTransport(SandboxLifecycle):
         tarball and pip-installs the wheels.
 
         Provider-specific because the right pip flags depend on the
-        sandbox image (e.g. the Lakebox image bakes omnigent and its
-        deps, requiring ``--force-reinstall --no-deps``).
+        sandbox image (e.g. an image that bakes omnigent and its deps
+        requires ``--force-reinstall --no-deps``).
         CLI-bootstrap capability — managed-only launchers run from
         pre-baked images and need not override the raising default.
 
@@ -1045,8 +1028,8 @@ class SandboxHostLauncher(SandboxLifecycle):
 
     Every managed-host provider — exec-model or entrypoint-as-host — implements
     this. :meth:`start_host` is abstract here; the exec-model default lives on
-    :class:`ExecModelHostLauncher`. Entrypoint-as-host providers (e.g.
-    Kubernetes) and provider-native host launchers (e.g. Gensee) inherit this
+    :class:`ExecModelHostLauncher`. Entrypoint-as-host providers and
+    provider-native host launchers inherit this
     class directly and override :meth:`start_host` without needing any exec
     transport.
     """
@@ -1117,7 +1100,7 @@ class SandboxHostLauncher(SandboxLifecycle):
 class ExecModelHostLauncher(SandboxHostLauncher, SandboxExecTransport):
     """
     Default exec-model host launcher for providers that exec into a running
-    sandbox (Modal, Daytona, E2B, Islo, OpenShell, Boxlite, …).
+    sandbox (e.g. ``computer``).
 
     Provides the default :meth:`start_host`, :meth:`run_background`, and
     :meth:`materialize_workspace` that compose :meth:`run` into the full
@@ -1154,8 +1137,7 @@ class ExecModelHostLauncher(SandboxHostLauncher, SandboxExecTransport):
 
         The working directory is the single clone directory when exactly one
         repo is cloned, else the workspace root parenting them all (or an empty
-        workspace when none are requested). Clones run sequentially here; the
-        entrypoint-as-host launchers (Kubernetes) clone in parallel.
+        workspace when none are requested). Clones run sequentially here.
 
         Idempotent against piling up hosts: when a supervised ``omnigent
         host`` loop for *host_id* is already running in the sandbox (see
@@ -1197,8 +1179,7 @@ class ExecModelHostLauncher(SandboxHostLauncher, SandboxExecTransport):
                 # Don't touch the live host's workspace — just resolve the same
                 # deterministic path a fresh clone would have landed in.
                 clone_dirs = [
-                    f"{workspace}/{dirname}"
-                    for dirname in _sandbox_types.clone_dir_names(repos)
+                    f"{workspace}/{dirname}" for dirname in _sandbox_types.clone_dir_names(repos)
                 ]
             else:
                 if on_stage is not None:
@@ -1293,6 +1274,6 @@ class ExecModelHostLauncher(SandboxHostLauncher, SandboxExecTransport):
 
 
 # Backward-compat alias: existing providers inherit ``SandboxLauncher``, which
-# is now ``ExecModelHostLauncher``. Kubernetes and future entrypoint-as-host
+# is now ``ExecModelHostLauncher``. Entrypoint-as-host
 # providers inherit ``SandboxHostLauncher`` directly.
 SandboxLauncher = ExecModelHostLauncher

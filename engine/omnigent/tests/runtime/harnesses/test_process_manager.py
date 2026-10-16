@@ -621,7 +621,7 @@ async def test_get_client_any_harness_sentinel_reuses_subprocess(
     call, killing the in-flight turn. That is the regression that broke
     queued-message streaming: sending a 2nd message mid-turn issues a
     ``get_client(conv, "any")`` steering call, which respawned the live
-    openai-agents subprocess and left the assistant with no output.
+    harness subprocess and left the assistant with no output.
     """
     await manager.start()
     try:

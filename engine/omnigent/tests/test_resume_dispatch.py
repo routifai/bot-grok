@@ -124,227 +124,6 @@ def test_dispatch_by_runtime_claude_native_remote_routes_to_wrapper(
     assert captured["extra_args"] == ()
 
 
-def test_dispatch_by_runtime_opencode_native_routes_to_wrapper(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Opencode-native resume routes through the seam to ``run_opencode_native``.
-
-    Regression for the seam's coverage expansion: the old hand-written
-    ``if native_agent.key == "<x>"`` chain covered 10 harnesses but *not*
-    ``opencode``, so an opencode-native resume fell through to the Omnigent
-    REPL and double-posted each turn (the same latent bug the chat-redirect
-    path had). Routing through ``resolve_hook_for_key`` covers all 11; this
-    pins that opencode now reaches its wrapper.
-    """
-    monkeypatch.setattr(
-        resume_dispatch,
-        "_read_wrapper_label_remote",
-        lambda *, server, conv_id: "opencode-native-ui",
-    )
-    captured: dict[str, Any] = {}
-
-    def _capture(**kwargs: Any) -> None:
-        """
-        Record the kwargs ``run_opencode_native`` was called with.
-
-        :param kwargs: Wrapper kwargs.
-        """
-        captured.update(kwargs)
-
-    monkeypatch.setattr("omnigent.harnesses.opencode_native.main.run_opencode_native", _capture)
-
-    resume_dispatch._dispatch_by_runtime(
-        target="4e92b5a0c0ee6db3f874f9c4a3f855a5",
-        server="https://example.com/",
-    )
-
-    assert captured["session_id"] == "4e92b5a0c0ee6db3f874f9c4a3f855a5"
-    assert captured["server"] == "https://example.com"
-    assert captured["extra_args"] == ()
-
-
-def test_dispatch_by_runtime_codex_native_remote_routes_to_wrapper(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    Remote codex-native conv ⇒ ``run_codex_native(server=..., session_id=conv_id)``.
-
-    The Omnigent conv id must be preserved exactly like the
-    claude-native path, but the runtime-specific passthrough kwarg is
-    ``codex_args``.
-    """
-    monkeypatch.setattr(
-        resume_dispatch,
-        "_read_wrapper_label_remote",
-        lambda *, server, conv_id: "codex-native-ui",
-    )
-    captured: dict[str, Any] = {}
-
-    def _capture(**kwargs: Any) -> None:
-        """
-        Record the kwargs ``run_codex_native`` was called with.
-
-        :param kwargs: Wrapper kwargs.
-        """
-        captured.update(kwargs)
-
-    monkeypatch.setattr("omnigent.harnesses.codex_native.main.run_codex_native", _capture)
-
-    resume_dispatch._dispatch_by_runtime(
-        target="4e92b5a0c0ee6db3f874f9c4a3f855a5",
-        server="https://example.com/",
-    )
-
-    assert captured["session_id"] == "4e92b5a0c0ee6db3f874f9c4a3f855a5"
-    assert captured["server"] == "https://example.com"
-    assert captured["extra_args"] == ()
-
-
-def test_dispatch_by_runtime_codex_native_local_routes_to_wrapper(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    Local codex-native conv routes to ``run_codex_native``.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :returns: None.
-    """
-    monkeypatch.setattr(
-        resume_dispatch,
-        "_read_wrapper_label_local",
-        lambda *, conv_id: "codex-native-ui",
-    )
-    captured: dict[str, Any] = {}
-
-    def _capture(**kwargs: Any) -> None:
-        """
-        Record the kwargs ``run_codex_native`` was called with.
-
-        :param kwargs: Wrapper kwargs.
-        :returns: None.
-        """
-        captured.update(kwargs)
-
-    monkeypatch.setattr("omnigent.harnesses.codex_native.main.run_codex_native", _capture)
-
-    resume_dispatch._dispatch_by_runtime(
-        target="415c9954e2fe4b9276083a4d2c66f689",
-        server=None,
-    )
-
-    assert captured["session_id"] == "415c9954e2fe4b9276083a4d2c66f689"
-    assert captured["server"] is None
-    assert captured["extra_args"] == ()
-
-
-def test_dispatch_by_runtime_kiro_native_remote_routes_to_wrapper(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Remote kiro-native conv routes to ``run_kiro_native``."""
-    monkeypatch.setattr(
-        resume_dispatch,
-        "_read_wrapper_label_remote",
-        lambda *, server, conv_id: "kiro-native-ui",
-    )
-    captured: dict[str, Any] = {}
-
-    def _capture(**kwargs: Any) -> None:
-        captured.update(kwargs)
-
-    monkeypatch.setattr("omnigent.harnesses.kiro_native.main.run_kiro_native", _capture)
-
-    resume_dispatch._dispatch_by_runtime(
-        target="823dbd1aab969b5a813fac59bb977a77",
-        server="https://example.com/",
-    )
-
-    assert captured["session_id"] == "823dbd1aab969b5a813fac59bb977a77"
-    assert captured["server"] == "https://example.com"
-    assert captured["extra_args"] == ()
-
-
-def test_dispatch_by_runtime_antigravity_native_remote_routes_to_wrapper(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    Remote antigravity-native conv ⇒ ``run_antigravity_native(server=..., session_id=...)``.
-
-    The Omnigent conv id must be preserved exactly like the codex/claude
-    paths, but the runtime-specific passthrough kwarg is
-    ``antigravity_args``.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :returns: None.
-    """
-    monkeypatch.setattr(
-        resume_dispatch,
-        "_read_wrapper_label_remote",
-        lambda *, server, conv_id: "antigravity-native-ui",
-    )
-    captured: dict[str, Any] = {}
-
-    def _capture(**kwargs: Any) -> None:
-        """
-        Record the kwargs ``run_antigravity_native`` was called with.
-
-        :param kwargs: Wrapper kwargs.
-        :returns: None.
-        """
-        captured.update(kwargs)
-
-    monkeypatch.setattr(
-        "omnigent.harnesses.antigravity_native.main.run_antigravity_native", _capture
-    )
-
-    resume_dispatch._dispatch_by_runtime(
-        target="a8bcbee631c58ddb98fb5e3f54a1592a",
-        server="https://example.com/",
-    )
-
-    assert captured["session_id"] == "a8bcbee631c58ddb98fb5e3f54a1592a"
-    assert captured["server"] == "https://example.com"
-    assert captured["extra_args"] == ()
-
-
-def test_dispatch_by_runtime_antigravity_native_local_routes_to_wrapper(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    Local antigravity-native conv routes to ``run_antigravity_native``.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :returns: None.
-    """
-    monkeypatch.setattr(
-        resume_dispatch,
-        "_read_wrapper_label_local",
-        lambda *, conv_id: "antigravity-native-ui",
-    )
-    captured: dict[str, Any] = {}
-
-    def _capture(**kwargs: Any) -> None:
-        """
-        Record the kwargs ``run_antigravity_native`` was called with.
-
-        :param kwargs: Wrapper kwargs.
-        :returns: None.
-        """
-        captured.update(kwargs)
-
-    monkeypatch.setattr(
-        "omnigent.harnesses.antigravity_native.main.run_antigravity_native", _capture
-    )
-
-    resume_dispatch._dispatch_by_runtime(
-        target="e85224ee39457def1d20bcce5b74ed8c",
-        server=None,
-    )
-
-    assert captured["session_id"] == "e85224ee39457def1d20bcce5b74ed8c"
-    assert captured["server"] is None
-    assert captured["extra_args"] == ()
-
-
 def test_dispatch_by_runtime_claude_native_local_still_routes_to_wrapper(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -406,16 +185,16 @@ def test_dispatch_by_runtime_accepts_id_with_paste_punctuation(
     def _label(*, conv_id: str) -> str:
         """Record the id the store lookup receives."""
         seen["conv_id"] = conv_id
-        return "codex-native-ui"
+        return "claude-code-native-ui"
 
     monkeypatch.setattr(resume_dispatch, "_read_wrapper_label_local", _label)
     captured: dict[str, Any] = {}
 
     def _capture(**kwargs: Any) -> None:
-        """Record the kwargs ``run_codex_native`` was called with."""
+        """Record the kwargs ``run_claude_native`` was called with."""
         captured.update(kwargs)
 
-    monkeypatch.setattr("omnigent.harnesses.codex_native.main.run_codex_native", _capture)
+    monkeypatch.setattr("omnigent.harnesses.claude_native.main.run_claude_native", _capture)
 
     resume_dispatch._dispatch_by_runtime(target=pasted, server=None)
 
@@ -464,16 +243,16 @@ def test_dispatch_by_runtime_legacy_prefixed_id_canonicalized_to_bare_hex(
     def _label(*, conv_id: str) -> str:
         """Record the id the store lookup receives."""
         seen["conv_id"] = conv_id
-        return "codex-native-ui"
+        return "claude-code-native-ui"
 
     monkeypatch.setattr(resume_dispatch, "_read_wrapper_label_local", _label)
     captured: dict[str, Any] = {}
 
     def _capture(**kwargs: Any) -> None:
-        """Record the kwargs ``run_codex_native`` was called with."""
+        """Record the kwargs ``run_claude_native`` was called with."""
         captured.update(kwargs)
 
-    monkeypatch.setattr("omnigent.harnesses.codex_native.main.run_codex_native", _capture)
+    monkeypatch.setattr("omnigent.harnesses.claude_native.main.run_claude_native", _capture)
 
     resume_dispatch._dispatch_by_runtime(
         target="conv_415c9954e2fe4b9276083a4d2c66f689",

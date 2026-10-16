@@ -3,8 +3,7 @@
 
 A person's Computer is a long-lived container started from the runner image (Omnigent's host
 image plus the deployment's additions), with the person's home on a named Docker volume. The
-engine talks to the Docker Engine API over its socket directly; nothing sits in between. This is
-the Docker counterpart of the Kubernetes provider: same runner image, a container instead of a pod.
+engine talks to the Docker Engine API over its socket directly; nothing sits in between.
 
 Implements :class:`~omnigent.onboarding.sandboxes.base.SandboxHostLauncher` (via
 :class:`~omnigent.onboarding.sandboxes.base.ExecModelHostLauncher`, whose default

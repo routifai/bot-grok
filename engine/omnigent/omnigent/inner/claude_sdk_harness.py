@@ -279,8 +279,8 @@ def _build_claude_sdk_executor() -> Executor:
         # the same one the tmux terminal uses), else the process cwd.
         # Without the workspace fallback the CLI ran out of the runner
         # daemon's $HOME — disagreeing with the terminal and rooting the
-        # sandbox at the whole home dir. Mirrors goose / kimi / pi / qwen
-        # / hermes harness cwd resolution.
+        # sandbox at the whole home dir. Mirrors the pi harness cwd
+        # resolution.
         cwd=os.environ.get(_ENV_CWD) or os.environ.get("OMNIGENT_RUNNER_WORKSPACE") or None,
         os_env=_resolve_os_env(),
         model=os.environ.get(_ENV_MODEL),

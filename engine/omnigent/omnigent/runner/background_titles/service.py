@@ -48,7 +48,6 @@ BACKGROUND_TITLE_INSTRUCTIONS = (
 _BACKGROUND_TITLE_MODELS: dict[str, str] = {
     "claude-sdk": BACKGROUND_TITLE_CLAUDE_ECONOMY_MODEL,
     "claude-native": BACKGROUND_TITLE_CLAUDE_ECONOMY_MODEL,
-    "codex": BACKGROUND_TITLE_CODEX_ECONOMY_MODEL,
     "codex-native": BACKGROUND_TITLE_CODEX_ECONOMY_MODEL,
 }
 
@@ -184,7 +183,7 @@ async def generate_background_title(context: BackgroundTitleContext) -> str | No
             # A wedged provider is not model-specific; retrying on the
             # session model would only double the worst-case wait.
             raise
-        except Exception:  # noqa: BLE001 - any economy-tier provider failure earns the retry
+        except Exception:
             _logger.info(
                 "economy title model %s failed on harness %s; retrying with the session model",
                 title_model,

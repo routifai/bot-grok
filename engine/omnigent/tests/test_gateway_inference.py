@@ -508,7 +508,7 @@ def test_gateway_inference_map_omits_a_family_whose_check_raises(
         ({"claude": False}, "claude-native", None),
         # A harness in neither family has no fan-out to fall back on.
         ({"pi-native": False}, "pi-native", False),
-        ({"pi-native": False}, "cursor-native", None),
+        ({"pi-native": False}, "some-unknown-harness", None),
     ],
 )
 def test_gateway_inference_state_reads_any_spelling_of_the_family(

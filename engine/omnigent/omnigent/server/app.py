@@ -175,12 +175,11 @@ class ServerInfoResponse(BaseModel):
     single_user: bool
     login_url: str | None
     needs_setup: bool
-    databricks_features: bool
     managed_sandboxes_enabled: bool
     sandbox_provider: str | None
     sandbox_providers: list[str]
     # UI-relevant capability flags per launchable provider, e.g.
-    # ``{"agent_sandbox": {"multi_repo": true}}``. The web branches on these
+    # ``{"computer": {"multi_repo": true}}``. The web branches on these
     # (multi-repo picker vs single). Providers absent from the map default off.
     sandbox_provider_capabilities: dict[str, dict[str, bool]] = {}
     enabled_connections: list[str]
@@ -207,7 +206,7 @@ def _resolve_extension_state(
     # Distribution metadata is an external installation boundary. Preserve the
     # rest of the server if global discovery itself fails before per-plugin
     # failure isolation can apply.
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         _logger.warning("could not discover installed extensions (%s)", exc, exc_info=True)
         return ExtensionPluginState(manifests=(), load_errors={"registry": str(exc)})
 
@@ -226,7 +225,7 @@ def _resolve_extension_assets(
                 ", ".join(sorted(overrides)),
             )
         return build_asset_index(state, overrides=overrides)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         _logger.warning("could not build extension asset index (%s)", exc, exc_info=True)
         return {}, {"registry": str(exc)}
 
@@ -916,7 +915,6 @@ def _ensure_default_agents(
     :param agent_cache: Cache for loaded agent specs.
     """
     _ensure_default_native_agents(agent_store, artifact_store, agent_cache)
-    _ensure_default_acp_agents(agent_store, artifact_store, agent_cache)
     _ensure_default_debby_agent(agent_store, artifact_store, agent_cache)
     _ensure_default_polly_agent(agent_store, artifact_store, agent_cache)
     _ensure_extra_builtin_agents(agent_store, artifact_store, agent_cache)
@@ -995,13 +993,10 @@ def _build_native_bundle(provider: NativeHarnessProvider) -> bytes:
     """
     Materialize a built-in native agent's spec and tar it (registry-driven).
 
-    Replaces the 11 hand-written ``_build_<x>_native_bundle`` functions: resolves
-    the provider's ``materialize_agent_spec`` hook (``_materialize_<key>_agent_spec``)
-    and runs the same materialize -> bundle -> tar dance they all shared. The
-    per-harness ``model`` variance (codex/kiro/opencode take a keyword-only
-    ``model``; the rest take just ``tmpdir``) is bridged by signature inspection,
-    so the produced bytes are byte-identical to the pre-loop builders (which all
-    passed ``model=None`` where accepted).
+    Resolves the provider's ``materialize_agent_spec`` hook
+    (``_materialize_<key>_agent_spec``) and runs the materialize -> bundle -> tar
+    sequence. The per-harness ``model`` variance (codex takes a keyword-only
+    ``model``; the rest take just ``tmpdir``) is bridged by signature inspection.
 
     :param provider: The native harness provider row.
     :returns: Gzipped tarball bytes suitable for the artifact store.
@@ -1060,131 +1055,6 @@ def _ensure_default_native_agents(
             agent_cache,
             name=agent.agent_name,
             bundle_bytes=_build_native_bundle(provider),
-        )
-
-
-# Light framing for a seeded ACP picker agent. ACP agents run their own tool
-# loop, so the vendor CLI supplies the real behavior; this is just enough to
-# name the role.
-_ACP_AGENT_PROMPT = (
-    "You are a coding agent running inside Omnigent through the Agent Client "
-    "Protocol. Help the user with software engineering tasks in their workspace: "
-    "read and edit files, run commands, investigate, and implement changes. Work "
-    "within the current repository, explain what you are doing, and when you finish "
-    "a task tell the user how to verify it."
-)
-
-
-def _build_acp_bundle(*, harness: str, name: str) -> bytes:
-    """
-    Materialize a one-file ACP picker agent and tar it.
-
-    ACP agents have no provider row (unlike :func:`_build_native_bundle`), so the
-    spec is a generated single YAML on the debby-style directory path: just the
-    ``acp:<slug>`` (or builtin ACP CLI) harness id. The launch command is resolved
-    from the host's own ``acp:`` config (user agents) or PATH (builtin CLI rows)
-    at spawn time, so nothing host-specific is baked into the bundle.
-
-    :param harness: The harness id, e.g. ``"acp:devin"`` or ``"grok"``.
-    :param name: The agent name / stable-id seed — a valid ``[a-zA-Z0-9_-]+``
-        slug (e.g. ``"devin"``, ``"grok"``), never a display label with spaces.
-    :returns: Gzipped tarball bytes suitable for the artifact store.
-    """
-    import tempfile
-
-    import yaml
-
-    from omnigent.spec import materialize_bundle
-
-    raw = {
-        "spec_version": 1,
-        "name": name,
-        "prompt": _ACP_AGENT_PROMPT,
-        "executor": {"type": "omnigent", "config": {"harness": harness}},
-        "os_env": {"type": "caller_process", "cwd": ".", "sandbox": {"type": "none"}},
-    }
-    with tempfile.TemporaryDirectory() as tmpdir:
-        source = Path(tmpdir) / "src"
-        source.mkdir()
-        (source / "config.yaml").write_text(yaml.safe_dump(raw, sort_keys=False))
-        bundle_dir = materialize_bundle(source, Path(tmpdir) / "bundle")
-        return _tar_gz_dir(bundle_dir)
-
-
-def _ensure_default_acp_agents(
-    agent_store: AgentStore,
-    artifact_store: ArtifactStore,
-    agent_cache: Any,
-) -> None:
-    """
-    Seed a picker agent per builtin ACP CLI row and per configured ``acp:`` agent.
-
-    Native harnesses seed a fixed ``<harness>-ui`` agent each
-    (:func:`_ensure_default_native_agents`) unconditionally; the picker hides a row
-    the selected host cannot launch, reading that host's ``configured_harnesses``
-    readiness map. Builtin ACP CLI harnesses follow the same model, because the
-    vendor CLI runs on the *executing* host (the attached runner) rather than on the
-    server: gating the row on the server's own PATH left Devin and Grok missing from
-    the picker on every remote server, even when the runner had them installed.
-
-    User-configured ``acp:<slug>`` agents stay config-gated. Their launch command is
-    resolved from the *host's* own ``acp:`` block at spawn time, so a row naming a
-    slug the executing host does not define could never launch; surfacing those on a
-    remote server first needs the host to advertise its configured slugs.
-
-    When both sources name the same harness, the configured agent wins (see
-    :func:`shadowed_builtin_acp_rows`).
-
-    Purely additive: it only adds picker rows and never touches native seeding.
-    A malformed ``acp:`` block is logged and skipped, never fatal to startup
-    (mirrors the dynamic ``acp:*`` catalog rows in ``harness_plugins``).
-
-    Note: a seeded row is keyed by the agent's display name, so renaming a
-    configured ACP agent leaves the old picker row behind until the store is
-    reseeded — acceptable since native names are fixed and never rename.
-
-    :param agent_store: Store for agent metadata.
-    :param artifact_store: Store for agent bundles.
-    :param agent_cache: Cache for loaded agent specs.
-    """
-    from omnigent.acp_cli_harnesses import ACP_CLI_HARNESSES
-
-    # (1) User-configured acp:<slug> agents — "set up" == present in config.
-    try:
-        from omnigent.onboarding.acp_auth import acp_agents, shadowed_builtin_acp_rows
-
-        configured = list(acp_agents())
-        shadowed: frozenset[str] = shadowed_builtin_acp_rows(configured)
-    except Exception:  # noqa: BLE001 — a malformed acp: block must never break startup
-        _logger.debug("acp agent seeding skipped (config unreadable)", exc_info=True)
-        configured = []
-        shadowed = frozenset()
-    for agent in configured:
-        # Key the built-in by the slug, not the display label: agent names must be
-        # ``[a-zA-Z0-9_-]+`` (the spec validator rejects spaces/dots), and a label
-        # like "Gemini CLI" would fail to load. The web picker capitalizes the slug
-        # for display (e.g. ``devin`` -> "Devin").
-        _ensure_builtin_agent(
-            agent_store,
-            artifact_store,
-            agent_cache,
-            name=agent.slug,
-            bundle_bytes=_build_acp_bundle(harness=f"acp:{agent.slug}", name=agent.slug),
-        )
-
-    # (2) Builtin ACP CLI harnesses — one row each, seeded like the natives because
-    # the vendor CLI runs on the executing host, not here. Keyed by the catalog id
-    # (already a valid slug), not the display label. A row a configured agent already
-    # claims is skipped: both seed the same ``builtin_agent_id``.
-    for key in ACP_CLI_HARNESSES:
-        if key in shadowed:
-            continue
-        _ensure_builtin_agent(
-            agent_store,
-            artifact_store,
-            agent_cache,
-            name=key,
-            bundle_bytes=_build_acp_bundle(harness=key, name=key),
         )
 
 
@@ -2885,8 +2755,7 @@ def create_app(
         It exposes no sensitive state — only the active auth
         source, the login URL, whether first-run admin setup is
         still pending (``needs_setup``), coarse capability
-        booleans (``databricks_features``,
-        ``managed_sandboxes_enabled``, ``dictation_available``,
+        booleans (``managed_sandboxes_enabled``, ``dictation_available``,
         ``single_user``), the short sandbox provider name
         (``sandbox_provider``) the web UI labels the new-session
         sandbox option with, and the installed
@@ -2915,24 +2784,13 @@ def create_app(
         needs_setup = False
         if accounts_enabled and account_store is not None:
             needs_setup = not any(u.has_password for u in account_store.list_users())
-        # databricks_features gates the Databricks-deployment-only UI hints
-        # (the "Databricks Lakebox" connect tab). True only when the internal
-        # lakebox launcher module is present — it is excluded from the OSS
-        # export, so an OSS build reports False and the SPA shows the clean,
-        # provider-agnostic hints. find_spec is side-effect-free (no import).
-        import importlib.util
-
-        databricks_features = (
-            importlib.util.find_spec("omnigent.onboarding.sandboxes.lakebox") is not None
-        )
         # managed_sandboxes_enabled gates the web UI's sandbox
         # option on the new-session screen: true only when a `sandbox:`
         # config is wired AND its provider can actually serve a managed
         # launch (staged providers parse but reject at launch — they
         # must not advertise the option).
-        # sandbox_provider names the backing provider (e.g. "modal",
-        # "islo") so the web UI can label the option per provider
-        # ("Modal Sandbox" / "Islo Sandbox") instead of the
+        # sandbox_provider names the backing provider (e.g. "computer")
+        # so the web UI can label the option per provider instead of the
         # generic "New Sandbox". Only surfaced when the option is
         # actually offered; None when no provider is named (embedding
         # configs may leave it unset) so the UI keeps the generic label.
@@ -3018,7 +2876,6 @@ def create_app(
                 "single_user": single_user,
                 "login_url": login_url,
                 "needs_setup": needs_setup,
-                "databricks_features": databricks_features,
                 "managed_sandboxes_enabled": managed_sandboxes_enabled,
                 "sandbox_provider": sandbox_provider,
                 "sandbox_providers": sandbox_providers,
@@ -3115,7 +2972,7 @@ def create_app(
             try:
                 await asyncio.to_thread(permission_store.ensure_user, user_id)
                 await asyncio.to_thread(promote_if_listed, admin_list, permission_store, user_id)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 _logger.warning("Could not promote listed admin %s", user_id, exc_info=True)
         # Still report the list, so admin chrome shows even if promotion failed.
         return {"user_id": user_id, "is_admin": flagged or listed}

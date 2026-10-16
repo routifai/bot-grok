@@ -87,7 +87,7 @@ async def test_create_timeout_reaps_orphaned_child() -> None:
                     "data": [
                         {
                             "id": CHILD_ID,
-                            "title": "researcher:task-1",
+                            "title": "reviewer:task-1",
                             "root_conversation_id": PARENT_ID,
                             "parent_session_id": PARENT_ID,
                         }
@@ -115,11 +115,11 @@ async def test_create_timeout_reaps_orphaned_child() -> None:
             output = await execute_tool(
                 tool_name="sys_session_send",
                 arguments=json.dumps(
-                    {"agent": "researcher", "title": "task-1", "args": "do the thing"}
+                    {"agent": "reviewer", "title": "task-1", "args": "do the thing"}
                 ),
                 server_client=server_client,
                 conversation_id=PARENT_ID,
-                agent_spec=SimpleNamespace(sub_agents=[SimpleNamespace(name="researcher")]),
+                agent_spec=SimpleNamespace(sub_agents=[SimpleNamespace(name="reviewer")]),
                 session_inbox=inbox,
             )
         finally:
@@ -176,7 +176,7 @@ async def test_tombstone_close_reaps_cluster() -> None:
                 200,
                 json={
                     "id": CHILD_ID,
-                    "title": "researcher:task-1",
+                    "title": "reviewer:task-1",
                     "root_conversation_id": PARENT_ID,
                     "parent_session_id": PARENT_ID,
                 },

@@ -1,4 +1,4 @@
-"""Legacy state-dir fallback for the claude/codex/opencode native wrappers.
+"""Legacy state-dir fallback for the claude/codex native wrappers.
 
 Sessions created before ids dropped the ``conv_`` prefix named their state
 directory ``sha256("conv_<hex>")[:N]``; lookups now receive the bare id. The
@@ -15,14 +15,12 @@ import pytest
 
 import omnigent.harnesses.claude_native.state as claude_state
 import omnigent.harnesses.codex_native.state as codex_state
-import omnigent.harnesses.opencode_native.state as opencode_state
 
 _HEX = "12dcd7df501e40e9a506a5b0058cbafc"
 
 _MODULES = [
     pytest.param(claude_state, "OMNIGENT_CLAUDE_NATIVE_STATE_DIR", id="claude"),
     pytest.param(codex_state, "OMNIGENT_CODEX_NATIVE_STATE_DIR", id="codex"),
-    pytest.param(opencode_state, "OMNIGENT_OPENCODE_NATIVE_STATE_DIR", id="opencode"),
 ]
 
 _STATE_ROOTS = [
@@ -37,12 +35,6 @@ _STATE_ROOTS = [
         "OMNIGENT_CODEX_NATIVE_STATE_DIR",
         "codex-native",
         id="codex",
-    ),
-    pytest.param(
-        opencode_state._opencode_native_state_root,
-        "OMNIGENT_OPENCODE_NATIVE_STATE_DIR",
-        "opencode-native",
-        id="opencode",
     ),
 ]
 

@@ -57,7 +57,7 @@ class _Catalog:
                         "default_model": "gateway/main",
                         "model_allowlist": ["gateway/main", "gateway/fast"],
                     }
-                    for harness in ("codex", "acp:custom")
+                    for harness in ("pi",)
                 }
             },
         }
@@ -72,7 +72,7 @@ class _Catalog:
         self.calls.append((provider, harness, user_id))
         return {
             "version": 1,
-            "target_id": "sandbox:agent_sandbox",
+            "target_id": "sandbox:computer",
             "configuration_revision": self.revision,
             "harness": harness,
             "owner_id": self.owner,
@@ -124,7 +124,7 @@ async def env(
     artifact_store = LocalArtifactStore(str(artifact_dir))
     catalog = _Catalog()
     config = ManagedSandboxConfig(
-        provider="agent_sandbox",
+        provider="computer",
         server_url="http://test",
         launcher_factory=lambda: None,
         token_ttl_s=100,
@@ -151,7 +151,7 @@ async def env(
 async def _json_create(env: _Env, **overrides: Any):
     agent = await create_test_agent(
         env.client,
-        executor={"type": "omnigent", "config": {"harness": "codex"}},
+        executor={"type": "omnigent", "config": {"harness": "pi"}},
         include_llm=False,
     )
     return await env.client.post(
@@ -159,7 +159,7 @@ async def _json_create(env: _Env, **overrides: Any):
         json={
             "agent_id": agent["id"],
             "host_type": "managed",
-            "sandbox_provider": "agent_sandbox",
+            "sandbox_provider": "computer",
             "inference_configuration_revision": "revision-1",
             **overrides,
         },
@@ -181,7 +181,7 @@ async def test_literal_credentials_rejected_before_session_or_artifact_writes(en
     env.app.state.inference_catalog = SandboxInferenceService(env.app.state)
     agent = await create_test_agent(
         env.client,
-        executor={"type": "omnigent", "config": {"harness": "codex"}},
+        executor={"type": "omnigent", "config": {"harness": "pi"}},
         include_llm=False,
     )
     before = env.persisted()
@@ -190,7 +190,7 @@ async def test_literal_credentials_rejected_before_session_or_artifact_writes(en
         json={
             "agent_id": agent["id"],
             "host_type": "managed",
-            "sandbox_provider": "agent_sandbox",
+            "sandbox_provider": "computer",
         },
     )
     assert response.status_code == 400, response.text
@@ -207,7 +207,7 @@ async def _multipart_create(env: _Env, **metadata: Any):
             "metadata": json.dumps(
                 {
                     "host_type": "managed",
-                    "sandbox_provider": "agent_sandbox",
+                    "sandbox_provider": "computer",
                     "inference_configuration_revision": "revision-1",
                     **metadata,
                 }
@@ -217,8 +217,8 @@ async def _multipart_create(env: _Env, **metadata: Any):
             "bundle": (
                 "agent.tar.gz",
                 build_agent_bundle(
-                    "managed-codex",
-                    executor={"type": "omnigent", "config": {"harness": "codex"}},
+                    "managed-pi",
+                    executor={"type": "omnigent", "config": {"harness": "pi"}},
                     include_llm=False,
                 ),
                 "application/gzip",
@@ -227,27 +227,11 @@ async def _multipart_create(env: _Env, **metadata: Any):
     )
 
 
-async def test_preview_preserves_acp_slug_without_creating_session_or_sandbox(env: _Env):
-    before = env.persisted()
-    response = await env.client.get(
-        "/v1/sandbox-providers/agent_sandbox/harnesses/acp:custom/model-options"
-    )
-    assert response.status_code == 200, response.text
-    assert response.json()["configuration_revision"] == "revision-1"
-    assert [row["id"] for row in response.json()["models"]] == ["gateway/main", "gateway/fast"]
-    assert env.catalog.calls == [("agent_sandbox", "acp:custom", None)]
-    assert env.persisted() == before
-    env.launch.assert_not_called()
-
-
 @pytest.mark.parametrize(
     "harness,family,agent_harness",
     [
         ("claude-native", "anthropic", "claude-native"),
-        ("codex-native", "openai", "codex-native"),
-        ("pi-native", "openai", "pi-native"),
-        ("pi-native", "openai", "native-pi"),
-        ("opencode-native", "openai", "native-opencode"),
+        ("claude-native", "anthropic", "native-claude"),
     ],
 )
 @pytest.mark.parametrize("discovery", [False, True])
@@ -262,8 +246,6 @@ async def test_native_alias_preview_and_create_use_canonical_harness(
     config["inference"]["harnesses"] = {alias: {"provider": "bifrost"}}
     provider = config["providers"]["bifrost"]
     provider[family] = provider.pop("openai")
-    if harness == "opencode-native":
-        provider[family]["wire_api"] = "chat"
     monkeypatch.setenv("ALIAS_DISCOVERY_KEY", "test-catalog-key")
     if discovery:
         target.model_discovery["bifrost"] = {
@@ -284,7 +266,7 @@ async def test_native_alias_preview_and_create_use_canonical_harness(
         include_llm=False,
     )
     preview = await env.client.get(
-        f"/v1/sandbox-providers/agent_sandbox/harnesses/{harness}/model-options",
+        f"/v1/sandbox-providers/computer/harnesses/{harness}/model-options",
         params={"agent_id": agent["id"]},
     )
     assert preview.status_code == 200, preview.text
@@ -294,7 +276,7 @@ async def test_native_alias_preview_and_create_use_canonical_harness(
         json={
             "agent_id": agent["id"],
             "host_type": "managed",
-            "sandbox_provider": "agent_sandbox",
+            "sandbox_provider": "computer",
             "inference_configuration_revision": preview.json()["configuration_revision"],
         },
     )
@@ -354,7 +336,7 @@ async def test_multipart_create_captures_default_model_in_saved_configuration(
     env: _Env, explicit_policy: bool
 ):
     if not explicit_policy:
-        binding = env.catalog.runtime_config["inference"]["harnesses"]["codex"]
+        binding = env.catalog.runtime_config["inference"]["harnesses"]["pi"]
         del binding["default_model"]
         del binding["model_allowlist"]
     response = await _multipart_create(env)
@@ -374,7 +356,7 @@ async def test_multipart_create_captures_default_model_in_saved_configuration(
 async def test_stale_revision_rejects_before_rows_artifacts_or_provisioning(env: _Env, multipart):
     agent = await create_test_agent(
         env.client,
-        executor={"type": "omnigent", "config": {"harness": "codex"}},
+        executor={"type": "omnigent", "config": {"harness": "pi"}},
         include_llm=False,
     )
     env.catalog.revision = "revision-2"
@@ -387,7 +369,7 @@ async def test_stale_revision_rejects_before_rows_artifacts_or_provisioning(env:
             json={
                 "agent_id": agent["id"],
                 "host_type": "managed",
-                "sandbox_provider": "agent_sandbox",
+                "sandbox_provider": "computer",
                 "inference_configuration_revision": "revision-1",
             },
         )
@@ -439,11 +421,11 @@ async def test_rejected_native_switch_restores_saved_model(
 ):
     """An allowed selection must not persist when the live native runner rejects it."""
     bindings = env.catalog.runtime_config["inference"]["harnesses"]
-    bindings["codex-native"] = copy.deepcopy(bindings["codex"])
+    bindings["claude-native"] = copy.deepcopy(bindings["pi"])
     agent = await create_test_agent(
         env.client,
-        name="codex-native-ui",
-        executor={"type": "omnigent", "config": {"harness": "codex-native"}},
+        name="claude-native-ui",
+        executor={"type": "omnigent", "config": {"harness": "claude-native"}},
         include_llm=False,
     )
     created = await env.client.post(
@@ -451,7 +433,7 @@ async def test_rejected_native_switch_restores_saved_model(
         json={
             "agent_id": agent["id"],
             "host_type": "managed",
-            "sandbox_provider": "agent_sandbox",
+            "sandbox_provider": "computer",
             "model_override": previous_model,
         },
     )
@@ -508,7 +490,7 @@ async def test_inherited_child_rejects_conflicting_auth_before_persistence(env: 
                     "child",
                     executor={
                         "type": "omnigent",
-                        "config": {"harness": "codex"},
+                        "config": {"harness": "pi"},
                         "auth": {"type": "provider", "name": "other"},
                     },
                     include_llm=False,
@@ -528,7 +510,7 @@ async def test_default_reset_and_catalog_use_saved_config_after_operator_edit(en
     assert created.status_code == 201, created.text
     session_id = created.json()["id"]
     env.catalog.revision = "revision-2"
-    binding = env.catalog.runtime_config["inference"]["harnesses"]["codex"]
+    binding = env.catalog.runtime_config["inference"]["harnesses"]["pi"]
     binding["default_model"] = "gateway/fast"
     binding["model_allowlist"] = ["gateway/fast"]
     calls = len(env.catalog.calls)
@@ -575,7 +557,7 @@ async def test_unavailable_saved_provider_rejects_input_before_dispatch_or_items
     data = (
         {"role": "user", "content": [{"type": "input_text", "text": "Hello"}]}
         if event_type == "message"
-        else {"agent": "codex", "name": "review", "arguments": ""}
+        else {"agent": "claude", "name": "review", "arguments": ""}
     )
     response = await env.client.post(
         f"/v1/sessions/{session_id}/events", json={"type": event_type, "data": data}
@@ -655,7 +637,7 @@ async def _builtin(env: _Env, harness: str) -> str:
     return builtin.id
 
 
-@pytest.mark.parametrize("source_harness", ["pi-native", "native-pi"])
+@pytest.mark.parametrize("source_harness", ["claude-native", "native-claude"])
 async def test_saved_profile_fork_accepts_an_alias_for_the_same_harness(env: _Env, source_harness):
     env.catalog.runtime_config["inference"]["harnesses"][source_harness] = {
         "provider": "bifrost",
@@ -664,9 +646,9 @@ async def test_saved_profile_fork_accepts_an_alias_for_the_same_harness(env: _En
     }
     source_agent_id = await _builtin(env, source_harness)
     target_agent_id = await _builtin(
-        env, "native-pi" if source_harness == "pi-native" else "pi-native"
+        env, "native-claude" if source_harness == "claude-native" else "claude-native"
     )
-    snapshot = await env.catalog.prepare("agent_sandbox", source_harness, "local")
+    snapshot = await env.catalog.prepare("computer", source_harness, "local")
     source = env.store.create_conversation(agent_id=source_agent_id, inference_snapshot=snapshot)
     response = await env.client.post(
         f"/v1/sessions/{source.id}/fork", json={"agent_id": target_agent_id}
@@ -697,7 +679,7 @@ async def test_configured_fork_rejects_different_harness_before_persistence(
     env: _Env, unbound_harness: bool
 ):
     if unbound_harness:
-        del env.catalog.runtime_config["inference"]["harnesses"]["codex"]
+        del env.catalog.runtime_config["inference"]["harnesses"]["pi"]
     created = await _json_create(env)
     assert created.status_code == 201, created.text
     target_id = await _builtin(env, "claude-sdk")
@@ -713,7 +695,7 @@ async def test_configured_fork_rejects_different_harness_before_persistence(
 @pytest.mark.parametrize("unbound_harness", [False, True])
 async def test_configured_fork_rejects_foreign_provider_owner(env: _Env, unbound_harness: bool):
     if unbound_harness:
-        del env.catalog.runtime_config["inference"]["harnesses"]["codex"]
+        del env.catalog.runtime_config["inference"]["harnesses"]["pi"]
     env.catalog.owner = "alice@example.com"
     created = await _json_create(env)
     assert created.status_code == 201, created.text

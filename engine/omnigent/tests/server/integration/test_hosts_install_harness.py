@@ -504,7 +504,7 @@ async def test_install_harness_route_hidden_when_flag_off(
 # ── Allowlist enforcement ───────────────────────────────
 
 
-@pytest.mark.parametrize("harness", ["cursor", "goose", "gemini", "kimi", "hermes"])
+@pytest.mark.parametrize("harness", ["claude-sdk", "bogus"])
 async def test_install_harness_rejects_non_allowlisted(
     install_setup: tuple[
         FastAPI,
@@ -518,10 +518,9 @@ async def test_install_harness_rejects_non_allowlisted(
     """
     A non-allowlisted harness is rejected with 400 before any frame.
 
-    M1 only supports npm-installable, key/env-auth harnesses; OAuth and
-    curl/brew-hint harnesses (notably hermes, whose installer is a
-    ``curl | bash``) must be refused server-side so the UI cannot trigger
-    an unsupported — or unsafe — install.
+    Only the UI-installable harness families may be installed; anything
+    else must be refused server-side so the UI cannot trigger an
+    unsupported — or unsafe — install.
     """
     app, _reg, _comm, _replies, _drain = install_setup
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -530,7 +529,7 @@ async def test_install_harness_rejects_non_allowlisted(
     assert resp.status_code == 400
 
 
-@pytest.mark.parametrize("harness", ["claude", "codex", "pi", "opencode", "qwen"])
+@pytest.mark.parametrize("harness", ["claude", "codex", "pi"])
 async def test_install_harness_allows_npm_key_auth_harnesses(
     install_setup: tuple[
         FastAPI,
@@ -544,7 +543,7 @@ async def test_install_harness_allows_npm_key_auth_harnesses(
     """
     Every M1 allowlisted harness is accepted and installs.
 
-    Pins the exact allowlist (claude, codex, pi, opencode, qwen) so a
+    Pins the exact allowlist (claude, codex, pi) so a
     future edit that drops one is caught.
     """
     app, _reg, _comm, _replies, _drain = install_setup

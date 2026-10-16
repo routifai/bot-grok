@@ -27,14 +27,8 @@ from omnigent.entities.conversation import (
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.harness_capabilities import ForkHistory
 from omnigent.harness_plugins import (
-    ANTIGRAVITY_NATIVE_CODING_AGENT,
     CLAUDE_NATIVE_CODING_AGENT,
     CODEX_NATIVE_CODING_AGENT,
-    CURSOR_NATIVE_CODING_AGENT,
-    DEVIN_NATIVE_CODING_AGENT,
-    KIMI_NATIVE_CODING_AGENT,
-    KIRO_NATIVE_CODING_AGENT,
-    OPENCODE_NATIVE_CODING_AGENT,
     PI_NATIVE_CODING_AGENT,
     harness_capabilities,
 )
@@ -159,21 +153,6 @@ _EXTERNAL_REASONING_EFFORT_CHANGE_TYPE: str = "external_reasoning_effort_change"
 _EXTERNAL_SUBAGENT_START_TYPE: str = "external_subagent_start"
 
 
-_EXTERNAL_ACP_SUBAGENT_START_TYPE: str = "external_acp_subagent_start"
-
-
-# Stable id an ACP agent gave the sub-agent it spawned (Devin's ``agentId``);
-# the idempotency key for the child row. Unlike the native families there is no
-# ``omnigent.wrapper`` value: an ACP sub-agent runs the SAME harness as its
-# parent, so leaving the wrapper unset lets the child's harness resolve to the
-# parent's (e.g. ``devin``) and the UI label it accordingly, instead of
-# mislabeling it as another vendor.
-_ACP_SUBAGENT_ID_LABEL_KEY = "omnigent.acp.subagent_id"
-
-
-_ACP_SUBAGENT_DESCRIPTION_LABEL_KEY = "omnigent.acp.subagent_description"
-
-
 _CLAUDE_NATIVE_SUBAGENT_WRAPPER_LABEL_VALUE = "claude-code-native-ui-subagent"
 
 
@@ -252,32 +231,6 @@ _CLAUDE_NATIVE_READABLE_PERMISSION_MODES: frozenset[str] = _CLAUDE_NATIVE_PERMIS
 _CODEX_NATIVE_SUBAGENT_DISPLAY_FALLBACK = "Codex"
 
 
-_EXTERNAL_ANTIGRAVITY_SUBAGENT_START_TYPE: str = "external_antigravity_subagent_start"
-
-
-_ANTIGRAVITY_NATIVE_SUBAGENT_WRAPPER_LABEL_VALUE = "antigravity-native-ui-subagent"
-
-
-_ANTIGRAVITY_NATIVE_SUBAGENT_CASCADE_ID_LABEL_KEY = (
-    "omnigent.antigravity_native.subagent_cascade_id"
-)
-
-
-_ANTIGRAVITY_NATIVE_SUBAGENT_TOOL_CALL_ID_LABEL_KEY = "omnigent.antigravity_native.tool_call_id"
-
-
-_ANTIGRAVITY_NATIVE_SUBAGENT_ROLE_LABEL_KEY = "omnigent.antigravity_native.agent_role"
-
-
-_ANTIGRAVITY_NATIVE_SUBAGENT_TYPE_LABEL_KEY = "omnigent.antigravity_native.agent_type"
-
-
-# Title head for a child whose ``subagentSpec`` named no role. agy always sends
-# one in practice; this only keeps the ``"<head>:<tail>"`` title parseable (the
-# Agents rail splits on the first colon) if it ever stops.
-_ANTIGRAVITY_NATIVE_SUBAGENT_DISPLAY_FALLBACK = "subagent"
-
-
 _LAST_CONTEXT_TOKENS_LABEL_KEY: str = "omnigent.last_context_tokens"
 
 
@@ -336,49 +289,6 @@ _CODEX_NATIVE_HARNESS = CODEX_NATIVE_CODING_AGENT.harness
 
 
 _CODEX_NATIVE_MODEL = CODEX_NATIVE_CODING_AGENT.agent_name
-
-
-_OPENCODE_NATIVE_WRAPPER_LABEL_VALUE = OPENCODE_NATIVE_CODING_AGENT.wrapper_label
-
-
-_CURSOR_NATIVE_WRAPPER_LABEL_VALUE = CURSOR_NATIVE_CODING_AGENT.wrapper_label
-
-
-_CURSOR_NATIVE_HARNESS = CURSOR_NATIVE_CODING_AGENT.harness
-
-
-_KIMI_NATIVE_HARNESS = KIMI_NATIVE_CODING_AGENT.harness
-
-
-_ANTIGRAVITY_NATIVE_HARNESS = ANTIGRAVITY_NATIVE_CODING_AGENT.harness
-
-
-_KIRO_NATIVE_WRAPPER_LABEL_VALUE = KIRO_NATIVE_CODING_AGENT.wrapper_label
-
-
-_DEVIN_NATIVE_WRAPPER_LABEL_VALUE = DEVIN_NATIVE_CODING_AGENT.wrapper_label
-
-
-_EXTERNAL_DEVIN_SUBAGENT_START_TYPE: str = "external_devin_subagent_start"
-
-
-_DEVIN_NATIVE_SUBAGENT_WRAPPER_LABEL_VALUE = "devin-native-ui-subagent"
-
-
-# Devin's ``run_subagent`` spawns a background sub-agent whose ``agent_id`` (the
-# idempotency key for the child row) rides only free text in the tool result; a
-# child mirrors that sub-agent's transcript, reconstructed from the parent's
-# ``message_nodes`` forest.
-_DEVIN_NATIVE_SUBAGENT_AGENT_ID_LABEL_KEY = "omnigent.devin_native.subagent_agent_id"
-
-
-_DEVIN_NATIVE_SUBAGENT_TOOL_USE_ID_LABEL_KEY = "omnigent.devin_native.run_subagent_tool_use_id"
-
-
-_DEVIN_NATIVE_SUBAGENT_TITLE_LABEL_KEY = "omnigent.devin_native.subagent_title"
-
-
-_DEVIN_NATIVE_SUBAGENT_DISPLAY_FALLBACK = "Devin"
 
 
 _PI_NATIVE_WRAPPER_LABEL_VALUE = PI_NATIVE_CODING_AGENT.wrapper_label
@@ -463,15 +373,6 @@ _CLAUDE_NATIVE_REMEMBER_INELIGIBLE_TOOLS: frozenset[str] = frozenset(
 _CODEX_NATIVE_ELICITATION_HOOK_TIMEOUT_S = 86400.0
 
 
-_ANTIGRAVITY_NATIVE_ELICITATION_HOOK_TIMEOUT_S = 86400.0
-
-
-_CURSOR_NATIVE_PERMISSION_HOOK_TIMEOUT_S = 86400.0
-
-
-_NATIVE_PERMISSION_HOOK_TIMEOUT_S = 86400.0
-
-
 _HARNESS_PRE_RESOLVED_ELICITATION_TTL_S = 300.0
 
 
@@ -550,10 +451,7 @@ _ALLOWED_EVENT_TYPES: frozenset[str] = frozenset(ITEM_TYPE_TO_DATA_CLS.keys()) |
     _EXTERNAL_SESSION_TITLE_TYPE,
     _EXTERNAL_SESSION_TODOS_TYPE,
     _EXTERNAL_SUBAGENT_START_TYPE,
-    _EXTERNAL_ACP_SUBAGENT_START_TYPE,
     _EXTERNAL_CODEX_SUBAGENT_START_TYPE,
-    _EXTERNAL_ANTIGRAVITY_SUBAGENT_START_TYPE,
-    _EXTERNAL_DEVIN_SUBAGENT_START_TYPE,
     _EXTERNAL_CODEX_COLLABORATION_MODE_CHANGE_TYPE,
     _EXTERNAL_CODEX_APPROVAL_MODE_CHANGE_TYPE,
 }
@@ -709,9 +607,8 @@ class _MirroredToolCall:
     tool_input: dict[str, Any]
 
 
-# Workspace-scoped: a native call_id can be derived from the conversation id
-# (e.g. Antigravity's ``agy_call_<conversation_id>_<step>``), which collides
-# across workspaces for an imported session.
+# Workspace-scoped: a native call_id can be derived from the conversation id,
+# which collides across workspaces for an imported session.
 _recent_mirrored_tool_calls: WorkspaceScopedCache[str, _MirroredToolCall] = WorkspaceScopedCache(
     lambda: cachetools.LRUCache(maxsize=2048)
 )
@@ -849,12 +746,10 @@ _STOP_RUNNER_RESULT_TIMEOUT_S = 10.0
 
 # Derived from the fork_history capability axis (see harness_capabilities). A
 # harness declaring fork_history=REBUILD rebuilds its resumable session file
-# from the copied items (e.g. qwen rebuilds its on-disk chat recording via
-# _build_qwen_fork_recording); PREAMBLE replays prior turns as text
-# (cursor/opencode, whose conversations are server-backed).
+# from the copied items.
 #
 # The read sites match on canonicalize_harness(harness_kind), but several
-# reversed "native-<x>" spellings (native-claude / native-codex / native-cursor)
+# reversed "native-<x>" spellings (native-claude / native-codex)
 # are valid harness ids that canonicalize_harness passes through UNCHANGED — so
 # each canonical id must be listed alongside its reversed spelling, exactly as
 # the pre-derivation literals did (see test_fork_reversed_native_spelling_carry_gating).
@@ -872,9 +767,6 @@ def _fork_history_harness_ids(behavior: ForkHistory) -> frozenset[str]:
 
 
 _FORK_HISTORY_NATIVE_HARNESSES: frozenset[str] = _fork_history_harness_ids(ForkHistory.REBUILD)
-
-
-_CURSOR_FORK_HISTORY_HARNESSES: frozenset[str] = _fork_history_harness_ids(ForkHistory.PREAMBLE)
 
 
 _DENY_SENTINEL_PREFIX = "[Denied by policy: "
@@ -908,10 +800,6 @@ _UPLOAD_READ_CHUNK_BYTES: int = 1024 * 1024
 _MODEL_OPTIONS_ENDPOINT_BY_WRAPPER: dict[str, str] = {
     _CLAUDE_NATIVE_WRAPPER_LABEL_VALUE: "claude-model-options",
     _CODEX_NATIVE_WRAPPER_LABEL_VALUE: "codex-model-options",
-    _CURSOR_NATIVE_WRAPPER_LABEL_VALUE: "cursor-model-options",
-    _KIRO_NATIVE_WRAPPER_LABEL_VALUE: "kiro-model-options",
-    _DEVIN_NATIVE_WRAPPER_LABEL_VALUE: "devin-model-options",
-    _OPENCODE_NATIVE_WRAPPER_LABEL_VALUE: "codex-model-options",
     # pi-native is deliberately NOT here: its catalog is PUSHED by the resident
     # extension (``external_model_options`` → ``_pushed_model_options_cache``),
     # not fetched from a runner route, so the picker works in every auth path
@@ -998,14 +886,6 @@ __all__ = [
     "COST_CONTROL_OVERRIDE_VALUES",
     "SUBAGENT_ROUTING_OVERRIDE_VALUES",
     "_ALLOWED_EVENT_TYPES",
-    "_ANTIGRAVITY_NATIVE_ELICITATION_HOOK_TIMEOUT_S",
-    "_ANTIGRAVITY_NATIVE_HARNESS",
-    "_ANTIGRAVITY_NATIVE_SUBAGENT_CASCADE_ID_LABEL_KEY",
-    "_ANTIGRAVITY_NATIVE_SUBAGENT_DISPLAY_FALLBACK",
-    "_ANTIGRAVITY_NATIVE_SUBAGENT_ROLE_LABEL_KEY",
-    "_ANTIGRAVITY_NATIVE_SUBAGENT_TOOL_CALL_ID_LABEL_KEY",
-    "_ANTIGRAVITY_NATIVE_SUBAGENT_TYPE_LABEL_KEY",
-    "_ANTIGRAVITY_NATIVE_SUBAGENT_WRAPPER_LABEL_VALUE",
     "_APPROVAL_TYPE",
     "_BROWSER_ACTION_AWAIT_S",
     "_BROWSER_ACTION_CLAIM_GRACE_S",
@@ -1045,19 +925,8 @@ __all__ = [
     "_CODEX_NATIVE_SUBAGENT_WRAPPER_LABEL_VALUE",
     "_CODEX_NATIVE_WRAPPER_LABEL_VALUE",
     "_COMPACT_TYPE",
-    "_CURSOR_FORK_HISTORY_HARNESSES",
-    "_CURSOR_NATIVE_HARNESS",
-    "_CURSOR_NATIVE_PERMISSION_HOOK_TIMEOUT_S",
-    "_CURSOR_NATIVE_WRAPPER_LABEL_VALUE",
     "_DENY_SENTINEL_PREFIX",
-    "_DEVIN_NATIVE_SUBAGENT_AGENT_ID_LABEL_KEY",
-    "_DEVIN_NATIVE_SUBAGENT_DISPLAY_FALLBACK",
-    "_DEVIN_NATIVE_SUBAGENT_TITLE_LABEL_KEY",
-    "_DEVIN_NATIVE_SUBAGENT_TOOL_USE_ID_LABEL_KEY",
-    "_DEVIN_NATIVE_SUBAGENT_WRAPPER_LABEL_VALUE",
-    "_DEVIN_NATIVE_WRAPPER_LABEL_VALUE",
     "_EVALUATE_HOOK_ELICITATION_ID_RE",
-    "_EXTERNAL_ANTIGRAVITY_SUBAGENT_START_TYPE",
     "_EXTERNAL_ASSISTANT_MESSAGE_TYPE",
     "_EXTERNAL_BTW_DISMISS_TYPE",
     "_EXTERNAL_BTW_SIDECHAT_TYPE",
@@ -1067,7 +936,6 @@ __all__ = [
     "_EXTERNAL_COMPACTION_STATUS_TYPE",
     "_EXTERNAL_COMPACTION_STATUS_VALUES",
     "_EXTERNAL_CONVERSATION_ITEM_TYPE",
-    "_EXTERNAL_DEVIN_SUBAGENT_START_TYPE",
     "_EXTERNAL_ELICITATION_RESOLVED_TYPE",
     "_EXTERNAL_MCP_STARTUP_STATUS_VALUES",
     "_EXTERNAL_MCP_STARTUP_TYPE",
@@ -1098,8 +966,6 @@ __all__ = [
     "_HOST_RELAUNCH_RUNNER_CONNECT_TIMEOUT_S",
     "_HOST_RUNNER_STATUS_TIMEOUT_S",
     "_INTERRUPT_TYPE",
-    "_KIMI_NATIVE_HARNESS",
-    "_KIRO_NATIVE_WRAPPER_LABEL_VALUE",
     "_LABEL_VALUE_MAX_LEN",
     "_LAST_CONTEXT_TOKENS_LABEL_KEY",
     "_LAST_CONTEXT_WINDOW_LABEL_KEY",
@@ -1115,11 +981,9 @@ __all__ = [
     "_MODEL_OPTIONS_ENDPOINT_BY_WRAPPER",
     "_MODEL_OPTIONS_RETRY_DELAYS_S",
     "_MODEL_TOKEN_KEYS",
-    "_NATIVE_PERMISSION_HOOK_TIMEOUT_S",
     "_NATIVE_POLICY_NOT_ENFORCED_CODE",
     "_NATIVE_TERMINAL_ENSURE_FAILED_CODE",
     "_NATIVE_TERMINAL_START_FAILED_CODE",
-    "_OPENCODE_NATIVE_WRAPPER_LABEL_VALUE",
     "_PI_NATIVE_WRAPPER_LABEL_VALUE",
     "_RACE_TASK_REAP_TIMEOUT_S",
     "_RETRY_SESSION_TYPE",

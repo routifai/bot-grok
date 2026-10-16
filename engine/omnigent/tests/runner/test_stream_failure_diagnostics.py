@@ -142,7 +142,7 @@ async def _failed_event_message(app: Any, conv_id: str) -> tuple[dict[str, Any],
                 "agent_id": _AGENT_ID,
                 "model": "plain-agent",
                 "content": [{"type": "input_text", "text": "hi"}],
-                "harness": "openai-agents",
+                "harness": "claude-sdk",
             },
         ) as resp:
             assert resp.status_code == 200, resp.status_code
@@ -185,7 +185,7 @@ async def test_stream_failure_logs_harness_and_response(
     record = records[0]
     assert record.session_id == _CONV_ID
     assert record.attributes == {
-        "harness": "openai-agents",
+        "harness": "claude-sdk",
         "response_id": response_id,
         # Carried so the transport cause is groupable even when the exception
         # itself has no message.

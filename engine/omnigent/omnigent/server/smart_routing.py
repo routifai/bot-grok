@@ -103,11 +103,7 @@ _HARNESS_FAMILY: dict[str, str] = {
     "claude_sdk": "claude",
     "claude-native": "claude",
     "pi": "pi",
-    "codex": "gpt",
     "codex-native": "gpt",
-    "openai-agents": "gpt",
-    "openai-agents-sdk": "gpt",
-    "agents_sdk": "gpt",
 }
 
 
@@ -497,7 +493,7 @@ Available harnesses and their models:
 Harness descriptions:
 - claude-sdk / claude-native: Claude Code harness; best for multi-file
   refactors, test writing, and deep reasoning chains.
-- codex / codex-native: Codex harness; best for narrow, well-scoped
+- codex-native: Codex harness; best for narrow, well-scoped
   code changes.
 - pi: Multi-model headless harness; can run both Claude and GPT models;
   best for read-only exploration, review, and cross-vendor verification.
@@ -613,7 +609,7 @@ class LLMRoutingClient:
             # INFO; the chosen model is logged by the caller either way.
             _logger.debug("LLMRoutingClient: raw response: %s", text[:500])
             verdict = json.loads(text)
-        except Exception as exc:  # noqa: BLE001  # fail-open
+        except Exception as exc:  # fail-open
             _logger.warning("LLMRoutingClient: judge call failed", exc_info=True)
             self.last_error = f"routing judge call failed: {failure_detail(exc)}"
             return None
@@ -693,7 +689,7 @@ def _config_bearer(
     """
     try:
         headers = config.authenticate()
-    except Exception:  # noqa: BLE001 — auth failure degrades to unauthenticated
+    except Exception:
         _logger.warning(
             "ExternalRoutingClient: could not resolve auth from %s", label, exc_info=True
         )
@@ -1325,9 +1321,8 @@ def _redirect_incompatible_pick(
 ) -> str | None:
     """Redirect a verdict off a harness that can't serve *model*.
 
-    A Claude model on pi moves to ``claude-sdk``; a gpt-5.5/5.6 reasoning model
-    on pi moves to ``codex`` (Responses API) — but only when that harness was
-    itself on offer, so a child restricted to one family can never escape it.
+    A Claude model on pi moves to ``claude-sdk`` — but only when that harness
+    was itself on offer, so a child restricted to one family can never escape it.
 
     :param harness: The chosen harness id (may be ``None``).
     :param model: The chosen model id, in either vocabulary.
@@ -1343,9 +1338,8 @@ def _redirect_incompatible_pick(
     if not harness_bars_model(harness, model, prefixes=prefixes):
         return harness
     family = _model_family(model)
-    replacement = {"claude": "claude-sdk", "gpt": "codex"}.get(family)
-    if replacement is not None and replacement in harnesses:
-        return replacement
+    if family == "claude" and "claude-sdk" in harnesses:
+        return "claude-sdk"
     return None
 
 
@@ -1749,7 +1743,7 @@ class ExternalRoutingClient:
         """Call the injected provider for this request's auth headers."""
         try:
             headers = self._auth_provider() if self._auth_provider is not None else None
-        except Exception:  # noqa: BLE001 — a caller with no credential still routes
+        except Exception:
             _logger.warning(
                 "ExternalRoutingClient: auth_provider raised; sending no credential",
                 exc_info=True,
@@ -1764,7 +1758,7 @@ class ExternalRoutingClient:
                 from databricks.sdk.config import Config
 
                 self._sdk_config = Config(profile=self._databricks_profile)
-            except Exception:  # noqa: BLE001 — auth failure degrades to unauthenticated
+            except Exception:
                 _logger.warning(
                     "ExternalRoutingClient: could not resolve auth for profile %r",
                     self._databricks_profile,
@@ -1798,7 +1792,7 @@ class ExternalRoutingClient:
                 from databricks.sdk.config import Config
 
                 config = Config()
-            except Exception:  # noqa: BLE001 — no ambient credential is the normal case
+            except Exception:
                 _logger.debug(
                     "ExternalRoutingClient: no ambient Databricks credential", exc_info=True
                 )
@@ -1955,9 +1949,8 @@ class ExternalRoutingClient:
 
 # SDK harnesses offered as candidates when the user picks "auto" harness; native
 # ones need a CLI binary that may not be installed. Order is the tiebreak when
-# several serve the pick: codex precedes pi so GPT models take the Responses
-# API, which pi's completions path 400s on for gpt-5.5+ reasoning models.
-_AUTO_ROUTING_HARNESSES: tuple[str, ...] = ("claude-sdk", "codex", "pi")
+# several serve the pick.
+_AUTO_ROUTING_HARNESSES: tuple[str, ...] = ("claude-sdk", "pi")
 
 # Native terminal harnesses offered when Smart Routing is the top-level harness.
 # Both families are on the menu, so the pick maps onto the matching native
@@ -1973,7 +1966,6 @@ AUTO_NATIVE_ROUTING_HARNESSES: tuple[str, ...] = ("claude-native", "codex-native
 _WORKER_NAME_TO_HARNESS: dict[str, str] = {
     "claude_code": "claude-sdk",
     "claude-sdk": "claude-sdk",
-    "codex": "codex",
     "pi": "pi",
 }
 
@@ -2039,7 +2031,7 @@ async def route_session_harness(
     :param session_id: Session being routed (optional).
     :param catalog_session_id: Session whose catalog defines the candidate set.
         For a sub-agent this should be the PARENT session id — the parent's
-        catalog enumerates the spawnable workers (claude_code/codex/pi) with
+        catalog enumerates the spawnable workers (claude_code/pi) with
         their full model lists, whereas the child's own leaf catalog only has a
         ``"self"`` row and would force the static fallback. Defaults to
         *session_id* when unset.

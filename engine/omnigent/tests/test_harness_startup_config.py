@@ -270,14 +270,14 @@ def test_resolve_harness_path_ignores_non_registry_legacy_var(
 ) -> None:
     """A speculative ``HARNESS_*_PATH`` for a harness that never had one is ignored.
 
-    Only the 6 headless harnesses (codex/pi/kimi/goose/qwen/hermes) historically
-    documented a ``HARNESS_*_PATH``. Other harnesses (e.g. cursor) never did —
-    honoring ``HARNESS_CURSOR_PATH`` would invent a new knob under a deprecated
-    name, so it's ignored (only the canonical ``OMNIGENT_CURSOR_PATH`` works).
+    Only the headless harnesses (codex/pi) historically documented a
+    ``HARNESS_*_PATH``. Other harnesses (e.g. claude) never did — honoring
+    ``HARNESS_CLAUDE_PATH`` would invent a new knob under a deprecated name, so
+    it's ignored (only the canonical ``OMNIGENT_CLAUDE_PATH`` works).
     """
-    monkeypatch.delenv("OMNIGENT_CURSOR_PATH", raising=False)
-    monkeypatch.setenv("HARNESS_CURSOR_PATH", "/speculative/cursor")
-    assert resolve_harness_path("cursor") is None
+    monkeypatch.delenv("OMNIGENT_CLAUDE_PATH", raising=False)
+    monkeypatch.setenv("HARNESS_CLAUDE_PATH", "/speculative/claude")
+    assert resolve_harness_path("claude") is None
 
 
 def test_resolve_harness_path_strips_native_suffix() -> None:
@@ -336,52 +336,3 @@ def test_isaac_wrap_shape_codex_native() -> None:
     assert resolve_harness_command("codex-native", default="codex", cfg=cfg) == "isaac"
     built = ("--remote", "ws://127.0.0.1:9876")
     assert resolve_harness_args("codex-native", built, cfg=cfg) == ["codex", "--", *built]
-
-
-# ── CLI persists RAW args; the runner is the single merge point ──────
-
-
-@pytest.mark.parametrize("harness", ["codex", "claude"])
-def test_native_cli_persists_raw_args_not_config_merged(
-    harness: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The native ``codex``/``claude`` CLI must hand *raw* pass-through args to
-    ``run_*_native``. The daemon runner is the single ``harness.<id>.args`` merge
-    point (``_auto_create_*_terminal``), and every CLI launch reaches it; if the
-    CLI also pre-merged, a managed session wrapped twice (``isaac codex -- codex
-    -- …``), which broke the launch. Regression for that double-apply.
-    """
-    import click
-    from click.testing import CliRunner
-
-    import omnigent.cli as _cli
-    import omnigent.cli_native as cli_native
-    import omnigent.harnesses.claude_native.main as claude_native
-    import omnigent.harnesses.codex_native.main as codex_native
-
-    cfg = {
-        "harness": {
-            "claude-native": {"command": "isaac", "args": ["--"]},
-            "codex-native": {"command": "isaac", "args": ["codex", "--"]},
-        }
-    }
-    # Both are late-bound in cli_native to the omnigent.cli module (see _late_bound).
-    monkeypatch.setattr(_cli, "_load_effective_config", lambda: dict(cfg))
-    monkeypatch.setattr(_cli, "_ensure_backend", lambda server: "https://example/api/2.0/omnigent")
-
-    captured: dict[str, tuple[str, ...]] = {}
-    monkeypatch.setattr(
-        codex_native, "run_codex_native", lambda **kw: captured.update(args=kw["extra_args"])
-    )
-    monkeypatch.setattr(
-        claude_native, "run_claude_native", lambda **kw: captured.update(args=kw["extra_args"])
-    )
-
-    group = click.Group()
-    cli_native.register_native_commands(group)
-    result = CliRunner().invoke(group, [harness, "userarg"], catch_exceptions=False)
-
-    assert result.exit_code == 0, result.output
-    # Raw pass-through only — NOT the config-merged ("codex", "--", "userarg")
-    # or ("--", "userarg") that a second merge on the runner would double.
-    assert captured["args"] == ("userarg",)

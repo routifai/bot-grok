@@ -130,7 +130,7 @@ def _run_test_environment_guardrails(config: pytest.Config) -> None:
     or port. Set ``OMNIGENT_DISABLE_TEST_GUARDRAILS=1`` to temporarily
     downgrade violations to warn-only for deliberate integration runs.
     """
-    from omnigent.testing.guardrails import check_test_environment
+    from tests._helpers.guardrails import check_test_environment
 
     db_uri = os.environ.get("OMNIGENT_DATABASE_URI", "")
     base_url = config.getoption("--omnigent-server-url", default=None)
@@ -146,7 +146,7 @@ def pytest_unconfigure(config: pytest.Config) -> None:
     deleted database. Reaping first also lets attribution use the live
     directory path while orphans still reference it.
     """
-    from omnigent.testing.process_reaper import reap_leaked_omnigent_processes
+    from tests._helpers.process_reaper import reap_leaked_omnigent_processes
 
     reaped, survivors = reap_leaked_omnigent_processes(_TEST_OMNIGENT_DATA_DIR)
     for cmdline in reaped:
@@ -265,10 +265,7 @@ def pytest_addoption(parser):
         "--harness",
         action="store",
         default="databricks",
-        help=(
-            "Harness type: 'databricks', 'claude-sdk', 'open-responses', "
-            "'openai-agents', or 'codex' (default: databricks)"
-        ),
+        help=("Harness type: 'databricks', 'claude-sdk', or 'codex' (default: databricks)"),
     )
     parser.addoption(
         "--profile",

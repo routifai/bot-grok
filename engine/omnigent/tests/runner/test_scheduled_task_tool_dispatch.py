@@ -299,7 +299,7 @@ async def test_self_parent_resolves_to_calling_session() -> None:
                 "prompt": "go",
                 "rrule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0",
                 "parent_session_id": "self",
-                "agent_type": "researcher",
+                "agent_type": "reviewer",
             }
         ),
         server_client=client,
@@ -308,7 +308,7 @@ async def test_self_parent_resolves_to_calling_session() -> None:
     _, _, body = next(c for c in client.calls if c[0] == "POST")
     assert body is not None
     assert body["parent_session_id"] == "conv_chat"
-    assert body["agent_type"] == "researcher"
+    assert body["agent_type"] == "reviewer"
 
 
 @pytest.mark.asyncio

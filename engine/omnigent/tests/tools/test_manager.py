@@ -270,7 +270,7 @@ def test_schemas_include_load_skill_when_skills_exist(
     skill names.
 
     The enumeration is the discovery mechanism for harnesses with no
-    native skill loader (openai-agents-sdk, and the in-process loop):
+    native skill loader (the in-process loop):
     they receive ``load_skill`` via ``request.tools`` and learn which
     skills exist from its description alone — they do not depend on the
     prompt's skill listing. If the enumeration regressed, those harnesses
@@ -1175,7 +1175,7 @@ def _write_local_tool(
     ``workdir/tools/python/<filename>``.
 
     :param workdir: Agent image root directory.
-    :param filename: File name, e.g. ``"web_fetch.py"``.
+    :param filename: File name, e.g. ``"lookup.py"``.
     :param schema_name: The ``@tool``-decorated function's name —
         becomes the LLM-facing tool name.
     """
@@ -1254,66 +1254,17 @@ def test_local_tools_skipped_without_workdir(
     )
 
 
-# ── web_search builtin: Databricks model does not emit web_search_preview ───
+# ── web_search builtin ──────────────────────────────────────────────────
 
 
-def test_web_search_does_not_emit_web_search_preview_for_databricks_model() -> None:
+@pytest.mark.parametrize(
+    ("executor_type", "harness"),
+    [("claude_sdk", None), ("omnigent", "claude-sdk"), ("omnigent", "pi")],
+)
+def test_web_search_registers_function_schema(executor_type: str, harness: str | None) -> None:
     """
-    When the agent's model is a ``databricks-*`` model, the ``web_search``
-    builtin must NOT emit ``{"type": "web_search_preview"}`` in its schema.
-    Databricks rejects that tool type at the API level with HTTP 400, killing
-    the request before the agent runs.
-
-    A failure here means the ``databricks-*`` guard in
-    ``ToolManager._create_web_search`` was removed or the prefix changed.
-    The wrong schema would be ``{"type": "web_search_preview"}``.
-    """
-    spec = AgentSpec(
-        spec_version=1,
-        llm=LLMConfig(model="databricks-gpt-5-4"),
-        tools=ToolsConfig(builtins=[BuiltinToolConfig(name="web_search")]),
-    )
-    mgr = ToolManager(spec)
-    tool = mgr.get_tool("web_search")
-
-    assert tool is not None, "web_search should be registered when declared in tools.builtins"
-    schema = tool.get_schema()
-    assert schema.get("type") != "web_search_preview", (
-        f'web_search emitted {{"type": "web_search_preview"}} for '
-        f"databricks-gpt-5-4 — Databricks does not support this tool type "
-        f"and rejects the request with HTTP 400. Got schema: {schema!r}"
-    )
-
-
-def test_web_search_does_not_emit_web_search_preview_for_claude_sdk_harness() -> None:
-    """
-    When the agent's harness is ``claude-sdk``, the ``web_search`` builtin
-    must NOT emit ``{"type": "web_search_preview"}`` in its schema, even if
-    the model name (e.g. ``claude-opus-4-8``) has no provider prefix (which
-    would otherwise default to OpenAI).
-    """
-    from omnigent.spec.types import ExecutorSpec
-
-    spec = AgentSpec(
-        spec_version=1,
-        llm=LLMConfig(model="claude-opus-4-8"),
-        executor=ExecutorSpec(type="claude_sdk", model="claude-opus-4-8"),
-        tools=ToolsConfig(builtins=[BuiltinToolConfig(name="web_search")]),
-    )
-    mgr = ToolManager(spec)
-    tool = mgr.get_tool("web_search")
-
-    assert tool is not None, "web_search should be registered"
-    schema = tool.get_schema()
-    assert schema.get("type") != "web_search_preview", (
-        "web_search emitted web_search_preview schema on claude-sdk harness"
-    )
-
-
-def test_web_search_does_not_emit_web_search_preview_for_omnigent_claude_sdk_harness() -> None:
-    """
-    When the agent's executor is ``omnigent`` with ``harness: claude-sdk``,
-    the ``web_search`` builtin must NOT emit ``{"type": "web_search_preview"}``.
+    A declared ``web_search`` builtin registers as a plain function tool on
+    every kept harness — no provider-native passthrough schema.
     """
     from omnigent.spec.types import ExecutorSpec
 
@@ -1321,42 +1272,19 @@ def test_web_search_does_not_emit_web_search_preview_for_omnigent_claude_sdk_har
         spec_version=1,
         llm=LLMConfig(model="claude-opus-4-8"),
         executor=ExecutorSpec(
-            type="omnigent",
+            type=executor_type,
             model="claude-opus-4-8",
-            config={"harness": "claude-sdk"},
+            config={"harness": harness} if harness else {},
         ),
         tools=ToolsConfig(builtins=[BuiltinToolConfig(name="web_search")]),
     )
     mgr = ToolManager(spec)
     tool = mgr.get_tool("web_search")
 
-    assert tool is not None, "web_search should be registered"
+    assert tool is not None, "web_search should be registered when declared in tools.builtins"
     schema = tool.get_schema()
-    assert schema.get("type") != "web_search_preview"
-
-
-def test_web_search_emits_web_search_preview_for_openai_agents_harness() -> None:
-    """
-    An ``agents_sdk`` executor with an OpenAI model keeps the native
-    ``web_search_preview`` passthrough (the OpenAI Responses API executes
-    the search server-side).
-    """
-    from omnigent.spec.types import ExecutorSpec
-
-    spec = AgentSpec(
-        spec_version=1,
-        llm=LLMConfig(model="gpt-5.4"),
-        executor=ExecutorSpec(type="agents_sdk", model="gpt-5.4"),
-        tools=ToolsConfig(builtins=[BuiltinToolConfig(name="web_search")]),
-    )
-    mgr = ToolManager(spec)
-    tool = mgr.get_tool("web_search")
-
-    assert tool is not None, "web_search should be registered"
-    schema = tool.get_schema()
-    assert schema.get("type") == "web_search_preview", (
-        f"OpenAI passthrough lost on the agents_sdk harness. Got schema: {schema!r}"
-    )
+    assert schema["type"] == "function"
+    assert schema["function"]["name"] == "web_search"
 
 
 def test_read_skill_file_registered_for_root_level_resources(tmp_path: Path) -> None:
@@ -1416,18 +1344,17 @@ def test_unknown_builtin_logs_warning_and_skips(caplog: pytest.LogCaptureFixture
     assert "Unknown built-in tool 'definitely_missing'" in caplog.text
 
 
-def test_create_builtin_handles_web_fetch_and_upload_file() -> None:
+def test_upload_file_builtin_registered_from_spec() -> None:
     from omnigent.spec.types import ExecutorSpec
 
-    spec = AgentSpec(spec_version=1, executor=ExecutorSpec(config={"harness": "pi"}))
+    spec = AgentSpec(
+        spec_version=1,
+        executor=ExecutorSpec(config={"harness": "pi"}),
+        tools=ToolsConfig(builtins=[BuiltinToolConfig(name="upload_file")]),
+    )
     mgr = ToolManager(spec)
 
-    web_fetch = mgr._create_builtin("web_fetch", None)
-    upload_file = mgr._create_builtin("upload_file", None)
-
-    assert web_fetch is not None
-    assert type(web_fetch).__name__ == "WebFetchTool"
-    assert web_fetch._parent_spec is spec
+    upload_file = mgr.get_tool("upload_file")
     assert upload_file is not None
     assert type(upload_file).__name__ == "UploadFileTool"
 

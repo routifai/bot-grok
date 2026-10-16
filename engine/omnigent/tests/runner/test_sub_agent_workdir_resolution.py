@@ -27,7 +27,7 @@ from omnigent.runner.native.orchestration import (
     _resolved_workdir_for_spec,
 )
 from omnigent.spec.parser import parse
-from omnigent.spec.types import AgentSpec, BuiltinToolConfig, ExecutorSpec
+from omnigent.spec.types import AgentSpec
 
 
 def _write_agent(directory: Path, name: str) -> Path:
@@ -39,10 +39,10 @@ def _write_agent(directory: Path, name: str) -> Path:
 
 @pytest.fixture()
 def bundle(tmp_path: Path) -> Path:
-    """A three-level bundle: root → manager → researcher."""
+    """A three-level bundle: root → manager → reviewer."""
     root = _write_agent(tmp_path / "root", "root")
     manager = _write_agent(root / "agents" / "manager", "manager")
-    _write_agent(manager / "agents" / "researcher", "researcher")
+    _write_agent(manager / "agents" / "reviewer", "reviewer")
     return root
 
 
@@ -66,11 +66,11 @@ def test_grandchild_resolves_through_the_full_chain(bundle: Path) -> None:
     """
     entry = ResolvedSpec(spec=parse(bundle), workdir=bundle)
 
-    resolved = _resolve_sub_agent_spec_entry(entry, "researcher")
+    resolved = _resolve_sub_agent_spec_entry(entry, "reviewer")
 
     assert resolved is not None
-    assert resolved.workdir == bundle / "agents" / "manager" / "agents" / "researcher"
-    assert resolved.spec.name == "researcher"
+    assert resolved.workdir == bundle / "agents" / "manager" / "agents" / "reviewer"
+    assert resolved.spec.name == "reviewer"
 
 
 def test_resolution_always_wraps_never_substitutes_the_parent(bundle: Path) -> None:
@@ -113,26 +113,6 @@ def test_unknown_sub_agent_name_returns_none(bundle: Path) -> None:
     entry = ResolvedSpec(spec=parse(bundle), workdir=bundle)
 
     assert _resolve_sub_agent_spec_entry(entry, "nope") is None
-
-
-def test_synthetic_web_researcher_gets_no_workdir(bundle: Path) -> None:
-    """The in-memory ``__web_researcher`` has no bundle directory.
-
-    It is reconstructed from its owner rather than parsed from disk, so
-    it is unreachable by identity in the spec tree. Handing it the
-    parent's root (the old behaviour) would give a shell-capable
-    internal agent the parent's skills and local tools.
-    """
-    root_spec = parse(bundle)
-    root_spec.tools.builtins.append(BuiltinToolConfig(name="web_fetch"))
-    root_spec.executor = ExecutorSpec(type="omnigent", config={"harness": "claude-sdk"})
-    entry = ResolvedSpec(spec=root_spec, workdir=bundle)
-
-    resolved = _resolve_sub_agent_spec_entry(entry, "__web_researcher")
-
-    assert resolved is not None
-    assert resolved.spec.name == "__web_researcher"
-    assert resolved.workdir is None
 
 
 def test_dotted_directory_name_is_accepted(tmp_path: Path) -> None:

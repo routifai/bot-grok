@@ -1,12 +1,10 @@
 """Shared subagent-routing decision logic for harness hooks.
 
 Stdlib-only on purpose (bar the equally light
-:mod:`omnigent.models.claude_model_vocabulary`): the Claude-native hook runs as
-a per-spawn subprocess (``python -I -m
-omnigent.inner.hook_scripts.claude_router_hook``) and blocks the spawn,
-so importing anything heavier would show up as spawn latency. The
-claude-agent-sdk executor imports the same functions for its in-process
-``PreToolUse`` callback, so both paths map decisions identically.
+:mod:`omnigent.models.claude_model_vocabulary`): the native ``route-turn``
+hooks run as per-prompt subprocesses and import from here, so anything
+heavier would show up as latency. The claude-agent-sdk executor imports the
+same functions for its in-process ``PreToolUse`` callback.
 
 The runner advertises its ``route-subagent`` endpoint by writing
 ``subagent_router.json`` (``{"url": ..., "token": ..., "pid": ...}``) into
@@ -22,7 +20,6 @@ omitted.
 
 from __future__ import annotations
 
-import argparse
 import json
 import os
 import sys
@@ -62,7 +59,7 @@ _MCP_PREFIXING_HARNESSES = frozenset({"claude-sdk", "claude_sdk", "claude-native
 # server/namespace field, so no prefixed spelling can be quoted at them.
 # Codex flattens the pair for its own logs and hook payloads
 # (``omnigentsys_session_create``), but that spelling is not callable.
-_MCP_NAMESPACED_HARNESSES = frozenset({"codex", "codex-native"})
+_MCP_NAMESPACED_HARNESSES = frozenset({"codex-native"})
 
 # Omnigent tools a routed spawn needs. Named in the deny reason only when the
 # session's relay actually advertises the create tool.
@@ -125,15 +122,6 @@ DEFAULT_TASK_KEYS: tuple[str, ...] = ("subagent_type",)
 
 # Claude's Agent/Task description labels the work; Codex uses task_name.
 DEFAULT_DESCRIPTION_KEYS: tuple[str, ...] = ("description",)
-
-# Flags every harness hook entrypoint accepts. None is required: a hook
-# misconfiguration must degrade to "no opinion", not an argparse exit.
-STANDARD_HOOK_FLAGS: tuple[str, ...] = (
-    "--bridge-dir",
-    "--router-dir",
-    "--session-id",
-    "--harness",
-)
 
 
 @dataclass(frozen=True)
@@ -673,29 +661,6 @@ def routed_spawn_instruction(
     )
 
 
-def smart_routing_spawn_note(harness: str) -> str:
-    """
-    Build the launch-time system-prompt note about routed spawns.
-
-    Lives next to :func:`routed_spawn_instruction` so the note and the deny
-    reason name the same tool in the same spelling — a session told about
-    one tool and denied with another is back to refusing the sub-task.
-
-    :param harness: Harness being launched, e.g. ``"claude-native"``.
-    :returns: Instructions to append to the session's system prompt.
-    """
-    create = mcp_tool_name(_SPAWN_TOOL, harness)
-    agent_list = mcp_tool_name(_AGENT_LIST_TOOL, harness)
-    return (
-        "Databricks Smart Routing is enabled for this session: each sub-task may be "
-        "placed on a different model than yours. When your built-in spawn tool "
-        f"(Agent/Task/spawn_agent) is denied with an instruction naming {create}, "
-        "that is an approved re-route, not an error or a permission problem — make "
-        f"the {create} call as instructed, using {agent_list} for the agent id. "
-        f"{_mcp_discovery_note(harness)}"
-    )
-
-
 def redirect_reason(
     harness: str,
     model: str,
@@ -901,99 +866,3 @@ def route_pre_tool_use(
         available_tools=advertised_relay_tools(bridge_dir or discovered_dir),
     )
     return post_process(output, tool_input) if post_process is not None else output
-
-
-def read_stdin_payload(
-    label: str,
-) -> dict[str, Any] | None:  # type: ignore[explicit-any]
-    """
-    Read one hook payload from stdin.
-
-    :param label: Diagnostic prefix, e.g. ``"omnigent codex router hook"``.
-    :returns: Decoded object, or ``None`` when stdin is empty, malformed,
-        or not a JSON object (a diagnostic goes to stderr).
-    """
-    try:
-        payload = json.loads(sys.stdin.read() or "{}")
-    except ValueError as exc:
-        print(f"{label}: malformed JSON: {exc}", file=sys.stderr)
-        return None
-    if not isinstance(payload, dict):
-        print(f"{label}: expected JSON object", file=sys.stderr)
-        return None
-    return payload
-
-
-def hook_arg_parser(
-    prog: str,
-    *,
-    extra_flags: Sequence[str] = (),
-) -> argparse.ArgumentParser:
-    """
-    Build the argument parser shared by the harness hook entrypoints.
-
-    :param prog: Program label for usage text.
-    :param extra_flags: Flags beyond :data:`STANDARD_HOOK_FLAGS`.
-    :returns: Parser whose every flag is optional and defaults to ``None``.
-    """
-    parser = argparse.ArgumentParser(prog=prog)
-    for flag in (*STANDARD_HOOK_FLAGS, *extra_flags):
-        parser.add_argument(flag, default=None)
-    return parser
-
-
-def parse_hook_args(
-    prog: str,
-    argv: Sequence[str],
-    *,
-    extra_flags: Sequence[str] = (),
-) -> argparse.Namespace:
-    """
-    Parse a hook entrypoint's arguments, tolerating anything unexpected.
-
-    Unknown flags are dropped rather than raising ``SystemExit(2)``: a
-    stale generated hook command must not turn into a failed spawn.
-
-    :param prog: Program label for usage text.
-    :param argv: Arguments after the subcommand, if any.
-    :param extra_flags: Flags beyond :data:`STANDARD_HOOK_FLAGS`.
-    :returns: Parsed namespace.
-    """
-    args, _unknown = hook_arg_parser(prog, extra_flags=extra_flags).parse_known_args(list(argv))
-    return args
-
-
-def run_route_subagent_main(
-    argv: Sequence[str],
-    *,
-    prog: str,
-    harness: str,
-    label: str | None = None,
-    **route_kwargs: Any,  # type: ignore[explicit-any]
-) -> int:
-    """
-    Run a hook entrypoint's spawn-routing body.
-
-    :param argv: Arguments after the subcommand, if any.
-    :param prog: Program label for usage text.
-    :param harness: Requesting harness, used when argv names none.
-    :param label: Diagnostic prefix; ``None`` uses *prog*.
-    :param route_kwargs: Per-harness seams for
-        :func:`route_pre_tool_use`.
-    :returns: Always ``0`` so a routing failure never blocks a spawn.
-    """
-    args = parse_hook_args(prog, argv)
-    payload = read_stdin_payload(label or prog)
-    if payload is None:
-        return 0
-    output = route_pre_tool_use(
-        payload,
-        harness=args.harness or harness,
-        router_dir=args.router_dir or args.bridge_dir,
-        bridge_dir=args.bridge_dir,
-        session_id=args.session_id,
-        **route_kwargs,
-    )
-    if output is not None:
-        sys.stdout.write(json.dumps(output))
-    return 0

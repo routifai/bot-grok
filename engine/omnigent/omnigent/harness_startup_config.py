@@ -49,10 +49,6 @@ _LEGACY_PATH_REMOVAL_VERSION = "v0.8.0"
 _LEGACY_PATH_VARS: dict[str, str] = {
     "HARNESS_CODEX_PATH": "OMNIGENT_CODEX_PATH",
     "HARNESS_PI_PATH": "OMNIGENT_PI_PATH",
-    "HARNESS_KIMI_PATH": "OMNIGENT_KIMI_PATH",
-    "HARNESS_GOOSE_PATH": "OMNIGENT_GOOSE_PATH",
-    "HARNESS_QWEN_PATH": "OMNIGENT_QWEN_PATH",
-    "HARNESS_HERMES_PATH": "OMNIGENT_HERMES_PATH",
 }
 
 # Legacy ``HARNESS_*_PATH`` vars we have already warned about in this process,
@@ -116,7 +112,7 @@ def resolve_harness_path(canonical: str) -> str | None:
     CLI binary. The CLI side uses :func:`resolve_harness_command` instead,
     which adds the ``--command`` flag and config layers on top of this env read.
 
-    :param canonical: A harness id (e.g. ``"codex"`` or ``"pi-native"``).
+    :param canonical: A harness id (e.g. ``"codex-native"`` or ``"pi-native"``).
     :returns: The override path/name, or ``None`` when neither env var is set.
     """
     canonical_env = _harness_path_env_var(canonical)
@@ -125,10 +121,10 @@ def resolve_harness_path(canonical: str) -> str | None:
         return value
     base = _HARNESS_BINARY_BASE.get(canonical) or canonical.removesuffix("-native")
     legacy_env = f"HARNESS_{base.upper().replace('-', '_')}_PATH"
-    # Only honor the legacy fallback for the 6 harnesses that historically
-    # documented a ``HARNESS_*_PATH`` var. Other harnesses (cursor, kiro,
-    # opencode, antigravity, …) never had one — honoring a speculative
-    # ``HARNESS_CURSOR_PATH`` would invent a new knob under a deprecated name.
+    # Only honor the legacy fallback for the harnesses that historically
+    # documented a ``HARNESS_*_PATH`` var. Others (e.g. claude) never had one —
+    # honoring a speculative ``HARNESS_CLAUDE_PATH`` would invent a new knob
+    # under a deprecated name.
     if legacy_env not in _LEGACY_PATH_VARS:
         return None
     legacy = os.environ.get(legacy_env, "").strip()
@@ -292,7 +288,7 @@ def resolve_harness_command(
     4. *default* — the harness's built-in executable name.
 
     :param harness: A harness id (canonical or alias), e.g.
-        ``"claude-native"`` or ``"codex"``.
+        ``"claude-native"`` or ``"pi"``.
     :param default: Built-in fallback executable, e.g. ``"claude"``.
     :param explicit: The ``--command`` flag value, or ``None``.
     :param cfg: Effective config dict (for the config-layer lookup), or
@@ -367,7 +363,7 @@ def config_harness_path_override(
     ambient env var already holds a value, so a caller can do
     ``if v: env["OMNIGENT_X_PATH"] = v``.
 
-    :param harness: A harness id (canonical or alias), e.g. ``"codex"``.
+    :param harness: A harness id (canonical or alias), e.g. ``"pi"``.
     :param cfg: Effective config dict.
     :returns: The config command string to set as ``OMNIGENT_<NAME>_PATH``,
         or ``None`` when config has no override or the ambient env var is set.

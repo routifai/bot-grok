@@ -125,7 +125,7 @@ _DATABRICKS_CODING_AGENT_HEADER = "x-databricks-use-coding-agent-mode: true"
 # heterogeneous dicts at the transport and tool boundaries — named aliases
 # here keep the executor ``object``-free while isolating the justified
 # ``explicit-any`` boundary to a single place, mirroring the peer
-# ``openai_agents_sdk_executor`` / ``databricks_executor`` conventions.
+# ``databricks_executor`` convention.
 # ---------------------------------------------------------------------------
 
 # Parsed tool arguments / tool result dict — JSON-shaped bags exchanged
@@ -1136,7 +1136,7 @@ def _resolve_databricks_claude_model(profile: str | None) -> str:
                     " > ".join(("opus", "sonnet", "haiku", "fable")),
                 )
                 return servable
-    except Exception:  # noqa: BLE001 — the bundled catalog is the last resort
+    except Exception:
         logger.warning(
             "claude-sdk: live Databricks model discovery failed for profile %r; "
             "falling back to the bundled catalog",
@@ -1208,7 +1208,7 @@ def _gateway_model_vocabulary(base_url: str, auth_command: str | None) -> _Gatew
     )
     try:
         listing = model_catalog.listing_for_provider(provider)
-    except Exception:  # noqa: BLE001 — best-effort; unpinned aliases are the safe default
+    except Exception:
         logger.warning(
             "claude-sdk: could not list the gateway's models; leaving "
             "ANTHROPIC_DEFAULT_*_MODEL and modelOverrides unset",
@@ -3071,8 +3071,7 @@ class ClaudeSDKExecutor(Executor):
         # call's prompt size: that single prompt already contains the full
         # conversation that carries into the next turn. We capture each
         # ``message_start``'s ``message.usage`` here and keep the latest,
-        # mirroring how the openai-agents executor uses ``raw_responses[-1]``
-        # for ``context_tokens``. ``None`` until the first call starts.
+        # as the ``context_tokens`` source. ``None`` until the first call starts.
         last_call_usage: dict[str, Any] | None = None  # type: ignore[explicit-any]
 
         def _new_compact_summary_visible() -> bool:
@@ -3141,7 +3140,7 @@ class ClaudeSDKExecutor(Executor):
                     for message in messages
                     if isinstance(message.message, dict)
                 ]
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.warning(
                     "Failed to read Claude post-compaction session messages "
                     "(session=%s); preserving full server history instead of "
@@ -3522,7 +3521,6 @@ class ClaudeSDKExecutor(Executor):
                             # ``message_start`` call's prompt — input +
                             # cache_creation + cache_read — which already holds
                             # the full conversation carried into the next turn.
-                            # Mirrors openai-agents' ``raw_responses[-1]`` choice.
                             # So it is never summed across results either: the last
                             # call's prompt already carries any earlier CLI turn.
                             # Fall back to the cumulative sum only when no

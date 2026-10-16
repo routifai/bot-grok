@@ -702,7 +702,7 @@ def _is_utf8_locale_value(value: str | None) -> bool:
 def _has_utf8_locale(env: dict[str, str]) -> bool:
     """Whether the env already carries a UTF-8 signal the TUI CLIs honor.
 
-    The CLIs that mis-decode (opencode/pi/hermes) read ``LC_ALL`` / ``LANG``
+    The CLIs that mis-decode (e.g. pi) read ``LC_ALL`` / ``LANG``
     directly rather than calling ``setlocale``, so only those two vars count
     here; a UTF-8 ``LC_CTYPE`` alone does not help them. Per POSIX precedence
     a non-empty ``LC_ALL`` overrides ``LANG``.
@@ -1514,7 +1514,7 @@ class TerminalInstance:
         # Force a UTF-8 locale into the pane env when the inherited env
         # carries no UTF-8 signal in the vars the native TUI CLIs actually
         # read (LC_ALL/LANG). Without it, CLIs that read LC_ALL/LANG directly
-        # (opencode/pi/hermes) instead of calling setlocale fall back to an
+        # (e.g. pi) instead of calling setlocale fall back to an
         # ASCII/Latin-1 codeset and re-encode their UTF-8 output byte-by-byte,
         # rendering multibyte characters as mojibake in the pane (issue #2427).
         _apply_utf8_locale_default(env)
@@ -1841,9 +1841,9 @@ class TerminalInstance:
 
     def start_idle_watcher(
         self,
-        on_idle: Callable[[], None | Awaitable[None]],
+        on_idle: Callable[[], Awaitable[None] | None],
         *,
-        on_exit: Callable[[], None | Awaitable[None]] | None = None,
+        on_exit: Callable[[], Awaitable[None] | None] | None = None,
     ) -> None:
         """Start a background task that fires ``on_idle`` each time the pane
         becomes quiet (no change for ``_IDLE_THRESHOLD_SECONDS``).
@@ -1871,9 +1871,9 @@ class TerminalInstance:
 
     async def _idle_watch_loop(
         self,
-        on_idle: Callable[[], None | Awaitable[None]],
+        on_idle: Callable[[], Awaitable[None] | None],
         *,
-        on_exit: Callable[[], None | Awaitable[None]] | None = None,
+        on_exit: Callable[[], Awaitable[None] | None] | None = None,
     ) -> None:
         """
         Asyncio polling loop driving an :class:`_IdleDetector`.
@@ -1884,7 +1884,7 @@ class TerminalInstance:
         """
         detector = _IdleDetector()
 
-        async def _fire(callback: Callable[[], None | Awaitable[None]], kind: str) -> bool:
+        async def _fire(callback: Callable[[], Awaitable[None] | None], kind: str) -> bool:
             """Invoke a callback. Returns False if it raised and the watcher should exit."""
             try:
                 result = callback()
@@ -2624,7 +2624,7 @@ def create_terminal_instance(
         raise RuntimeError(
             "Native terminal harnesses (tmux/PTY) are not supported on Windows. "
             f"Run an SDK-based harness via `{cli_invocation()} run <agent.yaml>` (e.g. the "
-            "claude-sdk, cursor, copilot, or codex harness) or use the web UI."
+            "claude-sdk or pi harness) or use the web UI."
         )
     _require_supported_tmux()
 

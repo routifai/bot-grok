@@ -80,8 +80,7 @@ class SandboxCapabilities:
         inherits local stdio.
     :param classifies_runner_by_agent: Provider stamps the session's
         resolved built-in agent onto the managed runner as platform
-        metadata a policy can select on (the Kubernetes runner Pod's
-        ``omnigent.ai/agent`` label). When set, the managed launch path
+        metadata a policy can select on. When set, the managed launch path
         threads ``agent_name`` into ``start_host``; providers that leave
         it ``False`` never receive the keyword.
     :param snapshot_restore: Resuming a stopped sandbox restores a

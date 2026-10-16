@@ -650,7 +650,7 @@ async def test_safe_interrupt_reaps_even_when_interrupt_hangs(
 
     The interrupt and the reap have SEPARATE budgets: even if the interrupt
     consumes its whole slice (or hangs forever), close_session/close still run —
-    for subprocess-backed executors (ACP, codex, …) those do the real
+    for subprocess-backed executors (codex, pi, …) those do the real
     terminate/kill, so a starved reap would orphan the child. Budgets are shrunk
     so the test doesn't wait the production slice.
     """

@@ -4,10 +4,10 @@ its ``HARNESS_<H>_CWD`` env var.
 
 Regression guard for the bug where a session's selected working folder was
 honored by the Files panel / primary OS environment but NOT by the spawned
-harness subprocess (codex, claude-sdk, cursor, qwen, goose, copilot, acp):
+harness subprocess (codex, claude-sdk):
 the builders accepted ``workdir`` (the agent bundle) but never the runtime
 ``cwd``, so the subprocess inherited the runner's launch directory instead
-of the session workspace. Mirrors ``test_pi_spawn_env.py`` — pi/kimi already
+of the session workspace. Mirrors ``test_pi_spawn_env.py`` — pi already
 threaded ``cwd``; this locks the rest.
 
 Unit test — no subprocess spawn, no real CLIs.
@@ -20,14 +20,8 @@ from pathlib import Path
 import pytest
 
 from omnigent.runtime.workflow import (
-    _build_acp_spawn_env,
     _build_claude_sdk_spawn_env,
     _build_codex_spawn_env,
-    _build_copilot_spawn_env,
-    _build_cursor_spawn_env,
-    _build_goose_spawn_env,
-    _build_hermes_spawn_env,
-    _build_qwen_spawn_env,
 )
 from omnigent.spec.types import AgentSpec, ExecutorSpec
 
@@ -35,12 +29,6 @@ from omnigent.spec.types import AgentSpec, ExecutorSpec
 _BUILDERS = [
     ("claude-sdk", _build_claude_sdk_spawn_env, "HARNESS_CLAUDE_SDK_CWD"),
     ("codex", _build_codex_spawn_env, "HARNESS_CODEX_CWD"),
-    ("cursor", _build_cursor_spawn_env, "HARNESS_CURSOR_CWD"),
-    ("qwen", _build_qwen_spawn_env, "HARNESS_QWEN_CWD"),
-    ("goose", _build_goose_spawn_env, "HARNESS_GOOSE_CWD"),
-    ("copilot", _build_copilot_spawn_env, "HARNESS_COPILOT_CWD"),
-    ("acp", _build_acp_spawn_env, "HARNESS_ACP_CWD"),
-    ("hermes", _build_hermes_spawn_env, "HARNESS_HERMES_CWD"),
 ]
 
 

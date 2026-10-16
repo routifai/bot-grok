@@ -242,7 +242,7 @@ async def test_list_hosts_reports_sandbox_provider_for_managed_host(
         # belong to it to be visible.
         user_id="local",
         token="launch-token-secret",
-        provider="modal",
+        provider="computer",
         sandbox_id="sb-12345",
         token_expires_at=int(time.time()) + 3600,
     )
@@ -261,7 +261,7 @@ async def test_list_hosts_reports_sandbox_provider_for_managed_host(
     # Pre-registered managed hosts start offline until the in-sandbox
     # host process dials the tunnel.
     assert hosts[0]["status"] == "offline"
-    assert hosts[0]["sandbox_provider"] == "modal"
+    assert hosts[0]["sandbox_provider"] == "computer"
 
 
 async def test_get_host_returns_details(

@@ -274,7 +274,7 @@ def block_working_dir_changes(
     :param shell_tools: Names of the shell tools whose ``command`` argument is
         parsed. ``None`` uses every harness's shell tool
         (:data:`~omnigent.policies.builtins._shell.SHELL_TOOLS` — Omnigent,
-        Claude/Codex, Cursor, Pi, Hermes, Goose). Commands run through a tool
+        Claude/Codex, Pi). Commands run through a tool
         not listed here are not inspected.
     :returns: A one-argument policy callable returning a :class:`PolicyResponse`
         (DENY / ASK) on a gated command, or ``None`` to abstain (ALLOW).
@@ -450,7 +450,7 @@ POLICY_REGISTRY: list[dict[str, Any]] = [  # type: ignore[explicit-any]
             "Gates shell commands that switch the working directory "
             "(cd / chdir / pushd / popd, "
             "git -C) or git worktrees (git worktree add / move / remove). "
-            "Supports Omnigent, Claude/Codex, Cursor, Pi, Hermes, and Goose "
+            "Supports Omnigent, Claude/Codex, and Pi "
             "shell tools. Optionally allow cd into specific directories via allowed_dirs. "
             "Chained, wrapped (bash -c), and env-prefixed commands are parsed "
             "so the gate cannot be trivially bypassed."

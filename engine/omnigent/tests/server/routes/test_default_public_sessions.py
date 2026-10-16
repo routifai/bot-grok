@@ -53,7 +53,7 @@ from tests.server.helpers import (
     FakeSandboxLauncher,
     build_agent_bundle,
     create_test_agent,
-    install_fake_modal_launcher,
+    install_fake_computer_launcher,
 )
 
 _ADMIN = "admin@public-default.test"
@@ -89,9 +89,8 @@ def _build_app(
         extra["host_store"] = HostStore(db_uri)
         extra["sandbox_config"] = parse_sandbox_config(
             {
-                "provider": "modal",
+                "provider": "computer",
                 "server_url": "https://managed-test.example.com",
-                "modal": {"image": "docker.io/test/omnigent-host:latest"},
             }
         )
     app = create_app(
@@ -461,7 +460,7 @@ async def test_managed_create_follows_policy(
 ) -> None:
     """A ``host_type="managed"`` (cloud sandbox) session is public under ``sandbox``,
     while a local session on the same server stays private."""
-    install_fake_modal_launcher(monkeypatch, FakeSandboxLauncher())
+    install_fake_computer_launcher(monkeypatch, FakeSandboxLauncher())
     # Keep the background launch from outliving the test.
     monkeypatch.setattr("omnigent.server.managed_hosts.MANAGED_HOST_ONLINE_TIMEOUT_S", 0.1)
     write_default_public_sessions_override(DefaultPublicSessions(policy))

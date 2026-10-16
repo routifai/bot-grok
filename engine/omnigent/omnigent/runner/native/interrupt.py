@@ -11,29 +11,18 @@ Mirrors :class:`omnigent.runner.codex.goal.CodexGoalRunner`: app-scope state
 injected at construction so the class stays out of the already-large app module
 while preserving the exact behavior of the original closures.
 
-The seven uniform interrupt harnesses and six uniform stop harnesses differ
-only by bridge module, control-function name, and error label; they collapse to
-two parametrized methods driven by :data:`_UNIFORM_INTERRUPT` /
-:data:`_UNIFORM_STOP`. claude interrupt (bridge-id resolution) and codex
-interrupt (MCP-startup + app-server ``turn/interrupt``) keep dedicated methods
-(so nine interrupt handlers total); claude stop is likewise special-cased and
-codex/pi alias stop to their interrupt handler (so seven stop handlers total).
-
-Coverage note: antigravity-native and opencode-native have no handler here and
-:meth:`interrupt` / :meth:`stop` return ``None`` for them, so the caller falls
-through to the in-process turn cancel — unchanged from before this seam. Wiring
-their native interrupt (agy ``interrupt_turn`` / opencode ``client.abort``) is a
-deferred follow-up.
+claude interrupt (bridge-id resolution), codex interrupt (MCP-startup +
+app-server ``turn/interrupt``) and pi interrupt (bridge ``enqueue_interrupt``)
+each have a dedicated method. claude has a dedicated stop; codex/pi have no
+distinct stop and alias it to their interrupt handler.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
-import importlib
 import logging
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 import httpx
@@ -41,14 +30,10 @@ from fastapi.responses import JSONResponse, Response
 
 from omnigent.native.native_coding_agents import native_coding_agent_for_harness
 from omnigent.runner.native.orchestration import (
-    _cancel_auto_forwarder_task,
     _claude_native_bridge_id_for_session,
     _session_labels_for_runner_spawn,
 )
-from omnigent.runner.resource_registry import (
-    _STATUS_EMITTING_TERMINAL_ROLES,
-    SessionResourceRegistry,
-)
+from omnigent.runner.resource_registry import SessionResourceRegistry
 
 if TYPE_CHECKING:
     from omnigent.harness_plugins import NativeCodingAgent
@@ -112,172 +97,10 @@ class CodexBridgeStateForSession(Protocol):
         raise NotImplementedError
 
 
-@dataclass(frozen=True)
-class _UniformInterrupt:
-    """Descriptor for a uniform bridge-inject interrupt handler.
-
-    :param module: The harness bridge module, e.g. ``"omnigent.harnesses.pi_native.bridge"``.
-    :param inject_fn: The bridge control function name — ``"inject_interrupt"``
-        for the TUI harnesses, ``"enqueue_interrupt"`` for pi.
-    :param error_code: The structured error code returned on failure, e.g.
-        ``"pi_native_interrupt_failed"``.
-    :param context: The ``_client_safe_error_detail`` context label.
-    :param error_types: Exception types the inject call may raise that map to a
-        503 (pi raises ``OSError``; the TUI harnesses raise ``RuntimeError``).
-    :param with_timeout: Whether the inject call takes a ``timeout_s=`` kwarg
-        (the TUI harnesses do; pi's ``enqueue_interrupt`` does not).
-    :param log_on_error: Whether to log a warning before the 503 — only pi's
-        original handler did; the TUI handlers returned without logging.
-    """
-
-    module: str
-    inject_fn: str
-    error_code: str
-    context: str
-    error_types: tuple[type[BaseException], ...]
-    with_timeout: bool
-    log_on_error: bool = False
-
-
-@dataclass(frozen=True)
-class _UniformStop:
-    """Descriptor for a uniform bridge-kill stop handler.
-
-    :param module: The harness bridge module.
-    :param error_code: The structured error code returned on failure.
-    :param context: The ``_client_safe_error_detail`` context label.
-    :param display_name: Human name for the delivery-not-confirmed warning.
-    """
-
-    module: str
-    error_code: str
-    context: str
-    display_name: str
-
-
-# The eight uniform interrupt harnesses (claude/codex are special-cased). pi uses
-# enqueue_interrupt + OSError and no timeout; the rest inject_interrupt +
-# RuntimeError + timeout_s.
-_UNIFORM_INTERRUPT: dict[str, _UniformInterrupt] = {
-    "pi": _UniformInterrupt(
-        "omnigent.harnesses.pi_native.bridge",
-        "enqueue_interrupt",
-        "pi_native_interrupt_failed",
-        "pi-native interrupt",
-        (OSError,),
-        False,
-        log_on_error=True,
-    ),
-    "cursor": _UniformInterrupt(
-        "omnigent.harnesses.cursor_native.bridge",
-        "inject_interrupt",
-        "cursor_native_interrupt_failed",
-        "cursor-native interrupt",
-        (RuntimeError,),
-        True,
-    ),
-    "goose": _UniformInterrupt(
-        "omnigent.harnesses.goose_native.bridge",
-        "inject_interrupt",
-        "goose_native_interrupt_failed",
-        "goose-native interrupt",
-        (RuntimeError,),
-        True,
-    ),
-    "kiro": _UniformInterrupt(
-        "omnigent.harnesses.kiro_native.bridge",
-        "inject_interrupt",
-        "kiro_native_interrupt_failed",
-        "kiro-native interrupt",
-        (RuntimeError,),
-        True,
-    ),
-    "kimi": _UniformInterrupt(
-        "omnigent.harnesses.kimi_native.bridge",
-        "inject_interrupt",
-        "kimi_native_interrupt_failed",
-        "kimi-native interrupt",
-        (RuntimeError,),
-        True,
-    ),
-    "hermes": _UniformInterrupt(
-        "omnigent.harnesses.hermes_native.bridge",
-        "inject_interrupt",
-        "hermes_native_interrupt_failed",
-        "hermes-native interrupt",
-        (RuntimeError,),
-        True,
-    ),
-    "qwen": _UniformInterrupt(
-        "omnigent.harnesses.qwen_native.bridge",
-        "inject_interrupt",
-        "qwen_native_interrupt_failed",
-        "qwen-native interrupt",
-        (RuntimeError,),
-        True,
-    ),
-    "devin": _UniformInterrupt(
-        "omnigent.harnesses.devin_native.bridge",
-        "inject_interrupt",
-        "devin_native_interrupt_failed",
-        "devin-native interrupt",
-        (RuntimeError,),
-        True,
-    ),
-}
-
-# The seven uniform stop harnesses (claude has a special stop; codex/pi have no
-# distinct stop — they route to interrupt, handled in ``stop``).
-_UNIFORM_STOP: dict[str, _UniformStop] = {
-    "cursor": _UniformStop(
-        "omnigent.harnesses.cursor_native.bridge",
-        "cursor_native_stop_failed",
-        "cursor-native stop",
-        "Cursor",
-    ),
-    "goose": _UniformStop(
-        "omnigent.harnesses.goose_native.bridge",
-        "goose_native_stop_failed",
-        "goose-native stop",
-        "Goose",
-    ),
-    "kiro": _UniformStop(
-        "omnigent.harnesses.kiro_native.bridge",
-        "kiro_native_stop_failed",
-        "kiro-native stop",
-        "Kiro",
-    ),
-    "kimi": _UniformStop(
-        "omnigent.harnesses.kimi_native.bridge",
-        "kimi_native_stop_failed",
-        "kimi-native stop",
-        "Kimi",
-    ),
-    "hermes": _UniformStop(
-        "omnigent.harnesses.hermes_native.bridge",
-        "hermes_native_stop_failed",
-        "hermes-native stop",
-        "Hermes",
-    ),
-    "qwen": _UniformStop(
-        "omnigent.harnesses.qwen_native.bridge",
-        "qwen_native_stop_failed",
-        "qwen-native stop",
-        "Qwen",
-    ),
-    "devin": _UniformStop(
-        "omnigent.harnesses.devin_native.bridge",
-        "devin_native_stop_failed",
-        "devin-native stop",
-        "Devin",
-    ),
-}
-
-
 def native_agent_for_cancel(wrapper_label: str | None) -> NativeCodingAgent | None:
     """Resolve a native agent from a session wrapper or sub-agent wrapper label.
 
-    :param wrapper_label: ``omnigent.wrapper`` value, e.g. ``"goose-native-ui"``
+    :param wrapper_label: ``omnigent.wrapper`` value, e.g. ``"claude-code-native-ui"``
         or ``"claude-code-native-ui-subagent"``.
     :returns: The matching :class:`~omnigent.harness_plugins.NativeCodingAgent`,
         or ``None`` when the label is missing or not native.
@@ -304,9 +127,9 @@ def native_cancel_capability(wrapper_label: str | None) -> str:
     Mirrors :meth:`NativeInterruptRunner.stop` instead of comparing one Claude
     wrapper label:
 
-    * ``"stop"`` — Claude's dedicated stop, or a key in :data:`_UNIFORM_STOP`
+    * ``"stop"`` — Claude's dedicated stop
     * ``"best_effort"`` — remaining native agents (Codex/Pi alias stop to
-      interrupt; Antigravity/OpenCode have no stop handler)
+      interrupt)
     * ``"inprocess"`` — no native agent for this label
 
     :param wrapper_label: The work entry's ``omnigent.wrapper`` value.
@@ -315,7 +138,7 @@ def native_cancel_capability(wrapper_label: str | None) -> str:
     agent = native_agent_for_cancel(wrapper_label)
     if agent is None:
         return "inprocess"
-    if agent.key == "claude" or agent.key in _UNIFORM_STOP:
+    if agent.key == "claude":
         return "stop"
     return "best_effort"
 
@@ -365,8 +188,7 @@ class NativeInterruptRunner:
         """Dispatch an interrupt to the harness's bridge.
 
         :returns: A response when this harness has an interrupt handler, else
-            ``None`` so the caller falls through to the in-process turn cancel
-            (antigravity/opencode).
+            ``None`` so the caller falls through to the in-process turn cancel.
         """
         agent = native_coding_agent_for_harness(harness_name)
         if agent is None:
@@ -376,10 +198,9 @@ class NativeInterruptRunner:
             return await self._claude_interrupt(conv_id)
         if key == "codex":
             return await self._codex_interrupt(conv_id)
-        spec = _UNIFORM_INTERRUPT.get(key)
-        if spec is None:
-            return None
-        return await self._uniform_interrupt(spec, conv_id, terminal_role=agent.harness)
+        if key == "pi":
+            return await self._pi_interrupt(conv_id)
+        return None
 
     async def stop(self, harness_name: str | None, conv_id: str) -> Response | None:
         """Dispatch a stop_session to the harness's bridge.
@@ -398,10 +219,7 @@ class NativeInterruptRunner:
             return await self._claude_stop(conv_id)
         if key in ("codex", "pi"):
             return await self.interrupt(harness_name, conv_id)
-        spec = _UNIFORM_STOP.get(key)
-        if spec is None:
-            return None
-        return await self._uniform_stop(spec, conv_id)
+        return None
 
     def _defer_parent_wake_after_native_interrupt(self, conv_id: str) -> None:
         """Record the interrupt instead of guessing a terminal status.
@@ -550,80 +368,26 @@ class NativeInterruptRunner:
                 publish_event=self._publish_event,
             )
 
-    async def _uniform_interrupt(
-        self, spec: _UniformInterrupt, conv_id: str, *, terminal_role: str | None = None
-    ) -> Response:
-        module = importlib.import_module(spec.module)
-        bridge_dir = module.bridge_dir_for_session_id(conv_id)
-        inject = getattr(module, spec.inject_fn)
-        try:
-            if spec.with_timeout:
-                await asyncio.to_thread(inject, bridge_dir, timeout_s=1.0)
-            else:
-                await asyncio.to_thread(inject, bridge_dir)
-        except spec.error_types as exc:
-            if spec.log_on_error:
-                self._logger.warning(
-                    "%s failed for session=%s", spec.context, conv_id, exc_info=True
-                )
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "error": spec.error_code,
-                    "detail": self._client_safe_error_detail(exc, context=spec.context),
-                },
-            )
-        # A harness excluded from PTY-derived status owns its own cancel edge: an
-        # interrupt fires no lifecycle hook, so without this the web spins forever.
-        # The ones still on the watcher get their idle from pane quiescence, which
-        # is why publishing here would double it.
-        if terminal_role is not None and terminal_role not in _STATUS_EMITTING_TERMINAL_ROLES:
-            self._publish_event(conv_id, {"type": "session.status", "status": "idle"})
-        # Cursor's stop hook owns the outcome; a timer-based cancellation
-        # would discard a result that arrives after its grace window.
-        if terminal_role != "cursor-native":
-            self._defer_parent_wake_after_native_interrupt(conv_id)
-        return Response(status_code=204)
-
-    async def _uniform_stop(self, spec: _UniformStop, conv_id: str) -> Response:
-        module = importlib.import_module(spec.module)
-        try:
-            await asyncio.to_thread(
-                module.kill_session, module.bridge_dir_for_session_id(conv_id), timeout_s=1.0
-            )
-        except RuntimeError as exc:
-            # 503 means the kill attempt failed — including a transient tmux
-            # error against a still-running pane. This is not proof the pane
-            # is already gone. Claude's genuine gone case is
-            # ``TmuxSessionNotAdvertised`` and returns 204 from ``_claude_stop``.
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "error": spec.error_code,
-                    "detail": self._client_safe_error_detail(exc, context=spec.context),
-                },
-            )
-        await self._teardown_session_terminals(conv_id)
-        await _cancel_auto_forwarder_task(conv_id)
-        self._publish_event(conv_id, {"type": "session.status", "status": "idle"})
-        # The kill is confirmed, so this ``cancelled`` is truthful and settles
-        # any interrupt still waiting on its outcome.
-        self.clear_pending_interrupt(conv_id)
-        delivery_ack = self._mark_subagent_terminal_and_wake(
-            conv_id,
-            status="cancelled",
-            output=None,
+    async def _pi_interrupt(self, conv_id: str) -> Response:
+        from omnigent.harnesses.pi_native.bridge import (
+            bridge_dir_for_session_id,
+            enqueue_interrupt,
         )
-        if not delivery_ack.delivered and (
-            delivery_ack.entry is not None or conv_id in self._session_sub_agent_names
-        ):
+
+        try:
+            await asyncio.to_thread(enqueue_interrupt, bridge_dir_for_session_id(conv_id))
+        except OSError as exc:
             self._logger.warning(
-                "%s-native stop succeeded but sub-agent delivery was "
-                "not confirmed; session=%s reason=%s",
-                spec.display_name,
-                conv_id,
-                delivery_ack.reason,
+                "pi-native interrupt failed for session=%s", conv_id, exc_info=True
             )
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "error": "pi_native_interrupt_failed",
+                    "detail": self._client_safe_error_detail(exc, context="pi-native interrupt"),
+                },
+            )
+        self._defer_parent_wake_after_native_interrupt(conv_id)
         return Response(status_code=204)
 
     async def _claude_interrupt(self, conv_id: str) -> Response:
@@ -738,7 +502,7 @@ class NativeInterruptRunner:
                     },
                     timeout=10.0,
                 )
-            except Exception:  # noqa: BLE001 - the bridge flip already took effect locally.
+            except Exception:
                 self._logger.warning(
                     "Failed to publish cancelled MCP startup for %s", conv_id, exc_info=True
                 )
@@ -755,7 +519,7 @@ class NativeInterruptRunner:
                         "turn/interrupt",
                         {"threadId": state.thread_id, "turnId": ""},
                     )
-                except Exception:  # noqa: BLE001 - the local cancel already took effect.
+                except Exception:
                     self._logger.warning(
                         "Codex-native MCP startup interrupt failed for session=%s thread=%s",
                         conv_id,
@@ -770,7 +534,7 @@ class NativeInterruptRunner:
                         "turnId": state.active_turn_id,
                     },
                 )
-        except Exception as exc:  # noqa: BLE001 - surface active-turn interrupt failures.
+        except Exception as exc:
             self._logger.warning(
                 "Codex-native turn/interrupt failed for session=%s thread=%s turn=%s",
                 conv_id,

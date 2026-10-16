@@ -812,7 +812,7 @@ async def test_child_sessions_handles_title_without_colon(
         # Canonical user-added Claude Code child.
         ("ui:claude-native-ui:1", "claude-native-ui", "1"),
         # A different agent type + a multi-word label.
-        ("ui:codex:my-task-2", "codex", "my-task-2"),
+        ("ui:pi:my-task-2", "pi", "my-task-2"),
         # A label that itself contains colons: only the first two colons
         # are structural, so the whole remainder is the label.
         ("ui:claude-native-ui:a:b:c", "claude-native-ui", "a:b:c"),
@@ -1277,7 +1277,6 @@ async def _create_parent_with_subagents(
     "harness,expected_wrapper",
     [
         ("claude-native", "claude-code-native-ui"),
-        ("codex-native", "codex-native-ui"),
     ],
 )
 async def test_native_subagent_session_stamps_terminal_ui_labels(
@@ -1321,16 +1320,6 @@ async def test_native_subagent_session_stamps_terminal_ui_labels(
             {"permission_mode": "bypassPermissions"},
             ["--permission-mode", "bypassPermissions"],
         ),
-        (
-            "codex-native",
-            {"yolo": True},
-            ["--dangerously-bypass-approvals-and-sandbox"],
-        ),
-        (
-            "cursor-native",
-            {"yolo": True},
-            ["--yolo"],
-        ),
     ],
 )
 async def test_native_subagent_yolo_args_derived_from_trusted_spec(
@@ -1343,8 +1332,7 @@ async def test_native_subagent_yolo_args_derived_from_trusted_spec(
     A YOLO-declaring native worker bundle gets bypass ``terminal_launch_args``.
 
     The worker sub-agent's own bundle declares its full-bypass intent
-    (``permission_mode: bypassPermissions`` for claude-native,
-    ``yolo: true`` for codex-native / cursor-native). On a sub-agent create,
+    (``permission_mode: bypassPermissions`` for claude-native). On a sub-agent create,
     the server derives the matching flag list from that trusted,
     server-loaded spec and persists it as the child session's
     ``terminal_launch_args`` — which the runner appends to the native CLI
@@ -1505,7 +1493,6 @@ async def test_subagent_create_ignores_caller_supplied_launch_args(
     "harness,expected_wrapper,expected_model,expected_terminal",
     [
         ("claude-native", "claude-code-native-ui", "claude-native-ui", "claude"),
-        ("codex-native", "codex-native-ui", "codex-native-ui", "codex"),
     ],
 )
 async def test_native_subagent_message_uses_native_terminal_forward(
@@ -1521,7 +1508,7 @@ async def test_native_subagent_message_uses_native_terminal_forward(
 
     A ``sys_session_send`` call creates a child session and then posts a
     user message to that child. If the child sub-agent uses
-    ``claude-native`` or ``codex-native``, Omnigent must forward the prompt to
+    ``claude-native``, Omnigent must forward the prompt to
     the runner's native terminal event shape and must not persist its
     own AP-side copy; the native transcript forwarder is the single
     writer for conversation items.
@@ -1607,7 +1594,7 @@ async def test_native_subagent_message_uses_native_terminal_forward(
         await fake_runner.aclose()
 
     assert message_resp.status_code == 202, message_resp.text
-    # Native (claude-/codex-native) message bypass returns queued=True plus a
+    # Native (claude-native) message bypass returns queued=True plus a
     # pending-input id: the message isn't persisted AP-side (the transcript
     # forwarder is the single writer), so the server records a pending-input
     # entry for the optimistic bubble and returns its id.
@@ -1723,11 +1710,6 @@ async def test_multipart_create_with_parent_links_child(
 @pytest.mark.parametrize(
     "harness,config,expected_args",
     [
-        (
-            "codex-native",
-            {"yolo": True},
-            ["--dangerously-bypass-approvals-and-sandbox"],
-        ),
         (
             "claude-native",
             {"permission_mode": "bypassPermissions"},

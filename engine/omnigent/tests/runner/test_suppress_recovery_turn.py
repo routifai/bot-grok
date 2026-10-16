@@ -565,7 +565,7 @@ async def test_native_activity_during_initialization_distinguishes_turns_from_re
     app, _pm, harness = _build_sdk_app(PausedSeedServer(), resources)
     payload = _session_init_payload(suppress_recovery_turn=False)
     payload["session_init"].update(resume_interrupted_turn=True, recovery_id="native-interrupted")
-    payload["session_init"]["snapshot"]["harness_override"] = "cursor-native"
+    payload["session_init"]["snapshot"]["harness_override"] = "claude-native"
     async with _runner_client(app) as client:
         recovery = asyncio.create_task(client.post("/v1/sessions", json=payload))
         await asyncio.wait_for(entered.wait(), timeout=5)

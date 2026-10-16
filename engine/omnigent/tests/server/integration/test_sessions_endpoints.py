@@ -1652,277 +1652,6 @@ async def test_session_event_batch_rejects_empty_or_more_than_100_events(
     assert "100-event limit" in too_many.text
 
 
-async def test_external_acp_subagent_start_mints_child_without_a_vendor_wrapper(
-    client: httpx.AsyncClient,
-) -> None:
-    """An ACP sub-agent child carries no native wrapper label.
-
-    That absence is the fix: the UI resolves a child's displayed harness from its
-    ``omnigent.wrapper`` label first, so minting a Devin sub-agent through the
-    claude-native path (which stamps ``claude-code-native-ui-subagent``) titled it
-    **"Claude Code"**. With no wrapper value the child's harness resolves to the
-    parent's, and the UI labels it from the harness catalog instead.
-    """
-    agent = await create_test_agent(client)
-    parent = await _create_session(client, agent["id"])
-
-    resp = await client.post(
-        f"/v1/sessions/{parent['id']}/events",
-        json={
-            "type": "external_acp_subagent_start",
-            "data": {
-                "subagent_id": "a0ac9364",
-                "title": "mathutils",
-                "description": "create mathutils.py plus tests",
-            },
-        },
-    )
-    assert resp.status_code in (200, 202), f"unexpected status {resp.status_code}: {resp.text}"
-    child_id = resp.json()["child_session_id"]
-
-    children = (await client.get(f"/v1/sessions/{parent['id']}/child_sessions")).json()["data"]
-    matching = [c for c in children if c["id"] == child_id]
-    assert len(matching) == 1, f"child {child_id} not in {children!r}"
-    child = matching[0]
-    assert child["parent_session_id"] == parent["id"]
-    assert child["kind"] == "sub_agent"
-    assert child["tool"] == "mathutils"
-    assert child["session_name"] == "a0ac9364"
-    # The ACP id + task are preserved for downstream surfaces...
-    assert child["labels"]["omnigent.acp.subagent_id"] == "a0ac9364"
-    assert child["labels"]["omnigent.acp.subagent_description"] == "create mathutils.py plus tests"
-    # ...and crucially NO vendor wrapper label is stamped.
-    assert "omnigent.wrapper" not in child["labels"], (
-        f"an ACP sub-agent must not claim a vendor wrapper identity: {child['labels']!r}"
-    )
-
-
-async def test_external_acp_subagent_start_is_idempotent_on_subagent_id(
-    client: httpx.AsyncClient,
-) -> None:
-    """A redelivery with the same ``subagent_id`` returns the same child.
-
-    The runner POSTs best-effort and an agent can re-announce a sub-agent, so a
-    retry must not mint a duplicate row in the panel.
-    """
-    agent = await create_test_agent(client)
-    parent = await _create_session(client, agent["id"])
-    payload = {
-        "type": "external_acp_subagent_start",
-        "data": {"subagent_id": "dup1", "title": "worker", "description": "do a thing"},
-    }
-
-    first = await client.post(f"/v1/sessions/{parent['id']}/events", json=payload)
-    second = await client.post(f"/v1/sessions/{parent['id']}/events", json=payload)
-    assert first.json()["child_session_id"] == second.json()["child_session_id"]
-
-    children = (await client.get(f"/v1/sessions/{parent['id']}/child_sessions")).json()["data"]
-    assert len([c for c in children if c["labels"].get("omnigent.acp.subagent_id") == "dup1"]) == 1
-
-
-async def test_external_devin_subagent_start_mints_child(
-    client: httpx.AsyncClient,
-) -> None:
-    """A devin-native run_subagent spawn mints a child carrying Devin's identity."""
-    agent = await create_test_agent(client)
-    parent = await _create_session(client, agent["id"])
-
-    resp = await client.post(
-        f"/v1/sessions/{parent['id']}/events",
-        json={
-            "type": "external_devin_subagent_start",
-            "data": {
-                "agent_id": "690d786b",
-                "title": "Write alpha.txt",
-                "tool_use_id": "run_subagent_0",
-            },
-        },
-    )
-    assert resp.status_code in (200, 202), f"unexpected status {resp.status_code}: {resp.text}"
-    child_id = resp.json()["child_session_id"]
-
-    children = (await client.get(f"/v1/sessions/{parent['id']}/child_sessions")).json()["data"]
-    matching = [c for c in children if c["id"] == child_id]
-    assert len(matching) == 1, f"child {child_id} not in {children!r}"
-    child = matching[0]
-    assert child["parent_session_id"] == parent["id"]
-    assert child["kind"] == "sub_agent"
-    # The run_subagent title is the rail label; the agent_id is the correlation id.
-    assert child["tool"] == "Write alpha.txt"
-    assert child["session_name"] == "690d786b"
-    assert child["labels"]["omnigent.wrapper"] == "devin-native-ui-subagent"
-    assert child["labels"]["omnigent.devin_native.subagent_agent_id"] == "690d786b"
-    assert child["labels"]["omnigent.devin_native.run_subagent_tool_use_id"] == "run_subagent_0"
-
-
-async def test_external_devin_subagent_start_is_idempotent_on_agent_id(
-    client: httpx.AsyncClient,
-) -> None:
-    """A redelivery with the same agent_id returns the same child, not a duplicate.
-
-    The forwarder re-mirrors on each turn-end until it marks a sub-agent done, so a
-    retry must resolve to the existing child row.
-    """
-    agent = await create_test_agent(client)
-    parent = await _create_session(client, agent["id"])
-    payload = {
-        "type": "external_devin_subagent_start",
-        "data": {"agent_id": "dupdevin", "title": "worker"},
-    }
-    first = await client.post(f"/v1/sessions/{parent['id']}/events", json=payload)
-    second = await client.post(f"/v1/sessions/{parent['id']}/events", json=payload)
-    assert first.json()["child_session_id"] == second.json()["child_session_id"]
-    children = (await client.get(f"/v1/sessions/{parent['id']}/child_sessions")).json()["data"]
-    label = "omnigent.devin_native.subagent_agent_id"
-    assert len([c for c in children if c["labels"].get(label) == "dupdevin"]) == 1
-
-
-async def test_external_devin_subagent_start_needs_an_agent_id(
-    client: httpx.AsyncClient,
-) -> None:
-    """A spawn with no agent_id is rejected rather than minting an unkeyed child."""
-    agent = await create_test_agent(client)
-    parent = await _create_session(client, agent["id"])
-    resp = await client.post(
-        f"/v1/sessions/{parent['id']}/events",
-        json={"type": "external_devin_subagent_start", "data": {"title": "worker"}},
-    )
-    assert resp.status_code == 400, f"unexpected status {resp.status_code}: {resp.text}"
-
-
-async def test_external_acp_subagent_start_allows_duplicate_titles(
-    client: httpx.AsyncClient,
-) -> None:
-    """Two sub-agents sharing a title both register (distinct ids).
-
-    An agent can label parallel sub-agents identically; the stable id keeps the
-    ``(parent, title)`` unique index from rejecting the second.
-    """
-    agent = await create_test_agent(client)
-    parent = await _create_session(client, agent["id"])
-
-    ids = set()
-    for sub_id in ("s1", "s2"):
-        resp = await client.post(
-            f"/v1/sessions/{parent['id']}/events",
-            json={
-                "type": "external_acp_subagent_start",
-                "data": {"subagent_id": sub_id, "title": "worker", "description": "same task"},
-            },
-        )
-        assert resp.status_code in (200, 202), resp.text
-        ids.add(resp.json()["child_session_id"])
-    assert len(ids) == 2, "parallel sub-agents with the same title must get distinct children"
-
-
-async def test_acp_subagent_summary_needs_an_agent_to_persist(
-    client: httpx.AsyncClient,
-) -> None:
-    """An assistant message seeded into an ACP sub-agent child must carry ``agent``.
-
-    This is the server contract the runner's summary-seeding depends on, and the
-    root cause of the reported "sub-agent's response is missing from its chat"
-    bug: ``MessageData`` rejects an assistant message with no ``agent``, so an
-    item that omits it 400s and never persists (the runner posts best-effort and
-    swallows the rejection). With ``agent`` set — as the fix now sends — it
-    persists and appears in the child's items, exactly as the summary must.
-    """
-    import json
-
-    agent = await create_test_agent(client)
-    parent = await _create_session(client, agent["id"])
-    mint = await client.post(
-        f"/v1/sessions/{parent['id']}/events",
-        json={
-            "type": "external_acp_subagent_start",
-            "data": {"subagent_id": "a0ac9364", "title": "mathutils", "description": "t"},
-        },
-    )
-    child_id = mint.json()["child_session_id"]
-
-    def _summary_event(*, with_agent: bool) -> dict[str, object]:
-        item_data: dict[str, object] = {
-            "role": "assistant",
-            "content": [{"type": "output_text", "text": "3 tests pass"}],
-        }
-        if with_agent:
-            item_data["agent"] = "mathutils"
-        return {
-            "type": "external_conversation_item",
-            "data": {
-                "item_type": "message",
-                "item_data": item_data,
-                "response_id": "resp_acpsub_a0ac9364",
-            },
-        }
-
-    # Without agent: rejected — the exact server response that silently hid the
-    # summary when the runner swallowed it.
-    missing = await client.post(
-        f"/v1/sessions/{child_id}/events", json=_summary_event(with_agent=False)
-    )
-    assert missing.status_code == 400, (
-        f"expected reject, got {missing.status_code}: {missing.text}"
-    )
-
-    # With agent (the fix): accepted and present in the child's transcript.
-    ok = await client.post(f"/v1/sessions/{child_id}/events", json=_summary_event(with_agent=True))
-    assert ok.status_code in (200, 202), ok.text
-
-    items = (await client.get(f"/v1/sessions/{child_id}/items")).json()["data"]
-    assert any(it.get("type") == "message" for it in items)
-    assert "3 tests pass" in json.dumps(items), (
-        f"summary not persisted into child items: {items!r}"
-    )
-
-
-async def test_acp_subagent_tool_call_persists_into_the_child(
-    client: httpx.AsyncClient,
-) -> None:
-    """A sub-agent's own tool call persists into its child as a ``function_call``.
-
-    The transcript-depth path: the runner appends each of the sub-agent's tool
-    calls to its child as a ``function_call`` item so opening the row shows the
-    work it did, not just the task and summary. ``FunctionCallData`` requires
-    ``agent`` / ``name`` / ``arguments`` / ``call_id``, so this pins that the
-    exact shape the runner sends is accepted and appears in the child's items.
-    """
-    import json
-
-    agent = await create_test_agent(client)
-    parent = await _create_session(client, agent["id"])
-    mint = await client.post(
-        f"/v1/sessions/{parent['id']}/events",
-        json={
-            "type": "external_acp_subagent_start",
-            "data": {"subagent_id": "a0ac9364", "title": "mathutils", "description": "t"},
-        },
-    )
-    child_id = mint.json()["child_session_id"]
-
-    resp = await client.post(
-        f"/v1/sessions/{child_id}/events",
-        json={
-            "type": "external_conversation_item",
-            "data": {
-                "item_type": "function_call",
-                "item_data": {
-                    "agent": "mathutils",
-                    "name": "Wrote mathutils.py",
-                    "arguments": '{"file_path": "mathutils.py"}',
-                    "call_id": "toolu_01",
-                },
-                "response_id": "resp_acpsub_a0ac9364",
-            },
-        },
-    )
-    assert resp.status_code in (200, 202), resp.text
-
-    items = (await client.get(f"/v1/sessions/{child_id}/items")).json()["data"]
-    assert any(it.get("type") == "function_call" for it in items), items
-    assert "Wrote mathutils.py" in json.dumps(items)
-
-
 async def test_external_subagent_start_handles_duplicate_agent_type_and_description(
     client: httpx.AsyncClient,
 ) -> None:
@@ -3357,58 +3086,54 @@ async def test_create_session_without_terminal_launch_args_is_null(
     assert session["terminal_launch_args"] is None
 
 
-_CODEX_BYPASS_ARGS = ["--dangerously-bypass-approvals-and-sandbox"]
+_BYPASS_ARGS = ["--permission-mode", "bypassPermissions"]
 
 
-async def test_create_session_derives_explicit_yolo_from_agent_spec(
+async def test_create_session_derives_explicit_permission_mode_from_agent_spec(
     client: httpx.AsyncClient,
 ) -> None:
     """
-    A body-less JSON create honors the agent spec's explicit ``yolo: true``.
+    A body-less JSON create honors the agent spec's explicit ``permission_mode``.
 
-    A custom codex-native agent that declares ``executor.config.yolo:
-    true`` opted into full bypass in its own trusted, server-stored
-    bundle. With no ``terminal_launch_args`` in the create body the
-    session must persist the codex bypass flag, matching the named-worker
-    path — otherwise codex launches at its default approval stance and an
-    unattended orchestrator parks on approval prompts despite the opt-in.
+    A custom claude-native agent that declares ``executor.config.permission_mode``
+    opted into that stance in its own trusted, server-stored bundle. With no
+    ``terminal_launch_args`` in the create body the session must persist the
+    derived ``--permission-mode`` flag, matching the named-worker path.
     """
     agent = await create_test_agent(
         client,
-        name="codex-yolo-self-resolved",
-        executor={"type": "omnigent", "config": {"harness": "codex-native", "yolo": True}},
+        name="claude-bypass-self-resolved",
+        executor={
+            "type": "omnigent",
+            "config": {"harness": "claude-native", "permission_mode": "bypassPermissions"},
+        },
     )
     session = await _create_session(client, agent["id"])
-    assert session["terminal_launch_args"] == _CODEX_BYPASS_ARGS
+    assert session["terminal_launch_args"] == _BYPASS_ARGS
 
     snap = await client.get(f"/v1/sessions/{session['id']}")
     assert snap.status_code == 200
-    assert snap.json()["terminal_launch_args"] == _CODEX_BYPASS_ARGS
+    assert snap.json()["terminal_launch_args"] == _BYPASS_ARGS
 
 
-async def test_create_session_undeclared_codex_spec_keeps_launch_args_null(
+async def test_create_session_undeclared_native_spec_keeps_launch_args_null(
     client: httpx.AsyncClient,
 ) -> None:
     """
-    No spec opt-in → no derived args: the headless default must not leak.
-
-    codex-native named WORKERS default to full bypass because nobody can
-    answer a headless prompt, but a top-level session is interactive — a
-    human can answer the ApprovalCard. A codex-native spec that never
-    mentions ``yolo`` must keep ``terminal_launch_args`` NULL rather than
-    silently launching every custom codex agent with approvals and
-    sandbox bypassed.
+    No spec opt-in → no derived args: a top-level session is interactive, so a
+    claude-native spec that never declares a permission mode keeps
+    ``terminal_launch_args`` NULL.
     """
     agent = await create_test_agent(
         client,
-        name="codex-plain-self-resolved",
-        executor={"type": "omnigent", "config": {"harness": "codex-native"}},
+        name="claude-plain-self-resolved",
+        executor={"type": "omnigent", "config": {"harness": "claude-native"}},
     )
     session = await _create_session(client, agent["id"])
     assert session["terminal_launch_args"] is None
 
 
-async def test_create_session_body_launch_args_override_spec_yolo(
+async def test_create_session_body_launch_args_override_spec_permission_mode(
     client: httpx.AsyncClient,
 ) -> None:
     """
@@ -3419,46 +3144,51 @@ async def test_create_session_body_launch_args_override_spec_yolo(
     """
     agent = await create_test_agent(
         client,
-        name="codex-yolo-body-override",
-        executor={"type": "omnigent", "config": {"harness": "codex-native", "yolo": True}},
+        name="claude-bypass-body-override",
+        executor={
+            "type": "omnigent",
+            "config": {"harness": "claude-native", "permission_mode": "bypassPermissions"},
+        },
     )
     session = await _create_session(
         client,
         agent["id"],
-        terminal_launch_args=["--sandbox", "read-only"],
+        terminal_launch_args=["--permission-mode", "plan"],
     )
-    assert session["terminal_launch_args"] == ["--sandbox", "read-only"]
+    assert session["terminal_launch_args"] == ["--permission-mode", "plan"]
 
 
-async def test_bundle_create_derives_explicit_yolo_launch_args(
+async def test_bundle_create_derives_explicit_permission_mode_launch_args(
     client: httpx.AsyncClient,
 ) -> None:
     """
-    The multipart bundle create (``omnigent run <dir>``) honors ``yolo: true``.
+    The multipart bundle create (``omnigent run <dir>``) honors ``permission_mode``.
 
     ``create_test_agent`` creates its owning session via the multipart
     bundle path with no metadata launch args, so the owning session's row
-    must carry the spec-derived codex bypass flag — the exact journey the
-    reporter hit with a custom top-level codex-native bundle.
+    must carry the spec-derived flag.
     """
     agent = await create_test_agent(
         client,
-        name="codex-yolo-bundle",
-        executor={"type": "omnigent", "config": {"harness": "codex-native", "yolo": True}},
+        name="claude-bypass-bundle",
+        executor={
+            "type": "omnigent",
+            "config": {"harness": "claude-native", "permission_mode": "bypassPermissions"},
+        },
     )
     owning = await client.get(f"/v1/sessions/{agent['_session_id']}")
     assert owning.status_code == 200
-    assert owning.json()["terminal_launch_args"] == _CODEX_BYPASS_ARGS
+    assert owning.json()["terminal_launch_args"] == _BYPASS_ARGS
 
 
-async def test_bundle_create_undeclared_codex_spec_keeps_launch_args_null(
+async def test_bundle_create_undeclared_native_spec_keeps_launch_args_null(
     client: httpx.AsyncClient,
 ) -> None:
-    """A bundle that never mentions ``yolo`` gets no default bypass on upload."""
+    """A bundle that never declares a permission mode gets no derived args on upload."""
     agent = await create_test_agent(
         client,
-        name="codex-plain-bundle",
-        executor={"type": "omnigent", "config": {"harness": "codex-native"}},
+        name="claude-plain-bundle",
+        executor={"type": "omnigent", "config": {"harness": "claude-native"}},
     )
     owning = await client.get(f"/v1/sessions/{agent['_session_id']}")
     assert owning.status_code == 200
@@ -3945,7 +3675,7 @@ async def test_claude_native_session_discoverable_with_terminal_metadata(
     session = await _create_session(
         client,
         agent["id"],
-        title="universe @ lakebox",
+        title="universe @ computer",
         # Labels the route's _is_claude_native_terminal_session and the
         # UI's terminal-first layout key off of.
         labels={
@@ -3967,7 +3697,7 @@ async def test_claude_native_session_discoverable_with_terminal_metadata(
     assert list_resp.status_code == 200
     row = next((r for r in list_resp.json()["data"] if r["id"] == session_id), None)
     assert row is not None, f"session not in list: {list_resp.json()}"
-    assert row["title"] == "universe @ lakebox"
+    assert row["title"] == "universe @ computer"
     assert row["agent_name"] == "claude-native-ui"
     assert row["labels"]["omnigent.wrapper"] == "claude-code-native-ui"
     assert row["labels"]["omnigent.ui"] == "terminal"
@@ -3976,7 +3706,7 @@ async def test_claude_native_session_discoverable_with_terminal_metadata(
 
     # Snapshot surface (opening the session) carries the same bundle.
     snap = (await client.get(f"/v1/sessions/{session_id}")).json()
-    assert snap["title"] == "universe @ lakebox"
+    assert snap["title"] == "universe @ computer"
     assert snap["agent_name"] == "claude-native-ui"
     assert snap["labels"]["omnigent.wrapper"] == "claude-code-native-ui"
     assert snap["labels"]["omnigent.ui"] == "terminal"
@@ -4919,8 +4649,7 @@ async def test_post_external_session_status_publishes_session_status(
 @pytest.mark.parametrize(
     ("harness", "expected_code"),
     [
-        ("codex-native", "codex_reauth_required"),
-        ("opencode-native", "native_turn_error"),
+        ("claude-native", "native_turn_error"),
     ],
 )
 async def test_post_external_session_status_failed_surfaces_output_and_reauth(
@@ -4929,7 +4658,7 @@ async def test_post_external_session_status_failed_surfaces_output_and_reauth(
     harness: str,
     expected_code: str,
 ) -> None:
-    """The reauth flag selects a Codex error code only for Codex sessions."""
+    """The reauth flag never selects the Codex error code for a non-Codex session."""
     published: list[tuple[str, dict[str, Any]]] = []
 
     monkeypatch.setattr(
@@ -5508,12 +5237,7 @@ async def test_post_external_session_status_failed_forwards_persisted_assistant_
 @pytest.mark.parametrize(
     ("spec_harness", "harness_override", "expected_code"),
     [
-        ("codex-native", None, "codex_turn_error"),
-        ("opencode-native", None, "native_turn_error"),
         ("claude-native", None, "native_turn_error"),
-        ("pi-native", None, "native_turn_error"),
-        ("codex-native", "opencode-native", "native_turn_error"),
-        ("opencode-native", "codex-native", "codex_turn_error"),
     ],
 )
 async def test_post_external_session_status_failed_keeps_wire_output_and_harness_code(
@@ -5851,12 +5575,11 @@ async def test_post_external_output_reasoning_delta_started_publishes_started_th
     """
     ``external_output_reasoning_delta`` with ``started`` emits started + delta.
 
-    The antigravity-native reader uses this for a Gemini Thinking-model
-    ``plannerResponse.thinking`` stream. The first delta of a block sets
-    ``started`` so the route precedes the ``response.reasoning_text.delta`` with
-    one ``response.reasoning.started`` (the SPA new-block marker). Both events
-    must be visible on the SSE stream and nothing persisted to history (reasoning
-    has no completed item).
+    A native reader uses this for a thinking-model reasoning stream. The first
+    delta of a block sets ``started`` so the route precedes the
+    ``response.reasoning_text.delta`` with one ``response.reasoning.started``
+    (the SPA new-block marker). Both events must be visible on the SSE stream
+    and nothing persisted to history (reasoning has no completed item).
     """
     published: list[tuple[str, dict[str, Any]]] = []
 
@@ -7207,7 +6930,7 @@ async def test_accumulate_session_usage_codex_unpinned_model_gets_by_model_entry
 
     agent = await create_test_agent(
         client,
-        executor={"type": "omnigent", "config": {"harness": "codex"}},
+        executor={"type": "omnigent", "config": {"harness": "pi"}},
         include_llm=False,  # mirrors examples/debby/agents/gpt/config.yaml
     )
     session = await _create_session(client, agent["id"])
@@ -7996,7 +7719,7 @@ async def test_mcp_relay_tool_call_ask_approval_persists_checkpoint(
     result; the client re-sends (retry) carrying the approval. The deciding
     policy's ``state_updates`` (the cost checkpoint) must be applied on that
     approved retry — otherwise it is dropped and re-prompts every call. This
-    is the path openai-agents / MCP-relay sessions actually use (distinct from
+    is the path MCP-relay sessions actually use (distinct from
     the native ``/policies/evaluate`` and the ``function_call`` query paths).
     The retry's tool execution fails here (no runner bound), but the policy
     write is applied before execution, which is what we assert.
@@ -11805,189 +11528,6 @@ async def test_external_codex_subagent_start_is_idempotent_and_upserts_labels(
     assert matching[0]["tool"] == "Euclid", (
         f"Expected tool='Euclid' after nickname upsert; got {matching[0]['tool']!r}"
     )
-
-
-# ── POST /v1/sessions/{id}/events external_antigravity_subagent_start ────────
-
-
-async def test_external_antigravity_subagent_start_mints_child_session(
-    client: httpx.AsyncClient,
-) -> None:
-    """
-    ``external_antigravity_subagent_start`` creates a child session whose rail
-    row names the sub-agent's role.
-
-    agy runs each sub-agent as its own cascade and names it on the parent's
-    ``INVOKE_SUBAGENT`` step; the reader posts this so the Agents rail can show
-    it. Unlike the claude/codex children, the rail's generic
-    ``"<head>:<tail>"`` title split does the display work — so this pins that
-    the title is built to survive that split.
-
-    :param client: The test HTTP client.
-    """
-    agent = await create_test_agent(client)
-    parent = await _create_session(
-        client,
-        agent["id"],
-        labels={"omnigent.wrapper": "antigravity-native-ui"},
-    )
-
-    resp = await client.post(
-        f"/v1/sessions/{parent['id']}/events",
-        json={
-            "type": "external_antigravity_subagent_start",
-            "data": {
-                "cascade_id": "1eca7625-be65-4092-8718-273c1bc3436b",
-                "role": "App Router Code Reviewer",
-                "agent_type": "research",
-                "tool_call_id": "agy_call_efb134b2_36",
-            },
-        },
-    )
-
-    assert resp.status_code == 202, f"unexpected status {resp.status_code}: {resp.text}"
-    child_id = resp.json()["child_session_id"]
-
-    children_resp = await client.get(f"/v1/sessions/{parent['id']}/child_sessions")
-    assert children_resp.status_code == 200
-    child = next(
-        (c for c in children_resp.json()["data"] if c["id"] == child_id),
-        None,
-    )
-    assert child is not None, "Child session must appear in child_sessions listing"
-    assert child["tool"] == "App Router Code Reviewer", (
-        f"Expected the rail to name the sub-agent's role; got {child['tool']!r}"
-    )
-    assert child["session_name"] == "1eca7625-be65-4092-8718-273c1bc3436b", (
-        f"Expected session_name=cascade id; got {child['session_name']!r}"
-    )
-    labels = child["labels"]
-    assert labels["omnigent.wrapper"] == "antigravity-native-ui-subagent"
-    assert (
-        labels["omnigent.antigravity_native.subagent_cascade_id"]
-        == "1eca7625-be65-4092-8718-273c1bc3436b"
-    )
-    assert labels["omnigent.antigravity_native.agent_role"] == "App Router Code Reviewer"
-    assert labels["omnigent.antigravity_native.agent_type"] == "research"
-    # Links the child back to the tool card that spawned it.
-    assert labels["omnigent.antigravity_native.tool_call_id"] == "agy_call_efb134b2_36"
-
-
-async def test_external_antigravity_subagent_start_is_idempotent(
-    client: httpx.AsyncClient,
-) -> None:
-    """
-    Re-registering the same agy sub-agent returns the existing child row.
-
-    The reader re-enters its handler on every frame while the sub-agents work
-    (the owning step stays RUNNING throughout), and a runner restart replays the
-    step, so this POST is repeated many times per sub-agent. Each repeat must
-    resolve to the same row rather than filling the rail with duplicates.
-
-    :param client: The test HTTP client.
-    """
-    agent = await create_test_agent(client)
-    parent = await _create_session(
-        client,
-        agent["id"],
-        labels={"omnigent.wrapper": "antigravity-native-ui"},
-    )
-    payload = {
-        "type": "external_antigravity_subagent_start",
-        "data": {
-            "cascade_id": "a8009634-3de5-464a-a84c-6f1dafb18942",
-            "role": "Database & Schema Code Reviewer",
-            "agent_type": "research",
-        },
-    }
-
-    first = await client.post(f"/v1/sessions/{parent['id']}/events", json=payload)
-    assert first.status_code == 202, first.text
-    second = await client.post(f"/v1/sessions/{parent['id']}/events", json=payload)
-    assert second.status_code == 202, second.text
-
-    assert first.json()["child_session_id"] == second.json()["child_session_id"], (
-        "A repeated registration must resolve to the same child session"
-    )
-    children = (await client.get(f"/v1/sessions/{parent['id']}/child_sessions")).json()["data"]
-    matching = [c for c in children if c["session_name"] == "a8009634-3de5-464a-a84c-6f1dafb18942"]
-    assert len(matching) == 1, f"Expected exactly 1 child row; got {len(matching)}"
-
-
-async def test_external_antigravity_subagent_start_requires_cascade_id(
-    client: httpx.AsyncClient,
-) -> None:
-    """
-    A registration with no ``cascade_id`` is rejected rather than minting an
-    unaddressable child.
-
-    The cascade id is what the mirror loop polls and what makes the row
-    idempotent; a child without one could never be filled in.
-
-    :param client: The test HTTP client.
-    """
-    agent = await create_test_agent(client)
-    parent = await _create_session(
-        client,
-        agent["id"],
-        labels={"omnigent.wrapper": "antigravity-native-ui"},
-    )
-
-    resp = await client.post(
-        f"/v1/sessions/{parent['id']}/events",
-        json={
-            "type": "external_antigravity_subagent_start",
-            "data": {"role": "Nameless Reviewer"},
-        },
-    )
-    assert resp.status_code == 400, (
-        f"Expected 400 for a missing cascade_id; got {resp.status_code}: {resp.text[:200]}"
-    )
-
-
-async def test_external_antigravity_subagent_start_title_survives_a_colon_in_the_role(
-    client: httpx.AsyncClient,
-) -> None:
-    """
-    A role containing a colon still splits into role / cascade id in the rail.
-
-    The rail splits a child title on its FIRST colon, and agy's roles are
-    model-authored free text — "Review: routing" would otherwise push the cascade
-    id out of ``session_name`` and show a truncated role.
-
-    :param client: The test HTTP client.
-    """
-    agent = await create_test_agent(client)
-    parent = await _create_session(
-        client,
-        agent["id"],
-        labels={"omnigent.wrapper": "antigravity-native-ui"},
-    )
-
-    resp = await client.post(
-        f"/v1/sessions/{parent['id']}/events",
-        json={
-            "type": "external_antigravity_subagent_start",
-            "data": {
-                "cascade_id": "84110421-7cfd-4971-8eaa-8e1f390fc92e",
-                "role": "Review: routing and auth",
-                "agent_type": "research",
-            },
-        },
-    )
-    assert resp.status_code == 202, resp.text
-    child_id = resp.json()["child_session_id"]
-
-    children = (await client.get(f"/v1/sessions/{parent['id']}/child_sessions")).json()["data"]
-    child = next(c for c in children if c["id"] == child_id)
-    assert child["session_name"] == "84110421-7cfd-4971-8eaa-8e1f390fc92e", (
-        f"The cascade id must stay in session_name; got {child['session_name']!r}"
-    )
-    assert child["tool"] == "Review- routing and auth", (
-        f"Expected the colon folded out of the role; got {child['tool']!r}"
-    )
-    # The unmangled role is still available for any surface that wants it.
-    assert child["labels"]["omnigent.antigravity_native.agent_role"] == "Review: routing and auth"
 
 
 async def test_external_codex_subagent_start_adopts_unlabeled_title_collision(

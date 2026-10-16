@@ -5,7 +5,6 @@ import shlex
 import click
 import pytest
 
-from omnigent.onboarding.sandboxes.kubernetes import _render_workspace_prep_command
 from omnigent.onboarding.sandboxes.types import GitCloneOptions, RepoWorkspace
 from tests.onboarding.sandboxes.test_base import _RecordingLauncher
 
@@ -39,7 +38,7 @@ def test_clone_arguments(
     assert options.clone_args(branch) == expected
 
 
-def test_exec_and_kubernetes_quote_identical_clone_options() -> None:
+def test_exec_launcher_quotes_clone_options() -> None:
     repo = RepoWorkspace(
         "https://example.test/org/repo.git",
         "release;literal",
@@ -67,10 +66,6 @@ def test_exec_and_kubernetes_quote_identical_clone_options() -> None:
         "--no-tags",
         "--",
     ]
-    script = _render_workspace_prep_command(
-        "/root/workspace", [repo], "https://example.test", "host"
-    )[2]
-    assert clone.replace("/root/workspace/repo", "/root/workspace/repo.tmp/clone") in script
 
 
 def test_legacy_materializer_gets_no_new_keywords_and_rejects_opt_in() -> None:

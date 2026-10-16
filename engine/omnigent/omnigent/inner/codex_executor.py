@@ -14,7 +14,6 @@ import json
 import logging
 import os
 import re
-import shlex
 import shutil
 import stat
 import subprocess
@@ -33,11 +32,8 @@ from collections.abc import (
 )
 from contextlib import suppress
 from dataclasses import dataclass
-from functools import partial
 from pathlib import Path
 from typing import Any, Protocol, TypeAlias, cast
-
-from packaging.version import InvalidVersion, Version
 
 from omnigent._platform import resolve_cli_binary
 from omnigent.errors import HarnessTransportClosedError
@@ -69,7 +65,6 @@ from .codex_staging import (
 )
 from .codex_worker import (
     CodexWorkerLaunch,
-    prepare_codex_catalog_probe,
     prepare_codex_worker,
 )
 from .databricks_executor import (
@@ -92,16 +87,6 @@ from .executor import (
     TurnComplete,
     classify_tool_result,
     describe_exception,
-)
-from .hook_scripts.subagent_router import HOOK_TIMEOUT_HEADROOM_S as _ROUTER_HOOK_HEADROOM_S
-from .hook_scripts.subagent_router import REQUEST_TIMEOUT_S as _ROUTER_REQUEST_TIMEOUT_S
-from .model_auth import ProviderAuthRequired
-from .model_signer import (
-    ModelSignerSession,
-    SignerLaunchConfig,
-    SignerReadiness,
-    SignerStartError,
-    SubprocessModelSigner,
 )
 
 logger = logging.getLogger(__name__)
@@ -155,7 +140,6 @@ _TURN_COMPLETED_DRAIN_SECONDS = 1.0
 # timeout the probe kills the process and reports the version as unknown.
 _CODEX_VERSION_PROBE_TIMEOUT_SECONDS = 5.0
 _WORKER_SHUTDOWN_TIMEOUT_SECONDS = 2.0
-_SIGNER_CLOSE_TIMEOUT_SECONDS = 10.0
 _WORKER_PREPARE_CLEANUP_TIMEOUT_SECONDS = 12.0
 _WORKER_SPAWN_CLEANUP_TIMEOUT_SECONDS = 5.0
 _WORKER_LAUNCH_CLEANUP_TIMEOUT_SECONDS = 7.0
@@ -199,7 +183,6 @@ _CODEX_HOME_SYMLINK_DIRS = (
 )
 _CODEX_MINIMAL_CONFIG_ENV = "HARNESS_CODEX_MINIMAL_CONFIG"
 _CODEX_PROVIDER_CONFIG_PREFIX = "model_providers."
-_BROKERED_CODEX_PROVIDER_NAME = "omnigent_brokered"
 
 # Environment variables explicitly excluded from the codex subprocess even
 # when their prefix is in the allowlist. ``OPENAI_API_KEY`` is stripped so
@@ -539,8 +522,7 @@ def _kill_process_tree(process: _Process | None) -> None:
     _proc.kill_tree(process)
 
 
-# Env override for an explicit codex binary, mirroring goose's
-# OMNIGENT_GOOSE_PATH. Set this when codex lives on a PATH the host
+# Env override for an explicit codex binary. Set this when codex lives on a PATH the host
 # daemon doesn't inherit (e.g. an nvm-managed global bin dir).
 _CODEX_PATH_ENV = "OMNIGENT_CODEX_PATH"
 
@@ -602,33 +584,6 @@ async def _codex_cli_version(codex_path: str) -> tuple[int, int, int] | None:
     if match is None:
         return None
     return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
-
-
-_BROKERED_CODEX_VERSION = Version("0.146.0")
-
-
-async def _require_brokered_codex_version(codex_path: str) -> None:
-    """Fail closed unless Codex uses the wire version tested for brokered auth."""
-    raw = await _codex_cli_version_text(codex_path)
-    try:
-        version = Version(raw) if raw is not None else None
-    except InvalidVersion:
-        version = None
-    if version != _BROKERED_CODEX_VERSION:
-        shown = raw or "unparseable"
-        raise RuntimeError(
-            "unsupported Codex wire version "
-            f"{shown}; brokered authentication requires exactly 0.146.0"
-        )
-
-
-def _codex_binary_identity(codex_path: str) -> tuple[int, int, int, int] | None:
-    """Return metadata that changes on normal executable replacement/update."""
-    try:
-        current = Path(codex_path).stat()
-    except OSError:
-        return None
-    return (current.st_dev, current.st_ino, current.st_size, current.st_mtime_ns)
 
 
 _ProcessPath: TypeAlias = str | bytes | os.PathLike[str] | os.PathLike[bytes]
@@ -1060,11 +1015,8 @@ def _populate_codex_home_config(
     source_dir: Path,
     *,
     minimal_config: bool | None = None,
-    inject_hooks: bool = False,
     extend_model_catalog: bool = False,
     supported_efforts: frozenset[str] = CODEX_EFFORTS,
-    include_credentials: bool = True,
-    required_brokered_probe: tuple[str, Path, OSEnvSpec] | None = None,
 ) -> None:
     """
     Bridge user config files from the real ``CODEX_HOME`` into the temp one.
@@ -1101,37 +1053,11 @@ def _populate_codex_home_config(
         skipped.
     :param minimal_config: Copy only auth and provider-routing config when
         ``True``. ``None`` preserves the environment-controlled behavior.
-    :param inject_hooks: Skip the ``hooks.json`` symlink because the caller
-        generates a merged regular file (user hooks + Omnigent hooks) at that
-        path instead — see :func:`write_codex_hooks_file`. Left ``False`` when
-        no hooks are injected, so the user's file stays symlinked and a
-        mid-session edit to it still takes effect.
     :param extend_model_catalog: Replace codex's bundled model catalog with
         its own catalog plus the gateway-only arms. Costs a ``codex debug
         models`` probe, so it is reserved for Smart Routing sessions whose
         turns/spawns can land on such an arm.
-    :param include_credentials: Bridge host credential stores. Signer-backed
-        workers set this to ``False`` because authentication stays exclusively
-        in the trusted signer process.
-    :param required_brokered_probe: Codex path, working directory, and active
-        sandbox used to write a network-denied bundled catalog.
     """
-    if required_brokered_probe is not None:
-        codex_path, cwd, os_env = required_brokered_probe
-        probe = prepare_codex_catalog_probe(
-            codex_path=codex_path,
-            cwd=cwd,
-            codex_home=target_dir,
-            os_env=os_env,
-            spawn_env_names=["PATH", "LANG", "LC_ALL", "TZ", "HOME", "CODEX_HOME"],
-        )
-        try:
-            write_required_brokered_model_catalog(
-                target_dir,
-                codex_path=probe.launch_path,
-            )
-        finally:
-            probe.close()
     if not source_dir.is_dir():
         return
 
@@ -1142,18 +1068,8 @@ def _populate_codex_home_config(
             "yes",
         }
     symlink_files: tuple[str, ...] = _CODEX_HOME_SYMLINK_FILES
-    if not include_credentials:
-        symlink_files = tuple(
-            name
-            for name in symlink_files
-            if name not in {"auth.json", ".credentials.json", "memories_1.sqlite"}
-        )
     if not minimal_config:
         symlink_files += _CODEX_HOME_GLOBAL_INSTRUCTION_FILES
-    if inject_hooks:
-        # The generated hooks file owns this path — a symlink to the user's
-        # home would either shadow it or (worse) be written through.
-        symlink_files = tuple(name for name in symlink_files if name != _CODEX_HOOKS_FILENAME)
     for filename in symlink_files:
         source_file = source_dir / filename
         if not source_file.is_file():
@@ -1195,11 +1111,6 @@ def _populate_codex_home_config(
                 )
 
     for filename in _CODEX_HOME_COPY_FILES:
-        if not include_credentials and filename == "config.toml":
-            # A host config may contain static provider credentials or auth
-            # commands. Signer-backed sessions rebuild their selected provider
-            # below from trusted generated overrides instead of copying it.
-            continue
         source_file = source_dir / filename
         if not source_file.is_file():
             continue
@@ -1318,156 +1229,16 @@ def materialize_codex_provider_config(
     return argv_overrides
 
 
-# Bridge directory holding the ``subagent_router.json`` advertisement. Its
-# presence in the codex process env is what turns generated routing hooks on:
-# without an endpoint to ask there is nothing to enforce, so the user's
-# ``hooks.json`` keeps being symlinked untouched.
-CODEX_ROUTER_DIR_ENV_VAR = "OMNIGENT_CODEX_SUBAGENT_ROUTER_DIR"
-# Session the spawns belong to, baked into the generated hook commands.
-CODEX_ROUTER_SESSION_ID_ENV_VAR = "OMNIGENT_CODEX_SUBAGENT_ROUTER_SESSION_ID"
-_CODEX_ROUTER_HOOK_MODULE = "omnigent.inner.hook_scripts.codex_router_hook"
-# Codex flattens the spawn tool name (``collaborationspawn_agent`` on
-# 0.145.x), so the matcher is a regex suffix and never a bare literal.
-_CODEX_SPAWN_AGENT_MATCHER = r".*spawn_agent"
-# Kept just above the hook's own request budget so codex's kill is the
-# outermost bound: the hook fails open on its timeout, codex only steps in
-# if the hook itself wedged.
-_CODEX_ROUTER_HOOK_TIMEOUT_SECONDS = int(_ROUTER_REQUEST_TIMEOUT_S + _ROUTER_HOOK_HEADROOM_S)
-# Codex release the ``PreToolUse`` spawn gate is verified against. Older CLIs
-# spell the flattened spawn tool name differently (or lack ``PreToolUse``
-# entirely), so the matcher above never fires and routing silently no-ops.
-# Checked here, at the registration site, rather than as a launch floor: an
-# older codex must still launch, just without the spawn gate.
-_CODEX_ROUTING_HOOK_MIN_VERSION = (0, 145, 0)
-
-
-def codex_routing_hook_skip_reason(codex_cli_version: tuple[int, int, int] | None) -> str | None:
-    """
-    Explain why the routing spawn gate cannot be registered, if it cannot.
-
-    An unparseable version (``None``) counts as supported, matching the
-    policy-hook gate: a flaky ``codex --version`` probe must not silently
-    drop routing when the CLI is probably new enough.
-
-    :param codex_cli_version: Parsed ``codex --version``, e.g. ``(0, 139, 0)``.
-    :returns: A log-ready reason, or ``None`` when the hook may be registered.
-    """
-    if codex_cli_version is None or codex_cli_version >= _CODEX_ROUTING_HOOK_MIN_VERSION:
-        return None
-    spelled = ".".join(str(part) for part in codex_cli_version)
-    minimum = ".".join(str(part) for part in _CODEX_ROUTING_HOOK_MIN_VERSION)
-    return (
-        f"codex {spelled} predates PreToolUse hooks (need >= {minimum}); "
-        "smart routing spawn gate disabled"
-    )
-
-
-def _codex_router_hook_command(
-    subcommand: str,
-    bridge_dir: Path,
-    *,
-    session_id: str | None,
-    python_executable: str | None,
-    extra_args: Iterable[str] = (),
-) -> str:
-    """
-    Build the shell command codex runs for one routing hook event.
-
-    Runs python in isolated mode (``-I``). Codex executes hooks with the
-    session's workspace as cwd, and ``-m`` would otherwise put that
-    workspace first on ``sys.path``: a workspace containing a directory
-    named ``omnigent`` (any checkout of this project) shadows the installed
-    package, the hook dies on ``ModuleNotFoundError``, and codex discards
-    the failure — the routing gate silently fails open.
-
-    :param subcommand: Hook-script subcommand, e.g. ``"route-subagent"``.
-    :param bridge_dir: Session bridge directory holding the router
-        advertisement.
-    :param session_id: Omnigent session id, or ``None`` when the
-        advertisement is expected to carry it.
-    :param python_executable: Python to run; ``None`` uses
-        :data:`sys.executable`.
-    :param extra_args: Extra flags, e.g. ``("--harness", "codex-native")``.
-    :returns: A shell-escaped command string.
-    """
-    argv = [
-        python_executable or sys.executable,
-        "-I",
-        "-m",
-        _CODEX_ROUTER_HOOK_MODULE,
-        subcommand,
-        "--bridge-dir",
-        str(bridge_dir),
-    ]
-    if session_id:
-        argv.extend(["--session-id", session_id])
-    argv.extend(extra_args)
-    return shlex.join(argv)
-
-
-def codex_router_hooks_settings(
-    bridge_dir: Path,
-    *,
-    session_id: str | None = None,
-    harness: str = "codex",
-    python_executable: str | None = None,
-) -> dict[str, Any]:
-    """
-    Build the Omnigent half of a routing ``hooks.json`` payload.
-
-    One event: a ``PreToolUse`` gate on the spawn tool (matched by regex
-    because codex flattens the name) that asks the runner which model the
-    spawn may use and rewrites / denies accordingly.
-
-    :param bridge_dir: Session bridge directory.
-    :param session_id: Omnigent session id baked into the commands.
-    :param harness: Harness label sent to the endpoint, e.g. ``"codex"``.
-    :param python_executable: Python for the hook commands.
-    :returns: A ``hooks.json``-shaped dict.
-    """
-
-    def hook(subcommand: str, timeout: int, extra_args: Iterable[str] = ()) -> dict[str, Any]:
-        return {
-            "type": "command",
-            "command": _codex_router_hook_command(
-                subcommand,
-                bridge_dir,
-                session_id=session_id,
-                python_executable=python_executable,
-                extra_args=extra_args,
-            ),
-            "timeout": timeout,
-        }
-
-    return {
-        "hooks": {
-            "PreToolUse": [
-                {
-                    "matcher": _CODEX_SPAWN_AGENT_MATCHER,
-                    "hooks": [
-                        hook(
-                            "route-subagent",
-                            _CODEX_ROUTER_HOOK_TIMEOUT_SECONDS,
-                            ("--harness", harness),
-                        )
-                    ],
-                }
-            ],
-        }
-    }
-
-
 def merge_codex_user_hooks(payload: dict[str, Any], user_hooks_path: Path) -> dict[str, Any]:
     """
     Merge the user's ``hooks.json`` entries into a generated payload.
 
-    Omnigent's entries stay in first position per event so the routing
-    gate runs before user hooks; events the user declares alone are added
-    wholesale. A missing or malformed user file leaves *payload*
-    unchanged — routing must not break because the user's hooks file is
-    bad.
+    Omnigent's entries stay in first position per event so its gates run
+    before user hooks; events the user declares alone are added wholesale.
+    A missing or malformed user file leaves *payload* unchanged — Omnigent
+    hooks must not break because the user's hooks file is bad.
 
-    :param payload: Payload from :func:`codex_router_hooks_settings`.
+    :param payload: Merged Omnigent ``hooks.json`` payload.
     :param user_hooks_path: The user's real ``hooks.json``.
     :returns: The merged payload.
     """
@@ -1547,67 +1318,6 @@ def write_codex_hooks_file(
     return path
 
 
-def write_codex_router_hooks_file(
-    codex_home: Path,
-    bridge_dir: Path,
-    *,
-    session_id: str | None = None,
-    harness: str = "codex",
-    python_executable: str | None = None,
-    user_hooks_source: Path | None = None,
-) -> Path:
-    """
-    Write a ``hooks.json`` holding only the routing hooks (plus user hooks).
-
-    Used by harnesses that register no other hooks; the native app-server
-    merges the routing payload with its policy hooks instead.
-
-    :param codex_home: Private per-session ``CODEX_HOME``.
-    :param bridge_dir: Session bridge directory.
-    :param session_id: Omnigent session id baked into the hook commands.
-    :param harness: Harness label sent to the endpoint.
-    :param python_executable: Python for the hook commands.
-    :param user_hooks_source: The user's real ``hooks.json`` to merge.
-    :returns: Path of the written file.
-    """
-    return write_codex_hooks_file(
-        codex_home,
-        [
-            codex_router_hooks_settings(
-                bridge_dir,
-                session_id=session_id,
-                harness=harness,
-                python_executable=python_executable,
-            )
-        ],
-        user_hooks_source=user_hooks_source,
-    )
-
-
-def codex_router_bridge_dir(env: Mapping[str, str] | None = None) -> Path | None:
-    """
-    Read the routing bridge directory from a process environment.
-
-    :param env: Environment to read; ``None`` uses :data:`os.environ`.
-    :returns: Bridge directory, or ``None`` when routing is off for this
-        session (no endpoint advertised, so nothing to enforce).
-    """
-    source = os.environ if env is None else env
-    raw = (source.get(CODEX_ROUTER_DIR_ENV_VAR) or "").strip()
-    return Path(raw) if raw else None
-
-
-def codex_router_session_id(env: Mapping[str, str] | None = None) -> str | None:
-    """
-    Read the routing session id from a process environment.
-
-    :param env: Environment to read; ``None`` uses :data:`os.environ`.
-    :returns: Session id, or ``None`` when unset.
-    """
-    source = os.environ if env is None else env
-    return (source.get(CODEX_ROUTER_SESSION_ID_ENV_VAR) or "").strip() or None
-
-
 # Set for a session whose turns or spawns can land on a gateway arm codex's
 # bundled catalog has no entry for, i.e. any Smart Routing session. Carried in
 # the process env (not a launch argument) so the wrapped executor and the native
@@ -1638,23 +1348,16 @@ def codex_extended_catalog_requested(env: Mapping[str, str] | None = None) -> bo
     return (source.get(CODEX_EXTENDED_CATALOG_ENV_VAR) or "").strip() == "1"
 
 
-#: Omnigent's own per-session signals for a codex launch: the subagent-router
-#: rendezvous, its session id, and the extended-catalog request. The runner sets
-#: them in the harness process env, and the executor reads them back out of
-#: ``_clean_codex_env``'s filtered copy — so they must be allowed through it or
-#: both features silently never engage on the wrapped ``codex`` harness.
-_CODEX_OMNIGENT_LAUNCH_ENV_VARS: tuple[str, ...] = (
-    CODEX_ROUTER_DIR_ENV_VAR,
-    CODEX_ROUTER_SESSION_ID_ENV_VAR,
-    CODEX_EXTENDED_CATALOG_ENV_VAR,
-)
+#: Omnigent's own per-session signal for a codex launch: the extended-catalog
+#: request. The runner sets it in the harness process env, and the executor
+#: reads it back out of ``_clean_codex_env``'s filtered copy — so it must be
+#: allowed through it or the feature silently never engages.
+_CODEX_OMNIGENT_LAUNCH_ENV_VARS: tuple[str, ...] = (CODEX_EXTENDED_CATALOG_ENV_VAR,)
 
 
 # Catalog file written into the private codex-home, naming the models the
 # session's ``spawn_agent`` may target. See :func:`extended_model_catalog`.
 _CODEX_MODEL_CATALOG_FILENAME = "model_catalog.json"
-_BROKERED_MODEL_CATALOG_MAX_BYTES = 4 * 1024 * 1024
-_BROKERED_MODEL_SLUG_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}\Z")
 # Entry a gateway-only model is cloned from: the cheapest current arm, so an
 # unset field inherits a sane current-generation value rather than a frozen one.
 _CATALOG_CLONE_SOURCE_SLUG = CODEX_CATALOG_CLONE_SOURCE_SLUG
@@ -1786,15 +1489,6 @@ def _valid_model_catalog(catalog: object) -> bool:
         if not isinstance(slug, str) or not slug.strip():
             return False
     return True
-
-
-def _valid_brokered_model_catalog(catalog: object) -> bool:
-    if not _valid_model_catalog(catalog):
-        return False
-    assert isinstance(catalog, dict)
-    models = catalog["models"]
-    assert isinstance(models, list)
-    return all(_BROKERED_MODEL_SLUG_RE.fullmatch(entry["slug"]) is not None for entry in models)
 
 
 def read_codex_model_catalog(
@@ -1949,67 +1643,6 @@ def set_codex_model_catalog_path(config_path: Path, catalog_path: Path) -> bool:
         with suppress(FileNotFoundError):
             os.unlink(tmp_name)
     return True
-
-
-def write_required_brokered_model_catalog(
-    target_dir: Path,
-    *,
-    codex_path: str,
-    timeout: float = 10.0,
-) -> Path:
-    """Write the bundled Codex catalog required by a brokered session."""
-    env = {
-        name: value
-        for name in ("PATH", "LANG", "LC_ALL", "TZ")
-        if (value := os.environ.get(name)) is not None
-    }
-    env.setdefault("PATH", os.defpath)
-    env["HOME"] = str(target_dir)
-    env["CODEX_HOME"] = str(target_dir)
-    try:
-        completed = subprocess.run(
-            [codex_path, "debug", "models", "--bundled"],
-            capture_output=True,
-            timeout=timeout,
-            env=env,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        raise RuntimeError("signer-backed Codex requires a valid bundled model catalog") from exc
-    if completed.returncode != 0 or len(completed.stdout) > _BROKERED_MODEL_CATALOG_MAX_BYTES:
-        raise RuntimeError("signer-backed Codex requires a valid bundled model catalog")
-    try:
-        catalog = json.loads(completed.stdout)
-    except (UnicodeDecodeError, ValueError) as exc:
-        raise RuntimeError("signer-backed Codex requires a valid bundled model catalog") from exc
-    if not _valid_brokered_model_catalog(catalog):
-        raise RuntimeError("signer-backed Codex requires a valid bundled model catalog")
-
-    target_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-    os.chmod(target_dir, 0o700)
-    catalog_path = target_dir / _CODEX_MODEL_CATALOG_FILENAME
-    fd, tmp_name = tempfile.mkstemp(
-        prefix=f"{_CODEX_MODEL_CATALOG_FILENAME}.",
-        dir=str(target_dir),
-    )
-    try:
-        os.chmod(tmp_name, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(catalog, handle, separators=(",", ":"))
-        os.replace(tmp_name, catalog_path)
-        os.chmod(catalog_path, 0o600)
-    except OSError as exc:
-        with suppress(OSError):
-            catalog_path.unlink()
-        raise RuntimeError("signer-backed Codex requires a valid bundled model catalog") from exc
-    finally:
-        with suppress(FileNotFoundError):
-            os.unlink(tmp_name)
-    if not set_codex_model_catalog_path(target_dir / "config.toml", catalog_path):
-        with suppress(OSError):
-            catalog_path.unlink()
-        raise RuntimeError("signer-backed Codex requires a valid bundled model catalog")
-    return catalog_path
 
 
 # Top-level ``model_reasoning_effort = "<value>"`` assignment, tolerating
@@ -2208,28 +1841,6 @@ def _provider_codex_config_overrides(
         f'wire_api="{effective_wire_api}"}}'
     )
     return overrides
-
-
-def _brokered_codex_config_overrides(
-    *,
-    model: str,
-    base_url: str,
-) -> list[str]:
-    """Pin Codex to the signer relay placeholder without a host auth command."""
-    provider_name = _BROKERED_CODEX_PROVIDER_NAME
-    return [
-        f"model={json.dumps(model)}",
-        f'model_provider="{provider_name}"',
-        "model_supports_reasoning_summaries=true",
-        (
-            f"model_providers.{provider_name}="
-            '{name="Omnigent Brokered",'
-            f"base_url={json.dumps(base_url)},"
-            'env_key="OPENAI_API_KEY",'
-            'wire_api="responses"}'
-        ),
-        'web_search="disabled"',
-    ]
 
 
 def _parse_optional_int(value: str | None) -> int | None:
@@ -2700,9 +2311,6 @@ class _CodexAppServerSession:
         skills_filter: str | list[str] = "all",
         skills_dir: Path | None = None,
         os_env: OSEnvSpec | None = None,
-        signer_factory: Callable[[], ModelSignerSession] | None = None,
-        provider_auth_authority: tuple[str, str] | None = None,
-        thread_model_provider: str | None = None,
     ) -> None:
         self._codex_path = codex_path
         self._cwd = cwd
@@ -2716,13 +2324,6 @@ class _CodexAppServerSession:
         self._skills_dir = skills_dir
         self._owned_skills_dir: tempfile.TemporaryDirectory[str] | None = None
         self._os_env_spec = os_env
-        self._signer_factory = signer_factory
-        self._provider_auth_authority = provider_auth_authority
-        self._thread_model_provider = thread_model_provider
-        self._signer: ModelSignerSession | None = None
-        self._signer_readiness: SignerReadiness | None = None
-        self._signer_watch_task: asyncio.Task[None] | None = None
-        self._signer_exited = False
         self._closing = False
         self._cleaned = True
         self._cleanup_task: asyncio.Task[None] | None = None
@@ -2787,7 +2388,7 @@ class _CodexAppServerSession:
         self._supports_direct_tool_namespaces = False
 
     async def start(self) -> None:
-        """Start signer and worker transactionally."""
+        """Start the worker transactionally."""
         try:
             await self._start_unchecked()
         except BaseException:
@@ -2808,29 +2409,7 @@ class _CodexAppServerSession:
         self._events = asyncio.Queue()
         self._cleaned = False
         self._loop = asyncio.get_running_loop()
-        if self._signer_factory is not None:
-            signer = self._signer_factory()
-            self._signer = signer
-            try:
-                self._signer_readiness = await signer.start()
-            except BaseException:
-                with suppress(Exception):
-                    await signer.close()
-                self._signer = None
-                self._signer_readiness = None
-                raise
-            self._signer_exited = False
-            self._signer_watch_task = asyncio.create_task(self._watch_signer())
         codex_home_root = Path(tempfile.gettempdir())
-        if self._signer is not None:
-            root_stat = codex_home_root.lstat()
-            unsafe_writable = bool(root_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH))
-            if (
-                not stat.S_ISDIR(root_stat.st_mode)
-                or codex_home_root.is_symlink()
-                or (unsafe_writable and not root_stat.st_mode & stat.S_ISVTX)
-            ):
-                raise OSError("unsafe signer session temp root")
         # Stage outside the workspace, falling back to a private temp home
         # when the shared staging root is unavailable.
         with suppress(OSError):
@@ -2843,7 +2422,7 @@ class _CodexAppServerSession:
         os.chmod(self._codex_home_dir, 0o700)
         home_stat = self._codex_home_dir.lstat()
         if not stat.S_ISDIR(home_stat.st_mode) or stat.S_IMODE(home_stat.st_mode) != 0o700:
-            raise OSError("unsafe signer CODEX_HOME")
+            raise OSError("unsafe Codex CODEX_HOME")
         # The runner grants only this session's skills directory to its tools.
         # Keep its inode stable so cached sandbox mounts survive worker restarts.
         if self._skills_dir is None:
@@ -2874,73 +2453,24 @@ class _CodexAppServerSession:
         # created temp dir has neither, causing 401 Unauthorized errors
         # for subscription-authenticated users.
         config_source = _codex_home_config_source_from_env()
-        # When the runner advertises a subagent-routing endpoint, the user's
-        # hooks.json is merged into a generated file registering the routing
-        # hooks instead of being symlinked in untouched. Only an auto-harness
-        # Smart Routing session gets that endpoint, so a plain or pinned session
-        # keeps the symlink — and with it mid-session edits to the user's file.
-        router_bridge_dir = codex_router_bridge_dir(self._env)
-        if router_bridge_dir is not None:
-            # Probed only on the routing path so a plain session never pays the
-            # subprocess. A CLI too old for the spawn gate drops the hooks and
-            # keeps the symlinked home, so routing no-ops instead of blocking.
-            skip_reason = codex_routing_hook_skip_reason(
-                await _codex_cli_version(self._codex_path)
-            )
-            if skip_reason is not None:
-                logger.warning("%s", skip_reason)
-                router_bridge_dir = None
-        # Off the loop: this copies/symlinks a home AND (on the routing path)
-        # shells out to ``codex debug models`` with a 10s timeout. Run inline it
+        # Off the loop: this copies/symlinks a home AND (on a Smart Routing
+        # session) shells out to ``codex debug models`` with a 10s timeout. Run inline it
         # stalled every other session sharing this event loop for that long.
         await asyncio.to_thread(
             _populate_codex_home_config,
             self._codex_home_dir,
             config_source,
-            minimal_config=True if self._signer is not None else None,
-            inject_hooks=router_bridge_dir is not None,
             extend_model_catalog=codex_extended_catalog_requested(self._env),
-            include_credentials=self._signer is None,
-            required_brokered_probe=(
-                (
-                    self._codex_path,
-                    Path(self._cwd or os.getcwd()).resolve(strict=False),
-                    self._os_env_spec,
-                )
-                if self._signer is not None and self._os_env_spec is not None
-                else None
-            ),
         )
         self._codex_config_overrides = materialize_codex_provider_config(
             self._codex_home_dir,
             self._codex_config_overrides,
             retry_policy=self._retry_policy,
         )
-        if self._signer is not None:
-            self._codex_config_overrides.extend(
-                [
-                    f"sqlite_home={json.dumps(str(self._codex_home_dir))}",
-                    "features.memories=false",
-                ]
-            )
-        if router_bridge_dir is not None:
-            write_codex_router_hooks_file(
-                self._codex_home_dir,
-                router_bridge_dir,
-                session_id=codex_router_session_id(self._env),
-                user_hooks_source=config_source / _CODEX_HOOKS_FILENAME,
-            )
         # Override CODEX_HOME so Codex stores its data (including conversation
         # history) in a private temp directory rather than the user's ~/.codex/.
         # This prevents subagent sessions from polluting the user's Codex history.
         proc_env = {**self._env, "CODEX_HOME": str(self._codex_home_dir)}
-        if self._signer is not None:
-            # Newer Codex builds keep some SQLite stores relative to HOME even
-            # when CODEX_HOME is set. Keep those stores inside the same private,
-            # sandbox-writable session directory and away from host ~/.codex.
-            proc_env["HOME"] = str(self._codex_home_dir)
-            proc_env["CFFIXED_USER_HOME"] = str(self._codex_home_dir)
-            proc_env["CODEX_SQLITE_HOME"] = str(self._codex_home_dir)
         try:
             process_cwd = Path(self._cwd or os.getcwd()).resolve(strict=False)
             # Active egress rules start a parent-side proxy and wait for its
@@ -2955,7 +2485,6 @@ class _CodexAppServerSession:
                     skills_dir=self._skills_dir,
                     os_env=self._os_env_spec,
                     spawn_env_names=list(proc_env),
-                    signer_readiness=self._signer_readiness,
                     worker_env=proc_env,
                 )
             )
@@ -2973,7 +2502,6 @@ class _CodexAppServerSession:
             spawn_argv = argv
             pass_fds: tuple[int, ...] = ()
             liveness_read_fd: int | None = None
-            await self._require_live_signer()
             if self._worker_launch.sandboxed and os.name == "posix":
                 liveness_read_fd, self._worker_liveness_fd = os.pipe()
                 os.set_inheritable(liveness_read_fd, True)
@@ -3007,7 +2535,6 @@ class _CodexAppServerSession:
                 _proc.refresh_process_tree(self._proc)
                 if self._closing:
                     raise RuntimeError("Codex session closed during worker spawn")
-                await self._require_live_signer()
             finally:
                 if liveness_read_fd is not None:
                     os.close(liveness_read_fd)
@@ -3037,20 +2564,6 @@ class _CodexAppServerSession:
             ) >= (0, 142, 0)
             self._containment_confirmed = self._worker_launch.sandboxed
             self._started = True
-            if router_bridge_dir is not None:
-                # App-server threads run persisted-trusted hooks only, so the
-                # routing hooks need the trust handshake to be enforced.
-                # Imported here: the app-server module imports this one.
-                from omnigent.harnesses.codex_native.app_server import trust_codex_router_hooks
-
-                try:
-                    await trust_codex_router_hooks(self._request, cwd=self._cwd or os.getcwd())
-                except Exception:  # noqa: BLE001 - never block session startup
-                    logger.warning(
-                        "codex subagent-routing hook trust failed; "
-                        "routing will not be enforced for this session",
-                        exc_info=True,
-                    )
         except BaseException:
             await self.close()
             raise
@@ -3073,7 +2586,7 @@ class _CodexAppServerSession:
                 break
             except asyncio.CancelledError:
                 # Mandatory cleanup owns bounded awaits. Preserve cancellation,
-                # but only deliver it after the worker and signer are contained.
+                # but only deliver it after the worker is contained.
                 cancelled = True
                 if task.done():
                     break
@@ -3096,7 +2609,6 @@ class _CodexAppServerSession:
         proc = self._proc
         worker_reaped = proc is None
         readers_done = True
-        signer_close_task = asyncio.create_task(self._close_signer())
         try:
             # Closing this descriptor first also activates the independent
             # parent-death wrapper while direct process teardown proceeds.
@@ -3148,7 +2660,7 @@ class _CodexAppServerSession:
                         terminate_tree=_terminate_process_tree,
                         kill_tree=_kill_process_tree,
                     )
-                except Exception:  # noqa: BLE001 - cleanup must continue
+                except Exception:
                     logger.warning("Codex worker cleanup failed", exc_info=True)
                     reaped = False
                 if not reaped:
@@ -3190,16 +2702,6 @@ class _CodexAppServerSession:
             if proc is not None:
                 close_subprocess_transport(proc)
 
-            # Signer invalidation runs concurrently with worker teardown so a
-            # slow graceful signer shutdown cannot delay worker containment.
-            with suppress(Exception):
-                await asyncio.wait_for(
-                    asyncio.shield(signer_close_task),
-                    timeout=_SIGNER_CLOSE_TIMEOUT_SECONDS,
-                )
-            if not signer_close_task.done() or self._signer is not None:
-                cleanup_complete = False
-
             launch = self._worker_launch
             self._containment_confirmed = False
             if launch is not None:
@@ -3215,7 +2717,7 @@ class _CodexAppServerSession:
                     self._worker_launch_close_task = None
                     try:
                         launch_close_task.result()
-                    except Exception:  # noqa: BLE001 - cleanup must continue
+                    except Exception:
                         logger.warning("Codex worker launch cleanup failed", exc_info=True)
                         cleanup_complete = False
                     else:
@@ -3223,11 +2725,6 @@ class _CodexAppServerSession:
                 else:
                     cleanup_complete = False
         finally:
-            if not signer_close_task.done():
-                signer_close_task.cancel()
-                done, _pending = await asyncio.wait({signer_close_task}, timeout=1)
-                if not done:
-                    cleanup_complete = False
             if proc is not None:
                 _kill_process_tree(proc)
                 close_subprocess_transport(proc)
@@ -3261,20 +2758,13 @@ class _CodexAppServerSession:
             _terminate_process_tree(proc)
             _kill_process_tree(proc)
             close_subprocess_transport(proc)
-        signer = self._signer
-        signer_proc = getattr(signer, "_proc", None)
-        if signer_proc is not None:
-            _kill_process_tree(signer_proc)
-            close_subprocess_transport(signer_proc)
         owner_loop = self._loop
-        tasks = [self._signer_watch_task, self._worker_census_task]
-        self._signer_watch_task = None
-        for task in tasks:
-            if task is not None:
-                if owner_loop is not None and owner_loop.is_running():
-                    owner_loop.call_soon_threadsafe(task.cancel)
-                else:
-                    task.cancel()
+        census_task = self._worker_census_task
+        if census_task is not None:
+            if owner_loop is not None and owner_loop.is_running():
+                owner_loop.call_soon_threadsafe(census_task.cancel)
+            else:
+                census_task.cancel()
         for future in self._pending_requests.values():
             if not future.done():
                 future.cancel()
@@ -3296,15 +2786,13 @@ class _CodexAppServerSession:
         )
         # Signals and transport closure are the only safe operations after an
         # event-loop handoff. Do not claim that wait/reap completed.
-        self._cleaned = proc is None and signer is None and not async_work_pending
+        self._cleaned = proc is None and not async_work_pending
         self._closing = not self._cleaned
         if self._cleaned:
             self._reader_task = None
             self._stderr_task = None
             self._worker_census_task = None
             self._loop = None
-            self._signer_readiness = None
-            self._signer_exited = False
 
     async def _refresh_worker_census(self) -> None:
         """Continuously pin descendants so a crashed wrapper cannot orphan them."""
@@ -3314,58 +2802,6 @@ class _CodexAppServerSession:
         while self._proc is proc and proc.returncode is None:
             _proc.refresh_process_tree(proc)
             await asyncio.sleep(0.1)
-
-    async def _watch_signer(self) -> None:
-        signer = self._signer
-        if signer is None:
-            return
-        try:
-            await signer.wait()
-        except asyncio.CancelledError:
-            raise
-        except Exception:  # noqa: BLE001 - any signer failure invalidates the worker
-            logger.debug("model signer watcher failed", exc_info=True)
-        self._signer_exited = True
-        if not self._closing and self._proc is not None:
-            # Single-owner cleanup: do not race close() with a second
-            # terminate/wait/kill sequence over mutable self._proc.
-            self._closing = True
-            task = self._cleanup_task
-            if task is None or task.done():
-                task = asyncio.create_task(self._close_same_loop())
-                self._cleanup_task = task
-            await asyncio.shield(task)
-
-    async def _require_live_signer(self) -> None:
-        """Fail startup if the signer exited before or during worker spawn."""
-        if self._signer is None:
-            return
-        # Give a signer wait task whose process has already exited a chance to
-        # publish that state before crossing the worker-spawn boundary.
-        await asyncio.sleep(0)
-        task = self._signer_watch_task
-        if self._signer_exited or (task is not None and task.done()):
-            raise SignerStartError("model signer exited during worker startup")
-
-    async def _close_signer(self) -> None:
-        signer = self._signer
-        if signer is not None:
-            try:
-                await signer.close()
-            except asyncio.CancelledError:
-                raise
-            except Exception:  # noqa: BLE001 - cleanup state records failure
-                logger.warning("model signer close failed", exc_info=True)
-            else:
-                if self._signer is signer:
-                    self._signer = None
-        task = self._signer_watch_task
-        self._signer_watch_task = None
-        if task is not None and task is not asyncio.current_task() and not self._signer_exited:
-            task.cancel()
-            await asyncio.wait({task}, timeout=1)
-        self._signer_readiness = None
-        self._signer_exited = False
 
     def _cleanup_worker_launch(self) -> None:
         launch = self._worker_launch
@@ -3531,8 +2967,6 @@ class _CodexAppServerSession:
                 "model": model,
                 "sandbox": sandbox,
             }
-            if self._thread_model_provider is not None:
-                params["modelProvider"] = self._thread_model_provider
             if system_prompt:
                 params["developerInstructions"] = system_prompt
             if tools:
@@ -3776,12 +3210,6 @@ class _CodexAppServerSession:
                         await asyncio.wait_for(self.interrupt_turn(), timeout=0.5)
                     except Exception as exc:  # noqa: BLE001 — interrupt is best-effort
                         logger.debug("Codex auth-failure turn interrupt failed: %s", exc)
-                    if (
-                        fatal_gateway_error.code == 401
-                        and self._provider_auth_authority is not None
-                    ):
-                        host, profile = self._provider_auth_authority
-                        raise ProviderAuthRequired.for_authority(host, profile)
                     yield ExecutorError(
                         message=fatal_gateway_error.detail(model=model), retryable=False
                     )
@@ -4267,9 +3695,6 @@ class _CodexAppServerSession:
         except Exception as exc:  # noqa: BLE001 — reader loop logs and exits on any unexpected error  # pragma: no cover - defensive
             logger.debug("Codex App Server reader loop ended: %s", exc)
             self._note_transport_closed(f"Codex app-server reader failed: {exc}", clean_eof=False)
-        finally:
-            if not self._closing:
-                await self._close_signer()
 
     async def _stderr_loop(self) -> None:
         assert self._proc is not None and self._proc.stderr is not None
@@ -4356,7 +3781,6 @@ def _default_app_session_factory(
     skills_filter: str | list[str],
     skills_dir: Path | None = None,
     os_env: OSEnvSpec | None,
-    signer_launch_config: SignerLaunchConfig | None = None,
 ) -> _CodexAppServerSession:
     return _CodexAppServerSession(
         codex_path=codex_path,
@@ -4370,19 +3794,6 @@ def _default_app_session_factory(
         skills_filter=skills_filter,
         skills_dir=skills_dir,
         os_env=os_env,
-        signer_factory=(
-            (lambda: SubprocessModelSigner(signer_launch_config))
-            if signer_launch_config is not None
-            else None
-        ),
-        provider_auth_authority=(
-            (f"https://{signer_launch_config.routes[0].host}", signer_launch_config.auth_profile)
-            if signer_launch_config is not None and signer_launch_config.auth_profile is not None
-            else None
-        ),
-        thread_model_provider=(
-            _BROKERED_CODEX_PROVIDER_NAME if signer_launch_config is not None else None
-        ),
     )
 
 
@@ -4409,7 +3820,6 @@ class CodexExecutor(Executor):
         agent_name: str | None = None,
         skills_filter: str | list[str] = "all",
         skills_dir: Path | None = None,
-        signer_launch_config: SignerLaunchConfig | None = None,
     ) -> None:
         """Create a CodexExecutor.
 
@@ -4482,9 +3892,6 @@ class CodexExecutor(Executor):
             empty so Codex sees no skills; a list exposes only the
             named skills (looked up across all sources, bundle wins
             on name conflict).
-        :param signer_launch_config: Trusted, non-secret signer authority.
-            When set, the default session factory creates a fresh signer for
-            each session and Codex is pinned to its endpoint and placeholder.
         :param skills_dir: Runtime-owned skills directory granted only to this session.
         """
         self._cwd = cwd
@@ -4505,8 +3912,6 @@ class CodexExecutor(Executor):
         self._agent_name = agent_name
         self._skills_filter = skills_filter
         self._skills_dir = skills_dir
-        self._signer_backed = signer_launch_config is not None
-        self._brokered_version_identity: tuple[int, int, int, int] | None = None
         resolved_codex = codex_path or _find_codex_cli()
         if not resolved_codex:
             raise ImportError(
@@ -4521,38 +3926,6 @@ class CodexExecutor(Executor):
         self._retry_policy = retry_policy if retry_policy is not None else RetryPolicy()
         self._env.update(self._retry_policy.codex_cli.env())
         self._codex_config_overrides: list[str] = []
-        if signer_launch_config is not None:
-            if os_env is None or os_env.sandbox is None or os_env.sandbox.type == "none":
-                raise OSError("signer-backed Codex worker requires an active sandbox")
-            if os_env.sandbox.egress_rules:
-                raise ValueError(
-                    "signer-backed Codex does not support os_env.sandbox.egress_rules; "
-                    "brokered sessions are model-only"
-                )
-            if model is None:
-                raise ValueError("signer-backed Codex requires an explicit model")
-            if (
-                any(
-                    value is not None
-                    for value in (
-                        model_provider_override,
-                        gateway_host,
-                        base_url_override,
-                        gateway_auth_command,
-                    )
-                )
-                or gateway
-            ):
-                raise ValueError(
-                    "signer-backed Codex uses only its trusted endpoint and cannot "
-                    "combine with gateway or provider overrides"
-                )
-            self._codex_config_overrides.extend(
-                _brokered_codex_config_overrides(
-                    model=model,
-                    base_url=signer_launch_config.endpoint,
-                )
-            )
         if model_provider_override is not None and gateway:
             # Both would fight over model_provider in the -c overrides; the
             # AP producer must emit exactly one routing mechanism.
@@ -4648,24 +4021,16 @@ class CodexExecutor(Executor):
                     auth_refresh_interval_ms=self._gateway_auth_refresh_interval_ms,
                 )
             )
-        if not enable_web_search and signer_launch_config is None:
+        if not enable_web_search:
             # Disable Codex's built-in web_search tool so the model can only reach
             # tools exposed by Omnigent as dynamicTools. The top-level web_search
             # key accepts "live", "cached", or "disabled".
             self._codex_config_overrides.append('web_search="disabled"')
         self._tool_executor: CodexToolExecutor | None = None
         self._session_states: dict[str, _CodexSessionState] = {}
-        self._app_session_factory: _AppSessionFactory
-        if app_session_factory is not None:
-            self._app_session_factory = app_session_factory
-        else:
-            self._app_session_factory = cast(
-                _AppSessionFactory,
-                partial(
-                    _default_app_session_factory,
-                    signer_launch_config=signer_launch_config,
-                ),
-            )
+        self._app_session_factory: _AppSessionFactory = (
+            app_session_factory or _default_app_session_factory
+        )
 
     def supports_streaming(self) -> bool:
         return True
@@ -4820,17 +4185,6 @@ class CodexExecutor(Executor):
         config: ExecutorConfig | None = None,
     ) -> AsyncIterator[ExecutorEvent]:
         cfg = config or ExecutorConfig()
-        binary_identity = _codex_binary_identity(self._codex_path)
-        if self._signer_backed and (
-            binary_identity is None or binary_identity != self._brokered_version_identity
-        ):
-            # This probe must precede app-session construction: the latter
-            # creates and preflights the signer before launching the worker.
-            await _require_brokered_codex_version(self._codex_path)
-            validated_identity = _codex_binary_identity(self._codex_path)
-            if binary_identity is not None and validated_identity != binary_identity:
-                raise RuntimeError("Codex executable changed during brokered version validation")
-            self._brokered_version_identity = validated_identity
         session_key = _session_key(messages)
         state = self._session_states.setdefault(session_key, _CodexSessionState())
         # cfg.model (per-request /model override) wins over the spec default.
@@ -4894,7 +4248,7 @@ class CodexExecutor(Executor):
                 reasoning_effort=reasoning_effort,
             ):
                 yield event
-        except (HarnessTransportClosedError, ProviderAuthRequired):
+        except HarnessTransportClosedError:
             raise
         except Exception as exc:  # noqa: BLE001 — executor boundary converts any error into an ExecutorError event
             yield ExecutorError(message=f"Codex executor error: {exc}")

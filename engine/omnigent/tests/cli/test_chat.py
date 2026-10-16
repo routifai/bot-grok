@@ -43,8 +43,6 @@ from omnigent.chat import (
 from omnigent.cli import _build_resume_parts
 from omnigent.inner.databricks_executor import DatabricksCredentials
 from omnigent.models.model_resolver import ModelResolutionError
-from omnigent.spec import load as load_spec
-from omnigent.spec import validate as validate_spec
 
 # ── _is_url ──────────────────────────────────────────
 
@@ -74,35 +72,6 @@ def test_is_url_absolute() -> None:
     assert _is_url("/home/user/my-agent") is False
 
 
-def test_redirect_native_resume_routes_kiro_wrapper(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A kiro-native wrapper session redirects to ``run_kiro_native``."""
-    monkeypatch.setattr(
-        chat_module,
-        "_wrapper_label_for_conversation",
-        lambda *, base_url, conversation_id: "kiro-native-ui",
-    )
-    captured: dict[str, object] = {}
-
-    def _capture(**kwargs: object) -> None:
-        captured.update(kwargs)
-
-    monkeypatch.setattr("omnigent.harnesses.kiro_native.main.run_kiro_native", _capture)
-
-    redirected = chat_module._redirect_native_resume_if_needed(
-        base_url="https://example.com",
-        conversation_id="conv_kiro",
-        auto_open_conversation=True,
-    )
-
-    assert redirected is True
-    assert captured == {
-        "server": "https://example.com",
-        "session_id": "conv_kiro",
-        "extra_args": (),
-        "auto_open_conversation": True,
-    }
-
-
 # ── _extract_agent_name ──────────────────────────────
 
 
@@ -111,7 +80,7 @@ def test_extract_name_from_config(tmp_path: Path) -> None:
     agent_dir = tmp_path / "test-agent"
     agent_dir.mkdir()
     (agent_dir / "config.yaml").write_text(
-        "spec_version: 1\nname: my-cool-agent\nexecutor:\n  config:\n    harness: openai-agents\n"
+        "spec_version: 1\nname: my-cool-agent\nexecutor:\n  config:\n    harness: claude-sdk\n"
     )
     assert _extract_agent_name(agent_dir) == "my-cool-agent"
 
@@ -154,7 +123,7 @@ def _write_archer_config(agent_dir: Path, *, api_key: str) -> None:
         "instructions: hi\n"
         "executor:\n"
         "  config:\n"
-        "    harness: openai-agents\n"
+        "    harness: pi\n"
         "llm:\n"
         "  model: openai/gpt-4o\n"
         "  connection:\n"
@@ -952,7 +921,7 @@ def test_chat_via_daemon_uses_directory_bundle_for_root_config_yaml(
         "executor:\n"
         "  type: omnigent\n"
         "  config:\n"
-        "    harness: codex-native\n"
+        "    harness: pi\n"
     )
     (agent_dir / "skills" / "investigate" / "SKILL.md").write_text(
         "---\nname: investigate\ndescription: investigate things\n---\nBody\n"
@@ -1188,7 +1157,7 @@ def test_chat_via_daemon_hands_daemon_runner_to_chat_with_server(
     """
     agent_yaml = tmp_path / "hello.yaml"
     agent_yaml.write_text(
-        "name: hello\nprompt: Say hi.\nexecutor:\n  model: databricks-gpt-test-model\n"
+        "name: hello\nprompt: Say hi.\nexecutor:\n  model: databricks-claude-test-model\n"
     )
     captured: dict[str, object] = {}
 
@@ -1289,7 +1258,7 @@ def test_one_shot_run_stops_its_session(
     """
     agent_yaml = tmp_path / "hello.yaml"
     agent_yaml.write_text(
-        "name: hello\nprompt: Say hi.\nexecutor:\n  model: databricks-gpt-test-model\n"
+        "name: hello\nprompt: Say hi.\nexecutor:\n  model: databricks-claude-test-model\n"
     )
     stopped: list[dict[str, object]] = []
     _wire_daemon_chat_stubs(monkeypatch)
@@ -1324,7 +1293,7 @@ def test_interactive_run_leaves_its_session_online(
     """
     agent_yaml = tmp_path / "hello.yaml"
     agent_yaml.write_text(
-        "name: hello\nprompt: Say hi.\nexecutor:\n  model: databricks-gpt-test-model\n"
+        "name: hello\nprompt: Say hi.\nexecutor:\n  model: databricks-claude-test-model\n"
     )
     stopped: list[dict[str, object]] = []
     _wire_daemon_chat_stubs(monkeypatch)
@@ -1350,7 +1319,7 @@ def test_one_shot_teardown_failure_does_not_fail_the_run(
     """A stop that the server rejects must not fail an already-finished run."""
     agent_yaml = tmp_path / "hello.yaml"
     agent_yaml.write_text(
-        "name: hello\nprompt: Say hi.\nexecutor:\n  model: databricks-gpt-test-model\n"
+        "name: hello\nprompt: Say hi.\nexecutor:\n  model: databricks-claude-test-model\n"
     )
 
     def _explode(**_kwargs: object) -> None:
@@ -1847,11 +1816,11 @@ def test_apply_overrides_harness_uses_explicit_env_model(
     monkeypatch.setenv("OMNIGENT_MODEL", "from-env")
     raw: dict[str, object] = {"name": "ad_hoc", "prompt": "hi"}
 
-    _apply_overrides_to_raw(raw, ChatOverrides(harness="openai-agents"))
+    _apply_overrides_to_raw(raw, ChatOverrides(harness="pi"))
 
     executor = raw["executor"]
     assert isinstance(executor, dict)
-    assert executor["harness"] == "openai-agents"
+    assert executor["harness"] == "pi"
     assert executor["model"] == "from-env"
 
 
@@ -1937,27 +1906,18 @@ def test_apply_overrides_flat_harness_creates_no_config_for_single_file_yaml() -
     ("alias", "canonical"),
     [
         ("claude", "claude-sdk"),
-        ("openai-agents-sdk", "openai-agents"),
+        ("native-claude", "claude-native"),
         ("pi", "pi"),
     ],
 )
 def test_apply_overrides_canonicalizes_alias_into_spec_version_config(
-    monkeypatch: pytest.MonkeyPatch,
-    alias: str,
-    canonical: str,
+    alias: str, canonical: str
 ) -> None:
     """
     Alias spellings canonicalize before landing in
     ``executor.config.harness``, so the materialized bundle always
     carries the canonical id the runtime registry dispatches on.
-
-    ``openai-agents-sdk`` is the spelling the project docs use for
-    the run examples; without the alias it fails ``--harness``
-    validation outright.
     """
-    # Ambient OpenAI creds would trigger env-auth baking for the
-    # openai-agents case; deterministic tests must not depend on them.
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     raw: dict[str, object] = {
         "spec_version": 1,
         "name": "bundle",
@@ -1983,8 +1943,8 @@ def test_apply_overrides_harness_and_model_together_for_spec_version_bundle() ->
     parser-read locations: nested ``config.harness`` and flat
     ``executor.model``.
 
-    This is the polly-on-GPT invocation shape: ``omnigent run
-    examples/polly --harness openai-agents --model <gpt>``.
+    This is the polly-on-pi invocation shape: ``omnigent run
+    examples/polly --harness pi --model <model>``.
     """
     raw: dict[str, object] = {
         "spec_version": 1,
@@ -2007,7 +1967,7 @@ def test_apply_overrides_harness_only_clears_pinned_model() -> None:
     ``--harness`` alone drops a prior ``executor.model`` pin.
 
     A brain with a Claude-only model pin must not keep that id when swapped
-    to ``pi`` / ``openai-agents``. Pair with ``--model`` to keep a pin.
+    to ``pi``. Pair with ``--model`` to keep a pin.
     """
     raw: dict[str, object] = {
         "spec_version": 1,
@@ -2367,224 +2327,6 @@ def test_materialize_directory_bundle_with_override_keeps_nested_harness_unpinne
         _cleanup_materialized_override_bundle(materialized)
 
 
-@pytest.mark.parametrize("brain_harness", ["pi", "openai-agents"])
-@pytest.mark.parametrize(
-    ("bundle_name", "expected_workers"),
-    [
-        (
-            "polly",
-            {
-                "claude_code": "claude-native",
-                "codex": "codex-native",
-                "opencode": "opencode-native",
-                "cursor": "cursor-native",
-                "hermes": "hermes-native",
-                "pi": "pi",
-                "agy": "antigravity-native",
-            },
-        ),
-        ("debby", {"claude": "claude-sdk", "gpt": "codex"}),
-    ],
-)
-def test_materialize_bundle_overrides_brain_harness(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    bundle_name: str,
-    expected_workers: dict[str, str],
-    brain_harness: str,
-) -> None:
-    """
-    A REAL bundled orchestrator (polly / debby), materialized with
-    ``--harness``, parses to a valid spec whose brain runs the requested
-    harness and whose sub-agents keep their own declared harnesses.
-
-    End-to-end through the production pipeline: ``copytree`` →
-    ``_apply_overrides_to_raw`` → ``yaml.safe_dump`` → ``omnigent.spec.load``
-    → ``validate``. This is the exact path ``omnigent run examples/polly
-    --harness pi`` (or ``examples/debby``) takes before the bundle reaches
-    a server.
-
-    What this proves: (1) the override reaches ``executor.config.harness``
-    where the bundle parser reads it — before the fix it landed on a flat
-    key and the brain silently stayed claude-sdk; (2) the rewritten spec
-    still validates (the harness is in OMNIGENT_HARNESSES); (3) the
-    override never leaks into the sub-agents, which would break
-    cross-vendor orchestration (polly's workers) and debby's claude-vs-gpt
-    debate pairing.
-
-    :param bundle_name: Packaged example bundle under
-        ``omnigent.resources.examples``, e.g. ``"polly"``.
-    :param expected_workers: Sub-agent name → declared harness mapping the
-        override must leave untouched.
-    :param brain_harness: The ``--harness`` value under test, e.g. ``"pi"``.
-    """
-    import importlib.resources
-
-    # Isolate from the developer's omnigent config and ambient creds so
-    # env-auth baking / model fallback can't make the result machine-dependent.
-    monkeypatch.setenv("OMNIGENT_CONFIG_HOME", str(tmp_path / "config"))
-    monkeypatch.setenv("OMNIGENT_DISABLE_KEYRING", "1")
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("OMNIGENT_MODEL", raising=False)
-
-    bundle_dir = Path(
-        str(importlib.resources.files("omnigent.resources.examples").joinpath(bundle_name))
-    )
-
-    materialized = _materialize_override_bundle(bundle_dir, ChatOverrides(harness=brain_harness))
-    try:
-        assert materialized != bundle_dir, (
-            "Expected --harness to force a rewritten bundle copy; got the "
-            "source dir back, meaning the override was dropped entirely."
-        )
-
-        spec = load_spec(materialized)
-        assert spec.executor.config.get("harness") == brain_harness, (
-            f"Parsed brain harness is {spec.executor.config.get('harness')!r}, "
-            f"expected {brain_harness!r}. If this is 'claude-sdk', the "
-            f"override was written to the flat executor.harness key the "
-            f"spec_version parser ignores — the {bundle_name} --harness no-op."
-        )
-        # The bundle stays model-unpinned: the overridden harness resolves
-        # its provider's default model, exactly like claude-sdk does today.
-        assert spec.executor.model is None
-        result = validate_spec(spec)
-        assert result.valid, (
-            f"Materialized {bundle_name} spec failed validation: "
-            f"{[(e.path, e.message) for e in result.errors]}. The override "
-            f"produced a bundle the server would reject at registration."
-        )
-        # Sub-agents keep their own declared harnesses — the brain override
-        # must not cascade into them.
-        worker_harnesses = {
-            sub.name: sub.executor.config.get("harness") for sub in spec.sub_agents
-        }
-        assert worker_harnesses == expected_workers, (
-            f"Sub-agent harnesses changed under a brain-only override: "
-            f"{worker_harnesses}. The override must rewrite only the "
-            f"top-level config.yaml, never agents/<dir>/config.yaml."
-        )
-    finally:
-        _cleanup_materialized_override_bundle(materialized)
-
-
-def test_materialize_override_bundle_bakes_openai_env_auth_for_daemon_runner(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """
-    ``openai-agents`` prompt runs bake ambient OpenAI credentials into the spec.
-
-    The daemon-owned runner intentionally does not inherit
-    ``OPENAI_API_KEY`` / ``OPENAI_BASE_URL``. This test proves the
-    one-shot E2E path gets a self-contained bundle instead of a spec
-    that only works when the runner sees the caller's shell env.
-    """
-    import yaml as _yaml
-
-    monkeypatch.setenv("OMNIGENT_CONFIG_HOME", str(tmp_path / "config"))
-    monkeypatch.setenv("OMNIGENT_DISABLE_KEYRING", "1")
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-env-test")
-    monkeypatch.setenv("OPENAI_BASE_URL", "https://gateway.example.com/openai/v1")
-
-    src = tmp_path / "hello.yaml"
-    src.write_text("name: hello\nprompt: hi\n")
-
-    materialized = _materialize_override_bundle(
-        src,
-        ChatOverrides(harness="openai-agents", model="databricks-gpt-5-4-mini"),
-    )
-
-    try:
-        rewritten = _yaml.safe_load(materialized.read_text())
-        auth = rewritten["executor"]["auth"]
-        assert auth == {
-            "type": "api_key",
-            "api_key": "sk-env-test",
-            "base_url": "https://gateway.example.com/openai/v1",
-        }, (
-            f"Expected daemon-bound openai-agents run to carry explicit api_key auth; "
-            f"got {auth!r}. Without this, the runner starts without provider "
-            f"credentials and the one-shot stdout is empty."
-        )
-    finally:
-        _cleanup_materialized_override_bundle(materialized)
-
-
-def test_materialize_override_bundle_adds_openai_env_auth_for_directory_without_overrides(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """
-    Directory specs also materialize when only OpenAI env auth is missing.
-
-    This covers the non-``--model`` / non-``--harness`` case: a local
-    agent-image directory with ``executor.harness: openai-agents`` still
-    needs a rewritten ``config.yaml`` because the daemon runner cannot
-    read the CLI process's provider-secret env vars.
-    """
-    import yaml as _yaml
-
-    monkeypatch.setenv("OMNIGENT_CONFIG_HOME", str(tmp_path / "config"))
-    monkeypatch.setenv("OMNIGENT_DISABLE_KEYRING", "1")
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-dir-env-test")
-    monkeypatch.setenv("OPENAI_BASE_URL", "https://gateway.example.com/openai/v1")
-
-    agent_dir = tmp_path / "agent"
-    agent_dir.mkdir()
-    (agent_dir / "config.yaml").write_text(
-        "spec_version: 1\n"
-        "name: dir_agent\n"
-        "instructions: hi\n"
-        "executor:\n"
-        "  harness: openai-agents\n"
-        "  model: databricks-gpt-5-4-mini\n"
-    )
-
-    materialized = _materialize_override_bundle(agent_dir, ChatOverrides())
-
-    try:
-        assert materialized != agent_dir, (
-            "Expected directory spec to be copied for auth materialization; "
-            "returning the original directory leaves daemon runners dependent "
-            "on stripped OPENAI_* environment variables."
-        )
-        rewritten = _yaml.safe_load((materialized / "config.yaml").read_text())
-        assert rewritten["executor"]["auth"]["api_key"] == "sk-dir-env-test"
-    finally:
-        _cleanup_materialized_override_bundle(materialized)
-
-
-def test_cleanup_materialized_override_bundle_removes_temp_credentials(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """
-    Cleaning a materialized OpenAI-auth spec removes its temp directory.
-
-    :param monkeypatch: Pytest environment patch helper.
-    :param tmp_path: Temporary source-spec directory.
-    :returns: None.
-    """
-    monkeypatch.setenv("OMNIGENT_CONFIG_HOME", str(tmp_path / "config"))
-    monkeypatch.setenv("OMNIGENT_DISABLE_KEYRING", "1")
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-cleanup-test")
-    src = tmp_path / "hello.yaml"
-    src.write_text("name: hello\nprompt: hi\n")
-
-    materialized = _materialize_override_bundle(
-        src,
-        ChatOverrides(harness="openai-agents", model="databricks-gpt-5-4-mini"),
-    )
-    tempdir = materialized.parent
-    try:
-        assert "sk-cleanup-test" in (tempdir / "hello.yaml").read_text()
-    finally:
-        _cleanup_materialized_override_bundle(materialized)
-
-    assert not tempdir.exists()
-
-
 def test_materialize_override_bundle_cleans_tempdir_when_directory_invalid(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -2618,48 +2360,10 @@ def test_materialize_override_bundle_cleans_tempdir_when_directory_invalid(
     with pytest.raises(click.ClickException, match=r"directory has no config\.yaml"):
         _materialize_override_bundle(
             source,
-            ChatOverrides(harness="openai-agents"),
+            ChatOverrides(harness="pi"),
         )
 
     assert not tempdir.exists()
-
-
-def test_apply_overrides_keeps_explicit_openai_auth(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """
-    Ambient OpenAI env auth never overwrites explicit YAML auth.
-
-    Explicit ``executor.auth`` is the user's declared source of truth.
-    If this test fails, a caller's shell env can silently reroute a spec
-    that intentionally picked a different key or base URL.
-    """
-    monkeypatch.setenv("OMNIGENT_CONFIG_HOME", str(tmp_path / "config"))
-    monkeypatch.setenv("OMNIGENT_DISABLE_KEYRING", "1")
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-env-should-not-win")
-    raw: dict[str, object] = {
-        "name": "x",
-        "prompt": "hi",
-        "executor": {
-            "harness": "openai-agents",
-            "auth": {
-                "type": "api_key",
-                "api_key": "sk-explicit",
-                "base_url": "https://explicit.example.com/v1",
-            },
-        },
-    }
-
-    _apply_overrides_to_raw(raw, ChatOverrides())
-
-    executor = raw["executor"]
-    assert isinstance(executor, dict)
-    assert executor["auth"] == {
-        "type": "api_key",
-        "api_key": "sk-explicit",
-        "base_url": "https://explicit.example.com/v1",
-    }
 
 
 # ── remote auth plumbing ──────────────────────────────────────────────────
@@ -2762,7 +2466,7 @@ def test_remote_headers_keys_by_host_id_on_workspace_mount(
 ) -> None:
     """A host_id rides as the slice-key header on a host-sharded mount.
 
-    The native attach WebSocket handshake (claude / codex / antigravity) and
+    The native attach WebSocket handshake (claude / codex / pi) and
     its reconnects build their headers here, so the host_id must surface as the
     routing header to reach the replica holding the runner's tunnel. It is
     emitted only on a host-sharded mount; no host_id, or an unsharded server,
@@ -3933,7 +3637,7 @@ def _item_error(message: str) -> dict[str, object]:
     Build a persisted terminal ``error`` item (harness start-failure shape).
 
     :param message: The error text, e.g.
-        ``"inner executor error: Failed to start cursor-sdk agent: ..."``.
+        ``"inner executor error: Failed to start claude-sdk agent: ..."``.
     :returns: An item dict matching the flat API shape for an error item.
     """
     return {
@@ -4187,10 +3891,10 @@ async def test_query_sessions_once_surfaces_persisted_error_when_no_text(
     client = _FakeAPClient(
         [
             _item_user("say hi"),
-            _item_error("inner executor error: Failed to start cursor-sdk agent: bad model"),
+            _item_error("inner executor error: Failed to start claude-sdk agent: bad model"),
         ]
     )
-    with pytest.raises(ClientOmnigentError, match="Failed to start cursor-sdk agent"):
+    with pytest.raises(ClientOmnigentError, match="Failed to start claude-sdk agent"):
         await _run_one_shot(client, _return_empty, monkeypatch)
 
 
@@ -4466,86 +4170,29 @@ def test_spec_used_families_pi_brain_agent_contributes_pi_surface(tmp_path) -> N
     assert _spec_used_families(root) == ["openai", "pi"]
 
 
-def test_env_auth_injection_skipped_when_global_auth_configured(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """An ambient OPENAI_API_KEY must not be baked over configured auth.
+def test_redirect_native_resume_handles_claude(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A claude-native resume hands off to the Claude wrapper (direct attach).
 
-    With a global ``auth:`` block (written by ``omnigent setup``), the
-    user's configured Databricks routing is the explicit choice; baking
-    the shell's env key into the materialized spec as ``executor.auth``
-    would silently hijack it — the exact failure mode that produced
-    empty openai-agents replies in the e2e REPL suite.
+    Without the redirect the resume fell through to the Omnigent REPL, which
+    drove an Omnigent turn per message (persisting its own user item) *while*
+    the transcript forwarder mirrored the same message from the native store —
+    recording each user message twice. The redirect keeps the TUI the single
+    source of turns.
     """
-    from omnigent.chat import _inject_openai_env_auth_if_needed
-
-    config_home = tmp_path / "config"
-    config_home.mkdir()
-    (config_home / "config.yaml").write_text(
-        "auth:\n  type: databricks\n  profile: my-ws\n", encoding="utf-8"
-    )
-    monkeypatch.setenv("OMNIGENT_CONFIG_HOME", str(config_home))
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-ambient-shell-key")
-
-    raw: dict[str, object] = {"executor": {"harness": "openai-agents"}}
-    _inject_openai_env_auth_if_needed(raw)
-
-    # No auth baked: the global block remains the routing source and the
-    # runner resolves it via OMNIGENT_CONFIG_HOME. A baked api_key here
-    # means ambient env regained priority over configured credentials.
-    assert "auth" not in raw["executor"]
-
-
-def test_env_auth_injection_applies_when_nothing_configured(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """With NO configured credential, the env key is still baked.
-
-    Daemon-owned runners don't inherit provider secrets, so for users
-    whose only credential is the shell's OPENAI_API_KEY the bake is what
-    keeps ``run --harness openai-agents`` working at all.
-    """
-    from omnigent.chat import _inject_openai_env_auth_if_needed
-
-    config_home = tmp_path / "config-empty"
-    config_home.mkdir()
-    monkeypatch.setenv("OMNIGENT_CONFIG_HOME", str(config_home))
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-ambient-shell-key")
-    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
-
-    raw: dict[str, object] = {"executor": {"harness": "openai-agents"}}
-    _inject_openai_env_auth_if_needed(raw)
-
-    executor = raw["executor"]
-    assert isinstance(executor, dict)
-    # The bake carries the actual key value so the uploaded bundle is
-    # self-contained for the secret-less runner.
-    assert executor["auth"] == {"type": "api_key", "api_key": "sk-ambient-shell-key"}
-
-
-def test_redirect_native_resume_handles_cursor(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A cursor-native resume hands off to ``omnigent cursor`` (direct attach).
-
-    Regression: without a cursor branch in ``_redirect_native_resume_if_needed``
-    the resume fell through to the Omnigent REPL, which drove an Omnigent turn
-    per message (persisting its own user item) *while* the cursor forwarder
-    mirrored the same message from the cursor store — recording each user
-    message twice. The redirect keeps the TUI the single source of turns.
-    """
-    from omnigent._wrapper_labels import CURSOR_NATIVE_WRAPPER_VALUE
+    from omnigent._wrapper_labels import CLAUDE_NATIVE_WRAPPER_VALUE
 
     monkeypatch.setattr(
         chat_module,
         "_wrapper_label_for_conversation",
-        lambda **_kw: CURSOR_NATIVE_WRAPPER_VALUE,
+        lambda **_kw: CLAUDE_NATIVE_WRAPPER_VALUE,
     )
     captured: dict[str, object] = {}
 
-    def _fake_run_cursor_native(**kwargs: object) -> None:
+    def _fake_run_claude_native(**kwargs: object) -> None:
         captured.update(kwargs)
 
     monkeypatch.setattr(
-        "omnigent.harnesses.cursor_native.main.run_cursor_native", _fake_run_cursor_native
+        "omnigent.harnesses.claude_native.main.run_claude_native", _fake_run_claude_native
     )
 
     handled = chat_module._redirect_native_resume_if_needed(
@@ -4560,44 +4207,6 @@ def test_redirect_native_resume_handles_cursor(monkeypatch: pytest.MonkeyPatch) 
         "session_id": "conv_abc123",
         "extra_args": (),
         "auto_open_conversation": True,
-    }
-
-
-def test_redirect_native_resume_covers_every_native_agent(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Every native wrapper redirects — the seam closed the old 6-of-11 gap.
-
-    The hand-written dispatch only covered claude/codex/pi/kiro/cursor/kimi, so a
-    goose/hermes/antigravity/qwen/opencode resume fell through to the Omnigent
-    REPL and double-posted. Routing through the provider seam covers all of them;
-    goose stands in for the formerly-uncovered set here.
-    """
-    from omnigent._wrapper_labels import GOOSE_NATIVE_WRAPPER_VALUE
-
-    monkeypatch.setattr(
-        chat_module,
-        "_wrapper_label_for_conversation",
-        lambda **_kw: GOOSE_NATIVE_WRAPPER_VALUE,
-    )
-    captured: dict[str, object] = {}
-    monkeypatch.setattr(
-        "omnigent.harnesses.goose_native.main.run_goose_native",
-        lambda **kwargs: captured.update(kwargs),
-    )
-
-    handled = chat_module._redirect_native_resume_if_needed(
-        base_url="https://example.com",
-        conversation_id="conv_goose",
-        auto_open_conversation=False,
-    )
-
-    assert handled is True
-    assert captured == {
-        "server": "https://example.com",
-        "session_id": "conv_goose",
-        "extra_args": (),
-        "auto_open_conversation": False,
     }
 
 
@@ -4620,37 +4229,37 @@ def test_redirect_native_resume_ignores_non_native_wrapper(
     assert handled is False
 
 
-def test_cursor_native_resume_never_drives_an_omnigent_turn(
+def test_claude_native_resume_never_drives_an_omnigent_turn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Resuming a cursor-native conversation must not enter the turn-driving REPL.
+    """Resuming a claude-native conversation must not enter the turn-driving REPL.
 
     This is the behavior that makes the user's message appear exactly once. The
     duplicate had two sources: (1) the Omnigent turn the REPL drives, which
-    persists its own user item, and (2) the cursor forwarder mirroring the same
-    message back from the cursor store. ``_chat_with_server`` must short-circuit
+    persists its own user item, and (2) the transcript forwarder mirroring the
+    same message back from the native store. ``_chat_with_server`` must short-circuit
     on the wrapper redirect *before* either ``_run_repl`` or ``_run_one_shot``
     is reached, so source (1) never happens and only the forwarder records the
     turn.
     """
-    from omnigent._wrapper_labels import CURSOR_NATIVE_WRAPPER_VALUE
+    from omnigent._wrapper_labels import CLAUDE_NATIVE_WRAPPER_VALUE
 
     monkeypatch.setattr(
         chat_module,
         "_wrapper_label_for_conversation",
-        lambda **_kw: CURSOR_NATIVE_WRAPPER_VALUE,
+        lambda **_kw: CLAUDE_NATIVE_WRAPPER_VALUE,
     )
     redirected: dict[str, object] = {}
     monkeypatch.setattr(
-        "omnigent.harnesses.cursor_native.main.run_cursor_native",
+        "omnigent.harnesses.claude_native.main.run_claude_native",
         lambda **kwargs: redirected.update(kwargs),
     )
 
     def _fail_repl(*_args: object, **_kwargs: object) -> None:
-        raise AssertionError("_run_repl drove an Omnigent turn for a cursor-native resume")
+        raise AssertionError("_run_repl drove an Omnigent turn for a claude-native resume")
 
     def _fail_one_shot(*_args: object, **_kwargs: object) -> None:
-        raise AssertionError("_run_one_shot drove an Omnigent turn for a cursor-native resume")
+        raise AssertionError("_run_one_shot drove an Omnigent turn for a claude-native resume")
 
     monkeypatch.setattr(chat_module, "_run_repl", _fail_repl)
     monkeypatch.setattr(chat_module, "_run_one_shot", _fail_one_shot)

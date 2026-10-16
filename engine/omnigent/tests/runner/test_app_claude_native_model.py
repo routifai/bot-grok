@@ -4,7 +4,7 @@
 ``executor.model`` (set via a config.yaml ``model:`` key) into the
 ``claude --model`` value the native TUI launches with. Gateway-routed
 ``databricks-*`` ids are valid Claude Code models on the Databricks AI
-gateway path, so they pass through (unlike cursor-native).
+gateway path, so they pass through.
 """
 
 from __future__ import annotations

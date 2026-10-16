@@ -1,7 +1,7 @@
 """Shared helpers for translating multimodal content.
 
-Provides data-URI parsing used by Anthropic, Gemini, and Bedrock
-adapters when converting Chat Completions ``image_url`` parts to
+Provides data-URI parsing used by the Anthropic
+adapter when converting Chat Completions ``image_url`` parts to
 their provider-native image formats, plus recursive redaction for
 history paths that serialize inline attachments as text.
 """

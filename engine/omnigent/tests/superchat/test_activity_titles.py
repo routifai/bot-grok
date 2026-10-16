@@ -84,7 +84,7 @@ def test_scheduled_display_title(name: str, expected: str | None) -> None:
 
 def test_is_generic_title() -> None:
     assert is_generic_title("researcher-1")
-    assert is_generic_title("web_fetch_91af03c2")
+    assert is_generic_title("files_search_91af03c2")
     assert is_generic_title("__web_research")
     assert not is_generic_title("Tesla price")
     assert not is_generic_title("decade")
@@ -155,7 +155,7 @@ def _more_steps() -> list[NewConversationItem]:
             type="function_call",
             response_id="resp_1",
             data=FunctionCallData(
-                agent="brain", name="web_fetch", arguments="{}", call_id=f"call_{n}"
+                agent="brain", name="web_search", arguments="{}", call_id=f"call_{n}"
             ),
         )
         for n in (2, 3)

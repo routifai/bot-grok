@@ -63,7 +63,7 @@ def _register_builtin_agent(
     :param agent_store: Store the agent row is written to.
     :param artifact_store: Store the bundle bytes are written to.
     :param agent_id: Agent id, e.g. ``"12c8c7631b209d1027416b4bf7604999"``.
-    :param name: Agent name, e.g. ``"codex-native-ui"``.
+    :param name: Agent name, e.g. ``"claude-native-ui"``.
     :param bundle: Gzipped agent bundle bytes from
         :func:`build_agent_bundle`.
     :param description: Optional free-text description; the catalog
@@ -141,7 +141,7 @@ async def test_list_builtin_agents_returns_registered_templates(
 
 @pytest.mark.parametrize(
     "harness",
-    ["codex", "claude-sdk"],
+    ["pi", "claude-sdk"],
 )
 async def test_list_builtin_agents_exposes_harness_from_spec(
     agent_store: SqlAlchemyAgentStore,
@@ -154,9 +154,9 @@ async def test_list_builtin_agents_exposes_harness_from_spec(
     ``executor.config.harness``.
 
     The Web UI Add Agent picker uses this to recognise an agent's kind
-    (Codex vs Claude) instead of hardcoding by name slug — a
-    custom-registered Codex agent must be identifiable as Codex even
-    when its name isn't ``codex-native-ui``. The value must reflect the
+    (Pi vs Claude) instead of hardcoding by name slug — a
+    custom-registered Pi agent must be identifiable as Pi whatever its
+    name. The value must reflect the
     actual spec, so the parametrize proves it isn't a hardcoded
     constant.
     """
@@ -272,22 +272,22 @@ async def test_list_builtin_agents_exposes_bundled_skills_from_spec(
     assert all("content" not in s for s in entry["skills"])
 
 
-async def test_catalog_keeps_custom_agent_distinct_from_builtin_claude_and_codex(
+async def test_catalog_keeps_custom_agent_distinct_from_builtin_claude_and_pi(
     agent_store: SqlAlchemyAgentStore,
     artifact_store: LocalArtifactStore,
     agents_client: httpx.AsyncClient,
 ) -> None:
     """
     A custom YAML agent registered as a built-in appears in the catalog
-    alongside the Claude and Codex built-ins and stays distinguishable by
+    alongside the Claude and Pi built-ins and stays distinguishable by
     name + harness, with its description surfaced as the picker label.
 
     This is the custom-agent value prop: bringing your own YAML agent
-    (here ``databricks-coding-agent`` on the ``openai-agents`` harness)
+    (here ``databricks-coding-agent`` on the ``claude-native`` harness)
     must not collapse into the built-ins. The Add Agent picker keys the
     glyph off harness and the label off name + description, so a custom
     entry that reported a built-in's harness or dropped its name would be
-    mis-badged or indistinguishable from Claude/Codex. Registering all
+    mis-badged or indistinguishable from Claude/Pi. Registering all
     three in one list and asserting per-id fields proves the route keeps
     them separate rather than, say, reading one shared spec.
     """
@@ -305,10 +305,10 @@ async def test_catalog_keeps_custom_agent_distinct_from_builtin_claude_and_codex
         agent_store,
         artifact_store,
         agent_id="12c8c7631b209d1027416b4bf7604999",
-        name="codex-native-ui",
+        name="pi-ui",
         bundle=build_agent_bundle(
-            name="codex-native-ui",
-            executor={"type": "omnigent", "config": {"harness": "codex"}},
+            name="pi-ui",
+            executor={"type": "omnigent", "config": {"harness": "pi"}},
         ),
     )
     _register_builtin_agent(
@@ -319,7 +319,7 @@ async def test_catalog_keeps_custom_agent_distinct_from_builtin_claude_and_codex
         description="Custom coding agent",
         bundle=build_agent_bundle(
             name="databricks-coding-agent",
-            executor={"type": "omnigent", "config": {"harness": "openai-agents"}},
+            executor={"type": "omnigent", "config": {"harness": "claude-native"}},
         ),
     )
 
@@ -334,11 +334,11 @@ async def test_catalog_keeps_custom_agent_distinct_from_builtin_claude_and_codex
         "f157d3110ddee6bc0f8e1b893270c8a6",
     }
     # Each carries its own harness — the custom agent is neither the
-    # Claude nor the Codex kind. A shared/wrong value here is exactly the
+    # Claude SDK nor the Pi kind. A shared/wrong value here is exactly the
     # mis-badging this contract guards against.
     assert by_id["3a9725fd4de1720e83e53a632da41da8"]["harness"] == "claude-sdk"
-    assert by_id["12c8c7631b209d1027416b4bf7604999"]["harness"] == "codex"
-    assert by_id["f157d3110ddee6bc0f8e1b893270c8a6"]["harness"] == "openai-agents"
+    assert by_id["12c8c7631b209d1027416b4bf7604999"]["harness"] == "pi"
+    assert by_id["f157d3110ddee6bc0f8e1b893270c8a6"]["harness"] == "claude-native"
     # The custom agent keeps its registered name and description (the
     # picker's label), distinct from both built-ins.
     assert by_id["f157d3110ddee6bc0f8e1b893270c8a6"]["name"] == "databricks-coding-agent"

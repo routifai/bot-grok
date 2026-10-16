@@ -40,12 +40,11 @@ async def _drain_model_options(session_id: str) -> None:
 def test_model_options_wire_keeps_rows_without_display_name() -> None:
     """Provider rows may omit ``displayName`` — the UI falls back to ``id``.
 
-    Codex ``model/list`` and OpenCode ``/api/model`` rows are
-    provider-supplied; requiring ``displayName`` would blank the whole
-    picker when one row lacks it.
+    Codex ``model/list`` rows are provider-supplied; requiring ``displayName``
+    would blank the whole picker when one row lacks it.
     """
-    options = _sessions_mod._model_options_from_wire([{"id": "opencode-go/glm-5.2"}])
-    assert [option["id"] for option in options] == ["opencode-go/glm-5.2"]
+    options = _sessions_mod._model_options_from_wire([{"id": "gateway/glm-5.2"}])
+    assert [option["id"] for option in options] == ["gateway/glm-5.2"]
     assert "displayName" not in options[0]
 
 
@@ -252,7 +251,7 @@ async def test_session_snapshot_uses_child_spec_metadata(
         spec_version=1,
         name="executor",
         executor=ExecutorSpec(
-            config={"harness": "codex"},
+            config={"harness": "pi"},
             model="openai-codex/gpt-5.6-sol:medium",
             context_window=100_000,
         ),
@@ -261,7 +260,7 @@ async def test_session_snapshot_uses_child_spec_metadata(
         spec_version=1,
         name="advisor",
         executor=ExecutorSpec(
-            config={"harness": "codex"},
+            config={"harness": "pi"},
             model="openai-codex/gpt-5.6-sol:high",
             context_window=200_000,
         ),
@@ -330,11 +329,11 @@ async def test_session_snapshot_uses_child_spec_metadata(
     assert parent.agent_name == "advisor"
     assert parent.llm_model == "openai-codex/gpt-5.6-sol:high"
     assert parent.context_window == 200_000
-    assert parent.harness == "codex"
+    assert parent.harness == "pi"
     assert child.agent_name == "executor"
     assert child.llm_model == "openai-codex/gpt-5.6-sol:medium"
     assert child.context_window == 100_000
-    assert child.harness == "codex"
+    assert child.harness == "pi"
     assert cache_loads == [True, True, True, True]
 
 
@@ -365,7 +364,7 @@ async def test_session_snapshot_unresolvable_sub_agent_warns_and_reports_parent(
         spec_version=1,
         name="advisor",
         executor=ExecutorSpec(
-            config={"harness": "codex"},
+            config={"harness": "pi"},
             model="openai-codex/gpt-5.6-sol:high",
             context_window=200_000,
         ),
@@ -1268,7 +1267,6 @@ async def test_session_snapshot_uses_router_when_singleton_unset(
     ("session_id", "wrapper_attr"),
     [
         ("conv_codex_options", "_CODEX_NATIVE_WRAPPER_LABEL_VALUE"),
-        ("conv_opencode_options", "_OPENCODE_NATIVE_WRAPPER_LABEL_VALUE"),
     ],
 )
 async def test_session_snapshot_includes_model_options_from_runner(
@@ -1369,92 +1367,6 @@ async def test_session_snapshot_includes_model_options_from_runner(
         {"reasoningEffort": "high", "description": "High"},
         {"reasoningEffort": "xhigh", "description": "Extra high"},
     ]
-
-
-@pytest.mark.asyncio
-async def test_kiro_session_snapshot_loads_runner_model_catalog(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """An older runner without the unified route still fills the picker.
-
-    The fake runner 404s ``/model-options`` (it predates the unified
-    route), so the server's loader must drop to the legacy harness-named
-    route and serve its rows — the compat lane until 0.11.0.
-    """
-    from omnigent.server.routes import sessions as _mod
-
-    _mod._model_options_cache.clear()
-    _mod._model_options_inflight.clear()
-
-    class _FakeResponse:
-        def __init__(self, payload: dict[str, object], status_code: int = 200) -> None:
-            self.status_code = status_code
-            self._payload = payload
-
-        def json(self) -> dict[str, object]:
-            return self._payload
-
-    class _FakeRunnerClient:
-        def __init__(self) -> None:
-            self.get_calls: list[str] = []
-
-        async def get(self, url: str, timeout: float = 5.0) -> _FakeResponse:
-            del timeout
-            self.get_calls.append(url)
-            if url.endswith("/model-options"):
-                return _FakeResponse({"detail": "Not Found"}, status_code=404)
-            if url.endswith("/kiro-model-options"):
-                return _FakeResponse(
-                    {
-                        "models": [
-                            {
-                                "id": "provider-latest",
-                                "displayName": "Provider Latest",
-                                "isDefault": True,
-                                "description": "Provider supplied description",
-                                "contextWindow": 256_000,
-                                "rateMultiplier": 0.5,
-                                "rateUnit": "Credit",
-                            }
-                        ]
-                    }
-                )
-            return _FakeResponse({"status": "idle"})
-
-    session_id = "5c782829093f4ebcbf18684eed8a9155"
-    fake_client = _FakeRunnerClient()
-    monkeypatch.setattr("omnigent.runtime.get_runner_client", lambda: fake_client)
-    monkeypatch.setattr("omnigent.runtime.get_runner_router", lambda: None)
-    conv = Conversation(
-        id=session_id,
-        created_at=1,
-        updated_at=1,
-        root_conversation_id=session_id,
-        agent_id="ag_test",
-        labels={
-            _mod._CLAUDE_NATIVE_WRAPPER_LABEL_KEY: _mod._KIRO_NATIVE_WRAPPER_LABEL_VALUE,
-        },
-    )
-    conv_store = _ConversationStore(
-        [_message_item("item_1", "hi")],
-        conversations={session_id: conv},
-    )
-
-    first = await _get_session_snapshot(conv_store, session_id)  # type: ignore[arg-type]
-    assert first.model_options == []
-    await _drain_model_options(session_id)
-    snapshot = await _get_session_snapshot(conv_store, session_id)  # type: ignore[arg-type]
-
-    # The unified route was tried first, then the legacy alias filled in.
-    assert f"/v1/sessions/{session_id}/model-options" in fake_client.get_calls
-    assert f"/v1/sessions/{session_id}/kiro-model-options" in fake_client.get_calls
-    assert [model.id for model in snapshot.model_options] == ["provider-latest"]
-    assert snapshot.model_options[0].model_dump()["description"] == (
-        "Provider supplied description"
-    )
-    assert snapshot.model_options[0].model_dump()["contextWindow"] == 256_000
-    assert snapshot.model_options[0].model_dump()["rateMultiplier"] == 0.5
-    assert snapshot.model_options[0].model_dump()["rateUnit"] == "Credit"
 
 
 @pytest.mark.asyncio
@@ -1630,94 +1542,15 @@ async def test_session_snapshot_serves_pi_model_options_from_extension_push(
 
 
 @pytest.mark.asyncio
-async def test_session_snapshot_fetches_live_cursor_model_options(
+async def test_snapshot_refresh_drops_cached_options_until_live_catalog(
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Cursor options are fetched from the runner and cached for later snapshots."""
-    from omnigent.server.routes import sessions as _mod
-
-    _mod._session_status_cache.clear()
-    _mod._model_options_cache.clear()
-    _mod._model_options_inflight.clear()
-
-    class _FakeResponse:
-        def __init__(self, payload: dict[str, object]) -> None:
-            self.status_code = 200
-            self._payload = payload
-
-        def json(self) -> dict[str, object]:
-            return self._payload
-
-    class _FakeRunnerClient:
-        def __init__(self) -> None:
-            self.get_calls: list[str] = []
-
-        async def get(self, url: str, timeout: float = 5.0) -> _FakeResponse:
-            self.get_calls.append(url)
-            if url.endswith("/model-options"):
-                return _FakeResponse(
-                    {
-                        "models": [
-                            {
-                                "id": "provider-latest",
-                                "displayName": "Provider Latest",
-                                "isDefault": True,
-                            }
-                        ]
-                    }
-                )
-            return _FakeResponse({"status": "idle"})
-
-    fake_client = _FakeRunnerClient()
-    monkeypatch.setattr("omnigent.runtime.get_runner_client", lambda: fake_client)
-    monkeypatch.setattr("omnigent.runtime.get_runner_router", lambda: None)
-
-    conv = Conversation(
-        id="4747fb03a3b45bb1f96bf130f4d704e5",
-        created_at=1,
-        updated_at=1,
-        root_conversation_id="4747fb03a3b45bb1f96bf130f4d704e5",
-        agent_id="087b7cb7ac30abf4debfaa578d052ec6",
-        labels={
-            _mod._CLAUDE_NATIVE_WRAPPER_LABEL_KEY: _mod._CURSOR_NATIVE_WRAPPER_LABEL_VALUE,
-        },
-    )
-    conv_store = _ConversationStore(
-        [_message_item("item_1", "hi")],
-        conversations={"4747fb03a3b45bb1f96bf130f4d704e5": conv},
-    )
-
-    first = await _get_session_snapshot(
-        conv_store,  # type: ignore[arg-type]
-        "4747fb03a3b45bb1f96bf130f4d704e5",
-    )
-    assert first.model_options == []
-
-    await _drain_model_options("4747fb03a3b45bb1f96bf130f4d704e5")
-    snapshot = await _get_session_snapshot(
-        conv_store,  # type: ignore[arg-type]
-        "4747fb03a3b45bb1f96bf130f4d704e5",
-    )
-
-    assert [m.id for m in snapshot.model_options] == ["provider-latest"]
-    assert snapshot.model_options[0].displayName == "Provider Latest"
-    assert "/v1/sessions/4747fb03a3b45bb1f96bf130f4d704e5/model-options" in fake_client.get_calls
-    assert "4747fb03a3b45bb1f96bf130f4d704e5" in _mod._model_options_cache
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("wrapper_name", ["cursor", "codex"])
-async def test_snapshot_refresh_scopes_cached_options_to_cursor(
-    monkeypatch: pytest.MonkeyPatch,
-    wrapper_name: str,
 ) -> None:
     """
-    ``refresh_state=True`` retains only Cursor's previous picker options.
+    ``refresh_state=True`` drops the previous picker options until the live fetch lands.
 
     Browser reloads and effort changes can request a refresh while the runner
-    catalog fetch is still in flight. The previous catalog remains available
-    for Cursor until the live response replaces it; Codex retains its existing
-    drop-on-refresh behavior.
+    catalog fetch is still in flight; the stale catalog is not served meanwhile,
+    and the live response replaces it.
     """
     from omnigent.server.routes import sessions as _mod
 
@@ -1774,10 +1607,7 @@ async def test_snapshot_refresh_scopes_cached_options_to_cursor(
         root_conversation_id="3626053dfa9668a8604cc06e0b590ae0",
         agent_id="087b7cb7ac30abf4debfaa578d052ec6",
         labels={
-            _mod._CLAUDE_NATIVE_WRAPPER_LABEL_KEY: getattr(
-                _mod,
-                f"_{wrapper_name.upper()}_NATIVE_WRAPPER_LABEL_VALUE",
-            ),
+            _mod._CLAUDE_NATIVE_WRAPPER_LABEL_KEY: _mod._CODEX_NATIVE_WRAPPER_LABEL_VALUE,
         },
     )
     conv_store = _ConversationStore(
@@ -1790,8 +1620,7 @@ async def test_snapshot_refresh_scopes_cached_options_to_cursor(
         "3626053dfa9668a8604cc06e0b590ae0",
         refresh_state=True,
     )
-    expected_during_refresh = ["stale-model"] if wrapper_name == "cursor" else []
-    assert [m.id for m in refreshed.model_options] == expected_during_refresh
+    assert [m.id for m in refreshed.model_options] == []
     await _drain_model_options("3626053dfa9668a8604cc06e0b590ae0")
     snapshot = await _get_session_snapshot(
         conv_store,  # type: ignore[arg-type]

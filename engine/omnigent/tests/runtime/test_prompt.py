@@ -358,7 +358,7 @@ def test_build_instructions_nullable_framework_only_omits_fallback() -> None:
 
 @pytest.mark.parametrize(
     ("agents", "spawn", "builtins"),
-    [(("researcher",), False, ()), ((), True, ()), ((), False, ("web_fetch",))],
+    [(("researcher",), False, ()), ((), True, ())],
 )
 def test_subagent_wake_instruction_added_for_dispatching_agents(
     agents: tuple[str, ...], spawn: bool, builtins: tuple[str, ...]
@@ -367,8 +367,7 @@ def test_subagent_wake_instruction_added_for_dispatching_agents(
     An agent that can dispatch sub-agents is told what a wake notice is.
 
     The gate mirrors ``sys_session_send`` registration (declared sub-agents or
-    ``spawn: true``) plus the ``web_fetch`` builtin, whose researcher dispatch
-    wakes the parent the same way. The announcement lands after the authored
+    ``spawn: true``). The announcement lands after the authored
     text and before per-turn framework instructions, and on its own it never
     drags in the fabricated fallback.
     """
@@ -511,13 +510,6 @@ def test_rollover_instruction_mentions_list_chats_for_side_chats() -> None:
 
     whitespace_only = cast(AgentSpec, SimpleNamespace(instructions="   \n  "))
     assert raw_author_instructions(whitespace_only) is None
-
-
-def test_web_fetch_with_a_fetch_provider_dispatches_no_researcher() -> None:
-    """A headless ``fetch_provider`` web_fetch spawns nothing, so no wake notice."""
-    spec = _spec("Agent prompt")
-    spec.tools.builtins = [SimpleNamespace(name="web_fetch", config={"fetch_provider": "tavily"})]
-    assert SUBAGENT_WAKE_NOTICE_INSTRUCTION not in build_instructions(spec, None, [])
 
 
 def test_web_priority_instruction_prefers_search_for_lookups() -> None:

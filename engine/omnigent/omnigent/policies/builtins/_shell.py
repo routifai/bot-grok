@@ -25,15 +25,12 @@ import shlex
 # shell-surface policy — a policy that defaults to a narrower set is silently
 # inert on the harnesses it omits, which is the least-safe default for a
 # security gate. Keep in sync with the per-harness tool-name families in
-# ``safety.py`` (which maps the same seven for ``ask_on_os_tools``).
+# ``safety.py`` (``ask_on_os_tools``).
 SHELL_TOOLS: frozenset[str] = frozenset(
     {
         "sys_os_shell",  # Omnigent built-in (SDK harnesses)
         "Bash",  # Claude Code / Codex native
-        "bash",  # pi / opencode native
-        "Shell",  # Cursor
-        "terminal",  # Hermes
-        "developer__shell",  # Goose
+        "bash",  # pi native
         "shell",  # codex in-process harness (commandExecution observed tool)
     }
 )

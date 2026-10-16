@@ -148,7 +148,7 @@ def test_executor_factory_cwd_falls_back_to_runner_workspace(
     runner's ``OMNIGENT_RUNNER_WORKSPACE`` (the folder the user launched
     in, and what the tmux terminal uses) rather than leaving cwd unset —
     which let the SDK root the CLI at the daemon's ``$HOME``. Mirrors the
-    kimi / pi / hermes harnesses.
+    pi harness.
     """
     monkeypatch.delenv("HARNESS_CLAUDE_SDK_CWD", raising=False)
     monkeypatch.setenv("OMNIGENT_RUNNER_WORKSPACE", "/home/bobby/code/agents")

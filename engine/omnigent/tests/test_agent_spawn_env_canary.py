@@ -1,17 +1,11 @@
 """No agent-CLI subprocess may inherit unrelated host secrets (#3445).
 
-The pi and codex executors filtered; goose, kimi, qwen, acp and hermes did not,
-and hermes's no-HERMES_HOME branch passed ``env=None`` (inherit everything).
-
 This is the parametrized canary the maintainer asked for. The point is not to
 re-test each executor's wiring — it is that the *next* harness added to this
-repo fails here if it forgets to filter. The fix pattern already existed twice
-and still missed five siblings.
+repo fails here if it forgets to filter.
 """
 
 from __future__ import annotations
-
-import asyncio
 
 import pytest
 
@@ -41,11 +35,6 @@ CANARY_SECRETS = {
 HARNESS_PREFIXES = {
     "pi": ("PI_", "NODE_"),
     "codex": ("OPENAI_", "REQUESTS_", "CODEX_HOME"),
-    "qwen": ("QWEN_", "OPENAI_", "DASHSCOPE_"),
-    "goose": ("GOOSE_",),
-    "kimi": ("KIMI_", "MOONSHOT_"),
-    "acp": (),
-    "hermes": ("HERMES_",),
 }
 
 
@@ -66,60 +55,8 @@ def hostile_env():
 # The prefix table above is a hand copy of what each executor passes, so on its
 # own it only proves clean_agent_env works. These drive each executor's OWN
 # spawn-env builder against a planted os.environ, which is what actually makes
-# the "next harness fails here" claim true: if qwen reverts to
-# os.environ.copy(), or harness number ten never calls the helper, this fails.
-
-
-def _bare(cls, **attrs):
-    """An executor carrying only the attributes its env builder reads.
-
-    The constructors want a live config, an event loop and a spawned CLI. The
-    builders do not — they read ``_os_env`` and, for hermes, ``_hermes_home``.
-    Bypassing ``__init__`` keeps the canary on the real method without dragging
-    in the rest of the executor.
-    """
-    obj = object.__new__(cls)
-    obj._os_env = None
-    for name, value in attrs.items():
-        setattr(obj, name, value)
-    return obj
-
-
-def _acp_spawn_env():
-    from omnigent.inner.acp_executor import AcpExecutor
-
-    return _bare(AcpExecutor)._build_spawn_env()
-
-
-def _goose_spawn_env():
-    from omnigent.inner.goose_executor import GooseExecutor
-
-    # Provider/gateway overrides are deliberate additions layered on top of the
-    # filtered base, not leaks; stub them so this asserts the filtering alone.
-    return _bare(GooseExecutor, _provider_env=dict)._build_spawn_env()
-
-
-def _qwen_spawn_env():
-    from omnigent.inner.qwen_executor import QwenExecutor
-
-    async def _no_gateway():
-        return {}
-
-    return asyncio.run(_bare(QwenExecutor, _resolve_gateway_env=_no_gateway)._build_spawn_env())
-
-
-def _kimi_spawn_env():
-    from omnigent.inner.kimi_executor import KimiExecutor
-
-    return _bare(KimiExecutor)._build_spawn_env()
-
-
-def _hermes_spawn_env():
-    from omnigent.inner.hermes_executor import HermesExecutor
-
-    # The no-HERMES_HOME branch: the one that used to pass env=None and inherit
-    # the entire host environment, so it is the branch worth pinning.
-    return _bare(HermesExecutor, _hermes_home=None)._build_spawn_env()
+# the "next harness fails here" claim true: if a builder reverts to
+# os.environ.copy(), or the next harness never calls the helper, this fails.
 
 
 def _pi_spawn_env():
@@ -135,13 +72,8 @@ def _codex_spawn_env():
 
 
 SPAWN_ENV_BUILDERS = {
-    "acp": _acp_spawn_env,
     "codex": _codex_spawn_env,
-    "goose": _goose_spawn_env,
-    "hermes": _hermes_spawn_env,
-    "kimi": _kimi_spawn_env,
     "pi": _pi_spawn_env,
-    "qwen": _qwen_spawn_env,
 }
 
 
@@ -158,7 +90,7 @@ def test_real_builder_does_not_leak_host_secrets(harness, hostile_env, monkeypat
     env = SPAWN_ENV_BUILDERS[harness]()
 
     leaked = {k: v for k, v in env.items() if k in CANARY_SECRETS}
-    # qwen owns OPENAI_, so an OPENAI_ canary is its own family, not a leak.
+    # A canary inside the harness's own family is not a leak.
     leaked = {k: v for k, v in leaked.items() if not k.startswith(HARNESS_PREFIXES[harness] or ())}
     assert not leaked, f"{harness}'s real spawn env leaked {sorted(leaked)}"
 
@@ -220,27 +152,6 @@ def test_desktop_session_requires_explicit_cli_passthrough(explicit):
     assert env == (session_env if explicit else {})
 
 
-def test_goose_receives_declared_desktop_session(monkeypatch):
-    from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec
-    from omnigent.inner.goose_executor import GooseExecutor
-
-    session_env = {
-        "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
-        "XDG_RUNTIME_DIR": "/run/user/1000",
-    }
-    monkeypatch.setattr("os.environ", session_env)
-    executor = _bare(
-        GooseExecutor,
-        _provider_env=dict,
-        _os_env=OSEnvSpec(
-            type="caller_process",
-            sandbox=OSEnvSandboxSpec(type="none", env_passthrough=list(session_env)),
-        ),
-    )
-
-    assert executor._build_spawn_env() == session_env
-
-
 @pytest.mark.parametrize("harness", sorted(HARNESS_PREFIXES))
 def test_no_harness_inherits_unrelated_secrets(harness, hostile_env):
     env = clean_agent_env(allow_prefixes=HARNESS_PREFIXES[harness], source=hostile_env)
@@ -261,23 +172,14 @@ def test_every_harness_still_gets_a_usable_environment(harness, hostile_env):
 
 
 def test_a_harness_still_sees_its_own_family(hostile_env):
-    src = {**hostile_env, "QWEN_CODE_MODEL": "q", "GOOSE_PROVIDER": "g"}
-    qwen = clean_agent_env(allow_prefixes=HARNESS_PREFIXES["qwen"], source=src)
-    assert qwen["QWEN_CODE_MODEL"] == "q"
-    assert "GOOSE_PROVIDER" not in qwen, "qwen must not see goose's family either"
-
-
-def test_kimi_keeps_its_documented_ambient_auth(hostile_env):
-    """kimi's docstring deliberately wants ambient KIMI_*; scoping must preserve it."""
-    src = {**hostile_env, "KIMI_API_KEY": "kimi-real", "MOONSHOT_API_KEY": "ms-real"}
-    env = clean_agent_env(allow_prefixes=HARNESS_PREFIXES["kimi"], source=src)
-    assert env["KIMI_API_KEY"] == "kimi-real"
-    assert env["MOONSHOT_API_KEY"] == "ms-real"
-    assert "ANTHROPIC_API_KEY" not in env
+    src = {**hostile_env, "PI_CODING_AGENT_DIR": "p", "OPENAI_BASE_URL": "o"}
+    pi = clean_agent_env(allow_prefixes=HARNESS_PREFIXES["pi"], source=src)
+    assert pi["PI_CODING_AGENT_DIR"] == "p"
+    assert "OPENAI_BASE_URL" not in pi, "pi must not see codex's family either"
 
 
 def test_env_passthrough_is_the_documented_escape_hatch(hostile_env):
-    """The migration for an env-authenticated generic ACP agent (e.g. gemini)."""
+    """An explicitly declared variable passes even outside every allowed family."""
     without = clean_agent_env(source=hostile_env)
     assert "GEMINI_API_KEY" not in without
     with_pt = clean_agent_env(extra_allowed=("GEMINI_API_KEY",), source=hostile_env)
@@ -314,7 +216,7 @@ def test_codex_passes_service_principal_m2m_credentials(hostile_env):
 
 def test_source_is_never_mutated(hostile_env):
     before = dict(hostile_env)
-    clean_agent_env(allow_prefixes=("QWEN_",), source=hostile_env)
+    clean_agent_env(allow_prefixes=("PI_",), source=hostile_env)
     assert hostile_env == before
 
 
@@ -332,23 +234,3 @@ def test_declared_passthrough_tolerates_a_missing_chain():
 
     assert declared_passthrough(None) == ()
     assert declared_passthrough(_NoSandbox()) == ()
-
-
-def test_acp_agent_declaration_passes_only_what_it_names(hostile_env, monkeypatch):
-    """A generic-ACP agent's own ``env_passthrough`` is an allowlist, not a bypass.
-
-    The executor cannot infer which family an arbitrary agent authenticates
-    with, so the agent names its variables. Everything it does not name stays
-    withheld — a declaration must not reopen the whole environment.
-    """
-    from omnigent.inner.acp_executor import AcpAgentConfig, AcpExecutor
-
-    monkeypatch.setattr("os.environ", {**hostile_env, "XAI_API_KEY": "declared-and-wanted"})
-    ex = AcpExecutor(
-        AcpAgentConfig(command="agent stdio", name="Grok", env_passthrough=("XAI_API_KEY",))
-    )
-    env = ex._build_spawn_env()
-
-    assert env.get("XAI_API_KEY") == "declared-and-wanted"
-    for name in CANARY_SECRETS:
-        assert name not in env, name

@@ -271,9 +271,9 @@ def model_name(request: pytest.FixtureRequest) -> str:
 
 
 # Harnesses whose model traffic flows through OpenAI's cyber_policy
-# content classifier: gpt-5-4-mini (openai-agents) and gpt-5-5
-# (codex). claude-sdk routes through Anthropic and is unaffected.
-_OPENAI_CYBER_POLICY_HARNESSES = frozenset({"openai-agents", "codex"})
+# content classifier: gpt-5-5 (codex). claude-sdk routes through
+# Anthropic and is unaffected.
+_OPENAI_CYBER_POLICY_HARNESSES = frozenset({"codex"})
 
 
 @pytest.fixture(autouse=True)
@@ -303,7 +303,7 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers",
         "openai_cyber_policy_blocked: skip on harnesses routed through OpenAI's "
-        "content classifier (openai-agents, codex)",
+        "content classifier (codex)",
     )
     config.addinivalue_line(
         "markers",
@@ -316,7 +316,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     """
     Attach a ``flaky(reruns=2)`` marker to every test bearing the
     ``codex_async_handoff_flaky`` marker, but only when the suite is
-    running on the codex harness. claude-sdk and openai-agents have
+    running on the codex harness. claude-sdk has
     never reproduced this flake, so a failure there should fail loud
     on the first attempt rather than retry and potentially mask a real
     regression.

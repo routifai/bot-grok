@@ -100,7 +100,7 @@ def configure_ucode_for_workspace(
     setup flow: instead of configuring every bundled profile at once, it
     wires the coding harnesses (Claude, Codex, Pi) to the Unity AI Gateway
     of exactly the one workspace the user supplied when adding a
-    ``kind: databricks`` provider via ``omnigent setup --no-internal-beta``.
+    ``kind: databricks`` provider via ``omnigent setup``.
     ucode writes ``~/.ucode/state.json``, which Omnigent then reads for
     per-harness model defaults, base URLs, and the token-refresh command.
 
@@ -180,12 +180,11 @@ def ucode_configure_lock() -> Iterator[None]:
     """Serialize concurrent ``ucode configure`` runs across processes and threads.
 
     At managed-connect boot the host runs ``ucode configure`` for all agents in a
-    daemon thread; independently, opencode's launch can run a second
-    ``ucode configure --agents opencode`` on demand. Both write
-    ``~/.ucode/state.json``, so overlapping runs can interleave and drop an agent's
-    entry or leave torn JSON. An advisory ``flock`` on a shared lock file
-    serializes them (and concurrent host starts). Best-effort: if the lock file
-    can't be created or the platform has no ``flock``, run unserialized rather than
+    daemon thread, and a concurrent host start (or a manual run) can start a
+    second one. Both write ``~/.ucode/state.json``, so overlapping runs can
+    interleave and drop an agent's entry or leave torn JSON. An advisory
+    ``flock`` on a shared lock file serializes them. Best-effort: if the lock
+    file can't be created or the platform has no ``flock``, run unserialized rather than
     block the launch.
     """
     if fcntl is None:

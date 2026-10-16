@@ -40,8 +40,7 @@ def _create_adapter(provider: str, **kwargs: Any) -> BaseAdapter:
     """
     Instantiate the correct adapter for the provider.
 
-    Imports are lazy to avoid pulling in optional dependencies
-    (boto3, google-auth) when they're not needed.
+    Imports are lazy so each provider SDK loads only when needed.
 
     :param provider: The provider identifier.
     :param kwargs: Extra kwargs for the adapter constructor.
@@ -80,29 +79,7 @@ def _create_adapter(provider: str, **kwargs: Any) -> BaseAdapter:
 
         return AnthropicAdapter(**kwargs)
 
-    if provider == "gemini":
-        from omnigent.llms.adapters.gemini import GeminiAdapter
-
-        return GeminiAdapter(**kwargs)
-
-    if provider == "bedrock":
-        from omnigent.llms.adapters.bedrock import BedrockAdapter
-
-        return BedrockAdapter(**kwargs)
-
-    if provider == "vertex":
-        from omnigent.llms.adapters.vertex import VertexAdapter
-
-        return VertexAdapter(**kwargs)
-
-    if provider == "databricks":
-        from omnigent.llms.adapters.databricks import DatabricksAdapter
-
-        return DatabricksAdapter(**kwargs)
-
-    all_providers = sorted(
-        openai_compat_providers.keys() | {"anthropic", "gemini", "bedrock", "vertex", "databricks"}
-    )
+    all_providers = sorted(openai_compat_providers.keys() | {"anthropic"})
     raise OmnigentError(
         f"Unknown provider {provider!r}. Supported: {all_providers}",
         code=ErrorCode.INVALID_INPUT,

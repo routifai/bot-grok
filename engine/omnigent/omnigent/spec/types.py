@@ -533,11 +533,10 @@ class ExecutorSpec:  # type: ignore[explicit-any]  # config: dict[str, Any] fiel
         Native-harness autonomy pass-through: for server-spawned
         sub-agents the session-create path reads ``"yolo"`` (bool or a
         ``"true"``/``"false"`` string matched case-insensitively, with
-        no whitespace tolerance on the enabling value; enables
-        codex/cursor/kimi bypass flags, opt-out for codex/cursor and
-        opt-in for kimi) and ``"permission_mode"`` (exact-match string;
-        ``bypassPermissions`` maps to the claude-native /
-        antigravity-native skip flags) into the session's
+        no whitespace tolerance on the enabling value; enables the
+        codex bypass flag, opt-out) and ``"permission_mode"``
+        (exact-match string; ``bypassPermissions`` maps to the
+        claude-native skip flag) into the session's
         ``terminal_launch_args``.
 
         🚨 **TECH DEBT — REMOVE WHEN OMNIGENT COMPAT ENDS.**
@@ -1608,9 +1607,6 @@ class AgentSpec:  # type: ignore[explicit-any]  # params: dict[str, Any] field (
     guardrails: GuardrailsSpec | None = None
     async_enabled: bool = True
     os_env: OSEnvSpec | None = None
-    # Operator-approved model-signing authority. Separate from sandbox
-    # egress_rules so generic network access cannot authorize credentials.
-    model_egress: list[str] | None = None
     terminals: dict[str, TerminalEnvSpec] | None = None
     timers: bool = False
     spawn: bool = False

@@ -70,7 +70,7 @@ def test_host_replacement_serializes_with_account_deletion(
         name="managed",
         user_id="alice",
         token="old-token",
-        provider="modal",
+        provider="computer",
         sandbox_id="old-sandbox",
         token_expires_at=int(time.time()) + 3600,
     )
@@ -92,7 +92,7 @@ def test_host_replacement_serializes_with_account_deletion(
             host_id=host_id,
             user_id="alice",
             token="replacement",
-            provider="modal",
+            provider="computer",
             sandbox_id="new-sandbox",
             token_expires_at=int(time.time()) + 3600,
         )
@@ -125,7 +125,7 @@ def test_deletion_retains_sandbox_cleanup_and_invalidates_magic_links(db_uri: st
         name="managed",
         user_id="alice",
         token="token",
-        provider="modal",
+        provider="computer",
         sandbox_id="sandbox",
         token_expires_at=int(time.time()) + 3600,
     )

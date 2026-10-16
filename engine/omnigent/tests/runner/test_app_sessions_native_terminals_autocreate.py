@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import logging
 import threading
@@ -15,16 +14,6 @@ import httpx
 import pytest
 
 from omnigent.entities.session_resources import SessionResourceView
-from omnigent.harnesses.antigravity_native.bridge import (
-    ANTIGRAVITY_NATIVE_BRIDGE_ID_LABEL_KEY,
-    AntigravityNativeBridgeState,
-)
-from omnigent.harnesses.antigravity_native.bridge import (
-    prepare_bridge_dir as prepare_antigravity_bridge_dir,
-)
-from omnigent.harnesses.antigravity_native.bridge import (
-    write_bridge_state as write_antigravity_bridge_state,
-)
 from omnigent.harnesses.claude_native import bridge as claude_native_bridge
 from omnigent.harnesses.claude_native.bridge import (
     BRIDGE_ID_LABEL_KEY,
@@ -33,18 +22,6 @@ from omnigent.harnesses.claude_native.bridge import (
     prepare_bridge_dir,
     read_permission_hook_config,
 )
-from omnigent.harnesses.codex_native.bridge import (
-    CODEX_NATIVE_BRIDGE_ID_LABEL_KEY,
-    CodexNativeBridgeState,
-)
-from omnigent.harnesses.codex_native.bridge import (
-    prepare_bridge_dir as prepare_codex_bridge_dir,
-)
-from omnigent.harnesses.codex_native.bridge import (
-    write_bridge_state as write_codex_bridge_state,
-)
-from omnigent.harnesses.cursor_native import bridge as cursor_native_bridge
-from omnigent.harnesses.kiro_native import bridge as kiro_native_bridge
 from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec
 from omnigent.inner.terminal import TerminalInstance
 from omnigent.runner import app as runner_app
@@ -53,10 +30,7 @@ from omnigent.runner.app import (
     ResolvedSpec,
     _agent_os_env_from_spec,
     _auto_create_claude_terminal,
-    _auto_create_cursor_terminal,
-    _auto_create_kiro_terminal,
     _auto_create_pi_terminal,
-    _KiroNativeLaunchConfig,
     _load_claude_launch_metadata,
     _log_terminal_lookup_miss,
     _PiNativeLaunchConfig,
@@ -66,7 +40,6 @@ from omnigent.runner.app import (
 )
 from omnigent.runner.resource_registry import (
     CLAUDE_NATIVE_TERMINAL_ROLE,
-    KIRO_NATIVE_TERMINAL_ROLE,
     PI_NATIVE_TERMINAL_ROLE,
     SessionResourceRegistry,
 )
@@ -591,8 +564,8 @@ async def test_auto_create_pi_terminal_unmanaged_refuses_slash_bearing_managed_m
 ) -> None:
     """A managed slash-bearing pick never reaches the own-login pi argv.
 
-    ``omnigent/moonshotai/kimi-k2.5`` is unresolvable without the managed
-    provider, and stripping the prefix would leave ``moonshotai/kimi-k2.5``,
+    ``omnigent/meta-llama/llama-4-maverick`` is unresolvable without the managed
+    provider, and stripping the prefix would leave ``meta-llama/llama-4-maverick``,
     which Pi's ``--model`` parser mis-routes (leading segment read as a
     provider). The launch must omit ``--model`` so Pi keeps its own default.
     """
@@ -613,7 +586,7 @@ async def test_auto_create_pi_terminal_unmanaged_refuses_slash_bearing_managed_m
             server_url="http://127.0.0.1:8000",
             terminal_launch_args=None,
             external_session_id=None,
-            model_override="omnigent/moonshotai/kimi-k2.5",
+            model_override="omnigent/meta-llama/llama-4-maverick",
         )
 
     monkeypatch.setattr("omnigent.runner.app._pi_native_launch_config", _fake_launch_config)
@@ -648,230 +621,6 @@ async def test_auto_create_pi_terminal_unmanaged_refuses_slash_bearing_managed_m
 
 
 @pytest.mark.asyncio
-async def test_auto_create_kiro_terminal_launches_required_terminal_with_isolated_env(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Kiro-native auto-create launches the TUI and session forwarder."""
-    import omnigent.harnesses.kiro_native.main as kiro_native
-
-    monkeypatch.setenv("PATH", "/usr/bin")
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.setenv("RUNNER_SERVER_URL", "http://127.0.0.1:6767")
-    monkeypatch.setenv("OPENAI_API_KEY", "must-not-leak")
-    monkeypatch.setattr(kiro_native_bridge, "_BRIDGE_ROOT", tmp_path / "kiro-bridge")
-    monkeypatch.setattr(
-        kiro_native,
-        "resolve_kiro_executable",
-        lambda **_kwargs: "/usr/bin/kiro-cli",
-    )
-    forwarder_calls: list[dict[str, Any]] = []
-    permission_mirror_calls: list[dict[str, Any]] = []
-
-    async def _fake_supervise_kiro_session_forwarder(**kwargs: Any) -> None:
-        forwarder_calls.append(kwargs)
-
-    async def _fake_supervise_kiro_permission_mirror(**kwargs: Any) -> None:
-        permission_mirror_calls.append(kwargs)
-
-    relay_calls: list[dict[str, Any]] = []
-
-    async def _spy_ensure_relay(session_id: str, **kwargs: Any) -> None:
-        relay_calls.append({"session_id": session_id, **kwargs})
-
-    monkeypatch.setattr(
-        "omnigent.harnesses.kiro_native.session_forwarder.supervise_kiro_session_forwarder",
-        _fake_supervise_kiro_session_forwarder,
-    )
-    monkeypatch.setattr(
-        "omnigent.harnesses.kiro_native.permissions.supervise_kiro_permission_mirror",
-        _fake_supervise_kiro_permission_mirror,
-    )
-
-    async def _fake_launch_config(**_kwargs: Any) -> _KiroNativeLaunchConfig:
-        return _KiroNativeLaunchConfig(
-            workspace=tmp_path,
-            terminal_launch_args=["--model", "auto", "--effort", "high", "hello"],
-            external_session_id="kiro-session-123",
-        )
-
-    monkeypatch.setattr("omnigent.runner.app._kiro_native_launch_config", _fake_launch_config)
-
-    captured: dict[str, Any] = {}
-
-    class _FakeResourceRegistry:
-        """Records the launch; exposes ONLY the required-terminal launch API."""
-
-        terminal_registry = None
-
-        async def launch_required_terminal(
-            self,
-            *,
-            session_id: str,
-            terminal_name: str,
-            session_key: str,
-            spec: Any,
-            resource_role: str | None = None,
-            parent_os_env: Any = None,
-        ) -> SessionResourceView:
-            del parent_os_env
-            captured["terminal_name"] = terminal_name
-            captured["session_key"] = session_key
-            captured["resource_role"] = resource_role
-            captured["spec"] = spec
-            return SessionResourceView(
-                id="terminal_kiro_main",
-                type="terminal",
-                session_id=session_id,
-                name="kiro:main",
-                metadata={"terminal_name": "kiro", "session_key": "main", "running": True},
-            )
-
-    published: list[dict[str, Any]] = []
-
-    await _auto_create_kiro_terminal(
-        "823dbd1aab969b5a813fac59bb977a77",
-        _FakeResourceRegistry(),  # type: ignore[arg-type]
-        lambda _sid, evt: published.append(evt),
-        server_client=NullServerClient(),  # type: ignore[arg-type]
-        ensure_comment_relay=_spy_ensure_relay,
-    )
-    for _ in range(20):
-        if forwarder_calls and permission_mirror_calls:
-            break
-        await asyncio.sleep(0)
-
-    spec = captured["spec"]
-    assert captured["terminal_name"] == "kiro"
-    assert captured["session_key"] == "main"
-    assert captured["resource_role"] == KIRO_NATIVE_TERMINAL_ROLE
-    assert spec.command == "/usr/bin/kiro-cli"
-    assert spec.args == [
-        "chat",
-        "--tui",
-        "--resume-id",
-        "kiro-session-123",
-        "--model",
-        "auto",
-        "--effort",
-        "high",
-        "hello",
-    ]
-    assert spec.inherit_env is False
-    assert "OPENAI_API_KEY" not in spec.env
-    assert "OPENAI_API_KEY" in spec.env_unset
-    assert spec.env[kiro_native_bridge.KIRO_NATIVE_BRIDGE_DIR_ENV_VAR] == str(
-        kiro_native_bridge.bridge_dir_for_session_id("823dbd1aab969b5a813fac59bb977a77")
-    )
-    assert spec.env[kiro_native_bridge.KIRO_ACP_RECORD_PATH_ENV_VAR] == str(
-        kiro_native_bridge.acp_record_path(
-            kiro_native_bridge.bridge_dir_for_session_id("823dbd1aab969b5a813fac59bb977a77")
-        )
-    )
-    assert any(evt.get("type") == "session.resource.created" for evt in published)
-    assert forwarder_calls
-    assert forwarder_calls[0]["base_url"] == "http://127.0.0.1:6767"
-    assert forwarder_calls[0]["session_id"] == "823dbd1aab969b5a813fac59bb977a77"
-    assert forwarder_calls[0]["agent_name"] == "kiro-native-ui"
-    assert forwarder_calls[0]["workspace"] == str(tmp_path)
-    assert permission_mirror_calls
-    assert permission_mirror_calls[0]["base_url"] == "http://127.0.0.1:6767"
-    assert permission_mirror_calls[0]["session_id"] == "823dbd1aab969b5a813fac59bb977a77"
-    # The Omnigent MCP tool relay is seeded for this session's bridge dir.
-    assert relay_calls == [
-        {
-            "session_id": "823dbd1aab969b5a813fac59bb977a77",
-            "explicit_bridge_dir": kiro_native_bridge.bridge_dir_for_session_id(
-                "823dbd1aab969b5a813fac59bb977a77"
-            ),
-            "await_notify": False,
-        }
-    ]
-    # And the Omnigent MCP server is declared in the workspace-scoped kiro config.
-    workspace_mcp = tmp_path / ".kiro" / "settings" / "mcp.json"
-    assert workspace_mcp.exists()
-    mcp_servers = json.loads(workspace_mcp.read_text())["mcpServers"]
-    assert "serve-mcp" in mcp_servers["omnigent"]["args"]
-
-
-@pytest.mark.asyncio
-async def test_auto_create_kiro_terminal_skips_mcp_wiring_without_relay(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Without a comment-relay callback, the Omnigent MCP is NOT wired.
-
-    The workspace mcp.json write + relay seed are gated on ``server_client`` AND
-    ``ensure_comment_relay`` together, so serve-mcp never launches with no relay
-    to route calls back to. With ``ensure_comment_relay`` absent the gate must
-    short-circuit: no workspace ``mcp.json`` is written.
-    """
-    import omnigent.harnesses.kiro_native.main as kiro_native
-
-    monkeypatch.setenv("PATH", "/usr/bin")
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.setenv("RUNNER_SERVER_URL", "http://127.0.0.1:6767")
-    monkeypatch.setattr(kiro_native_bridge, "_BRIDGE_ROOT", tmp_path / "kiro-bridge")
-    monkeypatch.setattr(
-        kiro_native,
-        "resolve_kiro_executable",
-        lambda **_kwargs: "/usr/bin/kiro-cli",
-    )
-
-    async def _noop_supervise(**_kwargs: Any) -> None:
-        return None
-
-    monkeypatch.setattr(
-        "omnigent.harnesses.kiro_native.session_forwarder.supervise_kiro_session_forwarder",
-        _noop_supervise,
-    )
-    monkeypatch.setattr(
-        "omnigent.harnesses.kiro_native.permissions.supervise_kiro_permission_mirror",
-        _noop_supervise,
-    )
-    mcp_writes: list[Any] = []
-    monkeypatch.setattr(
-        kiro_native_bridge,
-        "write_kiro_workspace_mcp_config",
-        lambda *args, **kwargs: mcp_writes.append((args, kwargs)),
-    )
-
-    async def _fake_launch_config(**_kwargs: Any) -> _KiroNativeLaunchConfig:
-        return _KiroNativeLaunchConfig(
-            workspace=tmp_path,
-            terminal_launch_args=["hello"],
-            external_session_id=None,
-        )
-
-    monkeypatch.setattr("omnigent.runner.app._kiro_native_launch_config", _fake_launch_config)
-
-    class _FakeResourceRegistry:
-        terminal_registry = None
-
-        async def launch_required_terminal(
-            self, *, session_id: str, **_kwargs: Any
-        ) -> SessionResourceView:
-            return SessionResourceView(
-                id="terminal_kiro_main",
-                type="terminal",
-                session_id=session_id,
-                name="kiro:main",
-                metadata={"terminal_name": "kiro", "session_key": "main", "running": True},
-            )
-
-    # No ``ensure_comment_relay`` argument -> the MCP wiring gate stays closed.
-    await _auto_create_kiro_terminal(
-        "17b3209fb5684c628f95edee0042e455",
-        _FakeResourceRegistry(),  # type: ignore[arg-type]
-        lambda _sid, _evt: None,
-        server_client=NullServerClient(),  # type: ignore[arg-type]
-    )
-
-    assert mcp_writes == []
-    assert not (tmp_path / ".kiro" / "settings" / "mcp.json").exists()
-
-
-@pytest.mark.asyncio
 async def test_auto_create_pi_terminal_inherits_agent_sandbox(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -898,7 +647,6 @@ async def test_auto_create_pi_terminal_inherits_agent_sandbox(
     import omnigent.harnesses.pi_native.bridge as pi_native_bridge
     import omnigent.harnesses.pi_native.credentials as pi_native_credentials
     import omnigent.harnesses.pi_native.main as pi_native
-    from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec
 
     monkeypatch.setenv("RUNNER_SERVER_URL", "http://127.0.0.1:8000")
     monkeypatch.setattr(pi_native_bridge, "_BRIDGE_ROOT", tmp_path / "pi-bridge")
@@ -1437,7 +1185,6 @@ def test_agent_os_env_from_spec_unwraps_resolved_and_handles_none() -> None:
     return ``None`` when there is no spec — so the launch falls back to the
     platform default only when there is genuinely no agent policy to honour.
     """
-    from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec
 
     os_env = OSEnvSpec(type="caller_process", cwd=".", sandbox=OSEnvSandboxSpec(type="none"))
     bare = AgentSpec(
@@ -1570,7 +1317,6 @@ async def test_auto_create_claude_terminal_inherits_agent_sandbox(
     :param tmp_path: Pytest-provided temporary directory.
     :param monkeypatch: Pytest monkeypatch fixture.
     """
-    from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec
 
     monkeypatch.setattr(claude_native_bridge, "_TRUSTED_PARENT", tmp_path)
     monkeypatch.setattr(claude_native_bridge, "_BRIDGE_ROOT", tmp_path / "root")
@@ -1890,251 +1636,6 @@ async def test_auto_create_claude_terminal_does_not_cache_transient_resolver_fai
     )
 
     await fake_client.aclose()
-
-
-async def _run_auto_create_cursor_terminal(
-    *,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    agent_spec: AgentSpec | None,
-    terminal_launch_args: list[str] | None,
-) -> dict[str, Any]:
-    """Drive ``_auto_create_cursor_terminal`` and return what it wired up.
-
-    Stubs the cursor-agent binary lookup, the transcript forwarder, and the
-    runner auth factory so the model-injection branch runs without a real
-    ``cursor-agent`` install or Databricks credentials. The session snapshot
-    (workspace + ``terminal_launch_args``) is served from an in-memory
-    ``httpx.MockTransport``, and a fake registry records the ``spec`` passed to
-    ``launch_required_terminal`` so the test can assert on ``spec.args``.
-
-    :returns: ``{"spec": <launch spec>, "elicitation_kwargs": <kwargs>}``, the
-        latter captured from the elicitation supervisor the forwarder task
-        gathers (empty if that task never got to start it).
-    """
-    from omnigent.runner import _entry as _runner_entry
-
-    workspace = tmp_path / "ws"
-    workspace.mkdir()
-    monkeypatch.setattr(cursor_native_bridge, "_BRIDGE_ROOT", tmp_path / "cursor-bridge")
-    monkeypatch.setenv("RUNNER_SERVER_URL", "http://127.0.0.1:8000")
-    monkeypatch.setattr(
-        "omnigent.harnesses.cursor_native.main.resolve_cursor_executable", lambda: "cursor-agent"
-    )
-
-    async def _no_op_forwarder(**kwargs: Any) -> None:
-        del kwargs
-
-    monkeypatch.setattr(
-        "omnigent.harnesses.cursor_native.forwarder.supervise_cursor_forwarder",
-        _no_op_forwarder,
-    )
-    monkeypatch.setattr(
-        "omnigent.harnesses.cursor_native.usage.supervise_cursor_usage_forwarder",
-        _no_op_forwarder,
-    )
-    # The forwarder is stubbed, so the auth it would carry is never used — keep
-    # the factory from reaching for ambient Databricks credentials in tests.
-    monkeypatch.setattr(_runner_entry, "_make_auth_token_factory", lambda *a, **k: None)
-
-    captured: dict[str, Any] = {"elicitation_kwargs": {}}
-    started = asyncio.Event()
-
-    async def _capture_elicitation_supervisor(**kwargs: Any) -> None:
-        captured["elicitation_kwargs"] = kwargs
-        started.set()
-
-    monkeypatch.setattr(
-        "omnigent.harnesses.cursor_native.permissions.supervise_cursor_transcript_elicitations",
-        _capture_elicitation_supervisor,
-    )
-
-    class _FakeResourceRegistry:
-        """Captures the launched terminal spec; no real terminal registry."""
-
-        terminal_registry = None
-
-        async def launch_required_terminal(
-            self,
-            *,
-            session_id: str,
-            terminal_name: str,
-            session_key: str,
-            spec: Any,
-            resource_role: str | None = None,
-            parent_os_env: Any = None,
-        ) -> SessionResourceView:
-            """Record the spec and return a terminal resource view."""
-            del terminal_name, session_key, resource_role
-            captured["parent_os_env"] = parent_os_env
-            captured["spec"] = spec
-            return SessionResourceView(
-                id="terminal_cursor_main",
-                type="terminal",
-                session_id=session_id,
-                name="cursor:main",
-                metadata={"terminal_name": "cursor", "session_key": "main", "running": True},
-            )
-
-    snapshot = {"workspace": str(workspace), "terminal_launch_args": terminal_launch_args}
-    fake_client = httpx.AsyncClient(
-        base_url="http://test-server",
-        transport=httpx.MockTransport(lambda req: httpx.Response(200, json=snapshot)),
-    )
-    try:
-        await _auto_create_cursor_terminal(
-            "c42dbcb16fd3a87ee8f5d1fe4cabfdf8",
-            _FakeResourceRegistry(),  # type: ignore[arg-type]
-            lambda _sid, _evt: None,
-            server_client=fake_client,
-            ensure_comment_relay=None,
-            agent_spec=agent_spec,
-        )
-        # The bridge supervisors are gathered in a background task, so give it
-        # a beat to record the kwargs the wiring derived.
-        with contextlib.suppress(TimeoutError):
-            await asyncio.wait_for(started.wait(), timeout=2.0)
-    finally:
-        await fake_client.aclose()
-    return captured
-
-
-@pytest.mark.asyncio
-async def test_auto_create_cursor_terminal_injects_spec_model(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A spec-pinned cursor model is threaded into the cursor-agent launch args.
-
-    The web-UI / daemon path launches ``cursor-agent`` from the runner, so the
-    session's ``executor.model`` (from ``--model`` or config.yaml ``model:``)
-    must reach the TUI as ``--model <id>`` — the regression #933 fixes.
-    """
-    captured = await _run_auto_create_cursor_terminal(
-        tmp_path=tmp_path,
-        monkeypatch=monkeypatch,
-        agent_spec=AgentSpec(
-            spec_version=1, name="cursor", executor=ExecutorSpec(model="sonnet-4-thinking")
-        ),
-        terminal_launch_args=None,
-    )
-    spec = captured["spec"]
-    assert spec.command == "cursor-agent"
-    assert "--model" in spec.args
-    assert spec.args[spec.args.index("--model") + 1] == "sonnet-4-thinking"
-
-
-@pytest.mark.asyncio
-async def test_auto_create_cursor_terminal_inherits_agent_os_env(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Cursor launches with the sandbox and environment declared by its agent."""
-    agent_os_env = OSEnvSpec(sandbox=OSEnvSandboxSpec(type="none"))
-    captured = await _run_auto_create_cursor_terminal(
-        tmp_path=tmp_path,
-        monkeypatch=monkeypatch,
-        agent_spec=AgentSpec(spec_version=1, name="cursor", os_env=agent_os_env),
-        terminal_launch_args=None,
-    )
-
-    assert captured["parent_os_env"] is agent_os_env
-    assert captured["spec"].os_env.sandbox is agent_os_env.sandbox
-
-
-@pytest.mark.parametrize(
-    "passthrough",
-    [
-        # Both the split (``-- --model X``) and joined (``--model=X``) forms a
-        # user can pass through must suppress injection — otherwise cursor-agent
-        # sees two ``--model`` values and selection is ambiguous.
-        ["--model", "gpt-5"],
-        ["--model=gpt-5"],
-        ["-m", "gpt-5"],
-    ],
-    ids=["split", "joined", "short"],
-)
-@pytest.mark.asyncio
-async def test_auto_create_cursor_terminal_user_model_wins(
-    passthrough: list[str],
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A user-pinned passthrough model wins; the spec model is not injected."""
-    captured = await _run_auto_create_cursor_terminal(
-        tmp_path=tmp_path,
-        monkeypatch=monkeypatch,
-        agent_spec=AgentSpec(
-            spec_version=1, name="cursor", executor=ExecutorSpec(model="sonnet-4-thinking")
-        ),
-        terminal_launch_args=passthrough,
-    )
-    spec = captured["spec"]
-    # Exactly the user's args survive — no second ``--model`` / spec model added.
-    assert spec.args.count("--model") == passthrough.count("--model")
-    assert "sonnet-4-thinking" not in spec.args
-
-
-@pytest.mark.parametrize(
-    "spec_model",
-    [None, "", "databricks-claude-opus", "databricks/claude-opus"],
-    ids=["none", "empty", "databricks-dash", "databricks-slash"],
-)
-@pytest.mark.asyncio
-async def test_auto_create_cursor_terminal_omits_model_when_unusable(
-    spec_model: str | None,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """No usable cursor model id → no ``--model`` (cursor-agent keeps its default).
-
-    Gateway-routed ``databricks-*`` ids are not cursor-agent model ids, so they
-    are dropped rather than passed through (which would error on launch).
-    """
-    captured = await _run_auto_create_cursor_terminal(
-        tmp_path=tmp_path,
-        monkeypatch=monkeypatch,
-        agent_spec=AgentSpec(
-            spec_version=1, name="cursor", executor=ExecutorSpec(model=spec_model)
-        ),
-        terminal_launch_args=None,
-    )
-    assert "--model" not in captured["spec"].args
-
-
-@pytest.mark.parametrize(
-    ("terminal_launch_args", "expected"),
-    [
-        (None, False),
-        (["--auto-review"], False),
-        (["--yolo=false"], False),
-        (["--yolo"], True),
-        (["--force"], True),
-        (["-f"], True),
-    ],
-    ids=["none", "auto-review", "yolo-off", "yolo", "force", "short-force"],
-)
-@pytest.mark.asyncio
-async def test_auto_create_cursor_terminal_wires_yolo_auto_accept(
-    terminal_launch_args: list[str] | None,
-    expected: bool,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The elicitation supervisor's yolo stance is derived from the launch args.
-
-    This wiring is the only thing that turns the in-pane auto-accept on. It is
-    a single kwarg in a large auto-create function, so without this assertion a
-    rebase can drop it and leave the feature inert with the rest of the suite
-    green.
-    """
-    captured = await _run_auto_create_cursor_terminal(
-        tmp_path=tmp_path,
-        monkeypatch=monkeypatch,
-        agent_spec=None,
-        terminal_launch_args=terminal_launch_args,
-    )
-    assert captured["elicitation_kwargs"]["auto_accept_approvals"] is expected
 
 
 @pytest.mark.parametrize(
@@ -3237,342 +2738,7 @@ async def test_create_session_auto_create_guard_skips_rotation_targets(
         assert created == [], f"Auto-create must be skipped for {scenario.case_id}; got {created}"
 
 
-@dataclass
-class _AntigravityAutoCreateScenario:
-    """
-    One parametrized case for the antigravity-native auto-create guard.
-
-    :param case_id: Human-readable scenario id used as the pytest id,
-        e.g. ``"clear_rotation_target_skips"``.
-    :param bridge_state_session: ``session_id`` to seed into the shared
-        bridge state, e.g. ``"3bb59abc6e20b834cbb2269f28880895"``. ``None`` seeds no bridge state
-        at all (models a genuinely fresh session).
-    :param terminal_under: Session id to seed a live ``antigravity:main``
-        terminal under in the registry, e.g. ``"3bb59abc6e20b834cbb2269f28880895"``. ``None``
-        seeds no terminal (models a dead/absent original terminal).
-    :param bridge_id_label: Value returned for the new session's
-        :data:`ANTIGRAVITY_NATIVE_BRIDGE_ID_LABEL_KEY` label, e.g.
-        ``"bridge_shared"`` for a rotation target (shares the original's
-        bridge) or ``"2d1b1a96e3e08f2cd43c0cc4b695ac5d"`` for a fresh session (own bridge).
-    :param expect_auto_create: Whether the guard should invoke
-        ``_auto_create_antigravity_terminal`` for the new session.
-    """
-
-    case_id: str
-    bridge_state_session: str | None
-    terminal_under: str | None
-    bridge_id_label: str
-    expect_auto_create: bool
-
-
-class _AntigravitySnapshotServerClient:
-    """
-    Server-client stub for the antigravity auto-create guard route test.
-
-    Answers the two GETs the antigravity branch issues for that session: the
-    session snapshot (``/v1/sessions/2d1b1a96e3e08f2cd43c0cc4b695ac5d`` — non-``None`` so
-    ``_session_payload_for_host_spawn_check`` reports the session needs a
-    terminal) and the labels lookup (``/v1/sessions/<id>/labels`` — returns
-    the bridge-id label so the transfer-inbound check can resolve the shared
-    bridge dir). A real stub class — not ``MagicMock`` — so an unexpected call
-    shape fails loudly instead of silently returning a mock.
-    """
-
-    def __init__(self, bridge_id_label: str) -> None:
-        """
-        :param bridge_id_label: Bridge id to report on the session's
-            ``labels``, e.g. ``"bridge_shared"``.
-        """
-        self._bridge_id_label = bridge_id_label
-
-    async def get(self, url: str, **kwargs: Any) -> Any:
-        """
-        Return a canned snapshot or labels payload for *url*.
-
-        :param url: Request path, e.g. ``"/v1/sessions/2d1b1a96e3e08f2cd43c0cc4b695ac5d"`` or
-            ``"/v1/sessions/2d1b1a96e3e08f2cd43c0cc4b695ac5d/labels"``.
-        :returns: A response object exposing ``status_code`` and ``json()``
-            matching the subset the runner reads.
-        """
-        del kwargs
-        labels = {ANTIGRAVITY_NATIVE_BRIDGE_ID_LABEL_KEY: self._bridge_id_label}
-
-        class _Response:
-            """Minimal httpx-like response with the fields the runner reads."""
-
-            def __init__(self, payload: dict[str, Any]) -> None:
-                """:param payload: JSON body returned by ``json()``."""
-                self.status_code = 200
-                self._payload = payload
-
-            def json(self) -> dict[str, Any]:
-                """:returns: The canned JSON payload."""
-                return self._payload
-
-        if url.endswith("/labels"):
-            return _Response({"labels": labels})
-        # The session snapshot: non-None so the host-spawn check reports the
-        # session needs a terminal, and carries the same labels.
-        return _Response({"id": "2d1b1a96e3e08f2cd43c0cc4b695ac5d", "labels": labels})
-
-
-_ANTIGRAVITY_AUTO_CREATE_SCENARIOS = [
-    # Rotation target: the bridge's active session (conv_old) still owns the
-    # live agy terminal that is about to be transferred onto conv_new.
-    _AntigravityAutoCreateScenario(
-        case_id="clear_rotation_target_skips",
-        bridge_state_session="3bb59abc6e20b834cbb2269f28880895",
-        terminal_under="3bb59abc6e20b834cbb2269f28880895",
-        bridge_id_label="bridge_shared",
-        expect_auto_create=False,
-    ),
-    # Fresh host-spawned session: its own bridge has no recorded state and no
-    # terminal, so it must bootstrap (cold-start) its own agy.
-    _AntigravityAutoCreateScenario(
-        case_id="fresh_session_creates",
-        bridge_state_session=None,
-        terminal_under=None,
-        bridge_id_label="2d1b1a96e3e08f2cd43c0cc4b695ac5d",
-        expect_auto_create=True,
-    ),
-    # The bridge's recorded session is conv_new itself (e.g. a relaunch after
-    # the terminal died) — not a rotation, so auto-create proceeds.
-    _AntigravityAutoCreateScenario(
-        case_id="active_is_self_creates",
-        bridge_state_session="2d1b1a96e3e08f2cd43c0cc4b695ac5d",
-        terminal_under=None,
-        bridge_id_label="bridge_shared",
-        expect_auto_create=True,
-    ),
-    # The bridge names a sibling (conv_old) but no live terminal exists under
-    # it — nothing to transfer in, so auto-create proceeds.
-    _AntigravityAutoCreateScenario(
-        case_id="dead_terminal_under_active_creates",
-        bridge_state_session="3bb59abc6e20b834cbb2269f28880895",
-        terminal_under=None,
-        bridge_id_label="bridge_shared",
-        expect_auto_create=True,
-    ),
-]
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "scenario",
-    _ANTIGRAVITY_AUTO_CREATE_SCENARIOS,
-    ids=[s.case_id for s in _ANTIGRAVITY_AUTO_CREATE_SCENARIOS],
-)
-async def test_create_session_antigravity_auto_create_guard_skips_rotation_targets(
-    scenario: _AntigravityAutoCreateScenario,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    The antigravity-native auto-create guard skips ``/clear`` rotation targets.
-
-    A ``/clear`` rotation binds the runner to a fresh Omnigent session, then
-    transfers the existing agy terminal onto it — agy is one long-lived process
-    hosting many cascades, so the rotation re-homes the SAME process. The bind
-    reaches the runner's ``POST /v1/sessions`` before the transfer runs, so the
-    new session momentarily has no terminal. Auto-creating a second agy here
-    cold-starts a brand-new process whose own ``external_session_id`` then 400s
-    the rotation's PATCH and loops it into unbounded session/process spawning
-    (the bug found by live e2e). The guard now skips auto-create when the new
-    session's bridge already has a *different* session owning a live
-    ``antigravity:main`` terminal — the one about to be transferred in. Mirrors
-    the claude-native guard test above.
-
-    Drives the real route with the real guard. Each scenario seeds the shared
-    bridge state's ``session_id`` and the terminal registry, then asserts whether
-    ``_auto_create_antigravity_terminal`` ran. Reverting the guard turns the
-    ``clear_rotation_target_skips`` case red (auto-create fires for a rotation
-    target again).
-    """
-    monkeypatch.setattr(
-        "omnigent.harnesses.antigravity_native.bridge._BRIDGE_ROOT",
-        tmp_path / "antigravity-native",
-    )
-
-    # Seed the shared bridge state so the guard reads the original
-    # (terminal-owning) session as the bridge's active session.
-    if scenario.bridge_state_session is not None:
-        seed_dir = prepare_antigravity_bridge_dir(scenario.bridge_id_label)
-        write_antigravity_bridge_state(
-            seed_dir,
-            AntigravityNativeBridgeState(
-                session_id=scenario.bridge_state_session,
-                conversation_id="cascade_old",
-            ),
-        )
-
-    # Seed a live antigravity:main terminal under the original session so the
-    # guard's registry probe finds the terminal that would be transferred.
-    # Poking ``_by_conversation`` directly is the established registry-test
-    # idiom — a real TerminalInstance without launching tmux.
-    terminal_registry = TerminalRegistry()
-    if scenario.terminal_under is not None:
-        instance = TerminalInstance(
-            name="antigravity",
-            session_key="main",
-            socket_path=tmp_path / "antigravity.sock",
-            private_dir=tmp_path / "antigravity",
-            running=True,
-        )
-        terminal_registry._by_conversation[scenario.terminal_under] = {
-            ("antigravity", "main"): instance
-        }
-
-    created: list[str] = []
-
-    async def _recording_auto_create(
-        session_id: str, resource_registry: Any, publish_event: Any, **_kwargs: Any
-    ) -> None:
-        """
-        Record the auto-create call instead of launching a real agy.
-
-        :param session_id: Session id the guard chose to auto-create for,
-            e.g. ``"2d1b1a96e3e08f2cd43c0cc4b695ac5d"``.
-        :param resource_registry: Unused — the real launch path is stubbed.
-        :param publish_event: Unused — the real launch path is stubbed.
-        :param _kwargs: Absorbs keyword args added to the real function
-            (e.g. ``server_client``).
-        :returns: None.
-        """
-        del resource_registry, publish_event
-        created.append(session_id)
-
-    monkeypatch.setattr(
-        "omnigent.runner.native.orchestration._auto_create_antigravity_terminal",
-        _recording_auto_create,
-    )
-
-    native_spec = AgentSpec(
-        spec_version=1,
-        name="t",
-        executor=ExecutorSpec(type="omnigent", config={"harness": "antigravity-native"}),
-    )
-
-    async def _resolver(agent_id: str, session_id: str | None = None) -> AgentSpec:
-        """
-        Return the antigravity-native spec for any agent id.
-
-        :param agent_id: Requested agent id (unused — fixed spec).
-        :param session_id: Requested session id (unused — fixed spec).
-        :returns: The antigravity-native :class:`AgentSpec`.
-        """
-        del agent_id, session_id
-        return native_spec
-
-    pm = _FakeProcessManager(_ScriptedHarnessClient([]))
-    app = create_runner_app(
-        process_manager=pm,  # type: ignore[arg-type]
-        spec_resolver=_resolver,
-        server_client=_AntigravitySnapshotServerClient(  # type: ignore[arg-type]
-            scenario.bridge_id_label
-        ),
-        terminal_registry=terminal_registry,
-    )
-
-    async with _runner_client(app) as client:
-        resp = await client.post(
-            "/v1/sessions",
-            json={
-                "session_id": "2d1b1a96e3e08f2cd43c0cc4b695ac5d",
-                "agent_id": "880b5afda28ad55ff74cbeb9b5fc67fb",
-            },
-        )
-    assert resp.status_code == 201, resp.text
-
-    if scenario.expect_auto_create:
-        # Fresh / no-live-sibling sessions must still bootstrap their own agy —
-        # the guard only suppresses true rotation targets. An empty ``created``
-        # here would mean the guard over-fired and a host-spawned session would
-        # never get a terminal.
-        assert created == ["2d1b1a96e3e08f2cd43c0cc4b695ac5d"], (
-            f"Expected auto-create for {scenario.case_id}; got {created}"
-        )
-    else:
-        # The rotation target's terminal arrives via transfer. Auto-create here
-        # is the regression: it cold-starts a redundant agy that 400s the
-        # rotation's external_session_id PATCH and loops the rotation.
-        assert created == [], f"Auto-create must be skipped for {scenario.case_id}; got {created}"
-
-
-@dataclass
-class _CodexAutoCreateScenario:
-    """
-    One case for the codex-native auto-create guard route test.
-
-    :param case_id: Pytest id, e.g. ``"new_rotation_target_skips"``.
-    :param bridge_state_session: ``session_id`` recorded in the shared
-        bridge state, e.g. ``"3bb59abc6e20b834cbb2269f28880895"``, or
-        ``None`` to leave the bridge unseeded (fresh session).
-    :param terminal_under: Session id that owns a live ``codex:main``
-        terminal in the registry, or ``None`` for no live terminal.
-    :param bridge_id_label: Value reported for the session's
-        :data:`CODEX_NATIVE_BRIDGE_ID_LABEL_KEY` label, e.g.
-        ``"bridge_shared"`` for a rotation target (shares the original's
-        bridge) or the session's own id for a fresh session.
-    :param expect_auto_create: Whether the guard should invoke
-        ``_auto_create_codex_terminal`` for the new session.
-    """
-
-    case_id: str
-    bridge_state_session: str | None
-    terminal_under: str | None
-    bridge_id_label: str
-    expect_auto_create: bool
-
-
-class _CodexSnapshotServerClient:
-    """
-    Server-client stub for the codex auto-create guard route test.
-
-    Answers the GETs the codex branch issues: the session snapshot
-    (non-``None`` so ``_codex_session_needs_runner_terminal`` reports the
-    session needs a terminal) and the labels lookup (returns the bridge-id
-    label so the transfer-inbound check resolves the shared bridge dir).
-    A real stub class — not ``MagicMock`` — so an unexpected call shape
-    fails loudly instead of silently returning a mock.
-    """
-
-    def __init__(self, bridge_id_label: str) -> None:
-        """
-        :param bridge_id_label: Bridge id to report on the session's
-            ``labels``, e.g. ``"bridge_shared"``.
-        """
-        self._bridge_id_label = bridge_id_label
-
-    async def get(self, url: str, **kwargs: Any) -> Any:
-        """
-        Return a canned snapshot or labels payload for *url*.
-
-        :param url: Request path, e.g. ``"/v1/sessions/<id>"`` or
-            ``"/v1/sessions/<id>/labels"``.
-        :returns: A response object exposing ``status_code`` and ``json()``
-            matching the subset the runner reads.
-        """
-        del kwargs
-        labels = {CODEX_NATIVE_BRIDGE_ID_LABEL_KEY: self._bridge_id_label}
-
-        class _Response:
-            """Minimal httpx-like response with the fields the runner reads."""
-
-            def __init__(self, payload: dict[str, Any]) -> None:
-                """:param payload: JSON body returned by ``json()``."""
-                self.status_code = 200
-                self._payload = payload
-
-            def json(self) -> dict[str, Any]:
-                """:returns: The canned JSON payload."""
-                return self._payload
-
-        if url.endswith("/labels"):
-            return _Response({"labels": labels})
-        return _Response({"id": "2d1b1a96e3e08f2cd43c0cc4b695ac5d", "labels": labels})
-
-
-class _BlockingCodexRecoveryServerClient:
+class _BlockingRecoveryServerClient:
     """Block durable inbox recovery while rejecting redundant init reads."""
 
     def __init__(self) -> None:
@@ -3603,7 +2769,7 @@ class _BlockingCodexRecoveryServerClient:
         raise AssertionError(f"unexpected runner-init GET: {url}")
 
 
-class _DeletingCodexRecoveryServerClient:
+class _DeletingRecoveryServerClient:
     """Pause the first recovery after one child is delivered."""
 
     def __init__(self, parent_id: str, first_child_id: str, second_child_id: str) -> None:
@@ -3686,191 +2852,14 @@ class _DeletingCodexRecoveryServerClient:
         return httpx.Response(200, request=httpx.Request("POST", url))
 
 
-_CODEX_AUTO_CREATE_SCENARIOS = [
-    # Rotation target: the bridge's active session still owns the live codex
-    # terminal that is about to be transferred onto the new session.
-    _CodexAutoCreateScenario(
-        case_id="new_rotation_target_skips",
-        bridge_state_session="3bb59abc6e20b834cbb2269f28880895",
-        terminal_under="3bb59abc6e20b834cbb2269f28880895",
-        bridge_id_label="bridge_shared",
-        expect_auto_create=False,
-    ),
-    # Fresh host-spawned session: own bridge, no recorded state, no terminal —
-    # it must bootstrap its own Codex.
-    _CodexAutoCreateScenario(
-        case_id="fresh_session_creates",
-        bridge_state_session=None,
-        terminal_under=None,
-        bridge_id_label="2d1b1a96e3e08f2cd43c0cc4b695ac5d",
-        expect_auto_create=True,
-    ),
-    # The bridge's recorded session is the new session itself (e.g. a relaunch
-    # after the terminal died) — not a rotation, so auto-create proceeds.
-    _CodexAutoCreateScenario(
-        case_id="active_is_self_creates",
-        bridge_state_session="2d1b1a96e3e08f2cd43c0cc4b695ac5d",
-        terminal_under=None,
-        bridge_id_label="bridge_shared",
-        expect_auto_create=True,
-    ),
-    # The bridge names a sibling but no live terminal exists under it —
-    # nothing to transfer in, so auto-create proceeds.
-    _CodexAutoCreateScenario(
-        case_id="dead_terminal_under_active_creates",
-        bridge_state_session="3bb59abc6e20b834cbb2269f28880895",
-        terminal_under=None,
-        bridge_id_label="bridge_shared",
-        expect_auto_create=True,
-    ),
-]
-
-
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "scenario",
-    _CODEX_AUTO_CREATE_SCENARIOS,
-    ids=[s.case_id for s in _CODEX_AUTO_CREATE_SCENARIOS],
-)
-async def test_create_session_codex_auto_create_guard_skips_rotation_targets(
-    scenario: _CodexAutoCreateScenario,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    The codex-native auto-create guard skips ``/new`` rotation targets.
-
-    A native Codex ``/new`` starts a fresh thread in the SAME terminal, and
-    the forwarder rotates Omnigent ownership onto a fresh session before
-    transferring that terminal onto it. The bind reaches the runner's
-    ``POST /v1/sessions`` before the transfer runs, so the new session
-    momentarily has no terminal. Auto-creating a second ``codex:main`` here
-    makes the rotation's transfer 409, so the terminal — and the tmux status
-    link it carries — stays owned by the superseded session while the web
-    session streams from the new one.
-
-    Drives the real route with the real guard. Each scenario seeds the shared
-    bridge state's ``session_id`` and the terminal registry, then asserts
-    whether ``_auto_create_codex_terminal`` ran. Reverting the guard turns the
-    ``new_rotation_target_skips`` case red. Mirrors the claude-native and
-    antigravity-native guard tests above.
-    """
-    monkeypatch.setattr(
-        "omnigent.harnesses.codex_native.bridge._BRIDGE_ROOT",
-        tmp_path / "codex-native",
-    )
-
-    # Seed the shared bridge state so the guard reads the original
-    # (terminal-owning) session as the bridge's active session.
-    if scenario.bridge_state_session is not None:
-        seed_dir = prepare_codex_bridge_dir(scenario.bridge_id_label)
-        write_codex_bridge_state(
-            seed_dir,
-            CodexNativeBridgeState(
-                session_id=scenario.bridge_state_session,
-                socket_path="ws://127.0.0.1:9876",
-                thread_id="thread_old",
-                codex_home=str(tmp_path / "codex-home"),
-            ),
-        )
-
-    # Seed a live codex:main terminal under the original session so the guard's
-    # registry probe finds the terminal that would be transferred. Poking
-    # ``_by_conversation`` directly is the established registry-test idiom — a
-    # real TerminalInstance without launching tmux.
-    terminal_registry = TerminalRegistry()
-    if scenario.terminal_under is not None:
-        instance = TerminalInstance(
-            name="codex",
-            session_key="main",
-            socket_path=tmp_path / "codex.sock",
-            private_dir=tmp_path / "codex",
-            running=True,
-        )
-        terminal_registry._by_conversation[scenario.terminal_under] = {("codex", "main"): instance}
-
-    created: list[str] = []
-
-    async def _recording_auto_create(
-        session_id: str, resource_registry: Any, publish_event: Any, **_kwargs: Any
-    ) -> None:
-        """
-        Record the auto-create call instead of launching a real Codex.
-
-        :param session_id: Session id the guard chose to auto-create for.
-        :param resource_registry: Unused — the real launch path is stubbed.
-        :param publish_event: Unused — the real launch path is stubbed.
-        :param _kwargs: Absorbs keyword args added to the real function.
-        :returns: None.
-        """
-        del resource_registry, publish_event
-        created.append(session_id)
-
-    monkeypatch.setattr(
-        "omnigent.runner.native.orchestration._auto_create_codex_terminal",
-        _recording_auto_create,
-    )
-
-    native_spec = AgentSpec(
-        spec_version=1,
-        name="t",
-        executor=ExecutorSpec(type="omnigent", config={"harness": "codex-native"}),
-    )
-
-    async def _resolver(agent_id: str, session_id: str | None = None) -> AgentSpec:
-        """
-        Return the codex-native spec for any agent id.
-
-        :param agent_id: Requested agent id (unused — fixed spec).
-        :param session_id: Requested session id (unused — fixed spec).
-        :returns: The codex-native :class:`AgentSpec`.
-        """
-        del agent_id, session_id
-        return native_spec
-
-    pm = _FakeProcessManager(_ScriptedHarnessClient([]))
-    app = create_runner_app(
-        process_manager=pm,  # type: ignore[arg-type]
-        spec_resolver=_resolver,
-        server_client=_CodexSnapshotServerClient(  # type: ignore[arg-type]
-            scenario.bridge_id_label
-        ),
-        terminal_registry=terminal_registry,
-    )
-
-    async with _runner_client(app) as client:
-        resp = await client.post(
-            "/v1/sessions",
-            json={
-                "session_id": "2d1b1a96e3e08f2cd43c0cc4b695ac5d",
-                "agent_id": "880b5afda28ad55ff74cbeb9b5fc67fb",
-            },
-        )
-    assert resp.status_code == 201, resp.text
-
-    if scenario.expect_auto_create:
-        # Fresh / no-live-sibling sessions must still bootstrap their own
-        # Codex — the guard only suppresses true rotation targets.
-        assert created == ["2d1b1a96e3e08f2cd43c0cc4b695ac5d"], (
-            f"Expected auto-create for {scenario.case_id}; got {created}"
-        )
-    else:
-        # The rotation target's terminal arrives via transfer. Auto-create here
-        # is the regression: it 409s the transfer, so the terminal and its tmux
-        # status link stay on the superseded session.
-        assert created == [], f"Auto-create must be skipped for {scenario.case_id}; got {created}"
-
-
-@pytest.mark.asyncio
-async def test_create_session_codex_envelope_avoids_reads_and_overlaps_recovery(
+async def test_create_session_native_envelope_avoids_reads_and_overlaps_recovery(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Protocol-v2 metadata and inbox recovery stay off terminal startup's critical path."""
-    monkeypatch.setattr(
-        "omnigent.harnesses.codex_native.bridge._BRIDGE_ROOT",
-        tmp_path / "codex-native",
-    )
+    monkeypatch.setattr(claude_native_bridge, "_TRUSTED_PARENT", tmp_path)
+    monkeypatch.setattr(claude_native_bridge, "_BRIDGE_ROOT", tmp_path / "root")
     terminal_started = asyncio.Event()
 
     async def _recording_auto_create(
@@ -3883,14 +2872,14 @@ async def test_create_session_codex_envelope_avoids_reads_and_overlaps_recovery(
         terminal_started.set()
 
     monkeypatch.setattr(
-        "omnigent.runner.native.orchestration._auto_create_codex_terminal",
+        "omnigent.runner.native.orchestration._auto_create_claude_terminal",
         _recording_auto_create,
     )
 
     native_spec = AgentSpec(
         spec_version=1,
         name="t",
-        executor=ExecutorSpec(type="omnigent", config={"harness": "codex-native"}),
+        executor=ExecutorSpec(type="omnigent", config={"harness": "claude-native"}),
     )
 
     async def _resolver(agent_id: str, session_id: str | None = None) -> AgentSpec:
@@ -3899,7 +2888,7 @@ async def test_create_session_codex_envelope_avoids_reads_and_overlaps_recovery(
 
     session_id = "f1a92609dd7840ae9f2c4c29127c2a61"
     agent_id = "7d594e9075c74249a846df420dfa7fcb"
-    server_client = _BlockingCodexRecoveryServerClient()
+    server_client = _BlockingRecoveryServerClient()
     app = create_runner_app(
         process_manager=_FakeProcessManager(_ScriptedHarnessClient([])),  # type: ignore[arg-type]
         spec_resolver=_resolver,
@@ -3923,7 +2912,7 @@ async def test_create_session_codex_envelope_avoids_reads_and_overlaps_recovery(
                             "created_at": 10,
                             "updated_at": 11,
                             "workspace": str(tmp_path),
-                            "labels": {CODEX_NATIVE_BRIDGE_ID_LABEL_KEY: session_id},
+                            "labels": {BRIDGE_ID_LABEL_KEY: session_id},
                         },
                     },
                 },
@@ -3962,13 +2951,13 @@ async def test_create_session_keeps_recovery_alive_when_pre_launch_fails(
         raise RuntimeError("pre-launch failed")
 
     monkeypatch.setattr(
-        "omnigent.runner.app._codex_native_terminal_arrives_via_transfer",
+        "omnigent.runner.app._claude_native_terminal_arrives_via_transfer",
         _raise_pre_launch_error,
     )
     native_spec = AgentSpec(
         spec_version=1,
         name="t",
-        executor=ExecutorSpec(type="omnigent", config={"harness": "codex-native"}),
+        executor=ExecutorSpec(type="omnigent", config={"harness": "claude-native"}),
     )
 
     async def _resolver(agent_id: str, session_id: str | None = None) -> AgentSpec:
@@ -3977,7 +2966,7 @@ async def test_create_session_keeps_recovery_alive_when_pre_launch_fails(
 
     session_id = "c46cf86fc9674eac9097e3fb260ce85f"
     agent_id = "5b491851c683439981e6c2188929fcc0"
-    server_client = _BlockingCodexRecoveryServerClient()
+    server_client = _BlockingRecoveryServerClient()
     app = create_runner_app(
         process_manager=_FakeProcessManager(_ScriptedHarnessClient([])),  # type: ignore[arg-type]
         spec_resolver=_resolver,
@@ -4001,7 +2990,7 @@ async def test_create_session_keeps_recovery_alive_when_pre_launch_fails(
                             "created_at": 10,
                             "updated_at": 11,
                             "workspace": str(tmp_path),
-                            "labels": {CODEX_NATIVE_BRIDGE_ID_LABEL_KEY: session_id},
+                            "labels": {BRIDGE_ID_LABEL_KEY: session_id},
                         },
                     },
                 },
@@ -4038,11 +3027,11 @@ async def test_delete_cancels_recovery_before_same_session_reinitializes(
         return None
 
     monkeypatch.setattr(
-        "omnigent.runner.app._codex_native_terminal_arrives_via_transfer",
+        "omnigent.runner.app._claude_native_terminal_arrives_via_transfer",
         _fail_first_pre_launch,
     )
     monkeypatch.setattr(
-        "omnigent.runner.native.orchestration._auto_create_codex_terminal",
+        "omnigent.runner.native.orchestration._auto_create_claude_terminal",
         _skip_auto_create,
     )
     monkeypatch.setattr(
@@ -4053,7 +3042,7 @@ async def test_delete_cancels_recovery_before_same_session_reinitializes(
     native_spec = AgentSpec(
         spec_version=1,
         name="t",
-        executor=ExecutorSpec(type="omnigent", config={"harness": "codex-native"}),
+        executor=ExecutorSpec(type="omnigent", config={"harness": "claude-native"}),
     )
 
     async def _resolver(agent_id: str, session_id: str | None = None) -> AgentSpec:
@@ -4064,7 +3053,7 @@ async def test_delete_cancels_recovery_before_same_session_reinitializes(
     agent_id = "fe373ed32ac948d599d50b52680d1c62"
     first_child_id = "4f214b07944c436ea21c47eec87ecbb2"
     second_child_id = "053550e3650144248e99f77995976377"
-    server_client = _DeletingCodexRecoveryServerClient(
+    server_client = _DeletingRecoveryServerClient(
         session_id,
         first_child_id,
         second_child_id,
@@ -4087,7 +3076,7 @@ async def test_delete_cancels_recovery_before_same_session_reinitializes(
                 "created_at": 10,
                 "updated_at": 11,
                 "workspace": str(tmp_path),
-                "labels": {CODEX_NATIVE_BRIDGE_ID_LABEL_KEY: session_id},
+                "labels": {BRIDGE_ID_LABEL_KEY: session_id},
             },
         },
     }
@@ -4358,27 +3347,11 @@ async def _run_auto_create_claude_terminal_for_routing_class(
             server_client=fake_client,
         )
     finally:
-        from omnigent.runner import subagent_routing, turn_routing
+        from omnigent.runner import turn_routing
 
-        subagent_routing.shutdown_session_router(session_id)
         turn_routing.shutdown_session_turn_router(session_id)
         await fake_client.aclose()
     return captured["spec"]
-
-
-def _claude_pretooluse_matchers(spec: Any) -> list[str | None]:
-    settings = _load_claude_invocation_settings(spec.args)
-    return [entry.get("matcher") for entry in settings["hooks"].get("PreToolUse", [])]
-
-
-def _claude_hook_commands(spec: Any) -> list[str]:
-    settings = _load_claude_invocation_settings(spec.args)
-    return [
-        hook.get("command", "")
-        for entries in settings["hooks"].values()
-        for entry in entries
-        for hook in entry.get("hooks", [])
-    ]
 
 
 async def test_a_plain_claude_native_launch_carries_no_spawn_routing(
@@ -4391,15 +3364,11 @@ async def test_a_plain_claude_native_launch_carries_no_spawn_routing(
         routed=False,
     )
 
-    assert claude_native_bridge.CLAUDE_SUBAGENT_TOOL_MATCHER not in _claude_pretooluse_matchers(
-        spec
-    )
-    assert all("claude_router_hook" not in command for command in _claude_hook_commands(spec))
     # The workspace's own picker row survives untouched.
     assert spec.env["ANTHROPIC_CUSTOM_MODEL_OPTION"] == "workspace-picker-row"
 
 
-async def test_a_routed_claude_native_launch_keeps_the_spawn_gate_and_the_pin(
+async def test_a_routed_claude_native_launch_pins_the_launch_model(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     spec = await _run_auto_create_claude_terminal_for_routing_class(
@@ -4409,12 +3378,7 @@ async def test_a_routed_claude_native_launch_keeps_the_spawn_gate_and_the_pin(
         routed=True,
     )
 
-    assert claude_native_bridge.CLAUDE_SUBAGENT_TOOL_MATCHER in _claude_pretooluse_matchers(spec)
-    assert any("claude_router_hook" in command for command in _claude_hook_commands(spec))
     assert spec.env["ANTHROPIC_CUSTOM_MODEL_OPTION"] == "databricks-claude-opus-4-7"
-    # A pinned session's spawns stay on the claude family, so it gets neither
-    # the routed-spawn note nor the pre-approvals the cross-family hop needs.
-    assert "--append-system-prompt" not in spec.args
 
 
 async def test_an_auto_harness_launch_without_a_cost_control_stamp_is_still_routed(
@@ -4423,11 +3387,8 @@ async def test_an_auto_harness_launch_without_a_cost_control_stamp_is_still_rout
     """The sub-agent child of a routed parent: auto-harness label, no cost stamp.
 
     Such a child is created with ``harness_override="auto"`` and the
-    auto-harness label but no ``cost_control_mode_override``. Deriving
-    ``routing_enabled`` from the cost field alone launched it with the
-    routed-spawn note and the four pre-approved tools while starting no router
-    and pinning no arms — an argv that tells Claude to route spawns through a
-    hook nothing answers.
+    auto-harness label but no ``cost_control_mode_override``; it must still
+    launch as routed, with the launch model pinned.
     """
     spec = await _run_auto_create_claude_terminal_for_routing_class(
         tmp_path=tmp_path,
@@ -4437,24 +3398,7 @@ async def test_an_auto_harness_launch_without_a_cost_control_stamp_is_still_rout
         auto_harness=True,
     )
 
-    # The whole routed apparatus, not just the spawn note.
-    assert claude_native_bridge.CLAUDE_SUBAGENT_TOOL_MATCHER in _claude_pretooluse_matchers(spec)
-    assert any("claude_router_hook" in command for command in _claude_hook_commands(spec))
     assert spec.env["ANTHROPIC_CUSTOM_MODEL_OPTION"] == "databricks-claude-opus-4-7"
-    # And the auto-harness extras, which only make sense alongside the router.
-    assert "--append-system-prompt" in spec.args
-    allowed = spec.args[spec.args.index("--allowedTools") + 1]
-    assert "mcp__omnigent__sys_session_create" in allowed
-
-
-def test_routed_spawn_launch_args_need_a_router() -> None:
-    """The note and pre-approvals never ship without the router that serves them."""
-    from omnigent.runner.native.orchestration import _routed_spawn_launch_args
-
-    note, tools = _routed_spawn_launch_args(True)
-    assert note and tools
-    assert _routed_spawn_launch_args(True, router_started=False) == (None, ())
-    assert _routed_spawn_launch_args(False) == (None, ())
 
 
 @pytest.mark.asyncio
