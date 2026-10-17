@@ -8,13 +8,13 @@ only checks who is asking and passes calls through; it never re-implements
 side chats, memory or activity.
 
 ```
-apps/web ──oRPC──▶ apps/api (auth, ownership) ──HTTP──▶ Omnigent server ──▶ runner ──▶ Claude SDK
-                     packages/adapters/src/omnigent/*
+web/app ──oRPC──▶ apps/api (auth, ownership) ──HTTP──▶ Omnigent server ──▶ runner ──▶ Claude SDK
+                    web/packages/adapters/src/omnigent/*
 ```
 
 Code lives in feature files: oRPC routers in `apps/api/src/routers/` (for example
 `side-chats.ts`, `computer.ts`, `memory.ts`, `goals.ts`, `feed.ts`), their contracts in
-`packages/contracts/src/rpc/` (`chats.ts`, `computer.ts`, ...), and engine relays in
+`web/packages/contracts/src/rpc/` (`chats.ts`, `computer.ts`, ...), and engine relays in
 `apps/api/src/features/<capability>/service.ts` / `activities.ts`.
 
 ## Identity and ownership
@@ -101,7 +101,7 @@ The single switch is "Omnigent connection configured": `OMNIGENT_URL` +
 | `related_chats` entries add `start`, `summary` (seed summary or `null`), `live` | `ChatSummary` without extra calls |
 | `GET /v1/sessions/{id}/context_summary` → `{summary, created_at}` or `{summary: null}` | "Knows our conversation" hover |
 
-### A1 · App backend (`packages/*`, `apps/api`, `apps/worker`, `deployment/engine`)
+### A1 · App backend (`web/packages/*`, `apps/api`, `apps/worker`, `deployment/engine`)
 
 | Change | Why |
 |---|---|
@@ -112,7 +112,7 @@ The single switch is "Omnigent connection configured": `OMNIGENT_URL` +
 | Read the Conversation from the transcript and refetch on the family stream (ADR 0009); no mirror job | "Muse speaks first" shows in the Conversation |
 | Remove the engine picker and `engine.*` routes | One engine |
 
-### U1 · Web (`apps/web`)
+### U1 · Web (`web/app`)
 
 | Change | Why |
 |---|---|

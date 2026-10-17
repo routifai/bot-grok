@@ -381,9 +381,9 @@ flowchart LR
   items --> act["Engine: Activity derivation<br/>superchat/activity/derive.py"]
   tx --> red["Engine: secret redactor<br/>server/redaction.py"]
   act --> red
-  red --> ad["Superchat adapter<br/>packages/adapters/src/omnigent"]
+  red --> ad["Superchat adapter<br/>web/packages/adapters/src/omnigent"]
   ad --> api["Superchat API relay<br/>apps/api/src/features/activity"]
-  api --> ui["Web render rules<br/>packages/core/src/tool-presentation.ts<br/>apps/web/src/features/activity"]
+  api --> ui["Web render rules<br/>web/packages/core/src/tool-presentation.ts<br/>web/app/src/features/activity"]
 ```
 
 ### Layer 1: the transcript projection (engine)
@@ -517,15 +517,15 @@ web page.
 - **Adapter.** The engine already redacts the transcript, items, search, related chats,
   activities, feed and asks, so those pass through the adapter untouched; the adapter adds no
   redaction of its own.
-- **Activity mapping.** `packages/adapters/src/omnigent/activity.ts` maps field names and passes
+- **Activity mapping.** `web/packages/adapters/src/omnigent/activity.ts` maps field names and passes
   `tool` and `detail` through (`:95-103`). It replaces engine error text on failed runs with a plain
   reason, because that text "can be a stack of internals (paths, codes, env names)" (`:105-132`).
 - **Transcript mapping.** The adapter keeps a Helper row's id and title but drops its status
-  (`packages/adapters/src/omnigent/transcript.ts:73-74`).
+  (`web/packages/adapters/src/omnigent/transcript.ts:73-74`).
 - **API.** `apps/api/src/features/activity/service.ts` resolves the person's Super Chat, calls the
   engine, and maps the result. It adds no filtering (`:16-49`). `watch` relays `activities.changed`
   and heartbeats (`:54-77`).
-- **Render rules.** `packages/core/src/tool-presentation.ts:5-7` states three rules: "register
+- **Render rules.** `web/packages/core/src/tool-presentation.ts:5-7` states three rules: "register
   every tool here once; never show a tool's raw name, only an icon and a plain-language title;
   never show the full call/result trace, only a short snippet of the output."
   - `presentStep` (`:591-606`) builds the title from the call's arguments and a snippet from the
@@ -533,7 +533,7 @@ web page.
   - It nulls any snippet matching `PLUMBING` (`[System:`, `sys_*`, `__*`; `:274-275`).
 
 **What the person sees in the Activity panel**
-(`apps/web/src/features/activity/ActivityPanel.tsx`, `ActivityLine.tsx`):
+(`web/app/src/features/activity/ActivityPanel.tsx`, `ActivityLine.tsx`):
 
 - **Grouping.** "Working now", then days. Helpers nest under the run that started them
   (`activityTree.ts:17-41`). Day grouping uses local time (`activityGrouping.ts:111-139`).
@@ -544,7 +544,7 @@ web page.
   - the elapsed or clock time.
 - **No step count** is shown on the row.
 
-**What the person sees on expanding a run** (`apps/web/src/features/activity/ActivityRunDialog.tsx`):
+**What the person sees on expanding a run** (`web/app/src/features/activity/ActivityRunDialog.tsx`):
 
 - a status pill, the title and the time (`:251-283`);
 - the outcome as Markdown (`:299-326`);
@@ -558,7 +558,7 @@ web page.
 
 | Hidden | Where | Stated reason in code |
 |---|---|---|
-| Raw tool calls and outputs in the chat | transcript projection (`blocks.py:336-362`) | plumbing: "tool calls and outputs are the engine's plumbing" (said of family search, `packages/adapters/src/omnigent/client/transcript.ts:147-151`) |
+| Raw tool calls and outputs in the chat | transcript projection (`blocks.py:336-362`) | plumbing: "tool calls and outputs are the engine's plumbing" (said of family search, `web/packages/adapters/src/omnigent/client/transcript.ts:147-151`) |
 | Interim narration | `blocks.py:287-315` | a turn shows one reply |
 | System notices (Helper Results, fork summaries) | `blocks.py:381-384` | they are runtime messages, not the person's |
 | Error text | `blocks.py:21`, adapter `activity.ts:120-121` | internals (paths, codes, env names); the client owns wording |
@@ -859,15 +859,15 @@ These were found by reading the code. None was verified at runtime.
    with no inlined Result and no archived redirect (`app.py:2291-2297`).
 7. **The raw step detail reaches the browser.** The Activity detail route sends tool arguments and
    output: up to 2,000 characters each, secret-redacted, nothing else removed. The adapter passes
-   them through (`packages/adapters/src/omnigent/activity.ts:95-103`).
+   them through (`web/packages/adapters/src/omnigent/activity.ts:95-103`).
    - The browser shows only a snippet, but the data is in the response.
-   - The contract comment says list responses omit steps (`packages/contracts/src/rpc/activity.ts:30-31`, `:65`).
+   - The contract comment says list responses omit steps (`web/packages/contracts/src/rpc/activity.ts:30-31`, `:65`).
      The engine always sends them (`derive.py:868`), and a live Activity's last step carries its
      arguments.
 8. **Unregistered tools show their raw name.** A tool missing from `TOOL_PRESENTATION`, or with an
    `mcp__` prefix, falls back to the engine title `"Used <tool_name>"` (`derive.py:218`,
-   `packages/core/src/tool-presentation.ts:591-606`).
-9. **The Helper status is dropped in the transcript adapter** (`packages/adapters/src/omnigent/transcript.ts:73-74`).
+   `web/packages/core/src/tool-presentation.ts:591-606`).
+9. **The Helper status is dropped in the transcript adapter** (`web/packages/adapters/src/omnigent/transcript.ts:73-74`).
    The engine sends it.
 10. **The tool list for a worker names tools it never gets.** The worker allows `skill_list` and
     `skill_run`, but a Helper is offered only `skill_draft_save` (`omnigent/superchat/skills/__init__.py:37-40`).

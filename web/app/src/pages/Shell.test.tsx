@@ -123,7 +123,7 @@ vi.mock("@superchat/ui-web", () => {
     PopoverContent: Passthrough,
     PopoverTrigger: Passthrough,
     resolvePersonaColorDef: () => ({ hex: "#000000" }),
-    // Real behavior (packages/ui-web/src/bot-avatar.tsx): museState.ts (Shell's live
+    // Real behavior (web/packages/ui-web/src/bot-avatar.tsx): museState.ts (Shell's live
     // Muse state derivation) calls this directly, so the mock must actually derive.
     museAvatarState: (status: string | undefined, waitingCount: number | undefined) => {
       if ((waitingCount ?? 0) > 0) return "waiting";

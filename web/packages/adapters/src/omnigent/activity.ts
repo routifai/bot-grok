@@ -1,7 +1,7 @@
 // The Activity panel (CONTEXT.md "Activity", "Activity Feed", "Step"; docs/super-chat/
 // WIRING.md "activities.*"): the Omnigent client for the Activity Feed, and the mapping from
 // Omnigent's snake_case Activity/Step shape (engine/omnigent/omnigent/superchat/activity/) to
-// Superchat's camelCase contract (packages/contracts/src/rpc/activity.ts). The mapping is pure:
+// Superchat's camelCase contract (web/packages/contracts/src/rpc/activity.ts). The mapping is pure:
 // no network/database, so ./activity.test.ts exercises it directly.
 import type { Activity, ActivityStep } from "@superchat/contracts";
 import { isEngineErrorText } from "@superchat/core";

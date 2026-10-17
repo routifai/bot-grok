@@ -2,7 +2,7 @@
 # Superchat engine: one container that is the API, the web and the published apps.
 #
 # Stages
-#   web      builds apps/web (the React app) with pnpm
+#   web      builds web/app (the React app) with pnpm
 #   python   installs the engine package (engine/omnigent) into a venv
 #   engine   what runs: python:3.12-slim + the venv + the web build + Superchat's bundle
 #
@@ -13,7 +13,7 @@
 ARG NODE_IMAGE=node:22-slim
 ARG PYTHON_IMAGE=python:3.12-slim
 
-# ── web: apps/web → /src/apps/web/dist ─────────────────────────────────────────
+# ── web: web/app → /src/web/app/dist ───────────────────────────────────────────
 FROM ${NODE_IMAGE} AS web
 ARG NPM_CONFIG_REGISTRY=https://registry.npmjs.org
 ENV COREPACK_NPM_REGISTRY=${NPM_CONFIG_REGISTRY} \
@@ -29,7 +29,7 @@ RUN --mount=type=secret,id=ca_bundle,target=/usr/local/share/ca-certificates/ca_
     if [ -s /usr/local/share/ca-certificates/ca_bundle.crt ]; then update-ca-certificates; fi
 ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 WORKDIR /src
-# The pnpm workspace is apps/* and packages/*; the web app needs the packages it imports.
+# The pnpm workspace is web/app and web/packages/*; the web app needs the packages it imports.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc tsconfig.base.json ./
 COPY patches/ ./patches/
 COPY web/packages/ ./web/packages/

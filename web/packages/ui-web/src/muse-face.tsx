@@ -11,7 +11,7 @@ export interface LiveMuseFaceProps {
   className?: string;
 }
 
-// A host app (apps/web) can supply a richer renderer for the Muse's face, such as the 3D Bloop.
+// A host app (web/app) can supply a richer renderer for the Muse's face, such as the 3D Bloop.
 // `BotAvatar face="muse"` uses it when present and draws the static SVG face otherwise, so
 // every surface that shows the Muse picks it up without changing its own call.
 const LiveMuseFaceContext = createContext<ComponentType<LiveMuseFaceProps> | null>(null);

@@ -32,7 +32,7 @@ export const ILLUSTRATION_KEYS = [
 ] as const;
 export type IllustrationKey = (typeof ILLUSTRATION_KEYS)[number];
 
-/** Static public path for a bundled illustration (apps/web/public/illustrations). */
+/** Static public path for a bundled illustration (web/app/public/illustrations). */
 export function illustrationUrl(key: IllustrationKey): string {
   return `/illustrations/${key}.png`;
 }

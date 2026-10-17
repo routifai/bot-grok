@@ -106,18 +106,18 @@ flowchart TB
 | Tool-naming note | `claude-sdk` executor | `omnigent/inner/claude_sdk_executor.py:1049-1089`, `:2788-2791` | Every turn |
 | History list | Runner cache or cold load from stored items | `omnigent/runner/app.py:9946-9949`, `:5599-5658` | Every turn |
 | Prefix blocks | Runner, `turn_prefix_blocks` | `omnigent/superchat/prompt_prefix.py:130-157`, applied at `omnigent/runner/app.py:10079-10080` | Every Super Chat mode turn |
-| The person's message | The website, through the gateway | `packages/adapters/src/omnigent/gateway.ts:572-586` | When the person sends |
+| The person's message | The website, through the gateway | `web/packages/adapters/src/omnigent/gateway.ts:572-586` | When the person sends |
 
 The gateway posts the person's words as written. It adds no context of its own:
 
 - "The message goes as the person wrote it (their words and the attachment reference lines)"
-  (`packages/adapters/src/omnigent/gateway.ts:579-582`).
+  (`web/packages/adapters/src/omnigent/gateway.ts:579-582`).
 - It posts one `input_text` block and, for image attachments, `input_image` data URIs
-  (`packages/adapters/src/omnigent/client/sessions.ts:63-87`, images read back by
-  `readTurnImages` at `packages/adapters/src/omnigent/gateway.ts:393-425`).
+  (`web/packages/adapters/src/omnigent/client/sessions.ts:63-87`, images read back by
+  `readTurnImages` at `web/packages/adapters/src/omnigent/gateway.ts:393-425`).
 - Before each run it syncs the person's timezone with `PUT /v1/me/proactivity`, which the
-  local-time line reads (`packages/adapters/src/omnigent/gateway.ts:200-207`,
-  `packages/adapters/src/omnigent/client/settings.ts:46-52`).
+  local-time line reads (`web/packages/adapters/src/omnigent/gateway.ts:200-207`,
+  `web/packages/adapters/src/omnigent/client/settings.ts:46-52`).
 - The bundle config records the same decision: "Superchat no longer injects anything through a
   context-provider hook" (`deployment/engine/templates/config.yaml.tmpl:9-11`).
 
@@ -866,7 +866,7 @@ the next turn.
 ### 8.1 The path
 
 1. The gateway posts each new message as it is claimed, the same way as the first one
-   (`packages/adapters/src/omnigent/gateway.ts:627-640`).
+   (`web/packages/adapters/src/omnigent/gateway.ts:627-640`).
 2. The runner forwards it into the running turn only when all of these hold
    (`omnigent/runner/app.py:11419-11429`):
    - the harness is not a native terminal,
@@ -1021,7 +1021,7 @@ The records are read from the server: the session's stored items and the claims 
 | Attachment text | 48,000 chars total (~12k tokens) across at most 8 files | `omnigent/superchat/knowledge/attachment_context.py:39-41`, `:143-157` |
 | One inlined file | 32,000 chars; longer files become a manifest line | `omnigent/runner/knowledge/indexer.py:86`, `:792-793` |
 | Attachment read wait | 120 s | `omnigent/superchat/knowledge/attachment_context.py:43` |
-| Image attachments | ≤ 5 MiB each, under `your_files/uploads/` | `packages/adapters/src/omnigent/computer.ts:91`, `packages/adapters/src/omnigent/gateway.ts:403-405` |
+| Image attachments | ≤ 5 MiB each, under `your_files/uploads/` | `web/packages/adapters/src/omnigent/computer.ts:91`, `web/packages/adapters/src/omnigent/gateway.ts:403-405` |
 | Kept tail after Rollover | 16,000 tokens; tool outputs cut at 8,000 chars | `omnigent/context/labels.py:66`, `omnigent/context/rollover.py:388` |
 | State file | 4,000 tokens; one entry ≤ 400 chars; evicted entries go to the journal | `omnigent/context/state_file.py:31-33` |
 | Journal lines per checkpoint | ≤ 10, each ≤ 300 chars | `omnigent/context/state_file.py:40-41` |

@@ -45,7 +45,7 @@ export function currentToolName(blocks: readonly MessageBlock[] | undefined): st
 
 // Ordered, most-specific-first; the first matching keyword in the normalized
 // (lowercased, non-letters stripped) tool name wins. Covers the built-in tools
-// described in packages/adapters/src/pi-runtime.ts's describeToolActivity.
+// described in web/packages/adapters/src/pi-runtime.ts's describeToolActivity.
 const VERB_RULES: ReadonlyArray<readonly [string, string]> = [
   ["write", "Writing a file"],
   ["attach", "Attaching a file"],

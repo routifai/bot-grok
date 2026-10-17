@@ -4,7 +4,7 @@ Copyright 2026 the Superchat authors
 Superchat began as a fork of Rakazo, Copyright 2026 Rakazo contributors, licensed under the Apache
 License 2.0 (see LICENSE).
 
-Superchat's 3D illustrations (apps/web/public/illustrations) are from Microsoft's
+Superchat's 3D illustrations (web/app/public/illustrations) are from Microsoft's
 Fluent Emoji (https://github.com/microsoft/fluentui-emoji), Copyright (c)
 Microsoft Corporation, licensed under the MIT License.
 
@@ -22,7 +22,7 @@ engine/omnigent/omnigent/superchat/decks/kit/skeleton.html).
 
 Deck editing on the canvas ports ideas and code from Open Design's edit mode, also Apache-2.0
 at commit 802708f: apps/web/src/edit-mode/bridge.ts (the in-frame selection, inline text edit and
-hover logic, rewritten as apps/web/src/features/decks/edit/bridge.js), apps/web/src/edit-mode/
+hover logic, rewritten as web/app/src/features/decks/edit/bridge.js), apps/web/src/edit-mode/
 source-patches.ts (the patch kinds, rewritten in Python as engine/omnigent/omnigent/superchat/
 decks/patches.py), the manual edit panel (rewritten small as StylePanel.tsx), and the
 attached-preview-comments block (deck-ask.ts). The untrusted-text sanitizer comes from this
@@ -104,7 +104,7 @@ Tobi Lutke). No qmd or pi-qmd code is included: the tools are re-implemented in 
 FTS5 and sqlite-vec (omnigent/runner/knowledge).
 
 Charts. The chart capability (packages/charts, engine/omnigent/omnigent/superchat/charts,
-apps/api/src/features/charts, apps/web/src/features/charts) contains portions modified from nao
+apps/api/src/features/charts, web/app/src/features/charts) contains portions modified from nao
 (https://github.com/getnao/nao, commit 5bde830), Copyright 2025 nao Labs, licensed under the Apache
 License 2.0 (see LICENSE); files under nao's `@license Enterprise` headers were not used. Each ported
 file carries a "Portions modified from getnao/nao <path>@5bde830, Apache-2.0; changes: ..." header:

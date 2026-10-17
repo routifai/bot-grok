@@ -20,9 +20,9 @@ CI runs `pnpm lint`, `pnpm check`, production builds and `pnpm test` on every PR
 ## Adding a UI language
 
 The web UI uses Lingui catalogs. To add a locale, register it in
-`apps/web/lingui.config.ts`, `apps/web/src/lib/ui-locale.ts`, and
-`apps/web/src/lib/i18n.ts`, then run `pnpm --filter @superchat/web intl:extract`, fill the new
-`apps/web/src/locales/<locale>/messages.po` catalog, and validate it with
+`web/app/lingui.config.ts`, `web/app/src/lib/ui-locale.ts`, and
+`web/app/src/lib/i18n.ts`, then run `pnpm --filter @superchat/web intl:extract`, fill the new
+`web/app/src/locales/<locale>/messages.po` catalog, and validate it with
 `pnpm --filter @superchat/web intl:compile`. Keep message IDs, placeholders, JSX markers, and
 ICU plural branches intact; do not commit generated `*.js`/`*.mjs` catalog files.
 

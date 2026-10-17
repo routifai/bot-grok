@@ -203,8 +203,8 @@ Each slice ships alone with its tests. The harness contract does not change.
 **Lifecycle of `~/workspace/memory/`.**
 
 - *Reset*: `POST /v1/sessions/{id}/reset` stores a `reset_` compaction item and the next turn starts from the reset
-  framing (`omnigent/superchat/transcript/reset.py:69`; client wrapper `packages/adapters/src/omnigent/client/sessions.ts:142`;
-  no dialog component for it was found in `apps/web` in this pass, so the copy below belongs in that dialog when it
+  framing (`omnigent/superchat/transcript/reset.py:69`; client wrapper `web/packages/adapters/src/omnigent/client/sessions.ts:142`;
+  no dialog component for it was found in `web/app` in this pass, so the copy below belongs in that dialog when it
   is built). **Product decision, confirmed by the maintainer:** the journal stays searchable after a reset. A reset
   forgets the thread of the conversation, not what was done. The dialog says so in one line: "Past work stays
   searchable." `STATE.md` is rewritten to the reset framing, and the reset appends one journal line

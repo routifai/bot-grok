@@ -15,7 +15,7 @@ flowchart LR
   end
 ```
 
-- **web** (`apps/web`): the interface. One Conversation, its side chats and forks, the dock
+- **web** (`web/app`): the interface. One Conversation, its side chats and forks, the dock
   (Inbox, Mini Apps, Automations, Files) and the Activity panel. It only renders state and sends
   intent. The engine serves it, and it talks to the engine directly; there is no app server
   (see [ADR 0015](docs/adr/0015-no-app-server-the-web-talks-to-the-engine.md)).
@@ -59,7 +59,7 @@ Dockerfiles, one Compose file, one build script.
 | Service | Image |
 |---|---|
 | `postgres` | `postgres:16-alpine`, one database with an `engine` schema |
-| `engine` (web `5173`, engine `8012`) | `deployment/engine.Dockerfile`: the engine package, the built `apps/web` it serves, and the agent bundles, config templates and `start.sh` at `/opt/bundle` |
+| `engine` (web `5173`, engine `8012`) | `deployment/engine.Dockerfile`: the engine package, the built `web/app` it serves, and the agent bundles, config templates and `start.sh` at `/opt/bundle` |
 | `computer` (build only) | `deployment/computer.Dockerfile`: the runner each person gets, on plain Ubuntu 24.04 |
 
 `.env` keys: `OMNIGENT_PROXY_SECRET` and `OMNIGENT_VAULT_KEY` (engine
@@ -79,8 +79,8 @@ cannot register a host for a person. Each person's Computer is their runner host
 
 | Path | What |
 |---|---|
-| `apps/web` | web app |
-| `packages/*` | shared contracts, the engine client, UI |
+| `web/app` | web app |
+| `web/packages/*` | shared contracts, the engine client, UI |
 | `engine/omnigent` | engine |
 | `deployment/engine` | agent instructions and tool bundle |
 | `deployment/computer` | Computer image |

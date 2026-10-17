@@ -135,7 +135,7 @@ export const MessageBlock = z.discriminatedUnion("kind", [
     prUrl: z.string().optional(),
     latestRunId: z.string().optional(),
   }),
-  /** The Muse's `render_card` result (packages/contracts/src/reply-cards.ts). */
+  /** The Muse's `render_card` result (web/packages/contracts/src/reply-cards.ts). */
   ReplyCardBlock,
   z.object({
     kind: z.literal("image"),

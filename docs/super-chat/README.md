@@ -223,7 +223,7 @@ says a message started or stopped waiting; the transcript marks a waiting messag
 with nothing stored. Which features need a message to start its own turn is a Feature hook
 (`needs_own_turn`; the knowledge feature answers for attached files).
 
-Superchat's worker (`packages/adapters/src/omnigent/gateway.ts`) waits for the stream's ready heartbeat, posts
+Superchat's worker (`web/packages/adapters/src/omnigent/gateway.ts`) waits for the stream's ready heartbeat, posts
 the turn, and posts each message the person sends as the thread's own event signal (Postgres
 `LISTEN/NOTIFY`) announces it; once the engine has it, its steering row is deleted (a failed post
 releases it for the continuation). The run ends at an `idle` edge for the latest turn its messages
@@ -430,7 +430,7 @@ In `GET /v1/sessions/{id}/transcript`, each message has `forks: []`. Each entry 
 
 - **Open as side chat** has no engine call. A Fork already is a Side Chat, so the client just opens
   it in the Side Chat list (Superchat: `onOpenSideChat` in
-  `apps/web/src/features/side-chats/ForkThread.tsx`).
+  `web/app/src/features/side-chats/ForkThread.tsx`).
 - **Archive** is the normal Side Chat archive (see [Archiving](#8-archiving)). An archived Fork has
   `state: archived`.
 
@@ -530,12 +530,12 @@ Super Chat or one of its Side Chats. Registered in
 
 **Registering a tool in the Activity panel (Superchat).** A step never shows the tool's raw name, only an
 icon, a plain title and (when useful) a short snippet. All three come from one registry,
-`TOOL_PRESENTATION` in `packages/core/src/tool-presentation.ts`. When a tool is added to the agent
+`TOOL_PRESENTATION` in `web/packages/core/src/tool-presentation.ts`. When a tool is added to the agent
 bundle (`deployment/engine/agents/superchat-claude/`) or to the engine's always-on tools
 (`ALWAYS_ON_SUPERSIDE_CHAT_TOOLS`), add an entry there with an icon (`ToolIconKey`), a
 `title(args)` derived only from the call's arguments, and a `snippet(output)`, or
 `tool-presentation.completeness.test.ts` fails. Map any new icon key in
-`apps/web/src/components/chrome/toolIcons.ts`.
+`web/app/src/components/chrome/toolIcons.ts`.
 
 ### Asks
 
@@ -677,7 +677,7 @@ session (`engine/omnigent/omnigent/server/routes/session_memory.py`):
   `POST .../memory/remember`, `GET .../memory/profile`.
 
 Superchat relays these through its API (`apps/api/src/features/memory/router.ts`,
-`packages/adapters/src/omnigent/memory.ts`) and redacts the profile, claims and notes before
+`web/packages/adapters/src/omnigent/memory.ts`) and redacts the profile, claims and notes before
 showing them.
 
 ### Daily notes
@@ -741,7 +741,7 @@ the person and by the Muse (`related_chats` still returns it with `archived: tru
 
 - **How.** `PATCH /v1/sessions/{id}` with `{"archived": true}` (owner only). Superchat calls it from
   `chats.archive` (`apps/api/src/features/side-chats/service.ts`, `archiveOmnigentSession` in
-  `packages/adapters/src/omnigent/side-chats.ts`).
+  `web/packages/adapters/src/omnigent/side-chats.ts`).
 - **What happens.** The archived flag and an `omnigent.archived_at` label are set; the family gets
   `chats.changed`; the person's read state for that chat is dropped; and the runner is stopped after
   a delay (the delay leaves room for an Undo). An unarchive within that time cancels the stop
@@ -883,7 +883,7 @@ Engine-side:
 | Upkeep sweep interval, concurrency | `OMNIGENT_UPKEEP_SWEEP_INTERVAL_SECONDS`, `OMNIGENT_UPKEEP_MAX_CONCURRENCY` | 3600, 4 |
 | Memory search | `OMNIGENT_MEMORY_EMBEDDINGS_MODEL` plus its provider key | `openai/text-embedding-3-small` |
 
-Superchat's own side of the gateway (`packages/adapters/src/omnigent/env.ts`,
+Superchat's own side of the gateway (`web/packages/adapters/src/omnigent/env.ts`,
 `omnigentSuperChatConfigFromEnv`):
 
 | What | Setting | Default |

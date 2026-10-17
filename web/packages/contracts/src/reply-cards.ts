@@ -2,7 +2,7 @@ import * as z from "zod";
 
 // Reply cards: the Muse's `render_card` engine tool (engine/omnigent/omnigent/tools/builtins/
 // render_card.py) names a card kind and a small data payload; clients draw it from their own
-// catalog (apps/web/src/components/cards). `ask_clarification` (an `ask` card) and
+// catalog (web/app/src/components/cards). `ask_clarification` (an `ask` card) and
 // `suggest_follow_ups` (a `follow_ups` card) travel the same path. The engine validates with the same shapes, so these
 // schemas are the client's second line: a card that does not parse renders its `fallback`.
 

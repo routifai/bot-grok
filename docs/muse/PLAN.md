@@ -15,7 +15,7 @@ This plan is written for implementation agents (Claude Sonnet 5, model id `claud
 ## Ground rules
 
 - **Reuse before building.** For every piece, first use what Superchat already has, then port from an open-source reference agent (MIT, Python), and only then write something new. Each package below says which is which. If you find existing code that does the job and the plan says "new", use the existing code and say so in your report.
-- **Our fork (ADR 0002).** Muse logic goes in its own modules (e.g. `packages/adapters/src/muse/`); refactor upstream files when that makes the code cleaner. This used to mean gating everything behind `SUPERCHAT_PRODUCT_MODE=muse` and keeping the old multi-bot behaviour intact when the mode was off (package B0); that flag and the old mode it guarded have since been deleted outright (see B0 below), so there is no other mode left to preserve.
+- **Our fork (ADR 0002).** Muse logic goes in its own modules (e.g. `web/packages/adapters/src/muse/`); refactor upstream files when that makes the code cleaner. This used to mean gating everything behind `SUPERCHAT_PRODUCT_MODE=muse` and keeping the old multi-bot behaviour intact when the mode was off (package B0); that flag and the old mode it guarded have since been deleted outright (see B0 below), so there is no other mode left to preserve.
 - **Naming in code.** The glossary **Task** is `GoalTask` in code (the upstream `Task` model is an unrelated request record and keeps its name). Database tables use the upstream convention (`@@map("goal_tasks")`).
 - **the reference agent ports.** When copying prompt text or logic from the reference agent, keep a one-line comment at the top of the file: `// Adapted from the reference agent (MIT) — reference/<path>`.
 - **Out of scope for v1:** mobile screens (mobile keeps working with the Conversation only), spending limits, parallel Goal work, payments.
@@ -65,10 +65,10 @@ Migrations go in `packages/db/prisma/migrations/<timestamp>_<name>/migration.sql
 | Serial Goal work | Graphile named queues | — | one queue per Muse |
 | Helpers | `run_subagent` | — | — |
 | Push when an Ask opens | `notifications.registerPush`, VAPID web push | — | trigger on new Ask |
-| Library | `apps/web/src/pages/Artifacts.tsx`, `artifacts.*` RPCs | — | include Goal-log artifacts |
+| Library | `web/app/src/pages/Artifacts.tsx`, `artifacts.*` RPCs | — | include Goal-log artifacts |
 | Feed / Ideas | — | feed + ideas behaviour in `reference/server/service.py` (`feed_posts`, ideas) | `Post`, `FollowedTopic`, `Idea` + daily jobs |
-| Avatar with states | `packages/ui-web/src/bot-avatar.tsx` (`BotAvatar`, `data-working`), avatar studio (color picker only) | idle / working / waiting state idea (`web/src/components/Avatar.tsx`) | Muse face (Superchat the lion, see DESIGN.md) replacing the Grok mascot shapes in muse mode + `waiting` state |
-| Onboarding | `apps/web/src/pages/Onboarding.tsx`, `apps/api/src/onboarding.ts` | first-run order (your name → Muse name → face → model) | name + face step, first-Goal handoff |
+| Avatar with states | `web/packages/ui-web/src/bot-avatar.tsx` (`BotAvatar`, `data-working`), avatar studio (color picker only) | idle / working / waiting state idea (`web/src/components/Avatar.tsx`) | Muse face (Superchat the lion, see DESIGN.md) replacing the Grok mascot shapes in muse mode + `waiting` state |
+| Onboarding | `web/app/src/pages/Onboarding.tsx`, `apps/api/src/onboarding.ts` | first-run order (your name → Muse name → face → model) | name + face step, first-Goal handoff |
 
 ## Work packages
 
@@ -77,10 +77,10 @@ IDs: `B` = backend agent, `F` = frontend agent. "Depends on" lists what must be 
 ### Phase 0 — Foundations
 
 **B0 · Product mode** — ✅ done, later removed
-- The `SUPERCHAT_PRODUCT_MODE` flag (`resolveProductMode`/`isMuseMode` in `packages/core/src/product-mode.ts`, `productMode` on the API env and the `me`/`bootstrap` payload) let the old multi-bot mode coexist with Muse during the port. Once the port was verified, the old mode and the flag were deleted outright: Muse is now the only behaviour, unconditionally.
+- The `SUPERCHAT_PRODUCT_MODE` flag (`resolveProductMode`/`isMuseMode` in `web/packages/core/src/product-mode.ts`, `productMode` on the API env and the `me`/`bootstrap` payload) let the old multi-bot mode coexist with Muse during the port. Once the port was verified, the old mode and the flag were deleted outright: Muse is now the only behaviour, unconditionally.
 
 **B1 · Contracts (hand-off to frontend)** — ✅ done
-- Shapes in `packages/contracts/src/muse.ts`: `Goal`, `GoalTask`, `GoalProposal`, `Ask` (a view over a pending ask/choice block: `id` = message id, `runId`, `kind`, `goalId`, `goalTitle`, `text`, `detail`, `choices`, `input`), `Post`, `Feed` (asks + posts), `FollowedTopic`, `Idea`, `MuseSettings` (+ `DEFAULT_MUSE_SETTINGS`), `MuseState`, `DEFAULT_MUSE_COLOR`.
+- Shapes in `web/packages/contracts/src/muse.ts`: `Goal`, `GoalTask`, `GoalProposal`, `Ask` (a view over a pending ask/choice block: `id` = message id, `runId`, `kind`, `goalId`, `goalTitle`, `text`, `detail`, `choices`, `input`), `Post`, `Feed` (asks + posts), `FollowedTopic`, `Idea`, `MuseSettings` (+ `DEFAULT_MUSE_SETTINGS`), `MuseState`, `DEFAULT_MUSE_COLOR`.
 - Procedures appended to `rpc.ts`: `goals.list/get/update/acceptProposal/dismissProposal/log`, `asks.list/count/answer`, `feed.list`, `ideas.list/refresh`, `topics.list/remove`, `muse.settings/updateSettings`. There is no `goals.create`: Goals are created by talking to the Muse (the `goals` tool, B4).
 - The API implements them in `router.ts` behind a `museOnly` guard (NOT_FOUND unless muse mode) and serves **sample data** from `apps/api/src/muse-preview.ts` (in-memory; accepting a Proposal or answering an Ask changes it). Each backend package replaces its part of the preview; delete the file when all are real.
 - Tests: `muse-preview.test.ts` validates the sample data against the schemas and the Proposal/Ask flow.
@@ -88,7 +88,7 @@ IDs: `B` = backend agent, `F` = frontend agent. "Depends on" lists what must be 
 ### Refactor — own the run engine (ADR 0002)
 
 **R1 · Split `executor.ts`** — before B2/B5/B8
-- Behaviour-preserving split of `packages/adapters/src/executor.ts` (~5,700 lines) into focused modules under `packages/adapters/src/executor/` (e.g. prompt assembly, context assembly, tool dispatch, run lifecycle/finalize, approvals replay), with `executor.ts` kept as a thin entry that re-exports the same public API. No logic changes; every existing test passes unchanged. Muse work (B2, B5, B8) then lands in the relevant module, with Muse-specific logic in `packages/adapters/src/muse/`.
+- Behaviour-preserving split of `web/packages/adapters/src/executor.ts` (~5,700 lines) into focused modules under `web/packages/adapters/src/executor/` (e.g. prompt assembly, context assembly, tool dispatch, run lifecycle/finalize, approvals replay), with `executor.ts` kept as a thin entry that re-exports the same public API. No logic changes; every existing test passes unchanged. Muse work (B2, B5, B8) then lands in the relevant module, with Muse-specific logic in `web/packages/adapters/src/muse/`.
 
 ### Phase 1 — One Muse
 
@@ -100,7 +100,7 @@ IDs: `B` = backend agent, `F` = frontend agent. "Depends on" lists what must be 
 
 **F1 · Single-Muse shell** — depends on B1
 - In muse mode, remove the bot list, the "+" new-bot entry, bot duplicate/archive in `BotContextMenu.tsx`, and group chat entry points. The app opens straight into the Muse's Conversation.
-- Add rail entries in `AppRail.tsx`: Conversation, Goals, Feed, Library (Ideas lives inside Feed, "Waiting on you" opens from the avatar). Build each screen as its own file under `apps/web/src/pages/app/`; `Shell.tsx` only routes to them.
+- Add rail entries in `AppRail.tsx`: Conversation, Goals, Feed, Library (Ideas lives inside Feed, "Waiting on you" opens from the avatar). Build each screen as its own file under `web/app/src/pages/app/`; `Shell.tsx` only routes to them.
 - Replace "bot" with the Muse's name or "Muse" in any copy the person sees in muse mode.
 - Acceptance: web test opens `/app` in muse mode and asserts no bot list and the four rail entries.
 
@@ -114,13 +114,13 @@ IDs: `B` = backend agent, `F` = frontend agent. "Depends on" lists what must be 
 
 **B4 · `goals` tool** — depends on B3
 - Port the action set from `reference/tools/goal_tools.py`: `create` (title, description, due, check-in → creates Goal + first plan as a Proposal, not live Tasks), `get`, `list`, `update_task` (status + note; progress only), `propose` (reason + full revised task list). Plan-shape changes only through `propose`.
-- Tool definition in `builtin-tools.ts` next to `scratchpad_*`; handler in a new `packages/adapters/src/goal-tools.ts` following `scratchpad-tools.ts`; dispatch from `executor.ts` the same way `scratchpad_add` is dispatched (around line 2751).
+- Tool definition in `builtin-tools.ts` next to `scratchpad_*`; handler in a new `web/packages/adapters/src/goal-tools.ts` following `scratchpad-tools.ts`; dispatch from `executor.ts` the same way `scratchpad_add` is dispatched (around line 2751).
 - A `propose` or a first plan posts an ask block (reuse `buildApprovalAskBlock`'s shape; actions `accept` / `dismiss`) into the Conversation and links it in `GoalProposal.askMessageId`. A new proposal withdraws the previous open one (mark its ask block `withdrawn`).
 - `update_task` with `blocked` and a note that needs the person posts an ask block of kind `blocked_task`.
 - Acceptance: scripted-runtime tests for each action; proposal accept via `threads.answer` replaces the Task list; dismiss leaves it; only one open proposal.
 
 **B5 · Goals in context** — depends on B3
-- New `packages/adapters/src/goals-context.ts` modelled on `scratchpad-context.ts`: active Goals with their Tasks and statuses, wrapped as data (`<goals_active>…</goals_active>`), capped (e.g. 8 KB). Render format adapted from the reference agent `Goal.render()`.
+- New `web/packages/adapters/src/goals-context.ts` modelled on `scratchpad-context.ts`: active Goals with their Tasks and statuses, wrapped as data (`<goals_active>…</goals_active>`), capped (e.g. 8 KB). Render format adapted from the reference agent `Goal.render()`.
 - Add it to the `Promise.all` context assembly in `executor.ts` (next to `scratchpadContext`) only in muse mode.
 - In a Goal-log turn, also include the Conversation thread's `historyCompactionSummary` as data (decision 7), and include only that Goal in full.
 - Acceptance: unit tests for rendering and the byte cap; executor test that a Goal-log turn gets the Conversation summary and not other Goal logs.
@@ -138,11 +138,11 @@ IDs: `B` = backend agent, `F` = frontend agent. "Depends on" lists what must be 
 ### Phase 3 — Proactivity
 
 **B7 · Muse settings** — depends on B3
-- Store `proactivity` (default `normal`) and `quietHours` (default `22:00-08:00`) on the Muse (bot settings or a small `muse_settings` table; prefer an existing per-bot settings location if one fits). Port `interval_seconds` and `in_quiet_hours` from `reference/server/service.py` to `packages/core/src/muse/proactivity.ts` with tests (intervals: low 4h, normal 1h, high 20m; quiet window may wrap midnight).
+- Store `proactivity` (default `normal`) and `quietHours` (default `22:00-08:00`) on the Muse (bot settings or a small `muse_settings` table; prefer an existing per-bot settings location if one fits). Port `interval_seconds` and `in_quiet_hours` from `reference/server/service.py` to `web/packages/core/src/muse/proactivity.ts` with tests (intervals: low 4h, normal 1h, high 20m; quiet window may wrap midnight).
 - Implement `muse.settings.*`.
 
 **B8 · Background Goal work** — depends on B4, B5, B7
-- Job handlers in a new `packages/adapters/src/goal-jobs.ts`, registered in `background-job-handlers.ts`:
+- Job handlers in a new `web/packages/adapters/src/goal-jobs.ts`, registered in `background-job-handlers.ts`:
   - `goal.advance {goalId}` — skip if the goal isn't `active`, proactivity is `off`, or we're in quiet hours (reschedule to the window's end). Otherwise run a turn in the Goal log thread with `ADVANCE_GOAL_PROMPT` (ported, adapted to the `goals` tool actions). When the turn ends, post a short report to the Conversation and a `Post` (kind `goal_report`), then schedule the next `goal.advance` by proactivity.
   - `goal.checkin {goalId}` — run a turn with `CHECK_IN_PROMPT` (ported) whose message goes to the Conversation; schedule the next cron occurrence (reuse the cron logic behind `Routine.nextRunAt`).
 - Serial work: enqueue both with Graphile `queueName: "muse:<botId>"` so at most one runs per Muse. Before starting, if a Conversation run is active for this Muse, reschedule `+60s` (the Conversation goes first).
@@ -186,7 +186,7 @@ IDs: `B` = backend agent, `F` = frontend agent. "Depends on" lists what must be 
 ### Phase 6 — Face and first run
 
 **F8 · Muse face** — depends on B1
-- Add the Muse face to `packages/ui-web/src/bot-avatar.tsx` as a new variant, drawn as Superchat, an original vinyl-toy lion (see DESIGN.md "The Muse"). In muse mode it replaces the shipped mascot shapes (`GROK_SHAPES`) everywhere: the Muse always wears this face, and the avatar studio offers only the color. Upstream shapes stay untouched for non-muse mode. States: `idle` (breathe + blink), `working` (sway, spark spins; reuse the existing `data-working` from `ACTIVE_RUN_STATUSES`), `waiting` (hop + Ask count badge, driven by `asks.count`). Honour `prefers-reduced-motion`. Colors come from the identity color and `@superchat/ui-tokens`; no new hex in components except the identity color default (`DEFAULT_MUSE_COLOR`) defined once.
+- Add the Muse face to `web/packages/ui-web/src/bot-avatar.tsx` as a new variant, drawn as Superchat, an original vinyl-toy lion (see DESIGN.md "The Muse"). In muse mode it replaces the shipped mascot shapes (`GROK_SHAPES`) everywhere: the Muse always wears this face, and the avatar studio offers only the color. Upstream shapes stay untouched for non-muse mode. States: `idle` (breathe + blink), `working` (sway, spark spins; reuse the existing `data-working` from `ACTIVE_RUN_STATUSES`), `waiting` (hop + Ask count badge, driven by `asks.count`). Honour `prefers-reduced-motion`. Colors come from the identity color and `@superchat/ui-tokens`; no new hex in components except the identity color default (`DEFAULT_MUSE_COLOR`) defined once.
 
 **F9 · Onboarding** — depends on F8, B4
 - Extend `pages/Onboarding.tsx` (and `apps/api/src/onboarding.ts` if the server drives steps): your name → Muse name → color of the Muse face (sky default) → model → land in the Conversation, where the Muse's first message asks for the first Goal. When the person answers, the Muse calls `goals.create`, which posts the first plan as a Proposal (B4).
@@ -217,7 +217,7 @@ Waves:
 ## Orchestration notes
 
 - Run each package as its own subagent with `isolation: "worktree"` and model `sonnet` (Sonnet 5). Give it this file, `CONTEXT.md`, the ADR, and its package section. One package per agent; an agent refuses scope outside its package and reports it instead.
-- Backend agents own `packages/db`, `packages/adapters`, `packages/core`, `apps/api`, `apps/worker`, and the backend half of `packages/contracts`. Frontend agents own `apps/web` and `packages/ui-web`. Only B1 edits contracts in wave 1; later contract changes go through a backend agent.
+- Backend agents own `packages/db`, `web/packages/adapters`, `web/packages/core`, `apps/api`, `apps/worker`, and the backend half of `web/packages/contracts`. Frontend agents own `web/app` and `web/packages/ui-web`. Only B1 edits contracts in wave 1; later contract changes go through a backend agent.
 - Every package ends with: `pnpm test`, `pnpm check`, `pnpm lint` green, a short report (what was reused, what was ported with source paths, what was new and why), and no secrets or `.env` changes.
 - Merge order follows the waves. After each wave, run `pnpm db:migrate` and `pnpm dev` once to catch integration breaks early.
 

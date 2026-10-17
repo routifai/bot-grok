@@ -102,5 +102,5 @@ Check before touching: `inner/{bwrap_sandbox,seatbelt_sandbox,windows_jobobject_
 | `sdks/python-client`, `sdks/ui` | hard dependencies of the package (`ui` can go with `repl/`) |
 | `examples/super-chat` | the reference `deployment/engine/agents/*/config.yaml` cites |
 | `rollover/` | design docs cited by the bundles |
-| `openapi.json` | the source `packages/adapters` is generated from |
+| `openapi.json` | the source `web/packages/adapters` is generated from |
 | `omnigent/memory` and the `memory` extra | the Memory service (txtai index); the reason torch is in the image |

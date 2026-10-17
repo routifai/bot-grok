@@ -8,10 +8,10 @@ import type { ActivityStep } from "@superchat/contracts";
 //
 // A Step's `tool` is the engine tool name (e.g. "web_search"); `detail` is
 // `{ call: { name, args: <JSON string> }, result: { content: <string, often JSON> } }`,
-// populated only on `activities.get` (packages/contracts/src/rpc/activity.ts).
+// populated only on `activities.get` (web/packages/contracts/src/rpc/activity.ts).
 
 /** A small, closed set of line icons a tool can present as — never the tool's own name.
- * apps/web/src/components/chrome/toolIcons.ts maps each to a lucide icon. */
+ * web/app/src/components/chrome/toolIcons.ts maps each to a lucide icon. */
 export type ToolIconKey =
   | "search"
   | "web"

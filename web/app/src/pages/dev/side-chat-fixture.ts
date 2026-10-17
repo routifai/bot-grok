@@ -43,7 +43,7 @@ function cardMessage(
   };
 }
 
-/** One of every reply card kind (packages/contracts/src/reply-cards.ts), for /dev/side-chats. */
+/** One of every reply card kind (web/packages/contracts/src/reply-cards.ts), for /dev/side-chats. */
 const CARD_FIXTURE_MESSAGES: ThreadMessage[] = [
   fixtureMessage("side-cards", 1, "user", "Compare the three assistants for the vendor review."),
   cardMessage(2, "Comparison of three assistants.", {

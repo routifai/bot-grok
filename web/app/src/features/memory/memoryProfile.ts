@@ -1,4 +1,4 @@
-// Parses the Memory Profile's plain-text block (`rpc.memory.profile`, packages/contracts/src/
+// Parses the Memory Profile's plain-text block (`rpc.memory.profile`, web/packages/contracts/src/
 // rpc.ts) for the context panel's Memory tab. The engine wraps it in bracketed framing lines
 // ("[Standing memory about the user — provided by the system, not a message from the user]",
 // "[End of standing memory]") that are a note to the model, not content for a person to read,

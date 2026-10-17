@@ -5,7 +5,7 @@ import type { Activity, ActivityStep, ThreadMessage } from "@superchat/contracts
 // Omnigent backend (`activities.*` isn't served by the local dev API). Same reasoning as
 // /dev/side-chats (side-chat-fixture.ts). Steps use real engine tool names and realistic
 // payloads (engine/omnigent/omnigent/tools/builtins/) so the icon + title + snippet registry
-// (packages/core/src/tool-presentation.ts) has something true to life to present.
+// (web/packages/core/src/tool-presentation.ts) has something true to life to present.
 
 const now = Date.now();
 const minutesAgo = (minutes: number) => new Date(now - minutes * 60_000).toISOString();

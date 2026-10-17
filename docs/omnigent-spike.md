@@ -31,23 +31,23 @@ policies, and harness switching; Superchat stays the context layer and product U
 Superchat Conversation turn run on Omnigent, on whichever harness the person has chosen for their Muse
 (`pi`, `claude`, `openai`, or `codex` — see "Choosing a harness" below), with Superchat's person
 context injected into the instructions, whenever the connection (`OMNIGENT_URL` + `OMNIGENT_PROXY_SECRET`) is configured (the old
-`SUPERCHAT_ENGINE` flag is gone). With the connection unset, nothing here changes — the existing engine (`packages/adapters/src/executor/`) is
+`SUPERCHAT_ENGINE` flag is gone). With the connection unset, nothing here changes — the existing engine (`web/packages/adapters/src/executor/`) is
 untouched and still the default.
 
 ## What's here
 
 - **Context-provider endpoint** — `POST /internal/omnigent/context` in `apps/api` (plain Hono
   route, not oRPC, not behind user auth). Composed by
-  `packages/adapters/src/omnigent/context-provider.ts` (`composeOmnigentContext`), reusing the
+  `web/packages/adapters/src/omnigent/context-provider.ts` (`composeOmnigentContext`), reusing the
   same builders the existing engine uses: the static Muse voice/reply/goals instructions
-  (`packages/adapters/src/executor/run-prompt.ts`), durable memory (`memory-context.ts`),
+  (`web/packages/adapters/src/executor/run-prompt.ts`), durable memory (`memory-context.ts`),
   scratchpad, active Goals, ranked past episodes, agent skills, and the current date/time
   in the person's timezone. Everything is redacted with the same `redactSecrets` the executor
   uses, and capped at 48 KB total.
 - **Scope isolation** — Omnigent sets a session label `superchat.scope`. Only `"private"` gets the full
   context above; any other value (a future `"project"` scope) gets just the static instructions —
   no memory, scratchpad, Goals, or episodes. See
-  `packages/adapters/src/omnigent/context-provider.test.ts` for the canary-string isolation
+  `web/packages/adapters/src/omnigent/context-provider.test.ts` for the canary-string isolation
   tests.
 - **Agent bundles** — `deployment/engine/agents/superchat-{pi,claude,openai,codex}/`, each a
   directory-bundle agent (`config.yaml` + `AGENTS.md`) generated from one shared template
@@ -57,13 +57,13 @@ untouched and still the default.
   `<deployment_context>` — all the real per-turn instructions arrive through the context-provider
   hook.
 - **Harness choice** — one deployment flag, `SUPERCHAT_MUSE_HARNESS` (`claude-sdk` default | `pi`),
-  picks the Muse's bundle by name in `packages/adapters/src/omnigent/env.ts`
+  picks the Muse's bundle by name in `web/packages/adapters/src/omnigent/env.ts`
   (`museAgentNameFromEnv`): `superchat-claude` or `superchat-pi`, both rendered from the same templates.
   There is no per-Muse choice and no `engine.*` route.
-- **Gateway** — `packages/adapters/src/omnigent/client.ts` (a small typed REST client:
+- **Gateway** — `web/packages/adapters/src/omnigent/client.ts` (a small typed REST client:
   create/get sessions, post a message event, stream SSE, list items, switch a session's agent —
   no SDK, just `fetch` and a tiny SSE parser mirroring `apps/mobile/lib/api.ts`'s
-  `subscribeThread`) and `packages/adapters/src/omnigent/gateway.ts` (`runTurnOnOmnigent`): gets
+  `subscribeThread`) and `web/packages/adapters/src/omnigent/gateway.ts` (`runTurnOnOmnigent`): gets
   or creates the Muse's Omnigent session (one per bot, id and current agent name stored in the
   `omnigent_sessions` table), switches the session to the bot's chosen harness first if it's
   running a different one (`POST /sessions/{id}/switch-agent`, idle-only — a failed switch is
@@ -71,12 +71,12 @@ untouched and still the default.
   turn's message, waits for `response.completed`, and writes the final assistant text into the
   Superchat thread with the same `ThreadEvents.finalizeRun` helper the existing engine uses — so the
   web app shows it like any other bot reply.
-- **Switch** — `packages/adapters/src/background-job-handlers.ts`'s `"run.continue"` handler calls
+- **Switch** — `web/packages/adapters/src/background-job-handlers.ts`'s `"run.continue"` handler calls
   `runTurnOnOmnigent` first when the Omnigent connection is configured, falling back to
   `executor.continueRun` when the run isn't eligible (see "Eligibility" below) or when the
   connection is unset. Both `apps/worker` and `apps/api` (which also runs job handlers when
   `WAKEUP_DRIVER=memory`) wire this identically through
-  `packages/adapters/src/omnigent/env.ts`'s `omnigentGatewayDepsFromEnv`.
+  `web/packages/adapters/src/omnigent/env.ts`'s `omnigentGatewayDepsFromEnv`.
 
 ### Choosing a harness
 
@@ -127,12 +127,12 @@ Superchat (apps/api / apps/worker)                Omnigent server
 ```
 
 **Choosing where**, per Muse: `Bot.museRunnerLocation` (`SuperchatRunnerLocationId`, "computer" |
-"local", `packages/contracts/src/engine.ts`) — `null` defaults to `"computer"`. Read/write it the
+"local", `web/packages/contracts/src/engine.ts`) — `null` defaults to `"computer"`. Read/write it the
 same way as the harness choice: `engine.info` returns the resolved `runnerLocation`;
 `engine.setRunnerLocation({ botId, runnerLocation })` persists a new one. No UI surfaces this yet
 (the RPC and contract field exist; nothing calls `setRunnerLocation` outside tests). A changed
 runner location takes effect on the Muse's *next* turn: `ensureOmnigentSession` in
-`packages/adapters/src/omnigent/gateway.ts` compares the bot's current resolved location against
+`web/packages/adapters/src/omnigent/gateway.ts` compares the bot's current resolved location against
 the one its existing Omnigent session was created with (`omnigent_sessions.runnerLocation`) and,
 on a mismatch, creates a brand-new Omnigent session bound the new way — there is no in-place
 "switch location" the way `switch-agent` rebinds harnesses, so the Omnigent-side conversation
@@ -184,13 +184,13 @@ Environment variables (Omnigent server process):
 | Variable | Purpose |
 | --- | --- |
 | `OMNIGENT_COMPUTER_SUPERVISOR_URL` | Base URL of Superchat's sandbox supervisor, e.g. `http://sandbox-supervisor:7091`. (Was `OMNIGENT_SUPERCHAT_SUPERVISOR_URL`, still read.) |
-| `OMNIGENT_COMPUTER_SUPERVISOR_TOKEN` | The shared bearer Superchat's supervisor expects on every request — the same secret Superchat's own API process reads via `resolveSupervisorToken`/`SANDBOX_SUPERVISOR_TOKEN` (`packages/core/src/secrets-guard.ts`). Never a per-user credential. |
-| `OMNIGENT_COMPUTER_HOME_ROOT` | Root directory a Computer's persistent home lives under (`<root>/homes/<key>`) — must resolve to the SAME host path Superchat's own API process uses (`dataDir` in `packages/adapters/src/home.ts`). Defaults to `./data` for local/dev parity only; set an absolute, shared path in any real deployment. |
+| `OMNIGENT_COMPUTER_SUPERVISOR_TOKEN` | The shared bearer Superchat's supervisor expects on every request — the same secret Superchat's own API process reads via `resolveSupervisorToken`/`SANDBOX_SUPERVISOR_TOKEN` (`web/packages/core/src/secrets-guard.ts`). Never a per-user credential. |
+| `OMNIGENT_COMPUTER_HOME_ROOT` | Root directory a Computer's persistent home lives under (`<root>/homes/<key>`) — must resolve to the SAME host path Superchat's own API process uses (`dataDir` in `web/packages/adapters/src/home.ts`). Defaults to `./data` for local/dev parity only; set an absolute, shared path in any real deployment. |
 
 **Known gaps, not yet proven end-to-end:**
 
 - **The Muse's home directory must already exist.** Superchat's API process normally creates it
-  (`mkdir(homePath, { recursive: true })` in `packages/adapters/src/computer-lifecycle.ts`) before
+  (`mkdir(homePath, { recursive: true })` in `web/packages/adapters/src/computer-lifecycle.ts`) before
   ever calling the supervisor; a root-mode supervisor deliberately never creates one itself. If a
   Muse's very first activity is an Omnigent turn (before Superchat's own computer/browser features have
   ever touched it), `POST /computers` may fail until something on Superchat's side has created the
@@ -288,7 +288,7 @@ additive and unused by the existing engine.
   the lease, so a turn that runs longer than 5 minutes keeps its DB lease past `leaseExpiresAt`
   even though the gateway is still waiting on Omnigent — a future reconciler pass could reclaim a
   run that is not actually stuck. The existing engine's heartbeat/lease-renewal machinery
-  (`packages/adapters/src/executor/run-executor.ts`) was deliberately not replicated for this
+  (`web/packages/adapters/src/executor/run-executor.ts`) was deliberately not replicated for this
   spike, since it exists to coordinate sandboxed tool execution Omnigent doesn't need. Worth
   revisiting if week 2 needs turns longer than a few minutes.
 - **No crash recovery.** If the Superchat process dies mid-turn after claiming the run but before

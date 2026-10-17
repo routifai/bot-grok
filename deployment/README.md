@@ -51,7 +51,7 @@ only with that secret.
 
 | Stage | Does | Why |
 |---|---|---|
-| `web` | `pnpm install` and `vite build` of `apps/web` | the engine serves this build at `/`; the engine image is the only artifact to ship |
+| `web` | `pnpm install` and `vite build` of `web/app` | the engine serves this build at `/`; the engine image is the only artifact to ship |
 | `python` | installs `engine/omnigent` into `/opt/venv` with extras `memory,postgres,s3`, torch from the CPU index first | memory needs torch (through txtai); the CPU wheel is a few hundred MB, PyPI's Linux wheel carries CUDA |
 | `engine` | `python:3.12-slim` + venv + web build + `/opt/bundle` (agent bundles, config templates, `start.sh`) + `entrypoint.py` | runtime has no compilers, no Node; `start.sh` renders the config from the environment and runs the entrypoint |
 
