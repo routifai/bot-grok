@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import type { Artifact } from "@superchat/contracts";
+import type { Artifact, ArtifactVersion } from "@superchat/contracts";
 import {
   Button,
   cn,
@@ -19,12 +19,14 @@ import {
   X,
 } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { SuperchatOrb } from "../../../components/ai/orb";
 import { artifactKind, kindLabel } from "../../../lib/artifact-kind";
 import { downloadArtifactBytes, opensInNewTab } from "../../../lib/artifact-open";
 import { rpc } from "../../../lib/rpc";
 import { useObjectUrl } from "../../../lib/use-object-url";
 import { readableFileName } from "../ArtifactFileCard";
 import { ArtifactPreview } from "../ArtifactPreview";
+import type { AskDraft } from "../ask/AskBox";
 import { AskBox } from "../ask/AskBox";
 import { useArtifactAsk } from "../ask/useArtifactAsk";
 import type { useArtifactContent } from "../library/useArtifactContent";
@@ -36,7 +38,13 @@ import {
   useArtifactEditorKind,
   type useArtifactPanelParts,
 } from "../registry";
-import { artifactKey, isHandOrigin, setArtifactEditing, useArtifactEditing } from "./editor-state";
+import {
+  artifactKey,
+  isHandOrigin,
+  setArtifactEditing,
+  setArtifactLocked,
+  useArtifactEditing,
+} from "./editor-state";
 import { buildFileAsk } from "./html-ask";
 import { VersionMenu } from "./VersionMenu";
 
@@ -57,6 +65,26 @@ export type ArtifactEditorProps = {
   onClose: () => void;
   /** The frame can go full screen (a "Full screen" item in `⋯`). */
   fullScreen?: { on: boolean; toggle: () => void };
+  /** Edit opens the file's studio instead of editing here (the side panel, ADR 0024). */
+  onEdit?: () => void;
+  /** Typing in the ask box opens the file's studio with what was typed and the caret. */
+  onAskStart?: (draft: AskDraft) => void;
+  /** The editor inside the file's studio (ADR 0024). */
+  studio?: StudioSlot;
+};
+
+/** What the file's studio hands the editor it hosts. */
+export type StudioSlot = {
+  /** The studio chat session: the ask box sends there, not to the Conversation. */
+  chatId: string;
+  /** The column beside the editor, given the editor's ask box to place in it. */
+  aside: (askBox: ReactNode) => ReactNode;
+  /** A studio turn is running (seen from its chat): the canvas takes no hand edits. */
+  locked?: boolean;
+  /** Words a version's origin in the version menu. */
+  versionOrigin?: (version: ArtifactVersion) => string;
+  /** Typed in the panel before the studio opened. */
+  draft?: AskDraft;
 };
 
 /** Focus is where the person types: keyboard shortcuts leave the key to it. */
@@ -192,6 +220,7 @@ function KindEditor({ kind, ...props }: LoadedProps & { kind: ArtifactEditorKind
       setEditing={setEditing}
       askClicks={askClicks}
       focusAsk={focusAsk}
+      kindId={kind.id}
     />
   );
 }
@@ -237,6 +266,7 @@ function FileEditor(props: LoadedProps) {
       setEditing={() => {}}
       askClicks={askClicks}
       focusAsk={focusAsk}
+      kindId="file"
     />
   );
 }
@@ -250,6 +280,7 @@ function LoadedEditor({
   editing,
   setEditing,
   askClicks,
+  kindId,
   ...props
 }: LoadedProps & {
   parts: ArtifactEditorParts;
@@ -257,6 +288,8 @@ function LoadedEditor({
   setEditing: (on: boolean) => void;
   askClicks: number;
   focusAsk: () => void;
+  /** The editor kind's id ("deck", "page", ...; "file" for a read-only file). */
+  kindId: string;
 }) {
   const { t } = useLingui();
   const url = useObjectUrl(bytes, artifact.mimeType);
@@ -269,12 +302,27 @@ function LoadedEditor({
       () => {},
     );
   const botId = artifact.botId;
+  const studio = props.studio;
   const ask = useArtifactAsk({
     artifact: botId
-      ? { id: artifact.id, name: artifact.name, version: artifact.version, botId }
+      ? {
+          id: artifact.id,
+          name: artifact.name,
+          version: artifact.version,
+          botId,
+          chatId: studio?.chatId,
+        }
       : null,
     contextBlock: parts.ask.contextBlock,
   });
+  // While a studio turn runs the canvas is read-only: no inspector, and the kind refuses saves.
+  const fileKey = artifactKey(artifact);
+  const locked = !!studio && (!!studio.locked || ask.running);
+  useEffect(() => {
+    if (!studio) return;
+    setArtifactLocked(fileKey, locked);
+    return () => setArtifactLocked(fileKey, false);
+  }, [studio, fileKey, locked]);
   const sendAsk = useCallback(
     async (text: string) => {
       await history?.flush(); // what is staged by hand is saved first, so superchat works on it
@@ -327,7 +375,9 @@ function LoadedEditor({
           size="sm"
           aria-pressed={editing}
           data-testid="editor-edit"
-          onClick={() => (editing ? leaveEditing() : setEditing(true))}
+          onClick={() =>
+            props.onEdit ? props.onEdit() : editing ? leaveEditing() : setEditing(true)
+          }
         >
           <Pencil size={13} />
           {t`Edit`}
@@ -381,6 +431,7 @@ function LoadedEditor({
         onPick={content.selectVersion}
         onRestore={restore}
         note={panel.hasVersionNote ? panel.versionNote : undefined}
+        originOf={studio?.versionOrigin}
       />
       {panel.badge ? (
         // Tags ("Published", "Live") give way first when the header is narrow; the bars below
@@ -450,12 +501,43 @@ function LoadedEditor({
       </div>
     ) : null;
 
+  const askBox = ask.available ? (
+    <AskBox
+      className={studio ? undefined : "mx-auto max-w-[760px]"}
+      chips={parts.ask.chips}
+      onRemoveChip={parts.ask.onRemoveChip}
+      placeholder={parts.ask.placeholder}
+      focusRequest={askClicks + (parts.ask.focusRequest ?? 0)}
+      status={ask.status}
+      onSend={sendAsk}
+      onStop={() => void ask.stop()}
+      onUndo={
+        history
+          ? () => {
+              ask.dismiss();
+              void history.undo();
+            }
+          : undefined
+      }
+      canUndo={history?.canUndo}
+      onStartTyping={props.onAskStart}
+      initialDraft={studio?.draft}
+    />
+  ) : null;
+
   const body = (
     <div className="@container relative flex min-h-0 flex-1">
       {parts.navigator}
       <div className="relative flex min-w-0 flex-1 flex-col">
         {toolbar}
-        <div className="relative min-h-0 flex-1">{parts.stage}</div>
+        <div className="relative min-h-0 flex-1">
+          {parts.stage}
+          {locked ? (
+            // A page or a deck keeps selecting through the lit layer (the kind refuses saves);
+            // any other kind's canvas takes no input until the turn ends.
+            <WorkingCanvas slides={kindId === "deck"} selectable={SELECTABLE_KINDS.has(kindId)} />
+          ) : null}
+        </div>
         {parts.footer}
         <div className="relative">
           {parts.notice ? (
@@ -463,36 +545,14 @@ function LoadedEditor({
               <div className="pointer-events-auto">{parts.notice}</div>
             </div>
           ) : null}
-          {ask.available ? (
-            <div className="px-4 pt-1 pb-3">
-              <AskBox
-                className="mx-auto max-w-[760px]"
-                chips={parts.ask.chips}
-                onRemoveChip={parts.ask.onRemoveChip}
-                placeholder={parts.ask.placeholder}
-                focusRequest={askClicks + (parts.ask.focusRequest ?? 0)}
-                status={ask.status}
-                onSend={sendAsk}
-                onStop={() => void ask.stop()}
-                onUndo={
-                  history
-                    ? () => {
-                        ask.dismiss();
-                        void history.undo();
-                      }
-                    : undefined
-                }
-                canUndo={history?.canUndo}
-              />
-            </div>
-          ) : null}
+          {askBox && !studio ? <div className="px-4 pt-1 pb-3">{askBox}</div> : null}
         </div>
       </div>
       {/* From about 900px wide the inspector column is reserved for the whole edit session (empty
           state, then the selection's controls), so the stage never reflows and nothing is ever
           covered. Narrower, the stage keeps its width and the controls are a sheet over the
           bottom edge, shown only while something is selected. */}
-      {editing && parts.inspector ? (
+      {editing && parts.inspector && !locked ? (
         <div
           data-testid="editor-inspector"
           className={cn(
@@ -506,6 +566,7 @@ function LoadedEditor({
           </div>
         </div>
       ) : null}
+      {studio ? studio.aside(askBox) : null}
     </div>
   );
 
@@ -523,6 +584,34 @@ function LoadedEditor({
   );
 }
 
+/** Kinds whose canvas keeps selecting while a studio turn runs: their saves go through the HTML
+ * editor, which refuses them while the file is locked. */
+const SELECTABLE_KINDS = new Set(["deck", "page"]);
+
+/** ADR 0023's working state over the canvas while a studio turn changes the file. */
+function WorkingCanvas({ slides, selectable }: { slides: boolean; selectable: boolean }) {
+  const { t } = useLingui();
+  return (
+    <div
+      data-testid="studio-working"
+      className={cn(
+        "sc-work absolute inset-2 z-10 flex items-center justify-center",
+        selectable ? "pointer-events-none" : "pointer-events-auto",
+      )}
+      data-live=""
+    >
+      <div className="absolute inset-[1.5px] rounded-[12.5px] bg-content/55 backdrop-blur-[2px]" />
+      <div
+        role="status"
+        className="relative flex items-center gap-2 rounded-full bg-content px-3 py-1.5 text-[13px] text-foreground shadow-float"
+      >
+        <SuperchatOrb size={16} state="working" flies={false} />
+        {slides ? t`superchat is updating this slide…` : t`superchat is updating this file…`}
+      </div>
+    </div>
+  );
+}
+
 /** The header row and the body under it. */
 function EditorFrame({
   heading,
@@ -533,6 +622,7 @@ function EditorFrame({
   leading,
   panel,
   onClose,
+  studio,
 }: ArtifactEditorProps & {
   heading: string;
   fileName?: string;
@@ -557,15 +647,17 @@ function EditorFrame({
           {meta}
         </div>
         {actions}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={t`Close`}
-          className="text-muted-foreground"
-          onClick={onClose}
-        >
-          <X />
-        </Button>
+        {studio ? null : (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={t`Close`}
+            className="text-muted-foreground"
+            onClick={onClose}
+          >
+            <X />
+          </Button>
+        )}
       </header>
       {panel.below}
       {panel.overlay}

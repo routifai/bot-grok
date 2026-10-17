@@ -63,9 +63,22 @@ export function registerEditorFlush(key: string, flush: () => Promise<Head>): ()
 export const flushEditorEdits = async (key: string): Promise<Head | null> =>
   (await flushers.get(key)?.()) ?? null;
 
+// A file whose studio turn is running (ADR 0024): its canvas takes no hand edits until the turn
+// saves or ends. The studio sets it; the HTML editor reads it before it saves.
+const locked = new Set<string>();
+
+/** Locks or unlocks the file's hand edits. */
+export function setArtifactLocked(key: string, on: boolean): void {
+  if (on) locked.add(key);
+  else locked.delete(key);
+}
+/** Whether a studio turn holds the file. */
+export const isArtifactLocked = (key: string): boolean => locked.has(key);
+
 /** Test helper. */
 export function resetEditorState(): void {
   editing.clear();
+  locked.clear();
   ownVersions.clear();
   flushers.clear();
   notify();

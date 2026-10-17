@@ -12,6 +12,7 @@ const api = vi.hoisted(() => ({
   getById: vi.fn(),
   listVersions: vi.fn(),
   restore: vi.fn(),
+  chat: vi.fn(),
 }));
 const chats = vi.hoisted(() => ({
   send: vi.fn(async (_input: { botId: string; text: string }) => ({ ok: true as const })),
@@ -221,9 +222,11 @@ it("restoring saves what is staged by hand first, then restores", async () => {
   expect(calls).toEqual(["flush", "restore"]);
 });
 
-it("Edit turns on the toolbar and the inspector; Done turns them off; one undo for both", async () => {
+it("Edit opens the file's studio in edit mode; its toolbar, inspector and one undo; Done leaves it", async () => {
   api.listVersions.mockResolvedValue([]);
   api.getById.mockResolvedValue(file("v1", "tracker.html", "text/html", "<p>x</p>"));
+  api.chat.mockResolvedValue({ sessionId: "studio-1", created: true });
+  chats.transcript.mockResolvedValue({ threadId: "studio-1", messages: [], olderCursor: null });
   const view = await mount(<ArtifactPanel artifactId="v1" onClose={() => {}} />);
   const edit = view.querySelector('[data-testid="editor-edit"]') as HTMLElement;
   expect(edit.getAttribute("aria-pressed")).toBe("false");
@@ -232,30 +235,28 @@ it("Edit turns on the toolbar and the inspector; Done turns them off; one undo f
   expect(view.querySelector('[data-testid="editor-inspector"]')).toBeNull();
 
   await act(async () => edit.click());
-  expect(edit.getAttribute("aria-pressed")).toBe("true");
-  expect(view.querySelector('[data-testid="stage"]')?.textContent).toBe("editing");
-  expect(view.querySelector('[data-testid="editor-toolbar"]')).not.toBeNull();
-  expect(view.querySelector('[data-testid="editor-inspector"]')).not.toBeNull();
-  // The panel takes the room it can while a file is edited.
-  expect(view.querySelector('[data-testid="artifact-panel"]')?.className).toContain(
-    "md:w-[min(84vw,1600px)]",
-  );
-  await act(async () => (view.querySelector('[aria-label="Undo"]') as HTMLElement).click());
+  await tick();
+  const studio = document.querySelector('[data-testid="artifact-studio"]') as HTMLElement;
+  expect(api.chat).toHaveBeenCalledWith({ artifactId: "v1" });
+  expect(studio.querySelector('[data-testid="stage"]')?.textContent).toBe("editing");
+  expect(studio.querySelector('[data-testid="editor-toolbar"]')).not.toBeNull();
+  expect(studio.querySelector('[data-testid="editor-inspector"]')).not.toBeNull();
+  await act(async () => (studio.querySelector('[aria-label="Undo"]') as HTMLElement).click());
   expect(undo).toHaveBeenCalledTimes(1);
 
   // A save that fails while leaving keeps edit mode (its notice shows there).
   finish.mockRejectedValueOnce(new Error("save failed"));
-  await act(async () => button(view, "Done")?.click());
-  expect(view.querySelector('[data-testid="stage"]')?.textContent).toBe("editing");
+  await act(async () => button(studio, "Done")?.click());
+  expect(studio.querySelector('[data-testid="stage"]')?.textContent).toBe("editing");
   // Done first ends and saves a text edit still in progress.
-  await act(async () => button(view, "Done")?.click());
+  await act(async () => button(studio, "Done")?.click());
   expect(finish).toHaveBeenCalledTimes(2);
-  expect(view.querySelector('[data-testid="editor-toolbar"]')).toBeNull();
-  expect(view.querySelector('[data-testid="stage"]')?.textContent).toBe("viewing");
+  expect(studio.querySelector('[data-testid="editor-toolbar"]')).toBeNull();
+  expect(studio.querySelector('[data-testid="stage"]')?.textContent).toBe("viewing");
   await act(async () =>
     setArtifactEditing(artifactKey({ botId: "bot-1", name: "tracker.html" }), true),
   );
-  expect(view.querySelector('[data-testid="stage"]')?.textContent).toBe("editing");
+  expect(studio.querySelector('[data-testid="stage"]')?.textContent).toBe("editing");
 });
 
 it("a file without an editor opens read-only, with the ask box about the whole file", async () => {

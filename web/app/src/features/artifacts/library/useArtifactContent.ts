@@ -25,6 +25,8 @@ type Loaded = ContentState & {
   showNewest: () => void;
   /** The newest version arrived while open (not the first load): who saved it, for a brief mark. */
   arrived: ArtifactVersion | null;
+  /** Re-reads the version list now (a save was announced), following it as the poll does. */
+  refresh?: () => void;
 };
 
 /** How often an open view re-reads its artifact's version list. */
@@ -114,21 +116,19 @@ export function useArtifactContent(artifactId: string | null): Loaded {
 
   // Any open view follows new versions of its artifact: the engine's version list (keyed by the
   // artifact's family) is re-read while the tab is visible, then the view follows it unless pinned.
-  useVisiblePoll(
-    async () => {
-      if (!artifactId) return;
-      const list = await rpc.artifacts.listVersions({ familyId: artifactId });
-      const top = list[0];
-      if (!top || top.id === versionsRef.current[0]?.id) return;
-      setVersions(list);
-      if (pinned.current || pickedRef.current === top.id) return;
-      silent.current = true;
-      setArrived(top);
-      setPicked(top.id);
-    },
-    VERSION_POLL_MS,
-    artifactId !== null && picked !== null,
-  );
+  const follow = useCallback(async () => {
+    if (!artifactId) return;
+    const list = await rpc.artifacts.listVersions({ familyId: artifactId });
+    const top = list[0];
+    if (!top || top.id === versionsRef.current[0]?.id) return;
+    setVersions(list);
+    if (pinned.current || pickedRef.current === top.id) return;
+    silent.current = true;
+    setArrived(top);
+    setPicked(top.id);
+  }, [artifactId]);
+  useVisiblePoll(follow, VERSION_POLL_MS, artifactId !== null && picked !== null);
+  const refresh = useCallback(() => void follow().catch(() => undefined), [follow]);
 
   useEffect(() => {
     if (!arrived) return;
@@ -159,5 +159,6 @@ export function useArtifactContent(artifactId: string | null): Loaded {
     newer,
     showNewest,
     arrived,
+    refresh,
   };
 }

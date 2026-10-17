@@ -28,6 +28,7 @@ export function VersionMenu({
   onPick,
   onRestore,
   note,
+  originOf,
 }: {
   kindLabel: string;
   /** The version on screen, for before (or without) the version list. */
@@ -40,6 +41,8 @@ export function VersionMenu({
   onRestore: () => Promise<void>;
   /** A quiet line at the bottom of the menu, from an extension. */
   note?: ReactNode;
+  /** Words each version's origin (the file's studio names five, ADR 0024). */
+  originOf?: (entry: ArtifactVersion) => string;
 }) {
   const { t } = useLingui();
   const showMessage = useShowMessage();
@@ -47,8 +50,12 @@ export function VersionMenu({
   const [failed, setFailed] = useState(false);
   const shown = versions.find((entry) => entry.id === shownId) ?? versions[0];
   const label = t`${kindLabel} · version ${shown?.version ?? version}`;
+  // A version saved in the file's studio came from a message there, not in the Conversation.
+  const conversationMessage = (entry: ArtifactVersion) =>
+    entry.fromStudio ? null : (entry.itemId ?? null);
   // One version opens the menu only to reach the message it came from.
-  if (versions.length < 2 && !note && !(versions[0]?.itemId && showMessage)) {
+  const first = versions[0];
+  if (versions.length < 2 && !note && !(first && conversationMessage(first) && showMessage)) {
     return (
       <span data-testid="version-label" className="shrink-0 text-[12px] text-muted-foreground">
         {label}
@@ -58,15 +65,17 @@ export function VersionMenu({
   const latest = versions[0];
   const older = !!shown && !!latest && shown.id !== latest.id;
   const origin = (entry: ArtifactVersion) =>
-    entry.itemId
-      ? t`from your message`
-      : entry.origin === "update"
-        ? t`updated`
-        : !isHandOrigin(entry.origin)
-          ? t`by superchat`
-          : entry.origin === "restore"
-            ? t`restored`
-            : t`by you`;
+    originOf
+      ? originOf(entry)
+      : conversationMessage(entry)
+        ? t`from your message`
+        : entry.origin === "update"
+          ? t`updated`
+          : !isHandOrigin(entry.origin)
+            ? t`by superchat`
+            : entry.origin === "restore"
+              ? t`restored`
+              : t`by you`;
 
   return (
     <DropdownMenu>
@@ -86,7 +95,7 @@ export function VersionMenu({
               .join(" · ");
             // The message it came from is its own row, so choosing it scrolls the conversation
             // instead of picking the version.
-            const messageId = entry.itemId && showMessage ? entry.itemId : null;
+            const messageId = showMessage ? conversationMessage(entry) : null;
             return (
               <Fragment key={entry.id}>
                 <DropdownMenuItem

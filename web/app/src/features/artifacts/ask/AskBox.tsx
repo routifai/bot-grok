@@ -7,6 +7,9 @@ import type { AskStatus } from "./useArtifactAsk";
 /** One selected part of the artifact, shown as a chip inside the box. */
 export type AskChip = { id: string; label: string; detail?: string };
 
+/** Words typed in one ask box, handed to another (the panel's box to the file's studio). */
+export type AskDraft = { text: string; caret: number };
+
 /**
  * The message box for asking superchat to change the artifact that is open: the selection as
  * chips, the person's words, send (or stop while superchat works), and one quiet status line
@@ -23,6 +26,8 @@ export function AskBox({
   onUndo,
   canUndo,
   className,
+  onStartTyping,
+  initialDraft,
 }: {
   chips: readonly AskChip[];
   onRemoveChip?: (id: string) => void;
@@ -35,10 +40,22 @@ export function AskBox({
   onUndo?: () => void;
   canUndo?: boolean;
   className?: string;
+  /** The words go somewhere else from the first keystroke (the file's studio opens with them). */
+  onStartTyping?: (draft: AskDraft) => void;
+  /** Words typed before this box opened: kept, focused, with the caret where it was. */
+  initialDraft?: AskDraft;
 }) {
   const { t } = useLingui();
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(initialDraft?.text ?? "");
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const handedOver = useRef(initialDraft);
+  useEffect(() => {
+    const given = handedOver.current;
+    const box = textarea.current;
+    if (!given || !box) return;
+    box.focus();
+    box.setSelectionRange(given.caret, given.caret);
+  }, []);
   const handled = useRef(focusRequest);
   useEffect(() => {
     if (focusRequest === handled.current) return;
@@ -87,7 +104,12 @@ export function AskBox({
             <textarea
               ref={textarea}
               value={draft}
-              onChange={(event) => setDraft(event.target.value)}
+              onChange={(event) => {
+                const { value, selectionStart } = event.target;
+                if (onStartTyping)
+                  onStartTyping({ text: value, caret: selectionStart ?? value.length });
+                else setDraft(value);
+              }}
               onKeyDown={(event) => {
                 const composing = event.nativeEvent.isComposing || event.keyCode === 229;
                 if (event.key === "Enter" && !event.shiftKey && !composing) {

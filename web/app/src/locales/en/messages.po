@@ -38,6 +38,12 @@ msgstr "{0} (max {ATTACHMENT_MAX_COUNT} attachments)"
 msgid "{0} (over 10 MiB)"
 msgstr "{0} (over 10 MiB)"
 
+#. placeholder {0}: summary.edits
+#. placeholder {1}: summary.first
+#. placeholder {2}: summary.last
+msgid "{0} edits · v{1} to v{2}"
+msgstr "{0} edits · v{1} to v{2}"
+
 #. placeholder {0}: targets.length
 msgid "{0} elements"
 msgstr "{0} elements"
@@ -109,6 +115,11 @@ msgstr "••••{hint} · Needs attention"
 
 msgid "1 cell"
 msgstr "1 cell"
+
+#. placeholder {0}: summary.first
+#. placeholder {1}: summary.last
+msgid "1 edit · v{0} to v{1}"
+msgstr "1 edit · v{0} to v{1}"
 
 msgid "A file below changes"
 msgstr "A file below changes"
@@ -291,6 +302,9 @@ msgstr "Back"
 msgid "Back to steps"
 msgstr "Back to steps"
 
+msgid "Back to Super Chat"
+msgstr "Back to Super Chat"
+
 msgid "Background"
 msgstr "Background"
 
@@ -318,6 +332,9 @@ msgstr "by superchat"
 
 msgid "by you"
 msgstr "by you"
+
+msgid "By you"
+msgstr "By you"
 
 msgid "Can't reach the server."
 msgstr "Can't reach the server."
@@ -697,6 +714,9 @@ msgstr "Edit first"
 msgid "Edit memory"
 msgstr "Edit memory"
 
+msgid "Edited by hand"
+msgstr "Edited by hand"
+
 msgid "Edited by you"
 msgstr "Edited by you"
 
@@ -807,6 +827,15 @@ msgstr "Forget"
 #. placeholder {0}: formatRelativeTime(ask.createdAt)
 msgid "From {sourceLabel} · {0}"
 msgstr "From {sourceLabel} · {0}"
+
+msgid "from Super Chat"
+msgstr "from Super Chat"
+
+msgid "From Super Chat"
+msgstr "From Super Chat"
+
+msgid "From this chat"
+msgstr "From this chat"
 
 msgid "from your message"
 msgstr "from your message"
@@ -1016,6 +1045,9 @@ msgstr "Loading…"
 
 msgid "Machine"
 msgstr "Machine"
+
+msgid "made in Super Chat · {day}"
+msgstr "made in Super Chat · {day}"
 
 msgid "Main"
 msgstr "Main"
@@ -1486,6 +1518,9 @@ msgstr "Restore this version"
 msgid "restored"
 msgstr "restored"
 
+msgid "Restored"
+msgstr "Restored"
+
 msgid "Restyles every slide; your content stays as it is."
 msgstr "Restyles every slide; your content stays as it is."
 
@@ -1528,6 +1563,9 @@ msgstr "Save"
 msgid "Save to Library"
 msgstr "Save to Library"
 
+msgid "saved"
+msgstr "saved"
+
 msgid "Saved"
 msgstr "Saved"
 
@@ -1539,6 +1577,9 @@ msgstr "Saved {0} · not used yet"
 #. placeholder {1}: day(entry.lastUsedAt)
 msgid "Saved {0} · used {1}"
 msgstr "Saved {0} · used {1}"
+
+msgid "saved by you"
+msgstr "saved by you"
 
 msgid "Saved to Library"
 msgstr "Saved to Library"
@@ -1748,11 +1789,20 @@ msgstr "Sum"
 msgid "Summarize what changed in my files this week and tell me what needs attention."
 msgstr "Summarize what changed in my files this week and tell me what needs attention."
 
+msgid "Super Chat"
+msgstr "Super Chat"
+
 msgid "superchat"
 msgstr "superchat"
 
 msgid "superchat is editing…"
 msgstr "superchat is editing…"
+
+msgid "superchat is updating this file…"
+msgstr "superchat is updating this file…"
+
+msgid "superchat is updating this slide…"
+msgstr "superchat is updating this slide…"
 
 msgid "superchat reads it where it is; nothing is copied."
 msgstr "superchat reads it where it is; nothing is copied."
@@ -1833,6 +1883,9 @@ msgstr "This deletes all {0} versions of this. This can't be undone."
 
 msgid "This file is not valid UTF-8 text."
 msgstr "This file is not valid UTF-8 text."
+
+msgid "This file's chat"
+msgstr "This file's chat"
 
 msgid "This isn't the latest version. Open the latest to edit it."
 msgstr "This isn't the latest version. Open the latest to edit it."
@@ -1915,6 +1968,12 @@ msgstr "Updated by superchat · v{0}"
 #. placeholder {0}: content.arrived.version
 msgid "Updated by you · v{0}"
 msgstr "Updated by you · v{0}"
+
+msgid "updated from source"
+msgstr "updated from source"
+
+msgid "Updated from source"
+msgstr "Updated from source"
 
 msgid "Updates daily"
 msgstr "Updates daily"
@@ -2085,6 +2144,13 @@ msgstr "You"
 #. placeholder {0}: status.asked
 msgid "You asked: {0}"
 msgstr "You asked: {0}"
+
+#. placeholder {0}: row.element
+#. placeholder {1}: row.count
+#. placeholder {2}: row.from
+#. placeholder {3}: row.to
+msgid "You changed {0} · {1} edits · v{2} → v{3}"
+msgstr "You changed {0} · {1} edits · v{2} → v{3}"
 
 msgid "You changed {changedCount} cells on {sheetName}. superchat sees this before its next reply."
 msgstr "You changed {changedCount} cells on {sheetName}. superchat sees this before its next reply."

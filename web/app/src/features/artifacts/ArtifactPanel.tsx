@@ -1,12 +1,14 @@
 import { useLingui } from "@lingui/react/macro";
 import { Button, cn } from "@superchat/ui-web";
 import { ChevronLeft } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import type { AskDraft } from "./ask/AskBox";
 import { ArtifactEditor } from "./editor/ArtifactEditor";
 import { artifactKey, useArtifactEditing } from "./editor/editor-state";
 import { useArtifactContent } from "./library/useArtifactContent";
 import { artifactPanelLayout, useParentWidth } from "./panel-layout";
 import { useArtifactEditorKind, useArtifactPanelParts } from "./registry";
+import { ArtifactStudio } from "./studio/ArtifactStudio";
 
 /** The artifact on screen in the panel: which file, under which name, at which version. */
 export type ShownArtifact = { artifactId: string; name: string; version: number };
@@ -63,8 +65,14 @@ export function ArtifactPanel({
   const layout = rowWidth === null ? null : artifactPanelLayout(rowWidth, room);
   const overlay = layout?.mode === "overlay";
   const splitWidth = layout?.mode === "split" ? layout.width : undefined;
+  // A file the editor can show is edited in its studio (ADR 0024): Edit, or typing a change in
+  // the ask box, opens it over the app; the panel stays open on the file underneath.
+  const [studio, setStudio] = useState<{ draft?: AskDraft } | null>(null);
+  const closeStudio = useCallback(() => setStudio(null), []);
+  const studioCan = editable && !!ready?.artifact.botId;
 
   useEffect(() => {
+    if (studio) return; // the studio has Escape while it is open
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented || panel.holdsEscape) return;
       if (fullScreen) setFullScreen(false);
@@ -72,7 +80,7 @@ export function ArtifactPanel({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, fullScreen, panel.holdsEscape]);
+  }, [onClose, fullScreen, panel.holdsEscape, studio]);
 
   return (
     <section
@@ -103,6 +111,8 @@ export function ArtifactPanel({
         page={page}
         onClose={onClose}
         fullScreen={{ on: fullScreen, toggle: () => setFullScreen((on) => !on) }}
+        onEdit={studioCan ? () => setStudio({}) : undefined}
+        onAskStart={studioCan ? (draft) => setStudio({ draft }) : undefined}
         leading={
           overlay && !fullScreen ? (
             <Button
@@ -117,6 +127,14 @@ export function ArtifactPanel({
           ) : null
         }
       />
+      {studio && ready ? (
+        <ArtifactStudio
+          artifactId={ready.artifact.id}
+          title={title}
+          draft={studio.draft}
+          onClose={closeStudio}
+        />
+      ) : null}
     </section>
   );
 }
