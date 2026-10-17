@@ -58,6 +58,7 @@ runs on the bundle's harness. No type pins a model.
 | `worker` | `start_helper` from the assistant | 5 | the work toolset: `sys_os_*`, `artifact_save`, `artifact_list`, `deck_*` authoring, `files_*`, the live-update tools, `memory_search`, `memory_get`, `session_history`, `vault_fill`, plus `start_helper` for parts |
 | `subworker` | `start_helper` from a `worker` | 5 | the worker set without `start_helper` |
 | `notes` | the engine only, for the daily-note passes | 2 | `daily_note_get`, `daily_note_update`, `memory_*` (read, remember, forget), `session_history` |
+| `editor` | the engine only, one per file, when its studio is first used (`POST /v1/artifacts/{id}/chat`, [ADR 0024](adr/0024-the-artifact-studio.md)) | none (outside helper caps and the step limit) | `artifact_save` (with `base_version`), `artifact_list`, `deck_check`, `deck_export`, `files_*`, `sys_os_*`, `session_history`, `memory_search`, `memory_get`, `memory_remember`; never wakes the conversation, never listed as its helper |
 
 ## Scheduled runs
 

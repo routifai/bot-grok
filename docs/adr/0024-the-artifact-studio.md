@@ -1,6 +1,6 @@
 # The artifact studio
 
-> **Status:** Accepted 2026-10-17, refined the same day against the engine after review. Amends [ADR 0021](0021-one-conversation-messages-link-to-artifacts.md): edits made while a file is open go to that file's own chat, not to the Conversation. Mock-up: https://claude.ai/artifact/PrNmCjw77Yq3odNyyYgHZJ
+> **Status:** Accepted 2026-10-17, refined the same day against the engine after review. Slice 1 built 2026-10-17 (`536c83872`..`0d33d58be`: group id, `editor` type, find-or-create, isolation, base-checked saves, studio notices, the studio surface); slice 2 (`artifact_patch`, stale and "being edited" notices, activity grouping, warm runner and cap, phone layout, slide outline) pending. Amends [ADR 0021](0021-one-conversation-messages-link-to-artifacts.md): edits made while a file is open go to that file's own chat, not to the Conversation. Mock-up: https://claude.ai/artifact/PrNmCjw77Yq3odNyyYgHZJ
 
 ADR 0021 put every message in the one Conversation and linked messages to artifacts with a chip. For editing a file, that is the wrong shape. A run of changes to one deck ("bar chart", "biggest first", "shares on the bars") fills Super Chat with talk nobody needs there, and the assistant's context with it. When the person comes back to the deck a day later, those changes are scattered between other topics, and the history of the file is not where the file is. People edit a file in one place, by talking and by hand, and expect that place to remember.
 
