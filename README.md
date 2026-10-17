@@ -19,9 +19,9 @@ flowchart LR
   (Inbox, Mini Apps, Automations, Files) and the Activity panel. It only renders state and sends
   intent. The engine serves it, and it talks to the engine directly; there is no app server
   (see [ADR 0015](docs/adr/0015-no-app-server-the-web-talks-to-the-engine.md)).
-- **engine** (`engine/omnigent`): the agent server. It owns sessions, the Conversation and side
+- **engine** (`engine/`, package `engine/omnigent`): the agent server. It owns sessions, the Conversation and side
   chats, Helpers, memory, approvals, artifacts, scheduled tasks (Automations), the model layer, who is asking (from an SSO broker header) and
-  the agent bundle (`deployment/engine`). Any website can drive it.
+  the agent bundle (`engine/agents`). Any website can drive it.
 - **Computer** (`deployment/computer.Dockerfile`, with what it ships from `host/`): a container per person where the agent actually runs:
   Omnigent's runner (host) image plus Superchat's additions, started by the engine over the Docker
   socket (the Docker counterpart of Omnigent's Kubernetes launcher), home on its own volume.
@@ -81,8 +81,8 @@ cannot register a host for a person. Each person's Computer is their runner host
 |---|---|
 | `web/app` | web app |
 | `web/packages/*` | shared contracts, the engine client, UI |
-| `engine/omnigent` | engine |
-| `deployment/engine` | agent instructions and tool bundle |
+| `engine/` | engine: the `omnigent` package, its tests, and the agent bundles (`agents/`); see [`engine/README.md`](engine/README.md) |
+| `deployment/` | Dockerfiles, compose, setup scripts and the engine config templates |
 | `deployment/computer.Dockerfile` | Computer image |
 | `host/` | what ships into each Computer besides the engine package: helper commands (`bin/`), the dashboard template, deck export and pptx assets (`share/`), and their tests (`tests/`) |
 

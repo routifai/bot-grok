@@ -12,7 +12,7 @@ The browser talks only to the engine. Each Computer's runner dials the engine ba
 WebSocket tunnel. There is no other service.
 
 This folder is the whole deployment. Both images build from the repo's sources; nothing in
-`engine/omnigent` is a Dockerfile, a deploy recipe or a web app any more.
+`engine/` is a Dockerfile, a deploy recipe or a web app any more.
 
 ## Build
 
@@ -85,7 +85,7 @@ set in `.env` and runs `docker compose … pull && up -d`.
 | `build.sh` | builds both images, with mirrors, a company CA, multi-arch and push |
 | `setup.sh`, `stop.sh`, `reset.sh` | one-command local start, stop, and wipe |
 | `entrypoint.py` | the engine's server entrypoint (config, migrations, app) |
-| `engine/` | `start.sh` and the config templates it renders; `agents/` (the bundles the engine offers) generated from `templates/` by `render-agents.mjs` |
+| `engine/` | `start.sh` and the engine config templates it renders; the agent bundles it offers come from [`engine/agents`](../engine/agents) |
 | `postgres/schemas.sql` | creates the `engine` schema on first init |
 | `systemd/` | a backup timer for a production host |
 

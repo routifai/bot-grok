@@ -14,7 +14,7 @@ export function computerUrl(config: OmnigentClientConfig, sessionId: string): UR
 }
 
 /** `GET /v1/sessions/{id}/computer` — whether the session's Computer is ready and how its launch
- * is going (engine/omnigent/omnigent/superchat/computer/routes.py). */
+ * is going (engine/omnigent/superchat/computer/routes.py). */
 export async function getOmnigentComputer(
   config: OmnigentClientConfig,
   email: string,

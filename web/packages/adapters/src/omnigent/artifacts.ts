@@ -1,5 +1,5 @@
 // Artifacts on the Omnigent side: deliverable files the Muse saved from its Computer with
-// `artifact_save` (engine/omnigent/omnigent/superchat/artifacts/routes.py). Plain fetch client;
+// `artifact_save` (engine/omnigent/superchat/artifacts/routes.py). Plain fetch client;
 // a deliverable is addressed by the id of any of its versions.
 import { type OmnigentClientConfig, omnigentHeaders, throwOnError } from "./client.js";
 

@@ -58,9 +58,9 @@ ENV PIP_CERT=/etc/ssl/certs/ca-certificates.crt \
 WORKDIR /src
 # The package, its sibling SDK (a hard dependency, installed from the same tree) and the
 # attribution files the image redistributes.
-COPY engine/omnigent/pyproject.toml engine/omnigent/setup.py engine/omnigent/LICENSE engine/omnigent/NOTICE ./
-COPY engine/omnigent/sdks/python-client/ ./sdks/python-client/
-COPY engine/omnigent/omnigent/ ./omnigent/
+COPY engine/pyproject.toml engine/setup.py engine/LICENSE engine/NOTICE ./
+COPY engine/sdks/python-client/ ./sdks/python-client/
+COPY engine/omnigent/ ./omnigent/
 RUN python -m venv /opt/venv
 ENV PATH=/opt/venv/bin:${PATH}
 RUN if [ -n "${TORCH_INDEX_URL}" ]; then pip install --index-url "${TORCH_INDEX_URL}" torch; fi \

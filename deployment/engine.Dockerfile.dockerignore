@@ -14,12 +14,12 @@
 !web/app/
 
 # python stage
-!engine/omnigent/pyproject.toml
-!engine/omnigent/setup.py
-!engine/omnigent/LICENSE
-!engine/omnigent/NOTICE
-!engine/omnigent/sdks/python-client/
-!engine/omnigent/omnigent/
+!engine/pyproject.toml
+!engine/setup.py
+!engine/LICENSE
+!engine/NOTICE
+!engine/sdks/python-client/
+!engine/omnigent/
 
 # engine stage
 !deployment/entrypoint.py
@@ -33,4 +33,4 @@
 **/__pycache__
 **/*.pyc
 **/.venv
-engine/omnigent/omnigent/server/static/web-ui
+engine/omnigent/server/static/web-ui

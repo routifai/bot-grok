@@ -1,5 +1,5 @@
 // Live artifacts on the Omnigent side: a page kept up to date on a schedule
-// (engine/omnigent/omnigent/superchat/live/routes.py). A page is addressed by the id of any of
+// (engine/omnigent/superchat/live/routes.py). A page is addressed by the id of any of
 // its versions.
 import { type OmnigentClientConfig, omnigentHeaders, throwOnError } from "./client.js";
 

@@ -1,4 +1,4 @@
-// `artifacts.*`: the deliverables the Muse saved with `artifact_save` (engine/omnigent/omnigent/
+// `artifacts.*`: the deliverables the Muse saved with `artifact_save` (engine/omnigent/
 // superchat/artifacts). The engine rows are mapped onto the shapes the Library and preview speak,
 // with the engine's artifact id standing in for both the family id and the version id.
 import { ORPCError } from "@orpc/server";

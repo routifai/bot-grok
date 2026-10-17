@@ -1,5 +1,5 @@
 // Apps on the Omnigent side: a saved HTML artifact published at its own address
-// (engine/omnigent/omnigent/superchat/apps/routes.py). The publication shape rides on the
+// (engine/omnigent/superchat/apps/routes.py). The publication shape rides on the
 // artifact rows, so its types stay with artifacts.
 import type { OmnigentPublication, OmnigentPublishAudience } from "./artifacts.js";
 import { type OmnigentClientConfig, omnigentHeaders, throwOnError } from "./client.js";

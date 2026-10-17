@@ -17,8 +17,8 @@ Every claim here was checked against the code, and each one carries a `file:line
 
 **How paths are written.**
 
-- Engine paths start with `omnigent/` and are relative to `engine/omnigent/`. For example,
-  `omnigent/runner/app.py` is `engine/omnigent/omnigent/runner/app.py`.
+- Engine paths start with `omnigent/` and are relative to `engine/`. For example,
+  `omnigent/runner/app.py` is `engine/omnigent/runner/app.py`.
 - Superchat paths (`apps/`, `packages/`, `infra/`) are relative to the repo root.
 - Line numbers are from the branch this page was written on. They drift, so search for the symbol
   name if a line has moved.

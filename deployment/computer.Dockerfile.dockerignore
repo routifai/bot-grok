@@ -3,12 +3,12 @@
 *
 
 # venv stage
-!engine/omnigent/pyproject.toml
-!engine/omnigent/setup.py
-!engine/omnigent/LICENSE
-!engine/omnigent/NOTICE
-!engine/omnigent/sdks/python-client/
-!engine/omnigent/omnigent/
+!engine/pyproject.toml
+!engine/setup.py
+!engine/LICENSE
+!engine/NOTICE
+!engine/sdks/python-client/
+!engine/omnigent/
 
 # computer stage
 !host/bin/
@@ -19,6 +19,6 @@
 **/__pycache__
 **/*.pyc
 **/.venv
-engine/omnigent/omnigent/server/static/web-ui
+engine/omnigent/server/static/web-ui
 host/share/**/*.test.ts
 host/share/**/fixtures

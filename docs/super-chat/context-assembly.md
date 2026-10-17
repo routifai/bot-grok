@@ -19,9 +19,9 @@ the code and a document disagree, the [Known gaps](#15-known-gaps) section says 
 
 **How paths are written.**
 
-- Engine paths start with `omnigent/` and are relative to `engine/omnigent/`. For example,
-  `omnigent/runner/app.py` is `engine/omnigent/omnigent/runner/app.py`.
-- Engine design notes start with `rollover/` and are relative to `engine/omnigent/`.
+- Engine paths start with `omnigent/` and are relative to `engine/`. For example,
+  `omnigent/runner/app.py` is `engine/omnigent/runner/app.py`.
+- Engine design notes start with `rollover/` and are relative to `docs/`.
 - Superchat paths (`apps/`, `packages/`, `infra/`, `docs/`) are relative to the repo root.
 - Line numbers are from the branch this page was written on. They drift, so search for the symbol
   name if a line has moved.

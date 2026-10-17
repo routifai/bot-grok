@@ -1,5 +1,5 @@
 // Sheets on the Omnigent side: a CSV / XLSX artifact read as grids and hand-edited
-// (engine/omnigent/omnigent/superchat/sheets/routes.py). An edit saves a new artifact version,
+// (engine/omnigent/superchat/sheets/routes.py). An edit saves a new artifact version,
 // so the result is an artifact row.
 import type { OmnigentArtifact } from "./artifacts.js";
 import { type OmnigentClientConfig, omnigentHeaders, throwOnError } from "./client.js";

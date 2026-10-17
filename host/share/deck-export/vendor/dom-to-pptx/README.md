@@ -47,4 +47,4 @@ patch to `node_modules/pptxgenjs` before bundling.
 the PptxGenJS patch, runs rollup and writes the `.gz` (`gzip -n`). It needs git, node, pnpm and
 patch. To move to a newer dom-to-pptx, change `commit` in `build.sh`, rebase the patch, and
 re-run `host/tests/test_deck_export.py`, `deck-export/*.test.ts` and
-`engine/omnigent/tests/superchat/decks/test_export_charts.py`. Do not edit the bundle by hand.
+`engine/tests/superchat/decks/test_export_charts.py`. Do not edit the bundle by hand.

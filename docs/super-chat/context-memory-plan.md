@@ -3,7 +3,7 @@
 Status: proposal, 2026-10-12, revised after an independent review of the findings and the design. Two companion
 pages: "context today" (what fills the window, five compactions animated) and "context plan" (one compaction before
 and after). Facts about today's code were checked against `engine/omnigent` on branch `engine-only` at `3ba1052de`.
-Paths starting with `omnigent/` are relative to `engine/omnigent/`. Line numbers drift; search the symbol.
+Paths starting with `omnigent/` are relative to `engine/`. Line numbers drift; search the symbol.
 
 ## 1. Goal
 

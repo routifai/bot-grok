@@ -3,7 +3,7 @@
 Status: proposal, 2026-10-14. Builds on `context-memory-plan.md` slices 1–3, which are now in the code
 (`1d08b78c4` … `f41ae4765`): anchor reads, tool digests in replay, prefix delta, the tagged state file,
 `state_close`, the journal under `~/workspace/memory/`, and `memory/` as an index root. Paths starting with
-`omnigent/` are relative to `engine/omnigent/`.
+`omnigent/` are relative to `engine/`.
 
 ## 1. The question
 

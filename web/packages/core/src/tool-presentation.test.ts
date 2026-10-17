@@ -8,7 +8,7 @@ import {
 } from "./tool-presentation.js";
 
 /** Builds a realistic Step `detail` in the engine's own shape
- * (engine/omnigent/omnigent/tools/builtins/spawn.py `_project_activity_item`/`_step_detail`):
+ * (engine/omnigent/tools/builtins/spawn.py `_project_activity_item`/`_step_detail`):
  * `{ call: { name, args: <JSON string> }, result: { content: <string> } }`. */
 function detailFor(name: string, args: Record<string, unknown>, content: string) {
   return {

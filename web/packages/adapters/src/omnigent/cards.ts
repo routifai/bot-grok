@@ -1,5 +1,5 @@
 // Reply cards on the Omnigent side. The engine projects `render_card` calls into card blocks
-// (engine/omnigent/omnigent/superchat/transcript/); the only rule left here is that a card never
+// (engine/omnigent/superchat/transcript/); the only rule left here is that a card never
 // carries a secret.
 import type { MessageBlock, ReplyCardBlock } from "@superchat/contracts";
 import { redactSecrets } from "@superchat/core";
