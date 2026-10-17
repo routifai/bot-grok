@@ -41,13 +41,23 @@ export interface OmnigentTranscriptMessage {
   blocks: OmnigentTranscriptBlock[];
   /** `queued` while this user message waits behind the running turn. */
   delivered?: "queued";
+  /** A user message only: the artifact it is about (docs/conversation.md), or null for none. */
+  artifact?: OmnigentMessageArtifact | null;
+}
+
+/** The artifact a person's message links to: `open` beside the chat when sent, `edited` by a
+ * save during its turn, `chosen` on the chip. */
+export interface OmnigentMessageArtifact {
+  artifact_id: string;
+  name: string;
+  version: number | null;
+  how: "open" | "edited" | "chosen";
 }
 
 export interface OmnigentTranscriptLineage {
-  kind: "super" | "side" | "helper" | null;
+  kind: "super" | "helper" | null;
   root_id: string | null;
   parent_id: string | null;
-  seed_item_id: string | null;
 }
 
 export interface OmnigentTranscriptPage {
@@ -67,16 +77,40 @@ export async function getOmnigentTranscript(
   config: OmnigentClientConfig,
   email: string,
   sessionId: string,
-  options: { limit?: number; before?: string; includeSeed?: boolean; beforeReset?: boolean } = {},
+  options: { limit?: number; before?: string; beforeReset?: boolean } = {},
 ): Promise<OmnigentTranscriptPage> {
   const url = new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/transcript`, config.baseUrl);
   if (options.limit !== undefined) url.searchParams.set("limit", String(options.limit));
   if (options.before) url.searchParams.set("before", options.before);
-  if (options.includeSeed) url.searchParams.set("include_seed", "true");
   if (options.beforeReset) url.searchParams.set("before_reset", "true");
   const response = await fetch(url, { headers: omnigentHeaders(config, email) });
   await throwOnError(response, "get transcript", config.secrets);
   return (await response.json()) as OmnigentTranscriptPage;
+}
+
+/** `POST /v1/sessions/{id}/items/{itemId}/artifact` — the person picks which artifact their
+ * message is about (`null`: none). The engine records it as `chosen`, steers a running turn and
+ * answers with the updated transcript message. */
+export async function setOmnigentMessageArtifact(
+  config: OmnigentClientConfig,
+  email: string,
+  sessionId: string,
+  itemId: string,
+  artifactId: string | null,
+): Promise<OmnigentTranscriptMessage> {
+  const response = await fetch(
+    new URL(
+      `/v1/sessions/${encodeURIComponent(sessionId)}/items/${encodeURIComponent(itemId)}/artifact`,
+      config.baseUrl,
+    ),
+    {
+      method: "POST",
+      headers: omnigentHeaders(config, email),
+      body: JSON.stringify({ artifact_id: artifactId }),
+    },
+  );
+  await throwOnError(response, "set message artifact", config.secrets);
+  return (await response.json()) as OmnigentTranscriptMessage;
 }
 
 /** A frame of the family stream. Ids only; the caller refetches what changed. */

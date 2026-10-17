@@ -2,6 +2,7 @@ import { eventIterator, oc } from "@orpc/contract";
 import * as z from "zod";
 import { ATTACHMENT_MAX_COUNT, WorkspaceAttachmentSchema } from "../attachments.js";
 import { ThreadMessagePageSchema } from "../domain.js";
+import { ThreadMessageSchema } from "../events.js";
 import { Id } from "../ids.js";
 
 /** One event of a Muse's live family stream (the Conversation and its Helpers).
@@ -58,6 +59,15 @@ export const chatsContract = {
             attachments: z.array(WorkspaceAttachmentSchema).max(ATTACHMENT_MAX_COUNT).optional(),
             /** Workspace folders (relative, as the Files browser lists them) the message points at. */
             folders: z.array(z.string().max(1024)).max(5).optional(),
+            /** What is beside the chat: the artifact open in the panel is a hint for the Muse
+             * and the message's `open` link, never a hard scope. */
+            context: z
+              .object({
+                openArtifact: z
+                  .object({ artifactId: Id, version: z.number().int().min(1) })
+                  .optional(),
+              })
+              .optional(),
           })
           .refine(
             (input) =>
@@ -68,6 +78,11 @@ export const chatsContract = {
           ),
       )
       .output(z.object({ ok: z.literal(true) })),
+    /** The person picks which artifact their message is about (`null`: none). The link becomes
+     * `chosen` and a running turn is steered; answers with the updated message. */
+    setMessageArtifact: oc
+      .input(z.object({ botId: Id, itemId: Id, artifactId: Id.nullable() }))
+      .output(ThreadMessageSchema),
     /** Stops the turn running in the Muse's Conversation; messages waiting behind it are cancelled. */
     interrupt: oc.input(z.object({ botId: Id })).output(z.object({ ok: z.literal(true) })),
     /** Where the Conversation works: its Project (its working directory is a Project folder) or

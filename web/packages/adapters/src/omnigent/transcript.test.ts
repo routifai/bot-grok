@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { versionMessageId } from "./artifacts.js";
 import type { OmnigentTranscriptPage } from "./client/transcript.js";
-import { mapTranscriptPage } from "./transcript.js";
+import { mapTranscriptMessage, mapTranscriptPage } from "./transcript.js";
 
 const page = (data: OmnigentTranscriptPage["data"], hasMore = false): OmnigentTranscriptPage => ({
   data,
   has_more: hasMore,
   older_cursor: hasMore ? "cursor-1" : null,
-  lineage: { kind: "super", root_id: "s1", parent_id: null, seed_item_id: null },
+  lineage: { kind: "super", root_id: "s1", parent_id: null },
 });
 
 describe("mapTranscriptPage", () => {
@@ -258,5 +259,70 @@ describe("file search citations", () => {
       data: { items },
       fallback: "Sources: finance.pdf p. 2",
     });
+  });
+});
+
+describe("a message's artifact link", () => {
+  it("maps the engine's link, keeps an explicit none, and leaves it out when the engine has none", () => {
+    const result = mapTranscriptPage(
+      "s1",
+      page([
+        {
+          id: "m1",
+          role: "user",
+          created_at: 1,
+          blocks: [{ type: "text", text: "bigger title" }],
+          artifact: { artifact_id: "art_1", name: "Q3 Review.html", version: 4, how: "edited" },
+        },
+        {
+          id: "m2",
+          role: "user",
+          created_at: 2,
+          blocks: [{ type: "text", text: "thanks" }],
+          artifact: null,
+        },
+        { id: "m3", role: "user", created_at: 3, blocks: [{ type: "text", text: "hi" }] },
+      ]),
+    );
+    expect(result.messages[0]?.artifact).toEqual({
+      artifactId: "art_1",
+      name: "Q3 Review.html",
+      version: 4,
+      how: "edited",
+    });
+    expect(result.messages[1]?.artifact).toBeNull();
+    expect(result.messages[2] && "artifact" in result.messages[2]).toBe(false);
+  });
+
+  it("maps one message on its own (the relink answer)", () => {
+    expect(
+      mapTranscriptMessage("s1", {
+        id: "m1",
+        role: "user",
+        created_at: 0,
+        blocks: [],
+        artifact: { artifact_id: "art_2", name: "memo.md", version: null, how: "chosen" },
+      }),
+    ).toMatchObject({
+      id: "m1",
+      threadId: "s1",
+      role: "user",
+      artifact: { artifactId: "art_2", name: "memo.md", version: null, how: "chosen" },
+    });
+  });
+});
+
+describe("versionMessageId", () => {
+  const base = { id: "v", version: 1, size: 1, created_at: 0 };
+  it("takes the engine's item id, else the Conversation's own turn item, never a hand edit's", () => {
+    expect(versionMessageId({ ...base, item_id: "msg_1" }, "s1")).toBe("msg_1");
+    expect(versionMessageId({ ...base, item_id: null, turn_item_id: "msg_2" }, "s1")).toBeNull();
+    expect(versionMessageId({ ...base, chat_id: "s1", turn_item_id: "msg_2" }, "s1")).toBe("msg_2");
+    expect(
+      versionMessageId({ ...base, chat_id: "helper", turn_item_id: "msg_2" }, "s1"),
+    ).toBeNull();
+    expect(
+      versionMessageId({ ...base, origin: "manual", chat_id: "s1", turn_item_id: "m" }, "s1"),
+    ).toBeNull();
   });
 });

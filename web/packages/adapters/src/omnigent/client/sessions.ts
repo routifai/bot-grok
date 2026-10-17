@@ -3,12 +3,11 @@ import { omnigentHeaders, throwOnError } from "./core.js";
 
 /** Where a session sits in a Super Chat family (ADR 0009), or `null` outside one. */
 export interface OmnigentSessionSuperchat {
-  kind: "super" | "side" | "helper" | null;
+  kind: "super" | "helper" | null;
   /** The family's Super Chat. */
   root_id: string | null;
   /** A Helper's direct parent. */
   parent_id: string | null;
-  seed_item_id: string | null;
   /** The Project the session has open (ADR 0008). */
   project: { slug: string; name: string } | null;
   /** The working directory relative to the workspace (`null` at its root). */
@@ -84,13 +83,22 @@ export interface OmnigentPostedMessage {
   turn: number | undefined;
 }
 
-/** `POST /v1/sessions/{id}/events` with a `message` event carrying the user's turn text and, optionally, images as `input_image` data URIs. */
+/** What is beside the chat when a message is sent (docs/conversation.md "Send"). */
+export interface OmnigentMessageContext {
+  openArtifact?: { artifactId: string; version: number };
+}
+
+/** `POST /v1/sessions/{id}/events` with a `message` event carrying the user's turn text and,
+ * optionally, images as `input_image` data URIs. `context` rides beside the message data (never
+ * in the model's input item): the artifact open beside the chat, for the engine's runtime hint
+ * and the message's `open` link. */
 export async function postOmnigentMessage(
   config: OmnigentClientConfig,
   email: string,
   sessionId: string,
   text: string,
   images?: Array<{ mimeType: string; dataBase64: string }>,
+  context?: OmnigentMessageContext,
 ): Promise<OmnigentPostedMessage> {
   const content: Array<Record<string, string>> = [{ type: "input_text", text }];
   for (const image of images ?? []) {
@@ -107,6 +115,16 @@ export async function postOmnigentMessage(
       body: JSON.stringify({
         type: "message",
         data: { role: "user", content },
+        ...(context?.openArtifact
+          ? {
+              context: {
+                open_artifact: {
+                  artifact_id: context.openArtifact.artifactId,
+                  version: context.openArtifact.version,
+                },
+              },
+            }
+          : {}),
       }),
     },
   );

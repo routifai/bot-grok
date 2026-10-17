@@ -20,7 +20,6 @@ describe("resolveChatOwnership", () => {
     kind,
     root_id: root,
     parent_id: root,
-    seed_item_id: null,
     project: null,
   });
 
@@ -35,7 +34,7 @@ describe("resolveChatOwnership", () => {
     expect(await resolveChatOwnership(CLIENT, EMAIL, superChats, "x")).toBeNull();
     getOmnigentSession.mockResolvedValue(session("x", null));
     expect(await resolveChatOwnership(CLIENT, EMAIL, superChats, "x")).toBeNull();
-    getOmnigentSession.mockResolvedValue(session("x", family("side", "conv_super")));
+    getOmnigentSession.mockResolvedValue(session("x", family("super", "conv_super")));
     expect(await resolveChatOwnership(CLIENT, EMAIL, superChats, "x")).toBeNull();
   });
 

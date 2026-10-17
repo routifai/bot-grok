@@ -53,7 +53,7 @@ describe("getOmnigentWorkingPlace", () => {
         json({
           id: "conv_1",
           status: "idle",
-          superchat: { kind: "side", project: null, folder: "reports", workspace_chosen: true },
+          superchat: { kind: "super", project: null, folder: "reports", workspace_chosen: true },
         }),
       ),
     );

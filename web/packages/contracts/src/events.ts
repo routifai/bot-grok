@@ -157,6 +157,18 @@ export const ProductEventSchema = z.object({
 });
 export type ProductEvent = z.infer<typeof ProductEventSchema>;
 
+/** The artifact a person's message is about (docs/conversation.md): `open` beside the chat when
+ * it was sent, `edited` by a save during its turn, `chosen` on the chip. */
+export const MessageArtifactSchema = z.object({
+  artifactId: Id,
+  /** The file name at the time of linking. */
+  name: z.string(),
+  /** The version the message produced, once there is one. */
+  version: z.number().int().nullable(),
+  how: z.enum(["open", "edited", "chosen"]),
+});
+export type MessageArtifact = z.infer<typeof MessageArtifactSchema>;
+
 export const ThreadMessageSchema = z.object({
   id: Id,
   threadId: Id,
@@ -170,5 +182,7 @@ export const ThreadMessageSchema = z.object({
   createdAt: z.string(),
   /** `chats.transcript` only: `queued` while this message waits behind the running turn. */
   delivered: z.literal("queued").optional(),
+  /** The person's messages only: the artifact it is about, or null when it is about none. */
+  artifact: MessageArtifactSchema.nullable().optional(),
 });
 export type ThreadMessage = z.infer<typeof ThreadMessageSchema>;

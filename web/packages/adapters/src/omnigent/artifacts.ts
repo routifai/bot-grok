@@ -55,8 +55,23 @@ export interface OmnigentArtifactVersion {
   origin?: string;
   parent_version_id?: string | null;
   edit_summary?: string | null;
+  /** The person's message of the turn that saved it, in whichever chat ran the turn. */
   turn_item_id?: string | null;
   chat_id?: string | null;
+  /** The person's message in the Conversation that led to it (docs/conversation.md). */
+  item_id?: string | null;
+}
+
+/** The person's Conversation message a version came from, or null (made by hand, or by a chat
+ * other than `conversationId`). `item_id` is the engine's answer; before it sends one, a turn
+ * item of the Conversation itself is the same message. */
+export function versionMessageId(
+  version: OmnigentArtifactVersion,
+  conversationId: string,
+): string | null {
+  if (version.item_id !== undefined) return version.item_id ?? null;
+  if (version.origin === "manual" || version.origin === "restore") return null;
+  return version.chat_id === conversationId ? (version.turn_item_id ?? null) : null;
 }
 
 export interface OmnigentArtifactDetail extends OmnigentArtifact {

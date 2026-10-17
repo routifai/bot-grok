@@ -85,7 +85,7 @@ const blocked = {
 const session = (id: string, kind: string, root: string) => ({
   id,
   status: "idle",
-  superchat: { kind, root_id: root, parent_id: root, seed_item_id: null, project: null },
+  superchat: { kind, root_id: root, parent_id: root, project: null },
 });
 
 const listAsks = () => call(approvalsRouter.asks.list, { botId: "sess-1" });

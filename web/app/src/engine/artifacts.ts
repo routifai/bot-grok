@@ -14,6 +14,7 @@ import {
   type OmnigentArtifact,
   type OmnigentPublication,
   restoreOmnigentArtifact,
+  versionMessageId,
 } from "@superchat/adapters/omnigent/browser";
 import type { Artifact, ArtifactPublish } from "@superchat/contracts";
 import { engineClient, museSessionId, NO_EMAIL } from "./client";
@@ -105,9 +106,10 @@ export const artifactsRouter = {
       nextCursor: null,
     })),
     listVersions: os.artifacts.listVersions.handler(async ({ input }) => {
-      const detail = await getOmnigentArtifact(engineClient(), NO_EMAIL, input.familyId).catch(
-        notFound,
-      );
+      const [detail, conversationId] = await Promise.all([
+        getOmnigentArtifact(engineClient(), NO_EMAIL, input.familyId).catch(notFound),
+        museSessionId(),
+      ]);
       return detail.all_versions.map((version) => ({
         id: version.id,
         version: version.version,
@@ -117,6 +119,7 @@ export const artifactsRouter = {
         parentVersionId: version.parent_version_id ?? null,
         editSummary: version.edit_summary ?? null,
         chatId: version.chat_id ?? null,
+        itemId: versionMessageId(version, conversationId),
       }));
     }),
     getById: os.artifacts.getById.handler(async ({ input }) => {

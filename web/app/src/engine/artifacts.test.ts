@@ -26,7 +26,7 @@ const json = (body: unknown, status = 200) =>
 const family = (id: string, kind: "helper") => ({
   id,
   status: "idle",
-  superchat: { kind, root_id: "sess-1", parent_id: "sess-1", seed_item_id: null, project: null },
+  superchat: { kind, root_id: "sess-1", parent_id: "sess-1", project: null },
 });
 
 /** Serves the Muse (session `sess-1`) and hands everything else to `rest`. */
@@ -119,8 +119,17 @@ describe("artifacts", () => {
     const detail = {
       ...row,
       all_versions: [
-        { id: "a1", version: 2, size: 12, created_at: 1_700_000_100 },
-        { id: "a0", version: 1, size: 10, created_at: 1_700_000_000 },
+        { id: "a2", version: 3, size: 12, created_at: 1_700_000_200, item_id: "msg_7" },
+        {
+          id: "a1",
+          version: 2,
+          size: 12,
+          created_at: 1_700_000_100,
+          origin: "ai",
+          chat_id: "sess-1",
+          turn_item_id: "msg_5",
+        },
+        { id: "a0", version: 1, size: 10, created_at: 1_700_000_000, origin: "manual" },
       ],
     };
     engine((url, init) => {
@@ -129,9 +138,11 @@ describe("artifacts", () => {
       return json(detail);
     });
     const versions = await call(artifactsRouter.artifacts.listVersions, { familyId: "a1" });
-    expect(versions.map((v) => [v.id, v.version])).toEqual([
-      ["a1", 2],
-      ["a0", 1],
+    // The message each came from: the engine's `item_id`, else the Conversation's own turn item.
+    expect(versions.map((v) => [v.id, v.version, v.itemId])).toEqual([
+      ["a2", 3, "msg_7"],
+      ["a1", 2, "msg_5"],
+      ["a0", 1, null],
     ]);
     const full = await call(artifactsRouter.artifacts.getById, { artifactId: "a1" });
     expect(atob(full.contentBase64)).toBe("<h1>hi</h1>");

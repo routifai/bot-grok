@@ -19,6 +19,7 @@ import {
   putOmnigentMuseAgent,
   putOmnigentProactivity,
   reindexOmnigentKnowledge,
+  setOmnigentMessageArtifact,
   streamOmnigentFamily,
   streamOmnigentSession,
   writeOmnigentFile,
@@ -193,6 +194,51 @@ describe("omnigent client", () => {
     });
   });
 
+  it("postOmnigentMessage sends the open artifact beside the message data, never inside it", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({}));
+    vi.stubGlobal("fetch", fetchMock);
+    await postOmnigentMessage(CONFIG, "e@x.test", "conv_1", "bigger title", undefined, {
+      openArtifact: { artifactId: "art_1", version: 3 },
+    });
+    const init = (fetchMock.mock.calls[0] as unknown as [URL, RequestInit])[1];
+    expect(JSON.parse(String(init.body))).toEqual({
+      type: "message",
+      data: { role: "user", content: [{ type: "input_text", text: "bigger title" }] },
+      context: { open_artifact: { artifact_id: "art_1", version: 3 } },
+    });
+  });
+
+  it("setOmnigentMessageArtifact posts the pick and answers with the engine's message", async () => {
+    const message = {
+      id: "item 1",
+      role: "user",
+      created_at: 100,
+      blocks: [{ type: "text", text: "hi" }],
+      artifact: { artifact_id: "art_2", name: "memo.md", version: null, how: "chosen" },
+    };
+    const fetchMock = vi.fn(async () => jsonResponse(message));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(
+      await setOmnigentMessageArtifact(CONFIG, "e@x.test", "conv_1", "item 1", "art_2"),
+    ).toEqual(message);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/v1/sessions/conv_1/items/item%201/artifact");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ artifact_id: "art_2" });
+
+    await setOmnigentMessageArtifact(CONFIG, "e@x.test", "conv_1", "item 1", null);
+    const cleared = (fetchMock.mock.calls[1] as unknown as [URL, RequestInit])[1];
+    expect(JSON.parse(String(cleared.body))).toEqual({ artifact_id: null });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse({ detail: "Not Found" }, 404)),
+    );
+    await expect(
+      setOmnigentMessageArtifact(CONFIG, "e@x.test", "conv_1", "item 1", "art_2"),
+    ).rejects.toThrow(/set message artifact failed \(404\)/);
+  });
+
   it("writeOmnigentFile PUTs base64 into the workspace; knowledge relays are session-scoped", async () => {
     const calls: Array<[string, string | undefined, unknown]> = [];
     vi.stubGlobal(
@@ -358,12 +404,12 @@ describe("memory claims", () => {
 describe("transcript and family stream", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("reads one transcript page with its cursor and seed flag", async () => {
+  it("reads one transcript page with its cursor", async () => {
     const page = {
       data: [],
       has_more: false,
       older_cursor: null,
-      lineage: { kind: "super", root_id: "s1", parent_id: null, seed_item_id: null },
+      lineage: { kind: "super", root_id: "s1", parent_id: null },
     };
     const fetchMock = vi.fn(async () => jsonResponse(page));
     vi.stubGlobal("fetch", fetchMock);
@@ -372,13 +418,12 @@ describe("transcript and family stream", () => {
       await getOmnigentTranscript(CONFIG, "p@example.test", "s 1", {
         limit: 20,
         before: "i9",
-        includeSeed: true,
       }),
     ).toEqual(page);
 
     const [url] = fetchMock.mock.calls[0] as unknown as [URL];
     expect(String(url)).toBe(
-      "http://omnigent.test/v1/sessions/s%201/transcript?limit=20&before=i9&include_seed=true",
+      "http://omnigent.test/v1/sessions/s%201/transcript?limit=20&before=i9",
     );
   });
 

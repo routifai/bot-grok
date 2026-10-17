@@ -4,12 +4,18 @@
 // (engine/omnigent/omnigent/superchat/transcript/). The wording of the file and secure-entry
 // fallbacks is Superchat's.
 import type {
+  MessageArtifact,
   MessageBlock,
   ReplyCardBlock,
   ThreadMessage,
   ThreadMessagePage,
 } from "@superchat/contracts";
-import type { OmnigentTranscriptBlock, OmnigentTranscriptPage } from "./client/transcript.js";
+import type {
+  OmnigentMessageArtifact,
+  OmnigentTranscriptBlock,
+  OmnigentTranscriptMessage,
+  OmnigentTranscriptPage,
+} from "./client/transcript.js";
 
 function epochSecondsToIso(epochSeconds: number | null | undefined): string {
   return new Date((epochSeconds ?? 0) * 1000).toISOString();
@@ -124,9 +130,27 @@ function dropRepeatedFileCards(
   return kept;
 }
 
-/** One transcript page for chat `chatId`. The engine has already redacted its secrets. */
-export function mapTranscriptPage(chatId: string, page: OmnigentTranscriptPage): ThreadMessagePage {
-  const messages: ThreadMessage[] = dropRepeatedFileCards(page.data).map((message, seq) => ({
+function mapMessageArtifact(
+  artifact: OmnigentMessageArtifact | null | undefined,
+): MessageArtifact | null | undefined {
+  if (artifact === undefined) return undefined;
+  if (artifact === null) return null;
+  return {
+    artifactId: artifact.artifact_id,
+    name: artifact.name,
+    version: artifact.version ?? null,
+    how: artifact.how,
+  };
+}
+
+/** One transcript message of chat `chatId` (`seq` is its place on the page). */
+export function mapTranscriptMessage(
+  chatId: string,
+  message: OmnigentTranscriptMessage,
+  seq = 0,
+): ThreadMessage {
+  const artifact = mapMessageArtifact(message.artifact);
+  return {
     id: message.id,
     threadId: chatId,
     seq,
@@ -134,7 +158,15 @@ export function mapTranscriptPage(chatId: string, page: OmnigentTranscriptPage):
     blocks: message.blocks.map(mapBlock),
     createdAt: epochSecondsToIso(message.created_at),
     ...(message.delivered ? { delivered: message.delivered } : {}),
-  }));
+    ...(artifact !== undefined ? { artifact } : {}),
+  };
+}
+
+/** One transcript page for chat `chatId`. The engine has already redacted its secrets. */
+export function mapTranscriptPage(chatId: string, page: OmnigentTranscriptPage): ThreadMessagePage {
+  const messages: ThreadMessage[] = dropRepeatedFileCards(page.data).map((message, seq) =>
+    mapTranscriptMessage(chatId, message, seq),
+  );
   return {
     threadId: chatId,
     messages,

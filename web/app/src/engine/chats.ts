@@ -5,6 +5,7 @@ import {
   getOmnigentWorkingPlace,
   getOmnigentWorkspaceRoot,
   interruptOmnigentSession,
+  mapTranscriptMessage,
   mapTranscriptPage,
   markOmnigentRead,
   moveOmnigentSessionForPerson,
@@ -13,6 +14,7 @@ import {
   readTurnImages,
   resetOmnigentSession,
   resolveChatOwnership,
+  setOmnigentMessageArtifact,
   streamOmnigentFamily,
 } from "@superchat/adapters/omnigent/browser";
 import type { FamilyEvent } from "@superchat/contracts";
@@ -160,6 +162,7 @@ export async function sendToChat(input: {
   text?: string;
   attachments?: Parameters<typeof validateWorkspaceAttachments>[0];
   folders?: string[];
+  context?: { openArtifact?: { artifactId: string; version: number } };
 }): Promise<{ ok: true }> {
   const sessionId = await requireMuse(input.botId);
   const text = promptTextForWorkspaceAttachments(
@@ -170,12 +173,45 @@ export async function sendToChat(input: {
   if (!text) throw new ORPCError("BAD_REQUEST", { message: "Nothing to send." });
   const client = engineClient();
   const images = await readTurnImages(client, NO_EMAIL, sessionId, text);
+  const openArtifact = input.context?.openArtifact;
   await onSuperChat(
-    images.length
-      ? postOmnigentMessage(client, NO_EMAIL, sessionId, text, images)
-      : postOmnigentMessage(client, NO_EMAIL, sessionId, text),
+    openArtifact
+      ? postOmnigentMessage(client, NO_EMAIL, sessionId, text, images.length ? images : undefined, {
+          openArtifact,
+        })
+      : images.length
+        ? postOmnigentMessage(client, NO_EMAIL, sessionId, text, images)
+        : postOmnigentMessage(client, NO_EMAIL, sessionId, text),
   );
   return { ok: true as const };
+}
+
+/** The person picks which artifact their message is about (`null`: none); answers with the
+ * message as the transcript will show it. */
+export async function setMessageArtifact(input: {
+  botId: string;
+  itemId: string;
+  artifactId: string | null;
+}) {
+  const sessionId = await requireMuse(input.botId);
+  let message: Awaited<ReturnType<typeof setOmnigentMessageArtifact>>;
+  try {
+    message = await onSuperChat(
+      setOmnigentMessageArtifact(
+        engineClient(),
+        NO_EMAIL,
+        sessionId,
+        input.itemId,
+        input.artifactId,
+      ),
+    );
+  } catch (error) {
+    if (error instanceof OmnigentApiError && error.code === "not_found") {
+      throw new ORPCError("NOT_FOUND", { message: "Message not found" });
+    }
+    throw error;
+  }
+  return mapTranscriptMessage(sessionId, message);
 }
 
 export const chatsRouter = {
@@ -206,6 +242,9 @@ export const chatsRouter = {
       yield* watchFamily(input, signal);
     }),
     send: os.chats.send.handler(({ input }) => sendToChat(input)),
+    setMessageArtifact: os.chats.setMessageArtifact.handler(({ input }) =>
+      setMessageArtifact(input),
+    ),
     interrupt: os.chats.interrupt.handler(async ({ input }) => {
       const sessionId = await requireMuse(input.botId);
       await onSuperChat(interruptOmnigentSession(engineClient(), NO_EMAIL, sessionId));

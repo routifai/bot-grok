@@ -10,6 +10,7 @@ const adapters = vi.hoisted(() => ({
   resetOmnigentSession: vi.fn(),
   getOmnigentWorkspaceRoot: vi.fn(),
   moveOmnigentSessionForPerson: vi.fn(),
+  setOmnigentMessageArtifact: vi.fn(),
 }));
 
 // The mapping and error classes stay real so `instanceof` checks and the mapped shapes are
@@ -190,6 +191,22 @@ describe("chats.send", () => {
     );
   });
 
+  it("passes the artifact open beside the chat to the engine", async () => {
+    await run(chatsRouter.chats.send, {
+      botId: "conv_super",
+      text: "bigger",
+      context: { openArtifact: { artifactId: "art_1", version: 2 } },
+    });
+    expect(adapters.postOmnigentMessage).toHaveBeenCalledWith(
+      expect.anything(),
+      "",
+      "conv_super",
+      "bigger",
+      undefined,
+      { openArtifact: { artifactId: "art_1", version: 2 } },
+    );
+  });
+
   it("refuses a file outside the uploads folder and a Muse that is not the person's", async () => {
     await expect(
       run(chatsRouter.chats.send, {
@@ -203,5 +220,48 @@ describe("chats.send", () => {
       /Muse not found/,
     );
     expect(adapters.postOmnigentMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe("chats.setMessageArtifact", () => {
+  it("relinks the message and answers with it as the transcript shows it", async () => {
+    adapters.setOmnigentMessageArtifact.mockResolvedValue({
+      id: "item_1",
+      role: "user",
+      created_at: 100,
+      blocks: [{ type: "text", text: "bigger" }],
+      artifact: { artifact_id: "art_2", name: "memo.md", version: null, how: "chosen" },
+    });
+    const message = await run<{ id: string; artifact: unknown }>(
+      chatsRouter.chats.setMessageArtifact,
+      { botId: "conv_super", itemId: "item_1", artifactId: "art_2" },
+    );
+    expect(adapters.setOmnigentMessageArtifact).toHaveBeenCalledWith(
+      expect.anything(),
+      "",
+      "conv_super",
+      "item_1",
+      "art_2",
+    );
+    expect(message).toMatchObject({
+      id: "item_1",
+      artifact: { artifactId: "art_2", name: "memo.md", version: null, how: "chosen" },
+    });
+  });
+
+  it("is not found for a message the engine does not have, or another Muse", async () => {
+    adapters.setOmnigentMessageArtifact.mockRejectedValue(
+      new OmnigentApiError("gone (404)", "not_found"),
+    );
+    await expect(
+      run(chatsRouter.chats.setMessageArtifact, {
+        botId: "conv_super",
+        itemId: "x",
+        artifactId: null,
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(
+      run(chatsRouter.chats.setMessageArtifact, { botId: "other", itemId: "x", artifactId: null }),
+    ).rejects.toThrow(/Muse not found/);
   });
 });
