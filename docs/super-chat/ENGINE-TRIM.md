@@ -106,6 +106,7 @@ don't use, so it can be removed before production.
 | CockroachDB dialect branches, `db/cockroachdb.py`, the CRDB DDL lock in `tests/db/conftest.py` (1,218 lines) | 2026-10-16 | `5a850efda`, ADR 0020 |
 | macOS seatbelt and Windows job-object sandboxes, `sandbox/bwrap.py` (unreachable); `_default_sandbox_for_platform()` is always `linux_bwrap` (5,972 lines) | 2026-10-16 | `c7a18240d`, ADR 0020 |
 | Dead harness and provider strings (OpenAI agents, ACP, OpenCode, Cursor, Goose, Kiro, Hermes, Qwen, Antigravity, `GEMINI_API_KEY` forwarding; Gemini stays as a model vendor a gateway can serve) and the `uv.toml` exemptions (245 lines) | 2026-10-16 | `13fa2cf9a`, ADR 0020 |
+| Web: side chats and forks. `features/side-chats`, the Chats popover (side chats, forks, archive), the fork action and thread, the old sidebar, "Chat with this folder", the auto-archive setting, `rpc/side-chats.ts` (now `rpc/chats.ts` with transcript, send, interrupt, project, setFolder), the `fork_summary` block, `ThreadMessage.forks`, `ThreadMessagePage.lineage`, the `fork-*` tokens. Conversation components moved back under `pages/app/conversation` (9,969 lines) | 2026-10-17 | `e81b4e92a`..`3d58abbbd`, ADR 0021 |
 | Native harness cluster: `harnesses/codex_native`, `harnesses/claude_native`, `harnesses/pi_native` (credentials kept as `inner/pi_credentials.py`), `omnigent/native`, `runner/native`, `runner/turn_routing.py`, native terminal pieces, `server/routes/imports.py`, native branches in `runner/app.py`, `server/routes/_sessions/helpers.py`, `cli.py`, `host/connect.py`, `host/frames.py`, root `tests/e2e_ui`. `omnigent/terminals` core kept for `sys_terminal` and terminal attach (398,338 lines) | 2026-10-17 | `a1cb978fb`..`7e1a4e7f5`, ADR 0020 |
 | Web: `packages/charts`, the `*.chart.json` / `*.dashboard.json` renderers, chart cards and thumbnails, the canvas block and `ui-web/canvas`, Observable Plot, the `chart` and `canvas` message blocks, dead event kinds (`app_connect`, `child_bot`, `choice`, `computer`, `connect`), `bot-secrets`, `cron`, `avatar-motion`, `AuroraBackground`, `ConversationHeader`, transcript grouping, chart and canvas dev previews, turbo and stale ignore entries. Old transcripts show "This chart was made with an older version"; `*.dashboard.html` pages stay (14,020 lines) | 2026-10-16 | `1bc32b5ca`..`88bf660fe`, ADR 0020 |
 
@@ -121,6 +122,11 @@ don't use, so it can be removed before production.
 - Root `NOTICE` still credits the nao-derived chart code that no longer exists; trim the entry.
 - `pnpm check` fails on a pre-existing error in `web/packages/adapters` (`BodyInit` not found in `src/omnigent/artifacts.ts`); CI's web job has been red on it since before the cut. Fix with the CI work in wave 5.
 - `tool-presentation.completeness.test.ts` fails because the `superchat-claude` bundle declares no `builtins`; decide whether the test or the bundle is right in wave 5.
+
+## Follow-ups from the web side-chat cut
+
+- Engine half of ADR 0021 still to cut: `superchat/side_chats`, the `superside-chat` seed plumbing in `context/labels.py` and `context/rollover.py`, the `side_chat_open` tool, the side-chat archiving job. Web keeps the `side_chat` activity source and the `side_chat_open` tool title until then.
+- `SuperchatGlyphs` exports four glyphs nothing uses now (`ConversationGlyph`, `WaitingGlyph`, `SettingsGlyph`, `SidebarGlyph`).
 
 ## Follow-ups from the native cut
 
