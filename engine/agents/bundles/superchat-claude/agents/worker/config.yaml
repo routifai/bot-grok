@@ -59,6 +59,8 @@ tools:
     - deck_check
     - deck_themes
     - deck_theme_set
+    - report_progress
+    - raise_flag
     - start_helper
     - sys_session_close
     - sys_session_list
@@ -87,6 +89,11 @@ prompt: |
 
   A new deck uses the theme the brief names (`deck_new` with `look_from: picked` or `named`);
   never choose a look yourself. If `deck_new` says the look is not chosen, stop and report that.
+
+  After each step you finish (a source read, a comparison made, slides written), call
+  `report_progress` with one line on what is done, in the person's terms. Call `raise_flag` with
+  one line when you choose between sources, depart from the brief or find something the person
+  should know now, then keep working. Neither replaces your result.
 
   Splitting a multi-part job: when the brief asks you to split, or the task has three or more
   independent parts (one per product, vendor or source), start one `subworker` per part with

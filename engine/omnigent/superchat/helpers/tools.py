@@ -1,9 +1,14 @@
-"""``start_helper`` tool definition (schema only; the runner handles the call)."""
+"""Helper tool definitions (schemas only; the runner handles the calls).
+
+``start_helper`` and ``message_helper`` for the chat that starts Helpers; ``report_progress``
+and ``raise_flag`` for a Helper telling that chat how its work goes.
+"""
 
 from __future__ import annotations
 
 from typing import Any
 
+from omnigent.superchat.helpers.notices import RAISE_FLAG_TOOL_NAME, REPORT_PROGRESS_TOOL_NAME
 from omnigent.superchat.subagents import HELPER_EFFORT_CHOICES, HELPER_MODEL_CHOICES
 from omnigent.tools.base import Tool
 
@@ -136,3 +141,63 @@ class MessageHelperTool(Tool):
                 },
             },
         }
+
+
+class _NoticeTool(Tool):
+    """One line from a Helper to the chat that started it (``superchat/helpers/notices.py``)."""
+
+    _NAME = ""
+    _DESCRIPTION = ""
+
+    @classmethod
+    def name(cls) -> str:
+        """:returns: The tool name."""
+        return cls._NAME
+
+    @classmethod
+    def description(cls) -> str:
+        """:returns: Human-readable description of the tool."""
+        return cls._DESCRIPTION
+
+    def get_schema(self) -> dict[str, Any]:
+        """:returns: The OpenAI-format tool schema."""
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name(),
+                "description": self.description(),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "text": {
+                            "type": "string",
+                            "description": "One line, in the person's terms.",
+                        },
+                    },
+                    "required": ["text"],
+                    "additionalProperties": False,
+                },
+            },
+        }
+
+
+class ReportProgressTool(_NoticeTool):
+    """A Helper says which step it just finished."""
+
+    _NAME = REPORT_PROGRESS_TOOL_NAME
+    _DESCRIPTION = (
+        "Tell the chat that started you which step you just finished, in one line (e.g. 'Read "
+        "the Q3 ledger; the totals match the board pack'). Call it after each real step, not "
+        "for every tool call. You keep working; it does not end your task."
+    )
+
+
+class RaiseFlagTool(_NoticeTool):
+    """A Helper says something the person should know now."""
+
+    _NAME = RAISE_FLAG_TOOL_NAME
+    _DESCRIPTION = (
+        "Tell the chat that started you, in one line, something the person should know now: a "
+        "choice between sources, a departure from the brief, or a surprise in what you found. "
+        "You keep working; it does not end your task."
+    )
