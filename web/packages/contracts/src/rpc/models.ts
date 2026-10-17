@@ -28,6 +28,9 @@ export const EngineModelConnectionSchema = z.object({
 export type EngineModelConnection = z.infer<typeof EngineModelConnectionSchema>;
 
 export const EngineModelHarnessSchema = z.object({ id: z.string(), label: z.string() });
+/** The harnesses a person can run their Superchat on. */
+export const EngineHarnessIdSchema = z.enum(["claude-sdk", "pi"]);
+export type EngineHarnessId = z.infer<typeof EngineHarnessIdSchema>;
 
 export const EngineModelsStatusSchema = z.object({
   /** `false` when Superchat runs without the engine: nothing below applies. */
@@ -97,6 +100,8 @@ export const engineModelsContract = {
     disconnect: oc.input(EngineProviderInputSchema).output(ok),
     catalog: oc.input(z.object({ harness: z.string().min(1) })).output(EngineModelCatalogSchema),
     preferences: oc.output(z.record(z.string(), z.string())),
+    /** Runs the person's Superchat on `harness` from its next turn; refused while a reply runs. */
+    setHarness: oc.input(z.object({ harness: EngineHarnessIdSchema })).output(ok),
     setDefault: oc
       .input(z.object({ harness: z.string().min(1), model: z.string().min(1) }))
       .output(z.record(z.string(), z.string())),

@@ -16,9 +16,15 @@ import {
   putOmnigentBudget,
   putOmnigentModelConnection,
   putOmnigentModelPicks,
+  putOmnigentMuseAgent,
   setOmnigentSessionModel,
 } from "@superchat/adapters/omnigent/browser";
-import type { EngineBudget, EngineModelCatalog, EngineModelConnection } from "@superchat/contracts";
+import type {
+  EngineBudget,
+  EngineHarnessId,
+  EngineModelCatalog,
+  EngineModelConnection,
+} from "@superchat/contracts";
 import { engineClient, museSessionId, NO_EMAIL } from "./client";
 import { os } from "./context";
 
@@ -30,6 +36,7 @@ type OrpcCode =
   | "BAD_REQUEST"
   | "FORBIDDEN"
   | "NOT_FOUND"
+  | "CONFLICT"
   | "PRECONDITION_FAILED"
   | "BAD_GATEWAY"
   | "SERVICE_UNAVAILABLE";
@@ -43,15 +50,16 @@ const STATUS: Record<string, OrpcCode> = {
   account_suspended: "FORBIDDEN",
   forbidden: "FORBIDDEN",
   not_found: "NOT_FOUND",
+  conflict: "CONFLICT",
   invalid_input: "BAD_REQUEST",
   superchat_not_configured: "SERVICE_UNAVAILABLE",
 };
 
 /** Runs an engine call; an engine error becomes an `ORPCError` carrying the engine's public
- * `code` in `data.code` and a message the person can read. The engine's own text is passed on
- * only for `invalid_input` (a key the provider rejected), where it is written for the person and
- * names no secret. */
-async function onModels<T>(call: Promise<T>): Promise<T> {
+ * `code` in `data.code` and a message the person can read: `copy` for this call's own codes,
+ * else the shared client copy. The engine's own text is passed on only for `invalid_input` (a
+ * key the provider rejected), where it is written for the person and names no secret. */
+async function onModels<T>(call: Promise<T>, copy: Record<string, string> = {}): Promise<T> {
   try {
     return await call;
   } catch (error) {
@@ -59,6 +67,7 @@ async function onModels<T>(call: Promise<T>): Promise<T> {
     const status = STATUS[error.code];
     if (!status) throw error;
     const message =
+      copy[error.code] ??
       omnigentErrorCopy(error) ??
       (error.code === "invalid_input" ? error.detail : undefined) ??
       "That didn't work.";
@@ -72,6 +81,13 @@ const AGENT_HARNESS: Record<string, { id: string; label: string }> = {
   "superchat-pi": { id: "pi", label: "Pi" },
 };
 const ALL_HARNESSES = Object.values(AGENT_HARNESS);
+
+/** The built-in agent that runs `harness`. */
+function agentFor(harness: EngineHarnessId): string {
+  const agent = Object.keys(AGENT_HARNESS).find((name) => AGENT_HARNESS[name]?.id === harness);
+  if (!agent) throw new ORPCError("BAD_REQUEST", { message: "That didn't work." });
+  return agent;
+}
 
 /** The harness this person's Muse runs on; both when its agent is not a built-in one. */
 async function harnessesOf() {
@@ -197,6 +213,14 @@ export const engineModelsRouter = {
     preferences: os.engineModels.preferences.handler(
       async () => (await onModels(getOmnigentModelPicks(engineClient(), NO_EMAIL))).defaults,
     ),
+    /** Moves the person's Superchat to the harness's agent; the engine refuses (`conflict`) while
+     * a reply runs. */
+    setHarness: os.engineModels.setHarness.handler(async ({ input }) => {
+      await onModels(putOmnigentMuseAgent(engineClient(), NO_EMAIL, agentFor(input.harness)), {
+        conflict: "Finish or stop the current reply first.",
+      });
+      return { ok: true as const };
+    }),
     /** Sets one harness's default and keeps the person's others (the engine replaces the map). */
     setDefault: os.engineModels.setDefault.handler(async ({ input }) => {
       const { defaults } = await onModels(getOmnigentModelPicks(engineClient(), NO_EMAIL));
