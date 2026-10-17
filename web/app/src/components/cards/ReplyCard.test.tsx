@@ -138,6 +138,21 @@ it("sends the picked option's id beside its label (ADR 0025)", () => {
   });
 });
 
+it("names the card by the engine's id in a transcript, never by its place", () => {
+  const send = vi.fn();
+  const host = mount(
+    <ReplyCardSendProvider send={send}>
+      <ReplyCardBlockView block={{ ...ask, id: "card-7" }} messageId="m1" index={0} />
+    </ReplyCardSendProvider>,
+  );
+  act(() => [...host.querySelectorAll("button")][0]?.click());
+  expect(send).toHaveBeenCalledExactlyOnceWith("Berlin", {
+    cardId: "card-7",
+    optionId: "a",
+    label: "Berlin",
+  });
+});
+
 it("two clicks on different options in the same tick still send exactly once", () => {
   const send = vi.fn();
   const host = mount(

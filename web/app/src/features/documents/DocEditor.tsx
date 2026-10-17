@@ -63,6 +63,7 @@ function useDocEditor({
   editing,
   onEdited,
   focusAsk,
+  locked,
 }: ArtifactEditorArgs): ArtifactEditorParts {
   const { t } = useLingui();
   const source = useMemo(() => new TextDecoder("utf-8").decode(bytes), [bytes]);
@@ -74,6 +75,7 @@ function useDocEditor({
     html: source,
     onEdited,
     post: NO_POST,
+    locked,
   });
   // A saved edit shows at once; the version it becomes replaces it (or a failed save drops it).
   const [pending, setPending] = useState<string | null>(null);

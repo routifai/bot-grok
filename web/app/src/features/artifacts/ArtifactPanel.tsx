@@ -27,6 +27,7 @@ export function ArtifactPanel({
   artifactId,
   title,
   page,
+  opener,
   onClose,
   onShown,
 }: {
@@ -34,6 +35,8 @@ export function ArtifactPanel({
   title?: string;
   /** Open a PDF at this page (a citation chip). */
   page?: number;
+  /** What opened the panel (a file card's Open): the file's studio hands focus back to it. */
+  opener?: HTMLElement | null;
   onClose: () => void;
   /** The version on screen once it has loaded, and `null` when the panel goes. */
   onShown?: (shown: ShownArtifact | null) => void;
@@ -133,6 +136,7 @@ export function ArtifactPanel({
           title={title}
           draft={studio.draft}
           onClose={closeStudio}
+          returnFocus={opener}
         />
       ) : null}
     </section>

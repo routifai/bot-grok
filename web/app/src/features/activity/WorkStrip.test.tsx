@@ -19,8 +19,7 @@ vi.mock("@lingui/react/macro", () => {
     Trans: ({ children }: { children: ReactNode }) => children,
   };
 });
-vi.mock("../artifacts", async () => ({
-  ...(await import("../artifacts/artifactChanges")),
+vi.mock("../artifacts", () => ({
   ArtifactPreviewThumbnail: ({ artifact }: { artifact: { name: string; version: number } }) => (
     <span data-testid="file-thumb">{`${artifact.name} v${artifact.version}`}</span>
   ),
@@ -54,7 +53,23 @@ vi.mock("./useActivities", () => ({ activityFeedFor: () => fake.feed }));
 const rpcMock = vi.hoisted(() => ({ list: vi.fn() }));
 vi.mock("../../lib/rpc", () => ({ rpc: { artifacts: { list: rpcMock.list } } }));
 
-import { notifyArtifactsChanged } from "../artifacts/artifactChanges";
+/** The family stream: the engine says a file was saved. */
+const family = vi.hoisted(() => {
+  const listeners = new Set<(event: unknown) => void>();
+  return {
+    listeners,
+    saved: () => {
+      for (const listener of [...listeners]) listener({ type: "artifactsChanged", groupId: "g" });
+    },
+  };
+});
+vi.mock("../../lib/family-stream", () => ({
+  watchFamily: (_botId: string, listener: (event: unknown) => void) => {
+    family.listeners.add(listener);
+    return () => family.listeners.delete(listener);
+  },
+}));
+
 import { AnsweredWhileWorking, useAnsweredWhileWorking } from "./AnsweredWhileWorking";
 import { settleActivityFocus, useActivityFocus } from "./activityFocus";
 import { activity, helper } from "./activityTestKit";
@@ -68,8 +83,6 @@ afterEach(() => {
   fake.set({ status: "loading" });
   fake.refresh.mockClear();
   rpcMock.list.mockReset();
-  // Forget the files list the strips share.
-  notifyArtifactsChanged();
 });
 
 const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
@@ -86,7 +99,13 @@ function FocusProbe() {
   return null;
 }
 
-async function mount(helpers: StripHelper[], activities: Activity[], turn?: StripTurn) {
+async function mount(
+  helpers: StripHelper[],
+  activities: Activity[],
+  turn?: StripTurn,
+  /** Anything in the Conversation runs (the work state). */
+  lit = true,
+) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   fake.set(ready(activities));
   const container = document.createElement("div");
@@ -97,7 +116,7 @@ async function mount(helpers: StripHelper[], activities: Activity[], turn?: Stri
     await act(async () => {
       root.render(
         <>
-          <WorkStrip botId="bot-1" helpers={next} turn={nextTurn} />
+          <WorkStrip botId="bot-1" helpers={next} turn={nextTurn} lit={lit} />
           <FocusProbe />
         </>,
       );
@@ -305,61 +324,44 @@ it("drops a draft once its file is deleted", async () => {
   expect(draftNames(container)).toEqual(["deck.html v1"]);
 
   rpcMock.list.mockResolvedValue([]);
-  await act(async () => notifyArtifactsChanged());
+  await act(async () => family.saved());
   expect(draftNames(container)).toEqual([]);
 });
 
-it("asks for the files once for every settled strip, and again on each save seen live", async () => {
-  rpcMock.list.mockResolvedValue([
-    fileRow("v-a", "a.html", "h-a"),
-    fileRow("v-b", "b.html", "h-b"),
-  ]);
-  const one = await mount(
-    [{ ...deckHelper, helperId: "h-a" }],
-    [saving("h-a", "done"), saving("h-b", "done")],
-  );
-  const two = await mount(
-    [{ ...deckHelper, helperId: "h-b" }],
-    [saving("h-a", "done"), saving("h-b", "done")],
-  );
+it("looks for files once the Helpers saved, and again only when the engine says a file was saved", async () => {
+  rpcMock.list.mockResolvedValue([fileRow("v-a", "a.html", "h-a")]);
+  const nothingSaved = helper("h-b", { status: "in_progress", startedAt: ago(1_000) });
+  await mount([{ ...deckHelper, helperId: "h-b" }], [nothingSaved]);
+  await act(async () => undefined);
+  expect(rpcMock.list).not.toHaveBeenCalled();
+
+  const one = await mount([{ ...deckHelper, helperId: "h-a" }], [saving("h-a", "done")]);
   await act(async () => undefined);
   expect(draftNames(one.container)).toEqual(["a.html v1"]);
-  expect(draftNames(two.container)).toEqual(["b.html v1"]);
   expect(rpcMock.list).toHaveBeenCalledTimes(1);
 
-  // The feed moving on, or a strip mounting again, asks for nothing more.
-  await act(async () => {
-    fake.set(ready([saving("h-a", "done"), saving("h-b", "done"), saving("h-c")]));
-  });
-  await mount([{ ...deckHelper, helperId: "h-a" }], [saving("h-a", "done")]);
+  // The feed moving on asks for nothing more.
+  await act(async () => fake.set(ready([saving("h-a", "done"), nothingSaved])));
   await act(async () => undefined);
   expect(rpcMock.list).toHaveBeenCalledTimes(1);
 
-  // A save seen while a Helper works is new (a strip opening on running work cannot tell which
-  // saves the shared list already holds): every strip looks again, with one request.
-  const working = (saves: number) =>
-    helper("h-c", {
-      status: "in_progress",
-      startedAt: ago(60_000),
-      finishedAt: null,
-      steps: Array.from({ length: saves }, (_, i) => toolStep("artifact_save", "Saved", i)),
-    });
-  const live = await mount(
-    [{ ...deckHelper, helperId: "h-c" }],
-    [saving("h-a", "done"), working(1)],
-  );
+  rpcMock.list.mockResolvedValue([fileRow("v-a", "a.html", "h-a", "update", 2)]);
+  await act(async () => family.saved());
   await act(async () => undefined);
-  expect(draftNames(live.container)).toEqual([]);
   expect(rpcMock.list).toHaveBeenCalledTimes(2);
-  rpcMock.list.mockResolvedValue([
-    fileRow("v-a", "a.html", "h-a"),
-    fileRow("v-c", "c.html", "h-c"),
-  ]);
-  await act(async () => fake.set(ready([saving("h-a", "done"), working(2)])));
-  await act(async () => undefined);
-  expect(rpcMock.list).toHaveBeenCalledTimes(3);
-  expect(draftNames(live.container)).toEqual(["c.html v1"]);
-  expect(draftNames(one.container)).toEqual(["a.html v1"]);
+  expect(draftNames(one.container)).toEqual(["a.html v2"]);
+});
+
+it("goes still when nothing in the Conversation runs, though the feed has not caught up", async () => {
+  const { container } = await mount(
+    [deckHelper],
+    [helper("h-deck", { status: "in_progress", startedAt: ago(5_000), finishedAt: null })],
+    undefined,
+    false,
+  );
+  const strip = container.querySelector("[data-testid=work-strip]");
+  expect(strip?.getAttribute("data-state")).toBe("settled");
+  expect(container.querySelector("[data-testid=work-strip-line]")).toBeNull();
 });
 
 it("Show details asks the Activity panel to open on the running Helper", async () => {
@@ -521,7 +523,7 @@ describe("the plan in the strip (ADR 0023)", () => {
     expect(steps(container).map(([, status]) => status)).toEqual(["done", "done", "doing", "todo"]);
     const added = container.querySelectorAll("[data-added]");
     expect(added).toHaveLength(1);
-    expect(added[0]?.textContent).toContain("Plan updated");
+    expect(added[0]?.textContent).toBe("Note the cut-off");
   });
 
   it("is lit while the work runs, without any Helper, and goes still when it settles", async () => {

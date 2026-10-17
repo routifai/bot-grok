@@ -69,10 +69,17 @@ export function elementAskLabel(
 
 export type ElementAsk = { label: string; block: string };
 
-function head(file: string, artifactId: string, version: number, label: string): string {
+function head(
+  file: string,
+  artifactId: string,
+  version: number,
+  label: string,
+  slide: number | null = null,
+): string {
+  const on = slide === null ? "" : `slide="${slide}" `;
   return (
     `<${TAG} file="${sanitizeField(file, 160)}" artifact="${sanitizeField(artifactId, 64)}" ` +
-    `version="${version}" chip="${label}">`
+    `version="${version}" ${on}chip="${label}">`
   );
 }
 
@@ -108,6 +115,8 @@ export function buildElementAsk(input: {
     return lines.filter(Boolean).join("\n");
   });
   const what = scope === "deck" ? "the deck" : "the page";
+  const slides = new Set(elements.map((el) => el.slide));
+  const slide = scope === "deck" && slides.size === 1 ? (elements[0]?.slide ?? null) : null;
   const rule =
     scope === "deck"
       ? `Hard scope: change ONLY these elements (by data-superchat-id), and nothing else in ${what}. `
@@ -117,9 +126,11 @@ export function buildElementAsk(input: {
   return {
     label,
     block:
-      [head(input.name, input.artifactId, input.version, label), rule + untrusted, ...body].join(
-        "\n",
-      ) + END,
+      [
+        head(input.name, input.artifactId, input.version, label, slide),
+        rule + untrusted,
+        ...body,
+      ].join("\n") + END,
   };
 }
 
@@ -137,7 +148,9 @@ export function buildSlideAsk(input: {
     "Keep the deck's theme, fonts and the data-superchat-id attributes.";
   return {
     label,
-    block: [head(input.name, input.artifactId, input.version, label), rule].join("\n") + END,
+    block:
+      [head(input.name, input.artifactId, input.version, label, input.slide), rule].join("\n") +
+      END,
   };
 }
 
@@ -198,8 +211,11 @@ export function buildBlockAsk(input: {
   };
 }
 
-/** Reads a leading element request back out of a sent message. */
-export function splitElementAsk(text: string): { label: string; rest: string } | null {
+/** Reads a leading element request back out of a sent message: its chip, the person's words, and
+ * the one slide of a deck it is about (null for none or several). */
+export function splitElementAsk(
+  text: string,
+): { label: string; rest: string; slide: number | null } | null {
   if (!text.startsWith(`<${TAG} `)) return null;
   const end = text.indexOf(END);
   if (end < 0) return null;
@@ -209,7 +225,12 @@ export function splitElementAsk(text: string): { label: string; rest: string } |
   const line = text.slice(0, headEnd < 0 ? text.length : headEnd);
   const chip = /\schip="([^"]*)">$/.exec(line);
   if (!chip?.[1]) return null;
-  return { label: chip[1], rest: after.replace(/^\n\n/, "") };
+  const slide = /\sslide="(\d+)"\s/.exec(line);
+  return {
+    label: chip[1],
+    rest: after.replace(/^\n\n/, ""),
+    slide: slide?.[1] ? Number(slide[1]) : null,
+  };
 }
 
 registerAttachmentParser(ELEMENT_ASK_KIND, splitElementAsk);

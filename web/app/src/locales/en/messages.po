@@ -140,6 +140,10 @@ msgstr "1 edit · v{0} to v{1}"
 msgid "A file below changes"
 msgstr "A file below changes"
 
+#. placeholder {0}: row.version ?? ""
+msgid "A live update saved v{0} while you were editing"
+msgstr "A live update saved v{0} while you were editing"
+
 msgid "About you"
 msgstr "About you"
 
@@ -367,6 +371,9 @@ msgstr "cancelled"
 msgid "Cancelled"
 msgstr "Cancelled"
 
+msgid "Change look"
+msgstr "Change look"
+
 msgid "Chat Settings"
 msgstr "Chat Settings"
 
@@ -574,6 +581,9 @@ msgstr "Couldn't save that change."
 msgid "Couldn't send that."
 msgstr "Couldn't send that."
 
+msgid "Couldn't stop"
+msgstr "Couldn't stop"
+
 msgid "Couldn't switch the theme."
 msgstr "Couldn't switch the theme."
 
@@ -730,9 +740,6 @@ msgstr "Edit first"
 msgid "Edit memory"
 msgstr "Edit memory"
 
-msgid "Edited by hand"
-msgstr "Edited by hand"
-
 msgid "Edited by you"
 msgstr "Edited by you"
 
@@ -828,6 +835,9 @@ msgstr "finished"
 msgid "Finished."
 msgstr "Finished."
 
+msgid "Finishing another file first"
+msgstr "Finishing another file first"
+
 msgid "Folders"
 msgstr "Folders"
 
@@ -843,9 +853,6 @@ msgstr "Forget"
 #. placeholder {0}: formatRelativeTime(ask.createdAt)
 msgid "From {sourceLabel} · {0}"
 msgstr "From {sourceLabel} · {0}"
-
-msgid "from Super Chat"
-msgstr "from Super Chat"
 
 msgid "From Super Chat"
 msgstr "From Super Chat"
@@ -1064,9 +1071,6 @@ msgstr "Loading…"
 
 msgid "Machine"
 msgstr "Machine"
-
-msgid "made in Super Chat · {day}"
-msgstr "made in Super Chat · {day}"
 
 msgid "Main"
 msgstr "Main"
@@ -1350,9 +1354,6 @@ msgstr "Plan"
 msgid "Plan my week"
 msgstr "Plan my week"
 
-msgid "Plan updated"
-msgstr "Plan updated"
-
 msgid "Plan week"
 msgstr "Plan week"
 
@@ -1582,9 +1583,6 @@ msgstr "Save"
 msgid "Save to Library"
 msgstr "Save to Library"
 
-msgid "saved"
-msgstr "saved"
-
 msgid "Saved"
 msgstr "Saved"
 
@@ -1596,9 +1594,6 @@ msgstr "Saved {0} · not used yet"
 #. placeholder {1}: day(entry.lastUsedAt)
 msgid "Saved {0} · used {1}"
 msgstr "Saved {0} · used {1}"
-
-msgid "saved by you"
-msgstr "saved by you"
 
 msgid "Saved to Library"
 msgstr "Saved to Library"
@@ -1707,6 +1702,9 @@ msgstr "Showing the first {0} rows"
 msgid "Sign-in for {host}"
 msgstr "Sign-in for {host}"
 
+msgid "Since you were here"
+msgstr "Since you were here"
+
 msgid "Size"
 msgstr "Size"
 
@@ -1811,17 +1809,21 @@ msgstr "Summarize what changed in my files this week and tell me what needs atte
 msgid "Super Chat"
 msgstr "Super Chat"
 
+#. placeholder {0}: row.version ?? ""
+msgid "Super Chat saved v{0} while you were editing"
+msgstr "Super Chat saved v{0} while you were editing"
+
 msgid "superchat"
 msgstr "superchat"
 
 msgid "superchat is editing…"
 msgstr "superchat is editing…"
 
+msgid "superchat is updating slide {slide}…"
+msgstr "superchat is updating slide {slide}…"
+
 msgid "superchat is updating this file…"
 msgstr "superchat is updating this file…"
-
-msgid "superchat is updating this slide…"
-msgstr "superchat is updating this slide…"
 
 msgid "superchat reads it where it is; nothing is copied."
 msgstr "superchat reads it where it is; nothing is copied."
@@ -1987,9 +1989,6 @@ msgstr "Updated by superchat · v{0}"
 #. placeholder {0}: content.arrived.version
 msgid "Updated by you · v{0}"
 msgstr "Updated by you · v{0}"
-
-msgid "updated from source"
-msgstr "updated from source"
 
 msgid "Updated from source"
 msgstr "Updated from source"

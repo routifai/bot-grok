@@ -2,6 +2,7 @@ import type { Activity, MessageBlock, ThreadMessage } from "@superchat/contracts
 import type { ActivityNode } from "./activityTree";
 import { buildActivityForest, findHelperNode, isNodeRunning } from "./activityTree";
 import { serverNow } from "./superchatWork";
+import { ARTIFACT_SAVE_TOOL, FLAG_PREFIX, FLAG_TOOL, PROGRESS_TOOL } from "./toolNames";
 import type { PlanStep, TurnOutcome } from "./workPlan";
 
 // The work strip under a reply (docs/conversation.md "The assistant narrates while helpers
@@ -39,11 +40,6 @@ export type WorkStripState =
       endedAt: number | null;
       focusId: string | null;
     };
-
-const PROGRESS_TOOL = "report_progress";
-const FLAG_TOOL = "raise_flag";
-const FLAG_PREFIX = "Flagged: ";
-const ARTIFACT_SAVE_TOOL = "artifact_save";
 
 /** A Helper's latest progress sentence, if it has reported one. */
 export function latestProgress(activity: Pick<Activity, "steps">): string | null {
@@ -96,6 +92,11 @@ export function helperActivities(
     .filter((activity): activity is Activity => activity !== undefined);
 }
 
+/** When each Helper the loaded feed does not list was first found missing (client ms): held by
+ * the view that asks (`useFirstMissing`). */
+export type FirstMissing = ReadonlyMap<string, number>;
+const NONE_MISSING: FirstMissing = new Map();
+
 /**
  * The strip for the Helpers one message started. Working while any of them (or a part it handed
  * on) runs: one line per running Helper. Otherwise settled, with the whole span. `now` is the
@@ -105,8 +106,17 @@ export function deriveWorkStrip(
   helpers: readonly StripHelper[],
   activities: readonly Activity[] | undefined,
   now: number,
-  /** The transcript says a turn runs right now. */
-  turnRunning = false,
+  {
+    turnRunning = false,
+    firstMissing = NONE_MISSING,
+    lit = true,
+  }: {
+    /** The Conversation's turn runs right now. */
+    turnRunning?: boolean;
+    firstMissing?: FirstMissing;
+    /** Anything in the Conversation runs (the work state's `running`); when not, nothing here does. */
+    lit?: boolean;
+  } = {},
 ): WorkStripState {
   const forest = activities ? buildActivityForest(activities) : [];
   const read = helpers.map((helper) => {
@@ -114,7 +124,11 @@ export function deriveWorkStrip(
     return {
       helper,
       activity: node?.activity,
-      running: node ? isNodeRunning(node) : unlistedRunning(helper, activities, turnRunning),
+      running:
+        lit &&
+        (node
+          ? isNodeRunning(node)
+          : unlistedRunning(helper, activities, turnRunning, now, firstMissing)),
     };
   });
   const running = read.filter((entry) => entry.running);
@@ -149,8 +163,18 @@ export function deriveWorkStrip(
 
 /** How long a Helper the loaded feed does not list may still count as just started. */
 export const UNLISTED_GRACE_MS = 60_000;
-/** When each such Helper was first found missing (client ms). */
-const unlistedSince = new Map<string, number>();
+
+/** The Helpers the loaded feed does not list (none before it has loaded). */
+export function unlistedHelperIds(
+  helpers: readonly StripHelper[],
+  activities: readonly Activity[] | undefined,
+): string[] {
+  if (!activities) return [];
+  const forest = buildActivityForest(activities);
+  return helpers
+    .filter((helper) => !findHelperNode(forest, helper.helperId))
+    .map((helper) => helper.helperId);
+}
 
 /**
  * Whether a Helper the feed does not list runs. Before the feed has loaded, the status the
@@ -163,13 +187,12 @@ function unlistedRunning(
   helper: StripHelper,
   activities: readonly Activity[] | undefined,
   turnRunning: boolean,
+  now: number,
+  firstMissing: FirstMissing,
 ): boolean {
   if (helper.status !== "in_progress") return false;
   if (activities === undefined || turnRunning) return true;
-  const now = Date.now();
-  const since = unlistedSince.get(helper.helperId) ?? now;
-  unlistedSince.set(helper.helperId, since);
-  return now - since < UNLISTED_GRACE_MS;
+  return now - (firstMissing.get(helper.helperId) ?? now) < UNLISTED_GRACE_MS;
 }
 
 /** What the strip knows of the reply itself (workPlan.ts), beside its Helpers. */
@@ -282,6 +305,9 @@ export function answeredWhileWorking(
   activities: readonly Activity[] | undefined,
   /** The transcript says a turn runs right now. */
   turnRunning = false,
+  /** The client clock (ms). */
+  now = Date.now(),
+  firstMissing: FirstMissing = NONE_MISSING,
 ): Set<string> {
   const answered = new Set<string>();
   const forest = activities ? buildActivityForest(activities) : [];
@@ -294,7 +320,7 @@ export function answeredWhileWorking(
         const start = Date.parse(node.activity.startedAt);
         const end = isNodeRunning(node) ? Infinity : lastFinish(node);
         if (!Number.isNaN(start) && !Number.isNaN(end)) windows.push({ index, start, end });
-      } else if (unlistedRunning(helper, activities, turnRunning)) {
+      } else if (unlistedRunning(helper, activities, turnRunning, now, firstMissing)) {
         windows.push({ index, start: Date.parse(message.createdAt), end: Infinity });
       }
     }

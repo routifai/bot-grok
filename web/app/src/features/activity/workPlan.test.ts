@@ -1,6 +1,6 @@
 import type { MessageBlock, ThreadMessage } from "@superchat/contracts";
 import { expect, it } from "vitest";
-import { drawnOnlyMessageIds, markChanges, transcriptWork } from "./workPlan";
+import { drawnOnlyMessageIds, markChanges, outcomeOf, transcriptWork } from "./workPlan";
 
 type Item = { text: string; status: "todo" | "doing" | "done" };
 
@@ -45,7 +45,7 @@ const v2: Item[] = [
 const steps = (plan: { text: string; status: string }[] | null | undefined) =>
   plan?.map((step) => [step.text, step.status]);
 
-it("draws the newest render of the reply's plan in one strip, where the plan first showed", () => {
+it("draws the newest render of the reply's plan in one strip, under the reply", () => {
   const messages = [
     message("ask", "user", [text("Make the deck")], 0),
     message("card-1", "bot", [planCard(v1)], 2),
@@ -53,8 +53,8 @@ it("draws the newest render of the reply's plan in one strip, where the plan fir
     message("reply", "bot", [text("The deck is ready.")], 31),
   ];
   const work = transcriptWork(messages);
-  expect([...work.turns.keys()]).toEqual(["card-1"]);
-  const turn = work.turns.get("card-1");
+  expect([...work.turns.keys()]).toEqual(["reply"]);
+  const turn = work.turns.get("reply");
   expect(steps(turn?.plan)).toEqual([
     ["Read the file", "done"],
     ["Note the cut-off", "todo"],
@@ -65,11 +65,11 @@ it("draws the newest render of the reply's plan in one strip, where the plan fir
   expect((turn?.endedAt ?? 0) - (turn?.startedAt ?? 0)).toBe(31_000);
   expect(work.runningSince).toBe(turn?.startedAt);
   expect([...work.drawn]).toEqual(["card-1:0", "card-2:0"]);
-  // The strip's own message keeps its row; the later card does not.
-  expect([...drawnOnlyMessageIds(messages, work)]).toEqual(["card-2"]);
+  // The plan cards leave no rows; the reply keeps its own.
+  expect([...drawnOnlyMessageIds(messages, work)]).toEqual(["card-1", "card-2"]);
 });
 
-it("keeps the strip where it is while the reply is written and when its text lands", () => {
+it("sits where the work first showed while the reply is written, and under its text once it lands", () => {
   const ask = message("ask", "user", [text("Make the deck")], 0);
   const card1 = message("card-1", "bot", [planCard(v1)], 2);
   const card2 = message("card-2", "bot", [planCard(v2)], 30);
@@ -81,8 +81,8 @@ it("keeps the strip where it is while the reply is written and when its text lan
     card2,
     message("reply", "bot", [text("Done.")], 40),
   ]);
-  for (const work of [streaming, more, answered])
-    expect([...work.turns.keys()]).toEqual(["card-1"]);
+  for (const work of [streaming, more]) expect([...work.turns.keys()]).toEqual(["card-1"]);
+  expect([...answered.turns.keys()]).toEqual(["reply"]);
 });
 
 it("sits where the Helpers are, and gives each reply its own plan", () => {
@@ -125,8 +125,20 @@ it("keeps one strip when the person's message is steered into the running reply"
   expect(turn?.helpers.map((helper) => helper.helperId)).toEqual(["h1"]);
   expect(turn?.startedAt).toBe(Date.parse(messages[0]?.createdAt ?? ""));
   expect(turn?.last).toBe(true);
-  expect([...work.drawn]).toEqual(["card-1:0", "card-2:0"]);
+  // The strip draws the plan and the Helpers.
+  expect([...work.drawn]).toEqual(["card-1:0", "card-2:0", "reply:1"]);
   expect([...drawnOnlyMessageIds(messages, work)]).toEqual(["card-1", "card-2"]);
+});
+
+it("leaves no row for a message holding only the Helpers its reply's strip draws", () => {
+  const messages = [
+    message("ask", "user", [text("Research it")], 0),
+    message("started", "bot", [helperBlock("h1")], 1),
+    message("reply", "bot", [text("A Helper is on it.")], 2),
+  ];
+  const work = transcriptWork(messages);
+  expect([...work.turns.keys()]).toEqual(["reply"]);
+  expect([...drawnOnlyMessageIds(messages, work)]).toEqual(["started"]);
 });
 
 it("leaves a later reply's strip alone when a Helper's wake narration arrives", () => {
@@ -140,7 +152,7 @@ it("leaves a later reply's strip alone when a Helper's wake narration arrives", 
     message("wake", "bot", [text("The report is done.")], 60),
   ];
   const work = transcriptWork(messages);
-  const second = work.turns.get("card-2");
+  const second = work.turns.get("reply-2");
   expect(second?.last).toBe(false);
   expect(second?.endedAt).toBe(Date.parse(messages[4]?.createdAt ?? ""));
   expect(work.turns.get("reply-1")?.last).toBe(false);
@@ -169,8 +181,21 @@ it("reads how the reply ended", () => {
       ?.outcome;
   const card = () => message(`card-${seq}`, "bot", [planCard(v1)]);
   expect(outcome(card(), message("r", "bot", [text("Done.")]))).toBe("done");
-  // Stopped before it wrote its answer.
-  expect(outcome(card())).toBe("cancelled");
+  // A plan, a Helper or a file is a reply too: no text is not a Stop (the work state says that).
+  expect(outcome(card())).toBe("done");
+  expect(outcome(message("h", "bot", [helperBlock("h1")]))).toBe("done");
+  expect(
+    outcomeOf([
+      message("f", "bot", [
+        { kind: "file", artifactId: "a1", name: "deck.html", mimeType: "text/html", size: 1 },
+      ]),
+    ]),
+  ).toBe("done");
+  // Only a reply that left nothing but live status was cut short.
+  expect(outcomeOf([])).toBe("cancelled");
+  expect(outcomeOf([message("p", "bot", [{ kind: "progress", text: "Reading…" }])])).toBe(
+    "cancelled",
+  );
   expect(outcome(card(), message("e", "bot", [{ kind: "error", code: "overloaded" }]))).toBe(
     "failed",
   );
@@ -207,7 +232,7 @@ it("marks a step added where it is new and changed where it was reworded", () =>
     message("card-2", "bot", [planCard(v2)]),
     message("reply", "bot", [text("On it.")]),
   ]);
-  const newest = work.turns.get("card-1")?.plan ?? [];
+  const newest = work.turns.get("reply")?.plan ?? [];
   expect(newest.filter((step) => step.added).map((step) => step.text)).toEqual([
     "Note the cut-off",
   ]);

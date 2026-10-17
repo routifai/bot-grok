@@ -9,12 +9,13 @@ import {
 } from "@superchat/core";
 import { cn } from "@superchat/ui-web";
 import { Folder } from "lucide-react";
-import { memo, useMemo } from "react";
+import { memo } from "react";
 import { CloudAgentCard } from "../../../components/CloudAgentCard";
 import { ComposerAttachmentChip } from "../../../components/ComposerAttachmentChip";
 import { ReplyCardBlockView } from "../../../components/cards/ReplyCard";
 import { WorkspaceAttachmentChip } from "../../../components/WorkspaceAttachmentChip";
-import { useDrawnByStrip, useTurnStrip, WorkStrip } from "../../../features/activity";
+import type { TurnStrip } from "../../../features/activity";
+import { drawnKey, WorkStrip } from "../../../features/activity";
 import { AskCard } from "../../../features/approvals";
 import { ArtifactFileCard } from "../../../features/artifacts";
 import type { ArtifactTarget } from "../../../lib/artifact-open";
@@ -50,12 +51,16 @@ function ToolActivityStep({ block }: { block: ThreadMessage["blocks"][number] })
   );
 }
 
+const NOTHING_DRAWN: ReadonlySet<string> = new Set();
+
 export const MessageView = memo(function MessageView({
   botDisplayName,
   artifactTarget,
   canAnswer,
   message,
   onAnswer,
+  strip = null,
+  drawn = NOTHING_DRAWN,
 }: {
   /** The Muse's own name, for first-run hint copy (`FirstRunHint`). */
   botDisplayName?: string;
@@ -63,24 +68,26 @@ export const MessageView = memo(function MessageView({
   canAnswer: boolean;
   message: ThreadMessage;
   onAnswer: (message: ThreadMessage, text: string, username?: string) => Promise<void>;
+  /** The reply's work strip, when this message is where it sits (features/activity
+   * `useTurnStrips`). */
+  strip?: TurnStrip | null;
+  /** The blocks the strips draw instead (`<messageId>:<index>`): the living plan, the Helpers. */
+  drawn?: ReadonlySet<string>;
 }) {
   const { t } = useLingui();
   const errorNote = useFailureNoteText();
   const errorAction = useFailureNoteAction();
   const infoNote = useInfoNoteText();
-  const helpers = useMemo(
-    () => message.blocks.flatMap((block) => (block.kind === "helper" ? [block] : [])),
-    [message.blocks],
-  );
-  const firstHelperBlock = message.blocks.findIndex((block) => block.kind === "helper");
-  // The reply's work strip (ADR 0023): its plan and running state come from the transcript.
-  const strip = useTurnStrip(message.id);
-  const drawnByStrip = useDrawnByStrip();
-  // A reply whose strip has no Helper to sit beside carries it after its words.
-  const trailingStrip =
-    strip && firstHelperBlock < 0 ? (
-      <WorkStrip botId={artifactTarget.botId} helpers={strip.helpers} turn={strip.turn} />
-    ) : null;
+  const drawnByStrip = (index: number) => drawn.has(drawnKey(message.id, index));
+  // The reply's work strip (ADR 0022, ADR 0023) sits under its words.
+  const trailingStrip = strip ? (
+    <WorkStrip
+      botId={artifactTarget.botId}
+      helpers={strip.helpers}
+      turn={strip.turn}
+      lit={strip.lit}
+    />
+  ) : null;
   const isNarration =
     message.role === "bot" &&
     message.blocks.length > 0 &&
@@ -374,16 +381,11 @@ export const MessageView = memo(function MessageView({
         }
         if (block.kind === "reply_card") {
           // The reply's living plan is drawn inside its work strip instead.
-          if (drawnByStrip(message.id, i)) return null;
+          if (drawnByStrip(i)) return null;
           return <ReplyCardBlockView key={i} block={block} messageId={message.id} index={i} />;
         }
         if (block.kind === "cloud_agent") return <CloudAgentCard key={i} block={block} />;
-        // The Helpers this reply started share one work strip, where the first of them sits.
-        if (block.kind === "helper") {
-          return i === firstHelperBlock ? (
-            <WorkStrip key={i} botId={artifactTarget.botId} helpers={helpers} turn={strip?.turn} />
-          ) : null;
-        }
+        // The Helpers this reply started are drawn by its work strip.
         return null;
       })}
       {trailingStrip}

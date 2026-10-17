@@ -1,6 +1,7 @@
 import { useLingui } from "@lingui/react/macro";
 import type { ThreadMessage } from "@superchat/contracts";
-import { SLASH_ACTIONS, type SlashActionId } from "@superchat/core";
+import type { SlashActionId } from "@superchat/core";
+import { SLASH_ACTIONS } from "@superchat/core";
 import {
   Button,
   cn,
@@ -33,6 +34,7 @@ import {
   useState,
 } from "react";
 import { ComposerAttachmentChip } from "../../../components/ComposerAttachmentChip";
+import type { WorkPhase } from "../../../features/activity";
 import {
   clearComposerAttachments,
   setComposerAttachment,
@@ -54,7 +56,8 @@ const NO_FOLDERS: readonly string[] = [];
 
 export const Composer = memo(function Composer({
   activeName,
-  running,
+  phase,
+  stopFailed = false,
   pendingAttachments = NO_ATTACHMENTS,
   pendingFolders = NO_FOLDERS,
   onAttachFolder,
@@ -64,7 +67,6 @@ export const Composer = memo(function Composer({
   sendError,
   failure,
   onDismissError,
-  sending,
   fileInputRef,
   onAttachmentPick,
   onRemoveAttachment,
@@ -81,7 +83,11 @@ export const Composer = memo(function Composer({
   onSeedConsumed,
 }: {
   activeName?: string;
-  running: boolean;
+  /** The Conversation's work state (features/activity `useWorkState`): Stop shows while it is not
+   * idle and is held while a Stop is on its way; Send waits while a message or a Stop is. */
+  phase: WorkPhase;
+  /** The last Stop did not land, while the work still runs. */
+  stopFailed?: boolean;
   pendingAttachments?: PendingAttachment[];
   /** Workspace folders the next message points at. */
   pendingFolders?: readonly string[];
@@ -95,7 +101,6 @@ export const Composer = memo(function Composer({
   /** The latest reply failed for a model-layer reason the person can fix (a key, a budget). */
   failure?: { id: string; code: string } | null;
   onDismissError?: () => void;
-  sending: boolean;
   /** Without an attachment handler there is no attach control. */
   fileInputRef?: RefObject<HTMLInputElement | null>;
   onAttachmentPick?: (files: FileList | null) => void | Promise<void>;
@@ -132,6 +137,8 @@ export const Composer = memo(function Composer({
   const failureAction = useFailureNoteAction();
   const failureNote = failure ? failureText(failure.code) : null;
   const fix = failure ? failureAction(failure.code) : null;
+  // A message or a Stop on its way holds the next send.
+  const busy = phase === "sending" || phase === "stopping";
   const canSend =
     draft.trim().length > 0 || pendingAttachments.length > 0 || pendingFolders.length > 0;
   // A file still being read, or one that failed, holds Send until it is ready, removed or retried.
@@ -198,7 +205,7 @@ export const Composer = memo(function Composer({
   const showSlashPicker = slashQuery !== null && slashActionOptions.length > 0;
 
   function send() {
-    if (!canSend || sending || attachmentsPending) return;
+    if (!canSend || busy || attachmentsPending) return;
     const text = draft.replace(/^\s+/, "").trimEnd();
     const kept = { draft, attachments };
     setDraft("");
@@ -402,13 +409,13 @@ export const Composer = memo(function Composer({
           {attachmentNotice}
         </div>
       ) : null}
-      {uploadStatus ? (
+      {uploadStatus || stopFailed ? (
         <div
           role="status"
           data-testid="composer-upload-status"
           className="mb-3 px-1 text-[13px] text-muted-foreground"
         >
-          {uploadStatus}
+          {stopFailed ? t`Couldn't stop` : uploadStatus}
         </div>
       ) : null}
       {pendingFolders.length ? (
@@ -615,12 +622,12 @@ export const Composer = memo(function Composer({
             )}
           />
         </div>
-        {running ? (
+        {phase !== "idle" ? (
           <div className={"ms-auto flex shrink-0 items-center gap-1.5"}>
             <Button
               size="icon"
               aria-label={t`Send`}
-              disabled={sending || !canSend || attachmentsPending}
+              disabled={busy || !canSend || attachmentsPending}
               onClick={send}
               className={cn(
                 "size-8 rounded-full shadow-sm transition-transform active:scale-95",
@@ -633,7 +640,7 @@ export const Composer = memo(function Composer({
               variant="outline"
               size="icon"
               aria-label={t`Stop`}
-              disabled={sending}
+              disabled={phase === "stopping"}
               onClick={() => void onStop?.()}
               className="size-8 rounded-full border border-border bg-muted text-foreground/80 shadow-sm transition-colors hover:bg-accent hover:text-foreground"
             >
@@ -644,7 +651,7 @@ export const Composer = memo(function Composer({
           <Button
             size="icon"
             aria-label={t`Send`}
-            disabled={sending || !canSend || attachmentsPending}
+            disabled={busy || !canSend || attachmentsPending}
             onClick={send}
             className={cn(
               "size-8 shrink-0 rounded-full shadow-sm transition-transform active:scale-95",

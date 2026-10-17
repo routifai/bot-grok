@@ -29,7 +29,7 @@ export type TurnOutcome = "done" | "failed" | "cancelled" | "asked";
 
 /** One reply's work: what its strip draws and where it sits. */
 export interface TurnWork {
-  /** The message the strip sits under: the first holding Helpers, else the first plan card. */
+  /** The message the strip sits under: the reply's text, else its first plan card or Helper. */
   anchorId: string;
   /** The newest render of the reply's plan, or null without one. */
   plan: PlanStep[] | null;
@@ -47,7 +47,7 @@ export interface TurnWork {
 export interface TranscriptWork {
   /** By anchor message id. */
   turns: Map<string, TurnWork>;
-  /** `<messageId>:<blockIndex>` of every plan card a strip draws instead. */
+  /** `<messageId>:<blockIndex>` of every plan card and Helper block a strip draws instead. */
   drawn: Set<string>;
   /** When the work the newest messages belong to began (ms): the header pill's start while a turn
    * runs, the same start its strip counts from. Null when unknown. */
@@ -129,7 +129,8 @@ function segmentsOf(messages: readonly ThreadMessage[]): Segment[] {
 
 type Turn = { ask: ThreadMessage | undefined; replies: ThreadMessage[] };
 
-function outcomeOf(replies: readonly ThreadMessage[]): TurnOutcome {
+/** How a reply ended, from its messages. */
+export function outcomeOf(replies: readonly ThreadMessage[]): TurnOutcome {
   const blocks = replies.flatMap((message) => message.blocks);
   if (blocks.some((block) => block.kind === "error" && block.level !== "info")) return "failed";
   if (
@@ -141,8 +142,11 @@ function outcomeOf(replies: readonly ThreadMessage[]): TurnOutcome {
   ) {
     return "asked";
   }
-  // A reply always ends on its text: one that never wrote any was stopped before it could.
-  return replies.some(hasText) ? "done" : "cancelled";
+  // A reply that said or made anything (words, a file, a Helper, a plan) finished; one that left
+  // nothing but live status was stopped before it could. The work state says when a Stop cut it.
+  return blocks.some((block) => block.kind !== "progress" && block.kind !== "steps")
+    ? "done"
+    : "cancelled";
 }
 
 function readTurn(turn: Turn, last: boolean, out: TranscriptWork) {
@@ -159,13 +163,20 @@ function readTurn(turn: Turn, last: boolean, out: TranscriptWork) {
       : [newest]
     : [];
   if (helpers.length === 0 && mine.length === 0) return;
-  // Chosen from the reply's first messages, so it stays put as the reply grows (its text arrives
-  // last, and replaces any earlier one).
+  // Under the reply (ADR 0022, ADR 0023): its text once written, before that where its work
+  // first showed.
   const anchor =
-    replies.find(hasHelper) ??
-    replies.find((message) => renders.some((render) => render.messageId === message.id));
+    replies.find(hasText) ??
+    replies.find(
+      (message) => hasHelper(message) || renders.some((render) => render.messageId === message.id),
+    );
   if (!anchor) return;
   for (const render of mine) out.drawn.add(render.key);
+  for (const message of replies) {
+    message.blocks.forEach((block, index) => {
+      if (block.kind === "helper") out.drawn.add(drawnKey(message.id, index));
+    });
+  }
   out.turns.set(anchor.id, {
     anchorId: anchor.id,
     plan: newest ? markChanges(newest.steps, mine.at(-2)?.steps) : null,
@@ -221,8 +232,8 @@ export function transcriptWork(messages: readonly ThreadMessage[]): TranscriptWo
   return out;
 }
 
-/** Messages that hold nothing but plan cards a strip draws, and no strip of their own: the
- * transcript drops their rows (no empty gap). */
+/** Messages that hold nothing but what a strip draws (plan cards, Helpers), and no strip of their
+ * own: the transcript drops their rows (no empty gap). */
 export function drawnOnlyMessageIds(
   messages: readonly ThreadMessage[],
   work: TranscriptWork,

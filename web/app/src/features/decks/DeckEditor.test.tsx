@@ -16,7 +16,7 @@ vi.mock("@lingui/react/macro", () => ({
 
 const chats = vi.hoisted(() => ({
   send: vi.fn(async (_input: { botId: string; text: string }) => ({ ok: true as const })),
-  interrupt: vi.fn(async (_input: { botId: string }) => ({ ok: true as const })),
+  interrupt: vi.fn(async (_input: { botId: string }) => ({ delivered: true })),
   transcript: vi.fn(async (_input: { botId: string }) => ({ messages: [] as unknown[] })),
 }));
 const artifactsApi = vi.hoisted(() => ({
@@ -457,6 +457,7 @@ it("sends the hard-scope element request and the person's words to the Muse's Co
   expect(splitElementAsk(sent?.text ?? "")).toEqual({
     label: "Slide 1 · title",
     rest: "make it punchier",
+    slide: 1,
   });
   expect(askInput().value).toBe("");
 });
@@ -478,7 +479,7 @@ it("with nothing selected it asks about the slide on screen", async () => {
   await act(async () => press(askInput(), "Enter"));
   const text = chats.send.mock.calls[0]?.[0]?.text ?? "";
   expect(text).toContain("Hard scope: change ONLY slide 1 of this deck");
-  expect(splitElementAsk(text)).toEqual({ label: "Slide 1", rest: "warmer colours" });
+  expect(splitElementAsk(text)).toEqual({ label: "Slide 1", rest: "warmer colours", slide: 1 });
 });
 
 it("shows editing, then Updated when superchat's version lands, and Undo steps back over it", async () => {

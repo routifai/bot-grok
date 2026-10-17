@@ -1,6 +1,7 @@
 import type { Activity } from "@superchat/contracts";
 import { useEffect, useRef, useState } from "react";
-import { ActivityRunDialog, type ActivityWire } from "./ActivityRunDialog";
+import type { ActivityWire } from "./ActivityRunDialog";
+import { ActivityRunDialog } from "./ActivityRunDialog";
 import { LIVE_ACTIVITY_WIRE } from "./useActivities";
 
 /** A Helper's Activity id: the Helper's own chat id under its kind. */

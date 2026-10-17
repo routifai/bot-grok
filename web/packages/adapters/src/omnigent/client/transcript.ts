@@ -32,7 +32,17 @@ export type OmnigentTranscriptBlock =
       by?: "user";
     }
   | { type: "secure_entry"; request_id: string; name: string; site: string; reason?: string }
-  | { type: "error"; code: string; level?: "info" };
+  | { type: "error"; code: string; level?: "info" }
+  | {
+      /** A studio runtime line (ADR 0024); only in a file's studio chat, as a `system` message. */
+      type: "notice";
+      kind: "hand_edit" | "version" | "stale" | "queued";
+      version?: number;
+      element_id?: string;
+      element?: string;
+      what?: string;
+      origin?: "superchat" | "update";
+    };
 
 export interface OmnigentTranscriptMessage {
   id: string;

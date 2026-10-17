@@ -179,7 +179,7 @@ function WorkPreview({ activities }: { activities: Activity[] | undefined }) {
     <div className="sc-scroll flex min-h-0 flex-1 flex-col overflow-y-auto rounded-2xl border border-border">
       <div className="flex h-[66px] shrink-0 items-center justify-end px-6">
         <span data-fixture="pill" className="p-1">
-          <WorkingPill botId={DEV_ACTIVITY_BOT_ID} turnStartedAt={PILL_STARTED} />
+          <WorkingPill work={{ running: true, since: PILL_STARTED }} />
         </span>
       </div>
       <div className="mx-auto flex w-full max-w-[700px] flex-col gap-[22px] px-6 pb-8">

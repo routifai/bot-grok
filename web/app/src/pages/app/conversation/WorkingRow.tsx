@@ -1,23 +1,15 @@
-import { useState } from "react";
 import { Shimmer } from "../../../components/ai/primitives";
 import { useNow } from "../../../components/chrome/useNow";
+import { formatClock, serverNow } from "../../../features/activity";
 import { WorkingDot } from "../../../features/activity/ActivityLine";
-import { formatDuration } from "../../../features/activity/activityGrouping";
 
 /**
  * Superchat working on a reply (the old design notes "Working line"): a soft rounded row with a
  * small pulsing dot, the current step ("Thinking…", "Browsing…") and how long it has gone —
- * counted from the run's real start, so a remount (switching chats) keeps the time.
+ * counted from the work's start on the engine's clock (the work state's `since`), so it reads the
+ * same as the header pill and keeps its time across a remount.
  */
-export function WorkingRow({
-  label,
-  startedAt: runStartedAt,
-}: {
-  label: string;
-  startedAt?: number;
-}) {
-  const [mountedAt] = useState(() => Date.now());
-  const startedAt = runStartedAt ?? mountedAt;
+export function WorkingRow({ label, since }: { label: string; since: number | null }) {
   const now = useNow(true);
   return (
     <div data-testid="muse-live-row" aria-hidden="true" className="flex min-h-10 items-center">
@@ -28,9 +20,11 @@ export function WorkingRow({
         <span className="text-ink-2">
           <Shimmer>{label}</Shimmer>
         </span>
-        <span className="ms-1.5 font-mono text-[12px] text-ink-3 tabular-nums">
-          {formatDuration(Math.max(0, now - startedAt))}
-        </span>
+        {since !== null ? (
+          <span className="ms-1.5 font-mono text-[12px] text-ink-3 tabular-nums">
+            {formatClock(serverNow(now) - since)}
+          </span>
+        ) : null}
       </span>
     </div>
   );

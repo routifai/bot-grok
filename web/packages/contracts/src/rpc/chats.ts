@@ -107,7 +107,8 @@ export const chatsContract = {
     setMessageArtifact: oc
       .input(z.object({ botId: Id, itemId: Id, artifactId: Id.nullable() }))
       .output(ThreadMessageSchema),
-    /** Stops the turn running in the Muse's Conversation; messages waiting behind it are cancelled. */
+    /** Stops the turn running in the Muse's Conversation and its running Helpers; messages waiting
+     * behind it are cancelled. `delivered`: whether the stop landed. */
     interrupt: oc
       .input(
         z.object({
@@ -116,7 +117,7 @@ export const chatsContract = {
           chatId: Id.optional(),
         }),
       )
-      .output(z.object({ ok: z.literal(true) })),
+      .output(z.object({ delivered: z.boolean() })),
     /** Where the Conversation works: its Project (its working directory is a Project folder) or
      * null, the folder relative to the workspace (null: the whole workspace) and whether the
      * person chose it. */

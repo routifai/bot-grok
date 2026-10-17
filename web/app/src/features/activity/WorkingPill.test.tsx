@@ -18,38 +18,39 @@ vi.mock("@lingui/react/macro", () => {
   };
 });
 
-const feed = vi.hoisted(() => ({ activities: [] as Activity[] }));
-vi.mock("./useActivities", () => ({
-  useActivities: () => ({
-    state: { status: "ready", activities: feed.activities, hasMore: false },
-    loadEarlier: async () => undefined,
-    loadingEarlier: false,
-  }),
-}));
-
 import type { ThreadMessage } from "@superchat/contracts";
 import { helper } from "./activityTestKit";
 import { noteServerClock, resetServerClock, workingSince } from "./superchatWork";
 import { WorkingPill } from "./WorkingPill";
 import { transcriptWork } from "./workPlan";
+import { deriveWorkState, IDLE_TURN } from "./workState";
 import { composeStrip, deriveWorkStrip, formatClock } from "./workStripState";
 
 const mounted: Array<() => void> = [];
 afterEach(() => {
   for (const unmount of mounted.splice(0)) unmount();
-  feed.activities = [];
   resetServerClock();
   vi.useRealTimers();
 });
 
-async function mount(turnStartedAt: number | null) {
+/** The pill for the Conversation's work state with these Activities and this turn running. */
+const workOf = (turnStartedAt: number | null, activities: Activity[] = []) =>
+  deriveWorkState({
+    turn: { ...IDLE_TURN, running: turnStartedAt !== null },
+    sending: false,
+    stopping: false,
+    activities,
+    turnStartedAt,
+  });
+
+async function mount(turnStartedAt: number | null, activities: Activity[] = []) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   mounted.push(() => act(() => root.unmount()));
-  const render = async (next: number | null) => {
-    await act(async () => root.render(<WorkingPill botId="bot-1" turnStartedAt={next} />));
+  const render = async (next: number | null, nextActivities = activities) => {
+    await act(async () => root.render(<WorkingPill work={workOf(next, nextActivities)} />));
   };
   await render(turnStartedAt);
   return { container, render };
@@ -65,13 +66,11 @@ it("shows Working with the time since the turn began, with the orb and its glowi
 });
 
 it("stays while a Helper runs after the turn ended, and is gone once everything settled", async () => {
-  feed.activities = [
+  const { container, render } = await mount(null, [
     helper("h1", { status: "in_progress", startedAt: new Date(Date.now() - 65_000).toISOString() }),
-  ];
-  const { container, render } = await mount(null);
+  ]);
   expect(pill(container)?.textContent).toMatch(/^Working · 1:0[56]$/);
-  feed.activities = [helper("h1", { status: "done" })];
-  await render(null);
+  await render(null, [helper("h1", { status: "done" })]);
   expect(pill(container)).toBeNull();
 });
 

@@ -229,42 +229,19 @@ describe("TOOL_PRESENTATION", () => {
     expect(entry.snippet(output)).toBe("Q3 budget check");
   });
 
-  it("sys_os_shell: names what the first command did, never the command", () => {
+  it("sys_os_shell: a placeholder that never reads the command", () => {
     const title = (command: unknown) =>
       (TOOL_PRESENTATION.sys_os_shell as ToolPresentation).title({ command });
-    expect(title("python3 /work/build_deck.py --out deck.pptx")).toBe("Ran build_deck.py");
-    expect(title("cd /work && python -c 'print(1)'")).toBe("Ran a script");
-    expect(title("cd out; node scripts/render.mjs | tee log")).toBe("Ran render.mjs");
-    expect(title("uv run analyze.py")).toBe("Ran analyze.py");
-    expect(title("npx tsx check.ts")).toBe("Ran check.ts");
-    expect(title("pnpm build")).toBe("Ran a script");
-    expect(title("sudo apt-get install -y poppler-utils")).toBe("Installed packages");
-    expect(title("PIP_QUIET=1 pip install pandas")).toBe("Installed packages");
-    expect(title("python3 -m pip install openpyxl")).toBe("Installed packages");
-    expect(title("uv add httpx")).toBe("Installed packages");
-    expect(title("npm i sharp")).toBe("Installed packages");
-    expect(title("pnpm add zod")).toBe("Installed packages");
-    expect(title("env LC_ALL=C ls -la /secret/path | grep q3")).toBe("Looked at files");
-    expect(title("cat notes.txt")).toBe("Looked at files");
-    expect(title("git status")).toBe("Used git");
-    expect(title("curl -s https://example.com/data.csv -o data.csv")).toBe("Fetched from the web");
-    expect(title("soffice --headless --convert-to pdf deck.pptx")).toBe("Converted a file");
-    expect(title("mkdir -p out && cp a b")).toBe("Arranged files");
-    expect(title("unzip files.zip")).toBe("Unpacked an archive");
-    expect(title("tar -C out -xzf files.tar.gz")).toBe("Unpacked an archive");
-    expect(title("tar czf out.tgz out")).toBe("Packed an archive");
-    expect(title("zip -r out.zip out")).toBe("Packed an archive");
-    expect(title("echo hi > /tmp/x")).toBe("Ran a command on your machine");
+    expect(title("python3 /work/build_deck.py --out deck.pptx")).toBe(
+      "Ran a command on your machine",
+    );
     expect(title(undefined)).toBe("Ran a command on your machine");
-  });
-
-  it("sys_os_shell: reads the command from the call's own arguments", () => {
     const presented = presentStep({
       tool: "sys_os_shell",
       title: "Ran a command",
       detail: detailFor("sys_os_shell", { command: "python3 make.py" }, "ok"),
     });
-    expect(presented.title).toBe("Ran make.py");
+    expect(presented.title).toBe("Ran a command on your machine");
   });
 });
 

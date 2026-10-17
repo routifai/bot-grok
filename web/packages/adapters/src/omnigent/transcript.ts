@@ -62,16 +62,19 @@ function mapBlock(block: OmnigentTranscriptBlock): MessageBlock {
   switch (block.type) {
     case "text":
       return { kind: "text", text: block.text };
-    case "card":
+    case "card": {
+      // The engine's card id: what an answer to the card names.
+      const id = block.card_id || block.card.id;
       return {
         kind: "reply_card",
         card: block.card.card,
-        ...(block.card.id ? { id: block.card.id } : {}),
+        ...(id ? { id } : {}),
         ...(block.card.title ? { title: block.card.title } : {}),
         data: block.card.data,
         fallback: block.card.fallback,
         ...(block.pending ? { pending: true } : {}),
       };
+    }
     case "helper":
       return {
         kind: "helper",
@@ -85,6 +88,16 @@ function mapBlock(block: OmnigentTranscriptBlock): MessageBlock {
       return secureEntryCard(block);
     case "error":
       return { kind: "error", code: block.code, ...(block.level ? { level: block.level } : {}) };
+    case "notice":
+      return {
+        kind: "notice",
+        notice: block.kind,
+        ...(block.version !== undefined ? { version: block.version } : {}),
+        ...(block.element_id ? { elementId: block.element_id } : {}),
+        ...(block.element ? { element: block.element } : {}),
+        ...(block.what ? { what: block.what } : {}),
+        ...(block.origin ? { origin: block.origin } : {}),
+      };
   }
 }
 

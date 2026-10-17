@@ -119,7 +119,7 @@ beforeEach(() => {
   transcript.failSend.mockReset();
   transcript.stopWaiting.mockReset();
   transcript.refresh.mockReset();
-  api.chats.interrupt.mockReset().mockResolvedValue({ ok: true });
+  api.chats.interrupt.mockReset().mockResolvedValue({ delivered: true });
   api.asks.answer.mockReset().mockResolvedValue({ ok: true });
   api.chats.send.mockReset().mockResolvedValue({ ok: true });
 });
@@ -508,6 +508,71 @@ it("stops the running turn on the engine, expects no reply, and reads the Conver
   expect(api.chats.interrupt).toHaveBeenCalledWith({ botId: BOT });
   expect(transcript.stopWaiting).toHaveBeenCalledTimes(1);
   expect(transcript.refresh).toHaveBeenCalled();
+});
+
+it("gives the words back when Stop comes before the message went out, and stops all the same", async () => {
+  vi.useFakeTimers();
+  try {
+    await mount();
+    api.chats.send.mockRejectedValueOnce(new Error("down"));
+    let sent: Promise<boolean> | undefined;
+    await act(async () => {
+      sent = latest.sendMessage("hello");
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    // The first post was refused; the retry waits. Stop now: nothing went out.
+    expect(latest.sending).toBe(true);
+    await act(async () => {
+      await latest.stopRun();
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+    expect(await sent).toBe(false);
+    expect(api.chats.send).toHaveBeenCalledTimes(1);
+    expect(transcript.failSend).toHaveBeenCalledTimes(1);
+    expect(latest.sendError).toBeNull();
+    expect(api.chats.interrupt).toHaveBeenCalledWith({ botId: BOT });
+    expect(transcript.stopWaiting).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("lets a message already posted land, keeps it, and then stops the turn it started", async () => {
+  let land: (() => void) | undefined;
+  api.chats.send.mockImplementation(
+    () => new Promise((resolve) => (land = () => resolve({ ok: true }))),
+  );
+  await mount();
+  let sent: Promise<boolean> | undefined;
+  await act(async () => {
+    sent = latest.sendMessage("hello");
+  });
+  let stopped: Promise<void> | undefined;
+  await act(async () => {
+    stopped = latest.stopRun();
+  });
+  // The stop waits for the post, so it stops the turn that message starts.
+  expect(api.chats.interrupt).not.toHaveBeenCalled();
+  await act(async () => {
+    land?.();
+    await stopped;
+  });
+  expect(api.chats.interrupt).toHaveBeenCalledWith({ botId: BOT });
+  // It landed: the transcript keeps it and the composer is not refilled.
+  expect(await sent).toBe(true);
+  expect(transcript.failSend).not.toHaveBeenCalled();
+  expect(transcript.stopWaiting).toHaveBeenCalledTimes(1);
+});
+
+it("says it could not stop, apart from any upload status, until cleared", async () => {
+  api.chats.interrupt.mockResolvedValueOnce({ delivered: false });
+  await mount();
+  await act(async () => latest.stopRun());
+  expect(latest.stopFailed).toBe(true);
+  expect(latest.uploadStatus).toBeNull();
+  expect(transcript.stopWaiting).not.toHaveBeenCalled();
+  await act(async () => latest.clearStopFailed());
+  expect(latest.stopFailed).toBe(false);
 });
 
 it("keeps expecting the reply when the stop fails", async () => {

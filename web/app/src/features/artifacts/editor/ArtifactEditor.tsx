@@ -6,6 +6,9 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  Sheet,
+  SheetContent,
+  SheetTitle,
 } from "@superchat/ui-web";
 import {
   Check,
@@ -28,6 +31,7 @@ import { readableFileName } from "../ArtifactFileCard";
 import { ArtifactPreview } from "../ArtifactPreview";
 import type { AskDraft } from "../ask/AskBox";
 import { AskBox } from "../ask/AskBox";
+import type { AskTurn } from "../ask/useArtifactAsk";
 import { useArtifactAsk } from "../ask/useArtifactAsk";
 import type { useArtifactContent } from "../library/useArtifactContent";
 import { PanelOverflowMenu } from "../PanelOverflowMenu";
@@ -38,14 +42,9 @@ import {
   useArtifactEditorKind,
   type useArtifactPanelParts,
 } from "../registry";
-import {
-  artifactKey,
-  isHandOrigin,
-  setArtifactEditing,
-  setArtifactLocked,
-  useArtifactEditing,
-} from "./editor-state";
+import { artifactKey, isHandOrigin, setArtifactEditing, useArtifactEditing } from "./editor-state";
 import { buildFileAsk } from "./html-ask";
+import { NavigatorOrientationProvider } from "./NavigatorFrame";
 import { VersionMenu } from "./VersionMenu";
 
 export type ArtifactContent = ReturnType<typeof useArtifactContent>;
@@ -79,12 +78,20 @@ export type StudioSlot = {
   chatId: string;
   /** The column beside the editor, given the editor's ask box to place in it. */
   aside: (askBox: ReactNode) => ReactNode;
-  /** A studio turn is running (seen from its chat): the canvas takes no hand edits. */
-  locked?: boolean;
+  /** The studio's turn, from its chat: while it runs the canvas is inert and saves nothing. */
+  turn: AskTurn;
+  /** The slide the running turn is changing, when its request named one. */
+  slide?: number | null;
+  /** On a phone the editor stacks: the stage, the navigator as a strip, the inspector a sheet. */
+  layout: "phone" | "wide";
+  /** Whether something on the canvas is selected (the ask box's chips). */
+  onSelectedChange?: (selected: boolean) => void;
   /** Words a version's origin in the version menu. */
   versionOrigin?: (version: ArtifactVersion) => string;
-  /** Typed in the panel before the studio opened. */
+  /** Typed in the panel before the studio opened, or in the chat sheet before it closed. */
   draft?: AskDraft;
+  /** The ask box's words as they change (a phone's chat sheet keeps them across closing). */
+  onDraftChange?: (draft: AskDraft) => void;
   /** Why the studio's request waits (a runtime note): the ask box's status line meanwhile. */
   waiting?: string | null;
 };
@@ -213,6 +220,7 @@ function KindEditor({ kind, ...props }: LoadedProps & { kind: ArtifactEditorKind
     setEditing,
     onEdited: props.content.adoptVersion,
     focusAsk,
+    locked: !!props.studio?.turn.running,
   } satisfies ArtifactEditorArgs);
   return (
     <LoadedEditor
@@ -222,7 +230,6 @@ function KindEditor({ kind, ...props }: LoadedProps & { kind: ArtifactEditorKind
       setEditing={setEditing}
       askClicks={askClicks}
       focusAsk={focusAsk}
-      kindId={kind.id}
     />
   );
 }
@@ -268,7 +275,6 @@ function FileEditor(props: LoadedProps) {
       setEditing={() => {}}
       askClicks={askClicks}
       focusAsk={focusAsk}
-      kindId="file"
     />
   );
 }
@@ -282,7 +288,6 @@ function LoadedEditor({
   editing,
   setEditing,
   askClicks,
-  kindId,
   ...props
 }: LoadedProps & {
   parts: ArtifactEditorParts;
@@ -290,8 +295,6 @@ function LoadedEditor({
   setEditing: (on: boolean) => void;
   askClicks: number;
   focusAsk: () => void;
-  /** The editor kind's id ("deck", "page", ...; "file" for a read-only file). */
-  kindId: string;
 }) {
   const { t } = useLingui();
   const url = useObjectUrl(bytes, artifact.mimeType);
@@ -316,15 +319,11 @@ function LoadedEditor({
         }
       : null,
     contextBlock: parts.ask.contextBlock,
+    turn: studio?.turn,
   });
-  // While a studio turn runs the canvas is read-only: no inspector, and the kind refuses saves.
-  const fileKey = artifactKey(artifact);
-  const locked = !!studio && (!!studio.locked || ask.running);
-  useEffect(() => {
-    if (!studio) return;
-    setArtifactLocked(fileKey, locked);
-    return () => setArtifactLocked(fileKey, false);
-  }, [studio, fileKey, locked]);
+  // While a studio turn runs the canvas is inert: no inspector, and the kind saves nothing.
+  const locked = !!studio?.turn.running;
+  const phone = studio?.layout === "phone";
   const sendAsk = useCallback(
     async (text: string) => {
       await history?.flush(); // what is staged by hand is saved first, so superchat works on it
@@ -464,6 +463,8 @@ function LoadedEditor({
   );
 
   const selected = parts.ask.chips.length > 0;
+  const onSelectedChange = studio?.onSelectedChange;
+  useEffect(() => onSelectedChange?.(selected), [onSelectedChange, selected]);
   const toolbar =
     editing && history ? (
       <div className="flex shrink-0 justify-center px-3 pt-2.5 pb-1">
@@ -524,54 +525,86 @@ function LoadedEditor({
       canUndo={history?.canUndo}
       onStartTyping={props.onAskStart}
       initialDraft={studio?.draft}
+      onDraftChange={studio?.onDraftChange}
       note={studio?.waiting}
     />
   ) : null;
 
-  const body = (
-    <div data-slot="editor-body" className="@container relative flex min-h-0 flex-1">
-      {parts.navigator}
-      <div data-slot="editor-stage" className="relative flex min-w-0 flex-1 flex-col">
-        {toolbar}
-        <div className="relative min-h-0 flex-1">
-          {parts.stage}
-          {locked ? (
-            // A page or a deck keeps selecting through the lit layer (the kind refuses saves);
-            // any other kind's canvas takes no input until the turn ends.
-            <WorkingCanvas slides={kindId === "deck"} selectable={SELECTABLE_KINDS.has(kindId)} />
-          ) : null}
-        </div>
-        {parts.footer}
-        <div className="relative">
-          {parts.notice ? (
-            <div className="pointer-events-none absolute inset-x-3 bottom-full z-10 mb-2 flex justify-center">
-              <div className="pointer-events-auto">{parts.notice}</div>
-            </div>
-          ) : null}
-          {askBox && !studio ? <div className="px-4 pt-1 pb-3">{askBox}</div> : null}
-        </div>
+  const clearSelection = () => {
+    for (const chip of parts.ask.chips) parts.ask.onRemoveChip?.(chip.id);
+  };
+  const showInspector = editing && !!parts.inspector && !locked;
+  const inspector = !showInspector ? null : phone ? (
+    // A phone's inspector is a sheet over the bottom of the canvas while something is selected;
+    // the canvas stays live under it, and closing it ends the selection.
+    <Sheet
+      open={selected}
+      modal={false}
+      disablePointerDismissal
+      onOpenChange={(open) => {
+        if (!open) clearSelection();
+      }}
+    >
+      <SheetContent
+        side="bottom"
+        showCloseButton={false}
+        data-testid="editor-inspector"
+        className="max-h-[70%] gap-0 p-2"
+      >
+        <SheetTitle className="sr-only">{t`Selection`}</SheetTitle>
+        {parts.inspector}
+      </SheetContent>
+    </Sheet>
+  ) : (
+    // From about 900px wide the inspector column is reserved for the whole edit session (empty
+    // state, then the selection's controls), so the stage never reflows and nothing is ever
+    // covered. Narrower, the stage keeps its width and the controls are a sheet over the
+    // bottom edge, shown only while something is selected.
+    <div
+      data-testid="editor-inspector"
+      data-slot="editor-inspector"
+      className={cn(
+        "absolute inset-x-2 bottom-2 z-20 flex max-h-[60%] justify-end",
+        "@[900px]:static @[900px]:inset-auto @[900px]:block @[900px]:max-h-none @[900px]:w-[300px] @[900px]:shrink-0 @[900px]:overflow-hidden",
+        selected ? "" : "@max-[899px]:hidden",
+      )}
+    >
+      <div className="flex h-full max-h-full w-[288px] @[900px]:w-[300px] @[900px]:py-3 @[900px]:pe-3">
+        {parts.inspector}
       </div>
-      {/* From about 900px wide the inspector column is reserved for the whole edit session (empty
-          state, then the selection's controls), so the stage never reflows and nothing is ever
-          covered. Narrower, the stage keeps its width and the controls are a sheet over the
-          bottom edge, shown only while something is selected. */}
-      {editing && parts.inspector && !locked ? (
-        <div
-          data-testid="editor-inspector"
-          data-slot="editor-inspector"
-          className={cn(
-            "absolute inset-x-2 bottom-2 z-20 flex max-h-[60%] justify-end",
-            "@[900px]:static @[900px]:inset-auto @[900px]:block @[900px]:max-h-none @[900px]:w-[300px] @[900px]:shrink-0 @[900px]:overflow-hidden",
-            selected ? "" : "@max-[899px]:hidden",
-          )}
-        >
-          <div className="flex h-full max-h-full w-[288px] @[900px]:w-[300px] @[900px]:py-3 @[900px]:pe-3">
-            {parts.inspector}
+    </div>
+  );
+
+  const body = (
+    <NavigatorOrientationProvider value={phone ? "horizontal" : "vertical"}>
+      <div
+        data-slot="editor-body"
+        className={cn("@container relative flex min-h-0 flex-1", phone && "flex-col")}
+      >
+        {phone ? null : parts.navigator}
+        <div data-slot="editor-stage" className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+          {toolbar}
+          <div className="relative min-h-0 flex-1">
+            <div data-slot="editor-canvas" inert={locked} className="contents">
+              {parts.stage}
+            </div>
+            {locked ? <WorkingCanvas slide={studio?.slide ?? null} /> : null}
+          </div>
+          {parts.footer}
+          <div className="relative">
+            {parts.notice ? (
+              <div className="pointer-events-none absolute inset-x-3 bottom-full z-10 mb-2 flex justify-center">
+                <div className="pointer-events-auto">{parts.notice}</div>
+              </div>
+            ) : null}
+            {askBox && !studio ? <div className="px-4 pt-1 pb-3">{askBox}</div> : null}
           </div>
         </div>
-      ) : null}
-      {studio ? studio.aside(askBox) : null}
-    </div>
+        {phone ? parts.navigator : null}
+        {inspector}
+        {studio ? studio.aside(askBox) : null}
+      </div>
+    </NavigatorOrientationProvider>
   );
 
   return (
@@ -588,35 +621,24 @@ function LoadedEditor({
   );
 }
 
-/** Kinds whose canvas keeps selecting while a studio turn runs: their saves go through the HTML
- * editor, which refuses them while the file is locked. */
-const SELECTABLE_KINDS = new Set(["deck", "page"]);
-
-/** ADR 0023's working state over the canvas while a studio turn changes the file. */
-function WorkingCanvas({ slides, selectable }: { slides: boolean; selectable: boolean }) {
+/** ADR 0023's working state over the canvas while a studio turn changes the file: the slide the
+ * request named, else the whole file. */
+function WorkingCanvas({ slide }: { slide: number | null }) {
   const { t } = useLingui();
   return (
-    <div
-      data-testid="studio-working"
-      className={cn(
-        "absolute inset-2 z-10",
-        selectable ? "pointer-events-none" : "pointer-events-auto",
-      )}
-    >
+    <div data-testid="studio-working" className="absolute inset-2 z-10">
       <div className="absolute inset-0 rounded-[14px] bg-content/65 backdrop-blur-[2px]" />
       {/* The work strip's lit edge (ADR 0023), turning while the turn runs. */}
-      <span
-        aria-hidden="true"
-        className="sc-live-ring"
-        style={{ borderRadius: 14, padding: 1.5 }}
-      />
+      <span aria-hidden="true" className="sc-live-ring" data-shape="canvas" />
       <div className="relative flex h-full items-center justify-center">
         <div
           role="status"
           className="flex items-center gap-2 rounded-full bg-content px-3 py-1.5 text-[13px] text-foreground shadow-float"
         >
           <SuperchatOrb size={16} state="working" flies={false} />
-          {slides ? t`superchat is updating this slide…` : t`superchat is updating this file…`}
+          {slide === null
+            ? t`superchat is updating this file…`
+            : t`superchat is updating slide ${slide}…`}
         </div>
       </div>
     </div>
@@ -646,12 +668,18 @@ function EditorFrame({
     <div data-testid="artifact-editor" className="flex min-h-0 min-w-0 flex-1 flex-col">
       <header
         data-slot="editor-header"
-        className="flex min-w-0 shrink-0 items-center gap-1.5 border-b border-border px-4 py-2.5"
+        className={cn(
+          "flex min-w-0 shrink-0 items-center gap-1.5 border-b border-border px-4 py-2.5",
+          studio?.layout === "phone" && "flex-wrap gap-y-1.5",
+        )}
       >
         {leading}
         <div
           data-slot="editor-heading"
-          className="@container flex min-w-0 flex-1 items-center gap-2 overflow-hidden"
+          className={cn(
+            "@container flex min-w-0 flex-1 items-center gap-2 overflow-hidden",
+            studio?.layout === "phone" && "basis-[55%]",
+          )}
         >
           <h2
             data-testid="artifact-editor-title"

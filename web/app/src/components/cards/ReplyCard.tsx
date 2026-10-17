@@ -1,5 +1,6 @@
 import { ChatMarkdown } from "@superchat/chat-ui/web";
-import { parseReplyCard, type ReplyCardBlock } from "@superchat/contracts";
+import type { ReplyCardBlock } from "@superchat/contracts";
+import { parseReplyCard } from "@superchat/contracts";
 import { ReplyArtifactFileCard } from "../../features/artifacts";
 import { LegacyChartNote } from "../../features/charts";
 import { PassageChips } from "../../features/knowledge";
@@ -18,7 +19,7 @@ function Fallback({ text }: { text: string }) {
 
 /** One `reply_card` block: skeleton while pending, the catalog component when it parses,
  * otherwise its markdown fallback. `answer` is the person's reply to it, when there is one;
- * `cardId` names it in an ask card's structured answer. */
+ * `cardId` (the engine's card id) names it in an ask card's structured answer. */
 export function ReplyCard({
   block,
   answer,
@@ -83,7 +84,7 @@ export function ReplyCardBlockView({
   if (shown.card === "follow_ups" && (!resolved || running)) return null;
   return (
     <div className="flex w-full justify-start py-1">
-      <ReplyCard block={shown} answer={resolved?.answer} cardId={`${messageId}:${index}`} />
+      <ReplyCard block={shown} answer={resolved?.answer} cardId={shown.id} />
     </div>
   );
 }

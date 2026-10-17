@@ -5,7 +5,7 @@ import { rpc } from "../../../lib/rpc";
 import { useVisiblePoll } from "../../../lib/use-visible-poll";
 import { notifyArtifactsChanged } from "../artifactChanges";
 
-/** How often an open studio re-reads its chat (a request just sent shows before its reply). */
+/** How often the chat is re-read while a turn runs and the session's stream is down. */
 const CHAT_POLL_MS = 3000;
 /** How often an open studio tells the engine it is still open (its runner stays warm). */
 export const OPEN_SIGNAL_MS = 5 * 60_000;
@@ -17,8 +17,10 @@ export type StudioChat = {
   sessionId: string | null;
   /** Its transcript, oldest first. */
   messages: ThreadMessage[];
-  /** A studio turn is running (in this tab or another). */
+  /** A studio turn is running (in this tab or another): the studio's one running state. */
   running: boolean;
+  /** A request was just sent from this tab: running until the turn says otherwise. */
+  sent: () => void;
   /** The session could not be opened. */
   failed: boolean;
   /** The engine's words while a studio turn waits for a slot ("Finishing another file
@@ -28,8 +30,8 @@ export type StudioChat = {
 
 /**
  * The file's studio chat (ADR 0024): finds or makes its session (`artifacts.chat`, which never
- * wakes the host), reads its transcript, and follows the Muse's family stream for that session's
- * turns and for saves of the file (`artifactsChanged`, which `onSaved` answers).
+ * wakes the host), reads its transcript, follows the session's status (running, waiting) and the
+ * Muse's family stream for that session's messages and for saves of the file (`onSaved`).
  */
 export function useStudioChat({
   artifactId,
@@ -48,6 +50,8 @@ export function useStudioChat({
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [running, setRunning] = useState(false);
   const [blockedOn, setBlockedOn] = useState<string | null>(null);
+  // The session's status stream is connected; while it is not, a running turn is polled.
+  const [streamUp, setStreamUp] = useState(false);
   const onSavedRef = useRef(onSaved);
   onSavedRef.current = onSaved;
 
@@ -77,7 +81,16 @@ export function useStudioChat({
     return () => window.clearInterval(timer);
   }, [artifactId]);
 
-  // The session's status: `blockedOn` while a turn waits behind the host's studio cap.
+  const read = useCallback(async () => {
+    if (!botId || !sessionId) return;
+    const page = await rpc.chats.transcript({ botId, chatId: sessionId }).catch(() => null);
+    if (!page) return;
+    setMessages(page.messages);
+    setRunning(page.running === true);
+  }, [botId, sessionId]);
+
+  // The session's status: running or not, and `blockedOn` while a turn waits behind the host's
+  // studio cap.
   useEffect(() => {
     if (!botId || !sessionId) return;
     const abort = new AbortController();
@@ -88,33 +101,31 @@ export function useStudioChat({
             { botId, chatId: sessionId },
             { signal: abort.signal },
           );
+          setStreamUp(true);
           for await (const frame of frames) {
             if (abort.signal.aborted) return;
-            setBlockedOn(frame.status === "running" ? frame.blockedOn : null);
-            if (frame.status === "running") setRunning(true);
+            const busy = frame.status === "running";
+            setRunning(busy);
+            setBlockedOn(busy ? frame.blockedOn : null);
           }
         } catch {
           // Dropped: try again shortly.
         }
         if (abort.signal.aborted) return;
+        setStreamUp(false);
         await new Promise((resolve) => setTimeout(resolve, STATUS_RETRY_MS));
       }
     })();
-    return () => abort.abort();
-  }, [botId, sessionId]);
-
-  const read = useCallback(async () => {
-    if (!botId || !sessionId) return;
-    const page = await rpc.chats.transcript({ botId, chatId: sessionId }).catch(() => null);
-    if (!page) return;
-    setMessages(page.messages);
-    setRunning(page.running === true);
+    return () => {
+      abort.abort();
+      setStreamUp(false);
+    };
   }, [botId, sessionId]);
 
   useEffect(() => {
     void read();
   }, [read]);
-  useVisiblePoll(read, CHAT_POLL_MS, !!botId && !!sessionId);
+  useVisiblePoll(read, CHAT_POLL_MS, !!botId && !!sessionId && running && !streamUp);
 
   useEffect(() => {
     if (!botId || !sessionId) return;
@@ -140,5 +151,7 @@ export function useStudioChat({
     });
   }, [botId, sessionId, groupId, read]);
 
-  return { sessionId, messages, running, failed, blockedOn };
+  const sent = useCallback(() => setRunning(true), []);
+
+  return { sessionId, messages, running, sent, failed, blockedOn };
 }

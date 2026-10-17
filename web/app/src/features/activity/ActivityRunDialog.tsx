@@ -17,7 +17,8 @@ import { ACTIVITY_SOURCE_ICON, TOOL_ICON_COMPONENT } from "../../components/chro
 import { ActivityIconTile } from "./ActivityIconTile";
 import { formatClockTime, formatDayAndTime, isHelperActivity } from "./activityGrouping";
 import { MessageRow } from "./MessageRow";
-import { type StoryItem, stepStory, tallySteps } from "./stepStory";
+import type { StoryItem } from "./stepStory";
+import { stepStory, tallySteps } from "./stepStory";
 
 /** The Activity run page's wire: full detail (Steps) and, for a Helper, its messages —
  * kept explicit (not the `rpc` client) so the dev fixture page can supply fakes. */

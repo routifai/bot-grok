@@ -58,13 +58,14 @@ export async function setOmnigentSessionWorkspace(
   return body.workspace;
 }
 
-/** `POST /v1/sessions/{id}/events` `interrupt`: stops the running turn; messages waiting behind it
- * are cancelled (`session.input.delivery` `cancelled`). */
+/** `POST /v1/sessions/{id}/events` `interrupt`: stops the running turn and its running Helpers;
+ * messages waiting behind it are cancelled (`session.input.delivery` `cancelled`). `delivered`:
+ * whether the stop landed (false when no runner took it and nothing was waiting). */
 export async function interruptOmnigentSession(
   config: OmnigentClientConfig,
   email: string,
   sessionId: string,
-): Promise<void> {
+): Promise<{ delivered: boolean }> {
   const response = await fetch(
     new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/events`, config.baseUrl),
     {
@@ -74,6 +75,8 @@ export async function interruptOmnigentSession(
     },
   );
   await throwOnError(response, "interrupt session", config.secrets);
+  const body = (await response.json().catch(() => ({}))) as { delivered?: unknown };
+  return { delivered: body.delivered === true };
 }
 
 /** What the engine answers for a posted message: its stored id, and the runner's number for the

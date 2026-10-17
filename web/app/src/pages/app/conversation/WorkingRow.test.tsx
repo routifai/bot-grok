@@ -30,11 +30,11 @@ afterEach(() => {
 
 it("counts from the run's start, so a remount keeps the elapsed time", async () => {
   const startedAt = Date.parse("2026-01-01T00:03:00Z");
-  await act(async () => root.render(<WorkingRow label="Thinking…" startedAt={startedAt} />));
+  await act(async () => root.render(<WorkingRow label="Thinking…" since={startedAt} />));
   const first = host.textContent;
   await act(async () => root.unmount());
   root = createRoot(host);
-  await act(async () => root.render(<WorkingRow label="Thinking…" startedAt={startedAt} />));
+  await act(async () => root.render(<WorkingRow label="Thinking…" since={startedAt} />));
   expect(host.textContent).toBe(first);
-  expect(host.textContent).toMatch(/2m|2:00|02:00/);
+  expect(host.textContent).toContain("2:00");
 });

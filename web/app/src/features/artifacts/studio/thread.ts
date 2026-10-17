@@ -1,40 +1,63 @@
-import type { ArtifactVersion, ThreadMessage } from "@superchat/contracts";
+import type { ArtifactVersion, MessageBlock, ThreadMessage } from "@superchat/contracts";
 import { splitElementAsk } from "../editor/html-ask";
 
 // A file's studio thread (ADR 0024): the studio session's transcript merged with the file's
-// version list by time. No new item kind: requests, replies and the engine's runtime notes
-// (system messages: "Super Chat saved v9 while you were editing…") come from the transcript, hand
-// edits and version markers from the versions.
-
-/** A runtime line that records a version (`[you] … · v3`, `[Super Chat] saved v9`, `[live
- * update] …`, engine `studio.notice_line`): the version list already draws it, so the thread
- * does not repeat it. Other runtime lines (a stale notice) are notes. */
-const VERSION_RECORD = /^\[[^\]\n]+\] /;
+// version list by time. Requests and replies come from the transcript, as do the engine's notices
+// (`notice` blocks with a structured kind: a hand edit, a version saved elsewhere, a stale save);
+// version markers come from the versions.
 
 /** Who made a version, in the studio's five words. */
 export type VersionOrigin = "chat" | "superchat" | "you" | "restored" | "updated";
 
+type Notice = Extract<MessageBlock, { kind: "notice" }>;
+
 export type StudioRow =
   /** The person's request, with the element chip it was sent with. */
-  | { kind: "me"; id: string; text: string; chip: string | null; at: number }
+  | {
+      kind: "me";
+      id: string;
+      text: string;
+      chip: string | null;
+      /** The one slide of a deck the request was about. */
+      slide: number | null;
+      at: number;
+    }
   /** The assistant's reply. */
   | { kind: "ai"; id: string; text: string; at: number }
-  /** A runtime note from the engine: a version saved elsewhere during a turn. */
-  | { kind: "note"; id: string; text: string; at: number }
+  /** A version saved elsewhere while the studio was editing, or a turn waiting for a slot. */
+  | {
+      kind: "note";
+      id: string;
+      notice: "stale" | "queued";
+      version: number | null;
+      origin: "superchat" | "update";
+      at: number;
+    }
   /** Edits by hand: one version, or a run of consecutive ones on one element. */
   | {
       kind: "hand";
       id: string;
-      summary: string;
+      /** The engine's plain words for one edit ("You made the title larger"). */
+      what: string;
+      elementId: string | null;
+      /** "the title": what a folded run names. */
       element: string | null;
       count: number;
       from: number;
       to: number;
-      versionIds: string[];
       at: number;
     }
   /** A version was saved. */
-  | { kind: "version"; id: string; version: number; origin: VersionOrigin; at: number };
+  | {
+      kind: "version";
+      id: string;
+      version: number;
+      origin: VersionOrigin;
+      createdAt: string;
+      at: number;
+    }
+  /** Above the first version saved since the person was last here. */
+  | { kind: "since"; id: string; at: number };
 
 /** Who made `version`, seen from the studio session `studioId`. */
 export function versionOrigin(version: ArtifactVersion, studioId: string | null): VersionOrigin {
@@ -44,13 +67,6 @@ export function versionOrigin(version: ArtifactVersion, studioId: string | null)
   return version.fromStudio || (studioId !== null && version.chatId === studioId)
     ? "chat"
     : "superchat";
-}
-
-/** The element a hand edit changed, from its summary: `slide 3 title`, `slide 2 (cover)`,
- * `add-button`. Null when the summary names none. */
-export function editedElement(summary: string | null | undefined): string | null {
-  const match = /^(slide \d+ (?:\([^)]*\)|[^\s,:]+)|[^\s,:]+)/.exec((summary ?? "").trim());
-  return match?.[1] ?? null;
 }
 
 const time = (iso: string): number => {
@@ -65,23 +81,57 @@ function messageText(message: ThreadMessage): string {
     .trim();
 }
 
+const noticeOf = (message: ThreadMessage): Notice | null =>
+  message.blocks.find((block): block is Notice => block.kind === "notice") ?? null;
+
 /**
  * The studio thread, oldest first. A version saved by this chat sits after the reply of the turn
  * that saved it (the turn's request is its `itemId`); every other version at the time it was
- * saved. Consecutive hand edits to one element read as one row.
+ * saved, its hand edit just before it. Consecutive hand edits to one element read as one row.
+ * `seenVersion` is the newest version the person saw last time: a "since you were here" row goes
+ * above the first one newer than it.
  */
 export function studioThread(
   messages: readonly ThreadMessage[],
   versions: readonly ArtifactVersion[],
   studioId: string | null,
+  seenVersion: number | null = null,
 ): StudioRow[] {
   const rows: StudioRow[] = [];
   const replyAfter = new Map<string, number>();
+  const savedAt = new Map(versions.map((version) => [version.version, time(version.createdAt)]));
   let lastRequest: string | null = null;
   for (const message of messages) {
+    const at = time(message.createdAt);
+    if (message.role === "system") {
+      const notice = noticeOf(message);
+      if (notice?.notice === "hand_edit" && notice.version !== undefined) {
+        rows.push({
+          kind: "hand",
+          id: `hand:${message.id}`,
+          what: notice.what ?? "",
+          elementId: notice.elementId ?? null,
+          element: notice.element ?? null,
+          count: 1,
+          from: notice.version,
+          to: notice.version,
+          // Just before the version it made, whose marker follows it.
+          at: (savedAt.get(notice.version) ?? at) - 0.5,
+        });
+      } else if (notice?.notice === "stale" || notice?.notice === "queued") {
+        rows.push({
+          kind: "note",
+          id: message.id,
+          notice: notice.notice,
+          version: notice.version ?? null,
+          origin: notice.origin ?? "superchat",
+          at,
+        });
+      }
+      continue;
+    }
     const text = messageText(message);
     if (!text) continue;
-    const at = time(message.createdAt);
     if (message.role === "user") {
       const ask = splitElementAsk(text);
       rows.push({
@@ -89,14 +139,13 @@ export function studioThread(
         id: message.id,
         text: ask ? ask.rest : text,
         chip: ask?.label ?? null,
+        slide: ask?.slide ?? null,
         at,
       });
       lastRequest = message.id;
-    } else if (message.role === "bot") {
+    } else {
       rows.push({ kind: "ai", id: message.id, text, at });
       if (lastRequest !== null && !replyAfter.has(lastRequest)) replyAfter.set(lastRequest, at);
-    } else if (!VERSION_RECORD.test(text)) {
-      rows.push({ kind: "note", id: message.id, text, at });
     }
   }
   for (const version of [...versions].reverse()) {
@@ -106,27 +155,21 @@ export function studioThread(
       const reply = replyAfter.get(version.itemId);
       if (reply !== undefined && reply >= at) at = reply + 0.5;
     }
-    if (origin === "you") {
-      rows.push({
-        kind: "hand",
-        id: `hand:${version.id}`,
-        summary: version.editSummary ?? "",
-        element: editedElement(version.editSummary),
-        count: 1,
-        from: version.version,
-        to: version.version,
-        versionIds: [version.id],
-        at,
-      });
-    }
-    rows.push({ kind: "version", id: version.id, version: version.version, origin, at });
+    rows.push({
+      kind: "version",
+      id: version.id,
+      version: version.version,
+      origin,
+      createdAt: version.createdAt,
+      at,
+    });
   }
   // Stable: a request before its own reply, a hand edit before its marker.
   const sorted = rows
     .map((row, index) => ({ row, index }))
     .sort((a, b) => a.row.at - b.row.at || a.index - b.index)
     .map(({ row }) => row);
-  return collapseHandEdits(sorted);
+  return markSince(collapseHandEdits(sorted), seenVersion);
 }
 
 /** Folds `hand, marker, hand, marker` on one element into one hand row and its last marker. */
@@ -137,25 +180,31 @@ function collapseHandEdits(rows: StudioRow[]): StudioRow[] {
     const previous = out.at(-2);
     if (
       row.kind === "hand" &&
-      row.element !== null &&
+      row.elementId !== null &&
       marker?.kind === "version" &&
       marker.origin === "you" &&
       previous?.kind === "hand" &&
-      previous.element === row.element &&
+      previous.elementId === row.elementId &&
       marker.version === previous.to
     ) {
       out.pop();
-      out[out.length - 1] = {
-        ...previous,
-        count: previous.count + row.count,
-        to: row.to,
-        versionIds: [...previous.versionIds, ...row.versionIds],
-      };
+      out[out.length - 1] = { ...previous, count: previous.count + row.count, to: row.to };
       continue;
     }
     out.push(row);
   }
   return out;
+}
+
+function markSince(rows: StudioRow[], seen: number | null): StudioRow[] {
+  if (seen === null) return rows;
+  const first = rows.findIndex(
+    (row) =>
+      (row.kind === "version" && row.version > seen) || (row.kind === "hand" && row.to > seen),
+  );
+  if (first < 0) return rows;
+  const at = rows[first]?.at ?? 0;
+  return [...rows.slice(0, first), { kind: "since", id: "since", at }, ...rows.slice(first)];
 }
 
 /** "3 edits · v1 to v4": the person's requests and hand edits, and the versions they span. */
@@ -176,4 +225,13 @@ export function threadSummary(rows: readonly StudioRow[]): {
     }
   }
   return edits > 0 && last > 0 ? { edits, first, last } : null;
+}
+
+/** The slide the newest request is about, when it named one deck slide; null otherwise. */
+export function requestSlide(rows: readonly StudioRow[]): number | null {
+  for (let index = rows.length - 1; index >= 0; index--) {
+    const row = rows[index];
+    if (row?.kind === "me") return row.slide;
+  }
+  return null;
 }

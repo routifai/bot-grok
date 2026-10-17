@@ -10,6 +10,7 @@ import {
   formatClock,
   helperActivities,
   UNLISTED_GRACE_MS,
+  unlistedHelperIds,
 } from "./workStripState";
 
 afterEach(() => {
@@ -158,8 +159,7 @@ it("keeps the window open while a part the Helper handed on still runs", () => {
 });
 
 it("settles a Helper the loaded feed does not list once the turn ends and a grace has passed", () => {
-  vi.useFakeTimers();
-  vi.setSystemTime(Date.parse(at(10)));
+  const foundAt = Date.parse(at(10));
   const old = { helperId: "h-old", title: "Old", status: "in_progress" };
   const helpers = [old];
   const messages = [
@@ -170,14 +170,21 @@ it("settles a Helper the loaded feed does not list once the turn ends and a grac
     message("ask-2", "user", 12),
     message("reply-2", "bot", 13),
   ];
-  // Found missing just now: it may have started a moment ago.
-  expect(deriveWorkStrip(helpers, [], Date.now()).kind).toBe("working");
-  vi.setSystemTime(Date.parse(at(10)) + UNLISTED_GRACE_MS);
-  expect(deriveWorkStrip(helpers, [], Date.now()).kind).toBe("settled");
-  expect(answeredWhileWorking(messages, []).size).toBe(0);
+  expect(unlistedHelperIds(helpers, [])).toEqual(["h-old"]);
+  expect(unlistedHelperIds(helpers, undefined)).toEqual([]);
+  // Found missing just now (or not yet noted): it may have started a moment ago.
+  expect(deriveWorkStrip(helpers, [], foundAt).kind).toBe("working");
+  const firstMissing = new Map([["h-old", foundAt]]);
+  const later = foundAt + UNLISTED_GRACE_MS;
+  expect(deriveWorkStrip(helpers, [], later, { firstMissing }).kind).toBe("settled");
+  expect(answeredWhileWorking(messages, [], false, later, firstMissing).size).toBe(0);
   // While the turn runs it still counts.
-  expect(deriveWorkStrip(helpers, [], Date.now(), true).kind).toBe("working");
-  expect([...answeredWhileWorking(messages, [], true)]).toEqual(["reply-2"]);
+  expect(deriveWorkStrip(helpers, [], later, { turnRunning: true, firstMissing }).kind).toBe(
+    "working",
+  );
+  expect([...answeredWhileWorking(messages, [], true, later, firstMissing)]).toEqual(["reply-2"]);
+  // Nothing in the Conversation runs: neither does it.
+  expect(deriveWorkStrip(helpers, [], foundAt, { lit: false }).kind).toBe("settled");
 });
 
 const plan = (...statuses: PlanStep["status"][]): PlanStep[] =>

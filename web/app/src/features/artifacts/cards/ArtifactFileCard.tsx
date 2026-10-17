@@ -7,10 +7,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@superchat/ui-web";
-import { Download, ExternalLink, MoreHorizontal } from "lucide-react";
+import { Download, ExternalLink, MoreHorizontal, Palette } from "lucide-react";
 import { lazy, Suspense, useCallback, useState } from "react";
 import { catalog, formatSize } from "../../../components/cards/catalog";
-import { useArtifactPanel, useLatestSavedFile } from "../../../components/cards/context";
+import {
+  useArtifactPanel,
+  useLatestSavedFile,
+  useReplyCardBotId,
+} from "../../../components/cards/context";
 import { MEDIA_ACTION, MediaFrame, MediaTile } from "../../../components/MediaTile";
 import { type ArtifactKind, kindLabel } from "../../../lib/artifact-kind";
 import {
@@ -19,7 +23,9 @@ import {
   opensInNewTab,
 } from "../../../lib/artifact-open";
 import { rpc } from "../../../lib/rpc";
+import { setDeckThemeOpen } from "../../decks/deck-ui-state";
 import { readableFileName } from "../ArtifactFileCard";
+import { artifactKey } from "../editor/editor-state";
 import { useArtifactExtensions } from "../registry";
 import { ArtifactInlinePreview } from "./ArtifactInlinePreview";
 
@@ -84,6 +90,7 @@ function SavedFileCard({
   const [slides, setSlides] = useState<number | null>(null);
   const countSlides = useCallback((text: string) => setSlides(deckSlideCount(text) || null), []);
   const panel = useArtifactPanel();
+  const botId = useReplyCardBotId();
   const newest = useLatestSavedFile(data.name);
   if (!artifactId) return null;
   const version = data.version ?? 1;
@@ -96,6 +103,14 @@ function SavedFileCard({
     if (panel) panel.open(artifactId, title);
     else setOpen(true);
   }
+  // A deck's look was chosen for it (ADR 0025): the panel opens on the Theme gallery to change it.
+  const changeLook =
+    isDeck && panel && botId
+      ? () => {
+          setDeckThemeOpen(artifactKey({ botId, name: data.name }), true);
+          panel.open(artifactId, title);
+        }
+      : null;
   const tileKind = isDeck ? "deck" : data.kind ? kindFromLabel(data.kind) : "file";
   const kindText = isDeck ? kindLabel("deck") : data.kind?.toUpperCase();
   // A page, a deck or an SVG would run at the app's origin in a tab; those open in the editor.
@@ -206,6 +221,12 @@ function SavedFileCard({
               <MoreHorizontal />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-auto min-w-40">
+              {changeLook ? (
+                <DropdownMenuItem data-testid="deck-change-look" onClick={changeLook}>
+                  <Palette />
+                  {t`Change look`}
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuItem onClick={() => void download()}>
                 <Download />
                 {t`Download`}

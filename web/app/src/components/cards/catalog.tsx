@@ -231,12 +231,12 @@ function Ask({
   const pickedRef = useRef(false);
   const chosen = picked ?? answer?.trim() ?? null;
   const locked = chosen !== null || !send;
-  const pick = (label: string) => {
-    if (locked || pickedRef.current) return;
+  const pick = (option: { id: string; label: string } | undefined) => {
+    if (!option || locked || pickedRef.current) return;
     pickedRef.current = true;
+    const { label } = option;
     setPicked(label);
-    const option = data.options.find((o) => o.label === label);
-    if (cardId && option) send?.(label, { cardId, optionId: option.id, label });
+    if (cardId) send?.(label, { cardId, optionId: option.id, label });
     else send?.(label);
   };
   // Options that preview something (deck themes) are drawn by that capability's own tiles.
@@ -256,7 +256,8 @@ function Ask({
           }))}
           chosen={chosen}
           locked={locked}
-          onPick={pick}
+          // The tiles answer with a label (AskPreviewProps): its option.
+          onPick={(label) => pick(data.options.find((o) => o.label === label))}
         />
       ) : (
         <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
@@ -269,7 +270,7 @@ function Ask({
                 variant={isChosen ? "default" : "outline"}
                 disabled={locked && !isChosen}
                 aria-pressed={locked ? isChosen : undefined}
-                onClick={() => pick(option.label)}
+                onClick={() => pick(option)}
                 className={cn(
                   "h-9 justify-start gap-2 px-3 text-[13.5px] sm:justify-center",
                   isChosen && "disabled:opacity-100",

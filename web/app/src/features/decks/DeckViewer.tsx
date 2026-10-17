@@ -60,6 +60,7 @@ function useDeckEditor({
   editing,
   onEdited,
   focusAsk,
+  locked,
 }: ArtifactEditorArgs): ArtifactEditorParts {
   const { t } = useLingui();
   const sources = useContext(DeckSourcesContext);
@@ -98,6 +99,7 @@ function useDeckEditor({
     onEdited,
     post,
     source: sources.edit,
+    locked,
   });
 
   useEffect(() => {
@@ -416,6 +418,7 @@ export function DeckPreview({ html, title }: { html: string; title: string }) {
     bytes,
     editing: false,
     setEditing: noop,
+    locked: false,
     focusAsk: noop,
   });
   return (

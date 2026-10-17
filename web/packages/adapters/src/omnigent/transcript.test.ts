@@ -39,7 +39,8 @@ describe("mapTranscriptPage", () => {
             {
               type: "card",
               card_id: "q1",
-              card: { card: "quote", id: "q1", data: { n: 1 }, fallback: "n 1" },
+              // The engine's card id names the card even when its payload carries none.
+              card: { card: "quote", data: { n: 1 }, fallback: "n 1" },
               pending: true,
             },
           ],
@@ -231,12 +232,45 @@ describe("a file's studio chat (ADR 0024)", () => {
           id: "n1",
           role: "system",
           created_at: 101,
-          blocks: [{ type: "text", text: "Super Chat saved v9 while you were editing" }],
+          blocks: [{ type: "notice", kind: "stale", version: 9, origin: "superchat" }],
         },
-        { id: "a1", role: "assistant", created_at: 102, blocks: [{ type: "text", text: "Done." }] },
+        {
+          id: "n2",
+          role: "system",
+          created_at: 102,
+          blocks: [
+            {
+              type: "notice",
+              kind: "hand_edit",
+              version: 10,
+              element_id: "cover-title",
+              element: "the title",
+              what: "You made the title larger",
+            },
+          ],
+        },
+        { id: "a1", role: "assistant", created_at: 103, blocks: [{ type: "text", text: "Done." }] },
       ]),
     );
-    expect(result.messages.map((message) => message.role)).toEqual(["user", "system", "bot"]);
+    expect(result.messages.map((message) => message.role)).toEqual([
+      "user",
+      "system",
+      "system",
+      "bot",
+    ]);
+    expect(result.messages[1]?.blocks).toEqual([
+      { kind: "notice", notice: "stale", version: 9, origin: "superchat" },
+    ]);
+    expect(result.messages[2]?.blocks).toEqual([
+      {
+        kind: "notice",
+        notice: "hand_edit",
+        version: 10,
+        elementId: "cover-title",
+        element: "the title",
+        what: "You made the title larger",
+      },
+    ]);
   });
 
   it("reads a session.status frame's wait reason, flat or wrapped, and nothing from others", () => {

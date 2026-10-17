@@ -68,6 +68,7 @@ vi.stubGlobal(
   },
 );
 
+import { deriveWorkState, IDLE_TURN } from "../../../features/activity/workState";
 import { Composer } from "./Composer";
 import { useComposerSend } from "./useComposerSend";
 
@@ -75,6 +76,8 @@ const BOT = "b".repeat(32);
 const botRef = { current: BOT as string | undefined };
 const roots: Root[] = [];
 let latest: ReturnType<typeof useComposerSend>;
+/** Whether the Conversation reads as running (Stop shows only then). */
+let running = false;
 const transcript = {
   beginSend: vi.fn(),
   failSend: vi.fn(),
@@ -95,8 +98,17 @@ function Wired() {
   });
   return (
     <Composer
-      running={false}
-      sending={latest.sending}
+      phase={
+        deriveWorkState({
+          turn: { ...IDLE_TURN, running },
+          sending: latest.sending,
+          stopping: latest.stopping,
+          activities: [],
+          turnStartedAt: null,
+        }).phase
+      }
+      stopFailed={latest.stopFailed}
+      onStop={latest.stopRun}
       pendingAttachments={latest.activePendingAttachments}
       uploadStatus={latest.uploadStatus}
       fileInputRef={latest.fileInputRef}
@@ -147,6 +159,8 @@ beforeEach(() => {
     chars: 40,
   });
   api.chats.send.mockReset().mockResolvedValue({ ok: true });
+  api.chats.interrupt.mockReset().mockResolvedValue({ delivered: true });
+  running = false;
 });
 afterEach(async () => {
   for (const root of roots.splice(0)) await act(async () => root.unmount());
@@ -247,4 +261,54 @@ it("shows a failure on the chip with Retry, and never loses the draft", async ()
   await act(async () => retry?.click());
   await settle();
   expect(chip.dataset.status).toBe("ready");
+});
+
+/** A send that lands when the test says so. */
+function heldSend() {
+  const held: { land: () => void } = { land: () => undefined };
+  api.chats.send.mockImplementation(
+    () => new Promise((resolve) => (held.land = () => resolve({ ok: true }))),
+  );
+  return held;
+}
+
+const stopButton = (host: HTMLElement) =>
+  host.querySelector('button[aria-label="Stop"]') as HTMLButtonElement;
+
+it("keeps Stop available while a send is on its way, and stops the turn that message starts", async () => {
+  running = true;
+  const held = heldSend();
+  const { host } = await mountWithAttachmentAndText("long job");
+  await act(async () => (host.querySelector('button[aria-label="Send"]') as HTMLElement).click());
+  await settle();
+  expect(latest.sending).toBe(true);
+  expect(stopButton(host).disabled).toBe(false);
+
+  await act(async () => stopButton(host).click());
+  await settle();
+  // The message is on its way: the Stop waits for it, held meanwhile.
+  expect(stopButton(host).disabled).toBe(true);
+  expect(api.chats.interrupt).not.toHaveBeenCalled();
+
+  await act(async () => held.land());
+  await settle();
+  expect(api.chats.interrupt).toHaveBeenCalledWith({ botId: BOT });
+  expect(latest.sending).toBe(false);
+  expect(latest.sendError).toBeNull();
+  expect(transcript.stopWaiting).toHaveBeenCalled();
+  // It went out: the draft is not given back.
+  expect((host.querySelector("textarea") as HTMLTextAreaElement).value).toBe("");
+});
+
+it("says so quietly when the stop did not land", async () => {
+  running = true;
+  api.chats.interrupt.mockResolvedValue({ delivered: false });
+  const { host } = await mountWithAttachmentAndText("");
+  transcript.stopWaiting.mockClear();
+  await act(async () => stopButton(host).click());
+  await settle();
+  expect(host.querySelector('[data-testid="composer-upload-status"]')?.textContent).toBe(
+    "Couldn't stop",
+  );
+  expect(transcript.stopWaiting).not.toHaveBeenCalled();
 });

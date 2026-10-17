@@ -1,5 +1,7 @@
 import type { MessageArtifact, ThreadMessage } from "@superchat/contracts";
-import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { TurnStatus } from "../../../features/activity";
 import { watchFamily } from "../../../lib/family-stream";
 import {
   mergeNewestTranscriptPage,
@@ -56,6 +58,10 @@ export function useMuseTranscript(
   const pendingRef = useRef<Pending | null>(null);
   /** A reply is expected: from send until the engine has answered and gone idle. */
   const [waiting, setWaiting] = useState(false);
+  /** A Stop landed: the engine's `running` is not believed until its `turnDone` or the next send. */
+  const [stopped, setStopped] = useState(false);
+  /** The newest turn ended stopped, until the next send. */
+  const [cancelled, setCancelled] = useState(false);
   const loadedRef = useRef<(Loaded & { botId: string }) | null>(null);
   const generation = useRef(0);
   const throttle = useRef<number | undefined>(undefined);
@@ -148,6 +154,8 @@ export function useMuseTranscript(
     pendingRef.current = null;
     setPending(null);
     setWaiting(false);
+    setStopped(false);
+    setCancelled(false);
     if (!botId) return;
     firstRead.current = read();
     let connected = false;
@@ -157,8 +165,17 @@ export function useMuseTranscript(
         event.type === "turnDone" ||
         event.type === "messageDelivery"
       ) {
-        if (event.chatId === loadedRef.current?.threadId) {
+        const current = loadedRef.current;
+        if (event.chatId === current?.threadId) {
           if (event.type === "messageDone") markSeenRef.current();
+          if (event.type === "turnDone") {
+            // The turn ended: it no longer runs, a Stop has done its work, and how it ended is
+            // the engine's word. The read that follows says whether another turn started.
+            commit({ ...current, running: false });
+            setStopped(false);
+            // Cut short at a Stop it reads "incomplete": what the Stop said stands then.
+            if (event.status !== "incomplete") setCancelled(event.status === "cancelled");
+          }
           refresh();
         }
       } else if (event.type === "chatReset") {
@@ -199,6 +216,8 @@ export function useMuseTranscript(
     pendingRef.current = next;
     setPending(next);
     setWaiting(true);
+    setStopped(false);
+    setCancelled(false);
   }, []);
 
   /** The send did not go through: nothing is pending or awaited. */
@@ -208,8 +227,14 @@ export function useMuseTranscript(
     setWaiting(false);
   }, []);
 
-  /** The turn was stopped: no reply is coming, though the last message is still the person's. */
-  const stopWaiting = useCallback(() => setWaiting(false), []);
+  /** A Stop landed: no reply is coming (though the last message may still be the person's, and
+   * one already posted stays until the transcript has it), and nothing reads as running until the
+   * turn's `turnDone` or the next send. */
+  const stopWaiting = useCallback(() => {
+    setWaiting(false);
+    setStopped(true);
+    setCancelled(true);
+  }, []);
 
   const loadOlder = useCallback(async () => {
     const current = loadedRef.current;
@@ -302,6 +327,11 @@ export function useMuseTranscript(
     () => (pending ? optimisticMessage(threadId ?? "", pending.text, pending.artifact) : null),
     [pending, threadId],
   );
+  const engineRunning = Boolean(forBot?.running);
+  const turn = useMemo<TurnStatus>(
+    () => ({ running: engineRunning, awaiting: waiting, stopped, cancelled }),
+    [engineRunning, waiting, stopped, cancelled],
+  );
   return {
     /** `null` until the first page has been read. */
     messages: forBot?.messages ?? null,
@@ -309,8 +339,9 @@ export function useMuseTranscript(
     threadId,
     /** The person's message sent but not yet in the transcript. */
     pendingMessage,
-    /** A reply is being written, or is expected for the message just sent. */
-    running: Boolean(forBot?.running) || pending !== null || waiting,
+    /** The turn's status as the engine reported it, for the work state (features/activity
+     * `useWorkState`): the one reading of whether the Conversation runs. */
+    turn,
     beginSend,
     failSend,
     stopWaiting,

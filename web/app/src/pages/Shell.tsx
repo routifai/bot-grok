@@ -1,7 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
-import type { Bot, ThreadMessage } from "@superchat/contracts";
+import type { Bot } from "@superchat/contracts";
 import { AvatarStyleProvider } from "@superchat/ui-web";
-import type { ReactNode } from "react";
 import {
   Suspense,
   useCallback,
@@ -23,7 +22,7 @@ import {
 } from "../components/ai/orb";
 import { ArtifactPanelProvider, AskPreviewsProvider } from "../components/cards/context";
 import { SuperchatLogo } from "../components/SuperchatLogo";
-import { transcriptWork, useSuperchatWork, WorkingPill } from "../features/activity";
+import { transcriptWork, useWorkState, WorkingPill } from "../features/activity";
 import { ApprovalCards } from "../features/approvals";
 import { appsExtension } from "../features/apps";
 import { ArtifactRegistryProvider } from "../features/artifacts/registry";
@@ -41,12 +40,12 @@ import type { ArtifactTarget } from "../lib/artifact-open";
 import { markAfterPaint, markOnce } from "../lib/performance";
 import { rpc } from "../lib/rpc";
 import { ShowMessageProvider } from "../lib/show-message";
-import type { MuseLiveRun } from "../lib/useMuseLiveState";
 import { useTurnRuns } from "../lib/useMuseLiveState";
 import { ContourGround } from "./app/chrome/ContourGround";
 import { ConversationActivity } from "./app/chrome/ConversationActivity";
 import { conversationLayout } from "./app/chrome/conversationLayout";
-import { ConnectedDock, type DockKey, SettingsButton } from "./app/chrome/Dock";
+import type { DockKey } from "./app/chrome/Dock";
+import { ConnectedDock, SettingsButton } from "./app/chrome/Dock";
 import {
   EmptyConversationLead,
   EmptyConversationSuggestions,
@@ -73,22 +72,6 @@ import { DockSheets } from "./app/sheets/DockSheets";
 /** Superchat's Mac window (the old design notes "Window"): the Conversation and the other screens
  * sit flat on the rounded content window; only the sidebar, the inspector and side panels
  * float as glass inside it. */
-/** Every orb brightens while Superchat works (useSuperchatWork). */
-function SuperchatPresence({
-  botId,
-  runs,
-  messages,
-  children,
-}: {
-  botId: string;
-  runs: readonly MuseLiveRun[];
-  messages: readonly ThreadMessage[] | null;
-  children: ReactNode;
-}) {
-  const { orb } = useSuperchatWork({ botId, runs, messages: messages ?? undefined });
-  return <SuperchatPresenceProvider state={orb}>{children}</SuperchatPresenceProvider>;
-}
-
 const MUSE_CONTENT_PANE = "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden";
 
 /** What the capabilities built on artifacts add to the panel and the Library cards. */
@@ -190,13 +173,6 @@ export function ShellPage() {
   );
   // The Muse's Conversation is the engine's transcript (ADR 0009), and so is whether it is working.
   const museTranscript = useMuseTranscript(active?.id, messageScroll);
-  const running = museTranscript.running;
-  const turnRuns = useTurnRuns(`conversation:${active?.id}`, running);
-  const wasRunningRef = useRef(false);
-  useEffect(() => {
-    if (wasRunningRef.current && !running) setFilesRefreshKey((key) => key + 1);
-    wasRunningRef.current = running;
-  }, [running]);
   useReplyAlerts({
     bot: active,
     conversationId: museTranscript.threadId,
@@ -211,11 +187,67 @@ export function ShellPage() {
         : (museTranscript.messages ?? []),
     [museTranscript.messages, museTranscript.pendingMessage],
   );
-  // The header pill counts from the start the running reply's strip counts from (ADR 0023).
-  const runningSince = useMemo(
-    () => (running ? (transcriptWork(transcriptMessages).runningSince ?? null) : null),
-    [running, transcriptMessages],
-  );
+  // Each reply's strip and where the running work began, read once (ADR 0023).
+  const work = useMemo(() => transcriptWork(transcriptMessages), [transcriptMessages]);
+  const {
+    activePendingAttachments,
+    activePendingFolders,
+    attachFolder,
+    removeFolder,
+    setReplyTarget,
+    setReplyQuote,
+    replyTarget,
+    replyQuote,
+    clearReply,
+    sending,
+    stopping,
+    stopFailed,
+    clearStopFailed,
+    sendError,
+    composerSeed,
+    setComposerSeed,
+    attachmentNotice,
+    uploadStatus,
+    fileInputRef,
+    followSignal,
+    failure,
+    dismissComposerError,
+    answerMessage,
+    onAttachmentPick,
+    removeAttachment,
+    retryAttachment,
+    sendMessage,
+    sendCardReply,
+    stopRun,
+  } = useComposerSend({
+    active,
+    activeBotId,
+    userId,
+    messages: transcriptMessages,
+    transcript: museTranscript,
+    openArtifact: chatArtifacts.shown,
+    botsRef,
+    flushPendingBrowserNotifications,
+  });
+  // Whether Superchat is working: the one reading every surface below takes as a prop.
+  const workState = useWorkState({
+    botId: active?.id,
+    turn: museTranscript.turn,
+    sending,
+    stopping,
+    turnStartedAt: work.runningSince ?? null,
+  });
+  const running = workState.running;
+  const turnRuns = useTurnRuns(`conversation:${active?.id}`, workState.turnRunning);
+  // "Couldn't stop" says so only while the work still runs.
+  useEffect(() => {
+    if (!running) clearStopFailed();
+  }, [running, clearStopFailed]);
+  const wasRunningRef = useRef(false);
+  useEffect(() => {
+    if (wasRunningRef.current && !running) setFilesRefreshKey((key) => key + 1);
+    wasRunningRef.current = running;
+  }, [running]);
   // An empty Conversation is a start page: the greeting, the composer centered under it, and
   // a few suggestions; the composer glides down to its dock once the first message lands.
   const startPage =
@@ -280,43 +312,6 @@ export function ShellPage() {
     }
   }, [active, initialBotsLoaded, shellReady, museTranscript.messages]);
 
-  const {
-    activePendingAttachments,
-    activePendingFolders,
-    attachFolder,
-    removeFolder,
-    setReplyTarget,
-    setReplyQuote,
-    replyTarget,
-    replyQuote,
-    clearReply,
-    sending,
-    sendError,
-    composerSeed,
-    setComposerSeed,
-    attachmentNotice,
-    uploadStatus,
-    fileInputRef,
-    followSignal,
-    failure,
-    dismissComposerError,
-    answerMessage,
-    onAttachmentPick,
-    removeAttachment,
-    retryAttachment,
-    sendMessage,
-    sendCardReply,
-    stopRun,
-  } = useComposerSend({
-    active,
-    activeBotId,
-    userId,
-    messages: transcriptMessages,
-    transcript: museTranscript,
-    openArtifact: chatArtifacts.shown,
-    botsRef,
-    flushPendingBrowserNotifications,
-  });
   const replyTargetName = replyTarget
     ? replyTarget.role === "user"
       ? t`You`
@@ -335,7 +330,8 @@ export function ShellPage() {
     <Composer
       key={`bot:${active?.id}`}
       activeName={active?.name}
-      running={running}
+      phase={workState.phase}
+      stopFailed={stopFailed && running}
       pendingAttachments={activePendingAttachments}
       pendingFolders={activePendingFolders}
       onAttachFolder={active ? () => setFolderPickerOpen(true) : undefined}
@@ -345,7 +341,6 @@ export function ShellPage() {
       sendError={sendError}
       failure={failure}
       onDismissError={dismissComposerError}
-      sending={sending}
       fileInputRef={fileInputRef}
       onAttachmentPick={onAttachmentPick}
       onRemoveAttachment={removeAttachment}
@@ -380,7 +375,7 @@ export function ShellPage() {
       <span className="min-w-0 flex-1" />
       <div className="app-no-drag flex shrink-0 items-center gap-2">
         {/* Running work shows here too, for when its strip is scrolled away (ADR 0023). */}
-        <WorkingPill botId={active.id} turnStartedAt={runningSince} />
+        <WorkingPill work={workState} />
         <span className="app-no-drag hidden md:inline-flex">
           <WorkInChip
             align="end"
@@ -444,7 +439,8 @@ export function ShellPage() {
                 messages={transcriptMessages}
                 olderCursor={museTranscript.olderCursor}
                 loadingOlder={museTranscript.loadingOlder}
-                running={running}
+                work={work}
+                workState={workState}
                 onLoadOlder={museTranscript.loadOlder}
                 onShowEarlier={
                   museTranscript.canShowEarlier ? museTranscript.showEarlier : undefined
@@ -550,13 +546,10 @@ export function ShellPage() {
               <div className="muse-wash pt-safe pb-safe ps-safe pe-safe flex h-full md:p-2">
                 {active ? (
                   <OrbHomeProvider home={orbHome}>
-                    <SuperchatPresence
-                      botId={active.id}
-                      runs={turnRuns}
-                      messages={museTranscript.messages}
-                    >
+                    {/* Every orb brightens while Superchat works. */}
+                    <SuperchatPresenceProvider state={running ? "working" : "idle"}>
                       {shell}
-                    </SuperchatPresence>
+                    </SuperchatPresenceProvider>
                   </OrbHomeProvider>
                 ) : (
                   shell

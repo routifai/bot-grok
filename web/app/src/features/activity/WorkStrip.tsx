@@ -3,21 +3,19 @@ import type { Activity, Artifact } from "@superchat/contracts";
 import { presentActivityTitle } from "@superchat/core";
 import { cn } from "@superchat/ui-web";
 import { Check, ChevronDown, TriangleAlert } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { SuperchatOrb } from "../../components/ai/orb";
 import { Shimmer } from "../../components/ai/primitives";
 import { useArtifactPanel } from "../../components/cards/context";
 import { useNow } from "../../components/chrome/useNow";
+import { watchFamily } from "../../lib/family-stream";
 import { rpc } from "../../lib/rpc";
-import {
-  ArtifactPreviewThumbnail,
-  artifactsRevision,
-  notifyArtifactsChanged,
-  subscribeArtifactsChanged,
-} from "../artifacts";
+import { ArtifactPreviewThumbnail } from "../artifacts";
 import { focusActivity } from "./activityFocus";
 import { activityFeedFor } from "./useActivities";
+import { useFirstMissing } from "./useFirstMissing";
 import type { PlanStep } from "./workPlan";
+import type { StripHelper, StripTurn, StripView, WorkLine } from "./workStripState";
 import {
   artifactSaveCount,
   composeStrip,
@@ -25,10 +23,6 @@ import {
   flagsOf,
   formatClock,
   helperActivities,
-  type StripHelper,
-  type StripTurn,
-  type StripView,
-  type WorkLine,
 } from "./workStripState";
 
 /** A file a Helper of this reply saved a version of: shown under the strip. */
@@ -109,14 +103,15 @@ function Flag({ text }: { text: string }) {
 }
 
 /** One step of the plan: done (a filled check that pops in), doing (the orb, bold, with the latest
- * progress sentence shimmering under it), or to do (a hollow circle, muted). */
+ * progress sentence shimmering under it), or to do (a hollow circle, muted). A new step slides in;
+ * reworded words fade in. */
 function PlanRow({ step, progress }: { step: PlanStep; progress: string | null }) {
-  const { t } = useLingui();
   return (
     <li
       data-testid="work-plan-step"
       data-status={step.status}
       data-added={step.added || undefined}
+      data-changed={step.changed || undefined}
       className={cn(
         "grid grid-cols-[20px_minmax(0,1fr)] items-start gap-x-[9px] rounded-[7px] py-1 text-[13.5px] leading-[1.4] transition-colors duration-300",
         step.status === "todo" && "text-ink-3",
@@ -140,11 +135,6 @@ function PlanRow({ step, progress }: { step: PlanStep; progress: string | null }
         <span key={step.text} className="sc-work-in">
           {step.text}
         </span>
-        {step.added ? (
-          <span className="sc-work-tag ms-2 inline-block text-[11px] font-medium text-tint">
-            {t`Plan updated`}
-          </span>
-        ) : null}
       </span>
       {step.status === "doing" && progress ? (
         <span
@@ -340,22 +330,6 @@ export function WorkStripView({
   );
 }
 
-/** The newest list of files, shared by every strip of a Muse: one request each time the files
- * change, however many strips look. */
-const fileLists = new Map<string, { revision: number; rows: Promise<Artifact[]> }>();
-
-function listFiles(botId: string): Promise<Artifact[]> {
-  const revision = artifactsRevision();
-  const cached = fileLists.get(botId);
-  if (cached?.revision === revision) return cached.rows;
-  const rows = rpc.artifacts.list({ botId });
-  fileLists.set(botId, { revision, rows });
-  rows.catch(() => {
-    if (fileLists.get(botId)?.rows === rows) fileLists.delete(botId);
-  });
-  return rows;
-}
-
 /** The files these Helpers saved: those whose newest version is a save (`ai`) or a live update
  * (`update`) by one of them. */
 function draftsOf(rows: readonly Artifact[], helperIds: readonly string[]): DraftFile[] {
@@ -375,23 +349,23 @@ function draftsOf(rows: readonly Artifact[], helperIds: readonly string[]): Draf
     }));
 }
 
-/** Looks when the Helpers have saved, and again whenever the files change: a save seen while the
- * work runs, or a file deleted. Settled strips read the shared list, so they cost no request. */
-function useHelperDrafts(botId: string, listed: readonly Activity[], live: boolean): DraftFile[] {
+/** Looks once the Helpers have saved, and again each time the engine says a file was saved
+ * (`artifactsChanged` on the family stream). */
+function useHelperDrafts(botId: string, listed: readonly Activity[]): DraftFile[] {
   const [drafts, setDrafts] = useState<DraftFile[]>([]);
-  const saves = artifactSaveCount(listed);
+  const [revision, setRevision] = useState(0);
+  const saved = artifactSaveCount(listed) > 0;
   const helperKey = listed.map((activity) => activity.chatId).join(" ");
-  const revision = useSyncExternalStore(subscribeArtifactsChanged, artifactsRevision);
-  const seenSaves = useRef(0);
   useEffect(() => {
-    if (live && saves > seenSaves.current) notifyArtifactsChanged();
-    seenSaves.current = saves;
-  }, [live, saves]);
-  const saved = saves > 0;
+    if (!saved) return;
+    return watchFamily(botId, (event) => {
+      if (event.type === "artifactsChanged") setRevision((value) => value + 1);
+    });
+  }, [botId, saved]);
   useEffect(() => {
     if (!saved || !helperKey) return;
     let cancelled = false;
-    listFiles(botId).then(
+    rpc.artifacts.list({ botId }).then(
       (rows) => {
         if (!cancelled) setDrafts(draftsOf(rows, helperKey.split(" ")));
       },
@@ -405,38 +379,41 @@ function useHelperDrafts(botId: string, listed: readonly Activity[], live: boole
 }
 
 /** The work strip for one reply: its Helpers live from the shared Activity feed, and the reply's
- * own plan and running state (`turn`, from the transcript). */
+ * own plan and running state (`turn`, from the transcript). Nothing in it runs unless the
+ * Conversation's work state says something does (`lit`). */
 export function WorkStrip({
   botId,
   helpers,
   turn,
+  lit,
 }: {
   botId: string;
   helpers: readonly StripHelper[];
   turn?: StripTurn;
+  /** Anything in the Conversation runs (the work state's `running`). */
+  lit: boolean;
 }) {
   const feed = activityFeedFor(botId);
   const { state: feedState } = useSyncExternalStore(feed.subscribe, feed.getSnapshot);
   const activities = feedState.status === "ready" ? feedState.activities : undefined;
   const turnLive = Boolean(turn?.live);
-  const helpersLive = useMemo(
-    () => deriveWorkStrip(helpers, activities, 0, turnLive).kind === "working",
-    [helpers, activities, turnLive],
+  const firstMissing = useFirstMissing(helpers, activities);
+  // The clock ticks while the strip is live; it is told so after the render that finds it live.
+  const [ticking, setTicking] = useState(false);
+  const now = useNow(ticking);
+  const state = useMemo(
+    () => deriveWorkStrip(helpers, activities, now, { turnRunning: turnLive, firstMissing, lit }),
+    [lit, helpers, activities, now, turnLive, firstMissing],
   );
+  const helpersLive = state.kind === "working";
   const live = helpersLive || turnLive;
-  const now = useNow(live);
+  useEffect(() => setTicking(live), [live]);
   const listed = useMemo(() => helperActivities(helpers, activities), [helpers, activities]);
   const view = useMemo(
-    () =>
-      composeStrip(
-        deriveWorkStrip(helpers, activities, now, turnLive),
-        listed.flatMap(flagsOf),
-        turn,
-        now,
-      ),
-    [helpers, activities, listed, turn, turnLive, now],
+    () => composeStrip(state, listed.flatMap(flagsOf), turn, now),
+    [state, listed, turn, now],
   );
-  const drafts = useHelperDrafts(botId, listed, live);
+  const drafts = useHelperDrafts(botId, listed);
   // A Helper that started a moment ago may not be listed yet: ask the feed once more.
   const missing = helpersLive && feedState.status === "ready" && listed.length < helpers.length;
   useEffect(() => {

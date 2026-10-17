@@ -1,6 +1,10 @@
 import { useLingui } from "@lingui/react/macro";
 import { ChatMarkdown } from "@superchat/chat-ui/web";
-import { deckSlideCount, isAttachmentImageMimeType, isDeckArtifactName } from "@superchat/contracts";
+import {
+  deckSlideCount,
+  isAttachmentImageMimeType,
+  isDeckArtifactName,
+} from "@superchat/contracts";
 import { cn } from "@superchat/ui-web";
 import { File, FileText, Presentation, Table2 } from "lucide-react";
 import { type RefObject, useEffect, useRef, useState } from "react";

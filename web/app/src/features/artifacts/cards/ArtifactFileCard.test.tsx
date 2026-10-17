@@ -45,11 +45,25 @@ vi.mock("@superchat/ui-web", () => {
     Button: P,
     DropdownMenu: P,
     DropdownMenuContent: P,
-    DropdownMenuItem: P,
+    DropdownMenuItem: ({
+      children,
+      onClick,
+      "data-testid": testId,
+    }: {
+      children?: ReactNode;
+      onClick?: () => void;
+      "data-testid"?: string;
+    }) => (
+      <button type="button" data-testid={testId} onClick={onClick}>
+        {children}
+      </button>
+    ),
     DropdownMenuTrigger: P,
   };
 });
 
+import { ArtifactPanelProvider, ReplyCardBotProvider } from "../../../components/cards/context";
+import { readDeckThemeOpen, resetDeckUi } from "../../decks/deck-ui-state";
 import { ArtifactFileCard } from "./ArtifactFileCard";
 
 const hosts: HTMLElement[] = [];
@@ -102,4 +116,29 @@ it("marks a draft a Helper is still writing as Updating, in place of its version
   const done = render(data);
   expect(done.querySelector("[data-testid=artifact-updating]")).toBeNull();
   expect(done.querySelector("[data-testid=artifact-version]")?.textContent).toBe("v3");
+});
+
+it("a deck's card offers Change look: the panel opens on the Theme gallery (ADR 0025)", () => {
+  const open = vi.fn();
+  const host = document.createElement("div");
+  document.body.append(host);
+  hosts.push(host);
+  act(() =>
+    createRoot(host).render(
+      <ArtifactPanelProvider value={{ openId: null, open, close: () => {} }}>
+        <ReplyCardBotProvider botId="bot-1">
+          <ArtifactFileCard data={{ name: "q3.deck.html", artifactId: "art-1" }} title="Q3" />
+        </ReplyCardBotProvider>
+      </ArtifactPanelProvider>,
+    ),
+  );
+  act(() => (host.querySelector('[data-testid="deck-change-look"]') as HTMLElement).click());
+  expect(open).toHaveBeenCalledWith("art-1", "Q3");
+  expect(readDeckThemeOpen("bot-1:q3.deck.html")).toBe(true);
+  resetDeckUi();
+});
+
+it("only a deck offers Change look", () => {
+  const host = render({ name: "plan.html", artifactId: "art-9" });
+  expect(host.querySelector('[data-testid="deck-change-look"]')).toBeNull();
 });

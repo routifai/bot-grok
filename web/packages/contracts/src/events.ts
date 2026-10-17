@@ -81,6 +81,21 @@ export const MessageBlock = z.discriminatedUnion("kind", [
   }),
   z.object({ kind: z.literal("meta"), text: z.string() }),
   z.object({
+    /** A runtime line in a file's studio chat (ADR 0024), as structure: the client words it. */
+    kind: z.literal("notice"),
+    /** `hand_edit`: a version made by hand; `version`: one saved elsewhere or restored;
+        `stale`: one saved elsewhere while the studio was editing; `queued`: a turn waits. */
+    notice: z.enum(["hand_edit", "version", "stale", "queued"]),
+    version: z.number().int().positive().optional(),
+    /** A hand edit's element (`data-superchat-id`) and its name ("the title"). */
+    elementId: z.string().optional(),
+    element: z.string().optional(),
+    /** A hand edit in plain words, built by the engine ("You made the title larger"). */
+    what: z.string().optional(),
+    /** Who saved a `stale` version. */
+    origin: z.enum(["superchat", "update"]).optional(),
+  }),
+  z.object({
     /** A turn that failed or was cut short. The engine sends a code, never wording; the client
         maps it to its own short copy. */
     kind: z.literal("error"),

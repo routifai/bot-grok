@@ -230,7 +230,7 @@ async function renderShell(initialBootstrap: ReturnType<typeof bootstrap>) {
 beforeEach(() => {
   engine.transcript.mockReset().mockImplementation(() => new Promise(() => undefined));
   engine.send.mockReset().mockResolvedValue({ ok: true });
-  engine.interrupt.mockReset().mockResolvedValue({ ok: true });
+  engine.interrupt.mockReset().mockResolvedValue({ delivered: true });
 });
 
 it("shows the conversation chrome: the dock, no sidebar or chat list, no Goals, Feed or Ideas", async () => {
@@ -348,6 +348,46 @@ it("sends to the engine's Conversation and shows the message at once", async () 
     // The engine has not recorded it yet, and the person already sees it.
     expect(page.container.textContent).toContain("and the receipt?");
     expect(page.container.querySelector('[data-testid="muse-live-row"]')).toBeTruthy();
+  } finally {
+    await page.cleanup();
+  }
+});
+
+it("reads one work state: the header pill, the working row and Stop light and settle together", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  engine.transcript.mockResolvedValue({
+    threadId: "conv",
+    messages: [
+      {
+        id: "u1",
+        threadId: "conv",
+        seq: 0,
+        role: "user",
+        blocks: [{ kind: "text", text: "make the deck" }],
+        createdAt: new Date().toISOString(),
+      },
+    ],
+    olderCursor: null,
+    running: true,
+  });
+  const page = await renderShell(bootstrap());
+  const lit = () => ({
+    pill: Boolean(page.container.querySelector('[data-testid="working-pill"]')),
+    row: Boolean(page.container.querySelector('[data-testid="muse-live-row"]')),
+    stop: Boolean(page.container.querySelector('button[aria-label="Stop"]')),
+  });
+  try {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(lit()).toEqual({ pill: true, row: true, stop: true });
+    await act(async () => {
+      (page.container.querySelector('button[aria-label="Stop"]') as HTMLButtonElement).click();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(engine.interrupt).toHaveBeenCalledWith({ botId: "bot-1" });
+    // The engine still says its turn runs; the Stop landed, so nothing reads as running.
+    expect(lit()).toEqual({ pill: false, row: false, stop: false });
   } finally {
     await page.cleanup();
   }

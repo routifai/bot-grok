@@ -9,7 +9,7 @@ import type {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { rpc } from "../../../../lib/rpc";
 import type { ArtifactEditorHistory } from "../../registry";
-import { isArtifactLocked, registerEditorFlush, takeOwnVersion } from "../editor-state";
+import { registerEditorFlush, takeOwnVersion } from "../editor-state";
 import { type CommitOutcome, Committer } from "./committer";
 import {
   editConflict,
@@ -55,6 +55,7 @@ export function useHtmlEditor({
   html,
   onEdited,
   post,
+  locked = false,
   source = defaultSource,
 }: {
   /** The file name: where outside edits and the flush hook are registered. */
@@ -67,6 +68,8 @@ export function useHtmlEditor({
   html: string;
   onEdited?: (artifactId: string) => void;
   post: PostToFrame;
+  /** A studio turn is changing the file (ADR 0024): nothing staged by hand is saved. */
+  locked?: boolean;
   source?: HtmlEditSource;
 }) {
   const [targets, setTargets] = useState<DeckEditTarget[]>([]);
@@ -97,8 +100,8 @@ export function useHtmlEditor({
   sourceRef.current = source;
   const postRef = useRef(post);
   postRef.current = post;
-  const fileKeyRef = useRef(fileKey);
-  fileKeyRef.current = fileKey;
+  const lockedRef = useRef(locked);
+  lockedRef.current = locked;
 
   // A new version on screen: ours extends the history, anyone else's ends it.
   useEffect(() => {
@@ -131,7 +134,7 @@ export function useHtmlEditor({
   const save = useCallback(async (patches: HtmlPatch[]): Promise<CommitOutcome> => {
     // A studio turn is changing the file (ADR 0024): no hand edit lands; the frame shows the
     // source again.
-    if (isArtifactLocked(fileKeyRef.current)) {
+    if (lockedRef.current) {
       setReloadKey((n) => n + 1);
       return { ok: false, message: "" };
     }

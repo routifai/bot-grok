@@ -17,6 +17,7 @@ vi.mock("../../../lib/family-stream", () => ({
   },
 }));
 
+import { deriveWorkState } from "../../../features/activity/workState";
 import { useMuseTranscript } from "./useMuseTranscript";
 
 const message = (id: string, role: ThreadMessage["role"] = "user"): ThreadMessage => ({
@@ -41,6 +42,15 @@ function Harness() {
   return null;
 }
 const roots: Root[] = [];
+/** Whether the Conversation reads as running: the work state over the hook's turn status. */
+const running = () =>
+  deriveWorkState({
+    turn: latest.turn,
+    sending: false,
+    stopping: false,
+    activities: [],
+    turnStartedAt: null,
+  }).running;
 
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -136,7 +146,7 @@ it("reads again when the engine says how a message sent mid-turn was taken", asy
 it("is running while the engine says a reply is being written, and idle after", async () => {
   api.chats.transcript.mockResolvedValueOnce(page(["a"], { running: true }));
   await mountHook();
-  expect(latest.running).toBe(true);
+  expect(running()).toBe(true);
 
   api.chats.transcript.mockResolvedValueOnce({
     ...page(["a"]),
@@ -146,17 +156,17 @@ it("is running while the engine says a reply is being written, and idle after", 
     family.listener?.({ type: "turnDone", chatId: "conv", status: "completed" });
     await vi.advanceTimersByTimeAsync(200);
   });
-  expect(latest.running).toBe(false);
+  expect(running()).toBe(false);
 });
 
 it("shows a sent message at once and keeps the Conversation running until the reply is in", async () => {
   api.chats.transcript.mockResolvedValueOnce(page([]));
   await mountHook();
-  expect(latest.running).toBe(false);
+  expect(running()).toBe(false);
 
   await act(async () => latest.beginSend("hello"));
   expect(latest.pendingMessage?.blocks).toEqual([{ kind: "text", text: "hello" }]);
-  expect(latest.running).toBe(true);
+  expect(running()).toBe(true);
 
   // The engine has recorded the message but not started: the pending copy gives way, the row stays.
   api.chats.transcript.mockResolvedValueOnce(page(["m1"]));
@@ -165,7 +175,7 @@ it("shows a sent message at once and keeps the Conversation running until the re
     await vi.advanceTimersByTimeAsync(200);
   });
   expect(latest.pendingMessage).toBeNull();
-  expect(latest.running).toBe(true);
+  expect(running()).toBe(true);
 
   api.chats.transcript.mockResolvedValueOnce({
     ...page(["m1"]),
@@ -175,7 +185,50 @@ it("shows a sent message at once and keeps the Conversation running until the re
     family.listener?.({ type: "messageDone", chatId: "conv", itemId: "m2" });
     await vi.advanceTimersByTimeAsync(200);
   });
-  expect(latest.running).toBe(false);
+  expect(running()).toBe(false);
+});
+
+it("stops reading as running at once after a Stop, until the engine's turn ends", async () => {
+  api.chats.transcript.mockResolvedValue(page(["a"], { running: true }));
+  await mountHook();
+  await act(async () => latest.beginSend("hello"));
+  expect(running()).toBe(true);
+
+  await act(async () => latest.stopWaiting());
+  expect(running()).toBe(false);
+  expect(latest.turn).toMatchObject({ stopped: true, cancelled: true });
+  // A message already posted stays shown until the transcript has it.
+  expect(latest.pendingMessage).not.toBeNull();
+  // A read while the turn unwinds does not light it again, however long it takes: no timer.
+  await act(async () => {
+    family.listener?.({ type: "chatsChanged" });
+    await vi.advanceTimersByTimeAsync(10_000);
+  });
+  expect(running()).toBe(false);
+
+  // The turn's end clears the Stop; how it ended stays until the next send.
+  api.chats.transcript.mockResolvedValue(page(["a", "hello"]));
+  await act(async () => {
+    family.listener?.({ type: "turnDone", chatId: "conv", status: "incomplete" });
+    await vi.advanceTimersByTimeAsync(200);
+  });
+  expect(latest.turn).toMatchObject({ running: false, stopped: false, cancelled: true });
+  expect(latest.pendingMessage).toBeNull();
+
+  await act(async () => latest.beginSend("again"));
+  expect(latest.turn).toMatchObject({ stopped: false, cancelled: false });
+});
+
+it("reads a turn the engine says was cancelled as cancelled", async () => {
+  api.chats.transcript.mockResolvedValue(page(["a"], { running: true }));
+  await mountHook();
+  api.chats.transcript.mockResolvedValue(page(["a"]));
+  await act(async () => {
+    family.listener?.({ type: "turnDone", chatId: "conv", status: "cancelled" });
+  });
+  // The turn's end is believed at once, before the read that follows.
+  expect(latest.turn).toMatchObject({ running: false, cancelled: true });
+  expect(running()).toBe(false);
 });
 
 it("takes a message back when the send fails", async () => {
@@ -184,7 +237,7 @@ it("takes a message back when the send fails", async () => {
   await act(async () => latest.beginSend("hello"));
   await act(async () => latest.failSend());
   expect(latest.pendingMessage).toBeNull();
-  expect(latest.running).toBe(false);
+  expect(running()).toBe(false);
 });
 
 it("reads on a timer only while a reply is expected, whatever the stream does", async () => {

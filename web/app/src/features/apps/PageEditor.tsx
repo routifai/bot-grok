@@ -75,6 +75,7 @@ function usePageEditor({
   setEditing,
   onEdited,
   focusAsk,
+  locked,
 }: ArtifactEditorArgs): ArtifactEditorParts {
   const { t } = useLingui();
   const title = artifact.name;
@@ -97,6 +98,7 @@ function usePageEditor({
     html,
     onEdited,
     post,
+    locked,
   });
   const { targets, head } = editor;
   const words = {

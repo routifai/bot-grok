@@ -1,4 +1,4 @@
-import type { Artifact, ArtifactVersion, ThreadMessage } from "@superchat/contracts";
+import type { Artifact, ArtifactVersion, MessageBlock, ThreadMessage } from "@superchat/contracts";
 import { useEffect, useMemo, useState } from "react";
 import type { ArtifactContent } from "../../features/artifacts/editor/ArtifactEditor";
 import sample from "../../features/artifacts/editor/html/sample-deck.txt?raw";
@@ -68,6 +68,20 @@ const said = (
   createdAt: at(minute),
 });
 
+/** The engine's notice for a studio runtime line (a hand edit, a save elsewhere). */
+const noticed = (
+  id: string,
+  minute: number,
+  notice: Omit<Extract<MessageBlock, { kind: "notice" }>, "kind">,
+): ThreadMessage => ({
+  id,
+  threadId: STUDIO,
+  seq: minute,
+  role: "system",
+  blocks: [{ kind: "notice", ...notice }],
+  createdAt: at(minute),
+});
+
 const MESSAGES: ThreadMessage[] = [
   said("m1", "user", "Make the cover say what moved, not just faster.", 10),
   said("a1", "bot", "Done: the cover now reads “Deploys up 38%, incidents down”.", 12),
@@ -78,7 +92,21 @@ const MESSAGES: ThreadMessage[] = [
     20,
   ),
   said("a2", "bot", "Shortened the subtitle on slide 1 to one line.", 22),
-  said("n1", "system", "Super Chat saved v6 while you were editing; v7 is based on v5", 41),
+  noticed("h4", 30, {
+    notice: "hand_edit",
+    version: 4,
+    elementId: "cover-title",
+    element: "the title",
+    what: "You made the title larger",
+  }),
+  noticed("h5", 31, {
+    notice: "hand_edit",
+    version: 5,
+    elementId: "cover-title",
+    element: "the title",
+    what: "You changed the colour of the title",
+  }),
+  noticed("n1", 41, { notice: "stale", version: 6, origin: "superchat" }),
 ];
 
 type Scenario = "history" | "running" | "queued" | "old";
@@ -145,6 +173,7 @@ export function StudioPreviewPage() {
             sessionId: STUDIO,
             messages: MESSAGES,
             running: scenario === "running" || scenario === "queued",
+            sent: () => {},
             failed: false,
             blockedOn: scenario === "queued" ? "Finishing another file first" : null,
           }}

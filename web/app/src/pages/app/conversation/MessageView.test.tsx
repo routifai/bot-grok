@@ -39,7 +39,7 @@ vi.mock("./message-cards", () => ({
 }));
 vi.mock("../intro", () => ({ FirstRunHint: () => null }));
 const turnWork = vi.hoisted(() => ({
-  strips: new Map<string, unknown>(),
+  strips: new Map<string, TurnStrip>(),
   drawn: new Set<string>(),
 }));
 vi.mock("../../../features/activity", () => ({
@@ -56,9 +56,7 @@ vi.mock("../../../features/activity", () => ({
       data-plan-steps={turn?.plan?.length ?? 0}
     />
   ),
-  useTurnStrip: (messageId: string) => turnWork.strips.get(messageId) ?? null,
-  useDrawnByStrip: () => (messageId: string, index: number) =>
-    turnWork.drawn.has(`${messageId}:${index}`),
+  drawnKey: (messageId: string, index: number) => `${messageId}:${index}`,
 }));
 vi.mock("@superchat/ui-web", () => ({
   Button: () => null,
@@ -71,6 +69,7 @@ vi.mock("@superchat/ui-web", () => ({
 const filesRead = vi.hoisted(() => vi.fn());
 vi.mock("../../../lib/rpc", () => ({ rpc: { files: { read: filesRead } } }));
 
+import type { TurnStrip } from "../../../features/activity";
 import { MessageView } from "./MessageView";
 
 let lastHost: HTMLElement | null = null;
@@ -102,6 +101,8 @@ async function mount(message: ThreadMessage): Promise<HTMLElement> {
         canAnswer={false}
         message={message}
         onAnswer={async () => undefined}
+        strip={turnWork.strips.get(message.id) ?? null}
+        drawn={turnWork.drawn}
       />,
     );
   });
@@ -331,6 +332,16 @@ it("shows a message under the fold whole, with no toggle", async () => {
 });
 
 it("attaches one work strip for the Helpers a reply started, after its text", async () => {
+  const helpers = [
+    { helperId: "h1", title: "Read the files", status: "in_progress" },
+    { helperId: "h2", title: "Write the deck", status: "in_progress" },
+  ];
+  turnWork.strips.set("b1", {
+    helpers,
+    turn: { plan: null, live: true, startedAt: null, endedAt: null },
+    lit: true,
+  });
+  turnWork.drawn.add("b1:1").add("b1:2");
   const host = await mount({
     id: "b1",
     threadId: "s1",
@@ -349,6 +360,8 @@ it("attaches one work strip for the Helpers a reply started, after its text", as
   expect(
     strips[0]?.previousElementSibling?.querySelector('[data-testid="message-bot-bubble"]'),
   ).not.toBeNull();
+  turnWork.strips.clear();
+  turnWork.drawn.clear();
 });
 
 it("draws the reply's plan in its work strip, never as a card of its own", async () => {
@@ -363,6 +376,7 @@ it("draws the reply's plan in its work strip, never as a card of its own", async
       startedAt: null,
       endedAt: null,
     },
+    lit: false,
   });
   turnWork.drawn.add("b2:1");
   try {

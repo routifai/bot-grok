@@ -28,6 +28,7 @@ export function AskBox({
   className,
   onStartTyping,
   initialDraft,
+  onDraftChange,
   note,
 }: {
   chips: readonly AskChip[];
@@ -45,6 +46,8 @@ export function AskBox({
   onStartTyping?: (draft: AskDraft) => void;
   /** Words typed before this box opened: kept, focused, with the caret where it was. */
   initialDraft?: AskDraft;
+  /** Every change to the words, so a box that closes can hand them to the next one. */
+  onDraftChange?: (draft: AskDraft) => void;
   /** Why the request waits ("Finishing another file first"): the status line while it does. */
   note?: string | null;
 }) {
@@ -66,12 +69,24 @@ export function AskBox({
     textarea.current?.focus();
   }, [focusRequest]);
 
+  // An input method composing a character (Japanese, Chinese, Korean) is not typing yet: the
+  // words are handed off only once the composition ends, so it is never cut in half.
+  const composing = useRef(false);
+  const handOff = (box: HTMLTextAreaElement) => {
+    onStartTyping?.({ text: box.value, caret: box.selectionStart ?? box.value.length });
+    setDraft("");
+  };
+
   const working = status.kind === "sending" || status.kind === "editing";
   const send = async () => {
     const text = draft.trim();
     if (!text || working) return;
     setDraft("");
-    if (!(await onSend(text))) setDraft(text);
+    onDraftChange?.({ text: "", caret: 0 });
+    if (!(await onSend(text))) {
+      setDraft(text);
+      onDraftChange?.({ text, caret: text.length });
+    }
   };
 
   return (
@@ -114,9 +129,16 @@ export function AskBox({
               value={draft}
               onChange={(event) => {
                 const { value, selectionStart } = event.target;
-                if (onStartTyping)
-                  onStartTyping({ text: value, caret: selectionStart ?? value.length });
-                else setDraft(value);
+                if (onStartTyping && !composing.current) return handOff(event.target);
+                setDraft(value);
+                onDraftChange?.({ text: value, caret: selectionStart ?? value.length });
+              }}
+              onCompositionStart={() => {
+                composing.current = true;
+              }}
+              onCompositionEnd={(event) => {
+                composing.current = false;
+                if (onStartTyping) handOff(event.currentTarget);
               }}
               onKeyDown={(event) => {
                 const composing = event.nativeEvent.isComposing || event.keyCode === 229;

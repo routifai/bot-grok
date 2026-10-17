@@ -8,7 +8,8 @@ import {
   isIngestableAttachmentMimeType,
   promptTextForWorkspaceAttachments,
 } from "@superchat/core";
-import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { MutableRefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CardAnswer } from "../../../components/cards/context";
 import { notifyAsksChanged } from "../../../features/approvals";
 import type { ShownArtifact } from "../../../features/artifacts/useChatArtifacts";
@@ -22,7 +23,8 @@ import { userFacingError } from "../../../lib/user-facing-error";
 import { markFirstRunSeen } from "../intro";
 import { latestModelFailure } from "./failureNotes";
 import { followHostStart, pollingHostFeed, runWhenHostReady } from "./hostReady";
-import { attachmentsBlockSend, type PendingAttachment, readFileAsBase64 } from "./shared";
+import type { PendingAttachment } from "./shared";
+import { attachmentsBlockSend, readFileAsBase64 } from "./shared";
 import type { useMuseTranscript } from "./useMuseTranscript";
 
 /** The host is asleep and still waking: the upload could not land yet. */
@@ -37,6 +39,10 @@ function isReadTimeout(error: unknown): boolean {
 
 /** One quiet retry covers the host waking up; a second failure is shown, never silent. */
 const SEND_RETRY_DELAY_MS = 2500;
+
+/** The send on its way: Stop cancels what has not gone out yet (`controller`), and waits for a
+ * post already made (`posting`), whose message the engine may have. */
+type SendInFlight = { controller: AbortController; posting: Promise<unknown> | null };
 
 /** The composer's side of the Conversation: attachments, replies, sending, stopping and
  * answering asks. The messages themselves are the engine's (`useMuseTranscript`). */
@@ -84,6 +90,9 @@ export function useComposerSend({
   const [replyTarget, setReplyTarget] = useState<ThreadMessage | null>(null);
   const [replyQuote, setReplyQuote] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  /** The last Stop did not land; cleared by the caller once nothing runs (`clearStopFailed`). */
+  const [stopFailed, setStopFailed] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   // First-run "Try it" chips (pages/app/intro) fill the composer with the
   // example rather than sending it, so the person sees it before it goes out.
@@ -159,12 +168,9 @@ export function useComposerSend({
   // One AbortController per attachment still being prepared: removing the chip, leaving the chat
   // or closing the page cancels its wait for the host and its read.
   const controllersRef = useRef(new Map<string, AbortController>());
-  // The send-time upload (a file picked without a chip read) is cancelled when the page goes.
-  const sendAbort = useRef(new AbortController());
-  useEffect(() => {
-    const controller = sendAbort.current;
-    return () => controller.abort();
-  }, []);
+  // The send in flight: its upload is cancelled by Stop, or when the page goes.
+  const inFlight = useRef<SendInFlight | null>(null);
+  useEffect(() => () => inFlight.current?.controller.abort(), []);
   const abortAttachment = useCallback((id: string) => {
     controllersRef.current.get(id)?.abort();
     controllersRef.current.delete(id);
@@ -315,6 +321,10 @@ export function useComposerSend({
       if (permissionRequest) void permissionRequest.then(flushPendingBrowserNotifications);
       setSending(true);
       setSendError(null);
+      setStopFailed(false);
+      const flight: SendInFlight = { controller: new AbortController(), posting: null };
+      inFlight.current = flight;
+      const { signal } = flight.controller;
       const sentFiles = () => {
         clearReply();
         revokePendingAttachmentPreviews(attachments);
@@ -351,7 +361,7 @@ export function useComposerSend({
                 isStarting: isHostStarting,
                 onStarting: () => setUploadStatus(t`Starting your machine…`),
                 feed: hostFeed,
-                signal: sendAbort.current.signal,
+                signal,
               },
             );
             setUploadStatus(progress);
@@ -379,8 +389,10 @@ export function useComposerSend({
           });
         } else beginSend(shownText);
         showing = true;
-        const post = () =>
-          rpc.chats.send({
+        // A post once made is never cancelled: the engine may already have the message, and a
+        // Stop waits for it instead.
+        const post = () => {
+          flight.posting = rpc.chats.send({
             botId: botTarget,
             text: quoted || undefined,
             attachments: workspaceAttachments.length ? workspaceAttachments : undefined,
@@ -398,10 +410,14 @@ export function useComposerSend({
                 }
               : {}),
           });
+          return flight.posting;
+        };
+        signal.throwIfAborted();
         try {
           await post();
         } catch {
           await new Promise<void>((resolve) => window.setTimeout(resolve, SEND_RETRY_DELAY_MS));
+          signal.throwIfAborted();
           await post();
         }
         sentFiles();
@@ -409,6 +425,8 @@ export function useComposerSend({
         return true;
       } catch (error) {
         if (showing) failSend();
+        // Stopped before it went out: the person's words come back, nothing to report.
+        if (signal.aborted) return false;
         if (activeBotId.current === botTarget) {
           setSendError(
             isHostStarting(error)
@@ -420,6 +438,7 @@ export function useComposerSend({
         return false;
       } finally {
         setUploadStatus(null);
+        if (inFlight.current === flight) inFlight.current = null;
         setSending(false);
       }
     },
@@ -444,25 +463,46 @@ export function useComposerSend({
     (text: string, answer?: CardAnswer) => void sendMessage(text, answer),
     [sendMessage],
   );
-  /** Stops the turn; the engine cancels the messages waiting behind it. */
+  /** Stops the turn, even while a send is on its way: what has not gone out is cancelled (the
+   * person's words come back), and a message already posted lands first so its turn is the one
+   * stopped. The engine cancels the messages waiting behind the turn and stops the running
+   * Helpers. */
   const stopRun = useCallback(async () => {
     const botId = activeBotId.current;
-    if (!botId || sending) return;
-    setSending(true);
+    if (!botId || stopping) return;
+    setStopping(true);
     setSendError(null);
+    setStopFailed(false);
+    const flight = inFlight.current;
+    flight?.controller.abort();
+    let delivered: boolean;
+    let cancelledSend = false;
     try {
-      await rpc.chats.interrupt({ botId });
+      if (flight) {
+        const landed = flight.posting
+          ? await flight.posting.then(
+              () => true,
+              () => false,
+            )
+          : false;
+        cancelledSend = !landed;
+      }
+      ({ delivered } = await rpc.chats.interrupt({ botId }));
     } catch (error) {
       if (activeBotId.current === botId) {
         setSendError(userFacingError(error, t`Failed to stop`));
       }
       return;
     } finally {
-      setSending(false);
+      setStopping(false);
     }
-    if (activeBotId.current === botId) stopWaiting();
+    if (activeBotId.current !== botId) return;
+    // A send cancelled before it went out started no turn: that stop held with nothing to stop.
+    if (delivered || cancelledSend) stopWaiting();
+    else setStopFailed(true);
     refresh();
-  }, [refresh, sending, stopWaiting, t]);
+  }, [refresh, stopping, stopWaiting, t]);
+  const clearStopFailed = useCallback(() => setStopFailed(false), []);
 
   function dismissComposerError() {
     // The strip shows one message at a time: a failed send first, then the failed reply.
@@ -496,6 +536,9 @@ export function useComposerSend({
     replyQuote: replyTarget ? replyQuote : null,
     clearReply,
     sending,
+    stopping,
+    stopFailed,
+    clearStopFailed,
     sendError,
     composerSeed,
     setComposerSeed,

@@ -2,6 +2,7 @@ import type { ThreadMessage } from "@superchat/contracts";
 import { cn } from "@superchat/ui-web";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AskPreviewsProvider } from "../../components/cards/context";
+import { deriveWorkState, IDLE_TURN, transcriptWork } from "../../features/activity";
 import { DeckThemeChoice } from "../../features/decks";
 import type { ArtifactTarget } from "../../lib/artifact-open";
 import { setDeckThemeSources } from "../../lib/deck-themes";
@@ -31,6 +32,18 @@ type DevWindow = Window & {
 export function CardsPreviewPage({ scenario }: { scenario: CardsScenario }) {
   const [messages, setMessages] = useState<ThreadMessage[]>(() => seedMessages(scenario));
   const [running, setRunning] = useState(false);
+  const work = useMemo(() => transcriptWork(messages), [messages]);
+  const workState = useMemo(
+    () =>
+      deriveWorkState({
+        turn: { ...IDLE_TURN, running },
+        sending: false,
+        stopping: false,
+        activities: [],
+        turnStartedAt: work.runningSince ?? null,
+      }),
+    [running, work],
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
   const timer = useRef<number | undefined>(undefined);
   const artifactTarget = useMemo<ArtifactTarget>(() => ({ botId: DEV_BOT_ID }), []);
@@ -99,7 +112,8 @@ export function CardsPreviewPage({ scenario }: { scenario: CardsScenario }) {
             messages={messages}
             olderCursor={null}
             loadingOlder={false}
-            running={running}
+            work={work}
+            workState={workState}
             onLoadOlder={noop}
             onAnswer={noopAsync}
             onSendCard={send}

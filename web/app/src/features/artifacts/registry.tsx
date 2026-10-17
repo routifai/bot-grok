@@ -110,6 +110,8 @@ export interface ArtifactEditorArgs {
   onEdited?: (artifactId: string) => void;
   /** Puts the keyboard in the ask box (an "Ask superchat instead"). */
   focusAsk: () => void;
+  /** A studio turn is changing the file (ADR 0024): no hand edit is saved until it ends. */
+  locked: boolean;
 }
 
 export interface ArtifactEditorParts {

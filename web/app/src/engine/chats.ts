@@ -282,8 +282,7 @@ export const chatsRouter = {
     ),
     interrupt: os.chats.interrupt.handler(async ({ input }) => {
       const sessionId = await targetChat(input);
-      await onSuperChat(interruptOmnigentSession(engineClient(), NO_EMAIL, sessionId));
-      return { ok: true as const };
+      return onSuperChat(interruptOmnigentSession(engineClient(), NO_EMAIL, sessionId));
     }),
     // The Project the Conversation has open (ADR 0008), as the engine reports it on the session.
     project: os.chats.project.handler(async ({ input }) => {

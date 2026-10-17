@@ -18,12 +18,22 @@ export function useChatArtifacts(resetKey: string | undefined): {
   panel: ReactNode;
   shown: ShownArtifact | null;
 } {
-  const [open, setOpen] = useState<{ id: string; title?: string; page?: number } | null>(null);
+  const [open, setOpen] = useState<{
+    id: string;
+    title?: string;
+    page?: number;
+    /** What had focus when it was opened (a file card's Open): focus goes back there. */
+    opener: HTMLElement | null;
+  } | null>(null);
   const [shown, setShown] = useState<ShownArtifact | null>(null);
   const api = useMemo<ArtifactPanelApi>(
     () => ({
       openId: open?.id ?? null,
-      open: (id, title, page) => setOpen({ id, title, page }),
+      open: (id, title, page) => {
+        const opener =
+          document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        setOpen({ id, title, page, opener });
+      },
       close: () => setOpen(null),
     }),
     [open?.id],
@@ -36,6 +46,7 @@ export function useChatArtifacts(resetKey: string | undefined): {
         artifactId={open.id}
         title={open.title}
         page={open.page}
+        opener={open.opener}
         onClose={api.close}
         onShown={setShown}
       />
