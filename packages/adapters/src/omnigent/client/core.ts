@@ -1,12 +1,10 @@
 // Minimal typed client for the Omnigent REST API (engine/omnigent/omnigent/server/API.md,
-// engine/omnigent/openapi.json), used by ./gateway.ts to run a Superchat turn on Omnigent
-// (docs/omnigent-spike.md). Every call carries the identity/proxy
-// headers Omnigent's header auth mode expects — no SDK dependency, just fetch and a tiny
-// SSE line parser.
+// engine/omnigent/openapi.json). Every call carries the identity/proxy headers Omnigent's
+// header auth mode expects — no SDK dependency, just fetch and a tiny SSE line parser.
 import { MODEL_ERROR_COPY, redactSecrets } from "@superchat/core";
 
-/** How to reach the engine (env `OMNIGENT_URL` / `OMNIGENT_PROXY_SECRET`), before a caller's
- * tenant is known. Bind one with `omnigentClientFor` to make calls. */
+/** How to reach the engine, before a caller's tenant is known. Bind one with
+ * `omnigentClientFor` to make calls. */
 export interface OmnigentConnection {
   /** Base URL of the Omnigent server, e.g. "http://127.0.0.1:8000". */
   baseUrl: string;
@@ -15,10 +13,8 @@ export interface OmnigentConnection {
    * engine's single-user local mode). */
   proxySecret: string;
   /** Secret values redacted out of an Omnigent error body before it reaches a thrown Error's
-   * message (./env.ts's `omnigentRedactionSecretsFromEnv` — the same list ./gateway.ts and
-   * ./mirror.ts redact a reply with). `undefined` (not just empty) means "no list was wired
-   * up here" — `throwOnError` then drops the body entirely rather than risking an unredacted
-   * leak. */
+   * message. `undefined` (not just empty) means "no list was wired up here" — `throwOnError`
+   * then drops the body entirely rather than risking an unredacted leak. */
   secrets?: string[];
 }
 

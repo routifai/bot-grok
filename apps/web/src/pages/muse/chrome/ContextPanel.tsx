@@ -98,10 +98,7 @@ function PanelTabBar({ tab, onChange }: { tab: PanelTab; onChange: (tab: PanelTa
 }
 
 /** The panel's one compact identity line: the Muse's name and a small Connection Status pill
- * (the sidebar no longer repeats it, MuseSidebar.tsx). This panel is hidden below `xl`, when
- * the person collapses it, or while a side panel (computer/settings) is open, so it isn't
- * always the one place — `ConversationHeader.tsx`'s compact identity covers exactly those
- * cases, so the Muse's identity still shows once, whichever of the two is visible. */
+ * (the sidebar no longer repeats it, MuseSidebar.tsx). */
 function IdentityHeader({
   museName,
   connection,

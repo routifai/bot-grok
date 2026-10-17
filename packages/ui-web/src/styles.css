@@ -298,7 +298,6 @@
   animation: superchat-organic-eyes-loop-3 7.8s ease-in-out -2.1s infinite;
 }
 
-/* Durations mirror @superchat/core WORKING_AVATAR_DURATIONS_MS (avatar-motion). */
 .superchat-organic-avatar[data-shape-family="0"] .superchat-organic-avatar-body-working {
   animation: superchat-organic-float 1.8s ease-in-out infinite;
 }

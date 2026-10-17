@@ -514,10 +514,9 @@ web page.
 
 ### Layer 4: Superchat adapter, API and web
 
-- **Adapter.** `packages/adapters/src/omnigent/redact.ts:1-6` says the engine already redacts the
-  transcript, items, search, related chats, activities, feed and asks, so those pass through
-  untouched. `redact.ts` adds redaction only for the Goal log and the Memory Profile, claims and
-  notes, which the engine does not redact.
+- **Adapter.** The engine already redacts the transcript, items, search, related chats,
+  activities, feed and asks, so those pass through the adapter untouched; the adapter adds no
+  redaction of its own.
 - **Activity mapping.** `packages/adapters/src/omnigent/activity.ts` maps field names and passes
   `tool` and `detail` through (`:95-103`). It replaces engine error text on failed runs with a plain
   reason, because that text "can be a stack of internals (paths, codes, env names)" (`:105-132`).

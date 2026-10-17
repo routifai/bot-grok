@@ -1,5 +1,4 @@
 import * as z from "zod";
-import { botSecretDestinationSchema } from "./bot-secrets.js";
 import { Id } from "./ids.js";
 import { ReplyCardBlock } from "./reply-cards.js";
 
@@ -54,10 +53,8 @@ export const MessageBlock = z.discriminatedUnion("kind", [
     input: z.enum(["text", "secret"]).optional(),
     /** Why the secret is needed; drives field label on the masked card. */
     purpose: SecretAskPurpose.optional(),
-    // Records what the runtime could produce under either deployment mode, so
-    // an ask persisted before an owner toggles the private-HTTP flag still
-    // validates on replay.
-    credential: botSecretDestinationSchema({ allowPrivateHttpOrigin: true }).optional(),
+    /** Where a secret goes: the card shows the origin, and a `login` also asks for a username. */
+    credential: z.object({ origin: z.string(), auth: z.object({ type: z.string() }) }).optional(),
     status: z.enum(["pending", "answered"]).optional(),
     answer: z.string().optional(),
     actions: z
@@ -81,37 +78,6 @@ export const MessageBlock = z.discriminatedUnion("kind", [
         content: z.string().max(100_000),
       })
       .optional(),
-  }),
-  z.object({
-    kind: z.literal("choice"),
-    question: z.string(),
-    subtitle: z.string().optional(),
-    options: z.array(z.object({ id: z.string(), letter: z.string(), label: z.string() })),
-    /** Set once the user picks an option; renders the picker as answered. */
-    answerId: z.string().optional(),
-  }),
-  z.object({
-    /** Inline app authorization card (Composio-backed): logo, name, one-line
-        description, and an Authorize button that flips to connected. */
-    kind: z.literal("app_connect"),
-    connectorId: z.string().optional(),
-    provider: z.string(),
-    name: z.string(),
-    description: z.string(),
-    logo: z.string().nullable(),
-    status: z.enum(["pending", "connected"]),
-  }),
-  z.object({
-    kind: z.literal("connect"),
-    name: z.string(),
-    initial: z.string(),
-    color: z.string(),
-    status: z.enum(["pending", "connected"]),
-  }),
-  z.object({
-    kind: z.literal("computer"),
-    state: z.string(),
-    text: z.string(),
   }),
   z.object({ kind: z.literal("meta"), text: z.string() }),
   z.object({
@@ -157,13 +123,6 @@ export const MessageBlock = z.discriminatedUnion("kind", [
     anchorItemId: z.string(),
     title: z.string(),
     summary: z.string(),
-  }),
-  z.object({
-    kind: z.literal("child_bot"),
-    botId: z.string(),
-    name: z.string(),
-    title: z.string().optional(),
-    status: z.enum(["created", "archived", "deleted"]),
   }),
   z.object({
     /** Compact card for a remote cloud coding agent (not the bot computer). */
