@@ -47,19 +47,11 @@ _BRIDGE_CONFIG_FILE = "bridge.json"
 # Same filename as ``claude_native_bridge._TOOL_RELAY_FILE``; duplicated
 # because this module is stdlib-only and must not import the bridge.
 _TOOL_RELAY_FILE = "tool_relay.json"
-# MCP server the bridge registers the Omnigent tools under. Must match
-# ``claude_native_bridge._MCP_SERVER_NAME`` (and the codex-native
-# ``[mcp_servers.omnigent]`` table), which the same no-import rule forbids
-# reading directly.
+# MCP server the Omnigent tools are registered under.
 _MCP_SERVER_NAME = "omnigent"
 
 # Harnesses whose tool list spells an MCP tool ``mcp__<server>__<tool>``.
-_MCP_PREFIXING_HARNESSES = frozenset({"claude-sdk", "claude_sdk", "claude-native"})
-# Harnesses that address an MCP tool by its bare name plus a separate
-# server/namespace field, so no prefixed spelling can be quoted at them.
-# Codex flattens the pair for its own logs and hook payloads
-# (``omnigentsys_session_create``), but that spelling is not callable.
-_MCP_NAMESPACED_HARNESSES = frozenset({"codex-native"})
+_MCP_PREFIXING_HARNESSES = frozenset({"claude-sdk", "claude_sdk"})
 
 # Omnigent tools a routed spawn needs. Named in the deny reason only when the
 # session's relay actually advertises the create tool.
@@ -578,24 +570,14 @@ def advertised_relay_tools(bridge_dir: str | Path | None) -> frozenset[str]:
     )
 
 
-def _mcp_discovery_note(harness: str | None) -> str:
+def _mcp_discovery_note() -> str:
     """Explain where the named tools live and how to find them.
 
-    Both native harnesses defer MCP schemas (Claude Code's tool search,
-    codex's ``tool_search``), so the tool is absent from the up-front list
-    and the model concludes it does not exist. Naming the server it comes
-    from is what turns "no such tool" into a lookup.
+    Claude Code defers MCP schemas behind its tool search, so the tool is
+    absent from the up-front list and the model concludes it does not exist.
+    Naming the server it comes from is what turns "no such tool" into a
+    lookup.
     """
-    if harness in _MCP_NAMESPACED_HARNESSES:
-        return (
-            f"Both come from the `{_MCP_SERVER_NAME}` MCP server already attached to "
-            "this session, where they appear as "
-            f"`{_MCP_SERVER_NAME}.{_SPAWN_TOOL}` / `{_MCP_SERVER_NAME}.{_AGENT_LIST_TOOL}` "
-            "— call them by the bare names above with the server as the namespace, and "
-            "do not run the two words together into one identifier. If they are not in "
-            "your up-front tool list your MCP schemas are deferred: search your tools "
-            "for the name instead of concluding it does not exist."
-        )
     return (
         f"Both are MCP tools from the `{_MCP_SERVER_NAME}` server already attached to "
         "this session, not new tools you need to install. If they are not in your "
@@ -657,7 +639,7 @@ def routed_spawn_instruction(
         "instead, which does accept the routed model: "
         f'{create}(agent_id="<id from {agent_list}>", '
         f'model="{model}", message="<the task you were about to spawn>"). '
-        f"{_mcp_discovery_note(requesting_harness)} Make that call now, then continue."
+        f"{_mcp_discovery_note()} Make that call now, then continue."
     )
 
 

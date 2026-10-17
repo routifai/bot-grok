@@ -511,24 +511,8 @@ _RUNNER_ENV_ALLOWLIST: frozenset[str] = frozenset(
         # and sandbox containers run as root — without it the
         # claude-sdk harness cannot start inside managed sandboxes.
         "IS_SANDBOX",
-        # Databricks config selectors are not bearer secrets. They must
-        # reach host-spawned runners so native harnesses resolve the same
-        # profile/config file the host resolved (e.g. a spec-declared
-        # executor.profile propagated into the daemon's env).
-        "DATABRICKS_CONFIG_PROFILE",
-        "DATABRICKS_CONFIG_FILE",
-        # Discovery and invocation must read the same harness config directories.
+        # Discovery and invocation must read the same harness config directory.
         "CLAUDE_CONFIG_DIR",
-        "CODEX_HOME",
-        # DATABRICKS_AUTH_STORAGE selects the token-storage backend ("secure"
-        # OS keychain vs "plaintext" JSON cache) — also a non-secret selector.
-        # Without it a runner falls back to the ~/.databrickscfg [__settings__]
-        # auth_storage default and can resolve a DIFFERENT token store than the
-        # host/daemon (which inherits it via the daemon env's DATABRICKS_ prefix
-        # in cli.py). That mismatch makes the runner read an empty/stale store
-        # and fail to mint a token — the runner tunnel is rejected with HTTP 401
-        # even though the host authenticated fine.
-        "DATABRICKS_AUTH_STORAGE",
         # Runtime config/data-dir selection. These are filesystem PATHS, not
         # secrets, so they're safe to propagate to the host owner's own
         # daemon/runner subprocesses. They MUST propagate so the whole local
@@ -674,9 +658,6 @@ _RUNNER_ENV_ALLOWLIST: frozenset[str] = frozenset(
         # NAMES, not secrets, so allowlisting it leaks nothing on its own.
         # (Literal, not RUNNER_ENV_PASSTHROUGH_ENV_VAR, which is defined below.)
         "OMNIGENT_RUNNER_ENV_PASSTHROUGH",
-        # Executable selection must survive CLI -> daemon -> runner. The
-        # passthrough list is only applied at the second boundary.
-        "OMNIGENT_CODEX_PATH",
         # Credential-env denylists must survive both daemon and runner hops.
         # This carries variable names only; their values still follow normal forwarding.
         "OMNIGENT_PI_ENV_UNSET",
@@ -707,9 +688,7 @@ _RUNNER_ENV_ALLOWLIST_PREFIXES: tuple[str, ...] = ("LC_", "MLFLOW_", "OTEL_", "O
 # key/endpoint, else native Claude launches with a default the gateway
 # rejects), AWS_BEARER_TOKEN_BEDROCK + ANTHROPIC_BEDROCK_BASE_URL for Bedrock mode,
 # and CLAUDE_CODE_OAUTH_TOKEN for `claude setup-token` subscription auth),
-# OPENAI_* for codex / pi (CODEX_ACCESS_TOKEN is the codex
-# CLI's headless ChatGPT-workspace credential, minted in the ChatGPT
-# admin console — Business/Enterprise plans). GIT_TOKEN / GIT_USERNAME feed the sandbox host
+# OPENAI_* for pi. GIT_TOKEN / GIT_USERNAME feed the sandbox host
 # image's git credential helper (deploy/docker/Dockerfile `host`
 # target) so the agent's own fetch/push against a private repository
 # authenticates, not just the launch-time clone. Unlike the rest of
@@ -727,7 +706,6 @@ _BASE_HARNESS_CREDENTIAL_ENV_VARS: frozenset[str] = frozenset(
         "ANTHROPIC_BEDROCK_BASE_URL",
         "AWS_BEARER_TOKEN_BEDROCK",
         "CLAUDE_CODE_OAUTH_TOKEN",
-        "CODEX_ACCESS_TOKEN",
         "OPENAI_API_KEY",
         "OPENAI_BASE_URL",
         "GIT_TOKEN",

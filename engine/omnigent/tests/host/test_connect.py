@@ -2186,9 +2186,6 @@ def test_build_runner_env_allowlists_host_env_and_strips_secrets(tmp_path: Path)
         "HOME": "/home/alice",
         "LANG": "en_US.UTF-8",
         "LC_CTYPE": "UTF-8",
-        "DATABRICKS_CONFIG_PROFILE": "ambient",
-        "DATABRICKS_CONFIG_FILE": "/tmp/databrickscfg",
-        "DATABRICKS_AUTH_STORAGE": "plaintext",
         "ANTHROPIC_API_KEY": "sk-harness",
         "IS_SANDBOX": "1",
         "DATABRICKS_TOKEN": "dapi-secret",
@@ -2224,14 +2221,6 @@ def test_build_runner_env_allowlists_host_env_and_strips_secrets(tmp_path: Path)
     assert env["HOME"] == "/home/alice"
     assert env["LANG"] == "en_US.UTF-8"
     assert env["LC_CTYPE"] == "UTF-8"
-    # Databricks config selectors are allowlisted ambient passthrough —
-    # the ambient value reaches the runner unmodified (no flag override).
-    assert env["DATABRICKS_CONFIG_PROFILE"] == "ambient"
-    assert env["DATABRICKS_CONFIG_FILE"] == "/tmp/databrickscfg"
-    # The token-storage backend selector forwards too — without it the runner
-    # falls back to the ~/.databrickscfg default and can read a different token
-    # store than the host/daemon, failing to mint a token (runner tunnel 401).
-    assert env["DATABRICKS_AUTH_STORAGE"] == "plaintext"
     # Harness credentials forward — they exist FOR the runner's
     # harnesses (laptop: exported keys; managed sandbox: the
     # deployment's injected provider secrets).
@@ -2350,7 +2339,6 @@ def test_build_runner_env_forwards_harness_credentials_and_endpoints() -> None:
         "ANTHROPIC_BASE_URL": "https://gateway.example.com/anthropic",
         "ANTHROPIC_MODEL": "gateway-served-claude",
         "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat-sub",
-        "CODEX_ACCESS_TOKEN": "codex-workspace-token",
         "OPENAI_API_KEY": "sk-o",
         "OPENAI_BASE_URL": "https://gateway.example.com/openai",
         "AWS_BEARER_TOKEN_BEDROCK": "absk-fwd",
@@ -2376,7 +2364,6 @@ def test_build_runner_env_forwards_harness_credentials_and_endpoints() -> None:
         # the gateway rejects Claude Code's own default model.
         "ANTHROPIC_MODEL",
         "CLAUDE_CODE_OAUTH_TOKEN",
-        "CODEX_ACCESS_TOKEN",
         "OPENAI_API_KEY",
         "OPENAI_BASE_URL",
         "AWS_BEARER_TOKEN_BEDROCK",
@@ -2530,30 +2517,6 @@ async def test_harness_stderr_opt_in_survives_daemon_and_runner_hops(
     assert sibling_name not in runner_env
 
 
-def test_build_runner_env_preserves_ambient_databricks_profile() -> None:
-    """
-    Ambient Databricks profile/config-file selectors reach host runners.
-
-    Databricks SDK resolution honors ``DATABRICKS_CONFIG_PROFILE`` and
-    ``DATABRICKS_CONFIG_FILE``. If the host strips either selector, a
-    native Codex runner can fail to resolve a profile that works in the
-    user's shell.
-    """
-    env = _build_runner_env(
-        {
-            "PATH": "/usr/bin:/bin",
-            "DATABRICKS_CONFIG_PROFILE": "oss",
-            "DATABRICKS_CONFIG_FILE": "/tmp/databrickscfg",
-        },
-        server_url="http://server",
-        runner_id="runner_abc",
-        binding_token="tok",
-        workspace="/ws",
-        parent_pid=42,
-    )
-
-    assert env["DATABRICKS_CONFIG_PROFILE"] == "oss"
-    assert env["DATABRICKS_CONFIG_FILE"] == "/tmp/databrickscfg"
 
 
 def test_build_runner_env_propagates_data_dir_paths_not_db_uri() -> None:
@@ -2993,7 +2956,7 @@ def test_handle_install_harness_failure_surfaces_reason(
 
     host = _make_host_process()
     result = host._handle_install_harness(
-        HostInstallHarnessFrame(request_id="i2", harness="codex")
+        HostInstallHarnessFrame(request_id="i2", harness="pi")
     )
 
     assert result.status == "failed"
@@ -3158,7 +3121,7 @@ def test_handle_store_secret_surfaces_core_failure(monkeypatch: pytest.MonkeyPat
     )
     host = _make_host_process()
     result = host._handle_store_secret(
-        HostStoreSecretFrame(request_id="c5", harness="codex", kind="gateway", secret_value="x")
+        HostStoreSecretFrame(request_id="c5", harness="pi", kind="gateway", secret_value="x")
     )
     assert result.status == "failed"
     assert result.error == "a gateway requires a base_url"

@@ -45,7 +45,6 @@ def _stub_cli_fallback_dirs(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.parametrize(
     "key,binary,package",
     [
-        (OPENAI_FAMILY, "codex", "@openai/codex"),
         (hi.PI_KEY, "pi", "@earendil-works/pi-coding-agent"),
     ],
 )
@@ -84,7 +83,6 @@ def test_claude_installs_via_anthropic_native_installer() -> None:
     "key,expected",
     [
         (ANTHROPIC_FAMILY, "curl -fsSL https://claude.ai/install.sh | bash"),
-        (OPENAI_FAMILY, "npm install -g @openai/codex"),
     ],
 )
 def test_install_display_hides_the_bash_c_wrapper(key: str, expected: str) -> None:
@@ -265,7 +263,6 @@ def test_unknown_key_has_no_spec_and_is_not_installed() -> None:
     "harness,binary",
     [
         ("claude-native", "claude"),
-        ("codex-native", "codex"),
         ("pi", "pi"),
     ],
 )
@@ -387,7 +384,7 @@ def test_install_harness_cli_requires_npm(monkeypatch: pytest.MonkeyPatch) -> No
         raise AssertionError("subprocess.run reached despite missing npm")
 
     monkeypatch.setattr(hi.subprocess, "run", _explode)
-    assert hi.install_harness_cli(OPENAI_FAMILY) is False
+    assert hi.install_harness_cli(hi.PI_KEY) is False
 
 
 def test_try_install_harness_cli_missing_npm(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -402,7 +399,7 @@ def test_try_install_harness_cli_missing_npm(monkeypatch: pytest.MonkeyPatch) ->
         "run",
         lambda *a, **k: (_ for _ in ()).throw(AssertionError("should not shell out")),
     )
-    installed, reason = hi.try_install_harness_cli(OPENAI_FAMILY)
+    installed, reason = hi.try_install_harness_cli(hi.PI_KEY)
     assert installed is False
     assert reason is not None and "npm" in reason
     # Claude's installer is bash-based, so its reason names bash, not npm.
@@ -426,7 +423,7 @@ def test_try_install_harness_cli_nonzero_exit(monkeypatch: pytest.MonkeyPatch) -
         "run",
         lambda argv, **k: subprocess.CompletedProcess(args=argv, returncode=1),
     )
-    installed, reason = hi.try_install_harness_cli(OPENAI_FAMILY)
+    installed, reason = hi.try_install_harness_cli(hi.PI_KEY)
     assert installed is False
     assert reason is not None and "code 1" in reason
 
@@ -438,8 +435,8 @@ def test_try_install_harness_cli_success(monkeypatch: pytest.MonkeyPatch) -> Non
     def _which(name: str) -> str | None:
         if name == "npm":
             return "/usr/bin/npm"
-        if name == "codex":
-            return "/usr/bin/codex" if state["installed"] else None
+        if name == "pi":
+            return "/usr/bin/pi" if state["installed"] else None
         return None
 
     def _run(argv: list[str], **k: object):
@@ -448,7 +445,7 @@ def test_try_install_harness_cli_success(monkeypatch: pytest.MonkeyPatch) -> Non
 
     monkeypatch.setattr(hi.shutil, "which", _which)
     monkeypatch.setattr(hi.subprocess, "run", _run)
-    assert hi.try_install_harness_cli(OPENAI_FAMILY) == (True, None)
+    assert hi.try_install_harness_cli(hi.PI_KEY) == (True, None)
 
 
 def test_try_install_harness_cli_success_when_binary_off_path(
@@ -465,11 +462,11 @@ def test_try_install_harness_cli_success_when_binary_off_path(
     """
     fallback_dir = tmp_path / "bin"
     fallback_dir.mkdir()
-    codex = fallback_dir / "codex"
-    codex.write_text("#!/bin/sh\n")
-    codex.chmod(0o755)
+    pi = fallback_dir / "pi"
+    pi.write_text("#!/bin/sh\n")
+    pi.chmod(0o755)
 
-    # npm is on PATH; the installed codex binary never is — only the ladder finds it.
+    # npm is on PATH; the installed pi binary never is — only the ladder finds it.
     monkeypatch.setattr(hi.shutil, "which", lambda name: "/usr/bin/npm" if name == "npm" else None)
     monkeypatch.setattr(_platform, "_cli_fallback_dirs", lambda: (fallback_dir,))
 
@@ -482,8 +479,8 @@ def test_try_install_harness_cli_success_when_binary_off_path(
     monkeypatch.setattr(hi.subprocess, "run", _run)
 
     # Install verdict agrees with readiness: both see it installed.
-    assert hi.try_install_harness_cli(OPENAI_FAMILY) == (True, None)
-    assert hi.harness_cli_installed(OPENAI_FAMILY) is True
+    assert hi.try_install_harness_cli(hi.PI_KEY) == (True, None)
+    assert hi.harness_cli_installed(hi.PI_KEY) is True
 
 
 def test_try_install_prepends_resolved_dir_so_login_can_find_binary(
@@ -501,9 +498,9 @@ def test_try_install_prepends_resolved_dir_so_login_can_find_binary(
     """
     fallback_dir = tmp_path / "nvm" / "bin"
     fallback_dir.mkdir(parents=True)
-    codex = fallback_dir / "codex"
-    codex.write_text("#!/bin/sh\n")
-    codex.chmod(0o755)
+    pi = fallback_dir / "pi"
+    pi.write_text("#!/bin/sh\n")
+    pi.chmod(0o755)
 
     # A PATH that has npm but NOT the fallback dir; use the REAL shutil.which so
     # the prepend is observable via a genuine PATH lookup (what login does).
@@ -519,12 +516,12 @@ def test_try_install_prepends_resolved_dir_so_login_can_find_binary(
         lambda argv, **k: subprocess.CompletedProcess(args=argv, returncode=0),
     )
 
-    # Before: a bare PATH lookup (what harness_login uses) can't find codex.
-    assert shutil.which("codex") is None
-    assert hi.try_install_harness_cli(OPENAI_FAMILY) == (True, None)
+    # Before: a bare PATH lookup (what harness_login uses) can't find pi.
+    assert shutil.which("pi") is None
+    assert hi.try_install_harness_cli(hi.PI_KEY) == (True, None)
     # After: the resolving dir was prepended, so the login step's bare lookup
     # now resolves the binary that was just installed.
-    assert shutil.which("codex") == str(codex)
+    assert shutil.which("pi") == str(pi)
     assert str(fallback_dir) in os.environ["PATH"].split(os.pathsep)
 
 
@@ -538,8 +535,8 @@ def test_install_harness_cli_runs_npm_then_rechecks(monkeypatch: pytest.MonkeyPa
     def _which(name: str) -> str | None:
         if name == "npm":
             return "/usr/bin/npm"
-        if name == "codex":
-            return "/usr/bin/codex" if state["installed"] else None
+        if name == "pi":
+            return "/usr/bin/pi" if state["installed"] else None
         return None
 
     def _run(argv: list[str], *, check: bool = False, timeout: float | None = None):
@@ -550,8 +547,8 @@ def test_install_harness_cli_runs_npm_then_rechecks(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(hi.shutil, "which", _which)
     monkeypatch.setattr(hi.subprocess, "run", _run)
 
-    assert hi.install_harness_cli(OPENAI_FAMILY) is True
-    assert calls == [["npm", "install", "-g", "@openai/codex"]]
+    assert hi.install_harness_cli(hi.PI_KEY) is True
+    assert calls == [["npm", "install", "-g", "@earendil-works/pi-coding-agent"]]
 
 
 def test_install_harness_cli_refreshes_user_local_bin(
@@ -612,7 +609,6 @@ def test_harness_login_skips_when_already_logged_in(monkeypatch: pytest.MonkeyPa
     "key,expected_argv",
     [
         (ANTHROPIC_FAMILY, ["claude", "auth", "login", "--claudeai"]),
-        (OPENAI_FAMILY, ["codex", "login"]),
     ],
 )
 def test_harness_login_runs_cli_login_then_verifies(
@@ -764,7 +760,6 @@ def test_harness_login_false_for_harness_without_login(monkeypatch: pytest.Monke
     "key,expected_argv",
     [
         (ANTHROPIC_FAMILY, ["claude", "auth", "logout"]),
-        (OPENAI_FAMILY, ["codex", "logout"]),
     ],
 )
 def test_harness_logout_runs_cli_logout_then_verifies(
@@ -821,33 +816,6 @@ def test_harness_cli_logged_in_uses_claude_json_verdict(
     assert hi.harness_cli_logged_in(ANTHROPIC_FAMILY) is expected
 
 
-@pytest.mark.parametrize(
-    "stdout,returncode,expected",
-    [
-        ("Logged in using an API key - sk-***", 0, True),  # non-JSON, exit 0
-        ("Not logged in", 1, False),  # non-JSON, exit 1
-    ],
-)
-def test_harness_cli_logged_in_codex_uses_exit_code(
-    monkeypatch: pytest.MonkeyPatch, stdout: str, returncode: int, expected: bool
-) -> None:
-    """Codex's `login status` is non-JSON, so the exit code is the verdict.
-
-    Codex exits 0 only when logged in; failure means the non-JSON fallback
-    branch misread the status.
-    """
-    monkeypatch.setattr(hi.shutil, "which", lambda name: f"/usr/bin/{name}")
-
-    def _run(argv: list[str], **k: object):
-        assert argv == ["codex", "login", "status"]  # the status subcommand
-        return subprocess.CompletedProcess(
-            args=argv, returncode=returncode, stdout=stdout, stderr=""
-        )
-
-    monkeypatch.setattr(hi.subprocess, "run", _run)
-    assert hi.harness_cli_logged_in(OPENAI_FAMILY) is expected
-
-
 def test_harness_cli_logged_in_false_when_binary_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     """No CLI binary on PATH → False without spawning a status check."""
     monkeypatch.setattr(hi.shutil, "which", lambda name: None)
@@ -877,8 +845,8 @@ def test_harness_cli_logged_in_false_for_harness_without_status(
 
 def test_ui_install_key_resolves_bare_and_native_spellings() -> None:
     """The UI may pass either the bare id or the native executor spelling."""
-    assert hi.ui_install_key("codex") == OPENAI_FAMILY
-    assert hi.ui_install_key("codex-native") == OPENAI_FAMILY
+    assert hi.ui_install_key("pi") == hi.PI_KEY
+    assert hi.ui_install_key("pi-native") == hi.PI_KEY
     assert hi.ui_install_key("claude-native") == ANTHROPIC_FAMILY
     # The in-process SDK harness has nothing to install.
     assert hi.ui_install_key("claude-sdk") is None
@@ -886,31 +854,15 @@ def test_ui_install_key_resolves_bare_and_native_spellings() -> None:
 
 def test_ui_installable_harnesses_includes_native_spellings() -> None:
     installable = hi.ui_installable_harnesses()
-    assert {"claude", "codex", "pi"} <= installable
-    assert {"claude-native", "codex-native"} <= installable
+    assert {"claude", "pi"} <= installable
+    assert {"claude-native", "pi-native"} <= installable
     assert "claude-sdk" not in installable
-
-
-def test_ui_setup_steps_install_then_ui_auth_for_codex() -> None:
-    """Codex: one-click install, then a UI-authable auth step. The step opens
-    the credential form (action ``"auth"``) whose options include the ``codex
-    login`` subscription; it stays status-tracked (``"authed"``)."""
-    steps = hi.ui_setup_steps("codex")
-    assert [s.kind for s in steps] == ["install", "auth"]
-    install, auth = steps
-    assert install.action == "install"
-    assert install.status_key == "installed"
-    assert install.command is None
-    assert auth.action == "auth"
-    assert auth.title == "Set up authentication"
-    assert auth.command == "codex login"
-    assert auth.status_key == "authed"
 
 
 def test_ui_setup_steps_native_spelling_matches_bare() -> None:
     """The native spelling yields the same steps as the bare id."""
-    assert [s.as_dict() for s in hi.ui_setup_steps("codex-native")] == [
-        s.as_dict() for s in hi.ui_setup_steps("codex")
+    assert [s.as_dict() for s in hi.ui_setup_steps("pi-native")] == [
+        s.as_dict() for s in hi.ui_setup_steps("pi")
     ]
 
 
@@ -931,7 +883,7 @@ def test_ui_setup_steps_generic_for_non_installable() -> None:
     steps = hi.ui_setup_steps("claude-sdk")
     assert len(steps) == 1
     assert steps[0].action == "setup"
-    assert steps[0].command == "omni setup"
+    assert steps[0].command is None
     assert steps[0].status_key is None
 
 
@@ -942,7 +894,6 @@ def test_ui_setup_steps_generic_for_non_installable() -> None:
     "key,min_version,max_version_exclusive",
     [
         (ANTHROPIC_FAMILY, "2.1.161", None),
-        (OPENAI_FAMILY, "0.137.0", None),
         (hi.PI_KEY, "0.84.2", None),
     ],
 )
@@ -960,7 +911,6 @@ def test_versioned_specs_declare_bounds(
     "key",
     [
         ANTHROPIC_FAMILY,
-        OPENAI_FAMILY,
         hi.PI_KEY,
     ],
 )
@@ -979,30 +929,6 @@ def test_harness_cli_installed_checks_minimum_for_other_versioned_specs(
 
     monkeypatch.setattr(hi.subprocess, "run", _run)
     assert hi.harness_cli_installed(key) is False
-
-
-def test_the_codex_launch_floor_accepts_the_ci_pinned_cli(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """0.139.0 must read as installed, not ``version-too-low``.
-
-    A too-low codex makes ``harness_is_configured`` false, and the host then
-    refuses EVERY codex launch — plain sessions included — with a misleading
-    "run omni setup". Smart Routing's spawn hook wants 0.145.0, but that is
-    enforced where the hook is registered, so an older CLI loses only the
-    spawn gate.
-    """
-    monkeypatch.setattr(hi.shutil, "which", lambda name: f"/usr/bin/{name}")
-
-    def _run(argv: list[str], **k: object) -> subprocess.CompletedProcess[str]:
-        if len(argv) >= 2 and argv[1] == "--version":
-            return subprocess.CompletedProcess(
-                args=argv, returncode=0, stdout="codex-cli 0.139.0\n", stderr=""
-            )
-        raise AssertionError(f"unexpected subprocess: {argv!r}")
-
-    monkeypatch.setattr(hi.subprocess, "run", _run)
-    assert hi.harness_cli_installed(OPENAI_FAMILY) is True
 
 
 def test_harness_cli_installed_true_when_version_in_range(
@@ -1080,6 +1006,6 @@ def test_missing_harness_cli_flags_outdated_version(
         raise AssertionError(f"unexpected subprocess: {argv!r}")
 
     monkeypatch.setattr(hi.subprocess, "run", _run)
-    spec = hi.missing_harness_cli("codex-native")
+    spec = hi.missing_harness_cli("pi-native")
     assert spec is not None
-    assert spec.binary == "codex"
+    assert spec.binary == "pi"

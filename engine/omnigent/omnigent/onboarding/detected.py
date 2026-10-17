@@ -1,7 +1,7 @@
 """Turn ambient-detected credentials into first-class provider entries.
 
 :mod:`omnigent.onboarding.ambient` discovers credentials already on the
-machine (env API keys, logged-in ``claude`` / ``codex`` CLIs, a local
+machine (env API keys, a logged-in ``claude`` CLI, a local
 Ollama). This module bridges those raw detections into the kind-typed
 ``providers:`` shape consumed by :mod:`omnigent.onboarding.provider_config`,
 so they are treated as real providers everywhere — the ``/model`` readout
@@ -23,19 +23,16 @@ Two surfaces:
 from __future__ import annotations
 
 from omnigent.onboarding.ambient import DetectedProvider, detect_providers
-from omnigent.onboarding.configure_models import (
-    build_cli_config_provider_entry,
-    build_key_provider_entry,
-    build_subscription_provider_entry,
-    default_base_url_for_family,
-    key_provider_endpoint,
-)
 from omnigent.onboarding.provider_config import (
     ANTHROPIC_FAMILY,
     LOCAL_KIND,
     OPENAI_FAMILY,
     SUBSCRIPTION_KIND,
+    build_key_provider_entry,
+    build_subscription_provider_entry,
+    default_base_url_for_family,
     get_default_provider,
+    key_provider_endpoint,
     load_providers,
     provider_families,
     set_default_provider,
@@ -47,7 +44,7 @@ _FAMILIES = (ANTHROPIC_FAMILY, OPENAI_FAMILY)
 
 # Top-level config key listing detection names the user has dismissed by
 # removing the adopted entry. A detection whose backing credential cannot be
-# "signed out" (an env API key, a codex config.toml provider — anything
+# "signed out" (an env API key — anything
 # non-subscription) would otherwise bounce straight back on the next
 # configure open, making Remove a no-op. Both merge surfaces below skip
 # dismissed names; re-adding the credential (the add menu's detected option)
@@ -59,8 +56,8 @@ def dismissed_detection_names(config: dict[str, object]) -> frozenset[str]:
     """Return the detection names the user has dismissed in *config*.
 
     :param config: The parsed config mapping, e.g.
-        ``{"dismissed_detections": ["codex-databricks"], "providers": {...}}``.
-    :returns: The dismissed names, e.g. ``frozenset({"codex-databricks"})``;
+        ``{"dismissed_detections": ["openai"], "providers": {...}}``.
+    :returns: The dismissed names, e.g. ``frozenset({"openai"})``;
         empty when the key is absent or not a list (a malformed value is
         treated as "nothing dismissed" — the next dismissal write self-heals
         it into a proper list).
@@ -69,30 +66,6 @@ def dismissed_detection_names(config: dict[str, object]) -> frozenset[str]:
     if not isinstance(raw, list):
         return frozenset()
     return frozenset(name for name in raw if isinstance(name, str))
-
-
-def codex_config_provider_dismissed(config: dict[str, object]) -> bool:
-    """Whether the host codex config's custom default provider was dismissed.
-
-    The codex executor bridges the user's ``~/.codex/config.toml`` into the
-    per-session ``CODEX_HOME``, so when a launch resolves NO provider entry
-    at all, the file's custom default ``model_provider`` still routes the
-    session. After the user Removed (dismissed) that detected provider, the
-    launch must neutralize it (pin codex's built-in ``openai`` provider)
-    instead of silently routing through the very credential the user
-    removed. This is the launch-side predicate for that case; it is
-    deliberately scoped to a *dismissed* provider — an undetectable custom
-    provider (e.g. ``env_key`` auth) keeps its config.toml routing.
-
-    :param config: The parsed config mapping (``dismissed_detections`` key).
-    :returns: ``True`` when ``~/.codex/config.toml`` selects a custom,
-        self-contained-auth default provider AND its detection name is
-        dismissed in *config*.
-    """
-    from omnigent.onboarding.ambient import codex_config_detection
-
-    det = codex_config_detection()
-    return det is not None and det.name in dismissed_detection_names(config)
 
 
 def _drop_dismissed(
@@ -121,17 +94,8 @@ def _synthesize_entry(det: DetectedProvider) -> dict[str, object] | None:
         ``key`` detection).
     """
     if det.kind == "subscription":
-        # ``det.name`` is the CLI login (``"claude"`` / ``"codex"``).
+        # ``det.name`` is the CLI login, e.g. ``"claude"``.
         return build_subscription_provider_entry(det.name)
-
-    if det.kind == "cli-config":
-        # A custom model provider defined (and authenticated) by the codex
-        # CLI's own config.toml — pin it by name; the credential stays in
-        # that file. ``model_provider`` is always set on this kind (the
-        # detector constructs it from the provider id it just matched).
-        if det.model_provider is None:
-            return None
-        return build_cli_config_provider_entry("codex", det.model_provider, det.display_name)
 
     if det.name == "vertex-claude":
         # Claude Code on Vertex AI — the CLI authenticates via its own env
@@ -219,8 +183,8 @@ def synthesize_detected_entries(
         :func:`omnigent.onboarding.ambient.detect_providers`, in priority
         order.
     :returns: Raw provider entries keyed by the detection name, e.g.
-        ``{"anthropic": {"kind": "key", ...}, "codex": {"kind":
-        "subscription", "cli": "codex"}}``. Only detections that map to no
+        ``{"anthropic": {"kind": "key", ...}, "claude": {"kind":
+        "subscription", "cli": "claude"}}``. Only detections that map to no
         omnigent family at all (a ``family``-less :class:`DetectedProvider`)
         are skipped. The mapping preserves detection order.
     """

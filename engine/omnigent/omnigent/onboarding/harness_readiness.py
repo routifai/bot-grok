@@ -50,7 +50,6 @@ from omnigent.onboarding.provider_config import (
     _HARNESS_FAMILY,
     ANTHROPIC_FAMILY,
     BEDROCK_KIND,
-    CLI_CONFIG_KIND,
     OPENAI_FAMILY,
     PI_SURFACE,
     SUBSCRIPTION_KIND,
@@ -138,15 +137,11 @@ def _harness_availability_core(harness: str) -> HarnessAvailability:
 
 # Provider kinds the in-process SDK executors cannot consume. Launch's
 # spawn-env builder (``configure_agent_harness_with_provider`` in
-# :mod:`omnigent.runtime.workflow`) rejects a ``cli-config`` entry for
-# anything but the ``codex`` CLI harness (it pins a provider table inside
-# ``~/.codex/config.toml`` that only that CLI reads) and accepts ``bedrock``
-# only for native ``omnigent claude``; a ``subscription`` is the CLI's own
+# :mod:`omnigent.runtime.workflow`) rejects ``bedrock``; a ``subscription``
+# is the CLI's own
 # login, unusable outside that CLI. Counting any of them for an SDK harness
 # would report ready for a source the launch would reject.
-_SDK_UNUSABLE_PROVIDER_KINDS: frozenset[str] = frozenset(
-    {SUBSCRIPTION_KIND, CLI_CONFIG_KIND, BEDROCK_KIND}
-)
+_SDK_UNUSABLE_PROVIDER_KINDS: frozenset[str] = frozenset({SUBSCRIPTION_KIND, BEDROCK_KIND})
 
 
 def _provider_entry_locally_credentialed(
@@ -190,8 +185,8 @@ def _provider_entry_locally_credentialed(
     candidates = (family,) if family is not None else (ANTHROPIC_FAMILY, OPENAI_FAMILY)
     inline = [name for name in candidates if name in provider.families]
     if not inline:
-        # Nothing to resolve locally (``databricks`` / ``cli-config`` kinds,
-        # or a family served structurally rather than inline).
+        # Nothing to resolve locally (a family served structurally rather
+        # than inline).
         return True
     for name in inline:
         try:
@@ -270,7 +265,7 @@ def _family_fallback_provider_configured(harness: str) -> bool:
     so automatically detected local providers — a reachable keyless Ollama —
     count exactly as they do at launch. Provider kinds the SDK launch would
     reject (:data:`_SDK_UNUSABLE_PROVIDER_KINDS` — ``subscription``,
-    ``cli-config``, ``bedrock``) are skipped, and an entry counts only when
+    ``bedrock``) are skipped, and an entry counts only when
     its credential resolves locally
     (:func:`_provider_entry_locally_credentialed`). Local config/env reads
     plus ambient detection's localhost-only probes; never raises.

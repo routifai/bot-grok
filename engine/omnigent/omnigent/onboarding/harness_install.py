@@ -1,4 +1,4 @@
-"""Harness CLI install + auth operations — shared by ``run`` and ``configure``.
+"""Harness CLI install + auth operations for the host.
 
 A coding harness is "ready" along two independent axes:
 
@@ -6,21 +6,14 @@ A coding harness is "ready" along two independent axes:
   :func:`omnigent.onboarding.provider_config.default_provider_for_harness`
   over the ambient-merged config). That lives in the provider layer.
 - **installed** — the harness's CLI binary is on ``PATH``. This module owns
-  that axis, mirroring how ``ucode`` checks (``shutil.which(binary)``) and the
-  npm packages it installs.
-
-``omni setup`` uses this to mark an uninstalled harness and
-offer to install it; the first-run ``omnigent run`` flow uses the same map so
-the two surfaces never disagree about what the machine can launch.
+  that axis (``shutil.which(binary)``) and the packages it installs.
 
 This module also owns the per-harness **CLI binary name**, so it is the natural
 home for driving each harness's own *subscription login/logout* commands
-(:func:`harness_login` / :func:`harness_logout`) — letting ``configure
-harnesses`` be the single place a user signs in or out of Claude / Codex rather
-than running ``codex login`` / ``claude auth login`` by hand.
+(:func:`harness_login` / :func:`harness_logout`).
 
 The "is the CLI logged in?" verdict (:func:`harness_cli_logged_in`) asks the
-CLI itself (``claude auth status`` / ``codex login status``) rather than
+CLI itself (``claude auth status``) rather than
 reading a credential file, because the file location is **platform-specific**
 — Claude Code stores its OAuth tokens in the macOS Keychain (not
 ``~/.claude/.credentials.json``) on macOS, so a file check would falsely report
@@ -49,10 +42,9 @@ from packaging.version import InvalidVersion, Version
 
 from omnigent._platform import resolve_cli_binary
 from omnigent.harness_install_spec import HarnessInstallSpec, SetupStep
-from omnigent.onboarding.provider_config import ANTHROPIC_FAMILY, OPENAI_FAMILY
+from omnigent.onboarding.provider_config import ANTHROPIC_FAMILY
 
-# Pi is not a configure-menu family (the menu is Claude + Codex), but the
-# first-run ``run`` flow falls back to it, so it has install metadata too.
+# Pi is keyed by its own name rather than a model family (it consumes both).
 PI_KEY = "pi"
 
 # Minimum CLI versions for native harnesses where the runtime has a known
@@ -67,9 +59,6 @@ PI_KEY = "pi"
 # - claude: `--mcp-config` (required by the native bridge) introduced long
 #   before 2026-06-01. The first Claude Code release after the cutoff is
 #   2.1.161, so use that as the supported floor.
-# - codex: native policy hook requires >= 0.129.0, but that shipped before
-#   2026-06-01. The first Codex release after the cutoff is 0.137.0.
-_CODEX_MIN_VERSION = "0.137.0"
 _PI_MIN_VERSION = "0.84.2"
 _CLAUDE_MIN_VERSION = "2.1.161"
 
@@ -80,11 +69,9 @@ _CLAUDE_MIN_VERSION = "2.1.161"
 _CLAUDE_INSTALL_HINT = "curl -fsSL https://claude.ai/install.sh | bash"
 
 
-# Keyed by harness family (Claude=anthropic, Codex=openai) plus the pi
-# fallback. Binaries/packages mirror ucode's ``TOOL_SPECS`` so the two tools
-# install the same thing. Login/logout argv use each CLI's first-class auth
-# subcommands (``claude auth login --claudeai`` / ``codex login``), so the user
-# can sign in to a subscription from ``configure harnesses`` directly.
+# Keyed by harness family (Claude=anthropic) plus pi. Login/logout argv use the
+# CLI's first-class auth subcommands (``claude auth login --claudeai``), so the
+# user can sign in to a subscription from the host directly.
 _HARNESS_INSTALL: dict[str, HarnessInstallSpec] = {
     # Claude ships a vendor installer, so it carries an ``install_hint`` +
     # ``install_command`` and no ``package``. ``package is None`` is what
@@ -102,20 +89,6 @@ _HARNESS_INSTALL: dict[str, HarnessInstallSpec] = {
         install_command=("bash", "-c", _CLAUDE_INSTALL_HINT),
         min_version=_CLAUDE_MIN_VERSION,
     ),
-    OPENAI_FAMILY: HarnessInstallSpec(
-        "Codex",
-        "codex",
-        "@openai/codex",
-        login_args=("login",),
-        logout_args=("logout",),
-        status_args=("login", "status"),
-        # The native Codex policy hook requires ``codex >= 0.129.0``;
-        # anything older silently disables tool-call enforcement. Setup
-        # enforces the same floor up-front. Smart Routing's spawn hook wants
-        # 0.145.0, but it is gated at its own registration site so it degrades
-        # to "no spawn gate" instead of blocking every codex launch.
-        min_version=_CODEX_MIN_VERSION,
-    ),
     PI_KEY: HarnessInstallSpec(
         "Pi",
         "pi",
@@ -131,13 +104,12 @@ _HARNESS_INSTALL: dict[str, HarnessInstallSpec] = {
 # spec's ``executor.config["harness"]`` / ``executor.type``) to its
 # :data:`_HARNESS_INSTALL` family key. Only the CLI-backed harnesses appear
 # here — the ones that cannot launch without a binary on ``PATH``:
-# ``claude-native`` wraps the ``claude`` CLI, ``codex-native`` the ``codex``
-# CLI, and ``pi`` / ``pi-native`` the ``pi`` CLI. The in-process
+# ``claude-native`` wraps the ``claude`` CLI, and ``pi`` / ``pi-native`` the
+# ``pi`` CLI. The in-process
 # ``claude-sdk`` harness is deliberately absent, so it resolves to "no CLI
 # required".
 _HARNESS_NAME_TO_KEY: dict[str, str] = {
     "claude-native": ANTHROPIC_FAMILY,
-    "codex-native": OPENAI_FAMILY,
     PI_KEY: PI_KEY,
     "pi-native": PI_KEY,
 }
@@ -149,7 +121,6 @@ _HARNESS_NAME_TO_KEY: dict[str, str] = {
 # and the server route (which allowlists the request).
 _UI_INSTALLABLE_HARNESS_TO_KEY: dict[str, str] = {
     "claude": ANTHROPIC_FAMILY,
-    "codex": OPENAI_FAMILY,
     PI_KEY: PI_KEY,
 }
 
@@ -163,15 +134,15 @@ _UI_INSTALLABLE_KEYS: frozenset[str] = frozenset(_UI_INSTALLABLE_HARNESS_TO_KEY.
 def ui_install_key(harness: str) -> str | None:
     """Resolve a harness identifier to its UI-installable install-spec key.
 
-    Accepts both the bare install ids (``"claude"``, ``"codex"``, ``"pi"``)
-    and the executor spellings a session actually carries — the native TUI
-    wrappers (``"claude-native"``, ``"codex-native"``, ``"pi-native"``) resolve
+    Accepts both the bare install ids (``"claude"``, ``"pi"``) and the
+    executor spellings a session actually carries — the native TUI wrappers
+    (``"claude-native"``, ``"pi-native"``) resolve
     through the shared :data:`_HARNESS_NAME_TO_KEY` map to the same family key.
     Any harness that doesn't map onto the UI-installable family set (SDK
     harnesses like ``"claude-sdk"``) returns ``None`` so the caller rejects it.
 
     :param harness: A harness identifier from the web UI, e.g. ``"claude"`` or
-        ``"codex-native"``.
+        ``"pi-native"``.
     :returns: The :data:`_HARNESS_INSTALL` key (e.g. ``"anthropic"``) when the
         harness is UI-installable; ``None`` otherwise (caller rejects it).
     """
@@ -190,12 +161,12 @@ def ui_installable_harnesses() -> frozenset[str]:
     """Return every harness identifier the web UI may install.
 
     Includes the bare install ids and all executor spellings that resolve to a
-    UI-installable family (e.g. ``"codex-native"``, ``"pi-native"``), so the
+    UI-installable family (e.g. ``"pi-native"``), so the
     New Chat dialog can offer setup for the harness a session actually declares
     — not just the bare ids.
 
     :returns: The full set of accepted harness identifiers, e.g.
-        ``{"claude", "claude-native", "codex", "codex-native", "pi", ...}``.
+        ``{"claude", "claude-native", "pi", ...}``.
     """
     resolvable = set(_UI_INSTALLABLE_HARNESS_TO_KEY)
     for name, mapped in _all_harness_name_to_key().items():
@@ -207,13 +178,13 @@ def ui_installable_harnesses() -> frozenset[str]:
 def ui_credential_configurable_harnesses() -> frozenset[str]:
     """Return every harness identifier the web UI may write a credential for.
 
-    Every UI-installable family (Claude / Codex / Pi) consumes a provider
+    Every UI-installable family (Claude / Pi) consumes a provider
     credential omnigent owns, so the host store-secret handler can configure
     each of them; the credential route accepts the same set as the install
     route.
 
     :returns: The set of harness identifiers accepted by the credential route,
-        e.g. ``{"claude", "claude-native", "codex", "codex-native", "pi", ...}``.
+        e.g. ``{"claude", "claude-native", "pi", ...}``.
     """
     return ui_installable_harnesses()
 
@@ -224,8 +195,8 @@ def ui_credential_configurable_harnesses() -> frozenset[str]:
 # than derived from ``HarnessInstallSpec.login_args`` — keep them in sync with
 # that spec by hand if a harness's login command changes. Every row is an
 # ``auth`` step: it opens the UI credential form and is status-tracked.
-#   claude/codex: subscription login via the CLI's own login command, an API
-#     key, or a gateway.
+#   claude: subscription login via the CLI's own login command, an API key,
+#     or a gateway.
 #   pi: a provider credential (API key / gateway / adopt) written from the UI.
 _UI_AUTH_STEP_BY_KEY: dict[str, SetupStep] = {
     ANTHROPIC_FAMILY: SetupStep(
@@ -241,17 +212,9 @@ _UI_AUTH_STEP_BY_KEY: dict[str, SetupStep] = {
         command="claude auth login --claudeai",
         status_key="authed",
     ),
-    OPENAI_FAMILY: SetupStep(
-        kind="auth",
-        title="Set up authentication",
-        detail="Sign in with your ChatGPT subscription, an API key, or a gateway.",
-        action="auth",
-        command="codex login",
-        status_key="authed",
-    ),
     PI_KEY: SetupStep(
         kind="auth",
-        # Same neutral "set up auth" framing as claude/codex — the dialog opens a
+        # Same neutral "set up auth" framing as claude — the dialog opens a
         # form listing the ways to authenticate. Pi has NO subscription CLI login
         # (``command=None``, so the form omits that option), so the detail names
         # only the applicable paths. ``status_key="authed"`` keeps the step
@@ -269,16 +232,15 @@ _UI_AUTH_STEP_BY_KEY: dict[str, SetupStep] = {
 def ui_setup_steps(harness: str) -> list[SetupStep]:
     """Return the ordered setup checklist for a UI harness identifier.
 
-    Mirrors what ``omni setup`` walks a user through for the harness: an
-    install step, then (for the UI-installable families) an auth step. The
+    An install step, then (for the UI-installable families) an auth step. The
     install step's label uses the harness's :class:`HarnessInstallSpec` display
     name; the auth step's command is a display-only literal from
     :data:`_UI_AUTH_STEP_BY_KEY` (shown for the user to run, not executed).
     Harnesses outside the UI-installable set get a single generic
-    "run ``omni setup``" step (M1 scope).
+    "set up on the host" step.
 
-    :param harness: A harness identifier the UI holds, e.g. ``"codex"`` or the
-        native spelling ``"codex-native"`` (both resolve to the same steps).
+    :param harness: A harness identifier the UI holds, e.g. ``"pi"`` or the
+        native spelling ``"pi-native"`` (both resolve to the same steps).
     :returns: Ordered :class:`SetupStep` list; never empty.
     """
     key = ui_install_key(harness)
@@ -288,9 +250,9 @@ def ui_setup_steps(harness: str) -> list[SetupStep]:
             SetupStep(
                 kind="install",
                 title="Set up on the host",
-                detail="Run omni setup on the host to configure this agent.",
+                detail="Install and configure this agent's harness on the host.",
                 action="setup",
-                command="omni setup",
+                command=None,
                 status_key=None,
             )
         ]
@@ -333,7 +295,7 @@ def required_cli_for_harness(harness: str) -> HarnessInstallSpec | None:
     """Return the CLI a harness needs on ``PATH`` to launch, or ``None``.
 
     :param harness: An executor harness identifier, e.g. ``"pi"``,
-        ``"claude-native"``, ``"codex-native"``, or an SDK harness like
+        ``"claude-native"``, or an SDK harness like
         ``"claude-sdk"``.
     :returns: The :class:`HarnessInstallSpec` whose ``binary`` must be on
         ``PATH`` for *harness* to start; ``None`` for SDK-based / unknown
@@ -373,14 +335,14 @@ def missing_harness_cli(harness: str) -> HarnessInstallSpec | None:
 def harness_setup_hint(harness: str | None) -> str:
     """Return actionable remediation when *harness* can't launch on a machine.
 
-    npm-installed CLI harnesses (``codex``/``pi``) and a model credential are
-    both handled by ``omni setup`` — so they route there. A harness whose CLI
+    npm-installed CLI harnesses (``pi``) get a generic install hint. A harness
+    whose CLI
     ships via a vendor installer (``claude``, via Anthropic's curl installer —
     it carries an ``install_hint`` and no ``package``) names that installer and
     the CLI's own login instead.
 
     :param harness: An executor harness identifier, e.g. ``"claude-native"``
-        or ``"codex-native"``; ``None`` falls back to the ``omni setup`` hint.
+        or ``"pi"``; ``None`` falls back to the generic hint.
     :returns: A remediation clause for the "harness not configured" message,
         e.g. ``"install the claude CLI on that machine with `curl -fsSL
         https://claude.ai/install.sh | bash`, then run `claude auth login
@@ -536,7 +498,7 @@ def harness_cli_installed(key: str, timeout: float = _DEFAULT_CLI_PROBE_TIMEOUT_
     resolvable **and**, when the harness declares ``min_version`` /
     ``max_version_exclusive`` in its install spec, the binary's
     ``--version`` output satisfies that range. This prevents an outdated
-    native CLI (e.g. a Codex release below its policy-hook floor)
+    native CLI (e.g. a Pi release below its approval-override floor)
     from being treated as ready during setup.
 
     :param key: A harness family (``"anthropic"`` / ``"openai"``) or
@@ -642,7 +604,7 @@ def harness_install_command(key: str) -> list[str]:
 
     :param key: A harness family or :data:`PI_KEY`.
     :returns: The install command, e.g. ``["npm", "install", "-g",
-        "@openai/codex"]`` or an explicitly configured vendor installer command,
+        "@earendil-works/pi-coding-agent"]`` or an explicitly configured vendor installer command,
         wrapped as ``["bash", "-c", <script>]``. For the form to show a user,
         see :func:`harness_install_display`.
     :raises KeyError: If *key* has no install spec (caller should gate on
@@ -771,8 +733,8 @@ def install_harness_cli(key: str) -> bool:
 def harness_cli_logged_in(key: str, timeout: float = _DEFAULT_CLI_PROBE_TIMEOUT_S) -> bool:
     """Return whether the harness CLI itself reports a usable login.
 
-    Asks the CLI's own status command (``claude auth status`` /
-    ``codex login status``) instead of reading a credential
+    Asks the CLI's own status command (``claude auth status``) instead of
+    reading a credential
     file, because the file location is platform-specific — Claude Code stores
     its tokens in the macOS Keychain rather than ``~/.claude/.credentials.json``
     on macOS, so a file check would falsely report "not logged in" right after a
@@ -782,8 +744,8 @@ def harness_cli_logged_in(key: str, timeout: float = _DEFAULT_CLI_PROBE_TIMEOUT_
     Two output shapes are handled, selected explicitly by the spec's
     ``login_status_key``: a CLI that publishes a JSON status object names its
     boolean field there (Claude ``loggedIn``) and
-    is read structurally; a CLI with no ``login_status_key`` has no JSON verdict
-    (Codex's human line), so the exit code decides
+    is read structurally; a CLI with no ``login_status_key`` has no JSON verdict,
+    so the exit code decides
     (``0`` only when logged in) and stdout is never parsed.
 
     Positive verdicts are cached for :data:`_LOGIN_PROBE_CACHE_TTL_S`
@@ -791,8 +753,7 @@ def harness_cli_logged_in(key: str, timeout: float = _DEFAULT_CLI_PROBE_TIMEOUT_
     vendor CLI on every pass; negative verdicts are never cached, and
     :func:`harness_logout` invalidates the key's entries.
 
-    :param key: A harness family, e.g. ``"anthropic"`` (Claude),
-        or ``"openai"`` (Codex).
+    :param key: A harness family, e.g. ``"anthropic"`` (Claude).
     :param timeout: Seconds to wait for the status subprocess, e.g. ``10.0`` on
         the readiness path where a hung CLI must not stall the refresh.
     :returns: ``True`` when the CLI reports a usable login; ``False`` when the
@@ -828,7 +789,7 @@ def harness_cli_logged_in(key: str, timeout: float = _DEFAULT_CLI_PROBE_TIMEOUT_
     # Dispatch is explicit per spec: a harness that publishes a JSON status
     # object names its boolean field in ``login_status_key`` (Claude
     # ``loggedIn``). When that key is unset the
-    # harness has no JSON verdict (Codex's human line), so the
+    # harness has no JSON verdict, so the
     # exit code is authoritative and stdout is never parsed — output that merely
     # happens to be JSON can't flip the verdict.
     status_key = spec.login_status_key
@@ -853,15 +814,14 @@ def harness_login(key: str) -> bool:
 
     Lets ``configure harnesses`` be the single place to sign in: when the user
     picks a subscription sign-in, we drive the harness's own auth entrypoint
-    (``claude auth login --claudeai`` / ``codex login``) **in the foreground**
+    (``claude auth login --claudeai``) **in the foreground**
     (inheriting stdio so OAuth / device-code prompts and browser URLs reach
     the user), then confirm via
     :func:`harness_cli_logged_in`.
     If the CLI is already logged in this is a no-op that returns ``True``
     immediately (no redundant re-auth).
 
-    :param key: A harness family, ``"anthropic"`` (Claude) or ``"openai"``
-        (Codex).
+    :param key: A harness family, e.g. ``"anthropic"`` (Claude).
     :returns: ``True`` when the harness CLI is logged in after the attempt
         (including the already-logged-in short-circuit); ``False`` when the key
         has no login command, the CLI binary is missing, the login process
@@ -906,14 +866,12 @@ def harness_login(key: str) -> bool:
 def harness_logout(key: str) -> bool:
     """Run the harness CLI's logout; return whether it is now logged out.
 
-    Drives the harness's own logout command (``claude auth logout`` /
-    ``codex logout``) so removing a subscription from ``configure harnesses``
-    actually signs the user out of the standalone CLI — otherwise the
+    Drives the harness's own logout command (``claude auth logout``) so
+    removing a subscription actually signs the user out of the standalone CLI — otherwise the
     credential persists and ambient detection re-adopts the subscription on the
     next ``configure`` open.
 
-    :param key: A harness family, ``"anthropic"`` (Claude) or ``"openai"``
-        (Codex).
+    :param key: A harness family, e.g. ``"anthropic"`` (Claude).
     :returns: ``True`` when the harness CLI is logged out after the attempt;
         ``False`` when the key has no logout command, the binary is missing, the
         process failed to spawn, or a login still resolves afterward.

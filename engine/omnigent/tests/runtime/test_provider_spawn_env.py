@@ -21,8 +21,6 @@ subprocess spawn, no real CLI.
 from __future__ import annotations
 
 import logging
-import shlex
-import socket
 import sys
 import time
 from pathlib import Path
@@ -35,7 +33,6 @@ from omnigent.errors import OmnigentError
 from omnigent.onboarding import ambient, harness_install
 from omnigent.runtime.workflow import (
     _build_claude_sdk_spawn_env,
-    _build_codex_spawn_env,
     _build_pi_spawn_env,
     _resolve_catalog_default_model,
     _resolve_provider_for_build,
@@ -302,187 +299,6 @@ def test_detected_ambient_key_routes_with_no_config(
     assert env["HARNESS_CLAUDE_SDK_MODEL"]
 
 
-def test_codex_uses_openai_global_default(config_home: Path) -> None:
-    """
-    A ``default: true`` openai provider routes the codex harness.
-
-    Asserts the codex gateway vars plus ``HARNESS_CODEX_WIRE_API`` defaulting
-    to ``responses``. Failure means codex is not picking up the openai-family
-    default, or the wire-API default regressed.
-    """
-    _write_config(config_home, _openai_default_config())
-    spec = _make_spec(harness="codex")
-
-    env = _build_codex_spawn_env(spec, workdir=None)
-
-    assert env["HARNESS_CODEX_GATEWAY"] == "true"
-    assert env["HARNESS_CODEX_GATEWAY_BASE_URL"] == "https://openai.example.com/v1"
-    assert env["HARNESS_CODEX_GATEWAY_HOST"] == "https://openai.example.com"
-    assert env["HARNESS_CODEX_GATEWAY_AUTH_COMMAND"] == "printf %s sk-oai-secret"
-    assert env["HARNESS_CODEX_MODEL"] == "gpt-default-model"
-    # Codex defaults to the Responses wire API when the family omits wire_api.
-    assert env["HARNESS_CODEX_WIRE_API"] == "responses"
-
-
-@pytest.mark.parametrize("auth_source", ["spec", "global"])
-@pytest.mark.parametrize("endpoint_url", [None, "https://openrouter.ai/api/v1"])
-def test_codex_inline_api_key_routes_to_declared_endpoint(
-    config_home: Path,
-    auth_source: str,
-    endpoint_url: str | None,
-) -> None:
-    """Inline auth supplies both the key and endpoint, overriding a default when explicit."""
-    api_key = "test-key with ' quotes"
-    auth = ApiKeyAuth(api_key=api_key, base_url=endpoint_url)
-    if auth_source == "spec":
-        _write_config(config_home, _openai_default_config())
-    else:
-        _write_config(
-            config_home,
-            {"auth": {"type": "api_key", "api_key": api_key, "base_url": endpoint_url}},
-        )
-    spec = _make_spec(
-        harness="codex",
-        model="test-model",
-        auth=auth if auth_source == "spec" else None,
-    )
-
-    env = _build_codex_spawn_env(spec)
-
-    assert env["HARNESS_CODEX_GATEWAY"] == "true"
-    assert env["HARNESS_CODEX_GATEWAY_BASE_URL"] == (endpoint_url or "https://api.openai.com/v1")
-    assert shlex.split(env["HARNESS_CODEX_GATEWAY_AUTH_COMMAND"]) == ["printf", "%s", api_key]
-    assert env["HARNESS_CODEX_MODEL"] == "test-model"
-    assert env["HARNESS_CODEX_WIRE_API"] == "responses"
-
-
-@pytest.mark.parametrize("fragment", [None, "wrong-key"])
-def test_codex_resolved_api_key_preserves_literal_dollars(
-    config_home: Path, monkeypatch: pytest.MonkeyPatch, fragment: str | None
-) -> None:
-    """Provider synthesis must not interpret an already-resolved secret as config."""
-    _write_config(config_home, {})
-    monkeypatch.delenv("OMNIGENT_KEY_FRAGMENT", raising=False)
-    if fragment is None:
-        monkeypatch.delenv("KEY_FRAGMENT", raising=False)
-    else:
-        monkeypatch.setenv("KEY_FRAGMENT", fragment)
-    api_key = "test-$KEY_FRAGMENT-'quoted'"
-    spec = _make_spec(harness="codex", model="test-model", auth=ApiKeyAuth(api_key=api_key))
-
-    env = _build_codex_spawn_env(spec)
-
-    assert shlex.split(env["HARNESS_CODEX_GATEWAY_AUTH_COMMAND"]) == ["printf", "%s", api_key]
-
-
-def test_codex_rejects_chat_only_openrouter_before_harness_spawn(config_home: Path) -> None:
-    """A chat-only OpenRouter route fails before Codex can make a bad request."""
-    _write_config(
-        config_home,
-        {
-            "providers": {
-                "openrouter": {
-                    "kind": "gateway",
-                    "default": True,
-                    "openai": _key_family(
-                        "https://openrouter.ai/api/v1",
-                        "sk-or-test",
-                        "stealth/ox-alpha",
-                        wire_api="chat",
-                    ),
-                }
-            }
-        },
-    )
-    spec = _make_spec(harness="codex")
-
-    with pytest.raises(OmnigentError) as raised:
-        _build_codex_spawn_env(spec, workdir=None)
-
-    message = str(raised.value).lower()
-    assert "codex" in message
-    assert "chat" in message
-    assert "responses" in message
-    assert "openrouter.ai/api/v1" in message
-
-
-def test_codex_accepts_explicit_responses_wire_at_same_provider_url(config_home: Path) -> None:
-    """The chat-wire guard does not reject a Responses-capable route by vendor name."""
-    _write_config(
-        config_home,
-        {
-            "providers": {
-                "openrouter": {
-                    "kind": "gateway",
-                    "default": True,
-                    "openai": _key_family(
-                        "https://openrouter.ai/api/v1",
-                        "sk-or-test",
-                        "openai/gpt-5",
-                        wire_api="responses",
-                    ),
-                }
-            }
-        },
-    )
-    spec = _make_spec(harness="codex")
-
-    env = _build_codex_spawn_env(spec, workdir=None)
-
-    assert env["HARNESS_CODEX_GATEWAY_BASE_URL"] == "https://openrouter.ai/api/v1"
-    assert env["HARNESS_CODEX_WIRE_API"] == "responses"
-
-
-def test_codex_falls_back_to_first_available_openai_credential(
-    config_home: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """
-    A configured-but-not-default openai credential routes the codex head at spawn.
-
-    The headline fix: a user who configured an openai-family credential via
-    ``omnigent setup`` (a Databricks workspace, or any key/gateway) but never
-    marked it ``default`` would otherwise launch Debby's GPT (codex) head with NO
-    credential — codex's own "Invalid API key". The spawn-env builder now falls
-    back to the first credential that can serve the head's family, so the head
-    launches. This lives in the RUNNER — every launch surface (CLI, web UI, a
-    remote host) funnels through the spawn-env build — and resolves per spawn:
-    nothing is written to the user's config.
-
-    HOME is isolated and OPENROUTER cleared so the only openai-family credential
-    in play is the configured-but-not-default one (no ambient login/key shadows
-    the fallback).
-    """
-    monkeypatch.setenv("HOME", str(config_home))
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    config = {
-        "providers": {
-            "vendor-openai": {  # configured, but NOT marked default
-                "kind": "key",
-                "openai": _key_family(
-                    "https://openai.example.com/v1",
-                    "sk-oai-secret",
-                    "gpt-default-model",
-                ),
-            }
-        }
-    }
-    _write_config(config_home, config)
-    before = (config_home / "config.yaml").read_text()
-    spec = _make_spec(harness="codex")  # unpinned, no auth — like Debby's GPT head
-
-    env = _build_codex_spawn_env(spec, workdir=None)
-
-    # The fallback credentialed the head — full gateway wiring, same as a default.
-    assert env["HARNESS_CODEX_GATEWAY"] == "true"
-    assert env["HARNESS_CODEX_GATEWAY_BASE_URL"] == "https://openai.example.com/v1"
-    assert env["HARNESS_CODEX_GATEWAY_AUTH_COMMAND"] == "printf %s sk-oai-secret"
-    # Resolved per spawn — the user's config is NOT mutated (no default written).
-    assert (config_home / "config.yaml").read_text() == before
-    # The fallback is spawn-only: the readout-style resolver (flag off, the
-    # default) still returns nothing, so /model won't show an unchosen default.
-    assert _resolve_provider_for_build(spec, harness_type="codex") is None
-
-
 def test_claude_sdk_falls_back_to_first_available_anthropic_credential(
     config_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -658,9 +474,9 @@ def test_per_family_defaults_route_independently(config_home: Path) -> None:
 
     With BOTH a ``default: true`` anthropic provider and a ``default: true``
     openai provider configured, claude-sdk must get the anthropic base_url
-    and codex must get the openai base_url — proving per-family selection
-    flows all the way through the spawn path. Failure means the harness→family
-    resolution is wrong (e.g. claude-sdk picking the openai default).
+    proving per-family selection flows all the way through the spawn path.
+    Failure means the harness→family resolution is wrong (e.g. claude-sdk
+    picking the openai default).
     """
     config: dict[str, object] = {
         "providers": {
@@ -681,14 +497,10 @@ def test_per_family_defaults_route_independently(config_home: Path) -> None:
     _write_config(config_home, config)
 
     claude_env = _build_claude_sdk_spawn_env(_make_spec(harness="claude-sdk"), workdir=None)
-    codex_env = _build_codex_spawn_env(_make_spec(harness="codex"), workdir=None)
 
     # claude-sdk resolves the anthropic family's default, not the openai one.
     assert claude_env["HARNESS_CLAUDE_SDK_GATEWAY_BASE_URL"] == "https://anthropic.example.com/v1"
     assert claude_env["HARNESS_CLAUDE_SDK_MODEL"] == "claude-model"
-    # codex resolves the openai family's default, not the anthropic one.
-    assert codex_env["HARNESS_CODEX_GATEWAY_BASE_URL"] == "https://openai.example.com/v1"
-    assert codex_env["HARNESS_CODEX_MODEL"] == "gpt-model"
 
 
 # ── Spec model overrides the family default ────────────────────────────────
@@ -742,7 +554,6 @@ def test_catalog_default_fails_clearly_when_discovery_is_unavailable(
     catalog_family: str,
 ) -> None:
     """Known-family runtime defaults fail clearly without catalog data."""
-    from omnigent.errors import OmnigentError
 
     monkeypatch.setattr("omnigent.onboarding.providers.get_chat_models", lambda _provider: [])
 
@@ -797,34 +608,6 @@ def test_claude_sdk_falls_back_to_catalog_default_model(config_home: Path) -> No
     assert env["HARNESS_CLAUDE_SDK_GATEWAY"] == "true"
     assert env["HARNESS_CLAUDE_SDK_GATEWAY_AUTH_COMMAND"] == "printf %s sk-ant-secret"
     assert not any(k.startswith("HARNESS_CLAUDE_SDK_DATABRICKS") for k in env)
-
-
-def test_codex_falls_back_to_catalog_default_model(config_home: Path) -> None:
-    """
-    An openai ``key`` provider with no ``models.default`` resolves the
-    catalog default for the codex harness.
-
-    Proves the openai-family fallback path: codex must emit
-    ``HARNESS_CODEX_MODEL`` equal to the catalog's default openai model
-    (a ``gpt-*`` flagship, not an audio/realtime specialty variant).
-    """
-    config: dict[str, object] = {
-        "providers": {
-            "openai": {
-                "kind": "key",
-                "default": True,
-                "openai": _key_family_no_model("https://api.openai.com/v1", "sk-oai-secret"),
-            }
-        }
-    }
-    _write_config(config_home, config)
-    spec = _make_spec(harness="codex")
-
-    env = _build_codex_spawn_env(spec, workdir=None)
-
-    catalog_default = _CATALOG_DEFAULTS[("openai", "openai")]
-    assert env["HARNESS_CODEX_GATEWAY_BASE_URL"] == "https://api.openai.com/v1"
-    assert env["HARNESS_CODEX_MODEL"] == catalog_default
 
 
 def test_pi_falls_back_to_catalog_default_model(config_home: Path) -> None:
@@ -930,89 +713,6 @@ def test_no_provider_api_key_path_unchanged(config_home: Path) -> None:
 # ── cli-config kind: model_provider pinning ─────────────────────────────────
 
 
-def _cli_config_default_config() -> dict[str, object]:
-    """A config whose codex default is a config.toml-pinned provider.
-
-    :returns: A config mapping with one ``default: true`` cli-config entry.
-    """
-    return {
-        "providers": {
-            "codex-databricks": {
-                "kind": "cli-config",
-                "cli": "codex",
-                "model_provider": "Databricks",
-                "display_name": "Databricks AI Gateway",
-                "default": True,
-            }
-        }
-    }
-
-
-def test_codex_cli_config_default_pins_model_provider(config_home: Path) -> None:
-    """A ``default: true`` cli-config provider pins codex's model_provider.
-
-    The entry routes by name only — the provider table + credential live in
-    the user's ~/.codex/config.toml, which the executor bridges into the
-    session CODEX_HOME — so the spawn env must carry exactly the pin and
-    none of the gateway transport vars. Failure on the pin means an adopted
-    isaac-style provider launches codex on its built-in (unauthenticated)
-    path; a leaked gateway var means the executor would expect a base
-    URL/auth command that was never resolved.
-    """
-    _write_config(config_home, _cli_config_default_config())
-    spec = _make_spec(harness="codex")
-
-    env = _build_codex_spawn_env(spec, workdir=None)
-
-    assert env["HARNESS_CODEX_MODEL_PROVIDER"] == "Databricks"
-    # No gateway transport: the provider's endpoint/auth come from the
-    # bridged config.toml, not from spawn-env vars.
-    assert "HARNESS_CODEX_GATEWAY" not in env
-    assert "HARNESS_CODEX_GATEWAY_BASE_URL" not in env
-    assert "HARNESS_CODEX_GATEWAY_AUTH_COMMAND" not in env
-    # No model pinned either — codex keeps its own default model against
-    # the pinned provider (matching how isaac configures it).
-    assert "HARNESS_CODEX_MODEL" not in env
-
-
-def test_codex_subscription_default_pins_builtin_openai(config_home: Path) -> None:
-    """A codex ``subscription`` default pins the built-in ``openai`` provider.
-
-    The executor bridges the user's ~/.codex/config.toml, whose custom
-    default model_provider (e.g. isaac's Databricks AI Gateway) would
-    otherwise silently hijack a Subscription selection. Failure means
-    "Subscription" stops meaning "ChatGPT login" on machines with a custom
-    config.toml default.
-    """
-    _write_config(
-        config_home,
-        {"providers": {"codex-sub": {"kind": "subscription", "cli": "codex", "default": True}}},
-    )
-    spec = _make_spec(harness="codex")
-
-    env = _build_codex_spawn_env(spec, workdir=None)
-
-    assert env["HARNESS_CODEX_MODEL_PROVIDER"] == "openai"
-    # Subscription still emits no gateway transport (the CLI login is auth).
-    assert "HARNESS_CODEX_GATEWAY" not in env
-
-
-def test_pi_named_cli_config_provider_is_rejected(
-    config_home: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A named cli-config provider cannot drive the pi harness; it fails loud.
-
-    A ``cli-config`` provider pins a ``model_provider`` in ``~/.codex/config.toml``
-    and can only drive the ``codex`` harness, exactly as for ``claude-sdk``.
-    """
-    _isolate_home_with_codex_config(config_home, monkeypatch)
-    _write_config(config_home, _cli_config_default_config())
-    spec = _make_spec(harness="pi", auth=ProviderAuth(name="codex-databricks"))
-
-    with pytest.raises(OmnigentError, match="can only drive the 'codex' harness"):
-        _build_pi_spawn_env(spec, workdir=None)
-
-
 def test_pi_gateway_default_pi_scope_unresolved_credential_names_var(
     config_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1024,7 +724,6 @@ def test_pi_gateway_default_pi_scope_unresolved_credential_names_var(
     variable. The original credential-resolution error from ``resolve_secret``
     is surfaced rather than a generic message that omits the variable name.
     """
-    from omnigent.errors import OmnigentError
 
     monkeypatch.delenv("MY_GATEWAY_TOKEN", raising=False)
     monkeypatch.delenv("OMNIGENT_MY_GATEWAY_TOKEN", raising=False)
@@ -1095,60 +794,6 @@ command = "jq"
 """
 
 
-def _isolate_home_with_codex_config(config_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Point ``$HOME`` at the config home and write a custom codex config there.
-
-    :param config_home: The isolated ``OMNIGENT_CONFIG_HOME`` directory,
-        reused as ``$HOME`` so ambient detection reads a controlled
-        ``~/.codex/config.toml`` instead of the developer's real one.
-    :param monkeypatch: Pytest monkeypatch fixture.
-    """
-    monkeypatch.setenv("HOME", str(config_home))
-    codex_dir = config_home / ".codex"
-    codex_dir.mkdir()
-    (codex_dir / "config.toml").write_text(_DISMISSIBLE_CODEX_CONFIG_TOML)
-
-
-def test_codex_dismissed_config_provider_pins_openai(
-    config_home: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """With no provider resolved and the config provider dismissed, pin openai.
-
-    The executor bridges ~/.codex/config.toml into the session CODEX_HOME,
-    so an unpinned no-provider launch would still route through the file's
-    custom default — the very credential the user Removed (the reported
-    "harness codex still says hi" bug). The dismissal must hold at run time
-    via an explicit openai pin.
-    """
-    _isolate_home_with_codex_config(config_home, monkeypatch)
-    _write_config(config_home, {"dismissed_detections": ["codex-databricks"]})
-    spec = _make_spec(harness="codex")
-
-    env = _build_codex_spawn_env(spec, workdir=None)
-
-    assert env["HARNESS_CODEX_MODEL_PROVIDER"] == "openai"
-    # Still no gateway transport — this is a neutralizing pin, not a route.
-    assert "HARNESS_CODEX_GATEWAY" not in env
-
-
-def test_codex_undismissed_config_provider_routes_via_detection(
-    config_home: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The same config WITHOUT a dismissal routes via the detected provider.
-
-    Counterpart to the test above: an isaac-configured machine that never
-    Removed anything keeps its gateway routing (the ambient cli-config
-    detection auto-defaults and pins its own provider). Failure means the
-    no-provider neutralization fires too broadly and breaks the golden path.
-    """
-    _isolate_home_with_codex_config(config_home, monkeypatch)
-    spec = _make_spec(harness="codex")
-
-    env = _build_codex_spawn_env(spec, workdir=None)
-
-    assert env["HARNESS_CODEX_MODEL_PROVIDER"] == "Databricks"
-
-
 # ---------------------------------------------------------------------------
 # harness.<canonical>.command → OMNIGENT_<NAME>_PATH (spawn-env builders)
 # ---------------------------------------------------------------------------
@@ -1162,7 +807,6 @@ def _call_builder(builder: object, spec: AgentSpec) -> dict[str, str]:  # type: 
 @pytest.mark.parametrize(
     ("harness", "builder", "env_var"),
     [
-        ("codex", _build_codex_spawn_env, "OMNIGENT_CODEX_PATH"),
         ("pi", _build_pi_spawn_env, "OMNIGENT_PI_PATH"),
     ],
 )
@@ -1186,7 +830,6 @@ def test_spawn_env_threads_config_command_to_path(
 @pytest.mark.parametrize(
     ("harness", "builder", "env_var"),
     [
-        ("codex", _build_codex_spawn_env, "OMNIGENT_CODEX_PATH"),
         ("pi", _build_pi_spawn_env, "OMNIGENT_PI_PATH"),
     ],
 )
@@ -1213,7 +856,6 @@ def test_spawn_env_ambient_env_wins_over_config_command(
 @pytest.mark.parametrize(
     ("harness", "builder"),
     [
-        ("codex", _build_codex_spawn_env),
         ("pi", _build_pi_spawn_env),
     ],
 )
@@ -1237,7 +879,6 @@ def test_spawn_env_no_command_emits_no_path(
 @pytest.mark.parametrize(
     ("harness", "builder"),
     [
-        ("codex", _build_codex_spawn_env),
         ("pi", _build_pi_spawn_env),
     ],
 )
@@ -1269,60 +910,6 @@ def test_spawn_env_legacy_env_wins_over_config_command(
 
 
 # ── Ambient-isolation controls ─────────────────────────────────────────────
-
-
-def test_live_ollama_cannot_shadow_codex_fallback(
-    config_home: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    real_ambient_probes: SimpleNamespace,
-) -> None:
-    """A live Ollama on the probe port must not shadow the configured openai fallback.
-
-    Ambient detection connects to the local Ollama port and synthesizes a
-    provider from a successful connect; that provider would outrank the
-    configured-but-not-default openai credential the codex head falls back to.
-    A real listener is bound and the probe pointed at it, so the calibration
-    assertion proves the isolation patch is what suppresses detection rather
-    than the port being coincidentally dead on this machine.
-    """
-    listener = socket.socket()
-    try:
-        listener.bind(("127.0.0.1", 0))
-        listener.listen(8)
-        host, port = listener.getsockname()
-        # The probe reads these module globals at call time.
-        monkeypatch.setattr(ambient, "_OLLAMA_HOST", host)
-        monkeypatch.setattr(ambient, "_OLLAMA_PORT", port)
-
-        # Calibration: the unpatched probe sees the live listener.
-        assert real_ambient_probes.ollama_reachable() is True
-        # Isolation: the autouse patch, not a dead port, suppresses detection.
-        assert ambient._ollama_reachable() is False
-
-        monkeypatch.setenv("HOME", str(config_home))
-        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-        config = {
-            "providers": {
-                "vendor-openai": {  # configured, but NOT marked default
-                    "kind": "key",
-                    "openai": _key_family(
-                        "https://openai.example.com/v1",
-                        "sk-oai-secret",
-                        "gpt-default-model",
-                    ),
-                }
-            }
-        }
-        _write_config(config_home, config)
-        spec = _make_spec(harness="codex")
-
-        env = _build_codex_spawn_env(spec, workdir=None)
-
-        assert env["HARNESS_CODEX_GATEWAY"] == "true"
-        assert env["HARNESS_CODEX_GATEWAY_BASE_URL"] == "https://openai.example.com/v1"
-        assert env["HARNESS_CODEX_GATEWAY_AUTH_COMMAND"] == "printf %s sk-oai-secret"
-    finally:
-        listener.close()
 
 
 def test_claude_cli_login_cannot_shadow_claude_sdk_fallback(

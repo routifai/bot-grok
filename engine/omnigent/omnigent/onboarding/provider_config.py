@@ -69,8 +69,7 @@ _VALID_FAMILIES = (ANTHROPIC_FAMILY, OPENAI_FAMILY)
 # surface, and pi consumes both families, so it gets its own scope name a
 # ``default:`` value may reference (``default: ["anthropic", "pi"]``).
 # An inline key/gateway/local (with an anthropic/openai family) drives pi
-# directly; a ``cli-config`` may claim the scope too, with the actual gateway
-# capability validated at resolution time.
+# directly.
 # A ``subscription`` (CLI login, unusable outside its own CLI) and ``bedrock``
 # (native-``omnigent claude`` only) can never drive pi — EXCEPT for a pi
 # subscription (``kind="subscription", cli="pi"``), which explicitly opts into
@@ -88,37 +87,22 @@ _VALID_WIRE_API = (RESPONSES_WIRE_API, CHAT_WIRE_API)
 
 # Provider kinds (the top-level ``kind:`` discriminator on a provider entry).
 # - ``key``: a vendor API key reached via families (Anthropic / OpenAI).
-# - ``subscription``: a logged-in CLI (``claude`` / ``codex``) — no families,
+# - ``subscription``: a logged-in CLI (``claude`` / ``pi``) — no families,
 #   no base_url; the CLI carries its own auth.
 # - ``gateway``: an OpenAI/Anthropic-compatible proxy (OpenRouter, LiteLLM).
 # - ``local``: a self-hosted endpoint (Ollama, vLLM) reached via families.
-# - ``cli-config``: a custom model provider the harness CLI's own config
-#   file defines and authenticates (today: a ``[model_providers.X]`` table
-#   in ``~/.codex/config.toml`` with self-contained auth, e.g. written by
-#   ``isaac configure codex``). The entry pins the provider *by name*; the
-#   provider definition and credential stay in the CLI's config file.
 KEY_KIND = "key"
 SUBSCRIPTION_KIND = "subscription"
 GATEWAY_KIND = "gateway"
 LOCAL_KIND = "local"
 # ``connection: model`` on a gateway provider: the owner's saved Anthropic/OpenRouter key.
 MODEL_CONNECTION = "model"
-CLI_CONFIG_KIND = "cli-config"
 BEDROCK_KIND = "bedrock"
-
-# The CLIs whose own config file this build knows how to drive for a
-# ``cli-config`` provider. A ``cli-config`` entry naming any other CLI is a
-# shape from a newer build (or a stale entry a newer build wrote, e.g. a
-# ``cli: claude`` gateway): :func:`load_providers` SKIPS it with a warning
-# rather than raising, so one such entry cannot crash every turn's config
-# parse — the forward-compatibility gap that broke released runners.
-_CLI_CONFIG_RECOGNIZED_CLIS = frozenset({"codex"})
 _VALID_KINDS = (
     KEY_KIND,
     SUBSCRIPTION_KIND,
     GATEWAY_KIND,
     LOCAL_KIND,
-    CLI_CONFIG_KIND,
     BEDROCK_KIND,
 )
 
@@ -127,7 +111,7 @@ _VALID_KINDS = (
 # CLI login), which carries no families. _parse_provider dispatches
 # subscription first, then treats every remaining kind as a family kind.
 
-ProviderKind = Literal["key", "subscription", "gateway", "local", "cli-config", "bedrock"]
+ProviderKind = Literal["key", "subscription", "gateway", "local", "bedrock"]
 
 # Maps a canonical harness name to the provider family it consumes. The
 # ``pi`` harness consumes both families and so is absent here — callers
@@ -318,12 +302,8 @@ class ProviderEntry:
 
     - ``key`` / ``gateway`` / ``local`` carry :attr:`families` (and no
       :attr:`cli`).
-    - ``subscription`` carries :attr:`cli` (``"claude"`` / ``"codex"``)
+    - ``subscription`` carries :attr:`cli` (``"claude"`` / ``"pi"``)
       and no families/base_url — the CLI's own login supplies auth.
-    - ``cli-config`` carries :attr:`cli` (``"codex"`` only today) and
-      :attr:`model_provider` — the provider definition and credential live
-      in the CLI's own config file (``~/.codex/config.toml``); the entry
-      just pins which ``[model_providers.X]`` the launch selects.
 
     :param name: The provider name as keyed under ``providers:``, e.g.
         ``"anthropic"`` or ``"openrouter"``.
@@ -336,20 +316,10 @@ class ProviderEntry:
         here may still hold raw ``$VAR`` references — they are expanded
         lazily by :meth:`family`, so consumers should go through
         :meth:`family` rather than indexing :attr:`families` directly.
-    :param cli: For ``kind="subscription"`` and ``kind="cli-config"``: the
-        CLI whose login / config file carries auth, ``"claude"`` or
-        ``"codex"`` (``cli-config`` supports only ``"codex"`` today).
-        ``None`` otherwise.
+    :param cli: For ``kind="subscription"``: the CLI whose login carries
+        auth, ``"claude"`` or ``"pi"``. ``None`` otherwise.
     :param connection: ``"model"`` on a gateway provider selects the session
         owner's saved model key. ``None`` otherwise.
-    :param model_provider: For ``kind="cli-config"`` only: the custom
-        provider id in the CLI's config file that the launch pins, i.e. the
-        ``X`` in ``[model_providers.X]``, e.g. ``"corp-gateway"``. ``None``
-        otherwise.
-    :param display_name: For ``kind="cli-config"`` only: the provider's
-        human display name (the table's ``name`` field, snapshotted at
-        adoption), e.g. ``"Corp AI Gateway"``. ``None`` otherwise and
-        when the table named none.
     :param default_families: The set of model families this provider is
         the **default** for. Sourced from the entry's ``default:`` flag:
         ``true`` → every family it serves (:func:`provider_families`); a
@@ -367,8 +337,6 @@ class ProviderEntry:
     families: dict[str, FamilyConfig] = field(default_factory=dict)
     cli: str | None = None
     connection: str | None = None
-    model_provider: str | None = None
-    display_name: str | None = None
     default_families: frozenset[str] = frozenset()
 
     @property
@@ -865,22 +833,18 @@ def _parse_provider(name: str, raw: dict[str, object]) -> ProviderEntry:
         cli_raw = raw.get("cli")
         if not isinstance(cli_raw, str) or not cli_raw:
             raise OmnigentError(
-                f"provider {name!r}: a 'cli' (e.g. 'claude' or 'codex') is "
+                f"provider {name!r}: a 'cli' (e.g. 'claude' or 'pi') is "
                 "required when kind is 'subscription'.",
                 code=ErrorCode.INVALID_INPUT,
             )
-        # A subscription serves the family its CLI implies (claude→anthropic,
-        # codex→openai); a pi subscription serves no model family directly —
-        # it is pi-capable so it can claim the pi scope explicitly, signalling
-        # "use Pi's own native auth"; an unknown CLI serves nothing.
-        served = (
-            {ANTHROPIC_FAMILY}
-            if cli_raw == "claude"
-            else ({OPENAI_FAMILY} if cli_raw == "codex" else set())
-        )
-        # claude/codex subscriptions are locked to their own CLIs and cannot
-        # drive pi. A pi subscription explicitly opts into Pi's own native auth
-        # and may default the pi surface (pi_capable=True, served={}).
+        # A claude subscription serves the anthropic family; a pi subscription
+        # serves no model family directly — it is pi-capable so it can claim
+        # the pi scope explicitly, signalling "use Pi's own native auth"; an
+        # unknown CLI serves nothing.
+        served = {ANTHROPIC_FAMILY} if cli_raw == "claude" else set()
+        # A claude subscription is locked to its own CLI and cannot drive pi.
+        # A pi subscription explicitly opts into Pi's own native auth and may
+        # default the pi surface (pi_capable=True, served={}).
         return ProviderEntry(
             name=name,
             kind=kind,
@@ -888,37 +852,6 @@ def _parse_provider(name: str, raw: dict[str, object]) -> ProviderEntry:
             default_families=_parse_default_families(
                 name, default_raw, served, pi_capable=(cli_raw == "pi")
             ),
-        )
-
-    if kind == CLI_CONFIG_KIND:
-        cli_raw = raw.get("cli")
-        # Only codex has a model_provider concept; a claude analog (e.g. an
-        # isaac-written settings.json) would be a different mechanism and a
-        # deliberate extension, not a value to silently accept here.
-        if cli_raw != "codex":
-            raise OmnigentError(
-                f"provider {name!r}: kind 'cli-config' requires cli: 'codex' "
-                f"(the only CLI with config-file model providers), got {cli_raw!r}.",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        model_provider_raw = raw.get("model_provider")
-        if not isinstance(model_provider_raw, str) or not model_provider_raw:
-            raise OmnigentError(
-                f"provider {name!r}: a 'model_provider' (the [model_providers.X] "
-                "id in ~/.codex/config.toml, e.g. 'corp-gateway') is required when "
-                "kind is 'cli-config'.",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        display_name_raw = raw.get("display_name")
-        return ProviderEntry(
-            name=name,
-            kind=kind,
-            cli=cli_raw,
-            model_provider=model_provider_raw,
-            display_name=display_name_raw if isinstance(display_name_raw, str) else None,
-            # A codex cli-config provider serves the openai surface only, like a
-            # codex subscription: its provider table lives in codex's own config.
-            default_families=_parse_default_families(name, default_raw, {OPENAI_FAMILY}),
         )
 
     if kind == "gateway" and raw.get("connection") is not None:
@@ -999,24 +932,6 @@ def load_providers(config: dict[str, object]) -> dict[str, ProviderEntry]:
                 f"provider {str(name)!r} must be a mapping.",
                 code=ErrorCode.INVALID_INPUT,
             )
-        # Forward compatibility: a ``cli-config`` entry naming a CLI this build
-        # doesn't drive (e.g. a ``cli: claude`` gateway written by a newer
-        # build) is SKIPPED, not fatal. Raising here would propagate out of the
-        # whole parse and fail turn setup on every harness — the version-skew
-        # break that took down released runners. One unknown provider is
-        # ignored; the rest of the config still loads.
-        if (
-            raw.get("kind") == CLI_CONFIG_KIND
-            and raw.get("cli") not in _CLI_CONFIG_RECOGNIZED_CLIS
-        ):
-            _logger.warning(
-                "provider %r: ignoring cli-config entry for unrecognized cli %r "
-                "(a newer build may understand it; this build drives %s).",
-                str(name),
-                raw.get("cli"),
-                sorted(_CLI_CONFIG_RECOGNIZED_CLIS),
-            )
-            continue
         result[str(name)] = _parse_provider(str(name), raw)
     return result
 
@@ -1104,10 +1019,9 @@ def provider_families(entry: ProviderEntry) -> frozenset[str]:
 
     - ``key`` / ``gateway`` / ``local``: the families it declares inline,
       plus the :data:`PI_SURFACE` scope (pi consumes either family).
-    - ``subscription`` / ``cli-config``: derived from the CLI — ``claude``
-      serves the ``anthropic`` surface, ``codex`` serves the ``openai``
-      surface, ``pi`` serves only the :data:`PI_SURFACE` scope (signals
-      "use Pi's own native auth"). Other CLIs serve nothing.
+    - ``subscription``: derived from the CLI — ``claude`` serves the
+      ``anthropic`` surface, ``pi`` serves only the :data:`PI_SURFACE` scope
+      (signals "use Pi's own native auth"). Other CLIs serve nothing.
 
     :param entry: The provider entry to classify.
     :returns: The scope names this provider can be the default for, e.g.
@@ -1121,7 +1035,7 @@ def provider_families(entry: ProviderEntry) -> frozenset[str]:
         return frozenset(entry.families)
     if entry.kind in (KEY_KIND, GATEWAY_KIND, LOCAL_KIND):
         return frozenset(entry.families) | {PI_SURFACE}
-    if entry.kind in (SUBSCRIPTION_KIND, CLI_CONFIG_KIND):
+    if entry.kind == SUBSCRIPTION_KIND:
         if entry.cli == "claude":
             return frozenset({ANTHROPIC_FAMILY})
         if entry.cli == "pi":
@@ -1199,8 +1113,7 @@ def default_provider_for_harness(config: dict[str, object], harness: str) -> Pro
     falls back to the ``anthropic`` then ``openai`` family default,
     skipping ``subscription`` and ``bedrock`` defaults (a CLI login is
     unusable outside its own CLI, and ``bedrock`` is native-``omnigent
-    claude`` only — routing pi to either fails). A ``cli-config`` default is
-    skipped too: it pins a provider in codex's own config.toml.
+    claude`` only — routing pi to either fails).
 
     :param config: The parsed config mapping (``providers:`` block).
     :param harness: The canonical harness name, e.g. ``"claude-sdk"`` or
@@ -1229,9 +1142,7 @@ def default_provider_for_harness(config: dict[str, object], harness: str) -> Pro
         # raises for it). Neither can serve pi, so skip them and fall through —
         # otherwise a bedrock Claude default would turn a working pi run (own
         # login) into a hard error.
-        # A cli-config provider pins a model_provider in the codex CLI's own
-        # config.toml, unusable outside codex.
-        if provider.kind in (SUBSCRIPTION_KIND, BEDROCK_KIND, CLI_CONFIG_KIND):
+        if provider.kind in (SUBSCRIPTION_KIND, BEDROCK_KIND):
             continue
         return provider
     return None
@@ -1373,19 +1284,6 @@ def describe_active_credential(
             base_url=None,
         )
 
-    if provider.kind == CLI_CONFIG_KIND:
-        # The provider definition + credential live in the CLI's own config
-        # file; the launch pins it by name. The CLI picks the model unless
-        # overridden in-session. No family / base_url known here.
-        return ResolvedCredential(
-            provider_name=provider.name,
-            kind=provider.kind,
-            family=None,
-            model=model_override,
-            source=f"~/.codex/config.toml provider: {provider.model_provider}",
-            base_url=None,
-        )
-
     # Inline-family kinds: key / gateway / local.
     family_name = _family_for_harness(provider, harness)
     if family_name is None:
@@ -1497,3 +1395,172 @@ def provider_entry_settings(
     if make_default:
         body["default"] = True
     return {"providers": {name: body}}
+
+
+# ── Provider entry builders (config shape) ───────────────────────────
+
+
+# Default endpoint base URL per family for a ``key`` provider (a direct
+# vendor key, not a gateway). A gateway/local provider supplies its own
+# base_url; a ``key`` provider talks to the canonical vendor endpoint.
+_FAMILY_DEFAULT_BASE_URL: dict[str, str] = {
+    ANTHROPIC_FAMILY: "https://api.anthropic.com",
+    OPENAI_FAMILY: "https://api.openai.com/v1",
+}
+
+
+@dataclass(frozen=True)
+class _VendorEndpoint:
+    """A direct-``key`` vendor's OpenAI-compatible endpoint + wire protocol.
+
+    :param base_url: The vendor's own API base URL, e.g.
+        ``"https://openrouter.ai/api/v1"`` — NOT ``api.openai.com``.
+    :param wire_api: The OpenAI wire protocol the vendor speaks —
+        ``"chat"`` for the OpenAI-compatible Chat Completions surface every
+        third-party vendor below exposes (none implement the OpenAI
+        Responses API).
+    """
+
+    base_url: str
+    wire_api: str
+
+
+# Per-vendor endpoint + wire for direct ``key`` providers that are NOT the
+# canonical OpenAI / Anthropic endpoints. These OpenAI-compatible third
+# parties are reached at their OWN base_url (the catalog has no base_url, and
+# the openai-family default ``api.openai.com`` is wrong for them — the reason
+# an OpenRouter key "didn't work"). All speak Chat Completions, not the
+# Responses API. ``openai`` / ``anthropic`` are intentionally absent: they use
+# :func:`default_base_url_for_family` (and openai keeps the Responses default).
+_KEY_PROVIDER_ENDPOINT: dict[str, _VendorEndpoint] = {
+    "openrouter": _VendorEndpoint("https://openrouter.ai/api/v1", CHAT_WIRE_API),
+    "groq": _VendorEndpoint("https://api.groq.com/openai/v1", CHAT_WIRE_API),
+    "deepseek": _VendorEndpoint("https://api.deepseek.com", CHAT_WIRE_API),
+    "xai": _VendorEndpoint("https://api.x.ai/v1", CHAT_WIRE_API),
+    "mistral": _VendorEndpoint("https://api.mistral.ai/v1", CHAT_WIRE_API),
+    "together_ai": _VendorEndpoint("https://api.together.xyz/v1", CHAT_WIRE_API),
+    "fireworks_ai": _VendorEndpoint("https://api.fireworks.ai/inference/v1", CHAT_WIRE_API),
+}
+
+
+def key_provider_endpoint(provider: str) -> _VendorEndpoint | None:
+    """Return the vendor endpoint + wire for a ``key`` *provider*, if non-default.
+
+    :param provider: A catalog provider id, e.g. ``"openrouter"``.
+    :returns: The :class:`_VendorEndpoint` (own base_url + ``wire_api``) for a
+        third-party OpenAI-compatible vendor, or ``None`` for ``openai`` /
+        ``anthropic`` (which use the canonical family base_url and, for
+        openai, the Responses wire default).
+    """
+    return _KEY_PROVIDER_ENDPOINT.get(provider)
+
+
+def build_key_provider_entry(
+    family: str,
+    base_url: str,
+    api_key_ref: str,
+    default_model: str | None,
+    *,
+    wire_api: str | None = None,
+) -> dict[str, object]:
+    """Build a ``kind: key`` provider entry body (config shape).
+
+    :param family: The family this key serves, ``"anthropic"`` or
+        ``"openai"``.
+    :param base_url: The endpoint base URL, e.g.
+        ``"https://api.anthropic.com"``.
+    :param api_key_ref: The secret reference, e.g. ``"keychain:anthropic"``
+        or ``"env:ANTHROPIC_API_KEY"``.
+    :param default_model: The family default model id, e.g.
+        ``"claude-sonnet-4-6"``, or ``None`` to omit the ``models`` block.
+    :param wire_api: OpenAI wire protocol for an ``openai``-family key —
+        ``"chat"`` for third-party vendors (OpenRouter, Groq, …) that only
+        speak Chat Completions. Written onto the family block; ``None`` omits
+        it (the executor defaults to the Responses API, correct for OpenAI).
+    :returns: A provider entry body, e.g.
+        ``{"kind": "key", "anthropic": {"base_url": "...",
+        "api_key_ref": "keychain:anthropic",
+        "models": {"default": "claude-sonnet-4-6"}}}``.
+    """
+    family_block: dict[str, object] = {"base_url": base_url, "api_key_ref": api_key_ref}
+    if default_model:
+        family_block["models"] = {"default": default_model}
+    if wire_api is not None and family == OPENAI_FAMILY:
+        family_block["wire_api"] = wire_api
+    return {"kind": KEY_KIND, family: family_block}
+
+
+def default_base_url_for_family(family: str) -> str:
+    """Return the canonical vendor base URL for a ``key`` provider family.
+
+    :param family: ``"anthropic"`` or ``"openai"``.
+    :returns: The default endpoint base URL, e.g.
+        ``"https://api.anthropic.com"`` (anthropic) or
+        ``"https://api.openai.com/v1"`` (openai).
+    :raises KeyError: If *family* is not a known family.
+    """
+    return _FAMILY_DEFAULT_BASE_URL[family]
+
+
+def build_subscription_provider_entry(cli: str) -> dict[str, object]:
+    """Build a ``kind: subscription`` provider entry body.
+
+    :param cli: The CLI whose login carries auth, e.g. ``"claude"``.
+    :returns: A provider entry body, e.g.
+        ``{"kind": "subscription", "cli": "claude"}``.
+    """
+    return {"kind": SUBSCRIPTION_KIND, "cli": cli}
+
+
+def build_gateway_provider_entry(
+    base_url: str,
+    api_key_ref: str,
+    *,
+    families: list[str],
+    wire_api: str | None = None,
+    models: dict[str, str] | None = None,
+) -> dict[str, object]:
+    """Build a ``kind: gateway`` provider entry body (config shape).
+
+    A gateway is an OpenAI/Anthropic-compatible proxy reached at a custom
+    ``base_url`` (OpenRouter, LiteLLM, a local Ollama). It may serve the
+    ``openai`` family, the ``anthropic`` family, or both — each family
+    gets its own block pointing at the same base_url + key.
+
+    :param base_url: The gateway base URL, e.g.
+        ``"https://openrouter.ai/api/v1"``.
+    :param api_key_ref: The secret reference, e.g.
+        ``"keychain:openrouter"`` or ``"env:OPENROUTER_API_KEY"``.
+    :param families: The families the gateway serves, a non-empty subset
+        of ``["openai", "anthropic"]``.
+    :param wire_api: Wire protocol for the **openai** family —
+        ``"responses"`` (OpenAI / LiteLLM) or ``"chat"`` (OpenRouter and
+        most OSS-model gateways, which don't implement the Responses API).
+        Written only onto the ``openai`` block; the ``anthropic`` block
+        (Messages API) has no wire choice. ``None`` omits it (the Responses
+        API is then assumed). Getting this wrong is
+        the usual reason an OpenRouter gateway fails while LiteLLM works.
+    :param models: Optional per-family default model id, e.g.
+        ``{"openai": "qwen/qwen3.7-plus"}``. Written as ``models.default``
+        onto each named family's block — important for a gateway, which has
+        no catalog default, so without it routing falls back to a vendor
+        model the gateway may not host. ``None`` / a family absent from the
+        map omits the pin for that family.
+    :returns: A provider entry body, e.g.
+        ``{"kind": "gateway", "openai": {"base_url": "...",
+        "api_key_ref": "keychain:openrouter", "wire_api": "chat",
+        "models": {"default": "qwen/qwen3.7-plus"}}}``.
+    :raises ValueError: If *families* is empty.
+    """
+    if not families:
+        raise ValueError("a gateway must serve at least one family")
+    models = models or {}
+    body: dict[str, object] = {"kind": GATEWAY_KIND}
+    for family in families:
+        block: dict[str, object] = {"base_url": base_url, "api_key_ref": api_key_ref}
+        if family == OPENAI_FAMILY and wire_api is not None:
+            block["wire_api"] = wire_api
+        if models.get(family):
+            block["models"] = {"default": models[family]}
+        body[family] = block
+    return body
