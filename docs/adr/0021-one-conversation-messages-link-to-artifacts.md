@@ -1,5 +1,7 @@
 # One conversation: messages link to artifacts
 
+> **Status:** Done 2026-10-17: side chats and forks removed, the chip, the hint, link-on-save, relink and `all_versions[].item_id` built on both sides. Contract: [`docs/conversation.md`](../conversation.md).
+
 > Supersedes [ADR 0010](0010-a-fork-is-a-side-chat-with-an-anchor.md).
 
 Side chats and forks gave a person a second place to talk: a chat seeded from the Conversation, or a reply thread anchored to one message. In practice the second place was used for one thing, changing an artifact without derailing the main chat, and it cost a second conversation to find, a seed to maintain, summaries to fold back, and 5,000 lines of web code. The canvas editor already solved the precise form of that need: select an element and the composer carries a pointer chip (`Slide 4 · growth-title`), and the request goes to the assistant with a hard scope so only that element changes.

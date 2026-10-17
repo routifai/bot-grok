@@ -1,5 +1,7 @@
 # The engine keeps only what Superchat runs
 
+> **Status:** Done 2026-10-17: every cut merged; what went and why is in [`docs/engine-trim.md`](../engine-trim.md). Open follow-ups are listed there.
+
 Omnigent was built to run many coding agents on many platforms: Claude Code, Codex, Gemini, OpenCode, Cursor and others as terminal harnesses; Databricks, Kubernetes, E2B and more as sandboxes; Postgres and CockroachDB; Linux, macOS and Windows jails; a terminal REPL and a thirty-command CLI. Superchat runs exactly two harnesses (`claude-sdk` and `pi`), one host provider (Docker), one database (Postgres), one OS (Linux), and one entry point per process (`entrypoint.py` for the engine, `omnigent host` in the host). Everything else was weight: 60 percent of the package, most of the test suite, and every stale docstring a new developer tripped over.
 
 [ADR 0003](0003-superchat-is-standalone.md) made the fork ours. This record says what that means for the engine: we own it, so we cut it.

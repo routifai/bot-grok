@@ -1,5 +1,7 @@
 # The orchestrator narrates while helpers work
 
+> **Status:** Done 2026-10-17: `report_progress` and `raise_flag` in the engine, the narration rules in the assistant bundle, the work strip in the web. Contract: [`docs/conversation.md`](../conversation.md). First-token and first-progress timings are logged, not yet measured in use.
+
 The assistant delegates multi-step work to helpers ([ADR 0007](0007-the-muse-delegates-multi-step-work.md)). Today a delegation goes quiet: the helper runs, the parent waits for a completion notice, and the person sees a working indicator and an activity list of tool titles. For someone who needs an answer on time, that silence reads as "nothing is happening", and the activity list reads as machinery. Time to first token and time to the first sentence of progress are what people feel.
 
 The assistant stays in the conversation. It speaks first, reports progress in sentences, surfaces judgement calls as soon as it makes them, and hands back short.

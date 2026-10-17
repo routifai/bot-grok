@@ -1,5 +1,7 @@
 # Repository layout and layers
 
+> **Status:** Done 2026-10-17: `web/`, `host/`, `engine/` (flattened, `inner` → `harnesses`, `engine/agents/`), `deployment/`, `docs/` in place; both import-linter contracts pass and run in CI; the engine README carries the layer map and where-is table.
+
 After the trim the engine package was still one connected blob. Every module could reach every other through a lazy import, product code lived outside the product folder (416 lines outside `omnigent/superchat` mentioned it; `runner/app.py` alone had 140), the system prompt lived under `deployment/`, and documentation sat in six places. Nothing told a developer where the engine ends, where the host begins, or where to look for the orchestrator.
 
 We keep one Python package and one deployment, and make the layers visible and enforced. The monolith stays a monolith; it reads like separate projects.

@@ -205,7 +205,7 @@ export async function createOmnigentArtifact(
   const response = await fetch(url, {
     method: "POST",
     headers: { ...omnigentHeaders(config, email), "content-type": "application/octet-stream" },
-    body: input.bytes as unknown as BodyInit,
+    body: input.bytes as unknown as RequestInit["body"],
   });
   await throwOnError(response, "save artifact", config.secrets);
   return (await response.json()) as OmnigentArtifact;

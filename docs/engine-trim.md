@@ -124,7 +124,7 @@ don't use, so it can be removed before production.
 - `web/packages/chat-ui` `markdown.test.ts` failed on a dropped React Native markdown package. Closed 2026-10-17, `2ad649d8f`: `linkifyExplicitUrls` (the native parser setup) and its test are deleted.
 
 - Root `NOTICE` still credits the nao-derived chart code that no longer exists; trim the entry.
-- `pnpm check` fails on a pre-existing error in `web/packages/adapters` (`BodyInit` not found in `src/omnigent/artifacts.ts`); CI's web job has been red on it since before the cut. Fix with the CI work in wave 5.
+- `pnpm check` failed on a pre-existing error in `web/packages/adapters` (`BodyInit` not found in `src/omnigent/artifacts.ts`). Closed 2026-10-17: the body is typed through `RequestInit`, and `pnpm -r check` is clean.
 - `tool-presentation.completeness.test.ts` failed because the `superchat-claude` bundle declares no `builtins`. Closed 2026-10-17, `5c02e247a`: the bundle is right; the test reads the `tools: allow:` lists. 23 enabled tools still have no presentation entry and are listed in `NOT_YET_PRESENTED` (a shrink-only list) for the web side to register.
 
 ## Built on top (not removals)
