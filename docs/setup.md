@@ -60,6 +60,7 @@ host.
 | `OMNIGENT_PROXY_SECRET` | filled by `setup.sh` | becomes the engine's `OMNIGENT_AUTH_HEADER_SECRET`; see [Several people](#several-people) |
 | `OMNIGENT_VAULT_KEY` | filled by `setup.sh` | 32 random bytes, base64url; seals saved logins and saved model keys |
 | `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY` | blank | operator model keys (default config template) |
+| `SUPERCHAT_DEFAULT_AGENT` | `superchat-claude` | the harness a new conversation runs on: `superchat-claude` or `superchat-pi`; each person can switch in **Settings > Models** |
 | `LITELLM_BASE_URL`, `LITELLM_API_KEY` | blank | set both to route every model call through a LiteLLM proxy; root URL without `/v1`, reachable from the engine container (`host.docker.internal` for a proxy on your machine) |
 | `SUPERCHAT_WEB_PORT`, `SUPERCHAT_ENGINE_PORT` | `5173`, `8012` | host ports |
 | `ENGINE_PUBLIC_URL` | `http://host.docker.internal:<engine port>` | where each host reaches the engine |

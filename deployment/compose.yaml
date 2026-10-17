@@ -70,6 +70,8 @@ services:
       OMNIGENT_HOST_MEMORY: ${HOST_MEMORY:-2g}
       OMNIGENT_HOST_CPUS: ${HOST_CPUS:-2}
       OMNIGENT_HOST_PIDS_LIMIT: ${HOST_PIDS_LIMIT:-2048}
+      # The harness a new conversation runs on; each person can switch in Settings > Models.
+      OMNIGENT_SUPERCHAT_DEFAULT_AGENT: ${SUPERCHAT_DEFAULT_AGENT:-superchat-claude}
       # Model access: a key, or both LiteLLM values to route every model call through a proxy.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
