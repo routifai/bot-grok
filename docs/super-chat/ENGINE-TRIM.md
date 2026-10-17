@@ -110,6 +110,8 @@ don't use, so it can be removed before production.
 
 ## Follow-ups from the web cut
 
+- Web move (2026-10-17, `edda299ee`, `100d359bd`): `apps/web` is `web/app`, `packages` is `web/packages` (ADR 0019). Package names unchanged. Root `NOTICE` still names paths that no longer exist (`infra/sandboxes`, `features/decks/edit/bridge.js`); rewrite it in the docs wave.
+
 - Web structure pass (2026-10-17, `241f34937`..`bcb7e66f9`): features no longer import from pages; `pages/muse` is `pages/app`; CSS prefix `rk-` is `sc-`. Two seams remain: `lib/useMuseLiveState` composes `features/approvals` and `features/computer`, and `components/conversation` imports features because the fork thread renders the message bubble. Both resolve when side chats and forks go (ADR 0021).
 - `web/packages/chat-ui` `markdown.test.ts` fails on a dropped React Native markdown package; delete the test or the native code path with it.
 
