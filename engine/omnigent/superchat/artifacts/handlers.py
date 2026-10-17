@@ -94,6 +94,52 @@ async def handle_artifact_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:
     return finish(resp)
 
 
+#: The engine's code for a save whose ``base_version`` is no longer the newest.
+STALE_CODE = "artifact_stale"
+
+
+def _error_code(resp: Any) -> str | None:
+    try:
+        error = resp.json().get("error")
+    except (ValueError, AttributeError):
+        return None
+    return error.get("code") if isinstance(error, dict) else None
+
+
+async def _stale(client: Any, chat_id: str, file: Path, resp: Any) -> str:
+    """A stale save from a file's studio: put the newest version in the workspace, say so.
+
+    The model re-reads the file (now the newest bytes) and redoes its change on top; nothing it
+    wrote is saved over someone else's version.
+    """
+    from omnigent.superchat.artifacts.writeback import write_bytes_idempotent
+
+    newest: dict[str, Any] | None = None
+    try:
+        listed = await client.get(f"/v1/artifacts?parent_session_id={chat_id}", timeout=30.0)
+        newest = next(
+            (a for a in listed.json().get("artifacts", []) if a.get("name") == file.name), None
+        )
+        if newest is not None:
+            content = await client.get(f"/v1/artifacts/{newest['id']}/content", timeout=60.0)
+            content.raise_for_status()
+            await asyncio.to_thread(write_bytes_idempotent, file, content.content)
+    except Exception:  # noqa: BLE001 - the refusal stands either way
+        return json.dumps({"error": STALE_CODE, "details": resp.text[:500]})
+    version = newest.get("version") if newest else None
+    return json.dumps(
+        {
+            "error": STALE_CODE,
+            "newest_version": version,
+            "message": (
+                f"{file.name} was saved as v{version} meanwhile, so yours was not saved. The "
+                f"workspace file now holds v{version}: read it again, redo the change on top of "
+                f"it and save with base_version {version}."
+            ),
+        }
+    )
+
+
 async def _save(client: Any, chat_id: str, args: dict[str, Any], saver: str | None) -> str:
     raw = args.get("path")
     if not isinstance(raw, str) or not raw.strip():
@@ -115,9 +161,14 @@ async def _save(client: Any, chat_id: str, args: dict[str, Any], saver: str | No
         url += f"&title={quote(title.strip()[:256])}"
     if saver:  # a Helper saves into its Conversation; the version records the Helper's turn
         url += f"&chat_id={quote(saver)}"
+    base = args.get("base_version")
+    if isinstance(base, int) and not isinstance(base, bool) and base >= 1:
+        url += f"&base_version={base}"
     resp = await client.post(
         url, content=data, headers={"Content-Type": "application/octet-stream"}, timeout=120.0
     )
+    if resp.status_code == 409 and _error_code(resp) == STALE_CODE:
+        return await _stale(client, chat_id, file, resp)
     if resp.status_code >= 400:
         return finish(resp)
     saved = resp.json()

@@ -44,6 +44,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 # The product composition root: importing it fills the tool manager and policy hooks (ADR 0019).
 import omnigent.superchat.features  # noqa: F401
 from omnigent.context.labels import (
+    ARTIFACT_CHAT_LABEL_KEY,
     CONTEXT_MODE_LABEL,
     SCHEDULED_HELPER_LABEL_KEY,
     SUBAGENT_DISPATCH_ID_LABEL_KEY,
@@ -6130,12 +6131,12 @@ def create_runner_app(
         """
         if labels is None:
             return
-        # Fixed at creation.
-        _session_rollover_labels_cache[session_id] = (
-            {CONTEXT_MODE_LABEL: labels[CONTEXT_MODE_LABEL]}
-            if CONTEXT_MODE_LABEL in labels
-            else {}
-        )
+        # Fixed at creation: the mode, and the file a studio session edits (ADR 0024).
+        _session_rollover_labels_cache[session_id] = {
+            key: labels[key]
+            for key in (CONTEXT_MODE_LABEL, ARTIFACT_CHAT_LABEL_KEY)
+            if key in labels
+        }
 
     async def _rollover_labels_for_session(session_id: str) -> dict[str, str]:
         """Durable per-session lookup of just the rollover-mode label.
@@ -6585,6 +6586,7 @@ def create_runner_app(
         ):
             last = None
         sent_now: dict[str, str] = {"prompt": prompt_key}
+        tool_labels = await _tool_labels_for_session(conv_id)
         blocks = await turn_prefix_blocks(
             server_client,
             conv_id,
@@ -6594,7 +6596,9 @@ def create_runner_app(
             last_sent=last,
             sent_now=sent_now,
             # The person's own chats only; a Helper's Brief is its context.
-            recall=not is_helper(await _tool_labels_for_session(conv_id)),
+            recall=not is_helper(tool_labels),
+            # A file's studio: the file line and its write-back instead of the chat's blocks.
+            studio=ARTIFACT_CHAT_LABEL_KEY in tool_labels,
         )
         _superside_chat_prefix_pending[conv_id] = sent_now
         return _prepend_turn_blocks(body, blocks, conv_id)

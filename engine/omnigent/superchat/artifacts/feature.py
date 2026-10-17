@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     import httpx
     from fastapi import FastAPI
 
+    from omnigent.superchat.feature import BackgroundJob
     from omnigent.tools.base import Tool
 
 
@@ -51,17 +52,42 @@ async def _turn_prefix(server_client: httpx.AsyncClient | None, conversation_id:
     return [*notes, *await fetch_artifact_hint(server_client, conversation_id)]
 
 
+#: The studio's save hook (ADR 0024), made at install; its loop is captured by :func:`_jobs`.
+_STUDIO_NOTICES: list[Any] = []
+
+
 def _install(app: FastAPI, deps: InstallDeps) -> None:
     from omnigent.runtime import get_artifact_store
     from omnigent.server.routes._sessions.orchestration import ON_MESSAGE_CONTEXT
+    from omnigent.superchat.artifacts import store as store_module
     from omnigent.superchat.artifacts.edit_routes import create_html_edit_router
     from omnigent.superchat.artifacts.links import record_open_artifact
-    from omnigent.superchat.artifacts.routes import create_artifacts_router
+    from omnigent.superchat.artifacts.routes import create_artifacts_router, steer_session
     from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore
+    from omnigent.superchat.artifacts.studio import StudioNotices, studio_model
+    from omnigent.superchat.family.signals import notify_artifacts_changed
 
     if deps.scheduled_task_store is None:
         return
     store = SqlAlchemyArtifactStore(deps.scheduled_task_store.storage_location, get_artifact_store)
+    conversations = deps.conversation_store
+
+    async def _steer_studio(session_id: str, text: str) -> bool:
+        return await steer_session(deps.runner_router, conversations, session_id, text)
+
+    notices = StudioNotices(conversations, _steer_studio)
+    _STUDIO_NOTICES[:] = [notices]
+    store_module.ON_VERSION_SAVED["studio"] = notices.on_saved
+    store_module.ON_GROUP_DELETED["studio"] = notices.on_deleted
+    # Every open view of a file (the card, the panel, its studio) refreshes on this.
+    store_module.ON_VERSION_SAVED["family"] = lambda saved: notify_artifacts_changed(
+        saved.parent_session_id, saved.group_id or saved.id
+    )
+
+    async def _studio_model(request: Any, owner: str | None, parent: Any) -> str | None:
+        return await studio_model(
+            request.app.state, deps.agent_store, deps.agent_cache, owner, parent
+        )
 
     def _name(artifact_id: str, owner: str | None) -> str | None:
         item = store.get(artifact_id, user_id=owner)
@@ -80,6 +106,7 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
             conversation_store=deps.conversation_store,
             permission_store=deps.permission_store,
             auth_provider=deps.auth_provider,
+            studio_model=_studio_model,
         ),
         prefix="/v1",
         tags=["artifacts"],
@@ -92,10 +119,16 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
     )
 
 
+def _jobs(_app: FastAPI) -> list[BackgroundJob]:
+    """The studio notices schedule on the engine's loop, captured when the app starts."""
+    return list(_STUDIO_NOTICES)
+
+
 ARTIFACTS_FEATURE = Feature(
     name="artifacts",
     tools=_tools,
     handlers=dict.fromkeys(ARTIFACT_TOOL_NAMES, handle_artifact_tool),
     turn_prefix=_turn_prefix,
     install=_install,
+    jobs=_jobs,
 )

@@ -18,6 +18,7 @@ import httpx
 
 from omnigent.memory.service import PROFILE_BLOCK_FOOTER, PROFILE_BLOCK_HEADER
 from omnigent.superchat.artifacts.hint import HEADER as ARTIFACT_HINT_HEADER
+from omnigent.superchat.artifacts.studio_turn import FILE_LINE_OPEN, studio_turn_blocks
 from omnigent.superchat.artifacts.writeback import NOTE_LINE as EDIT_NOTE_LINE
 from omnigent.superchat.knowledge.attachment_context import OPEN as ATTACHMENT_OPEN
 from omnigent.superchat.knowledge.attachment_context import REMINDER as ATTACHMENT_REMINDER
@@ -178,6 +179,7 @@ async def turn_prefix_blocks(
     last_sent: Mapping[str, str] | None = None,
     sent_now: dict[str, str] | None = None,
     recall: bool = False,
+    studio: bool = False,
 ) -> list[str]:
     """The blocks to prepend to a Super Chat turn, in application order.
 
@@ -199,7 +201,23 @@ async def turn_prefix_blocks(
         carries, for the caller to remember once the turn completes.
     :param recall: Whether this chat may get the recall hint (the owner's setting decides, see
         :mod:`omnigent.superchat.recall_hint`). It is built alongside the other fetches.
+    :param studio: The session is a file's studio (ADR 0024): its turn gets the memory profile,
+        the file line and this file's write-back notes only (no Projects, no recall hint, no
+        feature notes, no Conversation artifact hint).
     """
+    if studio:
+        blocks = (
+            list(await _message_prefix_blocks(server_client, conversation_id, message_texts))
+            if message_texts
+            else []
+        )
+        profile = await fetch_memory_profile(server_client, conversation_id)
+        if profile:
+            blocks.append(
+                _delta_block("profile", profile, PROFILE_UNCHANGED_LINE, last_sent, sent_now)
+            )
+        blocks.extend(await studio_turn_blocks(server_client, conversation_id))
+        return blocks
     hint = (
         asyncio.create_task(
             recall_hint_block(server_client, conversation_id, workspace, message_texts)
@@ -252,6 +270,7 @@ def _injected_line(line: str) -> bool:
         or line in (PROFILE_UNCHANGED_LINE, PROJECTS_UNCHANGED_LINE, ATTACHMENT_REMINDER)
         or (line.startswith(IDLE_GAP_OPEN) and line.endswith(IDLE_GAP_CLOSE))
         or (line.startswith(_MOVED_OPEN) and line.endswith(_MOVED_CLOSE))
+        or line.startswith(FILE_LINE_OPEN)
         or EDIT_NOTE_LINE.fullmatch(line) is not None
     )
 

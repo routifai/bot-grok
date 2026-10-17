@@ -79,3 +79,15 @@ def notify_item_updated(chat_id: str, item_id: str) -> None:
     Sent as ``message.delivery``: the frame the web already refetches the chat's transcript on.
     """
     _notify(f"msg:{chat_id}", {"type": "message.delivery", "chat_id": chat_id, "item_id": item_id})
+
+
+def notify_artifacts_changed(root_id: str, group_id: str) -> None:
+    """A version of the file *group_id* was saved in the Conversation *root_id*.
+
+    Sent as ``artifacts.changed`` on the family stream (through the stream's chats listener), so
+    an open view of the file (its studio) refreshes at once instead of at its next poll.
+    """
+    _notify(
+        f"chats:{root_id}",
+        {"type": "artifacts.changed", "root_id": root_id, "group_id": group_id},
+    )

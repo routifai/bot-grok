@@ -93,19 +93,30 @@ async def deliver_manual_edits(
     conversation_id: str,
     *,
     roots: list[Path] | None = None,
+    group_id: str | None = None,
+    noted: set[str] | None = None,
 ) -> list[str]:
-    """Write pending hand edits back into the workspace; return the one-shot notes."""
+    """Write pending hand edits back into the workspace; return the one-shot notes.
+
+    :param group_id: Only this file's edits: a file's studio (ADR 0024) writes back its own file
+        at the start of each of its turns. It does not acknowledge them, so the Conversation's
+        next turn still gets its own note; *noted* (the version ids this studio was already told
+        about) keeps the studio's note to once per version.
+    """
     if server_client is None or not conversation_id:
         return []
+    url = f"/v1/artifacts/pending-edits?parent_session_id={conversation_id}"
+    if group_id is not None:
+        url += f"&group_id={group_id}"
     try:
-        resp = await server_client.get(
-            f"/v1/artifacts/pending-edits?parent_session_id={conversation_id}", timeout=10.0
-        )
+        resp = await server_client.get(url, timeout=10.0)
         if resp.status_code != 200:
             return []
         edits: list[dict[str, Any]] = resp.json().get("edits", [])
     except (httpx.HTTPError, ValueError):
         return []
+    if noted is not None:
+        edits = [edit for edit in edits if edit["id"] not in noted]
     if not edits:
         return []
     allowed = roots if roots is not None else workspace_roots()
@@ -149,6 +160,10 @@ async def deliver_manual_edits(
                 by_hand=any(i.get("origin") != "update" for i in items),
             )
         )
+        if noted is not None:  # a studio: told once, acknowledged by the Conversation
+            if written or not head.get("source_path"):
+                noted.update(item["id"] for item in items)
+            continue
         if written or not head.get("source_path"):
             delivered.extend(items)
             for item in items:

@@ -13,6 +13,7 @@ Events carry ids only; the client refetches what changed:
   now starts after ``item_id``;
 * ``chats.changed {root_id}``: the Conversation was renamed or archived, or a Helper started;
 * ``activities.changed {root_id}``: the Activity Feed may have changed;
+* ``artifacts.changed {root_id, group_id}``: a version of a file was saved;
 * ``session.heartbeat``: sent after ~15s of quiet.
 
 It reuses the Activity Feed watcher (``family/changes.py``) for *which* sessions to follow

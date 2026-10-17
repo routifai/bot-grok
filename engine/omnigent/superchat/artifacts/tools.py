@@ -69,6 +69,14 @@ class ArtifactSaveTool(ArtifactTool):
             "description": "Path of the file in your workspace, e.g. 'report.html'.",
         },
         "title": {"type": "string", "description": "Optional short display title."},
+        "base_version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": (
+                "The version of the file you edited. Required in a file's own chat (its "
+                "studio); a save whose base is no longer the newest is refused as stale."
+            ),
+        },
     }
     _REQUIRED = ("path",)
 
