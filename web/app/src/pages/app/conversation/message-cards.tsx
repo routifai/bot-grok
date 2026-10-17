@@ -2,7 +2,7 @@ import { useLingui } from "@lingui/react/macro";
 import { Button, Dialog, DialogClose, DialogContent, DialogTitle } from "@superchat/ui-web";
 import { X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { fetchArtifactBytes } from "../../lib/artifact-open";
+import { fetchArtifactBytes } from "../../../lib/artifact-open";
 
 export function ArtifactImage({
   artifactId,

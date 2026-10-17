@@ -21,15 +21,15 @@ import {
   ReplyCardThreadProvider,
 } from "../../../components/cards/context";
 import { hiddenFollowUpMessageIds } from "../../../components/cards/thread";
-import { FailureRun } from "../../../components/conversation/FailureNote";
-import { MessageHoverActions } from "../../../components/conversation/MessageHoverActions";
-import { MessageView } from "../../../components/conversation/MessageView";
 import type { ArtifactTarget } from "../../../lib/artifact-open";
 import { quoteDraftForSelection } from "../../../lib/quote-selection";
 import { transcriptIsNearEnd, transcriptMovedDown } from "../../../lib/transcript-scroll";
 import { type MuseLiveRun, useMuseLiveState } from "../../../lib/useMuseLiveState";
+import { FailureRun } from "./FailureNote";
 import type { TranscriptRow } from "./failureNotes";
 import { foldFailureRuns } from "./failureNotes";
+import { MessageHoverActions } from "./MessageHoverActions";
+import { MessageView } from "./MessageView";
 import { hasOpenMuseAsk } from "./messageText";
 import { QuoteSelectionButton } from "./QuoteSelectionButton";
 import { UserMessageMeta } from "./UserMessageMeta";

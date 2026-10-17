@@ -9,8 +9,8 @@ import {
 } from "@superchat/ui-web";
 import { Check, Copy, MoreHorizontal, Reply } from "lucide-react";
 import { useState } from "react";
-import { copyableMessageText } from "../../lib/message-text";
-import { MessageHoverMetadata } from "../MessageHoverMetadata";
+import { MessageHoverMetadata } from "../../../components/MessageHoverMetadata";
+import { copyableMessageText } from "../../../lib/message-text";
 
 export function MessageHoverActions({
   message,

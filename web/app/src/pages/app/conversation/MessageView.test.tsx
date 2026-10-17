@@ -5,10 +5,12 @@ import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
-import { registerAttachmentParser } from "../../lib/composer-attachments";
+import { registerAttachmentParser } from "../../../lib/composer-attachments";
 
 vi.mock("react-dom/client", async (orig) =>
-  (await import("../../test/i18n")).withI18nRoot(await orig<typeof import("react-dom/client")>()),
+  (await import("../../../test/i18n")).withI18nRoot(
+    await orig<typeof import("react-dom/client")>(),
+  ),
 );
 
 vi.mock("@lingui/react/macro", () => {
@@ -24,22 +26,22 @@ vi.mock("@lingui/core/macro", () => ({
     parts.reduce((acc, part, i) => `${acc}${part}${values[i] ?? ""}`, ""),
 }));
 vi.mock("@superchat/chat-ui/web", () => ({ ChatMarkdown: () => null }));
-vi.mock("../../features/artifacts/ArtifactFileCard", () => ({ ArtifactFileCard: () => null }));
-vi.mock("../../features/approvals/AskCard", () => ({ AskCard: () => null }));
-vi.mock("../CloudAgentCard", () => ({ CloudAgentCard: () => null }));
-vi.mock("../cards/ReplyCard", () => ({ ReplyCardBlockView: () => null }));
+vi.mock("../../../features/artifacts/ArtifactFileCard", () => ({ ArtifactFileCard: () => null }));
+vi.mock("../../../features/approvals/AskCard", () => ({ AskCard: () => null }));
+vi.mock("../../../components/CloudAgentCard", () => ({ CloudAgentCard: () => null }));
+vi.mock("../../../components/cards/ReplyCard", () => ({ ReplyCardBlockView: () => null }));
 vi.mock("./message-cards", () => ({
   ArtifactImage: () => null,
 }));
 vi.mock("../intro", () => ({ FirstRunHint: () => null }));
-vi.mock("../../features/activity/HelperTracker", () => ({ HelperTracker: () => null }));
+vi.mock("../../../features/activity/HelperTracker", () => ({ HelperTracker: () => null }));
 vi.mock("@superchat/ui-web", () => ({
   Button: () => null,
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
 }));
 
 const filesRead = vi.hoisted(() => vi.fn());
-vi.mock("../../lib/rpc", () => ({ rpc: { files: { read: filesRead } } }));
+vi.mock("../../../lib/rpc", () => ({ rpc: { files: { read: filesRead } } }));
 
 import { MessageView } from "./MessageView";
 

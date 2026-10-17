@@ -5,10 +5,12 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 vi.mock("react-dom/client", async (orig) =>
-  (await import("../../test/i18n")).withI18nRoot(await orig<typeof import("react-dom/client")>()),
+  (await import("../../../test/i18n")).withI18nRoot(
+    await orig<typeof import("react-dom/client")>(),
+  ),
 );
 
-vi.mock("../../lib/use-user-id", () => ({ useUserId: () => "user-1" }));
+vi.mock("../../../lib/use-user-id", () => ({ useUserId: () => "user-1" }));
 vi.mock("@lingui/react/macro", () => ({
   useLingui: () => ({ t: (parts: TemplateStringsArray) => parts.join("") }),
 }));

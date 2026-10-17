@@ -54,7 +54,7 @@ vi.mock("../../../features/approvals", () => ({ notifyAsksChanged }));
 vi.mock("../../../lib/browser-notifications", () => ({
   requestBrowserNotificationPermission: () => null,
 }));
-vi.mock("../../../components/intro", () => ({ markFirstRunSeen: vi.fn() }));
+vi.mock("../intro", () => ({ markFirstRunSeen: vi.fn() }));
 
 import { useComposerSend } from "./useComposerSend";
 
