@@ -27,8 +27,13 @@ def test_pi_bundle_differs_from_default_only_in_harness_keys() -> None:
         for line in difflib.unified_diff(
             _lines(CLAUDE / "config.yaml"), _lines(PI / "config.yaml"), lineterm="", n=0
         )
-        if line[0] in "+-" and not line.startswith(("+++", "---"))
+        if line[0] in "+-"
+        and not line.startswith(("+++", "---"))
+        # The header comment names each bundle's own harness (checked below).
+        and not line[1:].startswith("#")
     ]
+    assert "Runs on the Claude Agent SDK harness" in (CLAUDE / "config.yaml").read_text()
+    assert "Runs on the Pi harness" in (PI / "config.yaml").read_text()
     assert diff == [
         "-name: superchat-claude",
         "+name: superchat-pi",

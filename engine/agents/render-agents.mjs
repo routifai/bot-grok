@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Renders Superchat's single Omnigent Super Chat bundle (`superchat-claude`,
+// Renders Superchat's Omnigent Super Chat bundles (`superchat-claude`, `superchat-pi`;
 // docs/architecture.md) from the templates under engine/agents/templates/, so
 // the prompt, config and Sub-agent Types stay generated rather than hand-edited. Run after
 // editing anything under templates/:
@@ -94,6 +94,7 @@ function main() {
       render(configTemplate, {
         BUNDLE_NAME: bundle.name,
         HARNESS: bundle.harness,
+        HARNESS_NAME: bundle.harnessName,
         EXECUTOR_EXTRA: bundle.executorExtra,
         SKILLS_FILTER: bundle.skillsFilter,
       }),
