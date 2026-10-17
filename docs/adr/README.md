@@ -21,9 +21,9 @@ One file per decision, numbered in order. A superseded record keeps its file wit
 | [0016](0016-recall-is-a-bounded-hint-and-a-deep-pull-over-one-index.md) | Recall is a bounded hint and a deep pull over one index | Current |
 | [0017](0017-the-working-list-is-tagged-and-the-journal-lives-in-the-computer.md) | The working list is tagged and the journal lives in the Computer | Current |
 | [0018](0018-one-vocabulary-engine-host-runner-harness.md) | One vocabulary: engine, host, runner, harness | Accepted 2026-10-16, applied in the rename wave |
-| [0019](0019-repository-layout-and-layers.md) | Repository layout and layers | Accepted 2026-10-16, applied in the move wave |
-| [0020](0020-the-engine-keeps-only-what-superchat-runs.md) | The engine keeps only what Superchat runs | Accepted 2026-10-16, in progress |
-| [0021](0021-one-conversation-messages-link-to-artifacts.md) | One conversation: messages link to artifacts | Accepted 2026-10-16, to build after the trim |
+| [0019](0019-repository-layout-and-layers.md) | Repository layout and layers | Accepted 2026-10-16; `web/` and `host/` moved 2026-10-17, engine flatten pending |
+| [0020](0020-the-engine-keeps-only-what-superchat-runs.md) | The engine keeps only what Superchat runs | Accepted 2026-10-16; cuts merged 2026-10-16/17, log in `docs/super-chat/ENGINE-TRIM.md` |
+| [0021](0021-one-conversation-messages-link-to-artifacts.md) | One conversation: messages link to artifacts | Accepted 2026-10-16; web side chats and forks removed 2026-10-17, engine half and the chip pending |
 | [0022](0022-the-orchestrator-narrates-while-helpers-work.md) | The orchestrator narrates while helpers work | Accepted 2026-10-16, to build after the trim |
 
 The engine's own record, [Omnigent owns everything](../../engine/omnigent/rollover/adr/0001-omnigent-owns-everything.md), moves here as 0006 in the docs wave; 0006 was never used.
