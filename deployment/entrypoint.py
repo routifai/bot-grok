@@ -320,7 +320,7 @@ def log_capabilities(
     github_store: object | None,
 ) -> None:
     """
-    Log the same flags ``/v1/info`` exposes, so a missing ``host:``
+    Log the same flags ``/v1/info`` exposes, so a missing ``hosts:``
     block or GitHub App env shows up in pod logs without curling.
 
     Reads ``sandbox_config.default.provider``, not ``.provider``:
@@ -406,10 +406,10 @@ def build_app(resolved_config: _ResolvedConfig | None = None) -> _BuiltApp:
     memory_upkeep_store = (
         build_memory_upkeep_store(database_url) if memory_service is not None else None
     )
-    # Fail startup loud on a malformed `host:` section (an operator
+    # Fail startup loud on a malformed `hosts:` section (an operator
     # typo should not surface as a runtime 502 on the first managed
     # session); the startup catch-all below logs it.
-    sandbox_config = parse_host_section(cfg.get("host"))
+    sandbox_config = parse_host_section(cfg.get("hosts"))
     artifact_store = _select_artifact_store(resolved_config)
 
     agent_cache = AgentCache(

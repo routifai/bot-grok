@@ -1082,7 +1082,7 @@ def create_app(
         config's ``allowed_domains:`` key (OIDC), e.g. ``["example.com"]``.
         Union'd with ``OMNIGENT_OIDC_ALLOWED_DOMAINS`` and the
         runtime-editable domains file.
-    :param sandbox_config: Parsed ``host:`` section of the server
+    :param sandbox_config: Parsed ``hosts:`` section of the server
         config — which provider to provision managed hosts
         (``host_type="managed"`` sessions) from and the URL they dial
         back to. ``None`` disables managed hosts (a
@@ -2574,7 +2574,7 @@ def create_app(
         if accounts_enabled and account_store is not None:
             needs_setup = not any(u.has_password for u in account_store.list_users())
         # managed_sandboxes_enabled gates the web UI's sandbox
-        # option on the new-session screen: true only when a `host:`
+        # option on the new-session screen: true only when a `hosts:`
         # config is wired AND its provider can actually serve a managed
         # launch (staged providers parse but reject at launch — they
         # must not advertise the option).

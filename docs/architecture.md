@@ -78,7 +78,7 @@ What is added to each turn on top of the prompt is in [context.md](context.md).
 ## The host lifecycle
 
 The host provider is `docker` (`engine/omnigent/hosts/docker.py`), configured by the server
-config's `host:` block; the engine's side is `engine/omnigent/server/hosts.py`.
+config's `hosts:` block; the engine's side is `engine/omnigent/server/hosts.py`.
 
 - **Launch.** The first turn of a session with no live host makes the engine provision the
   person's container through the Docker Engine API: `superchat-host-<key>` from

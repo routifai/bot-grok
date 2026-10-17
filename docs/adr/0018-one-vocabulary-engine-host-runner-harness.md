@@ -24,7 +24,7 @@ We fix the words before we move the files. One word per thing, used in code, con
 ## Consequences
 
 - Environment variables, Docker labels, container and volume names, routes, config keys and database columns are renamed in one wave ([ADR 0019](0019-repository-layout-and-layers.md), wave 3). The database is fresh at the time of the rename, so no migration carries the old names and the legacy `superchat.*` labels are dropped rather than read.
-- `onboarding/sandboxes/computer.py` becomes `hosts/docker.py` (with the launcher contract, types and registry beside it in `omnigent/hosts/`); `server/managed_hosts.py` becomes `server/hosts.py`; the `sandbox:` config block becomes `host:` with `provider: docker`. The provider lives in `omnigent/hosts/`, not `host/providers/`, because `omnigent/host/` is the HOST layer that runs inside the container (ADR 0019) while the launcher runs in the engine.
+- `onboarding/sandboxes/computer.py` becomes `hosts/docker.py` (with the launcher contract, types and registry beside it in `omnigent/hosts/`); `server/managed_hosts.py` becomes `server/hosts.py`; the `sandbox:` config block becomes `hosts:` with `provider: docker` (plural: the top-level `host` key is the bind address). The provider lives in `omnigent/hosts/`, not `host/providers/`, because `omnigent/host/` is the HOST layer that runs inside the container (ADR 0019) while the launcher runs in the engine.
 - The glossary in `docs/glossary.md` is the reference; a pull request that introduces a second word for one of these things is sent back.
 
 ## Considered options

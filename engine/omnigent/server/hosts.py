@@ -28,7 +28,7 @@ deployments inject custom launchers the same way they inject custom
 stores into ``create_app``):
 
 1. **Server YAML** (OSS / self-hosted): :func:`parse_host_section`
-   builds the config from the ``host:`` section
+   builds the config from the ``hosts:`` section
    (``omnigent server -c`` / ``OMNIGENT_CONFIG`` /
    ``<data_dir>/config.yaml``)::
 
@@ -121,7 +121,7 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
-# Providers the YAML `host:` section accepts. Parsing accepts all
+# Providers the YAML `hosts:` section accepts. Parsing accepts all
 # known providers so a deployment can stage config ahead of support
 # landing, but only PROVIDERS_WITH_MANAGED_LAUNCH can actually serve a
 # managed session today. (Deployments that construct
@@ -941,7 +941,7 @@ def _unsupported_launcher_factory(provider: str) -> Callable[[], HostLauncher]:
     """
     Build a factory that rejects launch for a not-yet-supported provider.
 
-    Lets a deployment stage ``host:`` config for a provider before
+    Lets a deployment stage ``hosts:`` config for a provider before
     managed-launch support lands: parsing succeeds, and the clear 400
     only surfaces if a managed session is actually requested.
 
@@ -1133,7 +1133,7 @@ def _parse_host_config(raw: dict[str, object]) -> dict[str, object] | None:
 
 def parse_host_section(raw: object) -> HostDeployment | None:
     """
-    Parse and validate the server config's ``host:`` section.
+    Parse and validate the server config's ``hosts:`` section.
 
     Fails loud on malformed config (an operator typo should stop server
     startup, not surface as a runtime 502 on the first managed session).
@@ -1935,7 +1935,7 @@ def _launcher_for_teardown(
 
     :param host: The managed host being torn down.
     :param config: The deployment's current sandbox config, or ``None``
-        when the ``host:`` section has been removed since launch.
+        when the ``hosts:`` section has been removed since launch.
     :returns: A launcher whose provider matches the row, or ``None``
         when no matching launcher is available.
     """
@@ -1991,7 +1991,7 @@ def host_resume_supported(
 
     :param host: The session's bound managed host.
     :param config: The deployment's current sandbox config, or ``None``
-        when the ``host:`` section has been removed since launch.
+        when the ``hosts:`` section has been removed since launch.
     :returns: ``True`` when a wake would be attempted; ``False`` for a
         non-managed / non-resumable provider, a dropped config, or a
         host with no recorded ``sandbox_id``.
@@ -2065,7 +2065,7 @@ async def resume_host(
     :param host_id: The session's bound host id, e.g. ``"host_a1b2c3d4..."``.
     :param host_store: Persistent host registrations (cross-replica liveness).
     :param config: The deployment's managed-sandbox config, or ``None`` when
-        the ``host:`` section has been removed since launch.
+        the ``hosts:`` section has been removed since launch.
     :param force: Skip the DB-liveness no-op gate when the caller has local
         evidence that the tunnel is gone.
     :param on_stage: Progress observer forwarded to the launcher's

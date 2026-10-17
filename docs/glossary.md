@@ -26,7 +26,7 @@ them; where code still uses one, the entry says so.
 - **Helper**: a child session the assistant starts with `start_helper` for one bounded job; read-only to the person, its result goes back to the chat that started it ([helpers.md](helpers.md)). Replaces sub-agent.
 - **Helper type**: what a helper is configured as: `worker`, `subworker` or `notes` (`engine/agents/templates/agents/`).
 - **Host**: a person's execution environment, today a Docker container the engine starts (`superchat-host-<key>`, labelled `omnigent.host.owner`); runs `omnigent host`. Replaces Computer, sandbox (as a provider), managed host. In copy it is "your machine".
-- **Host provider**: how a host is launched; `docker` today (`engine/omnigent/hosts/docker.py`), set by the server config's `host:` block and `OMNIGENT_HOST_PROVIDER`.
+- **Host provider**: how a host is launched; `docker` today (`engine/omnigent/hosts/docker.py`), set by the server config's `hosts:` block and `OMNIGENT_HOST_PROVIDER`.
 - **Journal**: dated lines under `~/workspace/memory/journal/` in the host, written by code from checkpoints and helper results; a copy for search, never read back as state.
 - **Kept tail**: the most recent whole turns a checkpoint keeps word for word (up to 16,000 tokens).
 - **Knowledge index**: the search index in the host (SQLite with FTS5 and sqlite-vec) over the person's files, the journal and retired conversation turns; behind the `files_*` tools and `recall`.
@@ -39,7 +39,7 @@ them; where code still uses one, the entry says so.
 - **Result**: a helper's final message, posted to the chat that started it as a system notice.
 - **Rollover**: replacing older turns with a checkpoint when the conversation grows large or the person returns after a long break.
 - **Runner**: the per-session process a host launches; runs one harness.
-- **Sandbox**: only the OS process jail (bubblewrap). "Sandbox provider" and the server config's `sandbox:` block are old names for the host provider and its `host:` block. Some code still says sandbox for the host (`sandbox_id`, `sandbox_provider`, `sandbox_status`, `managed_sandbox_reaper`).
+- **Sandbox**: only the OS process jail (bubblewrap). "Sandbox provider" and the server config's `sandbox:` block are old names for the host provider and its `hosts:` block. Some code still says sandbox for the host (`sandbox_id`, `sandbox_provider`, `sandbox_status`, `managed_sandbox_reaper`).
 - **Side chat**: deprecated and removed ([ADR 0021](adr/0021-one-conversation-messages-link-to-artifacts.md)); there is one conversation.
 - **Steer**: a message sent while a turn runs, delivered into that turn instead of starting a new one.
 - **Step limit**: a conversation turn may make 3 work tool calls; the next is refused with an instruction to hand the rest to a helper ([ADR 0007](adr/0007-the-muse-delegates-multi-step-work.md)).

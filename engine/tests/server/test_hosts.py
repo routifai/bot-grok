@@ -140,7 +140,7 @@ class _StubAgentStore:
 
 
 def test_parse_absent_section_disables_managed_hosts() -> None:
-    """No ``host:`` section → managed hosts simply not configured."""
+    """No ``hosts:`` section → managed hosts simply not configured."""
     assert parse_host_section(None) is None
 
 
@@ -719,7 +719,7 @@ async def test_lifespan_gates_one_deployment_wide_managed_sandbox_reaper(
         # Launch-capable provider configured → the web UI may offer the
         # sandbox option, labeled with the provider name.
         ({"provider": "docker", "server_url": "https://s.example.com"}, True, "docker"),
-        # No `host:` section → a managed create would 400; the option
+        # No `hosts:` section → a managed create would 400; the option
         # must not be advertised and no provider is named.
         (None, False, None),
     ],
@@ -1556,7 +1556,7 @@ async def test_relaunch_does_not_recreate_deleted_host(db_uri: str) -> None:
 
 async def test_relaunch_rejects_unconfigured_provider(db_uri: str) -> None:
     """
-    A provider mismatch (the ``host:`` config changed since launch)
+    A provider mismatch (the ``hosts:`` config changed since launch)
     fails the relaunch with a clear 400 instead of aiming another
     provider's terminate/provision at the recorded sandbox id.
     """
