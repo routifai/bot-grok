@@ -189,8 +189,7 @@ class NativeModelOption(BaseModel):
 
     id: str
     model: str | None = None
-    # Optional: Codex model/list rows are
-    # provider-supplied and may omit it; the UI falls back to ``id``.
+    # Optional: provider-supplied rows may omit it; the UI falls back to ``id``.
     displayName: str | None = None
     defaultReasoningEffort: str | None = None
     supportedReasoningEfforts: list[NativeReasoningEffortOption] = Field(default_factory=list)
@@ -240,12 +239,10 @@ class AgentObject(BaseModel):
     :param created_at: Unix epoch timestamp of creation.
     :param updated_at: Unix epoch timestamp of the last update,
         or ``None`` if never updated.
-    :param harness: The agent's harness/kind, e.g. ``"codex"``,
-        ``"codex-native"``, or ``"claude-native"`` for
-        ``executor.type: omnigent`` agents, otherwise the executor
-        type (``"claude_sdk"``, ``"agents_sdk"``). ``None`` when the
-        bundle cannot be loaded. Lets the Web UI Add Agent picker
-        recognise an agent's kind (Codex vs Claude) without
+    :param harness: The agent's harness/kind, e.g. ``"claude-sdk"`` or
+        ``"pi"`` for ``executor.type: omnigent`` agents, otherwise the
+        executor type (``"claude_sdk"``). ``None`` when the bundle cannot
+        be loaded. Lets the Web UI recognise an agent's kind without
         hardcoding by name slug.
     :param mcp_servers: MCP servers the agent is connected to
         (secret fields omitted). Empty list when the spec
@@ -799,9 +796,7 @@ class ChildSessionSummary(BaseModel):
         malformed rows; the spawn path always sets it.
     :param tool: UI-facing sub-agent label. For Omnigent-spawned
         children this is derived from the prefix of ``title`` before
-        the first ``":"``, e.g. ``"researcher"``. For Codex-native
-        children this is the Codex-assigned ``agent_nickname`` when
-        available, then ``agent_role``, then ``"Codex"``. Falls back
+        the first ``":"``, e.g. ``"researcher"``. Falls back
         to the raw title for legacy / malformed rows; ``None`` only
         when ``title`` itself is ``None`` or empty.
     :param session_name: Sub-agent instance name, the suffix of

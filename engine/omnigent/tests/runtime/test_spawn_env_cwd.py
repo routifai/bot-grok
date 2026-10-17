@@ -4,7 +4,7 @@ its ``HARNESS_<H>_CWD`` env var.
 
 Regression guard for the bug where a session's selected working folder was
 honored by the Files panel / primary OS environment but NOT by the spawned
-harness subprocess (codex, claude-sdk):
+harness subprocess (claude-sdk):
 the builders accepted ``workdir`` (the agent bundle) but never the runtime
 ``cwd``, so the subprocess inherited the runner's launch directory instead
 of the session workspace. Mirrors ``test_pi_spawn_env.py`` — pi already
@@ -19,16 +19,12 @@ from pathlib import Path
 
 import pytest
 
-from omnigent.runtime.workflow import (
-    _build_claude_sdk_spawn_env,
-    _build_codex_spawn_env,
-)
+from omnigent.runtime.workflow import _build_claude_sdk_spawn_env
 from omnigent.spec.types import AgentSpec, ExecutorSpec
 
 # (harness name, builder callable, HARNESS_<H>_CWD env var)
 _BUILDERS = [
     ("claude-sdk", _build_claude_sdk_spawn_env, "HARNESS_CLAUDE_SDK_CWD"),
-    ("codex", _build_codex_spawn_env, "HARNESS_CODEX_CWD"),
 ]
 
 
@@ -37,8 +33,8 @@ def _isolate_global_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     """Point OMNIGENT_CONFIG_HOME at an empty temp dir so the developer's real
     ``~/.omnigent/config.yaml`` cannot influence provider/model resolution.
 
-    Also stub ``detect_providers`` so ambient CLI config files (e.g.
-    ``~/.codex/config.toml``) on a developer's machine cannot leak into the
+    Also stub ``detect_providers`` so ambient credentials on a developer's
+    machine cannot leak into the
     provider resolution path and cause spurious failures (matches the
     isolation pattern in ``test_runner_dispatch.py`` / ``test_cli.py``).
     """
