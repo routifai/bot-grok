@@ -12,13 +12,13 @@ from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 loader = importlib.machinery.SourceFileLoader(
-    "superchat_dashboard", str(HERE / "superchat-dashboard")
+    "superchat_dashboard", str(HERE.parent / "bin" / "superchat-dashboard")
 )
 spec = importlib.util.spec_from_loader(loader.name, loader)
 dashboard = importlib.util.module_from_spec(spec)
 loader.exec_module(dashboard)
 
-FIXTURE = HERE / "dashboard" / "fixtures" / "sales.spec.json"
+FIXTURE = HERE.parent / "share" / "dashboard" / "fixtures" / "sales.spec.json"
 
 CSV = """date,region,revenue,units
 2026-01-05,East,100,1

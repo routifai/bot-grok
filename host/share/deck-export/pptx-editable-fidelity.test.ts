@@ -1,6 +1,6 @@
 // Portions modified from nexu-io/open-design apps/desktop/tests/main/pptx-editable-fidelity.test.ts@802708f,
 // Apache-2.0; changes: imports the page-side module (deck-capture-page.js); the two
-// fetchGoogleFontStylesheets cases moved to ../test_deck_export.py (that function is Python in
+// fetchGoogleFontStylesheets cases moved to host/tests/test_deck_export.py (that function is Python in
 // superchat-deck-export).
 // biome-ignore-all lint/complexity/noStaticOnlyClass: ported as written from Open Design's test
 import { afterEach, describe, expect, test, vi } from "vitest";

@@ -2,7 +2,7 @@
 // Apache-2.0; changes: imports the page-side module (deck-capture-page.js) instead of
 // deck-capture.ts; keeps only the fake-DOM cases of 'editable PPTX layered backgrounds' (the
 // Electron-probe cases need an Electron process and are covered by the real-Chromium structural
-// test in ../test_deck_export.py instead).
+// test in host/tests/test_deck_export.py instead).
 // biome-ignore-all lint/complexity/noStaticOnlyClass: ported as written from Open Design's test
 // biome-ignore-all lint/correctness/noUnsafeOptionalChaining: ported as written from Open Design's test
 import { afterEach, describe, expect, test, vi } from "vitest";

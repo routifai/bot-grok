@@ -10,7 +10,7 @@ whitespace and two build-path strings.
 - **Version:** 2.0.1
 - **Fork point:** upstream commit `c0447adc47d3bc734d017050834edf0941adc189` (tag `v2.0.1`)
 - **Global:** exposes `window.domToPptx.exportToPptx(elementOrSelector, options)`
-- **Use:** `../../../superchat-deck-export` injects it into a headless Chromium page; the Computer image
+- **Use:** `host/bin/superchat-deck-export` injects it into a headless Chromium page; the Computer image
   expands it with `gzip -dc` at build time (`deployment/computer.Dockerfile`), and the helper
   also reads the `.gz` directly when the expanded file is absent (tests, a checkout).
 
@@ -46,5 +46,5 @@ patch to `node_modules/pptxgenjs` before bundling.
 `./build.sh` clones the fork point, applies the patch, installs the locked dependencies, applies
 the PptxGenJS patch, runs rollup and writes the `.gz` (`gzip -n`). It needs git, node, pnpm and
 patch. To move to a newer dom-to-pptx, change `commit` in `build.sh`, rebase the patch, and
-re-run `deployment/computer/test_deck_export.py`, `deck-export/*.test.ts` and
+re-run `host/tests/test_deck_export.py`, `deck-export/*.test.ts` and
 `engine/omnigent/tests/superchat/decks/test_export_charts.py`. Do not edit the bundle by hand.

@@ -12,7 +12,8 @@
 !engine/omnigent/omnigent/
 
 # computer stage
-!deployment/computer/
+!host/bin/
+!host/share/
 
 # Local build output and caches inside the folders above.
 **/node_modules
@@ -20,6 +21,5 @@
 **/*.pyc
 **/.venv
 engine/omnigent/omnigent/server/static/web-ui
-deployment/computer/test_*.py
-deployment/computer/**/*.test.ts
-deployment/computer/**/fixtures
+host/share/**/*.test.ts
+host/share/**/fixtures

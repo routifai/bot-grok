@@ -110,7 +110,7 @@ def find_asset(env: str, names: list[str]) -> Path:
     if os.environ.get(env):
         candidates.append(Path(os.environ[env]))
     for name in names:
-        candidates.append(HERE / "deck-export" / name)
+        candidates.append(HERE.parent / "share" / "deck-export" / name)
         candidates.append(Path("/usr/local/share/superchat/deck-export") / name)
     for candidate in candidates:
         if candidate.is_file():

@@ -16,7 +16,7 @@
       "!**/test-report",
       "!**/data",
       "!engine/omnigent",
-      "!deployment/computer/deck-export/fixtures"
+      "!host/share/deck-export/fixtures"
     ]
   },
   "formatter": {

@@ -23,8 +23,8 @@ export default defineConfig({
           include: [
             ".agents/skills/pr-watch/*.test.ts",
             "web/packages/*/src/**/*.test.{ts,tsx}",
-            "deployment/computer/deck-export/*.test.ts",
-            "deployment/computer/pptx/*.test.ts",
+            "host/share/deck-export/*.test.ts",
+            "host/share/pptx/*.test.ts",
           ],
         },
       },

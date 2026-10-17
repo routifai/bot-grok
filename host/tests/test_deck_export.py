@@ -17,12 +17,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 HERE = Path(__file__).resolve().parent
-loader = importlib.machinery.SourceFileLoader("superchat_deck_export", str(HERE / "superchat-deck-export"))
+loader = importlib.machinery.SourceFileLoader("superchat_deck_export", str(HERE.parent / "bin" / "superchat-deck-export"))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 helper = importlib.util.module_from_spec(spec)
 loader.exec_module(helper)
 
-FIXTURE = HERE / "deck-export" / "fixtures" / "basic.deck.html"
+FIXTURE = HERE.parent / "share" / "deck-export" / "fixtures" / "basic.deck.html"
 EMU_PER_PX = 9144000 / 1920  # dom-to-pptx lays a 1920px slide on a 10in (9144000 EMU) page
 
 

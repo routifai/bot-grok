@@ -9,7 +9,7 @@ import sys
 import unittest
 from unittest.mock import Mock, patch
 
-loader = importlib.machinery.SourceFileLoader("page_browser", str(Path(__file__).with_name("superchat-page-browser")))
+loader = importlib.machinery.SourceFileLoader("page_browser", str(Path(__file__).resolve().parent.parent / "bin" / "superchat-page-browser"))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 helper = importlib.util.module_from_spec(spec)
 loader.exec_module(helper)
@@ -17,7 +17,7 @@ loader.exec_module(helper)
 
 class PageBrowserTest(unittest.TestCase):
     def test_closed_stdin_cancels_helper_without_a_browser(self):
-        with subprocess.Popen([sys.executable, str(Path(__file__).with_name("superchat-page-browser")), "snapshot", "{}"],
+        with subprocess.Popen([sys.executable, str(Path(__file__).resolve().parent.parent / "bin" / "superchat-page-browser"), "snapshot", "{}"],
                               env={**os.environ, "SUPERCHAT_BROWSER_WATCH_STDIN": "1", "SUPERCHAT_CDP_PORT": "0"},
                               stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as process:
             process.stdin.close()

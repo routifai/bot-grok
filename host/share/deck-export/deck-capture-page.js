@@ -12,7 +12,7 @@
 //   pinDeckStage 2969-2975, measureSlide 2981-3049, collectLayeredPptxBackgroundTargets 583-948,
 //   restoreLayeredPptxBackgroundIsolation 960-973, isolateLayeredPptxBackground 975-1332.
 // The Electron-only orchestration (BrowserWindow, nativeImage, the debugger attach) is replaced by
-// `../superchat-deck-export` driving the same sequence over CDP. The per-slide screenshot paths of
+// `host/bin/superchat-deck-export` driving the same sequence over CDP. The per-slide screenshot paths of
 // deck-capture.ts (renderDeckSlides image mode, showSlide, restackActiveSlide, stitching) are NOT
 // ported: Superchat never exports slide images.
 

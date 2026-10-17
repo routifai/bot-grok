@@ -111,7 +111,7 @@ RUN set -eu; \
 
 # The pptx runtime (PptxGenJS with its pinned fixes, react-icons, sharp), on NODE_PATH so
 # `require('pptxgenjs')` works from any script the model writes.
-COPY deployment/computer/pptx/runtime/ /tmp/pptx-runtime/
+COPY host/share/pptx/runtime/ /tmp/pptx-runtime/
 RUN sh /tmp/pptx-runtime/install.sh /opt/superchat-pptx \
  && rm -rf /tmp/pptx-runtime && npm cache clean --force
 ENV NODE_PATH=/opt/superchat-pptx/node_modules
@@ -122,17 +122,17 @@ RUN ln -sf /opt/venv/bin/omnigent /usr/local/bin/omnigent \
  && echo 'export PATH="/opt/venv/bin:${PATH}"' > /etc/profile.d/omnigent-venv.sh
 
 # Superchat's helpers and the skill files the model's instructions point at.
-COPY --chmod=755 deployment/computer/start.sh /usr/local/bin/superchat-computer
-COPY --chmod=755 deployment/computer/superchat-browser deployment/computer/superchat-page-browser \
-     deployment/computer/superchat-deck-export deployment/computer/superchat-dashboard /usr/local/bin/
-COPY --chmod=644 deployment/computer/superchat-local-bin.sh /etc/profile.d/superchat-local-bin.sh
-COPY --chmod=644 deployment/computer/deck-export/deck-capture-page.js \
-     deployment/computer/deck-export/vendor/dom-to-pptx/dom-to-pptx.bundle.js.gz /usr/local/share/superchat/deck-export/
-COPY --chmod=644 deployment/computer/deck-export/vendor/dom-to-pptx/LICENSE /usr/local/share/superchat/deck-export/dom-to-pptx.LICENSE
-COPY --chmod=644 deployment/computer/dashboard/template.html /usr/local/share/superchat/dashboard/template.html
+COPY --chmod=755 host/bin/start.sh /usr/local/bin/superchat-computer
+COPY --chmod=755 host/bin/superchat-browser host/bin/superchat-page-browser \
+     host/bin/superchat-deck-export host/bin/superchat-dashboard /usr/local/bin/
+COPY --chmod=644 host/bin/superchat-local-bin.sh /etc/profile.d/superchat-local-bin.sh
+COPY --chmod=644 host/share/deck-export/deck-capture-page.js \
+     host/share/deck-export/vendor/dom-to-pptx/dom-to-pptx.bundle.js.gz /usr/local/share/superchat/deck-export/
+COPY --chmod=644 host/share/deck-export/vendor/dom-to-pptx/LICENSE /usr/local/share/superchat/deck-export/dom-to-pptx.LICENSE
+COPY --chmod=644 host/share/dashboard/template.html /usr/local/share/superchat/dashboard/template.html
 COPY --chmod=644 engine/omnigent/omnigent/superchat/decks/kit/vendor/chart.js/chart.umd.js /usr/local/share/superchat/dashboard/chart.umd.js
 COPY --chmod=644 engine/omnigent/omnigent/superchat/decks/kit/vendor/chart.js/LICENSE.md /usr/local/share/superchat/dashboard/chart.js.LICENSE.md
-COPY deployment/computer/pptx/skill/pptx-generator/ /usr/local/share/superchat/skills/pptx-generator/
+COPY host/share/pptx/skill/pptx-generator/ /usr/local/share/superchat/skills/pptx-generator/
 
 # The Computer user is uid 1000 with its home at /home/superchat (a per-person volume at runtime).
 # CRs are stripped so the helpers' shebangs work from a CRLF checkout.
