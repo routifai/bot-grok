@@ -1,44 +1,40 @@
-"""A new deck's look: kept when the person's words or the task record back it, else chosen.
+"""A new deck's look: the model's template is built; the engine chooses only when there is none.
 
-ADR 0025: a deliverable is started in the same turn, so a new deck is never held up by a "Which
-look?" card. ``deck_new`` says where its look came from (``look_from``) and keeps the template
-when something the model cannot write itself backs it:
+ADR 0026 (amending ADR 0025): ``look_from`` is a record, never a gate. ``deck_new`` builds any
+valid ``template`` the model passed, whatever ``look_from`` says, and records ``look_from`` as
+given (one of :data:`LOOK_SOURCES`, else :data:`MODEL`). Only when ``template`` is missing does
+the engine settle it: the theme the person picked on the task's card (:data:`PICKED`, read from
+the option id), else its own choice (:func:`choose_look`, from the topic and the person's taste,
+:data:`CHOSEN`), and the result says which look it used and why. Nothing here forces a second
+call. The look reaches the task on the ``deck_new`` event (``tasks`` never reads decks).
 
-* ``named``: the person's latest message names the theme (its name or id), or a mood word
-  (:data:`MOODS`) whose themes include it;
-* ``picked``: the task record holds the person's pick of this theme (a card answer the engine
-  recorded), or the latest message is that answer;
-* ``you_choose``: the message hands the choice over (:data:`YOU_CHOOSE_PHRASES`);
-* ``background``: the work is a scheduled or ad-hoc Helper run, or a scheduled fire (server labels
-  on the session or its parents), so there is no person to ask.
+The one refusal is :data:`HELPER_REFUSAL`: background work (a scheduled or ad-hoc Helper run, or
+a scheduled fire) with no template and no topic to choose from.
 
-Anything else (``ask``, missing, or a claim nothing backs) is chosen by :func:`choose_look` from
-the topic and the person's taste, and the file card offers "Change look". The one refusal left is
-:data:`HELPER_REFUSAL`, for background work whose request has no topic to choose from.
-
-The latest message and the record come from the server's task view of the Conversation (a
-Helper's: the chat that started it), see :mod:`omnigent.superchat.tasks`.
+The latest message, the card answer and the background flag come from the server's task view of
+the Conversation (a Helper's: the chat that started it), see :mod:`omnigent.superchat.tasks`; it
+is read only when there is no template.
 
 Limits: matching is on words, case-insensitive. A mood word in passing ("the tech team") counts
-as naming that mood; a delegation phrase in passing ("just do it with Q3") counts as handing over
-the choice.
+as naming that mood.
 """
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
 
 from omnigent.superchat.decks import kit
+from omnigent.superchat.decks.tools import LOOK_SOURCES
 from omnigent.superchat.feature import HandlerCtx
 from omnigent.superchat.prompt_prefix import fetch_memory_profile
 from omnigent.superchat.tasks.runtime import read_tasks
 
-#: Mood words the person may use instead of a theme name -> the themes that mood fits. The same
-#: table is in decks.md, so the Muse and the gate read moods alike.
+#: Mood words the person may use instead of a theme name -> the themes that mood fits. The one
+#: list: the deck rules tell the Muse to name a theme for a mood, or leave the choice here.
 MOODS: dict[str, tuple[str, ...]] = {
     **dict.fromkeys(
         ("formal", "board", "bank report", "finance", "management"),
@@ -58,25 +54,18 @@ MOODS: dict[str, tuple[str, ...]] = {
     **dict.fromkeys(("pitch", "investors", "startup"), ("pitch-deck-vc",)),
 }
 
-#: What counts as handing the choice to the Muse. Short on purpose: anything else gets the card.
-YOU_CHOOSE_PHRASES = (
-    "you choose",
-    "you pick",
-    "you decide",
-    "your call",
-    "your choice",
-    "up to you",
-    "just do it",
-    "surprise me",
-    "any look",
-    "any theme",
-)
 HELPER_REFUSAL = (
     "The person hasn't chosen a look and the request has no topic to choose one from. Stop and "
     "report back that the look must be settled first; do not pick one."
 )
 #: Recorded as ``look_from`` when the engine chose the look.
 CHOSEN = "chosen"
+#: Recorded as ``look_from`` when the model passed a template and did not say where it came from.
+MODEL = "model"
+#: Recorded as ``look_from`` for the theme the person picked on the task's card.
+PICKED = "picked"
+#: The budget for each server read the engine's choice needs (ADR 0026: bounded metadata calls).
+_READ_BUDGET = 2.0
 
 
 def _has(text: str, phrase: str) -> bool:
@@ -130,8 +119,8 @@ TOPICS: dict[str, tuple[str, ...]] = {
         *("architecture", "platform", "security", "infrastructure", "software", "code", "ai"),
     ),
 }
-#: Each kind's looks, best fit first. The card leads with one of a kind's first two (which one
-#: varies by request), so a sales deck opens on Corporate Clean or Blue Professional.
+#: Each kind's looks, best fit first: a sales deck gets Corporate Clean or Blue Professional (the
+#: first two rank alike; the request breaks the tie).
 LEADS: dict[str, tuple[str, ...]] = {
     "professional": (
         *("corporate-clean", "blue-professional", "swiss-grid", "arctic-cool", "minimal-white"),
@@ -142,14 +131,6 @@ LEADS: dict[str, tuple[str, ...]] = {
     ),
     "bold": ("pitch-deck-vc", "bauhaus", "midcentury", "editorial-tri-tone", "sharp-mono"),
     "dark": ("tokyo-night", "nord", "sharp-mono", "magazine-mono"),
-}
-#: Beside the best fit, one look from each of these theme categories: distinct, plausible
-#: alternatives (a business deck gets an editorial and a bold one, never a night theme).
-ALTERNATIVES: dict[str, tuple[str, str]] = {
-    "professional": ("editorial", "bold"),
-    "editorial": ("professional", "bold"),
-    "bold": ("editorial", "professional"),
-    "dark": ("bold", "professional"),
 }
 #: The kind a request with no topic word gets: decks.md's default is a professional look.
 DEFAULT_KIND = "professional"
@@ -172,14 +153,13 @@ def topic_kinds(hint: str) -> list[str]:
     return sorted((k for k, n in hits.items() if n), key=lambda k: -hits[k]) or [DEFAULT_KIND]
 
 
-def pick_three(hint: str, *, seed: str = "") -> list[str]:
-    """Three themes for *hint* (the deck's title and request): the best fit, then two alternatives.
+def rank(hint: str, *, seed: str = "") -> list[str]:
+    """Every theme for *hint* (the deck's title and request), best fit first: the one ranking.
 
     A named theme counts most, then a mood word (:data:`MOODS`), then the topic's kind
     (:data:`TOPICS`, whose :data:`LEADS` order the looks), then the dictionary's own words
-    (``best_for`` / ``mood`` / ``tagline``). The other two come from the categories
-    :data:`ALTERNATIVES` pairs with the first. Equal themes are ordered by a hash of *seed* (the
-    chat and request), so offers vary without being random.
+    (``best_for`` / ``mood`` / ``tagline``). Equal themes are ordered by a hash of *seed* (the
+    request), so the choice varies by request without being random.
     """
     templates = kit.templates()
     words = {w for w in _words(hint) if len(w) > 3}
@@ -194,7 +174,7 @@ def pick_three(hint: str, *, seed: str = "") -> list[str]:
         own = LEADS.get(templates[theme_id].category, ())
         return 10 + own.index(theme_id) if theme_id in own else 20
 
-    def rank(theme_id: str) -> tuple[int, int, str]:
+    def key(theme_id: str) -> tuple[int, int, str]:
         t = templates[theme_id]
         score = (
             8 * (theme_id in named)
@@ -204,10 +184,7 @@ def pick_three(hint: str, *, seed: str = "") -> list[str]:
         )
         return -score, lead(theme_id) // 2, _turn(seed or hint, theme_id)
 
-    ranked = sorted(templates, key=rank)
-    first = ranked[0]
-    others = ALTERNATIVES[templates[first].category]
-    return [first, *(next(t for t in ranked if templates[t].category == c) for c in others)]
+    return sorted(templates, key=key)
 
 
 def has_topic(text: str) -> bool:
@@ -236,12 +213,12 @@ def remembered_themes(profile: str | None) -> list[str]:
 def choose_look(topic_text: str, memory_order: Sequence[str] = ()) -> str:
     """The look for a new deck about *topic_text*: the first theme in the ordering.
 
-    A theme or mood the topic names comes first (:func:`pick_three`'s ranking). Otherwise the
+    A theme or mood the topic names comes first (:func:`rank`). Otherwise the
     person's remembered taste (*memory_order*) leads where it fits the topic's kind of look
     (:data:`TOPICS` / :data:`LEADS`), or anywhere when the topic says nothing; then the topic's
     best fit.
     """
-    ranked = pick_three(topic_text, seed=topic_text)
+    ranked = rank(topic_text, seed=topic_text)
     if named_themes(topic_text) or mood_themes(topic_text):
         return ranked[0]
     words = _words(topic_text)
@@ -254,14 +231,30 @@ def choose_look(topic_text: str, memory_order: Sequence[str] = ()) -> str:
     return ranked[0]
 
 
+def picked_look(view: dict) -> str | None:
+    """The theme the person picked on the open task's card, by the option's id (a ``deck-theme``
+    option's id is its theme id), or ``None``. This turn's answer counts first, then the open
+    deck task's latest one."""
+    templates = kit.templates()
+    answer = view.get("answer")
+    picks = [answer.get("option_id")] if isinstance(answer, dict) else []
+    for task in view.get("tasks") or ():
+        if isinstance(task, dict) and task.get("kind") == "deck":
+            answers = (task.get("fields") or {}).get("answers") or []
+            picks += [a.get("option_id") for a in reversed(answers) if isinstance(a, dict)]
+            break
+    return next((p for p in picks if isinstance(p, str) and p in templates), None)
+
+
 @dataclass(frozen=True)
 class Look:
     """How a new deck's look was settled.
 
     :param theme: The theme to build in.
-    :param look_from: Where it came from: the backed ``look_from``, or :data:`CHOSEN`.
+    :param look_from: What the task records: the model's ``look_from``, :data:`MODEL`,
+        :data:`PICKED` or :data:`CHOSEN`.
     :param refusal: Why nothing may be built (background work with no topic), else ``None``.
-    :param why: Why the engine chose, for the model (empty when the look was kept).
+    :param why: Why the engine chose, for the model (empty unless :attr:`chosen`).
     """
 
     theme: str
@@ -271,50 +264,35 @@ class Look:
 
     @property
     def chosen(self) -> bool:
-        """The engine chose the look (the model's template was not backed)."""
+        """The engine chose the look (no template was given and nothing was picked)."""
         return self.look_from == CHOSEN
 
 
-def backed(look_from: object, theme_id: str, view: Mapping[str, Any]) -> bool:
-    """Whether the person's words or the task record back *look_from* for *theme_id*."""
-    message = str(view.get("message") or "").lower()
-    if look_from == "named":
-        return theme_id in named_themes(message) | mood_themes(message)
-    if look_from == "picked":
-        answer = view.get("answer")
-        label = str(answer.get("label") or "") if isinstance(answer, dict) else ""
-        if label and named_themes(label) == {theme_id}:
-            return True
-        return any(
-            isinstance(t, dict)
-            and t.get("kind") == "deck"
-            and isinstance(t.get("fields"), dict)
-            and t["fields"].get("look_id") == theme_id
-            for t in view.get("tasks") or ()
-        )
-    if look_from == "you_choose":
-        return any(_has(message, p) for p in YOU_CHOOSE_PHRASES)
-    if look_from == "background":
-        return view.get("background") is True
-    return False
-
-
 async def settle_look(
-    ctx: HandlerCtx | None, look_from: object, theme_id: str, title: str
+    ctx: HandlerCtx | None, look_from: object, template: str | None, title: str
 ) -> Look:
     """The look a new deck titled *title* is built in (see the module doc)."""
+    if template is not None and template in kit.templates():
+        return Look(
+            template,
+            look_from if isinstance(look_from, str) and look_from in LOOK_SOURCES else MODEL,
+        )
     client = ctx.server_client if ctx is not None else None
     session = ctx.conversation_id if ctx is not None else None
     view = await read_tasks(client, session) or {}
-    if backed(look_from, theme_id, view):
-        return Look(theme_id, str(look_from))
+    picked = picked_look(view)
+    if picked is not None:
+        return Look(picked, PICKED)
     topic = f"{title} {view.get('message') or ''}".strip()
     if view.get("background") is True and not has_topic(topic):
-        return Look(theme_id, str(look_from), HELPER_REFUSAL)
-    profile = await fetch_memory_profile(client, session)
-    why = (
-        "no look was named"
-        if look_from in (None, "ask")
-        else f"nothing the person said or picked backs look_from {look_from}"
-    )
-    return Look(choose_look(topic, remembered_themes(profile)), CHOSEN, why=why)
+        return Look("", CHOSEN, HELPER_REFUSAL)
+    try:
+        profile = await asyncio.wait_for(fetch_memory_profile(client, session), _READ_BUDGET)
+    except TimeoutError:
+        profile = None
+    remembered = remembered_themes(profile)
+    theme = choose_look(topic, remembered)
+    why = "no template was given"
+    if theme in remembered:
+        why += "; their Memory Profile names it"
+    return Look(theme, CHOSEN, why=why)

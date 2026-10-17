@@ -203,6 +203,7 @@ async def test_first_message_schedules_background_semantic_title(
 
     coordinator = app.state.background_title_coordinator
     coordinator._generator = generator
+    coordinator._turn_hold_seconds = 0.0
 
     fake_runner = httpx.AsyncClient(
         transport=httpx.MockTransport(lambda _request: httpx.Response(202, json={"queued": True})),
@@ -272,6 +273,7 @@ async def test_create_titled_session_keeps_title_after_first_message(
 
     coordinator = app.state.background_title_coordinator
     coordinator._generator = generator
+    coordinator._turn_hold_seconds = 0.0
 
     fake_runner = httpx.AsyncClient(
         transport=httpx.MockTransport(lambda _request: httpx.Response(202, json={"queued": True})),
@@ -340,6 +342,7 @@ async def test_sidebar_rename_wins_in_flight_background_title(
 
     coordinator = app.state.background_title_coordinator
     coordinator._generator = generator
+    coordinator._turn_hold_seconds = 0.0
 
     fake_runner = httpx.AsyncClient(
         transport=httpx.MockTransport(lambda _request: httpx.Response(202, json={"queued": True})),
@@ -408,6 +411,7 @@ async def test_background_title_failure_does_not_break_subsequent_user_turn(
 
     coordinator = app.state.background_title_coordinator
     coordinator._generator = generator
+    coordinator._turn_hold_seconds = 0.0
     forwarded_requests: list[httpx.Request] = []
 
     def forward_to_runner(request: httpx.Request) -> httpx.Response:
@@ -484,6 +488,7 @@ async def test_initial_item_schedules_background_semantic_title(
         return "Debug authentication timeout"
 
     app.state.background_title_coordinator._generator = generator
+    app.state.background_title_coordinator._turn_hold_seconds = 0.0
     fake_runner = httpx.AsyncClient(
         transport=httpx.MockTransport(lambda _request: httpx.Response(202, json={"queued": True})),
         base_url="http://runner",
@@ -532,6 +537,7 @@ async def test_native_user_item_schedules_background_semantic_title(
         return "Debug authentication timeout"
 
     app.state.background_title_coordinator._generator = generator
+    app.state.background_title_coordinator._turn_hold_seconds = 0.0
     response = await client.post(
         f"/v1/sessions/{session['id']}/events",
         json={
@@ -571,6 +577,7 @@ async def test_native_user_item_respects_background_title_header_opt_out(
         return "Should not appear"
 
     app.state.background_title_coordinator._generator = generator
+    app.state.background_title_coordinator._turn_hold_seconds = 0.0
     response = await client.post(
         f"/v1/sessions/{session['id']}/events",
         json={
@@ -3761,7 +3768,8 @@ async def test_post_interrupt_without_data_field_is_accepted(
     # layer; a 422 here means the pydantic default regressed and every
     # deployed bare-control client breaks again.
     assert resp.status_code == 202, resp.text
-    assert resp.json() == {"queued": False}
+    # No runner is bound in this harness: the stop could not land.
+    assert resp.json() == {"queued": False, "delivered": False}
     # The interrupt actually took effect (not just validated): the
     # route published the cancellation signal for the web turn.
     interrupted = [e for _sid, e in published if e.get("type") == "session.interrupted"]

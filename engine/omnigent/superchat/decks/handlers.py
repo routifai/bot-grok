@@ -2,16 +2,20 @@
 
 Runs where the host's Chromium is: fetches the deck from the server, hands it to the
 ``superchat-deck-export`` helper (override with ``SUPERCHAT_DECK_EXPORT_HELPER``) and saves the
-produced ``.pptx`` / ``.pdf`` as a new artifact in the same chat.
+produced ``.pptx`` / ``.pdf`` as a new artifact in the same chat. The helper attaches to the
+host's warm deck browser when it is up (docs/adr/0026); each helper run logs its wall time and
+whether it did.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import re
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -25,11 +29,18 @@ from omnigent.superchat.feature import HandlerCtx
 HELPER_ENV = "SUPERCHAT_DECK_EXPORT_HELPER"
 HELPER_TIMEOUT_S = 180.0
 _FORMAT_LABEL = {"pptx": "PowerPoint", "pdf": "PDF"}
+_logger = logging.getLogger(__name__)
 
 
-async def run_helper(fmt: str, html: Path, out: Path | None = None) -> dict[str, Any] | str:
-    """Run the helper (``pptx``/``pdf`` write ``out``, ``lint`` measures): JSON, or a sentence."""
+async def run_helper(
+    fmt: str, html: Path, out: Path | None = None, ctx: HandlerCtx | None = None
+) -> dict[str, Any] | str:
+    """Run the helper (``pptx``/``pdf`` write ``out``, ``lint`` measures): JSON, or a sentence.
+
+    Logs ``deck tool <name> <s>s warm=<bool>`` with the calling session.
+    """
     helper = os.environ.get(HELPER_ENV) or "superchat-deck-export"
+    started = time.monotonic()
     try:
         proc = await asyncio.create_subprocess_exec(
             helper,
@@ -46,17 +57,36 @@ async def run_helper(fmt: str, html: Path, out: Path | None = None) -> dict[str,
         return "Deck export isn't available on this host yet"
     except OSError as exc:
         return f"Deck export couldn't start: {exc}"
+
+    def log_run(warm: object) -> None:
+        _logger.info(
+            "deck tool %s %.1fs warm=%s session_id=%s",
+            ctx.tool_name if ctx is not None else fmt,
+            time.monotonic() - started,
+            warm,
+            ctx.conversation_id if ctx is not None else None,
+        )
+
     try:
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=HELPER_TIMEOUT_S)
-    except TimeoutError:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=HELPER_TIMEOUT_S)
+    except (TimeoutError, asyncio.CancelledError) as exc:
+        # A cancelled tool must not leave the helper (and its Chromium) running.
         proc.kill()
         await proc.wait()
+        log_run(None)
+        if isinstance(exc, asyncio.CancelledError):
+            raise
         return "The export took too long and was stopped"
     lines = [ln for ln in stdout.decode("utf-8", "replace").splitlines() if ln.strip()]
     try:
         data = json.loads(lines[-1]) if lines else None
     except ValueError:
         data = None
+    log_run(data.get("warm") if isinstance(data, dict) else None)
+    if (not isinstance(data, dict) or not data.get("ok") or data.get("warm") is not True) and (
+        stderr.strip()
+    ):
+        _logger.warning("deck helper: %s", stderr.decode("utf-8", "replace").strip()[-300:])
     if not isinstance(data, dict):
         return "The export didn't finish"
     if not data.get("ok"):
@@ -112,7 +142,7 @@ async def _export(ctx: HandlerCtx, args: dict[str, Any]) -> str:
             src = Path(tmp) / "deck.html"
             out = Path(tmp) / f"deck.{fmt}"
             src.write_bytes(html)
-            result = await run_helper(fmt, src, out)
+            result = await run_helper(fmt, src, out, ctx)
             if isinstance(result, str):
                 return error(result)
             produced = Path(str(result.get("path") or out))

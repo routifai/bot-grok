@@ -4,7 +4,8 @@ description: |
   in one agent.
 
 executor:
-  model: gpt-4o
+  harness: claude-sdk
+  model: sonnet
 
 prompt: Test fixture for combined policy types.
 

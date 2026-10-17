@@ -180,30 +180,6 @@ class _CapturingResourceRegistry:
         """
         return str(self._runner_workspace) if self._runner_workspace is not None else None
 
-    async def launch_required_terminal(
-        self,
-        session_id: str,
-        terminal_name: str,
-        session_key: str,
-        spec: TerminalEnvSpec,
-        cwd_override: str | None = None,
-        sandbox_override: str | None = None,
-        parent_os_env: Any | None = None,
-        resource_role: str | None = None,
-    ) -> SessionResourceView:
-        """Capture a required terminal launch."""
-        return await self._launch(
-            "required",
-            session_id=session_id,
-            terminal_name=terminal_name,
-            session_key=session_key,
-            spec=spec,
-            cwd_override=cwd_override,
-            sandbox_override=sandbox_override,
-            parent_os_env=parent_os_env,
-            resource_role=resource_role,
-        )
-
     async def launch_auxiliary_terminal(
         self,
         session_id: str,
@@ -543,7 +519,8 @@ async def test_reset_state_rematerializes_env_from_new_agent_spec(tmp_path: Path
     workspace = tmp_path / "workspace"
     workspace.mkdir()
 
-    # Two agents with DISTINCT sandboxes so the captured spec is unambiguous.
+    # Two agents with DISTINCT os_env so the captured spec is unambiguous. Both
+    # run unsandboxed so the test builds on any OS (``linux_bwrap`` is Linux-only).
     spec_a = AgentSpec(
         spec_version=1,
         name="agent_a",
@@ -555,7 +532,7 @@ async def test_reset_state_rematerializes_env_from_new_agent_spec(tmp_path: Path
         os_env=OSEnvSpec(
             type="caller_process",
             cwd=".",
-            sandbox=OSEnvSandboxSpec(type="linux_bwrap"),
+            sandbox=OSEnvSandboxSpec(type="none", read_paths=[str(tmp_path)]),
         ),
     )
 
@@ -612,11 +589,11 @@ async def test_reset_state_rematerializes_env_from_new_agent_spec(tmp_path: Path
         resp2 = await c.get(env_path)
         assert resp2.status_code == 200, resp2.text
 
-    # After the reset the next access resolved agent_b (sandbox=linux_bwrap).
+    # After the reset the next access resolved agent_b and its sandbox grants.
     # If reset-state had NOT dropped the spec/snapshot caches, this would
-    # still be agent_a/"none" — the cross-agent sandbox leak this guards.
+    # still be agent_a — the cross-agent sandbox leak this guards.
     assert captured_specs[-1].name == "agent_b"
-    assert captured_specs[-1].os_env.sandbox.type == "linux_bwrap"
+    assert captured_specs[-1].os_env.sandbox.read_paths == [str(tmp_path)]
 
 
 @pytest.mark.asyncio

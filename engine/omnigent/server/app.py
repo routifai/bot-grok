@@ -74,7 +74,7 @@ from omnigent.server import host_keepalive, session_live_state, shutdown_state
 from omnigent.server.auth import AuthProvider, SharingMode
 from omnigent.server.background_session_titles import (
     BackgroundSessionTitleCoordinator,
-    RunnerBackgroundTitleGenerator,
+    ProxyBackgroundTitleGenerator,
 )
 from omnigent.server.feature_flags import Feature, FeatureFlags, resolve_feature_flags
 from omnigent.server.hosts import HostDeployment
@@ -1229,7 +1229,7 @@ def create_app(
     )
     background_title_coordinator = BackgroundSessionTitleCoordinator(
         conversation_store,
-        RunnerBackgroundTitleGenerator(runner_router),
+        ProxyBackgroundTitleGenerator(conversation_store),
         additional_instructions=title_instructions,
     )
     # Shared between the host tunnel (which records ``host.runner_exited``
@@ -1271,11 +1271,16 @@ def create_app(
         :param app_inst: The FastAPI app, used to attach
             per-AP state via ``app_inst.state.*``.
         """
-        # Bump AnyIO default thread limiter from 40 → 200; every
-        # ``asyncio.to_thread`` and FastAPI sync route grabs one.
+        # Two thread pools: AnyIO's limiter (FastAPI sync routes and
+        # ``anyio.to_thread``), bumped from 40 to 200, and the loop's default
+        # executor (every ``asyncio.to_thread`` / ``run_in_executor(None)``),
+        # which Python would size min(32, cpu+4); set it explicitly (64; ADR 0026).
         from anyio import to_thread as _to_thread
 
+        from omnigent.server import loop_lag
+
         _to_thread.current_default_thread_limiter().total_tokens = 200
+        loop_lag_task = loop_lag.start()
 
         # Initialise usage telemetry (fire-and-forget; no-op when disabled).
         from omnigent.telemetry import init_client as _init_telemetry
@@ -1500,6 +1505,10 @@ def create_app(
             metrics_publish_task.cancel()
             with suppress(asyncio.CancelledError):
                 await metrics_publish_task
+            if loop_lag_task is not None:
+                loop_lag_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await loop_lag_task
             # Stop in-flight background managed-sandbox launches so a
             # slow provision doesn't outlive the ASGI shutdown (the
             # sandbox itself, if already provisioned, is reaped by the

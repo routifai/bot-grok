@@ -95,7 +95,7 @@ async def test_an_operator_gateway_is_called_through_its_own_family(
     raw = yaml.safe_load(
         DEFAULT_TEMPLATE.read_text().replace("__ENGINE_PUBLIC_URL__", "https://eng.example")
     )
-    deployment = parse_host_section(raw["host"])
+    deployment = parse_host_section(raw["hosts"])
     state = SimpleNamespace(
         sandbox_config=deployment,
         databricks_store=None,

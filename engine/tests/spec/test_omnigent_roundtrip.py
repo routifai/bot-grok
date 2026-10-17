@@ -85,7 +85,7 @@ def function_tool_yaml(tmp_path: Path) -> Path:
     config = {
         "name": "tool_user",
         "prompt": "Use tools when helpful.",
-        "executor": {"model": "databricks-claude-sonnet-4"},
+        "executor": {"model": "anthropic/claude-sonnet-4"},
         "tools": {
             "get_current_time": {
                 "type": "function",

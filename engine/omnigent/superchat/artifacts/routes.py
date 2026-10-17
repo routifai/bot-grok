@@ -596,7 +596,7 @@ def create_artifacts_router(
         outline: str | None = None
         if is_deck_name(newest.name):  # the slides by code, so most turns need not read it
             try:
-                outline = deck_outline(await asyncio.to_thread(store.read, newest))
+                outline = await asyncio.to_thread(lambda: deck_outline(store.read(newest)))
             except Exception:
                 _logger.warning("artifacts: no outline for %s", newest.id, exc_info=True)
         return {

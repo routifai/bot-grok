@@ -190,7 +190,6 @@ def _import_runner_graph() -> None:
     adds little resident cost).
     """
     from omnigent.runner import _entry, app  # noqa: F401
-    from omnigent.runner.background_titles import sdk  # noqa: F401
     from omnigent.runtime.harnesses import _runner as _harness_runner  # noqa: F401
 
 

@@ -100,12 +100,10 @@ def test_import_graph_is_single_threaded() -> None:
     probe = "\n".join(
         [
             "from omnigent.runner._zygote import _import_runner_graph",
-            "import sys",
             "import threading",
             "_import_runner_graph()",
             "print(threading.active_count())",
             "print([t.name for t in threading.enumerate()])",
-            "print('omnigent.runner.background_titles.sdk' in sys.modules)",
         ]
     )
     result = subprocess.run(
@@ -117,7 +115,6 @@ def test_import_graph_is_single_threaded() -> None:
     assert result.returncode == 0, result.stderr
     lines = result.stdout.strip().splitlines()
     assert lines[0] == "1", result.stdout
-    assert lines[-1] == "True", result.stdout
 
 
 def test_manager_starts_and_pings(manager: ZygoteManager) -> None:

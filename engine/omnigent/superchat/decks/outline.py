@@ -79,7 +79,10 @@ class _OutlineParser(HTMLParser):
             self._stack.append(_Open(tag, element, skip))
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        # Recorded, then closed at once: a self-closed tag holds no text of its own.
         self.handle_starttag(tag, attrs)
+        if tag not in _VOID:
+            self.handle_endtag(tag)
 
     def handle_endtag(self, tag: str) -> None:
         for at in range(len(self._stack) - 1, -1, -1):

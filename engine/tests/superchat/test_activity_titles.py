@@ -3,13 +3,19 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
 from omnigent.entities import FunctionCallData, MessageData, NewConversationItem
+from omnigent.llms import background as background_llm
+from omnigent.llms.client import _ResponsesNamespace
+from omnigent.server import background_session_titles as titles_module
 from omnigent.server.background_session_titles import (
     BackgroundSessionTitleCoordinator,
     BackgroundTitleRequest,
+    ProxyBackgroundTitleGenerator,
 )
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
 from omnigent.superchat.activity.derive import (
@@ -29,6 +35,11 @@ from omnigent.superchat.activity.titles import (
 )
 
 _MODE = {"omnigent.context.mode": "superside-chat"}
+
+
+@pytest.fixture(autouse=True)
+def _no_turn_hold(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(titles_module, "TURN_HOLD_SECONDS", 0.0)
 
 
 @pytest.mark.parametrize(
@@ -314,3 +325,92 @@ def test_internal_words_never_reach_titles_or_summaries() -> None:
     assert "sub-agent, subagent, helper, background task, session, tool" in (
         ACTIVITY_TITLE_INSTRUCTIONS
     )
+
+
+async def test_activity_title_is_one_chat_call_on_the_owners_cheap_model(
+    conversation_store: SqlAlchemyConversationStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    chat = conversation_store.create_conversation(kind="default", labels=_MODE)
+    conversation_store.append(
+        chat.id,
+        [
+            NewConversationItem(
+                type="message",
+                response_id="resp_1",
+                data=MessageData(
+                    role="user", content=[{"type": "input_text", "text": "check tesla price"}]
+                ),
+            ),
+            NewConversationItem(
+                type="function_call",
+                response_id="resp_1",
+                data=FunctionCallData(
+                    agent="brain", name="web_search", arguments="{}", call_id="call_1"
+                ),
+            ),
+            *_more_steps(),
+        ],
+    )
+    calls: list[dict[str, Any]] = []
+
+    async def create(_self: object, **kwargs: Any) -> SimpleNamespace:
+        calls.append(kwargs)
+        text = SimpleNamespace(text="Check Tesla's latest price")
+        return SimpleNamespace(output=[SimpleNamespace(content=[text])])
+
+    async def light(_owner: str | None) -> background_llm.BackgroundLLM:
+        return "openai_compatible/cheap-light", {"api_key": "fake", "base_url": "http://up"}
+
+    monkeypatch.setattr(_ResponsesNamespace, "create", create)
+    monkeypatch.setattr(background_llm, "_resolver", light)
+    coordinator = BackgroundSessionTitleCoordinator(
+        conversation_store, ProxyBackgroundTitleGenerator(conversation_store)
+    )
+    sessions_before = len(conversation_store.list_conversations().data)
+
+    [activity] = list_activities(conversation_store, chat.id)
+    schedule_missing_titles(
+        conversation_store,
+        coordinator,
+        activities_missing_titles([activity]),
+        {chat.id: conversation_store.get_conversation(chat.id)},
+    )
+    await coordinator.wait_for_idle()
+
+    assert len(calls) == 1
+    assert calls[0]["model"] == "openai_compatible/cheap-light"
+    assert ACTIVITY_TITLE_INSTRUCTIONS in calls[0]["instructions"]
+    assert "tools" not in calls[0]
+    [titled] = list_activities(conversation_store, chat.id)
+    assert titled.title == "Check Tesla's latest price"
+    assert len(conversation_store.list_conversations().data) == sessions_before
+
+
+async def test_activity_title_waits_for_its_turns_first_seconds(
+    conversation_store: SqlAlchemyConversationStore,
+) -> None:
+    import time
+
+    chat = conversation_store.create_conversation(kind="default", labels=_MODE)
+    called_at: list[float] = []
+
+    async def generator(_request: BackgroundTitleRequest) -> str:
+        called_at.append(time.time())
+        return "Check tesla"
+
+    coordinator = BackgroundSessionTitleCoordinator(
+        conversation_store, generator, turn_hold_seconds=0.2
+    )
+    started = time.time()
+    coordinator.schedule_activity_title(
+        key="resp_x",
+        conversation=conversation_store.get_conversation(chat.id),
+        prompt="check tesla",
+        instructions=ACTIVITY_TITLE_INSTRUCTIONS,
+        clean=clean_generated_title,
+        save=lambda title: title,
+        turn_started_at=started,
+    )
+    await coordinator.wait_for_idle()
+
+    assert called_at and called_at[0] - started >= 0.19

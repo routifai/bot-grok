@@ -3,18 +3,21 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
+from datetime import date
 
 import pytest
 
-from omnigent.runner.background_titles.service import FOLLOW_USER_LANGUAGE_TITLE_INSTRUCTION
+from omnigent.server import background_session_titles as titles_module
 from omnigent.server.background_session_titles import (
     BACKGROUND_SESSION_TITLES_HEADER,
     BACKGROUND_TITLE_MAX_CHARS,
     CUSTOM_BACKGROUND_TITLE_MAX_CHARS,
+    FOLLOW_USER_LANGUAGE_TITLE_INSTRUCTION,
     BackgroundSessionTitleCoordinator,
     BackgroundTitleRequest,
-    RunnerBackgroundTitleGenerator,
+    ProxyBackgroundTitleGenerator,
     background_session_titles_enabled,
+    build_background_title_instructions,
     normalize_background_title,
     prepare_background_session_title,
 )
@@ -22,6 +25,11 @@ from omnigent.server.schemas import SessionEventInput
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
 
 pytestmark = pytest.mark.asyncio
+
+
+@pytest.fixture(autouse=True)
+def _no_turn_hold(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(titles_module, "TURN_HOLD_SECONDS", 0.0)
 
 
 def _seed_session(store: SqlAlchemyConversationStore, title: str) -> str:
@@ -163,36 +171,6 @@ async def test_prepare_background_title_skips_non_initial_sessions(
             parent_conversation_id=parent.id,
         )
     )
-
-    async def generator(_request: BackgroundTitleRequest) -> str:
-        return "Unused title"
-
-    pending = prepare_background_session_title(
-        coordinator=BackgroundSessionTitleCoordinator(store, generator),
-        conversation=conversation,
-        event=SessionEventInput(
-            type="message",
-            data={
-                "role": "user",
-                "content": [{"type": "input_text", "text": "hello"}],
-            },
-        ),
-    )
-
-    assert pending is None
-
-
-@pytest.mark.parametrize("harness_override", ["pi"])
-async def test_prepare_background_title_skips_unsupported_explicit_harnesses(
-    db_uri: str,
-    harness_override: str,
-) -> None:
-    store = SqlAlchemyConversationStore(db_uri)
-    conversation = store.create_conversation(
-        title=None,
-        agent_id=uuid.uuid4().hex,
-    )
-    conversation.harness_override = harness_override
 
     async def generator(_request: BackgroundTitleRequest) -> str:
         return "Unused title"
@@ -450,98 +428,6 @@ async def test_generator_failure_preserves_deterministic_title(db_uri: str) -> N
     assert store.get_conversation(session_id).title == "Investigate authentication timeout"
 
 
-class _FakeRunnerResponse:
-    def __init__(self, payload: dict[str, object]) -> None:
-        self._payload = payload
-
-    def raise_for_status(self) -> None:
-        return None
-
-    def json(self) -> dict[str, object]:
-        return self._payload
-
-
-class _FakeRunnerClient:
-    def __init__(self) -> None:
-        self.requests: list[tuple[str, dict[str, object]]] = []
-
-    async def post(
-        self,
-        url: str,
-        *,
-        json: dict[str, object],
-        timeout: float,
-    ) -> _FakeRunnerResponse:
-        assert timeout == 65.0
-        self.requests.append((url, json))
-        return _FakeRunnerResponse(
-            {"status": "generated", "title": "Debug authentication timeout"}
-        )
-
-
-class _FakeRoutedRunner:
-    def __init__(self, client: _FakeRunnerClient) -> None:
-        self.client = client
-
-
-class _FakeRunnerRouter:
-    def __init__(self, client: _FakeRunnerClient) -> None:
-        self.client = client
-        self.session_ids: list[str] = []
-
-    def client_for_existing_conversation(self, session_id: str) -> _FakeRoutedRunner:
-        self.session_ids.append(session_id)
-        return _FakeRoutedRunner(self.client)
-
-
-async def test_runner_generator_posts_session_configuration() -> None:
-    client = _FakeRunnerClient()
-    router = _FakeRunnerRouter(client)
-    generator = RunnerBackgroundTitleGenerator(router)  # type: ignore[arg-type]
-
-    title = await generator(
-        BackgroundTitleRequest(
-            session_id="conv_test",
-            prompt="please investigate the authentication timeout",
-            agent_id="agent_test",
-            harness_override="claude-sdk",
-            model_override="claude-sonnet-4-6",
-            additional_instructions="Use the requested slug format.",
-        )
-    )
-
-    assert title == "Debug authentication timeout"
-    assert router.session_ids == ["conv_test"]
-    assert client.requests == [
-        (
-            "/v1/sessions/conv_test/background-title",
-            {
-                "prompt": "please investigate the authentication timeout",
-                "agent_id": "agent_test",
-                "harness_override": "claude-sdk",
-                "model_override": "claude-sonnet-4-6",
-                "sub_agent_name": None,
-                "additional_instructions": (
-                    "Use the requested slug format.\n"
-                    "Unless another language is explicitly requested, write the title "
-                    "in the same primary language as the user's message."
-                ),
-            },
-        )
-    ]
-
-
-async def test_runner_generator_posts_language_rule_without_operator_customization() -> None:
-    client = _FakeRunnerClient()
-    generator = RunnerBackgroundTitleGenerator(_FakeRunnerRouter(client))  # type: ignore[arg-type]
-
-    await generator(BackgroundTitleRequest(session_id="conv_test", prompt="请修复登录超时"))
-
-    assert client.requests[0][1]["additional_instructions"] == (
-        FOLLOW_USER_LANGUAGE_TITLE_INSTRUCTION
-    )
-
-
 async def test_schedule_is_one_shot_per_session(db_uri: str) -> None:
     store = SqlAlchemyConversationStore(db_uri)
     session_id = _seed_session(store, "Investigate authentication timeout")
@@ -645,60 +531,6 @@ async def test_seed_polling_is_bounded_by_generation_slots(db_uri: str) -> None:
     await coordinator.wait_for_idle()
 
 
-async def test_title_retries_when_runner_not_routed_yet(db_uri: str) -> None:
-    from omnigent.server.background_session_titles import BackgroundTitleNotReady
-
-    store = SqlAlchemyConversationStore(db_uri)
-    session_id = _seed_session(store, "Investigate authentication timeout")
-    calls = 0
-
-    async def generator(_request: BackgroundTitleRequest) -> str:
-        nonlocal calls
-        calls += 1
-        if calls < 3:
-            raise BackgroundTitleNotReady("runner_not_routed")
-        return "Debug authentication timeout"
-
-    coordinator = BackgroundSessionTitleCoordinator(
-        store, generator, retry_delays_seconds=(0.0, 0.0, 0.0)
-    )
-    coordinator.schedule(
-        session_id=session_id,
-        prompt="please investigate the authentication timeout",
-        expected_seed_title="Investigate authentication timeout",
-    )
-    await coordinator.wait_for_idle()
-
-    assert calls == 3
-    assert store.get_conversation(session_id).title == "Debug authentication timeout"
-
-
-async def test_title_retries_are_bounded(db_uri: str) -> None:
-    from omnigent.server.background_session_titles import BackgroundTitleNotReady
-
-    store = SqlAlchemyConversationStore(db_uri)
-    session_id = _seed_session(store, "Investigate authentication timeout")
-    calls = 0
-
-    async def generator(_request: BackgroundTitleRequest) -> str:
-        nonlocal calls
-        calls += 1
-        raise BackgroundTitleNotReady("runner_http_503")
-
-    coordinator = BackgroundSessionTitleCoordinator(
-        store, generator, retry_delays_seconds=(0.0, 0.0)
-    )
-    coordinator.schedule(
-        session_id=session_id,
-        prompt="p",
-        expected_seed_title="Investigate authentication timeout",
-    )
-    await coordinator.wait_for_idle()
-
-    assert calls == 3
-    assert store.get_conversation(session_id).title == "Investigate authentication timeout"
-
-
 async def test_unusable_model_answer_is_not_retried(db_uri: str) -> None:
     store = SqlAlchemyConversationStore(db_uri)
     session_id = _seed_session(store, "Investigate authentication timeout")
@@ -709,9 +541,7 @@ async def test_unusable_model_answer_is_not_retried(db_uri: str) -> None:
         calls += 1
         return "x"
 
-    coordinator = BackgroundSessionTitleCoordinator(
-        store, generator, retry_delays_seconds=(0.0, 0.0)
-    )
+    coordinator = BackgroundSessionTitleCoordinator(store, generator)
     coordinator.schedule(
         session_id=session_id,
         prompt="p",
@@ -723,64 +553,142 @@ async def test_unusable_model_answer_is_not_retried(db_uri: str) -> None:
     assert store.get_conversation(session_id).title == "Investigate authentication timeout"
 
 
-async def test_rename_during_retry_wait_is_not_overwritten(db_uri: str) -> None:
-    from omnigent.server.background_session_titles import BackgroundTitleNotReady
+async def test_custom_background_title_instructions_include_date_and_keep_guardrails() -> None:
+    instructions = build_background_title_instructions(
+        "Use the format mon-dd-PR-number-slug.",
+        current_date=date(2026, 8, 26),
+    )
 
+    assert "The current date is 2026-08-26." in instructions
+    assert "Use the format mon-dd-PR-number-slug." in instructions
+    assert instructions.count(FOLLOW_USER_LANGUAGE_TITLE_INSTRUCTION) == 1
+    assert instructions.endswith("Return only the title with no quotes or markdown.")
+
+
+async def test_default_background_title_follows_user_message_language() -> None:
+    instructions = build_background_title_instructions(None)
+
+    assert FOLLOW_USER_LANGUAGE_TITLE_INSTRUCTION in instructions
+    assert "equally short phrase" in instructions
+
+
+class _Caller:
+    """A fake owner model: records each call and answers with *answer* (or raises it)."""
+
+    def __init__(self, answer: str | Exception) -> None:
+        self.answer = answer
+        self.calls: list[tuple[str, str]] = []
+
+    async def __call__(self, *, instructions: str, input_text: str) -> str:
+        self.calls.append((instructions, input_text))
+        if isinstance(self.answer, Exception):
+            raise self.answer
+        return self.answer
+
+
+def _proxy(
+    store: SqlAlchemyConversationStore, caller: _Caller | None, owners: list[str]
+) -> ProxyBackgroundTitleGenerator:
+    async def resolve(owner: str) -> _Caller | None:
+        owners.append(owner)
+        return caller
+
+    return ProxyBackgroundTitleGenerator(store, resolve_caller=resolve)
+
+
+async def test_proxy_call_writes_the_title_without_a_session(
+    db_uri: str, caplog: pytest.LogCaptureFixture
+) -> None:
     store = SqlAlchemyConversationStore(db_uri)
     session_id = _seed_session(store, "Investigate authentication timeout")
-    calls = 0
+    before = len(store.list_conversations().data)
+    caller = _Caller("Debug authentication timeout")
+    owners: list[str] = []
+    coordinator = BackgroundSessionTitleCoordinator(store, _proxy(store, caller, owners))
 
-    async def generator(_request: BackgroundTitleRequest) -> str:
-        nonlocal calls
-        calls += 1
-        if calls == 1:
-            store.update_conversation(session_id, title="My manual title")
-            raise BackgroundTitleNotReady("runner_not_routed")
-        return "Debug authentication timeout"
+    with caplog.at_level("INFO", logger=titles_module.__name__):
+        coordinator.schedule(
+            session_id=session_id,
+            prompt="please investigate the authentication timeout",
+            expected_seed_title="Investigate authentication timeout",
+        )
+        await coordinator.wait_for_idle()
 
-    coordinator = BackgroundSessionTitleCoordinator(store, generator, retry_delays_seconds=(0.0,))
+    assert store.get_conversation(session_id).title == "Debug authentication timeout"
+    assert len(caller.calls) == 1
+    instructions, input_text = caller.calls[0]
+    assert instructions == build_background_title_instructions(None)
+    assert input_text == (
+        "<user_message>\nplease investigate the authentication timeout\n</user_message>"
+    )
+    assert len(owners) == 1
+    # One model call, nothing else: no child session, no runner, no harness.
+    assert len(store.list_conversations().data) == before
+    assert any(
+        record.getMessage().startswith(f"title for {session_id} ")
+        and record.getMessage().endswith("s via proxy")
+        for record in caplog.records
+    )
+
+
+async def test_proxy_failure_keeps_the_tidied_title(db_uri: str) -> None:
+    store = SqlAlchemyConversationStore(db_uri)
+    session_id = _seed_session(store, "Investigate authentication timeout")
+    caller = _Caller(RuntimeError("upstream 500"))
+    coordinator = BackgroundSessionTitleCoordinator(store, _proxy(store, caller, []))
+
     coordinator.schedule(
         session_id=session_id,
-        prompt="p",
+        prompt="please investigate the authentication timeout",
         expected_seed_title="Investigate authentication timeout",
     )
     await coordinator.wait_for_idle()
 
-    assert calls == 1
-    assert store.get_conversation(session_id).title == "My manual title"
+    assert len(caller.calls) == 1
+    assert store.get_conversation(session_id).title == "Investigate authentication timeout"
 
 
-async def test_runner_generator_marks_unrouted_and_503_as_not_ready() -> None:
-    import httpx
+async def test_no_model_keeps_the_tidied_title_and_logs_once_per_owner(
+    db_uri: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    store = SqlAlchemyConversationStore(db_uri)
+    generator = _proxy(store, None, [])
+    request = BackgroundTitleRequest(session_id=_seed_session(store, "Hello"), prompt="hello")
 
-    from omnigent.server.background_session_titles import BackgroundTitleNotReady
+    with caplog.at_level("INFO", logger=titles_module.__name__):
+        assert await generator(request) is None
+        assert await generator(request) is None
 
-    class _NoRoute:
-        def client_for_existing_conversation(self, _sid: str) -> None:
-            return None
+    assert sum("no model to call" in record.getMessage() for record in caplog.records) == 1
 
-    request = BackgroundTitleRequest(session_id="s", prompt="p")
-    with pytest.raises(BackgroundTitleNotReady):
-        await RunnerBackgroundTitleGenerator(_NoRoute())(request)  # type: ignore[arg-type]
 
-    class _Resp:
-        status_code = 503
+async def test_title_waits_out_the_first_seconds_of_its_turn(db_uri: str) -> None:
+    store = SqlAlchemyConversationStore(db_uri)
+    session_id = _seed_session(store, "Investigate authentication timeout")
+    called_at: list[float] = []
 
-        def raise_for_status(self) -> None:
-            raise httpx.HTTPStatusError(
-                "x", request=httpx.Request("POST", "http://r"), response=httpx.Response(503)
-            )
+    async def generator(_request: BackgroundTitleRequest) -> str:
+        called_at.append(time.time())
+        return "Debug authentication timeout"
 
-    class _Client:
-        async def post(self, *_a: object, **_k: object) -> _Resp:
-            return _Resp()
+    coordinator = BackgroundSessionTitleCoordinator(store, generator, turn_hold_seconds=0.2)
+    scheduled_at = time.time()
+    coordinator.schedule(
+        session_id=session_id,
+        prompt="please investigate the authentication timeout",
+        expected_seed_title="Investigate authentication timeout",
+    )
+    await coordinator.wait_for_idle()
 
-    class _Routed:
-        client = _Client()
+    assert called_at and called_at[0] - scheduled_at >= 0.19
+    assert store.get_conversation(session_id).title == "Debug authentication timeout"
 
-    class _Router:
-        def client_for_existing_conversation(self, _sid: str) -> _Routed:
-            return _Routed()
 
-    with pytest.raises(BackgroundTitleNotReady):
-        await RunnerBackgroundTitleGenerator(_Router())(request)  # type: ignore[arg-type]
+async def test_coordinator_defaults_bound_title_calls() -> None:
+    async def generator(_request: BackgroundTitleRequest) -> str:
+        return "x"
+
+    coordinator = BackgroundSessionTitleCoordinator(None, generator)  # type: ignore[arg-type]
+
+    assert coordinator._timeout_seconds == 10.0
+    assert coordinator._generation_slots._value == 4

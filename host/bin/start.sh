@@ -24,6 +24,10 @@ shutdown() {
 }
 trap shutdown TERM INT
 
+# The warm deck browser (docs/adr/0026): one headless Chromium the deck tools attach to instead
+# of each launching their own. It restarts its Chromium itself; this loop restarts it.
+( while true; do superchat-deck-export --serve; sleep 2; done ) &
+
 # `wait` on a background child returns as soon as a trapped signal arrives.
 sleep infinity &
 IDLE_PID=$!

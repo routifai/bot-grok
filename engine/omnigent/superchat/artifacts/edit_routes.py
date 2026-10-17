@@ -7,7 +7,9 @@ changed in the patch's ``summary``. The engine applies them to the version
 it names and stores the result as a new version tagged ``manual``. A stale ``base_version`` is an
 ``artifact_stale`` 409 the editor reloads from; a patch that cannot be applied exactly is a
 ``conflict`` 409 whose message says to ask Superchat instead. The write-back to the host and
-the "you changed X" note are the artifacts capability's turn prefix.
+the "you changed X" note are the artifacts capability's turn prefix. The answer for a manual
+version carries ``element_id`` and ``what`` (``patches.edit_note``) beside ``edit_summary``: the
+edited element and the sentence the studio thread shows for it ("You made the title larger").
 
 ``POST /v1/artifacts/{id}/patch`` is the same patches from a file's studio (``artifact_patch``,
 ADR 0024): applied to the newest version when ``base_version`` still names it, saved as an
@@ -34,6 +36,7 @@ from omnigent.superchat.artifacts.patches import (
     Patch,
     SetFullSource,
     apply_patches,
+    edit_note,
 )
 from omnigent.superchat.artifacts.routes import (
     artifact_to_response,
@@ -99,6 +102,16 @@ def _apply(item: Artifact, data: bytes, patches: list[Patch]) -> tuple[bytes, st
 _STUDIO_AMBIGUOUS = "Edit the file at its workspace path and save it with artifact_save instead."
 
 
+def _manual_response(item: Artifact) -> dict[str, Any]:
+    """A manual version's answer: the artifact, and its edit in the studio's words."""
+    note = edit_note(item.edit_summary)
+    return {
+        **artifact_to_response(item, versions=item.version),
+        "element_id": note.element_id,
+        "what": note.what,
+    }
+
+
 def create_html_edit_router(
     store: SqlAlchemyArtifactStore,
     *,
@@ -126,7 +139,7 @@ def create_html_edit_router(
         except AmbiguousEdit as exc:
             raise OmnigentError(str(exc), code=ErrorCode.CONFLICT) from exc
         if new_data == data:  # nothing changed: no identical "edited by hand" version
-            return artifact_to_response(item, versions=item.version)
+            return _manual_response(item)
         if len(new_data) > MAX_ARTIFACT_BYTES:
             raise OmnigentError("file too large (25 MB max)", code=ErrorCode.INVALID_INPUT)
         try:
@@ -147,7 +160,7 @@ def create_html_edit_router(
             )
         except VersionConflictError as exc:
             raise OmnigentError(STALE_MESSAGE, code=ErrorCode.ARTIFACT_STALE) from exc
-        return artifact_to_response(created, versions=created.version)
+        return _manual_response(created)
 
     @router.post("/artifacts/{artifact_id}/patch")
     async def patch_from_studio(

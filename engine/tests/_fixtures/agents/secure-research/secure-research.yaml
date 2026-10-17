@@ -4,7 +4,8 @@ description: |
   Full IFC scenario — labels + function policies + enforcement.
 
 executor:
-  model: gpt-4o
+  harness: claude-sdk
+  model: sonnet
 
 prompt: Test fixture for the IFC label / policy scenario.
 

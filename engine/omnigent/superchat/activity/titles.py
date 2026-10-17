@@ -1,9 +1,9 @@
 """Plain-language titles for Activity Feed rows.
 
 An Activity is named by a short, model-written title ("Check Tesla's latest
-price"). The model call itself is the background title service's (economy model,
-see ``omnigent.server.background_session_titles``); this module owns the wording
-rules around it:
+price"). The model call itself is the background title service's (one chat call on
+the owner's cheap model, see ``omnigent.server.background_session_titles``); this
+module owns the wording rules around it:
 
 * the instructions that turn the title service into an *action-first task
   title* writer,

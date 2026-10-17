@@ -876,39 +876,6 @@ class SessionResourceRegistry:
         default_cwd = _session_workspace(session_id)
         return str(Path(default_cwd).resolve())
 
-    async def launch_required_terminal(
-        self,
-        session_id: str,
-        terminal_name: str,
-        session_key: str,
-        spec: TerminalEnvSpec,
-        *,
-        cwd_override: str | None = None,
-        sandbox_override: str | None = None,
-        parent_os_env: OSEnvSpec | None = None,
-        resource_role: str | None = None,
-    ) -> SessionResourceView:
-        """Launch a terminal required for the owning session to execute.
-
-        Mental model:
-            If this terminal dies, the session is dead.
-
-        Use this when the terminal process is the session runtime, or an
-        essential part of that runtime. This is agent-independent: callers
-        declare a lifecycle relationship, not a vendor or harness type.
-        """
-        return await self._launch_terminal_with_lifecycle(
-            TerminalLifecycle.REQUIRED,
-            session_id=session_id,
-            terminal_name=terminal_name,
-            session_key=session_key,
-            spec=spec,
-            cwd_override=cwd_override,
-            sandbox_override=sandbox_override,
-            parent_os_env=parent_os_env,
-            resource_role=resource_role,
-        )
-
     async def launch_auxiliary_terminal(
         self,
         session_id: str,

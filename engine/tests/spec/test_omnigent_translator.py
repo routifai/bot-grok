@@ -359,10 +359,9 @@ def test_missing_llm_rejected(basic_spec: AgentSpec) -> None:
 @pytest.mark.parametrize(
     ("model", "expected_harness"),
     [
-        # Claude models must get claude-sdk; before the fix they fell
-        # back to DatabricksExecutor and the agent hung.
-        ("databricks-claude-sonnet-4", "claude-sdk"),
-        ("databricks-claude-sonnet-4-6", "claude-sdk"),
+        # Claude models must get claude-sdk.
+        ("anthropic/claude-sonnet-4", "claude-sdk"),
+        ("anthropic/claude-sonnet-4-6", "claude-sdk"),
     ],
 )
 def test_native_omnigent_spec_infers_harness_from_model(
@@ -413,16 +412,16 @@ def test_sub_agent_infers_harness_and_forwards_os_env() -> None:
         spec_version=1,
         name="backend_engineer",
         instructions="You write code.",
-        llm=LLMConfig(model="databricks-claude-sonnet-4"),
-        executor=ExecutorSpec(type="omnigent", model="databricks-claude-sonnet-4", config={}),
+        llm=LLMConfig(model="anthropic/claude-sonnet-4"),
+        executor=ExecutorSpec(type="omnigent", model="anthropic/claude-sonnet-4", config={}),
         os_env=sub_os_env,
     )
     parent_spec = AgentSpec(
         spec_version=1,
         name="root",
         instructions="You delegate.",
-        llm=LLMConfig(model="databricks-gpt-5-4"),
-        executor=ExecutorSpec(type="omnigent", model="databricks-gpt-5-4", config={}),
+        llm=LLMConfig(model="anthropic/claude-sonnet-4-6"),
+        executor=ExecutorSpec(type="omnigent", model="anthropic/claude-sonnet-4-6", config={}),
         tools=ToolsConfig(agents=["backend_engineer"]),
         sub_agents=[sub_spec],
     )

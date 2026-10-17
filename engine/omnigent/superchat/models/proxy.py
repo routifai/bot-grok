@@ -196,8 +196,13 @@ def create_model_proxy_router(
             {"available": True, "reason": None, "provider": plan.provider, "model": plan.model}
         )
 
+    # An internal relay for hosts and harnesses (launch token), not a documented API: left out
+    # of the schema so one route with two methods does not produce two operations with one id.
     @router.api_route(
-        "/model/{provider}/{path:path}", methods=["GET", "POST"], response_model=None
+        "/model/{provider}/{path:path}",
+        methods=["GET", "POST"],
+        response_model=None,
+        include_in_schema=False,
     )
     async def model_proxy(
         provider: str, path: str, request: Request

@@ -13,7 +13,12 @@ from omnigent.superchat.decks import kit
 from omnigent.superchat.decks.authoring import handle_authoring_tool
 from omnigent.superchat.decks.feature import DECKS_FEATURE
 from omnigent.superchat.decks.handlers import HELPER_ENV
-from omnigent.superchat.decks.tools import DeckCheckTool, DeckNewTool, DeckThemeSetTool
+from omnigent.superchat.decks.tools import (
+    LOOK_SOURCES,
+    DeckCheckTool,
+    DeckNewTool,
+    DeckThemeSetTool,
+)
 
 from .look_fakes import helper_ctx
 
@@ -96,9 +101,10 @@ def test_tools_are_offered_to_the_muse_only() -> None:
     assert names == {"deck_new", "deck_check", "deck_export", "deck_themes", "deck_theme_set"}
     assert DECKS_FEATURE.tools({}, None) == []  # type: ignore[arg-type]
     new = DeckNewTool().get_schema()["function"]["parameters"]
-    assert new["required"] == ["path", "template", "title"]  # look_from is optional: the engine chooses (ADR 0025)
-    assert "ask" in new["properties"]["look_from"]["enum"]
-    assert "preference" not in new["properties"]["look_from"]["enum"]
+    # template and look_from are optional: the engine chooses without a template (ADR 0026)
+    assert new["required"] == ["path", "title"]
+    assert new["properties"]["look_from"]["enum"] == list(LOOK_SOURCES)
+    assert "ask" not in LOOK_SOURCES and "preference" not in LOOK_SOURCES
     assert new["properties"]["template"]["enum"] == list(kit.templates())
     assert DeckCheckTool().get_schema()["function"]["parameters"]["required"] == ["path"]
     setter = DeckThemeSetTool().get_schema()["function"]["parameters"]

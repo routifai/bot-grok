@@ -285,6 +285,7 @@ from omnigent.server.routes._sessions.helpers import (
     _wait_for_managed_runner_tunnel,
     _wait_for_runner_client,
 )
+from omnigent.server.routes._sessions.turn_metrics import TurnClock
 from omnigent.server.runner_session_init import RunnerSessionInitializer
 from omnigent.server.schemas import (
     BackgroundTaskInfo,
@@ -5663,6 +5664,8 @@ def _mark_dispatch_in_flight(conversation_id: str) -> Iterator[None]:
 _deferred_dispatch_pending: dict[str, int] = {}
 _deferred_dispatch_locks: dict[str, asyncio.Lock] = {}
 _deferred_dispatch_tasks: set[asyncio.Task[None]] = set()
+# Each session's early-acknowledged dispatches still to finish, with their stored item ids.
+_deferred_dispatch_items: dict[str, dict[asyncio.Task[None], str | None]] = {}
 
 
 def session_has_deferred_dispatch(session_id: str) -> bool:
@@ -5698,10 +5701,31 @@ async def managed_wake_may_precede_dispatch(conv: Conversation, app_state: Any) 
     return host is not None and host.sandbox_provider is not None
 
 
+def cancel_deferred_message_dispatch(session_id: str) -> list[str]:
+    """
+    Cancel *session_id*'s early-acknowledged dispatches: the person stopped the turn.
+
+    The messages stay stored; they never reach the runner.
+
+    :param session_id: Session/conversation identifier.
+    :returns: The stored item ids whose dispatch was cancelled.
+    """
+    cancelled: list[str] = []
+    for task, item_id in tuple(_deferred_dispatch_items.get(session_id, {}).items()):
+        if task.done():
+            continue
+        task.cancel()
+        if item_id is not None:
+            cancelled.append(item_id)
+    return cancelled
+
+
 def schedule_deferred_message_dispatch(
     session_id: str,
     dispatch: Callable[[], Awaitable[object]],
     on_error: Callable[[Exception], Awaitable[object]],
+    *,
+    item_id: str | None = None,
 ) -> None:
     """
     Run a stored message's slow runner wake and forward after the HTTP ack.
@@ -5714,6 +5738,7 @@ def schedule_deferred_message_dispatch(
     :param session_id: Session/conversation identifier.
     :param dispatch: Wakes the runner and forwards the stored message.
     :param on_error: Surfaces a failed *dispatch* to the session.
+    :param item_id: The stored message, for :func:`cancel_deferred_message_dispatch`.
     """
     _deferred_dispatch_pending[session_id] = _deferred_dispatch_pending.get(session_id, 0) + 1
     in_flight = contextlib.ExitStack()
@@ -5750,7 +5775,17 @@ def schedule_deferred_message_dispatch(
 
     task = asyncio.create_task(_run(), name=f"deferred-message-dispatch-{session_id}")
     _deferred_dispatch_tasks.add(task)
-    task.add_done_callback(_deferred_dispatch_tasks.discard)
+    _deferred_dispatch_items.setdefault(session_id, {})[task] = item_id
+
+    def _forget(done: asyncio.Task[None]) -> None:
+        _deferred_dispatch_tasks.discard(done)
+        items = _deferred_dispatch_items.get(session_id)
+        if items is not None:
+            items.pop(done, None)
+            if not items:
+                _deferred_dispatch_items.pop(session_id, None)
+
+    task.add_done_callback(_forget)
 
 
 def _session_is_starting(conversation_id: str) -> bool:
@@ -6244,6 +6279,8 @@ async def _relay_runner_stream_once(
     # web UI's block stream clears its pending-tool state on the
     # response_id transition and the tool card spinner never resolves.
     tool_call_response_ids: dict[str, str] = {}
+    # The person's wait per turn, from their message (ADR 0026).
+    turn_clock = TurnClock(session_id)
     _logger.info(
         "Relay: connecting to runner GET /stream for session=%s",
         session_id,
@@ -6455,6 +6492,8 @@ async def _relay_runner_stream_once(
                         failure_agent_name = _model if isinstance(_model, str) and _model else None
                         if isinstance(_model, str) and _model:
                             current_model = _model
+                        await turn_clock.start(conversation_store)
+                    turn_clock.observe(event)
 
                     # Accumulate response-scoped (scaffold) text deltas for
                     # persistence. Native message-scoped deltas (with a
@@ -8595,6 +8634,42 @@ async def _child_session_summaries_from_conversations(
     ]
 
 
+# A tool result past this size is parsed and serialised on a worker thread: a
+# deck result is about 1 MB, and decoding it on the loop stalls every session.
+_MCP_LARGE_JSON_BYTES = 64 * 1024
+
+
+async def _runner_json(resp: httpx.Response) -> Any:
+    """
+    Decode a runner response body, off the event loop when it is large.
+
+    :param resp: A completed (non-streaming) runner response.
+    :returns: The decoded JSON value.
+    """
+    raw = resp.content
+    if len(raw) > _MCP_LARGE_JSON_BYTES:
+        return await asyncio.to_thread(json.loads, raw)
+    return resp.json()
+
+
+def _arguments_preview(arguments: dict[str, Any], limit: int = 1024) -> str:
+    """
+    Return the first *limit* characters of ``json.dumps(arguments)``.
+
+    Top-level strings are cut to *limit* first, so a large argument (a file
+    body) is not serialised in full only to be sliced. The prefix is the same:
+    a string's JSON form is never shorter than the string.
+
+    :param arguments: The tool call's arguments.
+    :param limit: Preview length in characters.
+    :returns: The JSON preview.
+    """
+    cut = {
+        key: value[:limit] if isinstance(value, str) else value for key, value in arguments.items()
+    }
+    return json.dumps(cut)[:limit]
+
+
 async def _handle_mcp_tools_call(
     rpc_id: int | str | None,
     session_id: str,
@@ -8817,7 +8892,7 @@ async def _handle_mcp_tools_call(
             elicitation_id = await _register_policy_elicitation(
                 session_id,
                 call_result,
-                json.dumps(arguments)[:1024],
+                _arguments_preview(arguments),
                 conversation_store,
                 tool_name=namespaced_name,
                 actor=actor,
@@ -8890,7 +8965,7 @@ async def _handle_mcp_tools_call(
             timeout=MCP_PROXY_FORWARD_TIMEOUT_S,
         )
         exec_resp.raise_for_status()
-        exec_data = exec_resp.json()
+        exec_data = await _runner_json(exec_resp)
     except ConnectionError as exc:
         _logger.warning("Runner MCP execute detached: %s", exc, exc_info=True)
         if operation_id is not None:
@@ -8967,7 +9042,7 @@ async def _handle_mcp_tools_call(
                 timeout=MCP_PROXY_FORWARD_TIMEOUT_S,
             )
             retry_resp.raise_for_status()
-            exec_data = retry_resp.json()
+            exec_data = await _runner_json(retry_resp)
         except ConnectionError as exc:
             _logger.warning("Runner MCP retry detached: %s", exc, exc_info=True)
             if operation_id is not None:
@@ -9046,10 +9121,10 @@ async def _handle_mcp_tools_call(
             result_policy.data if isinstance(result_policy.data, str) else str(result_policy.data)
         )
 
-    return _mcp_ok_response(
-        rpc_id,
-        {"content": [{"type": "text", "text": output}]},
-    )
+    result_body = {"content": [{"type": "text", "text": output}]}
+    if len(output) > _MCP_LARGE_JSON_BYTES:
+        return await asyncio.to_thread(_mcp_ok_response, rpc_id, result_body)
+    return _mcp_ok_response(rpc_id, result_body)
 
 
 # The tunnel transport does not enforce httpx timeouts, so the runner status

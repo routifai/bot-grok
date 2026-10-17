@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from typing import Any, NamedTuple
 
 from fastapi import (
@@ -14,7 +15,7 @@ from fastapi import (
 from fastapi.responses import Response
 
 from omnigent.debug_logging import add_audit_attrs
-from omnigent.entities import Conversation
+from omnigent.entities import Agent, Conversation, LoadedAgent
 from omnigent.errors import ElicitationDeclinedError, ErrorCode, OmnigentError
 from omnigent.runner.routing import RunnerRouter
 from omnigent.runtime import (
@@ -84,6 +85,25 @@ from omnigent.spec.types import (
 )
 from omnigent.stores import AgentStore, ConversationStore
 from omnigent.stores.permission_store import PermissionStore
+
+# A fixed stripe of locks, so the set never grows with the number of agents.
+_AGENT_LOAD_LOCKS = tuple(threading.Lock() for _ in range(16))
+
+
+def _load_agent_once(cache: AgentCache, agent: Agent) -> LoadedAgent:
+    """
+    Load *agent*'s bundle through the process-wide cache, one loader per agent.
+
+    The cache memoises the parsed spec per process; holding the agent's lock
+    stripe makes concurrent cold loads after a restart extract the bundle once
+    instead of once per waiting request. Runs on a worker thread.
+
+    :param cache: The process's :class:`AgentCache`.
+    :param agent: The session's agent row.
+    :returns: The loaded agent.
+    """
+    with _AGENT_LOAD_LOCKS[hash(agent.id) % len(_AGENT_LOAD_LOCKS)]:
+        return cache.load(agent.id, agent.bundle_location, expand_env=agent.session_id is None)
 
 
 def register_hooks_routes(
@@ -362,47 +382,55 @@ def register_hooks_routes(
                 content=json.dumps({"result": "POLICY_ACTION_ALLOW"}),
                 media_type="application/json",
             )
-        agent = agent_store.get(conv.agent_id) if conv.agent_id else None
-        if agent is None:
-            # No agent — no policies. Return unspecified (pass-through).
-            return Response(
-                content=json.dumps({"result": "POLICY_ACTION_UNSPECIFIED"}),
-                media_type="application/json",
-            )
-
-        loaded = _sf.get_agent_cache().load(
-            agent.id, agent.bundle_location, expand_env=agent.session_id is None
-        )
-
         _caps = _sf.get_caps()
+        agent_cache = _sf.get_agent_cache()
+        _host_conn: dict[str, str] | None = None
+        agent: Agent | None = None
+        loaded: LoadedAgent | None = None
 
-        # Fast path: if no policies would fire (no agent guardrails, no
-        # session policies, no server-wide defaults), skip the engine build
-        # entirely. This avoids conversation-store reads for labels/state/usage
-        # on every tool call for the common no-policy case. Session policies are
-        # LRU-cached so this check is cheap after the first call per session.
-        # Users can add policies mid-session — the cache is invalidated on
-        # mutation, so newly added policies are visible on the very next call.
-        if not any_policies_apply(
-            spec=loaded.spec,
-            conversation_id=session_id,
-            default_policies=_caps.default_policies,
-            policy_store=get_policy_store(),
-            phase=phase,
-            tool_name=data.get("name") if isinstance(data, dict) else None,
-            # A sub-agent conversation's own guardrails live on the CHILD
-            # spec inside this bundle; without the row the check would
-            # fast-path skip a bundle whose only policies are child-declared.
-            conversation=conv,
-        ):
-            return Response(
-                content=json.dumps({"result": "POLICY_ACTION_ALLOW"}),
-                media_type="application/json",
+        def _prepare() -> tuple[str, PolicyEngine | None]:
+            """
+            Resolve agent, spec and engine in one worker-thread hop.
+
+            The agent read, the bundle load (a tar extraction on a cold cache),
+            the fast-path policy check and the engine build all touch the
+            database or disk, so none of them may run on the event loop.
+
+            :returns: ``("no_agent", None)``, ``("no_policies", None)``, or
+                ``("engine", engine)``.
+            """
+            nonlocal agent, loaded, _host_conn
+            agent = agent_store.get(conv.agent_id) if conv.agent_id else None
+            if agent is None:
+                return "no_agent", None
+            loaded = _load_agent_once(agent_cache, agent)
+            # Fast path: if no policies would fire (no agent guardrails, no
+            # session policies, no server-wide defaults), skip the engine build
+            # entirely. This avoids conversation-store reads for labels/state/
+            # usage on every tool call for the common no-policy case. Session
+            # policies are LRU-cached so this check is cheap after the first call
+            # per session. Users can add policies mid-session — the cache is
+            # invalidated on mutation, so newly added policies are visible on
+            # the very next call.
+            if not any_policies_apply(
+                spec=loaded.spec,
+                conversation_id=session_id,
+                default_policies=_caps.default_policies,
+                policy_store=get_policy_store(),
+                phase=phase,
+                tool_name=data.get("name") if isinstance(data, dict) else None,
+                # A sub-agent conversation's own guardrails live on the CHILD
+                # spec inside this bundle; without the row the check would
+                # fast-path skip a bundle whose only policies are child-declared.
+                conversation=conv,
+            ):
+                return "no_policies", None
+            _host_conn = (
+                _caps.policy_llm_connection_factory()
+                if _caps.policy_llm_connection_factory
+                else None
             )
-
-        _host_conn = (
-            _caps.policy_llm_connection_factory() if _caps.policy_llm_connection_factory else None
-        )
+            return "engine", _build_engine(conv)
 
         def _build_engine(preloaded_conv: Conversation | None = None) -> PolicyEngine:
             """
@@ -420,6 +448,7 @@ def register_hooks_routes(
             :returns: A :class:`PolicyEngine` seeded with the latest
                 persisted state for ``session_id``.
             """
+            assert agent is not None and loaded is not None
             return build_policy_engine(
                 spec=loaded.spec,
                 conversation_id=session_id,
@@ -434,7 +463,19 @@ def register_hooks_routes(
                 host_connection=_host_conn,
             )
 
-        engine = _build_engine(conv)
+        outcome, built = await asyncio.to_thread(_prepare)
+        if outcome == "no_agent":
+            # No agent — no policies. Return unspecified (pass-through).
+            return Response(
+                content=json.dumps({"result": "POLICY_ACTION_UNSPECIFIED"}),
+                media_type="application/json",
+            )
+        if built is None:
+            return Response(
+                content=json.dumps({"result": "POLICY_ACTION_ALLOW"}),
+                media_type="application/json",
+            )
+        engine = built
         # Use the turn-initiating human's identity (persisted at forward time)
         # so per-user policies gate on the correct actor even when the HTTP
         # caller is the runner's service-account credential.  Falls back to
@@ -488,7 +529,7 @@ def register_hooks_routes(
                 deciding_policy = result.deciding_policy
                 assert deciding_policy is not None
                 async with _native_ask_gate_lock(session_id, deciding_policy):
-                    engine = _build_engine()
+                    engine = await asyncio.to_thread(_build_engine)
                     result = await engine.evaluate(ctx, read_only=is_read_only)
                     if result.action == PolicyAction.ASK and phase in (
                         Phase.TOOL_CALL,
@@ -557,8 +598,10 @@ def register_hooks_routes(
                 # the checkpoint) — fall through to the generic ALLOW/DENY handling
                 # below with the rebuilt engine and updated result.
 
-        if result.set_labels and not is_read_only:
-            engine.apply_label_writes(result.set_labels)
+        # ALLOW and DENY already persisted their labels inside ``evaluate``; an
+        # ASK on a non-blocking phase carries them unapplied.
+        if result.action == PolicyAction.ASK and result.set_labels and not is_read_only:
+            await asyncio.to_thread(engine.apply_label_writes, result.set_labels)
 
         resp_body: dict[str, Any] = {
             "result": _PHASE_TO_PROTO_ACTION.get(result.action, "POLICY_ACTION_UNSPECIFIED"),

@@ -770,7 +770,7 @@ def schedule_missing_titles(
     """Start model-written titles for Activities from :func:`activities_missing_titles`.
 
     Never waits: the feed answers now with the tidied request, and the title
-    appears on a later read once the economy model has written it (a turn's is
+    appears on a later read once the cheap model has written it (a turn's is
     stored by response id, a Helper's as its ``task_summary``). Must run on the
     event loop (the attempts are loop tasks); ``conversations`` is read beforehand.
 
@@ -810,6 +810,7 @@ def schedule_missing_titles(
             instructions=ACTIVITY_TITLE_INSTRUCTIONS,
             clean=clean_generated_label,
             save=save,
+            turn_started_at=activity.started_at,
         )
 
 

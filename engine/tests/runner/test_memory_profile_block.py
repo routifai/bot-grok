@@ -189,3 +189,82 @@ async def test_a_profile_that_goes_away_is_not_remembered_as_sent(
 
     assert sent_now == {}
     assert len(blocks) == 1  # local time only
+
+
+async def test_turn_prefix_fetches_its_blocks_together_in_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR 0026: the prefix costs its slowest read, not the sum; the order stays documented."""
+    import asyncio
+    import time
+
+    from omnigent.superchat import prompt_prefix
+
+    delay = 0.3
+
+    async def profile(_server: object, _conv: str) -> str:
+        await asyncio.sleep(delay)
+        return "PROFILE"
+
+    def projects(_workspace: object) -> str:
+        time.sleep(delay)
+        return "PROJECTS"
+
+    async def features(_server: object, _conv: str) -> list[str]:
+        await asyncio.sleep(delay)
+        return ["EDIT NOTE", "ARTIFACT HINT"]
+
+    async def local_time(_server: object) -> str:
+        await asyncio.sleep(delay)
+        return "LOCAL TIME"
+
+    monkeypatch.setattr(prompt_prefix, "fetch_memory_profile", profile)
+    monkeypatch.setattr(prompt_prefix, "_safe_projects_block", projects)
+    monkeypatch.setattr(prompt_prefix, "_feature_prefix_blocks", features)
+    monkeypatch.setattr(prompt_prefix, "fetch_local_time_line", local_time)
+
+    started = time.monotonic()
+    blocks = await prompt_prefix.turn_prefix_blocks(None, "conv", None, idle_gap_seconds=5.0)
+    elapsed = time.monotonic() - started
+
+    assert blocks == [
+        "PROFILE",
+        "PROJECTS",
+        "EDIT NOTE",
+        "ARTIFACT HINT",
+        "It has been less than an hour since the last message.",
+        "LOCAL TIME",
+    ]
+    assert elapsed < 3 * delay
+
+
+async def test_feature_blocks_keep_feature_order_and_a_failing_one_drops_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+    from types import SimpleNamespace
+
+    from omnigent.superchat import features, prompt_prefix
+
+    async def slow(_server: object, _conv: str) -> list[str]:
+        await asyncio.sleep(0.05)
+        return ["first"]
+
+    async def broken(_server: object, _conv: str) -> list[str]:
+        raise RuntimeError("down")
+
+    async def fast(_server: object, _conv: str) -> list[str]:
+        return ["third"]
+
+    monkeypatch.setattr(
+        features,
+        "FEATURES",
+        [
+            SimpleNamespace(name="slow", turn_prefix=slow),
+            SimpleNamespace(name="none", turn_prefix=None),
+            SimpleNamespace(name="broken", turn_prefix=broken),
+            SimpleNamespace(name="fast", turn_prefix=fast),
+        ],
+    )
+
+    assert await prompt_prefix._feature_prefix_blocks(None, "conv") == ["first", "third"]

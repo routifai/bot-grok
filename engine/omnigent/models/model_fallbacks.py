@@ -158,42 +158,6 @@ ROUTING_HARNESS_FAMILY: dict[str, str] = {
     "codex-native": "gpt",
 }
 
-#: Cheapest current arm per CLI family for background session titles. Title
-#: calls are tiny (<=64 output tokens, no tools, low effort), so they always
-#: run on the family's cheapest arm regardless of the session's model.
-_BACKGROUND_TITLE_FALLBACKS: dict[str, StaticModelFallback] = {
-    "claude": StaticModelFallback(
-        model_ids=("haiku",),
-        owner="Background session titles (omnigent.runner.background_titles.service)",
-        provenance=(
-            "claude's bare family alias resolves to the cheapest current Haiku "
-            "on Anthropic-direct and AI-Gateway paths alike"
-        ),
-        discovery_gap=(
-            "a background title never consults the session's live model catalog, "
-            "and no discovery API ranks arms by cost"
-        ),
-    ),
-    "codex": StaticModelFallback(
-        model_ids=("gpt-5.6-luna",),
-        owner="Background session titles (omnigent.runner.background_titles.service)",
-        provenance=(
-            "codex's own dotted catalog slug for its cheapest current arm — the "
-            "gateway's hyphenated spelling 400s on codex's backend"
-        ),
-        discovery_gap=(
-            "a background title never consults the session's live model catalog, "
-            "and no discovery API ranks arms by cost"
-        ),
-    ),
-}
-
-#: The claude-family arm background session titles pin.
-BACKGROUND_TITLE_CLAUDE_ECONOMY_MODEL = _BACKGROUND_TITLE_FALLBACKS["claude"].model_ids[0]
-
-#: The codex-family arm background session titles pin.
-BACKGROUND_TITLE_CODEX_ECONOMY_MODEL = _BACKGROUND_TITLE_FALLBACKS["codex"].model_ids[0]
-
 
 _ROLLOVER_SUMMARY_FALLBACK = StaticModelFallback(
     model_ids=("gpt-4o",),

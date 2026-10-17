@@ -1,8 +1,9 @@
 """``/v1/sessions/{id}/tasks``: the runner reads a Conversation's tasks and reports what happened.
 
 ``GET`` is what a turn and ``deck_new`` read (:meth:`TaskService.view`). ``POST .../events``
-carries one event the runner saw in a tool's result (``deck_new``, ``artifact_save``,
-``start_helper``); the server decides what it does to the record.
+carries one event the runner saw: a tool's result (``deck_new``, ``artifact_save``,
+``start_helper``) or the end of a Conversation turn (``turn_end``); the server decides what it
+does to the record.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ EVENTS = {
     "deck_new": TaskService.deck_built,
     "artifact_save": TaskService.saved,
     "start_helper": TaskService.helper_started,
+    "turn_end": TaskService.turn_ended,
 }
 
 

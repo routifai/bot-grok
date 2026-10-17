@@ -423,10 +423,15 @@ def _split_options(raw: Any) -> tuple[list[Any], list[Any], list[Any], str | Non
     return labels, previews, given_ids, None
 
 
-def _option_ids(given: list[Any], labels: list[str]) -> tuple[list[str], str | None]:
-    """Each option's id: the model's, else one made from its label; all distinct."""
+def _option_ids(
+    given: list[Any], labels: list[str], previews: list[Any]
+) -> tuple[list[str], str | None]:
+    """Each option's id: its preview's id (a ``deck-theme`` option is its theme id), else the
+    model's, else one made from its label; all distinct. The pick comes back by this id."""
     out: list[str] = []
-    for i, (option_id, label) in enumerate(zip(given, labels, strict=True)):
+    for i, (option_id, label, preview) in enumerate(zip(given, labels, previews, strict=True)):
+        if preview:
+            option_id = preview["id"]
         if option_id is None:
             base = "-".join(re.findall(r"[a-z0-9]+", label.lower()))[:56] or f"opt-{i + 1}"
             option_id, n = base, 2
@@ -438,11 +443,17 @@ def _option_ids(given: list[Any], labels: list[str]) -> tuple[list[str], str | N
     return out, None
 
 
-def build_clarification(args: dict[str, Any]) -> dict[str, Any]:
+def build_clarification(
+    args: dict[str, Any], task_id: str | None = None, card_id: str | None = None
+) -> dict[str, Any]:
     """
     Validate ``ask_clarification`` arguments and build its ``ask`` card payload.
 
     :param args: Parsed tool arguments: ``question`` and 2-5 short, distinct ``options``.
+    :param task_id: The open task the card asks about (ADR 0025), kept in the stored payload so
+        the answer finds its task by the card.
+    :param card_id: The engine's id for the card: the transcript's ``card_id``, which the web
+        sends back with the pick.
     :returns: A ``{"type": "card", "card": "ask", ...}`` payload shaped like ``render_card``'s,
         or ``{"error": "..."}`` so the model can retry.
     """
@@ -462,7 +473,7 @@ def build_clarification(args: dict[str, Any]) -> dict[str, Any]:
     )
     if err is not None:
         return {"error": err}
-    ids, err = _option_ids(given_ids, options)
+    ids, err = _option_ids(given_ids, options, previews)
     if err is not None:
         return {"error": err}
     fallback = question + "\n\n" + "\n".join(f"- {option}" for option in options)
@@ -477,6 +488,7 @@ def build_clarification(args: dict[str, Any]) -> dict[str, Any]:
                 ],
             },
             "fallback": fallback,
+            **({"id": card_id} if card_id else {}),
         },
         {"ask": _ASK_SCHEMA},
     )
@@ -486,6 +498,8 @@ def build_clarification(args: dict[str, Any]) -> dict[str, Any]:
             "arrives as their next message."
         )
         out[ENDS_TURN_KEY] = True
+        if task_id:
+            out["task_id"] = task_id
     return out
 
 

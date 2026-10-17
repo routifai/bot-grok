@@ -39,11 +39,8 @@ prompt: |
   work inside the confidential document.
 
 executor:
-  harness: openai-agents
-  model: databricks-gpt-5-4-mini
-  auth:
-    type: databricks
-    profile: oss
+  harness: claude-sdk
+  model: sonnet
 
 tools:
   # Point this at your Google MCP server. The policy matches tools by canonical

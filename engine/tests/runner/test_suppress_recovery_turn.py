@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -519,84 +518,6 @@ async def test_newer_turn_finishing_during_initialization_supersedes_recovery() 
         assert _session_histories_ref[SESSION_ID] is history
         await client.post("/v1/sessions", json=payload)
         assert len(harness.posted_bodies) == 1
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "statuses, startup_repaint",
-    [
-        (("running", "idle"), None),
-        (("waiting", "idle"), None),
-        (("running", "idle"), "settled"),
-        (("running", "idle"), "busy"),
-    ],
-)
-async def test_native_activity_during_initialization_distinguishes_turns_from_repaints(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    statuses: tuple[str, str],
-    startup_repaint: str | None,
-) -> None:
-    """Explicit turns suppress recovery after returning to idle; startup repaints do not."""
-    from unittest.mock import AsyncMock
-
-    from omnigent.runner import app as runner_app
-
-    launched = AsyncMock(return_value=True)
-    monkeypatch.setattr(runner_app, "_launch_native_terminal", launched)
-    monkeypatch.setattr(runner_app, "_resolve_native_spawn_env", AsyncMock(return_value={}))
-    entered, release = asyncio.Event(), asyncio.Event()
-
-    class PausedSeedServer(_HistoryServerClient):
-        async def get(self, url: str, **kwargs: Any) -> Any:
-            response = await super().get(url, **kwargs)
-            if url.endswith(f"/{SESSION_ID}/items") and not entered.is_set():
-                launched.assert_awaited_once()
-                entered.set()
-                await release.wait()
-            return response
-
-    resources = None
-    callbacks = {}
-    if startup_repaint:
-        from tests.runner.test_resource_registry import _observe_native_with_fake_poller
-
-        callbacks, _, _, resources = await _observe_native_with_fake_poller(tmp_path, SESSION_ID)
-    app, _pm, harness = _build_sdk_app(PausedSeedServer(), resources)
-    payload = _session_init_payload(suppress_recovery_turn=False)
-    payload["session_init"].update(resume_interrupted_turn=True, recovery_id="native-interrupted")
-    payload["session_init"]["snapshot"]["harness_override"] = "claude-native"
-    async with _runner_client(app) as client:
-        recovery = asyncio.create_task(client.post("/v1/sessions", json=payload))
-        await asyncio.wait_for(entered.wait(), timeout=5)
-        try:
-            if startup_repaint:
-                on_activity, on_idle = callbacks["on_activity"], callbacks["on_idle"]
-                assert callable(on_activity) and callable(on_idle)
-                on_activity()
-                if startup_repaint == "settled":
-                    on_idle()
-            else:
-                for status in statuses:
-                    response = await client.post(
-                        f"/v1/sessions/{SESSION_ID}/events",
-                        json={"type": "external_session_status", "data": {"status": status}},
-                    )
-                    assert response.status_code == 204, response.text
-            assert SESSION_ID not in app.state.active_turns
-        finally:
-            release.set()
-        assert (await recovery).status_code == 201
-        if startup_repaint == "busy":
-            on_idle = callbacks["on_idle"]
-            assert callable(on_idle)
-            on_idle()
-        turn = app.state.active_turns.get(SESSION_ID)
-        if turn is not None:
-            await asyncio.wait_for(turn, timeout=5)
-        assert len(harness.posted_bodies) == int(startup_repaint is not None)
-        assert (await client.post("/v1/sessions", json=payload)).status_code == 201
-        assert len(harness.posted_bodies) == int(startup_repaint is not None)
 
 
 @pytest.mark.asyncio

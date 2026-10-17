@@ -12,6 +12,7 @@ the approvals and step-limit policies and the owner budgets with them. ``server/
 from __future__ import annotations
 
 import inspect
+import logging
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
@@ -91,6 +92,8 @@ def _load() -> list[Feature]:
     ]
 
 
+_logger = logging.getLogger(__name__)
+
 FEATURES: list[Feature] = _load()
 
 #: ``tool_name -> handler`` over every feature, consulted by the runner dispatch.
@@ -109,6 +112,34 @@ def notify_result(ctx: HandlerCtx, output: str) -> None:
     for feature in FEATURES:
         if feature.on_result is not None:
             feature.on_result(ctx, output)
+
+
+def notify_denied(ctx: HandlerCtx, tool_name: str, reason: str) -> None:
+    """Tell every feature that listens (``Feature.on_tool_denied``) that a policy denied a call.
+
+    A listener's failure is logged and never reaches the call.
+    """
+    for feature in FEATURES:
+        if feature.on_tool_denied is None:
+            continue
+        try:
+            feature.on_tool_denied(ctx, tool_name, reason)
+        except Exception:  # a listener is bookkeeping, never a reason to fail a call
+            _logger.warning("%s tool denial failed", feature.name, exc_info=True)
+
+
+def notify_turn_end(conversation_id: str) -> None:
+    """Tell every feature that listens (``Feature.on_turn_end``) that a turn of this session ended.
+
+    A listener's failure is logged and never reaches the runner's stream.
+    """
+    for feature in FEATURES:
+        if feature.on_turn_end is None:
+            continue
+        try:
+            feature.on_turn_end(conversation_id)
+        except Exception:  # a listener is bookkeeping, never a reason to fail a turn
+            _logger.warning("%s turn end failed", feature.name, exc_info=True)
 
 
 def feature_tools(labels: Mapping[str, str] | None, ctx: ToolManagerCtx) -> list[Tool]:

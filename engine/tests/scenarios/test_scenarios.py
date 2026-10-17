@@ -5,8 +5,17 @@ from __future__ import annotations
 import pytest
 
 from omnigent.superchat.step_limit.policy import LIMIT_ENV
+from omnigent.superchat.tasks import record
 from tests.scenarios.harness import run
-from tests.scenarios.rules import Event, asks, ends_well
+from tests.scenarios.rules import (
+    Event,
+    as_turn,
+    asks,
+    ends_well,
+    gives_up,
+    is_deliverable_turn,
+    speaks_first,
+)
 from tests.scenarios.scripts import SCENARIOS, Scenario
 
 
@@ -24,11 +33,24 @@ def test_scenario_never_stalls(scenario: Scenario) -> None:
     turns = run(scenario)
     stalls = [index for index, turn in enumerate(turns) if not ends_well(turn)]
     assert stalls == [], turns
+    assert not [
+        text for turn in turns for kind, text in turn if kind == "reply" and gives_up(text)
+    ]
     asked = asks(turns)
     assert len(asked) <= scenario.max_asks
     assert len(asked) == len(set(asked)), f"asked again: {asked}"
     refused = [detail for turn in turns for kind, detail in turn if kind == "refused"]
     assert len(refused) == scenario.refusals
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    [s for s in SCENARIOS if any(is_deliverable_turn(turn) for turn in s.turns)],
+    ids=lambda s: s.name,
+)
+def test_deliverable_scenario_speaks_first(scenario: Scenario) -> None:
+    silent = [index for index, turn in enumerate(run(scenario)) if not speaks_first(turn)]
+    assert silent == []
 
 
 # The conversation in ADR 0025's opening: four turns, nothing built.
@@ -50,21 +72,64 @@ _RBC_VS_TD: list[list[Event]] = [
 ]
 
 
-def test_the_adr_transcript_stalls_and_asks_again() -> None:
-    assert [ends_well(turn) for turn in _RBC_VS_TD] == [True, False, True, False]
+def test_the_adr_transcript_stalls_gives_up_and_asks_again() -> None:
+    # the last answer ends with no file, card or Helper: the engine logs a stall
+    assert [ends_well(turn) for turn in _RBC_VS_TD] == [True, True, True, False]
+    replies = [[text for kind, text in turn if kind == "reply"] for turn in _RBC_VS_TD]
+    assert [any(gives_up(text) for text in turn) for turn in replies] == [False, True, False, True]
     assert asks(_RBC_VS_TD) == ["look", "data", "look"]
+
+
+def test_the_scenarios_judge_a_turn_with_the_engines_rule() -> None:
+    turn = as_turn([("answer", "Nord"), ("reply", "Noted.")])
+    assert record.is_stall(turn) and not ends_well([("answer", "Nord"), ("reply", "Noted.")])
+
+
+# The turn in ADR 0026's opening: the first output was the deck_new call, no word for 182 s.
+_RBC_VS_TD_SILENT: list[Event] = [
+    ("request", "create some presentation about rbc vs td"),
+    ("tool_call", "deck_new"),
+    ("tool_call", "deck_check"),
+    ("save", ""),
+    ("reply", "Here is the RBC vs TD comparison."),
+]
+
+
+def test_the_adr_0026_transcript_does_not_speak_first() -> None:
+    assert ends_well(_RBC_VS_TD_SILENT)
+    assert not speaks_first(_RBC_VS_TD_SILENT)
+
+
+@pytest.mark.parametrize(
+    ("turn", "spoken"),
+    [
+        ([("request", "a deck"), ("reply", "Making it."), ("tool_call", "deck_new")], True),
+        ([("request", "a deck"), ("plan", ""), ("tool_call", "deck_new")], True),
+        ([("request", "a deck"), ("helper_started", ""), ("reply", "On it.")], False),
+        ([("request", "a deck"), ("card", "look")], True),
+        ([("answer", "Nord"), ("tool_call", "deck_theme_set")], False),
+        ([("message", "time in Tokyo?"), ("tool_call", "web_search")], True),
+    ],
+)
+def test_speaks_first(turn: list[Event], spoken: bool) -> None:
+    assert speaks_first(turn) is spoken
 
 
 @pytest.mark.parametrize(
     ("turn", "well"),
     [
-        ([("request", "a deck"), ("plan", ""), ("reply", "Working on it.")], False),
+        # a request opens no task until its work does: only its refusals can stall it
+        ([("request", "a deck"), ("plan", ""), ("reply", "Working on it.")], True),
         ([("request", "a deck"), ("save", "")], True),
-        ([("request", "a deck"), ("helper_started", "")], True),
-        ([("request", "a deck"), ("card", "look")], True),
+        ([("answer", "Nord"), ("save", "")], True),
+        ([("answer", "Nord"), ("helper_started", "")], True),
+        ([("answer", "Nord"), ("card", "data")], True),
         ([("answer", "Nord"), ("reply", "Noted.")], False),
+        ([("answer", "Nord"), ("tool_call", "deck_new"), ("reply", "Building.")], False),
+        ([("steer", "add pricing"), ("message_helper", ""), ("reply", "Noted.")], True),
         ([("message", "what time is it?"), ("reply", "9 pm.")], True),
         ([("notice", "progress"), ("reply", "Two sources read.")], True),
+        ([("notice", "result"), ("refused", "web_search"), ("reply", "Busy.")], True),
         ([("request", "a deck"), ("tool_call", "sys_os_bash"), ("cancelled", "")], True),
         ([("request", "a sheet"), ("refused", "browser_navigate"), ("save", "")], False),
         ([("message", "look it up"), ("refused", "web_search"), ("reply", "Busy.")], False),
@@ -79,6 +144,7 @@ def test_the_step_limit_turns_the_fourth_work_call_into_a_refusal() -> None:
     (turn,) = run(next(s for s in SCENARIOS if s.name == "step-limit"))
     assert [kind for kind, _ in turn] == [
         "request",
+        "reply",
         "tool_call",
         "tool_call",
         "tool_call",

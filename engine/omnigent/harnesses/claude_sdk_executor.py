@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
 import logging
 import os
@@ -31,11 +32,12 @@ import sys
 import tempfile
 import time
 import uuid
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping, Sequence
 from contextlib import ExitStack, contextmanager, suppress
 from dataclasses import dataclass, field
 from types import ModuleType
 from typing import Any, NamedTuple, Protocol, TypeAlias, cast
+from urllib.parse import urlparse
 
 from omnigent._platform import resolve_cli_binary, stable_user_id
 from omnigent.context.labels import SUPERSIDE_CHAT_MODE_VALUE
@@ -886,6 +888,12 @@ class _ClaudeClientState:
     # Only populated (and acted on) for superside-chat — see
     # ``_get_or_create_client``'s ``rebuild_on_instructions_change``.
     instructions_hash: str | None = None
+    # False for a client launched ahead of the session's first turn (see
+    # ``run_turn``'s pre-launch): it holds no history yet, so that turn replays it.
+    primed: bool = True
+    # What the client was launched with (:func:`_launch_key`); a pre-launched client
+    # that does not match its first turn is relaunched.
+    launch_key: str | None = None
 
 
 @dataclass
@@ -902,6 +910,16 @@ class _SteerWindow:
 
     open: bool = True
     pending: dict[str, str] = field(default_factory=dict)
+
+
+def _launch_key(
+    system_prompt: str, tools: list[ToolSpec], effort: object, extra: Mapping[str, object]
+) -> str:
+    """What a Claude CLI launch is fixed to: its prompt, tools, effort and turn mode."""
+    payload = [system_prompt, tools, effort, extra.get("context_mode"), extra.get("max_turns")]
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
 
 
 def _composed_instructions_hash(system_prompt: object) -> str | None:
@@ -1096,6 +1114,13 @@ class _GatewayModelVocabulary(NamedTuple):
 
 
 _EMPTY_GATEWAY_VOCABULARY = _GatewayModelVocabulary(alias_pins={}, model_overrides={})
+#: Anthropic's own endpoint speaks the canonical ids; there is nothing to list or rewrite.
+_DIRECT_ANTHROPIC_HOST = "api.anthropic.com"
+#: Longest a launch waits on the gateway's model listing; a slower one finishes in the
+#: background and serves the next launch.
+_GATEWAY_LISTING_WAIT_SECONDS = 1.0
+#: Gateway listings already read by this process, by (base URL, auth command).
+_GATEWAY_VOCABULARIES: dict[tuple[str, str | None], _GatewayModelVocabulary] = {}
 
 
 def _gateway_model_vocabulary(base_url: str, auth_command: str | None) -> _GatewayModelVocabulary:
@@ -1153,6 +1178,35 @@ def _gateway_model_vocabulary(base_url: str, auth_command: str | None) -> _Gatew
         },
         model_overrides=served_canonical_overrides(served),
     )
+
+
+async def _cached_gateway_vocabulary(
+    base_url: str, auth_command: str | None
+) -> _GatewayModelVocabulary:
+    """The gateway's vocabulary, read once per process and waited on for at most a second.
+
+    A listing slower than :data:`_GATEWAY_LISTING_WAIT_SECONDS` leaves this launch unpinned
+    (today's behaviour when the listing fails) and is cached when it lands, for the next one.
+    """
+    key = (base_url, auth_command)
+    cached = _GATEWAY_VOCABULARIES.get(key)
+    if cached is not None:
+        return cached
+
+    async def _read() -> _GatewayModelVocabulary:
+        vocabulary = await run_sync_on_thread(_gateway_model_vocabulary, base_url, auth_command)
+        _GATEWAY_VOCABULARIES[key] = vocabulary
+        return vocabulary
+
+    listing = asyncio.ensure_future(_read())
+    try:
+        return await asyncio.wait_for(asyncio.shield(listing), _GATEWAY_LISTING_WAIT_SECONDS)
+    except TimeoutError:
+        logger.warning(
+            "claude-sdk: the gateway's model listing took over %.0fs; launching without it",
+            _GATEWAY_LISTING_WAIT_SECONDS,
+        )
+        return _EMPTY_GATEWAY_VOCABULARY
 
 
 def _claude_settings_payload(
@@ -1679,13 +1733,6 @@ class ClaudeSDKExecutor(Executor):
         else:
             logger.info("No system claude found; SDK will use bundled CLI")
 
-        # Claude Code's model vocabulary for this gateway — alias pins and
-        # canonical-to-served rewrites — read from the gateway's model listing
-        # on the first gateway turn (see
-        # :meth:`_apply_gateway_model_vocabulary`). ``None`` until resolved;
-        # the resolved value may be empty (discovery found nothing).
-        self._gateway_vocabulary: _GatewayModelVocabulary | None = None
-
         # Eagerly resolve the gateway transport env so errors surface at
         # construction time.
         self._extra_env: dict[str, str] = {}
@@ -1735,8 +1782,24 @@ class ClaudeSDKExecutor(Executor):
         options: SdkOptions,
         model: str | None,
         rebuild_on_instructions_change: bool = False,
+        launch_key: str | None = None,
+        primed: bool = True,
     ) -> _ClaudeClient:
         state = self._clients.get(session_key)
+        if (
+            state is not None
+            and not getattr(state, "primed", True)
+            and state.launch_key != launch_key
+        ):
+            # Launched ahead of this turn with other options (tools, prompt, effort):
+            # it has seen no turn yet, so relaunching loses nothing.
+            logger.info(
+                "pre-launched Claude CLI for session %s does not match its first turn; "
+                "relaunching",
+                session_key,
+            )
+            await self._close_live_client(session_key)
+            state = None
         new_instructions_hash = (
             _composed_instructions_hash(getattr(options, "system_prompt", None))
             if rebuild_on_instructions_change
@@ -1788,6 +1851,13 @@ class ClaudeSDKExecutor(Executor):
                     env_stack.enter_context(_unset_env_var("CLAUDECODE"))
                     env_stack.enter_context(_unset_env_var("ANTHROPIC_API_KEY"))
                     await asyncio.wait_for(client.connect(), timeout=_CONNECT_TIMEOUT_SECONDS)
+            except asyncio.CancelledError:
+                # Stopped mid-launch (an interrupted pre-launch): close the half-started CLI
+                # in the background, since an await here would itself be cancelled.
+                closing = asyncio.create_task(self._force_close_client(client))
+                self._cancel_close_tasks.add(closing)
+                closing.add_done_callback(self._cancel_close_tasks.discard)
+                raise
             except asyncio.TimeoutError as exc:
                 await self._force_close_client(client)
                 tail = "\n".join(line.rstrip() for line in connect_stderr[-40:])
@@ -1833,6 +1903,8 @@ class ClaudeSDKExecutor(Executor):
                 loop=asyncio.get_running_loop(),
                 task=current_task,
                 instructions_hash=new_instructions_hash,
+                primed=primed,
+                launch_key=launch_key,
             )
             self._clients[session_key] = state
             return client
@@ -2169,13 +2241,12 @@ class ClaudeSDKExecutor(Executor):
         base_url = env.get("ANTHROPIC_BASE_URL")
         if not self._gateway or not base_url:
             return {}
-        if self._gateway_vocabulary is None:
-            self._gateway_vocabulary = await run_sync_on_thread(
-                _gateway_model_vocabulary, base_url, auth_command
-            )
-        for var, model_id in self._gateway_vocabulary.alias_pins.items():
+        if urlparse(base_url).hostname == _DIRECT_ANTHROPIC_HOST:
+            return {}
+        vocabulary = await _cached_gateway_vocabulary(base_url, auth_command)
+        for var, model_id in vocabulary.alias_pins.items():
             env.setdefault(var, model_id)
-        return self._gateway_vocabulary.model_overrides
+        return vocabulary.model_overrides
 
     def _install_framework_context_hook(
         self, sdk: _ClaudeSDK, options: SdkOptions, session_key: str
@@ -2514,12 +2585,16 @@ class ClaudeSDKExecutor(Executor):
             )
             return
         warm_state = self._clients.get(session_key)
-        resume_session = warm_state is not None
+        # A pre-launched client has seen no turn: it gets the whole history.
+        resume_session = warm_state is not None and getattr(warm_state, "primed", True)
         prompt = self._build_prompt(
             messages,
             resume_session=resume_session,
         )
-        if not prompt:
+        # An empty first message on a session with no CLI yet is the runner launching it
+        # ahead of the first turn (ADR 0026: cold start is paid before the person speaks).
+        prelaunch = not prompt and warm_state is None and bool(system_prompt)
+        if not prompt and not prelaunch:
             # Resumed sessions can have nothing new to say; signal turn
             # completion with no assistant text instead of an empty string.
             yield TurnComplete(response=None)
@@ -2749,6 +2824,23 @@ class ClaudeSDKExecutor(Executor):
             len(tools),
             options_kwargs.get("thinking"),
         )
+        launch_key = _launch_key(system_prompt, tools, reasoning_effort, cfg.extra)
+        if prelaunch:
+            try:
+                await self._get_or_create_client(
+                    sdk,
+                    session_key=session_key,
+                    options=options,
+                    model=model,
+                    rebuild_on_instructions_change=is_superside_chat,
+                    launch_key=launch_key,
+                    primed=False,
+                )
+            except Exception:
+                # The first turn launches it as before.
+                logger.warning("Claude CLI pre-launch failed", exc_info=True)
+            yield TurnComplete(response=None)
+            return
 
         # Run the query, streaming events as they arrive.
         # The SDK manages its own tool-call loop internally (via MCP).
@@ -2900,7 +2992,10 @@ class ClaudeSDKExecutor(Executor):
             options=options,
             model=model,
             rebuild_on_instructions_change=is_superside_chat,
+            launch_key=launch_key,
         )
+        if (live_state := self._clients.get(session_key)) is not None:
+            live_state.primed = True
         if resume_session and self._clients.get(session_key) is not warm_state:
             # The warm client was rebuilt (instructions changed): it is a cold
             # start and needs the full history, not only the trailing message.

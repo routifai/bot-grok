@@ -13,6 +13,10 @@ The orchestration here handles composition.
 
 from __future__ import annotations
 
+import asyncio
+import logging
+import threading
+import time
 from dataclasses import replace
 from typing import Any
 
@@ -29,6 +33,14 @@ from omnigent.spec.types import (
     StateUpdateAction,
 )
 from omnigent.stores.conversation_store import ConversationStore
+
+_logger = logging.getLogger(__name__)
+
+# An evaluation slower than this is logged at INFO (ADR 0026: the loop never
+# stalls, so a slow evaluation must be visible, not guessed at).
+_SLOW_EVALUATION_MS = 100
+# A label/state write slower than this was waiting on the session's row lock.
+_SLOW_WRITE_MS = 250
 
 # Number of recent conversation items the engine fetches from
 # the conversation store and threads onto :class:`EvaluationContext`
@@ -163,6 +175,10 @@ class PolicyEngine:
         self._model = initial_model
         self._store = conversation_store
         self._llm_client = llm_client
+        # Serialises hot-cache mutation and its write-through: evaluations
+        # persist from a worker thread, and two concurrent ones must not
+        # interleave their snapshots.
+        self._write_lock = threading.Lock()
 
     @property
     def labels(self) -> dict[str, str]:
@@ -250,6 +266,27 @@ class PolicyEngine:
             see :meth:`_evaluate_composed`.
         :returns: The composed :class:`PolicyResult`.
         """
+        started = time.perf_counter()
+        try:
+            return await self._evaluate_traced(ctx, read_only=read_only)
+        finally:
+            elapsed_ms = (time.perf_counter() - started) * 1000
+            if elapsed_ms > _SLOW_EVALUATION_MS:
+                _logger.info(
+                    "policy evaluation for %s %dms (%s)",
+                    self._conversation_id,
+                    elapsed_ms,
+                    getattr(ctx.phase, "value", ctx.phase),
+                    extra={"session_id": self._conversation_id},
+                )
+
+    async def _evaluate_traced(
+        self,
+        ctx: EvaluationContext,
+        *,
+        read_only: bool,
+    ) -> PolicyResult:
+        """Run :meth:`_evaluate_composed` inside a ``policy.evaluate`` span."""
         from omnigent.runtime import telemetry
 
         with telemetry.span(
@@ -372,7 +409,7 @@ class PolicyEngine:
             if result.state_updates:
                 accumulated_state.extend(result.state_updates)
             if result.action == PolicyAction.DENY:
-                return self._compose_deny(
+                return await self._compose_deny(
                     policy.spec.name,
                     result.reason,
                     accumulated,
@@ -411,8 +448,7 @@ class PolicyEngine:
                 ask_reasons=own_ask_reasons,
             )
         if not read_only:
-            self.apply_label_writes(accumulated)
-            self.apply_state_updates(accumulated_state)
+            await self._persist_writes(accumulated, accumulated_state)
         return PolicyResult(
             action=PolicyAction.ALLOW,
             reason=None,
@@ -421,7 +457,52 @@ class PolicyEngine:
             data=composed_data,
         )
 
-    def _compose_deny(
+    async def _persist_writes(
+        self,
+        set_labels: dict[str, str],
+        updates: list[StateUpdate],
+    ) -> None:
+        """
+        Apply an evaluation's label writes and state updates off the event loop.
+
+        One worker-thread hop carries both writes, each its own short
+        transaction; the session row lock taken by ``set_session_state`` is
+        acquired and released inside that thread, never held across an await.
+        A write slower than :data:`_SLOW_WRITE_MS` (a lock wait or pool
+        timeout) is logged at WARNING.
+
+        :param set_labels: Accumulated label writes; may be empty.
+        :param updates: Accumulated state updates; may be empty.
+        """
+        if not set_labels and not updates:
+            return
+        waited_ms = await asyncio.to_thread(self._apply_writes_timed, set_labels, updates)
+        if waited_ms > _SLOW_WRITE_MS:
+            _logger.warning(
+                "policy state write for %s waited %dms",
+                self._conversation_id,
+                waited_ms,
+                extra={"session_id": self._conversation_id},
+            )
+
+    def _apply_writes_timed(
+        self,
+        set_labels: dict[str, str],
+        updates: list[StateUpdate],
+    ) -> float:
+        """
+        Apply *set_labels* then *updates* and return the elapsed milliseconds.
+
+        :param set_labels: Label writes for :meth:`apply_label_writes`.
+        :param updates: State updates for :meth:`apply_state_updates`.
+        :returns: Wall time spent, including any wait on the row lock.
+        """
+        started = time.perf_counter()
+        self.apply_label_writes(set_labels)
+        self.apply_state_updates(updates)
+        return (time.perf_counter() - started) * 1000
+
+    async def _compose_deny(
         self,
         deciding_policy: str,
         reason: str | None,
@@ -458,8 +539,7 @@ class PolicyEngine:
         :returns: Composed DENY :class:`PolicyResult`.
         """
         if not read_only:
-            self.apply_state_updates(accumulated_state)
-            self.apply_label_writes(accumulated)
+            await self._persist_writes(accumulated, accumulated_state)
         return PolicyResult(
             action=PolicyAction.DENY,
             reason=reason,
@@ -527,8 +607,9 @@ class PolicyEngine:
         filtered = self._filter_schema_valid(set_labels)
         if not filtered:
             return
-        self._store.set_labels(self._conversation_id, filtered)
-        self._labels.update(filtered)
+        with self._write_lock:
+            self._store.set_labels(self._conversation_id, filtered)
+            self._labels.update(filtered)
 
     def apply_state_updates(self, updates: list[StateUpdate]) -> None:
         """
@@ -554,6 +635,11 @@ class PolicyEngine:
         """
         if not updates:
             return
+        with self._write_lock:
+            self._apply_state_updates_locked(updates)
+
+    def _apply_state_updates_locked(self, updates: list[StateUpdate]) -> None:
+        """Body of :meth:`apply_state_updates`; the caller holds ``_write_lock``."""
         from omnigent.policies.schema import (
             OWNER_BUDGET_ASK_APPROVED_STATE_KEY,
             SESSION_COST_ASK_APPROVED_STATE_KEY,

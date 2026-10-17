@@ -103,6 +103,7 @@ USER_DATA: dict[str, Rule] = {
     "comments": _SESSION,
     "activity_titles": _SESSION,
     "message_artifacts": _SESSION,
+    "card_answers": _SESSION,
     "omnigent_conversation_metadata": _SESSION,
 }
 

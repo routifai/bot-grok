@@ -25,7 +25,12 @@ out. The rules a client would otherwise copy:
   when <file> changes" chip;
 * one ``call_id`` is one block, however often the call repeats;
 * an ``error`` item is an ``error`` block carrying its code, never its text; the code is read
-  through ``public_error_code`` so legacy rows (exception names, old codes) show the closed set.
+  through ``public_error_code`` so legacy rows (exception names, old codes) show the closed set;
+* in a file's studio (``keep_notices``) a runtime line is a ``system`` message with one
+  ``notice`` block whose ``kind`` says what it records: ``hand_edit`` (a version the person made
+  by hand, with its ``element_id``, ``element`` and ``what``), ``version`` (one saved elsewhere or
+  restored), ``stale`` (saved elsewhere while the studio was editing) or ``queued``; the line's
+  own text, written for the model, never travels.
 
 Wording stays with the client: nothing here is copy.
 """
@@ -48,6 +53,7 @@ from omnigent.superchat.cards.tools import (
     build_follow_ups,
 )
 from omnigent.superchat.helpers.tools import START_HELPER_TOOL_NAME
+from omnigent.superchat.subagents import STUDIO_QUEUED_NOTE
 
 VAULT_REQUEST_TOOL_NAME = "vault_request_secret"
 ARTIFACT_SAVE_TOOL_NAME = "artifact_save"
@@ -288,6 +294,53 @@ def helper_session_ids(items: list[Item]) -> list[str]:
     return found
 
 
+#: The studio's runtime lines (``artifacts/studio.py``: ``notice_line`` and ``stale_line``).
+_HAND_LINE = re.compile(r"^\[you\] (?P<summary>.*) · v(?P<version>\d+)$", re.S)
+_RESTORED = "restored version "
+_VERSION_LINE = re.compile(
+    r"^\[[^\]\n]+\] (?:.* · v(?P<version>\d+)|saved v(?P<saved>\d+))$", re.S
+)
+_STALE_LINE = re.compile(
+    r"^(?P<who>Super Chat|A live update) saved v(?P<version>\d+) while you were editing; "
+)
+
+
+def notice_block(text: str) -> dict[str, Any] | None:
+    """A studio runtime line as a ``notice`` block; ``None`` for a line it does not record."""
+    # ``artifacts`` imports this module at load (its routes project transcripts).
+    from omnigent.superchat.artifacts.patches import edit_note
+
+    hand = _HAND_LINE.match(text)
+    if hand and not hand["summary"].startswith(_RESTORED):
+        note = edit_note(hand["summary"])
+        block: dict[str, Any] = {
+            "type": "notice",
+            "kind": "hand_edit",
+            "version": int(hand["version"]),
+            "what": note.what,
+        }
+        if note.element_id:
+            block["element_id"] = note.element_id
+            block["element"] = note.element
+        return block
+    stale = _STALE_LINE.match(text)
+    if stale:
+        origin = "superchat" if stale["who"] == "Super Chat" else "update"
+        return {
+            "type": "notice",
+            "kind": "stale",
+            "version": int(stale["version"]),
+            "origin": origin,
+        }
+    version = _VERSION_LINE.match(text)
+    if version:
+        number = version["version"] or version["saved"]
+        return {"type": "notice", "kind": "version", "version": int(number)}
+    if text.strip() == STUDIO_QUEUED_NOTE:
+        return {"type": "notice", "kind": "queued"}
+    return None
+
+
 def _message(item: Item, role: str, blocks: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "id": item["id"],
@@ -371,8 +424,8 @@ def project_items(
 
     :param items: ``ConversationItem.to_api_dict()`` dicts in ascending order.
     :param helper_statuses: Helper session id -> status, for the ``helper`` blocks.
-    :param keep_notices: Keep runtime notices as ``system`` messages (a file's studio, ADR 0024:
-        its hand-edit, version and stale lines are its thread); dropped everywhere else.
+    :param keep_notices: Keep the studio's runtime lines as ``system`` messages with one
+        ``notice`` block (a file's studio, ADR 0024); dropped everywhere else.
     :returns: ``[{"id", "role", "created_at", "blocks"}, ...]``.
     """
     statuses = helper_statuses or {}
@@ -432,8 +485,9 @@ def project_items(
             if role == "user" and (
                 item.get("is_system_notice") is True or is_system_notice_text(text)
             ):
-                if keep_notices:
-                    messages.append(_message(item, "system", [{"type": "text", "text": text}]))
+                notice = notice_block(text) if keep_notices else None
+                if notice:
+                    messages.append(_message(item, "system", [notice]))
                 continue
             if role == "assistant" and item.get("id") not in final_text:
                 continue  # interim narration: the turn's last text is its reply

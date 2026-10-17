@@ -1059,7 +1059,8 @@ Request body matches `SessionEventInput`:
 
 202 Accepted
 {"queued": true}                            # regular queued item events
-{"queued": false}                           # "interrupt" and status/control bypasses
+{"queued": false}                           # status/control bypasses
+{"queued": false, "delivered": true}        # "interrupt": whether the stop landed
 {"queued": false, "item_id": "item_..."}    # "external_conversation_item"
 {"queued": true, "pending_id": "pending_..."} # native-terminal "message" (see below)
 [{"queued": false, "item_id": "item_..."}, ...] # top-level event array

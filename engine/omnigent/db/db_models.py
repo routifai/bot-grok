@@ -2082,6 +2082,38 @@ class SqlTask(OmnigentBase):
     updated_at: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
+class SqlCardAnswer(OmnigentBase):
+    """
+    SQLAlchemy model for the ``card_answers`` table: the person's pick on an ``ask`` card, kept on
+    the message that carried it (ADR 0025). One row per answering message.
+
+    :param session_id: The Conversation the message is in.
+    :param item_id: The person's message item.
+    :param card_id: The card the answer names, as the client sent it.
+    :param option_id: The option picked.
+    :param label: The option's label, as the person read it.
+    :param task_id: The task the card asked for, when it asked for one.
+    :param created_at: Epoch seconds when it was stored.
+    """
+
+    __tablename__ = "card_answers"
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    session_id: Mapped[str] = mapped_column(Uuid16, primary_key=True)
+    item_id: Mapped[str] = mapped_column(Uuid16, primary_key=True)
+    card_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    option_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    label: Mapped[str] = mapped_column(String(200), nullable=False)
+    task_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 class SqlObjective(OmnigentBase):
     """
     SQLAlchemy model for the ``objectives`` table.

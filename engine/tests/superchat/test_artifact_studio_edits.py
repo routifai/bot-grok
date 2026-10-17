@@ -558,5 +558,7 @@ def test_a_studios_runtime_lines_show_in_its_thread_and_never_in_super_chat(env:
 
     (notice,) = thread(studio)
     assert notice["role"] == "system"
-    assert notice["blocks"] == [{"type": "text", "text": line}]
+    assert notice["blocks"] == [
+        {"type": "notice", "kind": "stale", "version": 2, "origin": "superchat"}
+    ]
     assert thread(env.chat) == []

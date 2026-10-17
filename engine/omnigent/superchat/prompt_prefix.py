@@ -13,6 +13,7 @@ import hashlib
 import logging
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import httpx
 
@@ -29,6 +30,9 @@ from omnigent.superchat.projects.choice import MOVED_NOTE
 from omnigent.superchat.recall_hint.hint import FOOTER as HINT_FOOTER
 from omnigent.superchat.recall_hint.hint import HEADER as HINT_HEADER
 from omnigent.superchat.recall_hint.hint import recall_hint_block
+
+if TYPE_CHECKING:
+    from omnigent.superchat.feature import Feature
 
 _logger = logging.getLogger(__name__)
 
@@ -127,17 +131,19 @@ async def _feature_prefix_blocks(
     """Every feature's ``turn_prefix`` blocks, in feature order. Never fails a turn."""
     from omnigent.superchat.features import FEATURES
 
-    blocks: list[str] = []
-    for feature in FEATURES:
-        if feature.turn_prefix is None:
-            continue
+    async def _blocks(feature: Feature) -> list[str]:
+        assert feature.turn_prefix is not None
         try:
-            blocks.extend(await feature.turn_prefix(server_client, conversation_id))
+            return await feature.turn_prefix(server_client, conversation_id)
         except Exception:  # a convenience, never a reason to fail a turn
             _logger.warning(
                 "%s turn prefix failed; proceeding without it", feature.name, exc_info=True
             )
-    return blocks
+            return []
+
+    # Independent reads, fetched together; gather keeps the feature order.
+    fetched = await asyncio.gather(*(_blocks(f) for f in FEATURES if f.turn_prefix is not None))
+    return [block for blocks in fetched for block in blocks]
 
 
 def message_needs_own_turn(texts: Sequence[str]) -> bool:
@@ -153,22 +159,34 @@ def message_needs_own_turn(texts: Sequence[str]) -> bool:
 
 
 async def _message_prefix_blocks(
-    server_client: httpx.AsyncClient | None, conversation_id: str, texts: Sequence[str]
+    server_client: httpx.AsyncClient | None,
+    conversation_id: str,
+    texts: Sequence[str],
+    helper: bool = False,
 ) -> list[str]:
-    """Every feature's ``message_prefix`` blocks for the turn's own message. Never fails a turn."""
+    """Every feature's ``message_prefix`` blocks for the turn's own message, fetched together and
+    kept in feature order. A Helper's turn (*helper*) skips the Conversation-only ones
+    (``Feature.conversation_only``). Never fails a turn."""
     from omnigent.superchat.features import FEATURES
 
-    blocks: list[str] = []
-    for feature in FEATURES:
-        if feature.message_prefix is None:
-            continue
+    async def _blocks(feature: Feature) -> list[str]:
+        assert feature.message_prefix is not None
         try:
-            blocks.extend(await feature.message_prefix(server_client, conversation_id, texts))
+            return await feature.message_prefix(server_client, conversation_id, texts)
         except Exception:  # a convenience, never a reason to fail a turn
             _logger.warning(
                 "%s message prefix failed; proceeding without it", feature.name, exc_info=True
             )
-    return blocks
+            return []
+
+    fetched = await asyncio.gather(
+        *(
+            _blocks(f)
+            for f in FEATURES
+            if f.message_prefix is not None and not (helper and f.conversation_only)
+        )
+    )
+    return [block for blocks in fetched for block in blocks]
 
 
 async def turn_prefix_blocks(
@@ -181,6 +199,7 @@ async def turn_prefix_blocks(
     sent_now: dict[str, str] | None = None,
     recall: bool = False,
     studio: bool = False,
+    helper: bool = False,
 ) -> list[str]:
     """The blocks to prepend to a Super Chat turn, in application order.
 
@@ -202,50 +221,66 @@ async def turn_prefix_blocks(
         carries, for the caller to remember once the turn completes.
     :param recall: Whether this chat may get the recall hint (the owner's setting decides, see
         :mod:`omnigent.superchat.recall_hint`). It is built alongside the other fetches.
+    :param helper: The session is a Helper: no Conversation-only message blocks (tasks). A
+        file's studio is treated the same way.
     :param studio: The session is a file's studio (ADR 0024): its turn gets the memory profile,
         the file line and this file's write-back notes only (no Projects, no recall hint, no
         feature notes, no Conversation artifact hint).
     """
+    # Every block is an independent read: fetch them together (ADR 0026: the prefix is paid on
+    # every turn), then assemble them in the documented order.
     if studio:
-        blocks = (
-            list(await _message_prefix_blocks(server_client, conversation_id, message_texts))
+        message_blocks, profile, studio_blocks = await asyncio.gather(
+            # The studio is not the Conversation: no Conversation-only blocks (tasks).
+            _message_prefix_blocks(server_client, conversation_id, message_texts, helper=True)
             if message_texts
-            else []
+            else _no_blocks(),
+            fetch_memory_profile(server_client, conversation_id),
+            studio_turn_blocks(server_client, conversation_id),
         )
-        profile = await fetch_memory_profile(server_client, conversation_id)
+        blocks = list(message_blocks)
         if profile:
             blocks.append(
                 _delta_block("profile", profile, PROFILE_UNCHANGED_LINE, last_sent, sent_now)
             )
-        blocks.extend(await studio_turn_blocks(server_client, conversation_id))
+        blocks.extend(studio_blocks)
         return blocks
-    hint = (
-        asyncio.create_task(
-            recall_hint_block(server_client, conversation_id, workspace, message_texts)
-        )
+    message_blocks, recalled, profile, projects, feature_blocks, local_time = await asyncio.gather(
+        _message_prefix_blocks(server_client, conversation_id, message_texts, helper)
+        if message_texts
+        else _no_blocks(),
+        recall_hint_block(server_client, conversation_id, workspace, message_texts)
         if recall and message_texts
-        else None
+        else _no_block(),
+        fetch_memory_profile(server_client, conversation_id),
+        asyncio.to_thread(_safe_projects_block, workspace),
+        _feature_prefix_blocks(server_client, conversation_id),
+        fetch_local_time_line(server_client),
     )
-    blocks: list[str] = []
-    if message_texts:
-        blocks.extend(await _message_prefix_blocks(server_client, conversation_id, message_texts))
-    hint_at = len(blocks)
-    profile = await fetch_memory_profile(server_client, conversation_id)
+    blocks = list(message_blocks)
+    if recalled:
+        blocks.append(recalled)
     if profile:
         blocks.append(
             _delta_block("profile", profile, PROFILE_UNCHANGED_LINE, last_sent, sent_now)
         )
-    if (projects := _safe_projects_block(workspace)) is not None:
+    if projects is not None:
         blocks.append(
             _delta_block("projects", projects, PROJECTS_UNCHANGED_LINE, last_sent, sent_now)
         )
-    blocks.extend(await _feature_prefix_blocks(server_client, conversation_id))
+    blocks.extend(feature_blocks)
     if idle_gap_seconds is not None:
         blocks.append(idle_gap_line(idle_gap_seconds))
-    blocks.append(await fetch_local_time_line(server_client))
-    if hint is not None and (recalled := await hint):
-        blocks.insert(hint_at, recalled)
+    blocks.append(local_time)
     return blocks
+
+
+async def _no_blocks() -> list[str]:
+    return []
+
+
+async def _no_block() -> str | None:
+    return None
 
 
 #: The blocks that span lines, as (how one starts, what ends it). Projects end at the ``]`` that

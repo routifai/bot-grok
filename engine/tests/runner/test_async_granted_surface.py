@@ -163,28 +163,6 @@ async def test_execute_tool_refuses_ungranted_tool_directly(
     assert executed == []
 
 
-async def test_native_harness_spec_keeps_relayed_sys_os_tools(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Native harnesses get ``sys_os_*`` from the relay regardless of ``os_env``."""
-
-    async def _fake_os_env(tool_name: str, *_a: Any, **_kw: Any) -> str:
-        return f"ran {tool_name}"
-
-    monkeypatch.setattr(tool_dispatch, "_execute_os_env_tool", _fake_os_env)
-    spec = AgentSpec(
-        spec_version=1,
-        executor=ExecutorSpec(type="omnigent", config={"harness": "claude-native"}),
-    )
-
-    out = await tool_dispatch.execute_tool(
-        tool_name="sys_os_read",
-        arguments=json.dumps({"path": "x"}),
-        agent_spec=spec,
-    )
-    assert out == "ran sys_os_read"
-
-
 async def test_granted_tool_names_cached_per_spec_instance() -> None:
     """The surface is computed once per live spec object and harness."""
     spec = AgentSpec(spec_version=1, async_enabled=True)
@@ -192,53 +170,8 @@ async def test_granted_tool_names_cached_per_spec_instance() -> None:
     assert first is tool_dispatch._granted_tool_names(spec)
     assert {"sys_call_async", "sys_read_inbox", "sys_cancel_async"} <= first
     assert "sys_os_shell" not in first
-    # A different effective harness is a different surface, so a different entry.
-    native = tool_dispatch._granted_tool_names(spec, "claude-native")
-    assert native is not first
-    assert "sys_os_shell" in native
-
-
-async def test_native_override_on_non_native_spec_keeps_relayed_sys_os_tools(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A session pinned to a native harness gets the relay's ``sys_os_*``.
-
-    The spec declares ``claude-sdk`` and no ``os_env``, but the session runs
-    ``claude-native``, whose relay advertises ``sys_os_*`` unconditionally.
-    Gating on the spec's declaration instead of the session's harness would
-    refuse tools the model was actually shown.
-    """
-
-    async def _fake_os_env(tool_name: str, *_a: Any, **_kw: Any) -> str:
-        return f"ran {tool_name}"
-
-    monkeypatch.setattr(tool_dispatch, "_execute_os_env_tool", _fake_os_env)
-    spec = AgentSpec(
-        spec_version=1,
-        async_enabled=True,
-        executor=ExecutorSpec(type="omnigent", config={"harness": "claude-sdk"}),
-    )
-
-    direct = await tool_dispatch.execute_tool(
-        tool_name="sys_os_read",
-        arguments=json.dumps({"path": "x"}),
-        agent_spec=spec,
-        effective_harness="claude-native",
-    )
-    assert direct == "ran sys_os_read"
-
-    inbox: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-    tasks: dict[str, tuple[asyncio.Task[str], asyncio.Event]] = {}
-    handle = json.loads(
-        await _call_sys_call_async(
-            spec, "sys_os_read", inbox=inbox, tasks=tasks, harness="claude-native"
-        )
-    )
-    assert handle["status"] == "in_progress"
-    await tasks[handle["handle_id"]][0]
-    item = inbox.get_nowait()
-    assert item["status"] == "completed"
-    assert item["output"] == "ran sys_os_read"
+    # The effective harness is part of the key, so another harness is another entry.
+    assert tool_dispatch._granted_tool_names(spec, "pi") is not first
 
 
 async def test_sdk_override_on_native_spec_refuses_sys_os_tools(
@@ -308,11 +241,9 @@ async def test_surface_probe_does_not_fork_the_working_tree(
     )
 
     granted = tool_dispatch._granted_tool_names(spec)
-    schemas = tool_dispatch.build_native_relay_tool_schemas(spec)
     request_schemas = tool_dispatch.ToolManager(spec, os_env_schema_only=True).get_tool_schemas()
 
     assert granted >= tool_dispatch._OS_ENV_TOOLS
-    assert {schema["name"] for schema in schemas} >= tool_dispatch._OS_ENV_TOOLS
     assert {
         schema["function"]["name"] for schema in request_schemas
     } >= tool_dispatch._OS_ENV_TOOLS

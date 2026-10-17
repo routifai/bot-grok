@@ -374,32 +374,6 @@ async def test_multi_model_child_same_harness_as_parent_inherits(
 
 
 @pytest.mark.asyncio
-async def test_child_shares_parent_vendor_across_sdk_native_split_inherits(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    A ``claude-sdk`` child of a ``claude-native`` parent inherits: the SDK and
-    native spellings of one vendor share a provider vocabulary, so the ``-native``
-    vs ``-sdk`` difference must not count them as foreign harnesses.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    """
-    bodies = await _dispatch_without_model(
-        monkeypatch,
-        agent_spec=_spec_with_worker("claude-sdk"),
-        conv_id="conv_parent_claude_variants",
-        parent_snapshot={
-            "id": "conv_parent_claude_variants",
-            "agent_id": "ag_parent",
-            "harness": "claude-native",
-            "model_override": "databricks-claude-opus-5",
-            "llm_model": None,
-        },
-    )
-    assert bodies[0]["model_override"] == "databricks-claude-opus-5"
-
-
-@pytest.mark.asyncio
 async def test_multi_model_worker_with_binding_inherits_bare_bound_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

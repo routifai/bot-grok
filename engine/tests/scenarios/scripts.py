@@ -68,6 +68,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             ),
             (
                 ("answer", "Use mock numbers"),
+                ("reply", "Building the Q3 deck with mock numbers."),
                 ("tool_call", "deck_new"),
                 ("save", ""),
                 ("reply", "Here is the Q3 deck with mock numbers."),
@@ -114,6 +115,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             ),
             (
                 ("answer", "Nord"),
+                ("reply", "Switching the board deck to Nord."),
                 ("tool_call", "deck_theme_set"),
                 ("save", ""),
                 ("reply", "The board deck is in Nord now."),
@@ -126,6 +128,7 @@ SCENARIOS: tuple[Scenario, ...] = (
         (
             (
                 ("request", "Compare the pricing pages of these four vendors in a sheet"),
+                ("reply", "I'll put the four vendors' pricing side by side in a sheet."),
                 ("tool_call", "web_search"),
                 ("tool_call", "browser_navigate"),
                 ("tool_call", "browser_navigate"),
@@ -166,6 +169,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             ),
             (
                 ("request", "Also turn last week's notes into a one-page summary"),
+                ("reply", "Writing the one-page summary of last week's notes."),
                 ("tool_call", "sys_os_bash"),
                 ("save", ""),
                 ("reply", "Here is the summary; the deck is still being built."),

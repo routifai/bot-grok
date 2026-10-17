@@ -1,7 +1,20 @@
-"""The task record (ADR 0025): what a deliverable in progress is, and how it reads in a turn.
+"""The task record (ADR 0025): what a deliverable in progress is, how it reads in a turn, and the
+one rule for when a turn on it ends well.
 
-Pure: no store, no HTTP. The store keeps :class:`Task` rows; the routes apply events to them with
-the functions here; the runner writes :func:`task_line` in front of the person's message.
+Pure: no store, no HTTP. The store keeps :class:`Task` rows; the service applies events to them
+with the functions here; the runner writes :func:`task_line` in front of the person's message and
+judges each turn with :func:`ends_well` (the scenario evals import the same function).
+
+The lifecycle, written by the engine from what happened, never from the model's word:
+
+* **open** on creation, when work starts: ``deck_new`` (a deck), ``start_helper`` (the kind its
+  brief names, :func:`kind_for_brief`), or a Conversation turn's first ``artifact_save`` with no
+  open task.
+* **building** while the turn that works on it runs, or while a Helper started for it runs.
+* **done** when the Conversation turn that saved it ends, or when its Helpers have finished (read
+  on the turn their completion notice opens). A Helper's own saves are drafts: they add the
+  artifact group and touch ``updated_at``, never close it.
+* **dropped** after :data:`STALE_AFTER` untouched.
 """
 
 from __future__ import annotations
@@ -12,13 +25,16 @@ from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from typing import Any
 
-from omnigent.superchat.decks.names import is_deck_name
+from omnigent.superchat.artifact_kinds import is_deck_name
 
 KINDS = ("deck", "page", "document", "sheet", "file")
 OPEN, BUILDING, DONE, DROPPED = "open", "building", "done", "dropped"
 STATUSES = (OPEN, BUILDING, DONE, DROPPED)
 #: Statuses a turn still works on: they go in front of the person's message.
 ACTIVE = (OPEN, BUILDING)
+#: An active task nothing touched for this long (seconds) was left behind: reads skip it, and the
+#: next event on its Conversation drops it.
+STALE_AFTER = 24 * 3600
 #: At most this many task lines go in front of a message.
 MAX_LINES = 5
 #: How alike a saved file's title and a task's title must be to count as the same deliverable.
@@ -36,11 +52,22 @@ _KIND_BY_SUFFIX = {
     ".csv": "sheet",
     ".xlsx": "sheet",
 }
+#: Words of a Helper's brief -> the kind of deliverable it makes (the first kind named wins).
+_KIND_BY_WORD = (
+    ("deck", ("deck", "slides", "presentation", "pitch")),
+    ("sheet", ("sheet", "spreadsheet", "csv", "xlsx")),
+    ("page", ("page", "website", "landing", "dashboard", "html")),
+    ("document", ("document", "doc", "report", "memo", "letter", "essay", "pdf")),
+)
 
 
 @dataclass
 class Task:
-    """One deliverable in progress (see ``SqlTask``)."""
+    """One deliverable in progress (see ``SqlTask``).
+
+    :param helper_running: A Helper started for it is still running; read from the Helpers when
+        the task is read, never stored.
+    """
 
     id: str
     owner: str
@@ -53,6 +80,7 @@ class Task:
     helper_ids: list[str] = field(default_factory=list)
     created_at: int = 0
     updated_at: int = 0
+    helper_running: bool = False
 
     def to_wire(self) -> dict[str, Any]:
         """The task as the routes return it."""
@@ -64,6 +92,7 @@ class Task:
             "status": self.status,
             "artifact_group_ids": self.artifact_group_ids,
             "helper_ids": self.helper_ids,
+            "helper_running": self.helper_running,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
@@ -107,6 +136,12 @@ def kind_for_name(name: str) -> str:
     return next((k for suffix, k in _KIND_BY_SUFFIX.items() if low.endswith(suffix)), "file")
 
 
+def kind_for_brief(brief: str) -> str:
+    """The task kind a Helper started with this brief makes, else ``file``."""
+    words = set(re.findall(r"[a-z0-9]+", brief.lower()))
+    return next((kind for kind, keys in _KIND_BY_WORD if words & set(keys)), "file")
+
+
 def _norm(text: str) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", text.lower()))
 
@@ -138,18 +173,16 @@ def best_match(tasks: Iterable[Task], kind: str, title: str, name: str = "") -> 
     return best[1] if best else None
 
 
-def record_answer(
-    task: Task, answer: CardAnswer, item_id: str, look: tuple[str, str] | None
-) -> None:
-    """Note the person's pick on *task*; *look* is ``(theme id, name)`` of a theme it picks."""
+def record_answer(task: Task, answer: CardAnswer, item_id: str) -> None:
+    """Note the person's pick on the task its card asked for.
+
+    What the pick means for the deliverable (a deck's look) is read from the option id by the
+    capability that builds it, and comes back on that capability's own event.
+    """
     answers = task.fields.setdefault("answers", [])
     answers.append({**answer.to_wire(), "item_id": item_id})
     del answers[:-10]
-    if look is not None and task.kind == "deck":
-        task.fields["look_id"], task.fields["look"] = look
-        task.fields["look_from"] = "picked"
-    else:
-        task.fields["answered"] = answer.label
+    task.fields["answered"] = answer.label
 
 
 def task_line(task: Task) -> str:
@@ -165,7 +198,7 @@ def task_line(task: Task) -> str:
         parts.append(f"{fields['slides']} slides")
     if fields.get("answered"):
         parts.append(f"answered: {fields['answered']}")
-    nxt = "wait for the helper" if task.helper_ids else _NEXT.get(task.status, "build")
+    nxt = "wait for the helper" if task.helper_running else _NEXT.get(task.status, "build")
     parts.append(f"next: {nxt}")
     return " · ".join(parts)
 
@@ -176,3 +209,52 @@ def prefix_lines(tasks: Iterable[Task], answer: CardAnswer | None) -> list[str]:
     lines = [PICKED_LINE.format(label=answer.label)] if answer is not None else []
     lines += [task_line(t) for t in tasks if t.status in ACTIVE]
     return lines[:MAX_LINES]
+
+
+@dataclass
+class Turn:
+    """What one Conversation turn was and did, as far as its tasks go.
+
+    :param by_person: A person's message opened it (not a runtime notice, nor a Helper's
+        progress, flag or completion wake).
+    :param task_id: The open task at its start, or ``None``.
+    :param helper_running: A Helper of that task was running at its start: the message steers or
+        waits on work already under way.
+    :param saved: A file was saved (``artifact_save``).
+    :param asked: A question card was shown (``ask_clarification``).
+    :param helper_started: A Helper was started (``start_helper``).
+    :param refused: The step limit refused a call.
+    """
+
+    by_person: bool
+    task_id: str | None = None
+    helper_running: bool = False
+    saved: bool = False
+    asked: bool = False
+    helper_started: bool = False
+    refused: bool = False
+
+
+def ends_well(turn: Turn) -> bool:
+    """Whether a turn ends as ADR 0025 says; ``False`` is a **stall**. The one definition.
+
+    Only a turn a person opened is judged, and never one answered while a Helper of its task
+    runs. It stalls when the step limit refused it and it started no Helper, or when it began on
+    an open task and ended without a save, a question card or a started Helper.
+    """
+    if not turn.by_person or turn.helper_running:
+        return True
+    if turn.refused and not turn.helper_started:
+        return False
+    return turn.task_id is None or turn.saved or turn.asked or turn.helper_started
+
+
+def is_stall(turn: Turn) -> bool:
+    """A turn that does not end well (:func:`ends_well`)."""
+    return not ends_well(turn)
+
+
+def watched(turn: Turn) -> bool:
+    """Whether *turn*'s ending can make it a stall: a person's turn on an open task with no Helper
+    of it running. (A step-limit refusal can stall any person's turn.)"""
+    return turn.by_person and turn.task_id is not None and not turn.helper_running

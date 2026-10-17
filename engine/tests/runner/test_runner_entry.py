@@ -2281,3 +2281,48 @@ def test_make_auth_token_factory_none_without_creds_or_binding_token(
     monkeypatch.setattr("omnigent.cli_auth.load_token", lambda _url, **_kw: None)
 
     assert _make_auth_token_factory() is None
+
+
+def test_runner_auth_asks_a_no_auth_server_to_mint_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A server that mints nothing (400) is asked once per runner, not once per call site.
+
+    Boot resolves the credential, then the app and the tunnel each ask for the factory again.
+    The delegated probe and the managed fallback mint against the same binding token, and the
+    resolved "no credential" is remembered, so only the first probe reaches the server.
+
+    :param monkeypatch: Pytest environment patch fixture.
+    :returns: None.
+    """
+    import omnigent.runner._entry as entry
+
+    calls: list[str] = []
+
+    def _refuse(
+        mint_url: str, server_url: str, binding_token: str, **_kw: object
+    ) -> tuple[str, float]:
+        calls.append(mint_url)
+        request = httpx.Request("POST", mint_url)
+        raise httpx.HTTPStatusError(
+            "no auth provider", request=request, response=httpx.Response(400, request=request)
+        )
+
+    monkeypatch.setenv("RUNNER_SERVER_URL", "https://s.example.com")
+    monkeypatch.setenv("OMNIGENT_RUNNER_TUNNEL_BINDING_TOKEN", "bind-tok")
+    monkeypatch.setenv("OMNIGENT_RUNNER_DELEGATED_AUTH", "1")
+    monkeypatch.delenv(RUNNER_INITIAL_AUTH_TOKEN_ENV_VAR, raising=False)
+    monkeypatch.setattr("omnigent.runner._entry._mint_managed_owner_token", _refuse)
+    monkeypatch.setattr("omnigent.cli_auth.load_token", lambda *_a, **_kw: None)
+    monkeypatch.setattr("omnigent.cli_auth.refresh_stored_token", lambda *_a, **_kw: None)
+    monkeypatch.setattr(entry, "_runner_auth_factory", None)
+    monkeypatch.setattr(entry, "_runner_auth_resolved", False)
+
+    factory = _make_auth_token_factory()
+    assert factory is None
+    assert len(calls) == 1
+
+    entry._set_runner_auth_factory(factory)
+    assert _make_auth_token_factory() is None
+    assert _make_auth_token_factory() is None
+    assert len(calls) == 1

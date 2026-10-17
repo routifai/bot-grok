@@ -49,7 +49,8 @@ os_env:
     # write_paths: ["/tmp"]
 
 executor:
-  model: databricks-claude-sonnet-4-6
+  harness: claude-sdk
+  model: sonnet
 
 tools:
   # NB: the tool is named ``search_web`` (not ``web_search``) because

@@ -138,6 +138,80 @@ def test_system_notice_and_hidden_context_are_dropped() -> None:
     assert [m["id"] for m in project_items(items)] == ["m1"]
 
 
+def _studio_artifact(**fields: Any) -> Any:
+    from omnigent.superchat.artifacts.store import Artifact
+
+    base = {
+        "id": "v",
+        "user_id": None,
+        "parent_session_id": "chat",
+        "name": "q3.deck.html",
+        "title": None,
+        "kind": "html",
+        "mime": "text/html",
+        "size": 1,
+        "version": 4,
+        "blob_key": "k",
+        "published": False,
+        "created_at": 0,
+        "updated_at": None,
+    }
+    return Artifact(**{**base, **fields})
+
+
+def test_a_studios_runtime_lines_are_notices_with_a_kind_and_never_their_text() -> None:
+    from omnigent.superchat.artifacts.studio import notice_line, stale_line
+    from omnigent.superchat.subagents import STUDIO_QUEUED_NOTE
+
+    # The lines are the ones the studio writes, so a change to their wording fails here.
+    hand = notice_line(
+        _studio_artifact(origin="manual", edit_summary="slide 1 cover-title font-size 44px→52px"),
+        "studio",
+    )
+    restored = notice_line(
+        _studio_artifact(origin="restore", edit_summary="restored version 2", version=5), "studio"
+    )
+    elsewhere = notice_line(_studio_artifact(chat_id="chat", version=3), "studio")
+    update = notice_line(_studio_artifact(origin="update"), "studio")
+    stale = stale_line(_studio_artifact(chat_id="chat", version=9), "studio")
+    lines = [hand, restored, elsewhere, update, stale, STUDIO_QUEUED_NOTE, "timer fired"]
+    items = [
+        _msg(f"n{i}", "user", line or "", is_system_notice=True) for i, line in enumerate(lines)
+    ]
+    messages = project_items(items, keep_notices=True)
+    assert [m["role"] for m in messages] == ["system"] * 6  # an unknown line is not shown
+    assert [m["blocks"] for m in messages] == [
+        [
+            {
+                "type": "notice",
+                "kind": "hand_edit",
+                "version": 4,
+                "what": "You made the title larger",
+                "element_id": "cover-title",
+                "element": "the title",
+            }
+        ],
+        [{"type": "notice", "kind": "version", "version": 5}],
+        [{"type": "notice", "kind": "version", "version": 3}],
+        [{"type": "notice", "kind": "version", "version": 4}],
+        [{"type": "notice", "kind": "stale", "version": 9, "origin": "superchat"}],
+        [{"type": "notice", "kind": "queued"}],
+    ]
+    assert project_items(items) == []  # dropped everywhere but a studio
+
+
+def test_a_hand_edit_with_no_element_reads_as_the_person_did_it() -> None:
+    from omnigent.superchat.transcript.blocks import notice_block
+
+    block = notice_block("[you] switched the theme to Pitch (was Ocean) · v7")
+    assert block == {
+        "type": "notice",
+        "kind": "hand_edit",
+        "version": 7,
+        "what": "You switched the theme to Pitch (was Ocean)",
+    }
+
+
 def test_card_call_becomes_a_card_message_without_internal_fields() -> None:
     items = [_call("c1", "mcp__omnigent__render_card", "k1"), _out("o1", "k1", _CARD)]
     (message,) = project_items(items)

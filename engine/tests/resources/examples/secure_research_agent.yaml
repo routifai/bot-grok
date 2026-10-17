@@ -42,7 +42,8 @@ ask_timeout: 30
 policy_transparency: true
 
 executor:
-  model: databricks-claude-sonnet-4-6
+  harness: claude-sdk
+  model: sonnet
 
 tools:
   search_web:

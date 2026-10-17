@@ -20,7 +20,6 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(Path, "home", lambda: home)
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
-    monkeypatch.delenv("CODEX_HOME", raising=False)
     return home
 
 
@@ -73,14 +72,6 @@ def test_reads_each_harness_and_drops_secrets(home: Path) -> None:
         },
     )
     _write_claude_plugin(home / ".claude")
-    (home / ".codex").mkdir()
-    (home / ".codex" / "config.toml").write_text(
-        "[mcp_servers.glean]\n"
-        f'command = "glean"\nargs = ["{_SECRET}"]\nenv = {{ TOKEN = "{_SECRET}" }}\n'
-        '[mcp_servers.off]\ncommand = "off"\nenabled = false\n'
-        '[mcp_servers.docs]\nurl = "https://docs.example.com/mcp"\n'
-        '[mcp_servers.omnigent]\ncommand = "python"\n'
-    )
     _write_json(home / ".cursor" / "mcp.json", {"mcpServers": {"slack": _stdio()}})
 
     servers = discover_mcp_servers()
@@ -109,36 +100,23 @@ def test_reads_each_harness_and_drops_secrets(home: Path) -> None:
             "plugin": "figma",
             "url_host": "f.io",
         },
-        {"name": "glean", "harness": "codex", "transport": "stdio", "scope": "user"},
-        {
-            "name": "docs",
-            "harness": "codex",
-            "transport": "http",
-            "scope": "user",
-            "url_host": "docs.example.com",
-        },
         {"name": "slack", "harness": "cursor", "transport": "stdio", "scope": "user"},
     ]
     assert _SECRET not in json.dumps(servers)
     assert "/usr/bin/tool" not in json.dumps(servers)
 
 
-def test_honors_claude_and_codex_config_homes(
+def test_honors_claude_config_dir(
     home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     claude_dir = tmp_path / "claude-config"
-    codex_home = tmp_path / "codex-config"
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(claude_dir))
-    monkeypatch.setenv("CODEX_HOME", str(codex_home))
     _write_json(home / ".claude.json", {"mcpServers": {"wrong-home": _stdio()}})
     _write_json(claude_dir / ".claude.json", {"mcpServers": {"right-home": _stdio()}})
     _write_claude_plugin(claude_dir, enabled=False)
-    codex_home.mkdir()
-    (codex_home / "config.toml").write_text('[mcp_servers.codex-home]\ncommand = "x"\n')
 
     assert [(s["harness"], s["name"]) for s in discover_mcp_servers()] == [
         ("claude", "right-home"),
-        ("codex", "codex-home"),
     ]
 
 
@@ -149,8 +127,6 @@ def test_missing_and_malformed_configs_do_not_fail(
     assert not caplog.records
 
     (home / ".claude.json").write_text("{not json")
-    (home / ".codex").mkdir()
-    (home / ".codex" / "config.toml").write_text("[mcp_servers\n")
     _write_json(
         home / ".cursor" / "mcp.json",
         {"mcpServers": {"ok": {"command": "x"}, "junk": "not a table", "bare": {}}},
@@ -159,9 +135,7 @@ def test_missing_and_malformed_configs_do_not_fail(
     assert discover_mcp_servers() == [
         {"name": "ok", "harness": "cursor", "transport": "stdio", "scope": "user"}
     ]
-    assert {"claude", "codex"} <= {
-        word for record in caplog.records for word in record.getMessage().split()
-    }
+    assert "claude" in {word for record in caplog.records for word in record.getMessage().split()}
 
 
 def test_one_harness_crashing_keeps_the_others(

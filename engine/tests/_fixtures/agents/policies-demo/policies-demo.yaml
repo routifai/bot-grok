@@ -5,7 +5,8 @@ description: |
   composition.
 
 executor:
-  model: gpt-4o
+  harness: claude-sdk
+  model: sonnet
 
 prompt: Test fixture for policy composition.
 

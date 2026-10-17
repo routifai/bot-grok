@@ -42,11 +42,17 @@ from omnigent.runner.mcp_execution_registry import (
 from omnigent.runner.mcp_manager import McpSchemasResult
 from omnigent.runner.tool_dispatch import MCP_PROXY_CALL_TIMEOUT_S
 from omnigent.spec.types import DEFAULT_ASK_TIMEOUT, AgentSpec
+from omnigent.superchat.feature import HandlerCtx
+from omnigent.superchat.features import notify_denied
 from omnigent.util.json_types import JsonObject as _JsonObject
 
 _logger = logging.getLogger(__name__)
 
 _EventPublisher = Callable[[str, _JsonObject], None]
+#: How the server's MCP proxy words a TOOL_CALL DENY (``-32000``, then the policy's reason).
+DENIED_PREFIX = "Denied by policy: "
+
+
 _SERVER_RECONNECT_WAIT_S = 120.0
 
 
@@ -453,6 +459,10 @@ class ProxyMcpManager:
                 # denials, tool errors).  Return as a JSON error string so the
                 # harness feeds the refusal back to the LLM rather than raising.
                 if code == -32000:
+                    if isinstance(msg, str) and msg.startswith(DENIED_PREFIX):
+                        reason = msg[len(DENIED_PREFIX) :]
+                        ctx = HandlerCtx(tool_name, self._omnigent_client, self._session_id)
+                        notify_denied(ctx, tool_name, reason)
                     return json.dumps({"error": msg})
                 raise RuntimeError(
                     f"MCP proxy protocol error {code} for tool {tool_name!r}: {msg}"

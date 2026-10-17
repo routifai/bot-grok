@@ -22,21 +22,23 @@ A deck is one self-contained HTML file named `*.deck.html` with 1920x1080 slides
 | `charts/` | the chart recipes (bar, line, pie, radar, bar-and-line combo) and their bootstrap |
 | `vendor/chart.js/` | Chart.js, pinned and vendored into every deck |
 
-`decks/kit.py` assembles a deck from these; `decks/look.py` gates which theme a new deck may use.
+`decks/kit.py` assembles a deck from these; `decks/look.py` settles a new deck's theme.
 
 ## Authoring
 
 The assistant writes only slides. Its tools (`decks/tools.py`) are:
 
-- `deck_new` assembles the file around the slides (skeleton, theme, fonts). It takes `look_from`,
-  and the engine checks it against records the model cannot write: the person named the theme,
-  picked it from the "Which look?" card, handed the choice over, or the run is background work.
-  Otherwise nothing is built and the card is returned. Every text or media block gets a stable
+- `deck_new` assembles the file around the slides (skeleton, theme, fonts). It builds the
+  `template` the model passed; `look_from` is a record, never a gate. When no template is given
+  (or `look_from` is `ask`), the engine chooses one from the topic and the person's taste and the
+  result says which and why; the file card offers "Change look". The one refusal is background
+  work with no template and no topic. Every text or media block gets a stable
   `data-superchat-id`.
 - `deck_check` measures the laid-out deck in the host's Chromium, the same render the export reads:
   content past the slide or in the footer band, clipped text, missing ids, unembedded fonts,
   charts with no PowerPoint equivalent. The assistant fixes the HTML and checks again.
-- `deck_themes` and `deck_theme_set` list and swap themes.
+- `deck_themes` and `deck_theme_set` list and swap themes; `deck_theme_set` does not check the
+  layout, so `deck_check` follows it.
 
 The authoring rules (headline length, one idea per slide, only theme fonts, no absolute
 positioning or effects PowerPoint cannot express, numbers only from the person's data) are in
@@ -52,7 +54,11 @@ superchat-deck-export --format pptx|pdf --html PATH --out PATH
 superchat-deck-export --format lint --html PATH
 ```
 
-It drives a separate headless Chromium over CDP (the person's visible browser is never touched).
+It drives a headless Chromium over CDP (the person's visible browser is never touched). The
+host keeps one warm (`superchat-deck-export --serve`, started by the host's start script, which
+restarts it when it exits); each job attaches to it in a browser context of its own, closed when
+the job ends or its connection drops. A job launches its own Chromium only when the host serves
+no warm one (development, tests).
 PPTX goes through the vendored dom-to-pptx bundle (`host/share/deck-export/vendor/dom-to-pptx/`,
 rebuilt from upstream plus a documented patch) and the page-side capture module
 (`host/share/deck-export/deck-capture-page.js`), both ported from Open Design: native text, shapes

@@ -28,6 +28,7 @@ One file per decision, numbered in order. A superseded record keeps its file wit
 | [0022](0022-the-orchestrator-narrates-while-helpers-work.md) | The orchestrator narrates while helpers work | Done 2026-10-17 (engine notices, bundle rules, web work strip); updated after review the same day: progress wakes an idle parent, helpers save drafts |
 | [0023](0023-the-plan-is-visible-and-the-work-is-alive.md) | The plan is visible and the work is alive | Done 2026-10-17 (plan in the work strip, lit state, header pill; merge `d18372e18`); updated after review the same day: plan id across wake turns, outcome on the strip, one clock |
 | [0024](0024-the-artifact-studio.md) | The artifact studio | Accepted 2026-10-17, refined after review; slices 1 and 2 built 2026-10-17 (both halves); amends 0021 |
-| [0025](0025-act-by-default-tasks-have-state.md) | Act by default, tasks have state, a pick resumes the work | Built 2026-10-17, not yet watched in use; amends the look gate of 0011 and the step limit's ending rule of 0007 |
+| [0025](0025-act-by-default-tasks-have-state.md) | Act by default, tasks have state, a pick resumes the work | Built and reworked 2026-10-17 (explicit task lifecycle, one stall rule, cards tied to tasks); amends the look gate of 0011 and the step limit's ending rule of 0007 |
+| [0026](0026-a-turn-speaks-in-a-second.md) | A turn speaks in a second | Built 2026-10-17; the latency budget, warm Chromium, look as a record, bounded metadata calls, loop never stalls, Stop that stops; measured rerun pending |
 
 The pages that explain the current system are listed in [../README.md](../README.md).

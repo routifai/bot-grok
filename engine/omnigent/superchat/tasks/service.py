@@ -1,12 +1,14 @@
 """Server side of tasks: applies what happened to a Conversation's task records (ADR 0025).
 
 Every write comes from an event the engine saw (``deck_new`` returned, a file was saved, a Helper
-started, a card was answered), never from the model's word. A Helper's events land on the
-Conversation that started it.
+started, a card was answered, a turn ended), never from the model's word. A Helper's events land
+on the Conversation that started it, on the task the Helper was started for. The lifecycle is in
+:mod:`omnigent.superchat.tasks.record`.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -18,17 +20,20 @@ from omnigent.context.labels import (
     SCHEDULED_HELPER_LABEL_KEY,
 )
 from omnigent.db.utils import now_epoch
-from omnigent.entities import Conversation, MessageData
+from omnigent.entities import Conversation, FunctionCallData, FunctionCallOutputData, MessageData
 from omnigent.server.auth import RESERVED_USER_LOCAL
 from omnigent.stores import ConversationStore
 from omnigent.superchat.artifacts.links import is_person_message
+from omnigent.superchat.family.tree import STATUS_DONE, STATUS_IN_PROGRESS, sub_agent_status
 from omnigent.superchat.tasks.record import (
+    ACTIVE,
     BUILDING,
     DONE,
-    DROPPED,
-    CardAnswer,
+    OPEN,
+    STALE_AFTER,
     Task,
     best_match,
+    kind_for_brief,
     kind_for_name,
     parse_card_answer,
     record_answer,
@@ -43,8 +48,12 @@ BACKGROUND_LABELS = (SCHEDULED_HELPER_LABEL_KEY, ADHOC_HELPER_LABEL_KEY, SCHEDUL
 _MAX_HOPS = 4
 #: Newest items read to find the person's latest message.
 _LOOKBACK = 20
-#: An active task nothing touched for this long was left behind: it is dropped when next read.
-STALE_AFTER = 24 * 3600
+#: Newest card results searched for the card an answer names.
+_CARD_LOOKBACK = 50
+#: A Conversation turn saved this task; its ``turn_end`` closes it (popped there).
+_SAVED = "saved_this_turn"
+#: The last Helper whose finish was read onto the task, so it is read once.
+_SETTLED = "helper_settled"
 
 
 @dataclass(frozen=True)
@@ -52,13 +61,19 @@ class Place:
     """Where a session's work lands: the Conversation, and what kind of run this is.
 
     :param conversation: The person-facing Conversation (the session itself, or a Helper's root).
-    :param is_helper: The session is a Helper.
+    :param helpers: The Helper sessions from this one up to the Conversation (empty for the
+        Conversation itself).
     :param background: A schedule or an ad-hoc pass started this work, not a person.
     """
 
     conversation: Conversation
-    is_helper: bool
+    helpers: tuple[str, ...]
     background: bool
+
+    @property
+    def is_helper(self) -> bool:
+        """The session is a Helper."""
+        return bool(self.helpers)
 
 
 def _message_text(data: MessageData) -> str:
@@ -77,8 +92,6 @@ class TaskService:
     def __init__(self, store: SqlAlchemyTaskStore, conversations: ConversationStore) -> None:
         self.store = store
         self.conversations = conversations
-        #: ``Conversation id -> (item id, answer)``: the newest card answer, for the next turn.
-        self._answers: dict[str, tuple[str, CardAnswer]] = {}
 
     # ------------------------------------------------------------------ where
 
@@ -88,7 +101,7 @@ class TaskService:
         if conv is None:
             return None
         background = any(key in conv.labels for key in BACKGROUND_LABELS)
-        is_helper = conv.kind == "sub_agent"
+        helpers: list[str] = []
         root = conv
         for _ in range(_MAX_HOPS):
             if root.kind != "sub_agent" or not root.parent_conversation_id:
@@ -96,139 +109,282 @@ class TaskService:
             parent = self.conversations.get_conversation(root.parent_conversation_id)
             if parent is None:
                 break
+            helpers.append(root.id)
             root = parent
             background = background or any(key in root.labels for key in BACKGROUND_LABELS)
-        return Place(root, is_helper, background)
+        if conv.kind == "sub_agent" and not helpers:
+            helpers.append(conv.id)
+        return Place(root, tuple(helpers), background)
 
     def _owner(self, conversation_id: str) -> str:
         return self.conversations.get_session_owner(conversation_id) or RESERVED_USER_LOCAL
 
-    def _latest_message(self, conversation_id: str) -> tuple[str | None, str]:
-        """``(item id, text)`` of the person's latest message in the Conversation."""
+    def _latest_message(self, conversation_id: str) -> tuple[str | None, str, bool]:
+        """``(item id, text, by a person)`` of the newest user-role message in the Conversation;
+        the text is the person's latest words even when a runtime notice came after them."""
         page = self.conversations.list_items(conversation_id, limit=_LOOKBACK, order="desc")
+        newest_by_person: bool | None = None
         for item in page.data:
-            if is_person_message(item) and isinstance(item.data, MessageData):
-                return item.id, _message_text(item.data)
-        return None, ""
+            data = item.data
+            if item.type != "message" or not isinstance(data, MessageData) or data.role != "user":
+                continue
+            person = is_person_message(item)
+            if newest_by_person is None:
+                newest_by_person = person
+            if person:
+                return item.id, _message_text(data), bool(newest_by_person)
+        return None, "", False
 
     # ------------------------------------------------------------------ reads
 
     def view(self, session_id: str) -> dict[str, Any] | None:
-        """What a turn and ``deck_new`` read: the active tasks, the person's latest message and,
-        when that message is a card answer, the answer."""
+        """What a turn and ``deck_new`` read: the active tasks, the person's latest message,
+        whether a person opened this turn and, when that message answers a card, the answer.
+
+        A turn starts here, so a Helper that finished since the last read is read onto its task
+        first (done when it finished, open again when it failed).
+        """
         place = self.place(session_id)
         if place is None:
             return None
         conversation_id = place.conversation.id
-        item_id, message = self._latest_message(conversation_id)
-        answered = self._answers.get(conversation_id)
-        answer = answered[1] if answered and item_id and answered[0] == item_id else None
+        item_id, message, by_person = self._latest_message(conversation_id)
+        answer = self.store.answer(conversation_id, item_id) if item_id and by_person else None
         tasks = self._active(conversation_id)
+        self._settle_helpers(tasks)
         return {
             "conversation_id": conversation_id,
             "is_helper": place.is_helper,
             "background": place.background,
             "message": message,
+            "by_person": by_person and not place.is_helper,
             "answer": answer.to_wire() if answer else None,
-            "tasks": [t.to_wire() for t in tasks],
+            "tasks": [t.to_wire() for t in tasks if t.status in ACTIVE],
         }
+
+    def _active(self, conversation_id: str) -> list[Task]:
+        """The Conversation's active tasks, newest first, without those left behind, each with
+        whether a Helper of it runs."""
+        cutoff = now_epoch() - STALE_AFTER
+        tasks = [
+            t for t in self.store.list(conversation_id, active_only=True) if t.updated_at >= cutoff
+        ]
+        statuses = self._helper_statuses([h for t in tasks for h in t.helper_ids])
+        for task in tasks:
+            task.helper_running = any(
+                statuses.get(h) == STATUS_IN_PROGRESS for h in task.helper_ids
+            )
+        return tasks
+
+    def _helper_statuses(self, helper_ids: list[str]) -> dict[str, str]:
+        if not helper_ids:
+            return {}
+        found = self.conversations.get_conversations(list(dict.fromkeys(helper_ids)))
+        return {helper_id: sub_agent_status(conv) for helper_id, conv in found.items()}
+
+    def _settle_helpers(self, tasks: list[Task]) -> None:
+        """A task whose newest Helper finished since it was last read: done when it finished
+        well, open again otherwise. Read once per Helper."""
+        for task in tasks:
+            last = task.helper_ids[-1] if task.helper_ids else None
+            if last is None or task.helper_running or task.fields.get(_SETTLED) == last:
+                continue
+            finished = self._helper_statuses([last]).get(last)
+            if finished is None:
+                continue
+            task.fields[_SETTLED] = last
+            task.status = DONE if finished == STATUS_DONE else OPEN
+            self.store.save(task)
 
     # ------------------------------------------------------------------ writes
 
-    def _active(self, conversation_id: str) -> list[Task]:
-        """The Conversation's active tasks, newest first; one left behind is dropped."""
-        tasks = self.store.list(conversation_id, active_only=True)
-        cutoff = now_epoch() - STALE_AFTER
-        for task in tasks:
-            if task.updated_at < cutoff:
-                task.status = DROPPED
-                self.store.save(task)
-        return [t for t in tasks if t.status != DROPPED]
+    def _sweep(self, conversation_id: str) -> None:
+        """Drop the tasks left behind (:data:`STALE_AFTER`); called from the event paths."""
+        self.store.drop_stale(conversation_id, now_epoch() - STALE_AFTER)
+
+    def _start(self, place: Place) -> tuple[str, list[Task]]:
+        conversation_id = place.conversation.id
+        self._sweep(conversation_id)
+        return conversation_id, self._active(conversation_id)
+
+    @staticmethod
+    def _helpers_task(place: Place, tasks: list[Task]) -> Task | None:
+        """The task a Helper (or the Helper above it) was started for."""
+        chain = set(place.helpers)
+        return next((t for t in tasks if chain & set(t.helper_ids)), None)
+
+    def _new(self, conversation_id: str, kind: str, title: str) -> Task:
+        return self.store.create(self._owner(conversation_id), conversation_id, kind, title)
 
     def deck_built(self, session_id: str, event: Mapping[str, Any]) -> Task | None:
-        """``deck_new`` returned a deck (or its layout menu): the deck task, building or open."""
+        """``deck_new`` returned a deck (or its layout menu): the deck task, building.
+
+        The deck's file finds its task among all of the Conversation's, so an event that arrives
+        after the file was saved updates the done task instead of opening a second one, and
+        never moves it back to building.
+        """
         place = self.place(session_id)
         title = event.get("title")
         if place is None or not isinstance(title, str) or not title.strip():
             return None
-        conversation_id = place.conversation.id
+        conversation_id, active = self._start(place)
         name = str(event.get("file") or "")
-        task = best_match(self._active(conversation_id), "deck", title, name)
-        if task is None:
-            task = self.store.create(self._owner(conversation_id), conversation_id, "deck", title)
-        task.title = title.strip()[:256]
+        task = (
+            next(
+                (
+                    t
+                    for t in self.store.list(conversation_id)
+                    if name and t.kind == "deck" and t.fields.get("file") == name
+                ),
+                None,
+            )
+            or self._helpers_task(place, active)
+            or best_match(active, "deck", title, name)
+            or self._new(conversation_id, "deck", title)
+        )
+        if not place.is_helper:
+            task.title = title.strip()[:256]
         for key in ("look", "look_id", "look_from", "file"):
             if isinstance(event.get(key), str) and event[key]:
                 task.fields[key] = event[key]
         slides = event.get("slides")
         if isinstance(slides, int) and not isinstance(slides, bool) and slides > 0:
             task.fields["slides"] = slides
-        if event.get("written") is True:
+        if task.status != DONE:
             task.status = BUILDING
         return self.store.save(task)
 
     def saved(self, session_id: str, event: Mapping[str, Any]) -> Task | None:
-        """A file was saved with ``artifact_save``: the task it delivers is done."""
+        """A file was saved with ``artifact_save``.
+
+        In the Conversation it delivers its task (or, with no open task, opens one), closed when
+        the turn ends. A Helper's save is a draft of the task it was started for.
+        """
         place = self.place(session_id)
         name, group = event.get("name"), event.get("group_id")
         if place is None or not isinstance(name, str) or not isinstance(group, str):
             return None
-        conversation_id = place.conversation.id
+        conversation_id, active = self._start(place)
         title = str(event.get("title") or name)
         kind = kind_for_name(name)
-        tasks = self.store.list(conversation_id)
-        task = next((t for t in tasks if group in t.artifact_group_ids), None) or best_match(
-            tasks, kind, title, name
+        task = next(
+            (t for t in self.store.list(conversation_id) if group in t.artifact_group_ids), None
         )
-        if task is None:
-            task = self.store.create(self._owner(conversation_id), conversation_id, kind, title)
-            task.fields["file"] = name
+        if place.is_helper:
+            task = (
+                task or self._helpers_task(place, active) or best_match(active, kind, title, name)
+            )
+            if task is None:
+                return None
+        else:
+            task = (
+                task
+                or best_match(active, kind, title, name)
+                or next((t for t in active if t.kind == kind), None)
+            )
+            if task is None:
+                task = self._new(conversation_id, kind, title)
+                task.fields["file"] = name
+            task.fields[_SAVED] = True
+            if task.status != DONE:
+                task.status = BUILDING
         if group not in task.artifact_group_ids:
             task.artifact_group_ids.append(group)
-        task.status = DONE
         return self.store.save(task)
 
     def helper_started(self, session_id: str, event: Mapping[str, Any]) -> Task | None:
-        """A Helper was started: it works on the newest active task."""
+        """A Helper was started: it works on the task it was started for.
+
+        That is the starting Helper's own task, else the newest active task of the kind its
+        brief names (any kind when the brief names none), else a new task.
+        """
         place = self.place(session_id)
         helper_id = event.get("helper_id")
         if place is None or not isinstance(helper_id, str) or not helper_id:
             return None
-        tasks = self._active(place.conversation.id)
-        if not tasks:
-            return None
-        task = tasks[0]
+        conversation_id, active = self._start(place)
+        brief = str(event.get("title") or "")
+        kind = kind_for_brief(brief)
+        task = (
+            self._helpers_task(place, active)
+            or next((t for t in active if t.kind == kind), None)
+            or (active[0] if active and kind == "file" else None)
+            or self._new(conversation_id, kind, brief or kind)
+        )
         if helper_id not in task.helper_ids:
             task.helper_ids.append(helper_id)
+        if task.status != DONE:
+            task.status = BUILDING
+        task.helper_running = True
         return self.store.save(task)
 
+    def turn_ended(self, session_id: str, _event: Mapping[str, Any]) -> Task | None:
+        """A Conversation turn ended: a task it saved is done, unless a Helper of it still runs;
+        a task it was building and no Helper runs for is open again."""
+        place = self.place(session_id)
+        if place is None or place.is_helper:
+            return None
+        for task in self._active(place.conversation.id):
+            saved = task.fields.pop(_SAVED, False)
+            if task.helper_running:
+                if saved:
+                    self.store.save(task)
+                continue
+            status = DONE if saved else OPEN
+            if saved or task.status != status:
+                task.status = status
+                self.store.save(task)
+        return None
+
     def card_answered(self, session_id: str, item_id: str, context: Mapping[str, Any]) -> None:
-        """A message carried ``context.card_answer``: note it for the turn and on the task."""
+        """A message carried ``context.card_answer``: keep it on the message, and on the task
+        its card asked for."""
         answer = parse_card_answer(context)
         if answer is None:
             return
-        self._answers[session_id] = (item_id, answer)
-        tasks = self._active(session_id)
-        if not tasks:
+        task_id = self._card_task(session_id, answer.card_id)
+        self.store.save_answer(session_id, item_id, answer, task_id)
+        task = self.store.get(task_id) if task_id else None
+        if task is None or task.conversation_id != session_id or task.status not in ACTIVE:
             return
-        task = tasks[0]
-        record_answer(task, answer, item_id, _picked_look(answer))
+        record_answer(task, answer, item_id)
         self.store.save(task)
 
-    def conversation_deleted(self, session_id: str) -> None:
-        """A deleted Conversation's tasks go with it."""
-        self._answers.pop(session_id, None)
-        self.store.delete_conversation(session_id)
+    def _card_task(self, conversation_id: str, card_id: str) -> str | None:
+        """The task id the card *card_id* recorded, else ``None``.
 
-
-def _picked_look(answer: CardAnswer) -> tuple[str, str] | None:
-    """``(theme id, name)`` of the deck theme an answer picks (by option id or by naming it)."""
-    from omnigent.superchat.decks import kit
-    from omnigent.superchat.decks.look import named_themes
-
-    templates = kit.templates()
-    themes = {answer.option_id} if answer.option_id in templates else named_themes(answer.label)
-    if len(themes) != 1:
+        The web sends the engine's own card id (the transcript's ``card_id``, the card's ``id``);
+        an older client sends ``<call item id>:<block>``, matched by the call's result.
+        """
+        outputs = self.conversations.list_items(
+            conversation_id, limit=_CARD_LOOKBACK, order="desc", type="function_call_output"
+        ).data
+        call_id = self._call_id(conversation_id, card_id.split(":", 1)[0])
+        for item in outputs:
+            data = item.data
+            if not isinstance(data, FunctionCallOutputData):
+                continue
+            try:
+                card = json.loads(data.output)
+            except ValueError:
+                continue
+            if not isinstance(card, dict) or card.get("type") != "card":
+                continue
+            if card.get("id") == card_id or (call_id is not None and data.call_id == call_id):
+                task_id = card.get("task_id")
+                return task_id if isinstance(task_id, str) and task_id else None
         return None
-    theme_id = themes.pop()
-    return theme_id, templates[theme_id].name
+
+    def _call_id(self, conversation_id: str, item_id: str) -> str | None:
+        """The ``call_id`` of the function call stored as *item_id*, else ``None``."""
+        try:
+            call = self.conversations.get_item(conversation_id, item_id)
+        except Exception:  # noqa: BLE001 - a malformed id from the client is no call
+            return None
+        if call is None or not isinstance(call.data, FunctionCallData):
+            return None
+        return call.data.call_id
+
+    def conversation_deleted(self, session_id: str) -> None:
+        """A deleted Conversation's tasks and card answers go with it."""
+        self.store.delete_conversation(session_id)

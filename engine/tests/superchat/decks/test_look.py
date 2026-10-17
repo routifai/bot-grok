@@ -1,4 +1,5 @@
-"""A new deck's look (ADR 0025): kept when the records back it, else chosen; never a card."""
+"""A new deck's look (ADR 0026): any valid template is built and ``look_from`` recorded; with no
+template the theme picked on the task's card is built, else the engine chooses; never a card."""
 
 from __future__ import annotations
 
@@ -6,19 +7,25 @@ import json
 import stat
 from pathlib import Path
 
+import httpx
 import pytest
 
 from omnigent.superchat.decks import kit
 from omnigent.superchat.decks.authoring import handle_authoring_tool
 from omnigent.superchat.decks.handlers import HELPER_ENV
 from omnigent.superchat.decks.look import (
+    CHOSEN,
     HELPER_REFUSAL,
+    MODEL,
+    PICKED,
     choose_look,
-    pick_three,
+    rank,
     remembered_themes,
+    settle_look,
 )
+from omnigent.superchat.feature import HandlerCtx
 
-from .look_fakes import ctx, deck_task, helper_ctx, view
+from .look_fakes import SESSION, ctx, helper_ctx, view
 
 SAMPLE = (kit.KIT_DIR / "sample-slides.html").read_text("utf-8")
 
@@ -36,25 +43,31 @@ def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return root
 
 
-async def _new(look_from: str | None, template: str, call_ctx, title: str = "Sales") -> dict:
-    args = {"path": "d.deck.html", "template": template, "title": title, "slides": SAMPLE}
+async def _new(
+    look_from: str | None, template: str | None, call_ctx, title: str = "Sales"
+) -> dict:
+    args = {"path": "d.deck.html", "title": title, "slides": SAMPLE}
+    if template is not None:
+        args["template"] = template
     if look_from is not None:
         args["look_from"] = look_from
     return json.loads(await handle_authoring_tool("deck_new", args, call_ctx))
 
 
-def _kept(out: dict, template: str, workspace: Path) -> bool:
-    """Built in the model's template, with no look note."""
+def _kept(out: dict, template: str, workspace: Path, look_from: str) -> bool:
+    """Built in the model's template, with no look note, recording *look_from*."""
     built = out.get("written") is True and out["template"] == template
     built = built and kit.deck_theme_id((workspace / "d.deck.html").read_text("utf-8")) == template
     (workspace / "d.deck.html").unlink()
-    return built and "look_note" not in out and out["deck"]["look_from"] != "chosen"
+    return built and "look_note" not in out and out["deck"]["look_from"] == look_from
 
 
 def _chosen(out: dict, workspace: Path) -> str:
     """Built in a look the engine chose; returns it."""
     assert out.get("written") is True and "card" not in out
-    assert "Change look" in out["look_note"] and out["deck"]["look_from"] == "chosen"
+    assert (
+        "Theme control changes the look" in out["look_note"] and out["deck"]["look_from"] == CHOSEN
+    )
     theme = out["template"]
     assert kit.deck_theme_id((workspace / "d.deck.html").read_text("utf-8")) == theme
     assert kit.templates()[theme].name in out["look_note"]
@@ -62,72 +75,105 @@ def _chosen(out: dict, workspace: Path) -> str:
     return theme
 
 
-async def test_named_is_kept_when_the_persons_own_words_name_it(workspace: Path) -> None:
-    assert _kept(await _new("named", "nord", ctx(view("A deck, use Nord"))), "nord", workspace)
-    # a mood counts when it fits the theme
-    out = await _new("named", "tokyo-night", ctx(view("something DARK please")))
-    assert _kept(out, "tokyo-night", workspace)
-    # a mood that does not fit: the engine chooses (a dark look for "dark"), no card
-    theme = _chosen(await _new("named", "bauhaus", ctx(view("make it dark"))), workspace)
-    assert kit.templates()[theme].category == "dark"
+async def test_an_explicit_template_is_built_and_look_from_is_recorded(workspace: Path) -> None:
+    """The live failure: Swiss Grid picked before tasks existed, nothing on record, and the
+    engine built Arctic Cool; the model spent 22 s restyling it back."""
+    unread = ctx(None)  # no task view: any read would find nothing
+    for look_from, recorded in (
+        ("picked", "picked"),
+        ("named", "named"),
+        ("you_choose", "you_choose"),
+        ("background", "background"),
+        (None, MODEL),
+        ("ask", MODEL),
+        ("preference", MODEL),
+    ):
+        out = await _new(look_from, "swiss-grid", unread)
+        assert _kept(out, "swiss-grid", workspace, recorded), look_from
+    # what the person said does not overrule the model's template
+    out = await _new("named", "bauhaus", ctx(view("make it dark")))
+    assert _kept(out, "bauhaus", workspace, "named")
 
 
-async def test_picked_is_backed_by_the_recorded_answer(workspace: Path) -> None:
-    assert _kept(
-        await _new("picked", "cartesian", ctx(view(answer="Cartesian"))), "cartesian", workspace
+async def test_an_explicit_template_needs_no_server_read() -> None:
+    def refuse(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"unexpected read: {request.url}")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(refuse), base_url="http://srv")
+    call = HandlerCtx(tool_name="deck_new", server_client=client, conversation_id=SESSION)
+    look = await settle_look(call, "picked", "swiss-grid", "Sales")
+    assert (look.theme, look.look_from, look.refusal, look.chosen) == (
+        "swiss-grid",
+        "picked",
+        None,
+        False,
     )
-    # the pick lives on the task: a question in between does not lose it
-    later = view("what about the colours?", tasks=[deck_task("cartesian")])
-    assert _kept(await _new("picked", "cartesian", ctx(later)), "cartesian", workspace)
-    # another theme than the pick, or no pick at all: chosen, not refused
-    _chosen(await _new("picked", "nord", ctx(later)), workspace)
-    _chosen(await _new("picked", "cartesian", ctx(view("a deck"))), workspace)
 
 
-async def test_you_choose_keeps_the_models_pick(workspace: Path) -> None:
-    out = await _new("you_choose", "minimal-white", ctx(view("A deck. Your call!")))
-    assert _kept(out, "minimal-white", workspace)
-    _chosen(await _new("you_choose", "minimal-white", ctx(view("a deck"))), workspace)
+async def test_no_template_is_chosen_and_says_why() -> None:
+    call = ctx(view("Create some presentation about RBC vs TD bank results"))
+    for look_from in (None, "named", "ask"):
+        look = await settle_look(call, look_from, None, "RBC vs TD")
+        assert look.chosen and look.theme in ("corporate-clean", "blue-professional")
+        assert look.why == "no template was given"
+    # a template the model names is built, whatever the message or look_from says
+    look = await settle_look(call, "ask", "bauhaus", "RBC vs TD")
+    assert (look.theme, look.look_from, look.chosen) == ("bauhaus", MODEL, False)
 
 
-async def test_background_is_kept_only_for_work_no_person_started(workspace: Path) -> None:
-    assert _kept(await _new("background", "swiss-grid", helper_ctx()), "swiss-grid", workspace)
-    _chosen(await _new("background", "swiss-grid", ctx(view("a deck"))), workspace)
+async def test_no_template_builds_the_theme_picked_on_the_tasks_card(workspace: Path) -> None:
+    """A pick is read by its option id (a deck-theme option's id is the theme id), never by
+    its label."""
+    picked = ctx(view("Nord", answer="Nord, the cool one", option_id="nord"))
+    out = await _new(None, None, picked, title="RBC vs TD")
+    assert out["template"] == "nord" and out["deck"]["look_from"] == PICKED
+    assert "look_note" not in out
+    (workspace / "d.deck.html").unlink()
+    # an earlier pick on the open deck task counts too
+    answers = [{"option_id": "bauhaus"}, {"option_id": "mock"}]
+    task = {"kind": "deck", "fields": {"answers": answers}}
+    look = await settle_look(ctx(view("go on", tasks=[task])), None, None, "RBC vs TD")
+    assert (look.theme, look.look_from) == ("bauhaus", PICKED)
+    # a label naming a theme is not a pick
+    look = await settle_look(ctx(view("Nord", answer="Nord")), None, None, "RBC vs TD")
+    assert look.chosen
 
 
-async def test_background_with_no_topic_is_the_one_refusal_left(workspace: Path) -> None:
-    for look_from in (None, "ask", "named"):
+async def test_background_with_no_topic_and_no_template_is_the_one_refusal_left(
+    workspace: Path,
+) -> None:
+    for look_from in (None, "named"):
+        look = await settle_look(helper_ctx(), look_from, None, "Deck")
+        assert look.refusal == HELPER_REFUSAL, look_from
+    # a template is built even then, whatever look_from says
+    for look_from in (None, "ask"):
         out = await _new(look_from, "corporate-clean", helper_ctx(), title="Deck")
-        assert out["error"].startswith(HELPER_REFUSAL), look_from
-    assert not (workspace / "d.deck.html").exists()
-    # with a topic the look is chosen, even in the background
-    theme = _chosen(await _new("ask", "nord", helper_ctx(), title="Q3 revenue review"), workspace)
+        assert _kept(out, "corporate-clean", workspace, MODEL), look_from
+    # with a topic, the look is chosen even in the background
+    theme = _chosen(await _new(None, None, helper_ctx(), title="Q3 revenue review"), workspace)
     assert kit.templates()[theme].category == "professional"
 
 
-async def test_ask_missing_or_unknown_builds_in_a_chosen_look(workspace: Path) -> None:
-    """The live failure: "Create some presentation about RBC vs TD" got a card and nothing."""
-    for look_from in (None, "ask", "default", "preference"):
-        call = ctx(view("Create some presentation about RBC vs TD bank results"))
-        theme = _chosen(await _new(look_from, "bauhaus", call, title="RBC vs TD"), workspace)
-        assert theme in ("corporate-clean", "blue-professional"), look_from
+async def test_no_template_builds_in_a_chosen_look(workspace: Path) -> None:
+    """The ADR 0025 failure: "Create some presentation about RBC vs TD" got a card and nothing."""
+    call = ctx(view("Create some presentation about RBC vs TD bank results"))
+    theme = _chosen(await _new(None, None, call, title="RBC vs TD"), workspace)
+    assert theme in ("corporate-clean", "blue-professional")
     # the menu call (no slides) names the look to use and writes nothing
     menu = json.loads(
         await handle_authoring_tool(
-            "deck_new",
-            {"path": "d.deck.html", "template": "nord", "look_from": "ask", "title": "Q3 sales"},
-            ctx(view("a deck")),
+            "deck_new", {"path": "d.deck.html", "title": "Q3 sales"}, ctx(view("a deck"))
         )
     )
     assert menu["written"] is False and "chosen for the topic" in menu["note"]
     assert menu["deck"]["look_id"] in menu["note"]
     assert not (workspace / "d.deck.html").exists()
-    # no server: nothing backs a claim, so the look is chosen from the title
-    _chosen(await _new("named", "nord", None, title="Board finance review"), workspace)
+    # no server: chosen from the title
+    _chosen(await _new(None, None, None, title="Board finance review"), workspace)
 
 
 async def test_the_result_carries_what_the_task_records(workspace: Path) -> None:
-    out = await _new("ask", "nord", ctx(view("a deck about RBC vs TD")), title="RBC vs TD")
+    out = await _new(None, None, ctx(view("a deck about RBC vs TD")), title="RBC vs TD")
     deck = out["deck"]
     assert deck["title"] == "RBC vs TD" and deck["file"] == "d.deck.html"
     assert (
@@ -143,16 +189,15 @@ async def test_remembered_taste_leads_where_it_fits(workspace: Path) -> None:
     # no topic word: the first remembered look
     assert (
         _chosen(
-            await _new("ask", "bauhaus", ctx(view("a deck"), profile=taste), title="Deck"),
-            workspace,
+            await _new(None, None, ctx(view("a deck"), profile=taste), title="Deck"), workspace
         )
         == "swiss-grid"
     )
     # a business topic: the remembered look that fits it
-    out = await _new("ask", "bauhaus", ctx(view(""), profile=taste), title="Q3 revenue")
+    out = await _new(None, None, ctx(view(""), profile=taste), title="Q3 revenue")
     assert _chosen(out, workspace) == "swiss-grid"
     # a tech topic: Swiss Grid does not fit, Nord does
-    out = await _new("ask", "bauhaus", ctx(view(""), profile=taste), title="API platform")
+    out = await _new(None, None, ctx(view(""), profile=taste), title="API platform")
     assert _chosen(out, workspace) == "nord"
 
 
@@ -168,20 +213,17 @@ def test_choose_look_takes_the_first_of_the_ordering() -> None:
     assert choose_look("2026 sales") in ("corporate-clean", "blue-professional")
     assert choose_look("2026 sales") == choose_look("2026 sales")  # deterministic
     assert choose_look("", ["bauhaus"]) == "bauhaus"
-    assert choose_look("", ["not-a-theme"]) == pick_three("", seed="")[0]
+    assert choose_look("", ["not-a-theme"]) == rank("", seed="")[0]
 
 
-def test_the_ordering_offers_three_distinct_looks_fitting_the_topic() -> None:
-    assert "nord" in pick_three("a dark deck, maybe Nord")
-    assert pick_three("Seed pitch for investors")[0] == "pitch-deck-vc"
-    assert _category(pick_three("Q3 finance review for the board")[0]) == "professional"
-    assert _category(pick_three("Product launch campaign")[0]) == "bold"
-    hints = ["", "dark", "editorial story", "playful kids", "Hiring plan", "Team offsite"]
-    for hint in hints:
-        for seed in ("a", "b", "c"):
-            trio = pick_three(hint, seed=seed)
-            assert len(trio) == 3 == len({_category(t) for t in trio}), (hint, seed)
-    assert len({tuple(pick_three("Hiring plan", seed=f"c1|{n}")) for n in range(6)}) > 1
+def test_one_ranking_orders_every_theme_by_fit() -> None:
+    assert sorted(rank("anything")) == sorted(kit.templates())
+    assert rank("a dark deck, maybe Nord")[0] == "nord"
+    assert rank("Seed pitch for investors")[0] == "pitch-deck-vc"
+    assert _category(rank("Q3 finance review for the board")[0]) == "professional"
+    assert _category(rank("Product launch campaign")[0]) == "bold"
+    # equal fits are ordered by the request, so the choice varies without being random
+    assert len({rank("Hiring plan", seed=f"c1|{n}")[0] for n in range(12)}) > 1
 
 
 @pytest.mark.parametrize(
@@ -195,6 +237,4 @@ def test_the_ordering_offers_three_distinct_looks_fitting_the_topic() -> None:
 )
 def test_a_business_deck_leads_with_a_professional_look(hint: str) -> None:
     for seed in ("a", "b", "c", "d"):
-        first, *others = pick_three(hint, seed=seed)
-        assert first in ("corporate-clean", "blue-professional"), (hint, seed)
-        assert sorted(_category(t) for t in others) == ["bold", "editorial"], (hint, seed)
+        assert rank(hint, seed=seed)[0] in ("corporate-clean", "blue-professional"), (hint, seed)

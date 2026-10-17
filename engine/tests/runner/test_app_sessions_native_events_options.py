@@ -59,6 +59,11 @@ def _body_carries_text(body: dict[str, Any], needle: str) -> bool:
     return _walk(body.get("content"))
 
 
+def _turn_bodies(hc: Any) -> list[dict[str, Any]]:
+    """The harness posts that are turns: session init's empty CLI pre-launch is not one."""
+    return [b for b in hc.posted_bodies if b.get("content") != []]
+
+
 @pytest.mark.asyncio
 async def test_events_compact_on_claude_sdk_session_dispatches_compact_turn() -> None:
     """
@@ -116,9 +121,13 @@ async def test_events_compact_on_claude_sdk_session_dispatches_compact_turn() ->
         )
 
         # The turn runs in the background; wait for it to forward the
-        # synthesized /compact message to the harness.
+        # synthesized /compact message to the harness. Session init's empty
+        # CLI pre-launch post (ADR 0026) is not a turn.
+        def _turns() -> list[dict[str, Any]]:
+            return [b for b in hc.posted_bodies if b.get("content") != []]
+
         for _ in range(100):
-            if hc.posted_bodies:
+            if _turns():
                 break
             await asyncio.sleep(0.02)
 
@@ -131,16 +140,16 @@ async def test_events_compact_on_claude_sdk_session_dispatches_compact_turn() ->
     )
     # Exactly one forwarded turn. 0 = compact didn't dispatch; 2+ = it
     # dispatched more than a single compact turn.
-    assert len(hc.posted_bodies) == 1, (
-        f"Expected exactly one forwarded turn from claude-sdk compact, "
-        f"got {len(hc.posted_bodies)}: {hc.posted_bodies}"
+    turns = _turns()
+    assert len(turns) == 1, (
+        f"Expected exactly one forwarded turn from claude-sdk compact, got {len(turns)}: {turns}"
     )
     # Body contract: the literal ``/compact`` is what the Claude CLI
     # interprets as the slash command that runs native compaction. Plain
     # prompt text (missing slash) would land as a normal chat turn instead.
-    assert _body_carries_text(hc.posted_bodies[0], "/compact"), (
+    assert _body_carries_text(turns[0], "/compact"), (
         f"The forwarded turn must carry the literal '/compact' slash command "
-        f"so the SDK runs native compaction; got {hc.posted_bodies[0]}"
+        f"so the SDK runs native compaction; got {turns[0]}"
     )
 
 
@@ -213,8 +222,8 @@ async def test_events_compact_on_claude_sdk_buffers_behind_active_turn() -> None
         f"Buffered message must carry the literal '/compact'; got {buffered[0]!r}."
     )
     # Nothing was forwarded to the harness yet — it runs after the active turn.
-    assert hc.posted_bodies == [], (
-        f"Buffered compact must not forward to the harness immediately; got {hc.posted_bodies!r}."
+    assert _turn_bodies(hc) == [], (
+        f"Buffered compact must not forward to the harness immediately; got {_turn_bodies(hc)!r}."
     )
 
 
@@ -547,7 +556,7 @@ async def test_events_compact_on_claude_sdk_buffered_compact_dispatches_standalo
         await app.state.check_and_start_next_turn(sid)
 
         for _ in range(200):
-            if len(hc.posted_bodies) >= 2:
+            if len(_turn_bodies(hc)) >= 2:
                 break
             await asyncio.sleep(0.02)
 
@@ -559,12 +568,12 @@ async def test_events_compact_on_claude_sdk_buffered_compact_dispatches_standalo
     # → a single dispatch. Assert on the count, not body content: the harness
     # fake captures the shared history list by reference, so a later append is
     # visible on an already-captured body.
-    n = len(hc.posted_bodies)
+    n = len(_turn_bodies(hc))
     assert n == 2, (
         "a buffered /compact must dispatch as its own turn (two dispatches: /compact, then "
         f"the follow-up), not be coalesced into one; got {n} dispatch(es)"
     )
-    assert _body_carries_text(hc.posted_bodies[0], "/compact"), (
+    assert _body_carries_text(_turn_bodies(hc)[0], "/compact"), (
         "the first dispatched turn must carry the /compact command"
     )
 

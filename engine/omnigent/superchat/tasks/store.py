@@ -1,4 +1,5 @@
-"""The ``tasks`` table: a Conversation's deliverables in progress (ADR 0025)."""
+"""The ``tasks`` and ``card_answers`` tables: a Conversation's deliverables in progress, and the
+picks on the cards that asked about them (ADR 0025)."""
 
 from __future__ import annotations
 
@@ -6,17 +7,17 @@ import json
 import uuid
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
-from omnigent.db.db_models import SqlTask, current_workspace_id
+from omnigent.db.db_models import SqlCardAnswer, SqlTask, current_workspace_id
 from omnigent.db.utils import (
     get_or_create_engine,
     make_named_managed_session_maker,
     now_epoch,
     run_write_transaction,
 )
-from omnigent.superchat.tasks.record import ACTIVE, Task
+from omnigent.superchat.tasks.record import ACTIVE, DROPPED, CardAnswer, Task
 
 #: The newest tasks of a Conversation that are read at once.
 _LISTED = 20
@@ -47,7 +48,7 @@ def _to_entity(row: SqlTask) -> Task:
 
 
 class SqlAlchemyTaskStore:
-    """SQLAlchemy-backed store for the ``tasks`` table."""
+    """SQLAlchemy-backed store for the ``tasks`` and ``card_answers`` tables."""
 
     def __init__(self, storage_location: str) -> None:
         """
@@ -109,14 +110,67 @@ class SqlAlchemyTaskStore:
             rows = session.execute(stmt.limit(_LISTED)).scalars().all()
             return [_to_entity(row) for row in rows]
 
+    def drop_stale(self, conversation_id: str, before: int) -> None:
+        """Drop the Conversation's active tasks nothing touched since *before* (epoch seconds)."""
+
+        def write(session: Session) -> None:
+            session.execute(
+                update(SqlTask)
+                .where(
+                    SqlTask.workspace_id == current_workspace_id(),
+                    SqlTask.conversation_id == conversation_id,
+                    SqlTask.status.in_(ACTIVE),
+                    SqlTask.updated_at < before,
+                )
+                .values(status=DROPPED, updated_at=now_epoch())
+            )
+
+        run_write_transaction(self._session_immediate, "task_drop_stale", write)
+
+    def get(self, task_id: str) -> Task | None:
+        """One task by id, or ``None``."""
+        with self._session("get_task") as session:
+            row = session.get(SqlTask, (current_workspace_id(), task_id))
+            return _to_entity(row) if row is not None else None
+
+    def save_answer(
+        self, conversation_id: str, item_id: str, answer: CardAnswer, task_id: str | None
+    ) -> None:
+        """Keep *answer* on the person's message *item_id* (once; a repeat replaces it)."""
+
+        def write(session: Session) -> None:
+            row = session.get(SqlCardAnswer, (current_workspace_id(), conversation_id, item_id))
+            if row is None:
+                row = SqlCardAnswer(session_id=conversation_id, item_id=item_id)
+                session.add(row)
+            row.card_id = answer.card_id
+            row.option_id = answer.option_id
+            row.label = answer.label
+            row.task_id = task_id
+            row.created_at = now_epoch()
+
+        run_write_transaction(self._session_immediate, "card_answer_save", write)
+
+    def answer(self, conversation_id: str, item_id: str) -> CardAnswer | None:
+        """The card answer the person's message *item_id* carried, or ``None``."""
+        with self._session("card_answer_get") as session:
+            row = session.get(SqlCardAnswer, (current_workspace_id(), conversation_id, item_id))
+            return CardAnswer(row.card_id, row.option_id, row.label) if row is not None else None
+
     def delete_conversation(self, conversation_id: str) -> None:
-        """Drop every task of a deleted Conversation."""
+        """Drop every task and card answer of a deleted Conversation."""
 
         def write(session: Session) -> None:
             session.execute(
                 delete(SqlTask).where(
                     SqlTask.workspace_id == current_workspace_id(),
                     SqlTask.conversation_id == conversation_id,
+                )
+            )
+            session.execute(
+                delete(SqlCardAnswer).where(
+                    SqlCardAnswer.workspace_id == current_workspace_id(),
+                    SqlCardAnswer.session_id == conversation_id,
                 )
             )
 

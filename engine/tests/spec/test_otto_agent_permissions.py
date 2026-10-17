@@ -2,7 +2,14 @@
 
 from pathlib import Path
 
+import pytest
 import yaml
+
+# The repro and resolve dev agents these tests read were removed with the engine's dev tools
+# (ADR 0020, commit 5d014befe); the maintainer decides whether the file goes with them.
+pytestmark = pytest.mark.skip(
+    reason="dev/repro-agent and dev/resolve-agent were removed (ADR 0020)"
+)
 
 _ROOT = Path(__file__).resolve().parents[2]
 

@@ -216,8 +216,9 @@ def _themed(*ids: str) -> list[dict]:
 def test_clarification_options_may_preview_a_deck_theme() -> None:
     out = _ask(question="Which look?", options=_themed("corporate-clean", "nord", "bauhaus"))
     assert out["card"] == "ask"
+    # a previewed option's id is its preview's: the pick names the theme by id
     assert out["data"]["options"][1] == {
-        "id": "look-nord",
+        "id": "nord",
         "label": "Look nord",
         "preview": {"kind": "deck-theme", "id": "nord"},
     }
@@ -262,3 +263,15 @@ def test_clarification_keeps_the_models_option_ids_and_makes_the_rest_distinct()
     assert "id" in _ask(question="Q?", options=[{"id": "a b", "label": "A"}, "B"])["error"]
     clash = _ask(question="Q?", options=[{"id": "x", "label": "A"}, {"id": "x", "label": "B"}])
     assert "repeats" in clash["error"]
+    themed = _ask(question="Q?", options=[{"id": "a", **_themed("nord")[0]}, "Bauhaus"])
+    assert [o["id"] for o in themed["data"]["options"]] == ["nord", "bauhaus"]
+
+
+def test_a_clarification_card_records_the_task_it_asks_about() -> None:
+    args = {"question": "Data?", "options": ["Mock", "Real"]}
+    assert build_clarification(args, "t1")["task_id"] == "t1"
+    assert "task_id" not in build_clarification(args)
+    # the card the web draws does not carry it
+    items = [_call("ask_clarification", "k1"), _output("k1", build_clarification(args, "t1"))]
+    (message,) = project_items(items)
+    assert "task_id" not in message["blocks"][0]["card"]

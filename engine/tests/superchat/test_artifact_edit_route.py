@@ -82,6 +82,9 @@ def test_edit_saves_a_manual_version(env) -> None:
     assert body["version"] == 2 and body["origin"] == "manual"
     assert body["parent_version_id"] == v1.id
     assert body["edit_summary"] == 'slide 1 title "A" → "B"'
+    # The studio's words for it, built from the edit: the element and a plain sentence.
+    assert body["element_id"] == "title"
+    assert body["what"] == "You changed the text of the title"
     new = store.get(body["id"], user_id="alice")
     assert new.source_path == "/ws/q3.deck.html"
     assert store.read(new) == DECK.replace(">A<", ">B<").encode()

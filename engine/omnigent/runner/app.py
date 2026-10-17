@@ -38,6 +38,7 @@ if TYPE_CHECKING:
 
 import httpcore
 import httpx
+import psutil
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
@@ -85,15 +86,6 @@ from omnigent.llms.summarize import (
 from omnigent.policies.types import FAIL_CLOSED_PHASES
 from omnigent.process_logging import process_log_reference
 from omnigent.runner import pending_approvals
-from omnigent.runner.background_titles import (
-    BackgroundTitleContext,
-    BackgroundTitleHarnessError,
-    generator_spec_for_harness,
-)
-from omnigent.runner.background_titles import (
-    generate_background_title as run_background_title,
-)
-from omnigent.runner.background_titles.service import BACKGROUND_TITLE_MAX_PROMPT_CHARS
 from omnigent.runner.mcp_execution_registry import (
     McpExecutionConflict,
     McpExecutionRegistry,
@@ -126,20 +118,18 @@ from omnigent.runner.subagent_routing import (
     routing_class_from_snapshot,
     session_routing_class,
 )
+from omnigent.runner.tool_starts import ToolStarts
 from omnigent.runtime.harnesses.process_manager import HarnessProcessManager, NoLiveHarnessError
 from omnigent.runtime.prompt import (
     build_instructions,
     build_instructions_nullable,
     raw_author_instructions,
 )
-from omnigent.runtime.runner_wire import (
-    BackgroundSessionTitleRequest,
-    BackgroundSessionTitleResponse,
-)
 from omnigent.spec.skill_sources import resolve_session_skills
 from omnigent.spec.types import AgentSpec, LocalToolInfo, SkillSpec
 from omnigent.superchat.artifacts.studio import STUDIO_TYPE
-from omnigent.superchat.feature import is_helper, is_super_chat
+from omnigent.superchat.feature import HandlerCtx, is_helper, is_super_chat
+from omnigent.superchat.features import notify_denied, notify_turn_end
 from omnigent.superchat.helpers.notices import take_waiting_progress
 from omnigent.superchat.helpers.saved_files import (
     collect_saved_files,
@@ -153,7 +143,6 @@ from omnigent.superchat.subagents import (
     StudioRunners,
     format_subagent_wake_notice_with_result,
 )
-from omnigent.superchat.tasks.runtime import turn_ended as _task_turn_ended
 from omnigent.terminals.control_bridge import bridge_tmux_control_to_websocket
 from omnigent.terminals.ws_common import WS_CLOSE_TERMINAL_NOT_FOUND
 from omnigent.tools.browser_backend import local_browser_backend_enabled
@@ -547,6 +536,13 @@ def _get_runner_llm_client() -> LLMClient:
 # to dispatch locally. See designs/RUNNER_MCP.md §Explicit dispatch
 # marker.
 _RUNNER_DISPATCHED_FIELD = "omnigent_runner_dispatched"
+#: Longest a turn waits on the session's Claude CLI pre-launch; past it the pre-launch is
+#: stopped and the turn launches the CLI itself, so a hung one never costs more than this.
+_PRELAUNCH_WAIT_SECONDS = 3.0
+#: Terminal frames of a harness turn: a tool call still open when one arrives never returned.
+_TURN_END_EVENT_TYPES = frozenset(
+    {"response.completed", "response.failed", "response.incomplete", "response.cancelled"}
+)
 
 
 def _encode_sse_event(event: Mapping[str, object]) -> bytes:
@@ -664,6 +660,13 @@ async def _evaluate_policy_via_omnigent(
             _default_action,
             exc_info=True,
             extra={"session_id": conversation_id},
+        )
+
+    if phase == "PHASE_TOOL_CALL" and verdict_action == "POLICY_ACTION_DENY" and verdict_reason:
+        # A harness-native tool the policy refused (Feature.on_tool_denied; e.g. the step limit).
+        _denied_tool = str(data.get("name") or "")
+        notify_denied(
+            HandlerCtx(_denied_tool, server_client, conversation_id), _denied_tool, verdict_reason
         )
 
     # Post the verdict back to the harness as a policy_verdict event.
@@ -3559,113 +3562,12 @@ def create_runner_app(
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.post(
-        "/v1/sessions/{conversation_id}/background-title",
-        response_model=BackgroundSessionTitleResponse,
-    )
-    async def generate_background_session_title(
-        conversation_id: str,
-        body: BackgroundSessionTitleRequest,
-    ) -> BackgroundSessionTitleResponse | JSONResponse:
-        if process_manager is None:
-            return JSONResponse(
-                status_code=501,
-                content={
-                    "error": "not_implemented",
-                    "detail": "Background titles require a HarnessProcessManager.",
-                },
-            )
-
-        sub_agent_name = body.sub_agent_name or await _recover_sub_agent_name(conversation_id)
-        resolver_agent_id = body.agent_id or _session_agent_ids.get(conversation_id)
-        resolver_cwd = await _session_runtime_cwd(conversation_id)
-        try:
-            effective_harness, spawn_env = await _resolve_harness_config(
-                agent_id=resolver_agent_id,
-                spec_resolver=spec_resolver,
-                session_id=conversation_id,
-                model_override=body.model_override,
-                harness_override=body.harness_override,
-                sub_agent_name=sub_agent_name,
-                cwd=resolver_cwd,
-            )
-            generator_spec = generator_spec_for_harness(effective_harness)
-            if generator_spec is None:
-                return BackgroundSessionTitleResponse(status="unsupported")
-            resolver_harness = generator_spec.resolver_harness or effective_harness
-            if resolver_harness != effective_harness:
-                resolved_harness, spawn_env = await _resolve_harness_config(
-                    agent_id=resolver_agent_id,
-                    spec_resolver=spec_resolver,
-                    session_id=conversation_id,
-                    model_override=body.model_override,
-                    harness_override=resolver_harness,
-                    sub_agent_name=sub_agent_name,
-                    cwd=resolver_cwd,
-                )
-                if resolved_harness != resolver_harness:
-                    return BackgroundSessionTitleResponse(status="unsupported")
-        except (httpx.HTTPError, RuntimeError) as exc:
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "error": "spec_resolver_failed",
-                    "detail": _client_safe_error_detail(exc, context="spec resolve"),
-                },
-            )
-
-        context = BackgroundTitleContext(
-            prompt=body.prompt[:BACKGROUND_TITLE_MAX_PROMPT_CHARS],
-            harness=effective_harness,
-            spawn_env=dict(spawn_env or {}),
-            process_manager=process_manager,
-            cwd=resolver_cwd,
-            model_override=body.model_override,
-            session_spec=_unwrap_spec_entry(_session_spec_cache.get(conversation_id)),
-            additional_instructions=body.additional_instructions,
-        )
-        try:
-            title = await run_background_title(context)
-        except TimeoutError:
-            return JSONResponse(
-                status_code=504,
-                content={
-                    "error": "title_harness_timeout",
-                    "detail": "Harness title generation timed out.",
-                },
-            )
-        except BackgroundTitleHarnessError as exc:
-            return JSONResponse(
-                status_code=502,
-                content={"error": "title_harness_failed", "detail": str(exc)},
-            )
-        except (ImportError, OSError, RuntimeError) as exc:
-            return JSONResponse(
-                status_code=502,
-                content={
-                    "error": "title_harness_failed",
-                    "detail": _client_safe_error_detail(exc, context="title harness"),
-                },
-            )
-
-        if title is None:
-            return JSONResponse(
-                status_code=502,
-                content={
-                    "error": "title_harness_failed",
-                    "detail": "Harness title generation returned no text.",
-                },
-            )
-        return BackgroundSessionTitleResponse(
-            status="generated",
-            title=" ".join(title.split()),
-        )
-
     async def _initialize_session(body: _JsonObject) -> JSONResponse:
         from omnigent.runner.session_init_protocol import RunnerInferenceConfigMismatch
 
         raw_id = body.get("session_id")
         set_current_session_id(raw_id if isinstance(raw_id, str) else None)
+        _init_started = time.monotonic()
         _logger.info(
             "Runner session initialization started",
             extra=debug_event("runner_session_init_started", stage="session_init"),
@@ -3906,7 +3808,7 @@ def create_runner_app(
             spawn_env = None
 
         try:
-            await process_manager.get_client(
+            harness_client = await process_manager.get_client(
                 session_id,
                 harness_name,
                 env=spawn_env,
@@ -3930,6 +3832,13 @@ def create_runner_app(
             )
 
         _session_start_cache.setdefault(session_id, time.time())
+        if harness_name == "claude-sdk" and spec is not None:
+            _harness_prelaunches[session_id] = asyncio.create_task(
+                _prelaunch_harness(
+                    session_id, harness_client, harness_name, _model_override, agent_id
+                ),
+                name=f"harness-prelaunch-{session_id}",
+            )
         # The same reset that retires the spec entry also retires this
         # binding, and later resets read it to decide which agent's shared
         # ``_spec_cache`` entry to drop; reinstating a superseded binding
@@ -4089,6 +3998,7 @@ def create_runner_app(
             _recovery_turn_ids.setdefault(session_id, set()).add(recovery_id)
 
         status = "running" if session_id in _active_turns else "idle"
+        _note_cold_start_init(_init_started)
         # The recovery decision and its inputs, so a turn that restarted after a
         # reconnect can be attributed to the history heuristic, the server's
         # continuation request, or neither.
@@ -5381,6 +5291,34 @@ def create_runner_app(
     #: When each session's current turn started, until its first streamed token is logged.
     _turn_started_mono: dict[str, float] = {}
 
+    #: The first turn after boot (ADR 0026): runner boot and session init, in seconds, until the
+    #: turn's first model output logs them with the harness's own wait; then cleared for good.
+    _cold_start: dict[str, float] = {}
+    _cold_start_logged: list[bool] = []
+
+    def _note_cold_start_init(init_started: float) -> None:
+        """Remember the first session init after boot, and how long the runner booted before it."""
+        if _cold_start or _cold_start_logged:
+            return
+        with contextlib.suppress(psutil.Error, OSError):
+            booted = time.time() - psutil.Process().create_time()
+            _cold_start["runner"] = booted - (time.monotonic() - init_started)
+        _cold_start["init"] = time.monotonic() - init_started
+
+    def _log_cold_start(conv_id: str, harness_seconds: float) -> None:
+        """Log, once per runner process, where the first turn's wait went."""
+        if _cold_start_logged:
+            return
+        _cold_start_logged.append(True)
+        _logger.info(
+            "cold start for %s: runner %.1fs, session init %.1fs, harness %.1fs",
+            conv_id,
+            _cold_start.get("runner", 0.0),
+            _cold_start.get("init", 0.0),
+            harness_seconds,
+            extra={"session_id": conv_id},
+        )
+
     async def _log_first_token(conv_id: str) -> None:
         """Log, once per Conversation turn, how long the first streamed token took."""
         started = _turn_started_mono.pop(conv_id, None)
@@ -5623,6 +5561,15 @@ def create_runner_app(
         # interrupt must be forwarded for either.
         # An interrupted turn's approval prompts can no longer be answered into it.
         pending_approvals.cancel_session(conv_id, "interrupted")
+        # Its running tools stop too: the registry's shield is for a tunnel replacement only.
+        stopped_tools = mcp_execution_registry.cancel_turn(conv_id)
+        if stopped_tools:
+            _logger.info(
+                "interrupt cancelled %d running tool(s) for %s",
+                stopped_tools,
+                conv_id,
+                extra={"session_id": conv_id},
+            )
         if conv_id not in _active_turns:
             return
         target = _active_turns.get(conv_id)
@@ -6597,6 +6544,7 @@ def create_runner_app(
             last = None
         sent_now: dict[str, str] = {"prompt": prompt_key}
         tool_labels = await _tool_labels_for_session(conv_id)
+        prefix_started = time.monotonic()
         blocks = await turn_prefix_blocks(
             server_client,
             conv_id,
@@ -6607,8 +6555,15 @@ def create_runner_app(
             sent_now=sent_now,
             # The person's own chats only; a Helper's Brief is its context.
             recall=not is_helper(tool_labels),
+            helper=is_helper(tool_labels),
             # A file's studio: the file line and its write-back instead of the chat's blocks.
             studio=ARTIFACT_CHAT_LABEL_KEY in tool_labels,
+        )
+        _logger.info(
+            "prefix for %s %.2fs",
+            conv_id,
+            time.monotonic() - prefix_started,
+            extra={"session_id": conv_id},
         )
         _superside_chat_prefix_pending[conv_id] = sent_now
         return _prepend_turn_blocks(body, blocks, conv_id)
@@ -6736,6 +6691,81 @@ def create_runner_app(
                 return {"effort": effort}
         remembered = _session_reasoning_effort.get(conv)
         return {"effort": remembered} if remembered else None
+
+    async def _ensure_session_tool_schemas(
+        conv: str, cached_spec: AgentSpec | None, cached_spec_entry: object | None
+    ) -> None:
+        """Build the session's tool schemas once, and its MCP ones whenever its servers change."""
+        if conv not in _session_tool_schemas:
+            all_tools: list[_JsonObject] = []
+            if cached_spec is not None:
+                try:
+                    from omnigent.tools.manager import (
+                        ToolManager,
+                    )
+
+                    # Thread the session's context-mode label through so a
+                    # superside-chat (or rollover) session's ToolManager
+                    # registers session_history/memory_* here too — this SDK
+                    # path otherwise never offers them, even though the
+                    # system prompt mentions them (see
+                    # ``_rollover_labels_for_session``).
+                    _tmgr = ToolManager(
+                        cached_spec,
+                        workdir=_resolved_workdir_for_spec(cached_spec_entry, runner_workspace),
+                        os_env_schema_only=True,
+                        labels=await _tool_labels_for_session(conv),
+                    )
+                    all_tools.extend(_tmgr.get_tool_schemas())
+                except (
+                    ImportError,
+                    ValueError,
+                    RuntimeError,
+                ):
+                    _logger.warning(
+                        "ToolManager schema build failed for %s",
+                        conv,
+                        exc_info=True,
+                        extra={"session_id": conv},
+                    )
+            _session_tool_schemas[conv] = all_tools
+
+        if cached_spec and cached_spec.mcp_servers:
+            from omnigent.runner.mcp_manager import compute_spec_hash
+
+            _mcp_hash = compute_spec_hash(list(cached_spec.mcp_servers))
+            if _mcp_hash != _session_mcp_spec_hash.get(conv):
+                _session_mcp_proxy = ProxyMcpManager(
+                    conv,
+                    server_client,
+                    execution_registry=mcp_execution_registry,
+                )
+                try:
+                    mcp_result = await _session_mcp_proxy.schemas_for(
+                        cached_spec,
+                    )
+                    _builtin_tools = [
+                        t
+                        for t in _session_tool_schemas.get(conv, [])
+                        if not (
+                            isinstance(t, dict)
+                            and isinstance(t.get("name"), str)
+                            and "__" in cast(str, t.get("name"))
+                        )
+                    ]
+                    _session_tool_schemas[conv] = _builtin_tools + list(mcp_result.schemas)
+                    _session_mcp_spec_hash[conv] = _mcp_hash
+                except (
+                    httpx.HTTPError,
+                    RuntimeError,
+                    ValueError,
+                ):
+                    _logger.warning(
+                        "MCP schema resolution failed for %s",
+                        conv,
+                        exc_info=True,
+                        extra={"session_id": conv},
+                    )
 
     async def _run_turn_bg_setup_and_stream(
         msg_body: _JsonObject,
@@ -7002,76 +7032,7 @@ def create_runner_app(
         if instructions:
             harness_body["instructions"] = instructions
 
-        if conv not in _session_tool_schemas:
-            all_tools: list[_JsonObject] = []
-            if cached_spec is not None:
-                try:
-                    from omnigent.tools.manager import (
-                        ToolManager,
-                    )
-
-                    # Thread the session's context-mode label through so a
-                    # superside-chat (or rollover) session's ToolManager
-                    # registers session_history/memory_* here too — this SDK
-                    # path otherwise never offers them, even though the
-                    # system prompt mentions them (see
-                    # ``_rollover_labels_for_session``).
-                    _tmgr = ToolManager(
-                        cached_spec,
-                        workdir=_resolved_workdir_for_spec(cached_spec_entry, runner_workspace),
-                        os_env_schema_only=True,
-                        labels=await _tool_labels_for_session(conv),
-                    )
-                    all_tools.extend(_tmgr.get_tool_schemas())
-                except (
-                    ImportError,
-                    ValueError,
-                    RuntimeError,
-                ):
-                    _logger.warning(
-                        "ToolManager schema build failed for %s",
-                        conv,
-                        exc_info=True,
-                        extra={"session_id": conv},
-                    )
-            _session_tool_schemas[conv] = all_tools
-
-        if cached_spec and cached_spec.mcp_servers:
-            from omnigent.runner.mcp_manager import compute_spec_hash
-
-            _mcp_hash = compute_spec_hash(list(cached_spec.mcp_servers))
-            if _mcp_hash != _session_mcp_spec_hash.get(conv):
-                _session_mcp_proxy = ProxyMcpManager(
-                    conv,
-                    server_client,
-                    execution_registry=mcp_execution_registry,
-                )
-                try:
-                    mcp_result = await _session_mcp_proxy.schemas_for(
-                        cached_spec,
-                    )
-                    _builtin_tools = [
-                        t
-                        for t in _session_tool_schemas.get(conv, [])
-                        if not (
-                            isinstance(t, dict)
-                            and isinstance(t.get("name"), str)
-                            and "__" in cast(str, t.get("name"))
-                        )
-                    ]
-                    _session_tool_schemas[conv] = _builtin_tools + list(mcp_result.schemas)
-                    _session_mcp_spec_hash[conv] = _mcp_hash
-                except (
-                    httpx.HTTPError,
-                    RuntimeError,
-                    ValueError,
-                ):
-                    _logger.warning(
-                        "MCP schema resolution failed for %s",
-                        conv,
-                        exc_info=True,
-                        extra={"session_id": conv},
-                    )
+        await _ensure_session_tool_schemas(conv, cached_spec, cached_spec_entry)
 
         _spec_tools = _session_tool_schemas.get(conv) or []
         # Request-driven harnesses should not advertise browser tools when no
@@ -7187,11 +7148,105 @@ def create_runner_app(
                 },
             )
 
+    #: The Claude CLI launched at session init, by session (ADR 0026: cold start is paid before
+    #: the person speaks). A turn waits for it before posting, so its message never lands inside
+    #: the launch.
+    _harness_prelaunches: dict[str, asyncio.Task[None]] = {}
+
+    async def _prelaunch_harness(
+        conv: str,
+        client: Any,
+        harness_name: str,
+        model_override: str | None,
+        agent_id: str,
+    ) -> None:
+        """Post an empty first message carrying what the session's turns will send.
+
+        The executor launches its CLI for it and answers nothing; a first turn whose options
+        differ relaunches, and any failure here leaves the first turn to launch it as before.
+        """
+        try:
+            entry = _session_spec_cache.get(conv)
+            spec = _spec_with_workdir_paths(
+                _unwrap_resolved_spec(entry), _resolved_spec_workdir(entry)
+            )
+            if spec is None or process_manager is None:
+                return
+            labels = await _rollover_labels_for_session(conv)
+            await _ensure_session_tool_schemas(conv, spec, entry)
+            tools = _session_tool_schemas.get(conv) or []
+            if not local_browser_backend_enabled():
+                from omnigent.runner.tool_dispatch import strip_browser_tool_schemas
+
+                tools = strip_browser_tool_schemas(tools)
+            body: _JsonObject = {
+                "model": agent_id,
+                "content": [],
+                "instructions": build_instructions(spec, None, [], labels=labels),
+                "tools": tools,
+            }
+            if context_mode := labels.get(CONTEXT_MODE_LABEL):
+                body["context_mode"] = context_mode
+            if model_override:
+                body["model_override"] = model_override
+            reasoning = _turn_reasoning(conv, {})
+            if reasoning is not None:
+                from omnigent.util.reasoning_effort import efforts_for_harness
+
+                supported = efforts_for_harness(harness_name)
+                if supported is None or reasoning["effort"] in supported:
+                    body["reasoning"] = reasoning
+            started = time.monotonic()
+            try:
+                async with client.stream(
+                    "POST",
+                    f"/v1/sessions/{conv}/events",
+                    json=_wrap_as_message_event(body),
+                    timeout=None,
+                ) as response:
+                    async for _chunk in response.aiter_text():
+                        pass
+            except asyncio.CancelledError:
+                # The first turn stopped waiting: end the harness's pre-launch turn too.
+                with contextlib.suppress(Exception):
+                    await client.post(
+                        f"/v1/sessions/{conv}/events", json={"type": "interrupt"}, timeout=2.0
+                    )
+                raise
+            _logger.info(
+                "harness pre-launched for %s in %.1fs",
+                conv,
+                time.monotonic() - started,
+                extra={"session_id": conv},
+            )
+        except Exception:
+            _logger.warning(
+                "harness pre-launch failed for %s; the first turn launches it",
+                conv,
+                exc_info=True,
+                extra={"session_id": conv},
+            )
+
+    async def _await_harness_prelaunch(conv_id: str) -> None:
+        """Wait for the session's CLI pre-launch, if one is still running."""
+        prelaunch = _harness_prelaunches.pop(conv_id, None)
+        if prelaunch is None or prelaunch.done():
+            return
+        try:
+            await asyncio.wait_for(asyncio.shield(prelaunch), _PRELAUNCH_WAIT_SECONDS)
+        except TimeoutError:
+            # Stopping it interrupts the harness's pre-launch turn (see _prelaunch_harness),
+            # so this turn's message starts a turn of its own instead of steering into it.
+            prelaunch.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await prelaunch
+
     async def _stream_message_to_harness(
         body: _JsonObject,
         conv_id: str,
         dispatch: TurnDispatch | None = None,
     ) -> Response:
+        await _await_harness_prelaunch(conv_id)
         manager = cast(HarnessProcessManager, process_manager)
         harness_name = dispatch.harness if dispatch else cast(str | None, body.get("harness"))
         spawn_env = (
@@ -7439,6 +7494,7 @@ def create_runner_app(
             event_body = _wrap_as_message_event(_instr_body)
             _inject_mcp_schemas(event_body, _mcp_schemas)
             _response_id: str | None = None
+            _posted_at = time.monotonic()
             try:
                 async with client.stream(
                     "POST",
@@ -7481,6 +7537,7 @@ def create_runner_app(
                     _dispatch_tasks: list[_asyncio.Task[object]] = []
                     _text_acc: list[str] = []
                     _stream_failed_error: _JsonObject | None = None
+                    _tool_starts = ToolStarts()
                     async for chunk in harness_resp.aiter_text():
                         _buffer += chunk
                         while "\n\n" in _buffer:
@@ -7514,6 +7571,14 @@ def create_runner_app(
                                     raise _ContextWindowOverflow(*_overflow)
 
                                 _evt_type = event.get("type")
+                                if (
+                                    not _cold_start_logged
+                                    and isinstance(_evt_type, str)
+                                    and _evt_type.startswith(
+                                        ("response.output_", "response.reasoning")
+                                    )
+                                ):
+                                    _log_cold_start(conv_id, time.monotonic() - _posted_at)
                                 if (
                                     _evt_type == "response.compaction.in_progress"
                                     and conv_id in _sdk_compact_inprogress
@@ -7580,7 +7645,7 @@ def create_runner_app(
                                         )
                                         _text_acc.clear()
                                     _commit_superside_chat_prefix(conv_id)
-                                    _task_turn_ended(conv_id)  # logs a stall, changes nothing
+                                    notify_turn_end(conv_id)  # Feature.on_turn_end
                                     _schedule_superside_chat_threshold_rollover(
                                         conv_id, event.get("response") or {}
                                     )
@@ -7777,6 +7842,17 @@ def create_runner_app(
                                 _input_stable_id = body.get("input_stable_id")
                                 if isinstance(_input_stable_id, str):
                                     event["input_stable_id"] = _input_stable_id
+                            # A tool call is stored when it starts (ADR 0026), so the person
+                            # sees the step while it runs; its completed repeat is dropped.
+                            if _tool_starts.is_repeat(event):
+                                continue
+                            if event.get("type") in _TURN_END_EVENT_TYPES:
+                                for _stopped in _tool_starts.unfinished():
+                                    _publish_event(conv_id, _stopped)
+                                    yield _encode_sse_event(_stopped)
+                            if (_started := _tool_starts.started(event)) is not None:
+                                _publish_event(conv_id, _started)
+                                yield _encode_sse_event(_started)
                             if not _defer_publish and event.get("type") != "response.created":
                                 _publish_event(conv_id, event)
                             if dispatch is not None and event.get(_RUNNER_DISPATCHED_FIELD):

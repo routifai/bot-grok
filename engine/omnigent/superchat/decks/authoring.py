@@ -59,9 +59,9 @@ def _issue_line(issue: dict[str, Any]) -> str:
     return f"{where}{target}: {issue.get('message')}"
 
 
-async def _layout_report(path: Path) -> dict[str, Any]:
+async def _layout_report(path: Path, ctx: HandlerCtx | None) -> dict[str, Any]:
     """Measure the deck in Chromium: ``errors``, ``warnings``, ``notes``, ``layout_checked``."""
-    result = await run_helper("lint", path)
+    result = await run_helper("lint", path, ctx=ctx)
     if isinstance(result, str):
         return {"layout_checked": False, "layout_note": result}
     buckets: dict[str, list[str]] = {"errors": [], "warnings": [], "notes": []}
@@ -92,8 +92,8 @@ def _look_note(look: Look, written: bool) -> str:
     name = kit.templates()[look.theme].name
     if written:
         return (
-            f"Built in {name}, chosen for the topic: {look.why}. The file card offers "
-            '"Change look"; do not ask about the look.'
+            f"Built in {name}, chosen for the topic: {look.why}. The file card's Theme control "
+            "changes the look later; do not ask about the look."
         )
     return (
         f"Use template {look.theme} ({name}), chosen for the topic ({look.why}), when you add "
@@ -119,9 +119,9 @@ def _deck_record(look: Look, title: str, slides: object, target: Path | None) ->
 async def handle_deck_new(args: dict[str, Any], ctx: HandlerCtx | None = None) -> str:
     """Assemble a new deck file from a template and the Muse's slides, then check it.
 
-    The look is kept when the records back ``look_from``, else chosen for the topic
-    (:mod:`~omnigent.superchat.decks.look`); the result says which, and the file card offers
-    "Change look".
+    Any valid ``template`` is built and ``look_from`` recorded as given. With none, the look is
+    the theme picked on the task's card, else one chosen for the topic
+    (:mod:`~omnigent.superchat.decks.look`), and the result says which.
     """
     raw = args.get("path")
     template = args.get("template")
@@ -131,7 +131,7 @@ async def handle_deck_new(args: dict[str, Any], ctx: HandlerCtx | None = None) -
         return error("deck_new requires a path ending in .deck.html")
     if not isinstance(title, str) or not title.strip():
         return error("deck_new requires a title")
-    if not isinstance(template, str) or template not in kit.templates():
+    if template is not None and (not isinstance(template, str) or template not in kit.templates()):
         return error(f"deck_new template must be one of: {', '.join(kit.templates())}")
     look = await settle_look(ctx, args.get("look_from"), template, title)
     if look.refusal is not None:
@@ -167,7 +167,7 @@ async def handle_deck_new(args: dict[str, Any], ctx: HandlerCtx | None = None) -
         return error(str(exc))
     await asyncio.to_thread(target.parent.mkdir, parents=True, exist_ok=True)
     await asyncio.to_thread(target.write_text, document, "utf-8")
-    report = await _layout_report(target)
+    report = await _layout_report(target, ctx)
     report["errors"] = report.get("errors", [])
     report["warnings"] = warnings + report.get("warnings", [])
     report.update(written=True, path=str(target), template=look.theme)
@@ -177,7 +177,7 @@ async def handle_deck_new(args: dict[str, Any], ctx: HandlerCtx | None = None) -
     return json.dumps(_verdict(report))
 
 
-async def handle_deck_check(args: dict[str, Any]) -> str:
+async def handle_deck_check(args: dict[str, Any], ctx: HandlerCtx | None = None) -> str:
     """Check an existing deck file: structure, ids, and layout in Chromium."""
     raw = args.get("path")
     if not isinstance(raw, str) or not raw.strip():
@@ -194,7 +194,7 @@ async def handle_deck_check(args: dict[str, Any]) -> str:
     with tempfile.TemporaryDirectory(prefix="superchat-deck-check-") as tmp:
         copy = Path(tmp) / "deck.html"
         copy.write_text(document, "utf-8")
-        report = await _layout_report(copy)
+        report = await _layout_report(copy, ctx)
     report["errors"] = errors + report.get("errors", [])
     report["warnings"] = warnings + report.get("warnings", [])
     report["path"] = str(target)
@@ -207,7 +207,10 @@ async def handle_deck_themes(_args: dict[str, Any]) -> str:
 
 
 async def handle_deck_theme_set(args: dict[str, Any]) -> str:
-    """Swap a workspace deck's theme (slides untouched), then re-check the layout."""
+    """Swap a workspace deck's theme (slides untouched) and save it; no layout check.
+
+    A check is a Chromium render; it runs when the model calls ``deck_check`` (docs/adr/0026).
+    """
     raw = args.get("path")
     theme_id = args.get("theme_id")
     if not isinstance(raw, str) or not raw.strip():
@@ -226,10 +229,9 @@ async def handle_deck_theme_set(args: dict[str, Any]) -> str:
     except kit.KitError as exc:
         return error(str(exc))
     await asyncio.to_thread(target.write_text, restyled, "utf-8")
-    report = await _layout_report(target)
-    report["errors"] = report.get("errors", [])
-    report.update(changed=True, theme=theme_id, previous=before, path=str(target))
-    return json.dumps(_verdict(report))
+    return json.dumps(
+        {"ok": True, "changed": True, "theme": theme_id, "previous": before, "path": str(target)}
+    )
 
 
 async def handle_authoring_tool(
@@ -243,7 +245,7 @@ async def handle_authoring_tool(
             return await handle_deck_themes(args)
         if tool_name == "deck_theme_set":
             return await handle_deck_theme_set(args)
-        return await handle_deck_check(args)
+        return await handle_deck_check(args, ctx)
     except Exception as exc:  # noqa: BLE001
         return error(f"{tool_name} failed: {exc}")
 

@@ -3,9 +3,14 @@
 
 Usage: superchat-deck-export --format pptx|pdf --html PATH --out PATH
        superchat-deck-export --format lint --html PATH
+       superchat-deck-export --serve
 
-Runs a separate headless Chromium on this host over CDP (the same CdpClient as
-``superchat-page-browser``; the person's visible browser is never touched), then:
+Drives a headless Chromium on this host over CDP (the same CdpClient as
+``superchat-page-browser``; the person's visible browser is never touched). ``--serve`` is the
+host's warm deck browser (docs/adr/0026): it runs one headless Chromium on ``127.0.0.1:9333`` until
+that exits (the host's start script runs it in a loop). A job attaches to it in a fresh browser
+context of its own, and launches a throwaway Chromium only when this host serves no warm one.
+Then:
 
 * pptx: the Open Design pipeline. Lay out every slide, inject the vendored dom-to-pptx bundle,
   run the ported deck-capture logic (font normalisation, layered backgrounds, imported fonts) and
@@ -16,8 +21,9 @@ Runs a separate headless Chromium on this host over CDP (the same CdpClient as
   slide or in the footer band, clipped text, missing data-superchat-id, unembedded fonts, ...).
 
 Prints one JSON object as the last stdout line: ``{"ok": true, "path", "slides", "width",
-"height"}`` (lint: ``{"ok": true, "slides", "issues": [...]}``) or ``{"ok": false, "error",
-"code"}``. Exit code 0 either way.
+"height", "warm"}`` (lint: ``{"ok": true, "slides", "issues": [...], "warm"}``) or ``{"ok": false,
+"error", "code", "warm"}``; ``warm`` says whether the warm browser did the job. Exit code 0 either
+way.
 
 Portions modified from nexu-io/open-design apps/desktop/src/main/deck-capture.ts@802708f and
 apps/desktop/src/main/pdf-export.ts@802708f, Apache-2.0 (see /NOTICE). Changes: Electron's
@@ -30,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import ctypes
 import importlib.machinery
 import importlib.util
 import json
@@ -60,6 +67,12 @@ ARTIFACT_LOAD_TIMEOUT_S = 15.0
 GOOGLE_FONT_STYLESHEET_TIMEOUT_S = 10.0
 MAX_CDP_MESSAGE = 512 * 1024 * 1024
 LAYERED_CAPTURE_ATTEMPTS = 3
+# The warm deck browser (``--serve``). Its profile exists once the host has started it: then a
+# job waits for its port (a restart in progress) instead of paying a cold launch.
+WARM_PORT = 9333
+WARM_PROFILE = Path("/tmp/superchat/deck-browser")
+WARM_WAIT_S = 15.0
+COLD_START_TIMEOUT_S = 20.0
 
 
 class ExportError(Exception):
@@ -142,92 +155,185 @@ def page_script() -> str:
 # ---------------------------------------------------------------------------------------------
 
 
+def chromium_flags(profile: Path, port: int) -> list[str]:
+    """The one headless configuration both the warm browser and a cold launch run with."""
+    return [
+        "--headless=new",
+        "--no-sandbox",
+        "--disable-gpu",
+        "--disable-dev-shm-usage",
+        "--hide-scrollbars",
+        "--mute-audio",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-background-networking",
+        "--disable-extensions",
+        "--force-device-scale-factor=1",
+        "--window-size=1920,1080",
+        "--remote-debugging-address=127.0.0.1",
+        f"--remote-debugging-port={port}",
+        f"--user-data-dir={profile}",
+        "about:blank",
+    ]
+
+
+def _die_with_parent() -> None:
+    """Linux: Chromium gets SIGKILL when the process that launched it dies, even by SIGKILL."""
+    try:
+        ctypes.CDLL(None, use_errno=True).prctl(1, signal.SIGKILL)  # PR_SET_PDEATHSIG
+    except (AttributeError, OSError):
+        pass
+
+
+def launch_chromium(profile: Path, port: int) -> subprocess.Popen[bytes]:
+    """Start Chromium in its own process group, tied to die with this process (Linux)."""
+    return subprocess.Popen(
+        [find_chromium(), *chromium_flags(profile, port)],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+        preexec_fn=_die_with_parent if sys.platform.startswith("linux") else None,
+    )
+
+
+def stop_chromium(proc: subprocess.Popen[bytes]) -> None:
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(proc.pid, sig)
+        except OSError:
+            return
+        try:
+            proc.wait(timeout=5)
+            return
+        except subprocess.TimeoutExpired:
+            continue
+
+
+def wait_for_port(proc: subprocess.Popen[bytes], profile: Path, timeout_s: float) -> int:
+    """Chromium writes the chosen debug port to ``DevToolsActivePort`` in its profile."""
+    marker = profile / "DevToolsActivePort"
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        if proc.poll() is not None:
+            raise ExportError("Chromium exited before it was ready", "NO_BROWSER")
+        if marker.is_file():
+            first = marker.read_text().splitlines()[:1]
+            if first and first[0].isdigit():
+                return int(first[0])
+        time.sleep(0.1)
+    raise ExportError("Chromium did not start in time", "NO_BROWSER")
+
+
+def log(message: str) -> None:
+    print(f"superchat-deck-export: {message}", file=sys.stderr, flush=True)
+
+
 class Chromium:
-    """A throwaway headless Chromium with its own profile, driven over one CDP connection."""
+    """One page for one job: a fresh browser context in the warm browser, else a cold Chromium.
+
+    Either way the job sees a blank page in a context of its own, closed when the job ends. The
+    warm browser's context is created with ``disposeOnDetach``, so a job killed mid-way leaves
+    nothing behind in it.
+    """
 
     def __init__(self) -> None:
         self.cdp = load_cdp_module()
-        self.profile = Path(tempfile.mkdtemp(prefix="superchat-deck-"))
+        self.profile: Path | None = None
         self.proc: subprocess.Popen[bytes] | None = None
         self.client: Any = None
         self.session: str = ""
+        self.context: str = ""
+        self.target: str = ""
+        self.warm: bool | None = None
 
     def __enter__(self) -> Chromium:
         try:
-            return self._start()
+            self.warm = self._attach_warm()
+            if not self.warm:
+                self._launch_cold()
+            self._open_page()
+            return self
         except BaseException:
             self.__exit__()
             raise
 
-    def _start(self) -> Chromium:
-        flags = [
-            "--headless=new",
-            "--no-sandbox",
-            "--disable-gpu",
-            "--disable-dev-shm-usage",
-            "--hide-scrollbars",
-            "--mute-audio",
-            "--no-first-run",
-            "--no-default-browser-check",
-            "--disable-background-networking",
-            "--disable-extensions",
-            "--force-device-scale-factor=1",
-            "--window-size=1920,1080",
-            "--remote-debugging-address=127.0.0.1",
-            "--remote-debugging-port=0",
-            f"--user-data-dir={self.profile}",
-            "about:blank",
-        ]
-        self.proc = subprocess.Popen(
-            [find_chromium(), *flags],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-        port = self._wait_for_port()
-        ws_url = self.cdp.discover_ws_url(port)
+    def _warm_ws_url(self) -> str | None:
+        """The warm browser's endpoint; waits for it while this host runs one (a restart)."""
+        deadline = time.monotonic() + (WARM_WAIT_S if WARM_PROFILE.is_dir() else 0)
+        while True:
+            try:
+                return self.cdp.discover_ws_url(WARM_PORT)
+            except ExportError:  # the export's alarm: never go on to a cold launch
+                raise
+            except Exception:  # noqa: BLE001 - not served (yet)
+                if time.monotonic() >= deadline:
+                    return None
+                time.sleep(0.5)
+
+    def _attach_warm(self) -> bool:
+        """A fresh browser context in the warm browser; ``False`` when this host serves none."""
+        ws_url = self._warm_ws_url()
+        if ws_url is None:
+            log(f"no warm browser on port {WARM_PORT}; launching a cold one")
+            return False
+        try:
+            self._connect(ws_url)
+            created = self.client.call("Target.createBrowserContext", {"disposeOnDetach": True})
+            self.context = created["browserContextId"]
+        except ExportError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - a warm browser that will not serve this job
+            log(f"warm browser on port {WARM_PORT} failed ({exc}); launching a cold one")
+            self._release_warm()
+            return False
+        return True
+
+    def _launch_cold(self) -> None:
+        self.profile = Path(tempfile.mkdtemp(prefix="superchat-deck-"))
+        self.proc = launch_chromium(self.profile, 0)
+        port = wait_for_port(self.proc, self.profile, COLD_START_TIMEOUT_S)
+        self._connect(self.cdp.discover_ws_url(port))
+
+    def _connect(self, ws_url: str) -> None:
         self.client = self.cdp.CdpClient(ws_url)
         self.client.max_frame_bytes = MAX_CDP_MESSAGE
         self.client.connect()
-        target = self.client.call("Target.createTarget", {"url": "about:blank"})
-        attached = self.client.call(
-            "Target.attachToTarget", {"targetId": target["targetId"], "flatten": True}
-        )
+
+    def _open_page(self) -> None:
+        params: dict[str, Any] = {"url": "about:blank"}
+        if self.context:
+            params["browserContextId"] = self.context
+        self.target = self.client.call("Target.createTarget", params)["targetId"]
+        attached = self.client.call("Target.attachToTarget", {"targetId": self.target, "flatten": True})
         self.session = attached["sessionId"]
         self.send("Page.enable")
-        return self
+
+    def _release_warm(self) -> None:
+        if self.client is not None:
+            for method, params in (
+                ("Target.closeTarget", {"targetId": self.target}),
+                ("Target.disposeBrowserContext", {"browserContextId": self.context}),
+            ):
+                if params and all(params.values()):
+                    try:
+                        self.client.call(method, params, timeout_s=5)
+                    except Exception:  # noqa: BLE001 - disposeOnDetach covers what is left
+                        pass
+            self.client.close()
+            self.client = None
+        self.context = self.target = ""
 
     def __exit__(self, *_exc: object) -> None:
+        if self.warm:
+            self._release_warm()
+            return
         if self.client is not None:
             self.client.close()
         if self.proc is not None:
-            try:
-                os.killpg(self.proc.pid, signal.SIGTERM)
-            except OSError:
-                pass
-            try:
-                self.proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                try:
-                    os.killpg(self.proc.pid, signal.SIGKILL)
-                except OSError:
-                    pass
-        shutil.rmtree(self.profile, ignore_errors=True)
-
-    def _wait_for_port(self) -> int:
-        """Chromium writes the chosen debug port to ``DevToolsActivePort`` in its profile."""
-        marker = self.profile / "DevToolsActivePort"
-        deadline = time.time() + 20
-        while time.time() < deadline:
-            if self.proc is not None and self.proc.poll() is not None:
-                raise ExportError("Chromium exited before it was ready", "NO_BROWSER")
-            if marker.is_file():
-                first = marker.read_text().splitlines()[:1]
-                if first and first[0].isdigit():
-                    return int(first[0])
-            time.sleep(0.1)
-        raise ExportError("Chromium did not start in time", "NO_BROWSER")
+            stop_chromium(self.proc)
+        if self.profile is not None:
+            shutil.rmtree(self.profile, ignore_errors=True)
 
     def send(self, method: str, params: dict[str, Any] | None = None, timeout_s: float = 60.0) -> dict[str, Any]:
         return self.client.call(method, params or {}, session_id=self.session, timeout_s=timeout_s)
@@ -536,10 +642,10 @@ def run_lint(browser: Chromium) -> dict[str, Any]:
     return {"ok": True, "slides": count, "width": width, "height": height, "issues": issues or []}
 
 
-def run_export(fmt: str, html_path: Path, out: Path | None) -> dict[str, Any]:
+def run_export(browser: Chromium, fmt: str, html_path: Path, out: Path | None) -> dict[str, Any]:
     if not html_path.is_file():
         raise ExportError("the deck file is missing", "NO_INPUT")
-    with Chromium() as browser:
+    with browser:
         browser.set_viewport(SLIDE_W, SLIDE_H)
         browser.load_document(html_path)
         browser.wait_for_printable_content()
@@ -550,21 +656,58 @@ def run_export(fmt: str, html_path: Path, out: Path | None) -> dict[str, Any]:
             " window.dispatchEvent(new Event('resize')); return true; })()"
         )
         if fmt == "lint":
-            return run_lint(browser)
+            return {**run_lint(browser), "warm": browser.warm}
         assert out is not None
         info = export_pptx(browser, out) if fmt == "pptx" else export_pdf(browser, out)
     assert out is not None
     if not out.is_file() or out.stat().st_size == 0:
         raise ExportError("the export produced an empty file")
-    return {"ok": True, "path": str(out), **info}
+    return {"ok": True, "path": str(out), **info, "warm": browser.warm}
+
+
+# ---------------------------------------------------------------------------------------------
+# The warm deck browser (--serve)
+# ---------------------------------------------------------------------------------------------
+
+
+def serve() -> None:
+    """Run the warm browser until it exits; the host's start script runs this in a loop.
+
+    When the port is already served (an earlier Chromium still up), there is nothing to do.
+    """
+    try:
+        load_cdp_module().discover_ws_url(WARM_PORT)
+        return
+    except ExportError:
+        raise
+    except Exception:  # noqa: BLE001 - not served: start it
+        pass
+    WARM_PROFILE.mkdir(parents=True, exist_ok=True)
+    proc = launch_chromium(WARM_PROFILE, WARM_PORT)
+    log(f"warm browser started on port {WARM_PORT} (pid {proc.pid})")
+    try:
+        log(f"warm browser exited with {proc.wait()}")
+    finally:
+        stop_chromium(proc)
 
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="superchat-deck-export")
-    parser.add_argument("--format", choices=["pptx", "pdf", "lint"], required=True)
-    parser.add_argument("--html", required=True)
+    parser.add_argument("--serve", action="store_true", help="run the host's warm deck browser")
+    parser.add_argument("--format", choices=["pptx", "pdf", "lint"])
+    parser.add_argument("--html")
     parser.add_argument("--out")
     args = parser.parse_args(argv[1:])
+    if args.serve:
+
+        def on_term(_signum: int, _frame: Any) -> None:
+            raise SystemExit(0)
+
+        signal.signal(signal.SIGTERM, on_term)
+        serve()
+        return 0
+    if not args.format or not args.html:
+        parser.error("--format and --html are required")
     if args.format != "lint" and not args.out:
         parser.error("--out is required for pptx and pdf")
     budget = int(os.environ.get("SUPERCHAT_DECK_EXPORT_TIMEOUT", "170"))
@@ -574,14 +717,17 @@ def main(argv: list[str]) -> int:
 
     signal.signal(signal.SIGALRM, on_alarm)
     signal.alarm(budget)
+    browser: Chromium | None = None
     try:
-        result = run_export(args.format, Path(args.html), Path(args.out) if args.out else None)
+        browser = Chromium()
+        result = run_export(browser, args.format, Path(args.html), Path(args.out) if args.out else None)
     except ExportError as exc:
         result = {"ok": False, "error": str(exc), "code": exc.code}
     except Exception as exc:  # noqa: BLE001
         result = {"ok": False, "error": f"export failed: {exc}", "code": "RENDER_FAILED"}
     finally:
         signal.alarm(0)
+    result.setdefault("warm", browser.warm if browser is not None else None)
     print(json.dumps(result))
     return 0
 

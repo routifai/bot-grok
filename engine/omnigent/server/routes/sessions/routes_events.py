@@ -23,7 +23,7 @@ from fastapi.routing import APIRoute
 from starlette.datastructures import Headers
 from starlette.types import Message, Receive, Scope, Send
 
-from omnigent.context.labels import is_superside_chat
+from omnigent.context.labels import is_artifact_chat, is_superside_chat
 from omnigent.db.workspace_cache import WorkspaceScopedCache
 from omnigent.debug_logging import add_audit_attrs, debug_event, mark_request_audit_suppressed
 from omnigent.entities import (
@@ -215,11 +215,13 @@ from omnigent.server.routes._sessions.orchestration import (
     _persist_user_event_item,
     _resolve_elicitation,
     _wait_for_host_bound_runner_client,
+    cancel_deferred_message_dispatch,
     ensure_runner_connected,
     managed_wake_may_precede_dispatch,
     schedule_deferred_message_dispatch,
     session_has_deferred_dispatch,
 )
+from omnigent.server.routes._sessions.turn_metrics import mark_accepted
 from omnigent.server.schemas import (
     BackgroundTaskInfo,
     ConversationDeleted,
@@ -244,6 +246,7 @@ from omnigent.stores.host_store import host_is_live
 from omnigent.stores.permission_store import PermissionStore
 from omnigent.superchat.lineage import is_super_chat_helper
 from omnigent.superchat.models.org import refuse_if_suspended
+from omnigent.superchat.subagents import is_live_child_row
 from omnigent.telemetry import emit as _tel_emit
 from omnigent.telemetry.anon import anon_user_id as _tel_anon_user_id
 from omnigent.telemetry.events import SessionDeletedEvent as _TelSessionDeletedEvent
@@ -698,6 +701,75 @@ def register_events_routes(
     if register_runner_ingest is not None:
         register_runner_ingest(ingest_runner_batch)
 
+    async def _interrupt_session(session_id: str) -> bool:
+        """
+        Stop *session_id*'s turn and, the same way, its running Helpers (ADR 0026 "Stop stops").
+
+        The runner drops the messages waiting behind the turn. Without a runner, a message
+        acknowledged early (the machine still waking) never dispatches: Stop holds through a
+        relaunch.
+
+        :param session_id: Session/conversation identifier.
+        :returns: Whether the stop landed: the runner took it, or a waiting dispatch was
+            cancelled.
+        """
+        _publish_interrupted(session_id)
+        # Fence the cancelled turn (see _interrupt_fenced_sessions).
+        _interrupt_fenced_sessions.add(session_id)
+        cancelled_items = cancel_deferred_message_dispatch(session_id)
+        runner_client = await _get_runner_client(session_id, runner_router)
+        forwarded = False
+        if runner_client is not None:
+            try:
+                interrupt_resp = await runner_client.post(
+                    f"/v1/sessions/{session_id}/events",
+                    json={"type": "interrupt"},
+                    timeout=5.0,
+                )
+                forwarded = interrupt_resp.status_code < 400
+            except (httpx.HTTPError, ConnectionError):
+                # WSTunnelTransport raises bare ConnectionError on tunnel close.
+                _logger.exception("Interrupt forward failed for %r", session_id)
+        if not forwarded:
+            # The turn keeps running (or none runs) and nothing else lifts the
+            # fence — remove it so the turn's remaining output isn't dropped.
+            _interrupt_fenced_sessions.discard(session_id)
+        for item_id in cancelled_items:
+            # The stored message will not run: the transcript reads it again.
+            session_stream.publish(
+                session_id, {"type": "session.input.delivery", "data": {"item_id": item_id}}
+            )
+        if cancelled_items and not forwarded:
+            _publish_status(session_id, "idle")
+        try:
+            await _interrupt_running_helpers(session_id)
+        except Exception:
+            _logger.exception("Interrupt cascade to helpers failed for %r", session_id)
+        return forwarded or bool(cancelled_items)
+
+    async def _interrupt_running_helpers(session_id: str) -> None:
+        """Interrupt every running Helper of *session_id* (read as ``count_live_children`` does)."""
+        page = await asyncio.to_thread(
+            conversation_store.list_conversations,
+            limit=100,
+            kind="sub_agent",
+            parent_conversation_id=session_id,
+            order="desc",
+            sort_by="created_at",
+        )
+        children = [child for child in page.data if not is_artifact_chat(child.labels)]
+        summaries = await _child_session_summaries_from_conversations(
+            children, session_id, conversation_store
+        )
+        live = [
+            summary.id
+            for summary in summaries
+            if is_live_child_row(summary.model_dump(mode="json"))
+        ]
+        results = await asyncio.gather(*(_interrupt_session(child_id) for child_id in live))
+        for child_id, delivered in zip(live, results, strict=True):
+            _logger.info("interrupt helper=%s of=%s delivered=%s", child_id, session_id, delivered)
+
     async def _post_event_impl(
         request: Request | _RunnerEventContext,
         session_id: str,
@@ -793,6 +865,8 @@ def register_events_routes(
             await refuse_if_suspended(user_id)
         if body.type == "message":
             await _require_helper_writer(request, user_id, conv)
+            if body.data.get("role", "user") == "user":
+                mark_accepted(session_id)
         if in_flight is not None:
             # Marked only after authorization, so an unauthorized caller
             # cannot flip a session to "running" even transiently.
@@ -1205,35 +1279,9 @@ def register_events_routes(
             return wake_conv, _client
 
         if body.type == _INTERRUPT_TYPE:
-            target_session_id = session_id
-            interrupt_payload: dict[str, Any] = {"type": "interrupt"}
-            _publish_interrupted(session_id)
-            # Fence the cancelled turn (see _interrupt_fenced_sessions).
-            _interrupt_fenced_sessions.add(session_id)
-            runner_client = await _get_runner_client(
-                target_session_id,
-                runner_router,
-            )
-            interrupt_delivered = False
-            if runner_client is not None:
-                try:
-                    interrupt_resp = await runner_client.post(
-                        f"/v1/sessions/{target_session_id}/events",
-                        json=interrupt_payload,
-                        timeout=5.0,
-                    )
-                    interrupt_delivered = interrupt_resp.status_code < 400
-                except (httpx.HTTPError, ConnectionError):
-                    # WSTunnelTransport raises bare ConnectionError on tunnel close.
-                    _logger.exception(
-                        "Interrupt forward failed for %r",
-                        session_id,
-                    )
-            if not interrupt_delivered:
-                # The turn keeps running and nothing else lifts the fence —
-                # remove it so the turn's remaining output isn't dropped.
-                _interrupt_fenced_sessions.discard(session_id)
-            return {"queued": False}
+            delivered = await _interrupt_session(session_id)
+            _logger.info("interrupt session=%s delivered=%s", session_id, delivered)
+            return {"queued": False, "delivered": delivered}
         if body.type == _STOP_SESSION_TYPE:
             # Terminating the whole session (not just the current turn)
             # is a lifecycle action; require owner access on top of the
@@ -1934,7 +1982,9 @@ def register_events_routes(
                     failure_origin="runner_unavailable",
                 )
 
-            schedule_deferred_message_dispatch(session_id, _wake_and_forward, _fail_turn)
+            schedule_deferred_message_dispatch(
+                session_id, _wake_and_forward, _fail_turn, item_id=stored.id
+            )
             return {"queued": True, "item_id": stored.id}
         # Item event (message, function_call_output, etc.).
         if conv.host_id is not None and await _maybe_wake_stale_resumable_managed_sandbox(

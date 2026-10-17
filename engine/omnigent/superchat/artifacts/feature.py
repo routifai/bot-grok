@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
@@ -54,9 +55,16 @@ def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]
 
 
 async def _turn_prefix(server_client: httpx.AsyncClient | None, conversation_id: str) -> list[str]:
-    """Hand edits written back (one note each), then the hint naming this chat's artifacts."""
-    notes = await deliver_manual_edits(server_client, conversation_id)
-    return [*notes, *await fetch_artifact_hint(server_client, conversation_id)]
+    """Hand edits written back (one note each), then the hint naming this chat's artifacts.
+
+    The two engine calls are independent (the hint reads the store, the write-back reads the
+    pending list and writes the workspace), so they run together (ADR 0026).
+    """
+    notes, hint = await asyncio.gather(
+        deliver_manual_edits(server_client, conversation_id),
+        fetch_artifact_hint(server_client, conversation_id),
+    )
+    return [*notes, *hint]
 
 
 #: The studio's save hook (ADR 0024), made at install; its loop is captured by :func:`_jobs`.

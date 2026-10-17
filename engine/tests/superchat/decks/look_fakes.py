@@ -15,6 +15,7 @@ def view(
     message: str = "",
     *,
     answer: str | None = None,
+    option_id: str = "o1",
     tasks: list[dict[str, Any]] | None = None,
     background: bool = False,
     is_helper: bool = False,
@@ -26,20 +27,11 @@ def view(
         "background": background,
         "message": message,
         "answer": (
-            {"card_id": "c1", "option_id": "o1", "label": answer} if answer is not None else None
+            {"card_id": "c1", "option_id": option_id, "label": answer}
+            if answer is not None
+            else None
         ),
         "tasks": tasks or [],
-    }
-
-
-def deck_task(look_id: str) -> dict[str, Any]:
-    """An active deck task whose look the person picked."""
-    return {
-        "id": "t1",
-        "kind": "deck",
-        "title": "Deck",
-        "status": "open",
-        "fields": {"look_id": look_id},
     }
 
 
@@ -59,5 +51,5 @@ def ctx(task_view: dict[str, Any] | None = None, *, profile: str | None = None) 
 
 
 def helper_ctx() -> HandlerCtx:
-    """A scheduled Helper: background work, where ``look_from: background`` holds."""
+    """A scheduled Helper: background work, no person to ask."""
     return ctx(view(background=True, is_helper=True))

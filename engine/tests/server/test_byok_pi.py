@@ -54,7 +54,7 @@ def _hosted_state(creds: dict[str, tuple[str, str]]) -> SimpleNamespace:
     raw = yaml.safe_load(
         TEMPLATE.read_text().replace("__ENGINE_PUBLIC_URL__", "https://eng.example")
     )
-    deployment = parse_host_section(raw["host"])
+    deployment = parse_host_section(raw["hosts"])
     assert deployment is not None
 
     class _Store:

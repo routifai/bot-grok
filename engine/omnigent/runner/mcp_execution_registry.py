@@ -6,6 +6,8 @@ then replay an external tool that may already have side effects.  This
 registry shields the actual execution and lets the next server generation
 reattach with the same operation id and step. The originating proxy reserves
 the operation until its call ends, so completed steps cannot expire mid-retry.
+The shield is for the tunnel only: a Stop from the person (:meth:`cancel_turn`)
+cancels the execution itself.
 """
 
 from __future__ import annotations
@@ -27,6 +29,8 @@ _MAX_COMPLETED = 1024
 MCP_OPERATION_ID_PARAM = "_omnigent_operation_id"
 RUNNER_MCP_EXECUTION_DETACHED_CODE = -32098
 RUNNER_MCP_EXECUTION_DETACHED_MESSAGE = "Runner MCP execution detached."
+# What a waiter gets for an execution the person stopped.
+STOPPED_RESULT = {"error": {"code": -32000, "message": "Tool call stopped."}}
 
 
 class McpExecutionConflict(RuntimeError):
@@ -134,7 +138,30 @@ class McpExecutionRegistry:
 
         # The surrounding ASGI dispatch belongs to one tunnel generation.
         # Its cancellation must not propagate into the external operation.
-        return await asyncio.shield(entry.task)
+        try:
+            return await asyncio.shield(entry.task)
+        except asyncio.CancelledError:
+            current = asyncio.current_task()
+            if entry.task.cancelled() and not (current is not None and current.cancelling()):
+                # The execution itself was stopped (cancel_turn), not this waiter.
+                return McpExecutionResult(status_code=200, content=STOPPED_RESULT)
+            raise
+
+    def cancel_turn(self, session_id: str) -> int:
+        """Cancel *session_id*'s executions still running: the person stopped the turn.
+
+        Cancellation lands at the tool's next await; a tool that cannot be interrupted
+        (a worker thread) stops at its next boundary. Waiters get a stopped error result.
+
+        :param session_id: Session/conversation identifier.
+        :returns: How many executions were cancelled.
+        """
+        cancelled = 0
+        for key, entry in self._entries.items():
+            if key[0] == session_id and not entry.task.done():
+                entry.task.cancel()
+                cancelled += 1
+        return cancelled
 
     async def cancel_session(self, session_id: str) -> None:
         """Cancel and forget retained operations for a deleted session."""

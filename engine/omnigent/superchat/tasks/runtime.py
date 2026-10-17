@@ -1,11 +1,22 @@
-"""Runner side of tasks: the turn's task lines, the events tools report, the stall count.
+"""Runner side of tasks: the turn's task lines, the events the engine reports, the stall count.
 
 * :func:`message_prefix` reads the Conversation's active tasks and writes one line each in front
-  of the person's message, after "They picked ..." when the message answers a card.
-* :func:`on_result` reports what a tool did (``deck_new``, ``artifact_save``, ``start_helper``) to
-  the server, in order per session, and notes that the turn acted.
-* :func:`turn_ended` logs a **stall**: a turn that began with an active task and ended without a
-  saved file, a question card or a started Helper. It only counts; it changes nothing.
+  of the person's message, after "They picked ..." when the message answers a card. It opens the
+  turn's :class:`~omnigent.superchat.tasks.record.Turn`, watched for a stall only when
+  :func:`~omnigent.superchat.tasks.record.watched` says so.
+* :func:`on_result` reports what a tool did (``deck_new``, ``artifact_save``, ``start_helper``)
+  to the server, in order per session, and notes it on the turn.
+* :func:`tool_denied` notes a step-limit refusal (:data:`STEP_LIMIT_REFUSAL`, the policy's own
+  text) on the turn: the denied call never ran, so ``on_result`` never sees it.
+* :func:`turn_ended` reports the end of a Conversation turn (the server closes or reopens its
+  tasks) and counts a **stall** by :func:`~omnigent.superchat.tasks.record.is_stall`. It only
+  counts; it changes nothing.
+
+Every server call here is metadata, bounded per ADR 0026: a 2 s budget (:data:`BUDGET`), one
+retry for an event that timed out, never blocking the tool or the turn. An event that still did
+not reach the server waits in :data:`_unsent`; the next turn sends it in the background (never
+before its own read), within the same budget, then drops it with a WARNING. The server
+tolerates late and out-of-order events.
 """
 
 from __future__ import annotations
@@ -15,11 +26,22 @@ import contextlib
 import json
 import logging
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from omnigent.superchat.tasks.record import CardAnswer, Task, prefix_lines
+from omnigent.entities.conversation import is_system_notice_text
+from omnigent.superchat.step_limit.policy import REFUSAL as STEP_LIMIT_REFUSAL
+from omnigent.superchat.tasks.record import (
+    ACTIVE,
+    CardAnswer,
+    Task,
+    Turn,
+    is_stall,
+    prefix_lines,
+    watched,
+)
 
 if TYPE_CHECKING:
     from omnigent.superchat.feature import HandlerCtx
@@ -29,21 +51,41 @@ _logger = logging.getLogger(__name__)
 SAVE, ASK, HELPER, DECK = "artifact_save", "ask_clarification", "start_helper", "deck_new"
 #: The tools that end a turn on a task well: a deliverable, a question, a started Helper.
 TURN_ENDINGS = frozenset({SAVE, ASK, HELPER})
-_TIMEOUT = 10.0
+#: The budget of one metadata call to the server (ADR 0026).
+BUDGET = 2.0
+_TIMEOUT = httpx.Timeout(BUDGET, connect=1.0)
 
-#: ``Conversation id -> the active task's id`` for a turn that has not acted yet.
-_watching: dict[str, str] = {}
+
+@dataclass
+class _Live:
+    """A Conversation turn in flight.
+
+    :param client: The server client its prefix read with (its ``turn_end`` goes there).
+    :param task_id: The task it works on: the open task at its start, or the one its own events
+        made (an ``ask`` card records it).
+    :param turn: What it is and did, judged by :func:`is_stall` when it ends.
+    :param reported: It reported a task event (so its end matters to the server).
+    """
+
+    client: httpx.AsyncClient | None
+    task_id: str | None
+    turn: Turn
+    reported: bool = False
+
+
+#: ``Conversation id -> the turn in flight``, for every Conversation turn.
+_turns: dict[str, _Live] = {}
+#: ``Conversation id -> its turn``, only for a turn whose ending (a save, a card, a Helper) can
+#: make it a stall; a step-limit refusal is noted on every turn (``_Live.turn``).
+_watching: dict[str, Turn] = {}
 #: ``session id -> the last event post``, so a session's events reach the server in order.
 _posts: dict[str, asyncio.Task[None]] = {}
-
-
-class _Stalls:
-    """The stall counter (process-wide)."""
-
-    count = 0
-
-
-STALLS = _Stalls()
+#: ``session id -> events that did not reach the server``, oldest first, sent at the next turn.
+_unsent: dict[str, list[dict[str, Any]]] = {}
+#: The background sends of :data:`_unsent` (kept so they are not collected mid-flight).
+_flushes: set[asyncio.Task[None]] = set()
+#: Stalls counted since the process started.
+STALLS = 0
 
 
 async def read_tasks(client: httpx.AsyncClient | None, session_id: str | None) -> dict | None:
@@ -51,9 +93,12 @@ async def read_tasks(client: httpx.AsyncClient | None, session_id: str | None) -
     if client is None or not session_id:
         return None
     try:
-        resp = await client.get(f"/v1/sessions/{session_id}/tasks", timeout=_TIMEOUT)
+        resp = await asyncio.wait_for(
+            client.get(f"/v1/sessions/{session_id}/tasks", timeout=_TIMEOUT), BUDGET
+        )
         view = resp.json() if resp.status_code == 200 else None
-    except (httpx.HTTPError, ValueError):
+    except (httpx.HTTPError, ValueError, TimeoutError):
+        _logger.info("tasks of %s not read in time", session_id, extra={"session_id": session_id})
         return None
     return view if isinstance(view, dict) else None
 
@@ -73,6 +118,7 @@ def _tasks(view: dict[str, Any]) -> list[Task]:
                 fields=raw.get("fields") if isinstance(raw.get("fields"), dict) else {},
                 status=str(raw.get("status") or "open"),
                 helper_ids=[str(h) for h in raw.get("helper_ids") or ()],
+                helper_running=raw.get("helper_running") is True,
             )
         )
     return out
@@ -89,22 +135,41 @@ def _answer(view: dict[str, Any]) -> CardAnswer | None:
 
 
 async def message_prefix(
-    client: httpx.AsyncClient | None, conversation_id: str, _texts: Sequence[str]
+    client: httpx.AsyncClient | None, conversation_id: str, texts: Sequence[str]
 ) -> list[str]:
     """The pick (when the message answers a card) and one line per active task, as one block.
 
-    Only the Conversation itself gets them (a Helper works from its Brief), and only there a
-    turn is watched for a stall.
+    The tasks feature is Conversation-only (``Feature.conversation_only``): a Helper's turn never
+    calls this. Events an earlier turn could not send go in the background.
     """
+    _turns.pop(conversation_id, None)
     _watching.pop(conversation_id, None)
+    if client is not None and _unsent:
+        flush = asyncio.get_running_loop().create_task(flush_unsent(client))
+        _flushes.add(flush)
+        flush.add_done_callback(_flushes.discard)
     view = await read_tasks(client, conversation_id)
-    if view is None or view.get("is_helper") or view.get("conversation_id") != conversation_id:
+    if view is None or view.get("conversation_id") != conversation_id:
         return []
     tasks = _tasks(view)
-    if tasks:
-        _watching[conversation_id] = tasks[0].id
+    first = tasks[0] if tasks else None
+    turn = Turn(
+        by_person=view.get("by_person") is True
+        and not any(is_system_notice_text(text) for text in texts),
+        task_id=first.id if first else None,
+        helper_running=first is not None and first.helper_running,
+    )
+    _turns[conversation_id] = _Live(client, first.id if first else None, turn)
+    if watched(turn):
+        _watching[conversation_id] = turn
     lines = prefix_lines(tasks, _answer(view))
     return ["\n".join(lines)] if lines else []
+
+
+def current_task(conversation_id: str | None) -> str | None:
+    """The task the Conversation's running turn works on, or ``None``."""
+    live = _turns.get(conversation_id or "")
+    return live.task_id if live is not None else None
 
 
 def _ok(output: str) -> dict[str, Any] | None:
@@ -130,12 +195,52 @@ def _event(tool: str, data: dict[str, Any]) -> dict[str, Any] | None:
             "group_id": data.get("group_id") or data.get("id"),
         }
     if tool == HELPER and data.get("started") is True:
-        return {"event": HELPER, "helper_id": data.get("helper_id")}
+        return {"event": HELPER, "helper_id": data.get("helper_id"), "title": data.get("title")}
     return None
 
 
+def _note_task(session_id: str, resp: httpx.Response) -> None:
+    """The task an event made or changed becomes the running turn's task (a card names it)."""
+    live = _turns.get(session_id)
+    if live is None:
+        return
+    with contextlib.suppress(ValueError):
+        task = resp.json().get("task")
+        if isinstance(task, dict) and task.get("status") in ACTIVE:
+            live.task_id = str(task.get("id") or "") or live.task_id
+
+
+async def _send(
+    client: httpx.AsyncClient, session_id: str, body: dict[str, Any], *, retry: bool
+) -> bool:
+    """POST one event; ``False`` when it did not reach the server (a refusal counts as sent)."""
+    for attempt in range(2 if retry else 1):
+        try:
+            resp = await asyncio.wait_for(
+                client.post(
+                    f"/v1/sessions/{session_id}/tasks/events", json=body, timeout=_TIMEOUT
+                ),
+                BUDGET,
+            )
+        except (httpx.TimeoutException, TimeoutError):
+            _logger.info("task event %s timed out (try %d)", body["event"], attempt + 1)
+            continue
+        except httpx.HTTPError:
+            return False
+        if resp.status_code >= 400:
+            _logger.warning("task event %s refused: %s", body["event"], resp.status_code)
+        else:
+            _note_task(session_id, resp)
+        return True
+    return False
+
+
 def _post(client: httpx.AsyncClient, session_id: str, body: dict[str, Any]) -> None:
-    """Send *body* after this session's earlier events (``on_result`` cannot await)."""
+    """Send *body* after this session's earlier events (``on_result`` cannot await).
+
+    The wait for the earlier send is bounded, so a stuck one never holds the rest back; an event
+    that does not reach the server is queued for the next turn.
+    """
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
@@ -145,15 +250,15 @@ def _post(client: httpx.AsyncClient, session_id: str, body: dict[str, Any]) -> N
     async def send() -> None:
         if before is not None:
             with contextlib.suppress(Exception):
-                await before
-        try:
-            resp = await client.post(
-                f"/v1/sessions/{session_id}/tasks/events", json=body, timeout=_TIMEOUT
-            )
-            if resp.status_code >= 400:
-                _logger.info("task event %s refused: %s", body["event"], resp.status_code)
-        except httpx.HTTPError:
-            _logger.info("task event %s not sent", body["event"], exc_info=True)
+                await asyncio.wait_for(asyncio.shield(before), BUDGET)
+        for queued in [*_unsent.pop(session_id, ()), body]:
+            if not await _send(client, session_id, queued, retry=queued is body):
+                _unsent.setdefault(session_id, []).append(queued)
+                _logger.warning(
+                    "task event %s not sent; kept for the next turn",
+                    queued["event"],
+                    extra={"session_id": session_id},
+                )
 
     task = loop.create_task(send())
     _posts[session_id] = task
@@ -162,33 +267,77 @@ def _post(client: httpx.AsyncClient, session_id: str, body: dict[str, Any]) -> N
     )
 
 
-async def flush(session_id: str) -> None:
-    """Wait for this session's events to reach the server (tests, and a clean shutdown)."""
-    pending = _posts.get(session_id)
-    if pending is not None:
-        await pending
+async def flush_unsent(client: httpx.AsyncClient) -> None:
+    """Send the events earlier turns could not, within :data:`BUDGET` in all; drop the rest."""
+    if not _unsent:
+        return
+    queued = [(session_id, body) for session_id, bodies in _unsent.items() for body in bodies]
+    _unsent.clear()
+    deadline = asyncio.get_running_loop().time() + BUDGET
+    for session_id, body in queued:
+        left = deadline - asyncio.get_running_loop().time()
+        sent = False
+        if left > 0:
+            with contextlib.suppress(TimeoutError):
+                sent = await asyncio.wait_for(_send(client, session_id, body, retry=False), left)
+        if not sent:
+            _logger.warning(
+                "task event %s dropped: the server did not take it",
+                body["event"],
+                extra={"session_id": session_id},
+            )
 
 
 def on_result(ctx: HandlerCtx, output: str) -> None:
-    """A feature tool ran: report its task event and note a turn ending."""
+    """A feature tool ran: report its task event and note it on the watched turn."""
     session_id = ctx.conversation_id
     if not session_id:
         return
+    live = _turns.get(session_id)
     tool = ctx.tool_name
     data = _ok(output) if tool in (DECK, *TURN_ENDINGS) else None
     if data is None:
         return
-    if tool in TURN_ENDINGS:
-        _watching.pop(session_id, None)
     event = _event(tool, data)
+    turn = live.turn if live is not None else None
+    if turn is not None:
+        if tool == ASK:
+            turn.asked = True
+        elif tool == SAVE and event is not None:
+            turn.saved = True
+        elif tool == HELPER and event is not None:
+            turn.helper_started = True
     if event is not None and ctx.server_client is not None:
+        if live is not None:
+            live.reported = True
         _post(ctx.server_client, session_id, event)
 
 
-def turn_ended(session_id: str) -> None:
-    """Log a stall when this turn began on an active task and ended without acting on it."""
-    task_id = _watching.pop(session_id, None)
-    if task_id is None:
+def tool_denied(ctx: HandlerCtx, _tool_name: str, reason: str) -> None:
+    """A TOOL_CALL policy denied a call (``Feature.on_tool_denied``): a step-limit refusal is
+    noted on the Conversation's turn, so ending it without a Helper is a stall."""
+    live = _turns.get(ctx.conversation_id or "")
+    if live is not None and STEP_LIMIT_REFUSAL in reason:
+        live.turn.refused = True
+
+
+def turn_ended(conversation_id: str) -> None:
+    """A turn ended (``Feature.on_turn_end``): report a Conversation turn's end, and count it
+    when it is a stall."""
+    global STALLS
+    live = _turns.pop(conversation_id, None)
+    _watching.pop(conversation_id, None)
+    if live is None:
         return
-    STALLS.count += 1
-    _logger.info("stall for %s on task %s", session_id, task_id, extra={"session_id": session_id})
+    if live.client is not None and (live.task_id or live.reported):
+        _post(live.client, conversation_id, {"event": "turn_end"})
+    turn = live.turn
+    if not is_stall(turn):
+        return
+    STALLS += 1
+    _logger.info(
+        "stall for %s on task %s",
+        conversation_id,
+        turn.task_id,
+        extra={"session_id": conversation_id},
+    )

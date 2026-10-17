@@ -70,6 +70,9 @@ _logger = logging.getLogger(__name__)
 # shares the proxy bearer, even after RUNNER_INITIAL_AUTH_TOKEN has been
 # popped from the environment.
 _runner_auth_factory: Callable[[], str | None] | None = None
+#: Set with the singleton, so a runner whose startup found no credential (a local server that
+#: mints none) answers ``None`` from then on instead of asking the server again on every call.
+_runner_auth_resolved = False
 
 
 def _set_runner_auth_factory(factory: Callable[[], str | None] | None) -> None:
@@ -83,8 +86,9 @@ def _set_runner_auth_factory(factory: Callable[[], str | None] | None) -> None:
 
     :param factory: The auth token factory to install as the singleton.
     """
-    global _runner_auth_factory
+    global _runner_auth_factory, _runner_auth_resolved
     _runner_auth_factory = factory
+    _runner_auth_resolved = True
 
 
 def _server_url_from_env() -> str:
@@ -593,7 +597,7 @@ def _make_auth_token_factory(
     # server_url explicitly but still want the shared factory.
     _runner_url = os.environ.get(_RUNNER_SERVER_URL_ENV_VAR)
     if (
-        _runner_auth_factory is not None
+        (_runner_auth_factory is not None or _runner_auth_resolved)
         and _allow_initial_token
         and _allow_delegated_mint
         and _proxy_bearer is None
@@ -627,12 +631,16 @@ def _make_auth_token_factory(
     # credentials stay out of the runner and credential discovery is skipped.
     delegated_auth = os.environ.get(RUNNER_DELEGATED_AUTH_ENV_VAR, "").strip() == "1"
     binding_token = os.environ.get(RUNNER_TUNNEL_BINDING_TOKEN_ENV_VAR, "").strip()
+    # The managed fallback below mints against the same binding token: once the server
+    # declined it here, asking again is a second failing call that cannot succeed.
+    mint_declined = False
     if _allow_delegated_mint and delegated_auth and resolved_server_url and binding_token:
         delegated_factory = _make_managed_mint_factory(
             resolved_server_url, binding_token, proxy_bearer=_proxy_bearer
         )
         if delegated_factory is not None:
             return delegated_factory
+        mint_declined = True
 
     def _factory() -> str | None:
         """Return a fresh auth token.
@@ -688,7 +696,7 @@ def _make_auth_token_factory(
     # tunnel bearer) with a short-lived owner JWT the server mints against
     # that binding token — refreshed on demand, so there is no static
     # credential at rest and no fixed session-length cap.
-    if _allow_delegated_mint and resolved_server_url:
+    if _allow_delegated_mint and resolved_server_url and not mint_declined:
         try:
             fallback_binding_token = _runner_tunnel_binding_token_from_env()
         except RuntimeError:

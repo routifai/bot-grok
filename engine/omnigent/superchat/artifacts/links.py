@@ -68,6 +68,7 @@ def is_person_message(item: Any) -> bool:
         getattr(item, "type", None) == "message"
         and isinstance(data, MessageData)
         and data.role == "user"
+        and not data.is_meta
         and not is_system_notice(data)
     )
 

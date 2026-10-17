@@ -9,7 +9,9 @@ import logging
 import shutil
 import socket
 import subprocess
+import tempfile
 import threading
+from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -60,9 +62,21 @@ def _patch_tmux(monkeypatch: pytest.MonkeyPatch, run) -> None:
     monkeypatch.setattr(terminal_mod, "_TMUX_PROBE_START_FAILURE_BACKOFF_SECONDS", 0.001)
 
 
+@pytest.fixture
+def short_tmp_path() -> Iterator[Path]:
+    """A private dir short enough for an ``AF_UNIX`` socket (macOS ``tmp_path`` is not)."""
+    root = Path(tempfile.mkdtemp(prefix="tp-", dir="/tmp"))
+    private = root / "p"
+    private.mkdir()
+    try:
+        yield private
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 @pytest.mark.parametrize("threaded", [False, True], ids=["async", "threaded"])
 async def test_unavailable_error_retains_both_probes_before_cleanup(
-    tmp_path: Path,
+    short_tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
     threaded: bool,
@@ -70,8 +84,8 @@ async def test_unavailable_error_retains_both_probes_before_cleanup(
     instance = TerminalInstance(
         name="runtime",
         session_key="main",
-        socket_path=tmp_path / "tmux.sock",
-        private_dir=tmp_path,
+        socket_path=short_tmp_path / "tmux.sock",
+        private_dir=short_tmp_path,
         running=True,
     )
     instance._remember_pane_snapshot("private terminal output")
@@ -89,12 +103,12 @@ async def test_unavailable_error_retains_both_probes_before_cleanup(
         )
 
     _patch_tmux(monkeypatch, run)
-    log_path = tmp_path.parent / f"{tmp_path.name}.log"
+    log_path = short_tmp_path.parent / f"{short_tmp_path.name}.log"
     log_at_cleanup: list[str] = []
 
     def cleanup():
         log_at_cleanup.append(log_path.read_text())
-        shutil.rmtree(tmp_path)
+        shutil.rmtree(short_tmp_path)
 
     # Keep a real socket entry so the error must snapshot it before on_exit removes it.
     with socket.socket(socket.AF_UNIX) as sock:
@@ -109,7 +123,7 @@ async def test_unavailable_error_retains_both_probes_before_cleanup(
             terminal_mod.logger.removeHandler(handler)
             handler.close()
 
-    assert not tmp_path.exists()
+    assert not short_tmp_path.exists()
     assert not instance.running
     assert commands == ["capture-pane", "has-session"] * 3
     records = [
@@ -149,7 +163,7 @@ async def test_unavailable_error_retains_both_probes_before_cleanup(
     assert json.loads(row["attributes"]["probe_failures_json"]) == failures
     local_bundle = local_line.split("diagnostics=", 1)[1]
     for output in (local_bundle, str(row["attributes"])):
-        assert str(tmp_path) not in output
+        assert str(short_tmp_path) not in output
         assert "private terminal output" not in output
 
 

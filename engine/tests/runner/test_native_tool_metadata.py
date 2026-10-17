@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-import dataclasses
 import os
 from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
 
-from omnigent.harnesses.datamodel import OSEnvSpec, TerminalEnvSpec
+from omnigent.harnesses.datamodel import OSEnvSandboxSpec, OSEnvSpec, TerminalEnvSpec
 from omnigent.runner import create_runner_app, tool_dispatch
 from omnigent.runner.app import ResolvedSpec
 from omnigent.spec.types import AgentSpec, LocalToolInfo, ToolRuntime
@@ -18,15 +17,23 @@ from omnigent.tools import ToolManager
 from tests.runner.conftest import _FakeProcessManager, _runner_client, _ScriptedHarnessClient, _sse
 from tests.runner.helpers import NullServerClient
 
+# Sandbox ``none``: the default ``linux_bwrap`` only builds on Linux, and this
+# test is about metadata, not the jail.
+_NO_SANDBOX = OSEnvSandboxSpec(type="none")
+
 
 @pytest.mark.posix_only
-@pytest.mark.parametrize("os_env", [None, OSEnvSpec(), OSEnvSpec(cwd=".")])
+@pytest.mark.parametrize(
+    "os_env", [None, OSEnvSpec(sandbox=_NO_SANDBOX), OSEnvSpec(cwd=".", sandbox=_NO_SANDBOX)]
+)
 @pytest.mark.parametrize("enabled", [False, True])
 def test_metadata_survives_deleted_cwd(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, os_env: OSEnvSpec | None, enabled: bool
 ) -> None:
-    """Unlinked cwd preserves request/relay schemas, all grants, and optional gates."""
+    """Unlinked cwd preserves request schemas, all grants, and optional gates."""
     monkeypatch.chdir(tmp_path)
+    # Host skills under the real home would vanish with the cwd and break the comparison.
+    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr("omnigent.runtime.get_terminal_registry", Mock)
     spec = AgentSpec(
         spec_version=1,
@@ -37,10 +44,6 @@ def test_metadata_survives_deleted_cwd(
         terminals={"shell": TerminalEnvSpec()} if enabled else None,
         local_tools=[LocalToolInfo(name="local_probe", path="tools/probe.py", language="python")],
     )
-    schemas_without_env = tool_dispatch.build_native_relay_tool_schemas(
-        dataclasses.replace(spec, os_env=None)
-    )
-    fallback_schemas = tool_dispatch.build_native_relay_tool_schemas(None)
     manager = ToolManager(spec)
     try:
         registered = frozenset(manager.get_tool_names()) | {"local_probe"}
@@ -58,31 +61,21 @@ def test_metadata_survives_deleted_cwd(
             Path.cwd()
 
         assert ToolManager(spec, os_env_schema_only=True).get_tool_schemas() == request_schemas
-        schemas = tool_dispatch.build_native_relay_tool_schemas(spec)
-        assert schemas == schemas_without_env
-        assert tool_dispatch.build_native_relay_tool_schemas(None) == fallback_schemas
-        schema_names = [schema["name"] for schema in schemas]
-        assert len(schema_names) == len(set(schema_names))
-        assert set(schema_names) >= tool_dispatch._OS_ENV_TOOLS
-        for tool_name in ("sys_call_async", "sys_session_create", "sys_terminal_launch"):
-            assert (tool_name in schema_names) is enabled
-
-        for harness in ("claude-sdk", "claude-native", "codex-native", "pi-native"):
-            native = harness.endswith("-native")
+        for harness in ("claude-sdk", "pi"):
             granted = tool_dispatch._granted_tool_names(spec, harness)
-            assert granted == registered | (tool_dispatch._OS_ENV_TOOLS if native else set())
+            assert granted == registered
             for tool_name in ("sys_call_async", "sys_timer_set", "sys_session_create"):
                 assert (tool_name in granted) is enabled
             for tool_name in tool_dispatch._OS_ENV_TOOLS:
                 reason = tool_dispatch._ungranted_tool_reason(tool_name, spec, harness)
-                assert (reason is None) is (os_env is not None or native)
+                assert (reason is None) is (os_env is not None)
             assert tool_dispatch._ungranted_tool_reason("unknown_tool", spec, harness) is not None
     finally:
         os.fchdir(original_cwd)
         os.close(original_cwd)
 
 
-@pytest.mark.parametrize("harness", ["claude-sdk", "claude-native"])
+@pytest.mark.parametrize("harness", ["claude-sdk", "pi"])
 def test_metadata_probe_errors_still_fail_closed(harness: str) -> None:
     """OS schema registration still rejects local-tool collisions before granting access."""
     spec = AgentSpec(

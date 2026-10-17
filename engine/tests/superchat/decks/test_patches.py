@@ -16,6 +16,7 @@ from omnigent.superchat.artifacts.patches import (
     SetText,
     SetTheme,
     apply_patches,
+    edit_note,
 )
 from omnigent.superchat.decks import kit
 
@@ -416,3 +417,47 @@ def test_every_released_block_text_is_in_the_shipped_table() -> None:
             assert head + text["css"] in old_block
             new, _ = run([SetTheme(kind="set-theme", theme="nord")], old_block)
             assert kit.deck_theme_id(new) == "nord"
+
+
+@pytest.mark.parametrize(
+    ("patch", "element_id", "what"),
+    [
+        (SetStyle(kind="set-style", id="title", style={"font-size": "80px"}), "title",
+         "You made the title larger"),
+        (SetStyle(kind="set-style", id="title", style={"font-size": "40px"}), "title",
+         "You made the title smaller"),
+        (SetStyle(kind="set-style", id="title", style={"color": "#c8553d"}), "title",
+         "You changed the colour of the title"),
+        (SetStyle(kind="set-style", id="body", style={"left": "40px", "top": "8px"}), "body",
+         "You moved the body"),
+        (SetStyle(kind="set-style", id="title", style={"font-weight": "700"}), "title",
+         "You changed the title"),
+        (SetText(kind="set-text", id="lines", text="three"), "lines",
+         "You changed the text of the lines"),
+        (RemoveElement(kind="remove-element", id="pic"), "pic", "You removed the pic"),
+        (DuplicateElement(kind="duplicate-element", id="s2"), "s2", "You duplicated slide 2"),
+        (SetAttributes(kind="set-attributes", id="link", attributes={"href": "#x"}), "link",
+         "You changed the link"),
+    ],
+)  # fmt: skip
+def test_a_hand_edit_reads_in_plain_words_from_its_own_summary(patch, element_id, what) -> None:
+    _, summary = run([patch])
+    note = edit_note(summary)
+    assert (note.element_id, note.what) == (element_id, what)
+    assert "px" not in note.what and "#" not in note.what
+
+
+def test_the_element_is_named_from_its_id() -> None:
+    assert edit_note("slide 1 cover-title color red→blue").element == "the title"
+    assert edit_note("h3-arches: removed").element == "the heading"
+    assert edit_note("slide 2 (cover): removed").element == "slide 2"
+
+
+def test_edits_that_are_not_about_one_element() -> None:
+    both = edit_note("slide 1 title color red→blue; slide 1 sub color red→blue")
+    assert (both.element_id, both.what) == (None, "You made several changes")
+    same = edit_note("slide 1 title color red→blue; slide 1 title font-size 9px→12px")
+    assert (same.element_id, same.what) == ("title", "You changed the title")
+    theme = edit_note("switched the theme to Pitch (was Ocean)")
+    assert (theme.element_id, theme.what) == (None, "You switched the theme to Pitch (was Ocean)")
+    assert edit_note(None).what == "You edited this file"

@@ -15,6 +15,7 @@ through it, even to a collaborator with EDIT on the session itself.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Query, Request
@@ -74,10 +75,15 @@ def create_session_memory_router(
             await require_access(
                 user_id, session_id, required_level, permission_store, conversation_store
             )
-        conversation = conversation_store.get_conversation(session_id)
+        # Every store and memory call here is sync (DB reads, embedding round trips, an index
+        # write): off the event loop (ADR 0026).
+        conversation = await asyncio.to_thread(conversation_store.get_conversation, session_id)
         if conversation is None:
             raise session_not_found()
-        owner = conversation_store.get_session_owner(session_id) or RESERVED_USER_LOCAL
+        owner = (
+            await asyncio.to_thread(conversation_store.get_session_owner, session_id)
+            or RESERVED_USER_LOCAL
+        )
         if permission_store is not None and user_id != owner:
             raise OmnigentError(
                 f"{user_id!r} is not the owner of session {session_id!r}'s memory",
@@ -99,7 +105,8 @@ def create_session_memory_router(
         from omnigent.entities import MemoryEvidenceLink
 
         evidence = [MemoryEvidenceLink(session_id=session_id, item_id="")]
-        return memory_service.remember(
+        return await asyncio.to_thread(
+            memory_service.remember,
             owner,
             body.text,
             kind=body.kind,
@@ -124,7 +131,9 @@ def create_session_memory_router(
         owner = await _resolve_user(request, session_id)
         from omnigent.superchat.memory import memory_profile_for
 
-        return {"profile": memory_profile_for(owner, service=memory_service)}
+        return {
+            "profile": await asyncio.to_thread(memory_profile_for, owner, service=memory_service)
+        }
 
     @router.get("/sessions/{session_id}/memory/search")
     async def search(
@@ -136,7 +145,9 @@ def create_session_memory_router(
     ) -> dict[str, Any]:
         """Hybrid search over the session owner's active claims."""
         owner = await _resolve_user(request, session_id)
-        results = memory_service.search(owner, query, kind=kind, limit=limit)
+        results = await asyncio.to_thread(
+            memory_service.search, owner, query, kind=kind, limit=limit
+        )
         return {"results": results}
 
     @router.get("/sessions/{session_id}/memory/claims")
@@ -148,7 +159,7 @@ def create_session_memory_router(
         """The session owner's active claims (all kinds, or the given ones), newest first."""
         owner = await _resolve_user(request, session_id)
         wanted = [k.strip() for k in kinds.split(",") if k.strip()] if kinds else None
-        return {"claims": memory_service.list_claims(owner, kinds=wanted)}
+        return {"claims": await asyncio.to_thread(memory_service.list_claims, owner, kinds=wanted)}
 
     @router.patch("/sessions/{session_id}/memory/claims/{claim_id}")
     async def edit_claim(
@@ -159,7 +170,7 @@ def create_session_memory_router(
     ) -> dict[str, Any]:
         """The person's text edit; the claim becomes person-authored (upkeep never overwrites)."""
         owner = await _resolve_user(request, session_id, required_level=LEVEL_EDIT)
-        claim = memory_service.edit(owner, claim_id, body.text)
+        claim = await asyncio.to_thread(memory_service.edit, owner, claim_id, body.text)
         if claim is None:
             raise OmnigentError("Claim not found", code=ErrorCode.NOT_FOUND)
         return claim
@@ -172,7 +183,7 @@ def create_session_memory_router(
     ) -> dict[str, Any]:
         """Fetch one claim by id, scoped to the session owner."""
         owner = await _resolve_user(request, session_id)
-        claim = memory_service.get(owner, claim_id)
+        claim = await asyncio.to_thread(memory_service.get, owner, claim_id)
         if claim is None:
             raise OmnigentError("Claim not found", code=ErrorCode.NOT_FOUND)
         return claim
@@ -185,7 +196,7 @@ def create_session_memory_router(
     ) -> dict[str, Any]:
         """Evidence and supersession chain for one claim."""
         owner = await _resolve_user(request, session_id)
-        explanation = memory_service.explain(owner, claim_id)
+        explanation = await asyncio.to_thread(memory_service.explain, owner, claim_id)
         if explanation is None:
             raise OmnigentError("Claim not found", code=ErrorCode.NOT_FOUND)
         return explanation
@@ -200,8 +211,12 @@ def create_session_memory_router(
         owner = await _resolve_user(request, session_id, required_level=LEVEL_EDIT)
         if body.claim_id is None and not body.query:
             raise OmnigentError("forget requires claim_id or query", code=ErrorCode.INVALID_INPUT)
-        return memory_service.forget(
-            owner, claim_id=body.claim_id, query=body.query, confirm=body.confirm
+        return await asyncio.to_thread(
+            memory_service.forget,
+            owner,
+            claim_id=body.claim_id,
+            query=body.query,
+            confirm=body.confirm,
         )
 
     return router

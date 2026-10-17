@@ -31,11 +31,8 @@ prompt: |
   that it was gated by the session risk policy.
 
 executor:
-  harness: openai-agents
-  model: databricks-gpt-5-4-mini
-  auth:
-    type: databricks
-    profile: oss
+  harness: claude-sdk
+  model: sonnet
 
 tools:
   # Point this at your Google MCP server. The risk policy matches tools by

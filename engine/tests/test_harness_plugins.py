@@ -191,24 +191,3 @@ def test_community_harness_readiness_uses_install_metadata(
 
     monkeypatch.setattr(readiness, "resolve_cli_binary", lambda binary: f"/usr/bin/{binary}")
     assert readiness.harness_is_configured("foo") is True
-
-
-def test_community_harness_can_register_background_title_generator(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def _contribution() -> hp.HarnessContribution:
-        return hp.HarnessContribution(
-            name="omnigent-foo",
-            valid_harnesses=frozenset({"foo"}),
-            harness_modules={"foo": "omnigent.community.harness.foo.inner.foo_harness"},
-            background_title_generators={
-                "foo": hp.BackgroundTitleGeneratorSpec(
-                    "omnigent.community.harness.foo.background_titles:generate"
-                )
-            },
-        )
-
-    _install_entry_points(monkeypatch, _EntryPoint("foo", _contribution))
-
-    generator = hp.background_title_generators()["foo"]
-    assert generator.generator == ("omnigent.community.harness.foo.background_titles:generate")

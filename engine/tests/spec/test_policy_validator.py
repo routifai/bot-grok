@@ -176,7 +176,7 @@ guardrails:
     "reserved_name",
     [
         # A framework-owned builtin tool name.
-        "web_search",
+        "session_history",
         # Reserved by the model catalog: intercepted by name in the
         # runner's tool dispatch, so a user tool shadowing it would never
         # be invoked (its calls would silently route to the builtin).

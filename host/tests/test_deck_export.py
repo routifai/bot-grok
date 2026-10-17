@@ -10,7 +10,12 @@ slide is never one picture. Skipped when no Chromium is installed.
 import importlib.machinery
 import importlib.util
 import re
+import signal
+import socket
+import subprocess
+import sys
 import tempfile
+import time
 import unittest
 import zipfile
 from pathlib import Path
@@ -67,8 +72,8 @@ class DeckExportTest(unittest.TestCase):
         cls.dir = Path(cls.tmp.name)
         cls.pptx = cls.dir / "basic.pptx"
         cls.pdf = cls.dir / "basic.pdf"
-        cls.pptx_info = helper.run_export("pptx", FIXTURE, cls.pptx)
-        cls.pdf_info = helper.run_export("pdf", FIXTURE, cls.pdf)
+        cls.pptx_info = helper.run_export(helper.Chromium(), "pptx", FIXTURE, cls.pptx)
+        cls.pdf_info = helper.run_export(helper.Chromium(), "pdf", FIXTURE, cls.pdf)
 
     @classmethod
     def tearDownClass(cls):
@@ -158,7 +163,7 @@ class DeckExportTest(unittest.TestCase):
         src = self.dir / "rich.deck.html"
         src.write_text(html)
         out = self.dir / "rich.pptx"
-        helper.run_export("pptx", src, out)
+        helper.run_export(helper.Chromium(), "pptx", src, out)
         box = next(s for s in slide_shapes(out, 3) if "move" in s["text"])
         self.assertEqual(box["text"], ["Approve the ", "move", " to ", "weekly", " releases today."])
         self.assertEqual(box["runs"], 5)
@@ -168,8 +173,66 @@ class DeckExportTest(unittest.TestCase):
         src.write_text("<!doctype html><title>x</title><h1>Not a deck</h1>")
         for fmt in ("pptx", "pdf"):
             with self.assertRaises(helper.ExportError) as ctx:
-                helper.run_export(fmt, src, self.dir / f"page.{fmt}")
+                helper.run_export(helper.Chromium(), fmt, src, self.dir / f"page.{fmt}")
             self.assertEqual(ctx.exception.code, "NO_SLIDES")
+
+
+@unittest.skipUnless(have_chromium(), "Chromium is not installed")
+class WarmBrowserTest(unittest.TestCase):
+    """A real warm browser: a job runs in it, and a killed job leaves no context behind."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            self.port = probe.getsockname()[1]
+        self.proc = helper.launch_chromium(Path(self.tmp.name) / "profile", self.port)
+        self.addCleanup(helper.stop_chromium, self.proc)
+        self.cdp = helper.load_cdp_module()
+        deadline = time.monotonic() + 30
+        while True:
+            try:
+                self.ws = self.cdp.discover_ws_url(self.port)
+                break
+            except Exception:
+                if time.monotonic() > deadline:
+                    raise
+                time.sleep(0.2)
+
+    def contexts(self):
+        client = self.cdp.CdpClient(self.ws)
+        client.connect()
+        try:
+            return client.call("Target.getBrowserContexts", {})["browserContextIds"]
+        finally:
+            client.close()
+
+    def test_a_lint_runs_in_the_warm_browser(self):
+        with patch.object(helper, "WARM_PORT", self.port):
+            result = helper.run_export(helper.Chromium(), "lint", FIXTURE, None)
+        self.assertTrue(result["ok"] and result["warm"])
+        self.assertEqual(result["slides"], 3)
+        self.assertEqual(self.contexts(), [])
+
+    def test_a_job_killed_mid_way_leaves_no_context_behind(self):
+        script = (
+            "import importlib.machinery as m, importlib.util as u, sys, time\n"
+            f"l = m.SourceFileLoader('h', {str(HERE.parent / 'bin' / 'superchat-deck-export')!r})\n"
+            "h = u.module_from_spec(u.spec_from_loader('h', l)); l.exec_module(h)\n"
+            f"h.WARM_PORT = {self.port}\n"
+            "b = h.Chromium().__enter__(); print('attached', b.warm, flush=True); time.sleep(60)\n"
+        )
+        job = subprocess.Popen([sys.executable, "-c", script], stdout=subprocess.PIPE, text=True)
+        self.addCleanup(job.kill)
+        self.assertEqual(job.stdout.readline().strip(), "attached True")
+        self.assertEqual(len(self.contexts()), 1)
+        job.send_signal(signal.SIGKILL)
+        job.wait()
+        deadline = time.monotonic() + 10
+        while self.contexts() and time.monotonic() < deadline:
+            time.sleep(0.2)
+        self.assertEqual(self.contexts(), [])
 
 
 class GoogleFontStylesheetTest(unittest.TestCase):

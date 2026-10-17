@@ -762,3 +762,141 @@ def apply_patches(
     if len(summary) > MAX_SUMMARY_CHARS:
         summary = summary[: MAX_SUMMARY_CHARS - 1].rstrip() + "…"
     return out, summary
+
+
+# --------------------------------------------------------------------------------------------
+# A hand edit in plain words (the studio thread, ADR 0024)
+# --------------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class EditNote:
+    """One hand edit as the studio thread shows it, built by code from a version's summary.
+
+    :param element_id: The edited element's ``data-superchat-id``; ``None`` when the edit is not
+        about one element (a theme switch, an undo, a document edit, several elements).
+    :param element: The element in words ("the title", "slide 2"); ``""`` without one.
+    :param what: The sentence a person reads ("You made the title larger"), never the CSS.
+    """
+
+    element_id: str | None
+    element: str
+    what: str
+
+
+#: One note of :func:`apply_patches`' summary: where (``slide 2 title``, ``slide 2 (cover)``,
+#: ``title``) and what (``font-size 44px→52px``, ``"A" → "B"``, ``: removed``).
+_NOTE_RE = re.compile(
+    r"^(?:slide (?P<slide>\d+) )?(?:\((?P<own>[^()\s]+)\)|(?P<id>[^\s:]+))(?P<rest>.*)$"
+)
+_STYLE_CHANGE_RE = re.compile(r"(?P<prop>[a-z-]+) (?P<before>[^→]*)→(?P<after>[^,]*)(?:, |$)")
+_NUMBER_RE = re.compile(r"-?\d+(?:\.\d+)?")
+_SIZE_PROPS = frozenset({"font-size", "width", "height", "scale", "zoom"})
+_COLOUR_PROPS = frozenset(
+    {"color", "background", "background-color", "border-color", "fill", "stroke"}
+)
+_POSITION_PROPS = frozenset(
+    {"left", "top", "right", "bottom", "inset", "transform", "translate"}
+    | {"margin", "margin-top", "margin-left", "margin-right", "margin-bottom"}
+)
+#: Words in an element id that name what it is, the last one winning (``cover-title``).
+_ELEMENT_WORDS = frozenset(
+    {"title", "subtitle", "heading", "headline", "kicker", "lead", "chart", "image", "logo"}
+    | {"photo", "button", "card", "table", "caption", "quote", "footer", "header", "list"}
+    | {"note", "label", "link", "icon", "stat", "metric", "number", "legend", "bar"}
+)
+#: The element's tag (the first word of a name ``name_elements`` gave it) in words.
+_TAG_WORDS = {
+    "h1": "title",
+    "h2": "title",
+    "h3": "heading",
+    "h4": "heading",
+    "h5": "heading",
+    "h6": "heading",
+    "p": "paragraph",
+    "img": "image",
+    "a": "link",
+    "li": "list item",
+    "ul": "list",
+    "ol": "list",
+    "button": "button",
+    "table": "table",
+    "figure": "figure",
+    "blockquote": "quote",
+}
+
+
+def _element_words(element_id: str) -> str:
+    words = [w for w in re.split(r"[-_.:]+", element_id.lower()) if w]
+    named = [w for w in words if w in _ELEMENT_WORDS]
+    if named:
+        return f"the {named[-1]}"
+    if words and words[0] in _TAG_WORDS:
+        return f"the {_TAG_WORDS[words[0]]}"
+    return "the " + " ".join(w for w in words if not w.isdigit()) if words else "the element"
+
+
+def _style_what(rest: str, element: str) -> str:
+    changes = list(_STYLE_CHANGE_RE.finditer(rest.strip()))
+    props = {m["prop"] for m in changes}
+    if not props:
+        return f"You changed {element}"
+    if props <= _SIZE_PROPS:
+        before = sum(float(n) for m in changes for n in _NUMBER_RE.findall(m["before"])[:1])
+        after = sum(float(n) for m in changes for n in _NUMBER_RE.findall(m["after"])[:1])
+        if after > before:
+            return f"You made {element} larger"
+        if after < before:
+            return f"You made {element} smaller"
+        return f"You resized {element}"
+    if props <= _COLOUR_PROPS:
+        return f"You changed the colour of {element}"
+    if props <= _POSITION_PROPS:
+        return f"You moved {element}"
+    return f"You changed {element}"
+
+
+def _note_of(note: str) -> tuple[str, str, str] | None:
+    """``(element_id, element, what)`` for one summary note about an element, else ``None``."""
+    match = _NOTE_RE.match(note)
+    if not match:
+        return None
+    rest = match["rest"]
+    if match["own"] is not None:  # the slide itself
+        if match["slide"] is None:
+            return None
+        element_id, element = match["own"], f"slide {match['slide']}"
+    else:
+        element_id = match["id"]
+        element = _element_words(element_id)
+    if rest == ": removed":
+        return element_id, element, f"You removed {element}"
+    if rest == ": duplicated":
+        return element_id, element, f"You duplicated {element}"
+    if rest.startswith(' "') and '" → "' in rest:
+        return element_id, element, f"You changed the text of {element}"
+    if rest.startswith((" href ", " alt ")):
+        return element_id, element, f"You changed {element}"
+    if _STYLE_CHANGE_RE.search(rest):
+        return element_id, element, _style_what(rest, element)
+    return None
+
+
+def edit_note(summary: str | None) -> EditNote:
+    """A hand edit's :class:`EditNote` from the summary :func:`apply_patches` wrote for it.
+
+    The summary is this module's own format (one note per patch, ``"; "`` between them), so the
+    reading lives beside the writing. An edit to several elements, or one that is not about an
+    element (a theme switch, an undo, a document's own summary), reads "You " + its summary.
+    """
+    text = " ".join((summary or "").split())
+    notes = [_note_of(part) for part in text.split("; ")] if text else []
+    found = [note for note in notes if note is not None]
+    if found and len(found) == len(notes) and len({n[0] for n in found}) == 1:
+        element_id, element, what = found[0]
+        if len(found) > 1:
+            what = f"You changed {element}"
+        return EditNote(element_id, element, what)
+    if found:
+        return EditNote(None, "", "You made several changes")
+    return EditNote(None, "", f"You {text}" if text else "You edited this file")

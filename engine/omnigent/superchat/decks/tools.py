@@ -13,9 +13,9 @@ from omnigent.tools.base import Tool
 DECK_TOOL_NAMES = ("deck_export", "deck_new", "deck_check", "deck_themes", "deck_theme_set")
 DECK_AUTHORING_TOOL_NAMES = ("deck_new", "deck_check", "deck_themes", "deck_theme_set")
 DECK_EXPORT_FORMATS = ("pptx", "pdf")
-# Where a new deck's look came from (``deck_new``'s ``look_from``), checked by ``decks.look``.
-# ``ask`` (or a claim the records do not back) builds in a look the engine chooses for the topic.
-DECK_LOOK_SOURCES = ("named", "picked", "you_choose", "background", "ask")
+#: Where a new deck's template came from (``deck_new``'s ``look_from``), recorded on its task as
+#: given (ADR 0026); never a reason to change the template. The one list: ``decks.look`` reads it.
+LOOK_SOURCES = ("named", "picked", "you_choose", "background")
 
 
 class DeckExportTool(Tool):
@@ -104,18 +104,23 @@ class DeckNewTool(Tool):
                                 "e.g. your_files/q3-review.deck.html."
                             ),
                         },
-                        "template": {"type": "string", "enum": list(kit.templates())},
+                        "template": {
+                            "type": "string",
+                            "enum": list(kit.templates()),
+                            "description": (
+                                "The theme to build in, when they named one or a mood. Omit it "
+                                "to have the engine choose one for the topic and their taste."
+                            ),
+                        },
                         "look_from": {
                             "type": "string",
-                            "enum": list(DECK_LOOK_SOURCES),
+                            "enum": list(LOOK_SOURCES),
                             "description": (
-                                "Where this look came from: named (their latest message "
-                                "names the theme or a mood), picked (their answer to a look "
-                                "card), you_choose (they said you choose / just do it), "
-                                "background (scheduled work, no person), ask (nothing was "
-                                "said). For ask, or a claim their words do not back, the "
-                                "engine chooses the look for the topic and their taste and the "
-                                "file card offers 'Change look'."
+                                "Where the template came from: named (their message names the "
+                                "theme or a mood), picked (their answer to a look card), "
+                                "you_choose (they said you choose), background (scheduled "
+                                "work). Recorded only. The file card's Theme control changes "
+                                "the look later."
                             ),
                         },
                         "title": {"type": "string", "description": "The deck's title."},
@@ -129,7 +134,7 @@ class DeckNewTool(Tool):
                             ),
                         },
                     },
-                    "required": ["path", "template", "title"],
+                    "required": ["path", "title"],
                     "additionalProperties": False,
                 },
             },
@@ -218,7 +223,8 @@ class DeckThemeSetTool(Tool):
         """:returns: Human-readable description of the tool."""
         return (
             "Switch a deck file to another theme: swaps its colours, type, theme CSS and embedded "
-            "fonts and leaves every slide's content alone, then re-checks the layout. Use it "
+            "fonts and leaves every slide's content alone. It does not check the layout; run "
+            "deck_check when you want one. Use it "
             "when the person asks for a different look; the deck keeps its file, so save it "
             "again with artifact_save. Custom CSS and token overrides the deck has outside the "
             "theme markers (written after the closing marker) are kept. If something was edited "

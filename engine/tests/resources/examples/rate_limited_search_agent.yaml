@@ -19,7 +19,8 @@ prompt: |
 ask_timeout: 30
 
 executor:
-  model: databricks-claude-sonnet-4-6
+  harness: claude-sdk
+  model: sonnet
 
 tools:
   # ``search_web`` rather than ``web_search`` so the local-tool

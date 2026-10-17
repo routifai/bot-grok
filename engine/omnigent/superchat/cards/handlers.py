@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import uuid
 from typing import Any
 
 from omnigent.superchat.cards.tools import build_card, build_clarification, build_follow_ups
 from omnigent.superchat.feature import HandlerCtx
+from omnigent.superchat.tasks.runtime import current_task
 
 
 async def handle_card_tool(_ctx: HandlerCtx, args: dict[str, Any]) -> str:
@@ -20,9 +22,11 @@ async def handle_card_tool(_ctx: HandlerCtx, args: dict[str, Any]) -> str:
     return json.dumps(build_card(args), ensure_ascii=False)
 
 
-async def handle_clarification_tool(_ctx: HandlerCtx, args: dict[str, Any]) -> str:
-    """:returns: The ``ask`` card for an ``ask_clarification`` call, as a JSON string."""
-    return json.dumps(build_clarification(args), ensure_ascii=False)
+async def handle_clarification_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:
+    """:returns: The ``ask`` card for an ``ask_clarification`` call, as a JSON string, naming
+    the task the Conversation's turn works on."""
+    card = build_clarification(args, current_task(ctx.conversation_id), f"ask-{uuid.uuid4().hex}")
+    return json.dumps(card, ensure_ascii=False)
 
 
 async def handle_follow_ups_tool(_ctx: HandlerCtx, args: dict[str, Any]) -> str:

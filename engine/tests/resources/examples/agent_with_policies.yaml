@@ -31,11 +31,8 @@ prompt: |
   If a tool is blocked, explain that the request was blocked by policy.
 
 executor:
-  harness: openai-agents
-  model: databricks-gpt-5-4-mini
-  auth:
-    type: databricks
-    profile: oss
+  harness: claude-sdk
+  model: sonnet
 
 tools:
   sleep-server:

@@ -134,6 +134,11 @@ class InstallDeps:
     runner_router: Any = None
     objective_store: Any = None
 
+    @property
+    def storage_location(self) -> str | None:
+        """The SQLAlchemy URI of the server's database, where a feature keeps its tables."""
+        return getattr(self.scheduled_task_store, "storage_location", None)
+
 
 class BackgroundJob(Protocol):
     """A feature's background worker: started with the app, stopped on shutdown."""
@@ -157,6 +162,11 @@ TurnPrefix = Callable[["httpx.AsyncClient | None", str], Awaitable[list[str]]]
 #: ``(server_client, conversation_id, texts of the turn's own message) -> blocks`` prepended to the
 #: harness body only, closest to the message (never stored; never raises).
 MessagePrefix = Callable[["httpx.AsyncClient | None", str, Sequence[str]], Awaitable[list[str]]]
+#: ``(conversation_id) -> None``: a runner turn of that session ended (never raises, never awaits).
+TurnEnd = Callable[[str], None]
+#: ``(ctx, tool_name, reason) -> None``: a TOOL_CALL policy denied a call; *reason* is the
+#: policy's text, as the model reads it in the tool's error result.
+ToolDenied = Callable[[HandlerCtx, str, str], None]
 
 
 @dataclass(frozen=True)
@@ -176,6 +186,11 @@ class Feature:
     :param message_prefix: Blocks this feature builds from the turn's own message (the files it
         attaches), prepended for the model only: they sit closest to the message and are never
         part of what is stored as the person's words.
+    :param conversation_only: ``message_prefix`` is for the Conversation itself: a Helper's turn
+        and a file's studio never call it (ADR 0026: no call whose result is thrown away).
+    :param on_turn_end: Told when a runner turn ends (the turn's ``response.completed``).
+    :param on_tool_denied: Told when a TOOL_CALL policy denied a tool call of a session (the
+        call never ran, so ``on_result`` never sees it).
     :param needs_own_turn: Whether a message's text needs a turn of its own to be read whole,
         e.g. because it attaches a file whose ``message_prefix`` context only a turn start
         adds; such a message is never steered into a running turn.
@@ -190,6 +205,9 @@ class Feature:
     on_result: ResultListener | None = None
     turn_prefix: TurnPrefix | None = None
     message_prefix: MessagePrefix | None = None
+    conversation_only: bool = False
+    on_turn_end: TurnEnd | None = None
+    on_tool_denied: ToolDenied | None = None
     needs_own_turn: Callable[[str], bool] | None = None
     install: Callable[[FastAPI, InstallDeps], None] | None = None
     jobs: Callable[[FastAPI], list[BackgroundJob]] | None = None

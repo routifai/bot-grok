@@ -27,6 +27,16 @@ from omnigent.harnesses.executor import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _fresh_gateway_vocabularies():
+    """Each test reads its own gateway listing: the process-wide cache must not carry over."""
+    from omnigent.harnesses import claude_sdk_executor
+
+    claude_sdk_executor._GATEWAY_VOCABULARIES.clear()
+    yield
+    claude_sdk_executor._GATEWAY_VOCABULARIES.clear()
+
+
 def _run(coro):
     loop = asyncio.new_event_loop()
     try:
@@ -579,7 +589,7 @@ class TestConstructor(unittest.TestCase):
             captured: dict[str, str | None] = {}
 
             async def fake_get_or_create_client(
-                sdk, *, session_key, options, model, rebuild_on_instructions_change=False
+                sdk, *, session_key, options, model, rebuild_on_instructions_change=False, **_kw
             ):
                 captured["model"] = model
                 raise RuntimeError("stop after model resolution")
@@ -670,7 +680,7 @@ class TestConstructor(unittest.TestCase):
             captured: dict[str, str | None] = {}
 
             async def fake_get_or_create_client(
-                sdk, *, session_key, options, model, rebuild_on_instructions_change=False
+                sdk, *, session_key, options, model, rebuild_on_instructions_change=False, **_kw
             ):
                 captured["model"] = model
                 raise RuntimeError("stop after model resolution")
@@ -712,7 +722,7 @@ class TestConstructor(unittest.TestCase):
             captured: dict[str, dict[str, str]] = {}
 
             async def fake_get_or_create_client(
-                sdk, *, session_key, options, model, rebuild_on_instructions_change=False
+                sdk, *, session_key, options, model, rebuild_on_instructions_change=False, **_kw
             ):
                 captured["env"] = dict(options.env or {})
                 captured["settings"] = json.loads(options.settings or "{}")
@@ -792,7 +802,7 @@ class TestConstructor(unittest.TestCase):
             captured: dict[str, dict[str, str]] = {}
 
             async def fake_get_or_create_client(
-                sdk, *, session_key, options, model, rebuild_on_instructions_change=False
+                sdk, *, session_key, options, model, rebuild_on_instructions_change=False, **_kw
             ):
                 captured["env"] = dict(options.env or {})
                 raise RuntimeError("stop after env assembly")
@@ -846,7 +856,7 @@ class TestConstructor(unittest.TestCase):
             captured: dict[str, dict[str, str]] = {}
 
             async def fake_get_or_create_client(
-                sdk, *, session_key, options, model, rebuild_on_instructions_change=False
+                sdk, *, session_key, options, model, rebuild_on_instructions_change=False, **_kw
             ):
                 captured["env"] = dict(options.env or {})
                 captured["settings"] = json.loads(options.settings or "{}")
@@ -891,7 +901,7 @@ class TestConstructor(unittest.TestCase):
             captured: dict[str, str | None] = {}
 
             async def fake_get_or_create_client(
-                sdk, *, session_key, options, model, rebuild_on_instructions_change=False
+                sdk, *, session_key, options, model, rebuild_on_instructions_change=False, **_kw
             ):
                 captured["model"] = model
                 raise RuntimeError("stop after model resolution")
@@ -918,7 +928,7 @@ class TestConstructor(unittest.TestCase):
             captured: dict[str, object] = {}
 
             async def fake_get_or_create_client(
-                sdk, *, session_key, options, model, rebuild_on_instructions_change=False
+                sdk, *, session_key, options, model, rebuild_on_instructions_change=False, **_kw
             ):
                 captured["thinking"] = getattr(options, "thinking", None)
                 raise RuntimeError("stop after options built")
@@ -1310,6 +1320,74 @@ class TestGatewayModelVocabulary(unittest.TestCase):
         self.assertEqual(env, {"ANTHROPIC_BASE_URL": "https://api.anthropic.com"})
         self.assertEqual(overrides, {})
         listing.assert_not_called()
+
+    def test_anthropic_endpoint_through_the_gateway_is_never_listed(self):
+        """``api.anthropic.com`` speaks canonical ids: no listing, even on the gateway path."""
+        from omnigent.harnesses.claude_sdk_executor import ClaudeSDKExecutor
+
+        executor = ClaudeSDKExecutor.__new__(ClaudeSDKExecutor)
+        executor._gateway = True
+        env = {"ANTHROPIC_BASE_URL": "https://api.anthropic.com"}
+        listing = Mock()
+        with patch("omnigent.models.model_catalog.listing_for_provider", listing):
+            overrides = _run(executor._apply_gateway_model_vocabulary(env, "printf tok"))
+        self.assertEqual(overrides, {})
+        listing.assert_not_called()
+
+    def test_gateway_listing_is_read_once_per_process(self):
+        """A second executor in the same process reuses the listing instead of re-reading it."""
+        from omnigent.harnesses import claude_sdk_executor as module
+        from omnigent.models.model_catalog import ModelEntry, ModelListing
+
+        listing = ModelListing(
+            source="openai-compatible",
+            verified=True,
+            models=(ModelEntry(id="gw-claude-opus-4-8", family="claude"),),
+            note="",
+        )
+        reader = Mock(return_value=listing)
+        with (
+            patch.dict(module._GATEWAY_VOCABULARIES, clear=True),
+            patch("omnigent.models.model_catalog.listing_for_provider", reader),
+        ):
+            for _ in range(2):
+                executor = module.ClaudeSDKExecutor.__new__(module.ClaudeSDKExecutor)
+                executor._gateway = True
+                env = {"ANTHROPIC_BASE_URL": "https://once.example.com/anthropic"}
+                overrides = _run(executor._apply_gateway_model_vocabulary(env, None))
+                self.assertEqual(overrides, {"claude-opus-4-8": "gw-claude-opus-4-8"})
+        self.assertEqual(reader.call_count, 1)
+
+    def test_slow_gateway_listing_blocks_a_launch_for_at_most_a_second(self):
+        """A listing slower than the cap leaves the launch unpinned; it lands for the next one."""
+        import threading
+        import time as time_module
+
+        from omnigent.harnesses import claude_sdk_executor as module
+
+        release = threading.Event()
+
+        def _slow(_base_url, _auth_command):
+            release.wait(5)
+            return module._EMPTY_GATEWAY_VOCABULARY
+
+        async def _t():
+            started = time_module.monotonic()
+            vocabulary = await module._cached_gateway_vocabulary(
+                "https://slow.example.com/anthropic", None
+            )
+            waited = time_module.monotonic() - started
+            release.set()
+            return vocabulary, waited
+
+        with (
+            patch.dict(module._GATEWAY_VOCABULARIES, clear=True),
+            patch.object(module, "_GATEWAY_LISTING_WAIT_SECONDS", 0.2),
+            patch.object(module, "_gateway_model_vocabulary", _slow),
+        ):
+            vocabulary, waited = _run(_t())
+        self.assertEqual(vocabulary, module._EMPTY_GATEWAY_VOCABULARY)
+        self.assertLess(waited, 1.0)
 
     def test_preset_pins_are_respected_but_rewrites_still_apply(self):
         """A launch config that pins aliases still needs the id rewrites.
@@ -4544,7 +4622,7 @@ class TestToolCallPolicyGate(unittest.TestCase):
             captured = {}
 
             async def fake_get_or_create_client(
-                sdk, *, session_key, options, model, rebuild_on_instructions_change=False
+                sdk, *, session_key, options, model, rebuild_on_instructions_change=False, **_kw
             ):
                 captured["can_use_tool"] = options.can_use_tool
                 raise RuntimeError("stop after options build")
@@ -4574,7 +4652,7 @@ class TestToolCallPolicyGate(unittest.TestCase):
             captured = {}
 
             async def fake_get_or_create_client(
-                sdk, *, session_key, options, model, rebuild_on_instructions_change=False
+                sdk, *, session_key, options, model, rebuild_on_instructions_change=False, **_kw
             ):
                 captured["can_use_tool"] = options.can_use_tool
                 raise RuntimeError("stop after options build")
@@ -5558,3 +5636,62 @@ class TestRebuiltClientReplaysHistory(unittest.TestCase):
 
     def test_warm_client_still_gets_only_trailing_user_content(self):
         self.assertEqual(self._sent_prompt(rebuild=False), "second question")
+
+
+class TestPrelaunch(unittest.TestCase):
+    """ADR 0026: the runner launches the Claude CLI at session init with an empty first message,
+    so the first real turn finds it warm and still replays the whole history into it."""
+
+    @staticmethod
+    def _fake_sdk(clients: list, prompts: list):
+        base = TestSupersideChatEngineOptions._fake_sdk(clients)
+
+        class _SDK(base):  # type: ignore[misc, valid-type]
+            class ClaudeSDKClient(base.ClaudeSDKClient):  # type: ignore[misc, name-defined]
+                async def query(self, prompt, session_id="default"):
+                    prompts.append(prompt)
+
+        return _SDK
+
+    def _run(self, turns):
+        from omnigent.harnesses.claude_sdk_executor import ClaudeSDKExecutor
+
+        clients: list = []
+        prompts: list = []
+
+        async def _t():
+            with patch(
+                "omnigent.harnesses.claude_sdk_executor._ensure_sdk",
+                return_value=self._fake_sdk(clients, prompts),
+            ):
+                executor = ClaudeSDKExecutor()
+                for messages, system_prompt in turns:
+                    events = [e async for e in executor.run_turn(messages, [], system_prompt)]
+                    self.assertIsInstance(events[-1], TurnComplete)
+
+        _run(_t())
+        return clients, prompts
+
+    _EMPTY = [{"role": "user", "content": [], "session_id": "s"}]
+    _HISTORY = [
+        {"role": "user", "content": "first question", "session_id": "s"},
+        {"role": "assistant", "content": "first answer", "session_id": "s"},
+        {"role": "user", "content": "make the deck", "session_id": "s"},
+    ]
+
+    def test_prelaunched_cli_serves_the_first_turn_with_the_full_history(self):
+        clients, prompts = self._run([(self._EMPTY, "prompt"), (self._HISTORY, "prompt")])
+        self.assertEqual(len(clients), 1, "the first turn reuses the pre-launched CLI")
+        self.assertEqual(len(prompts), 1, "the pre-launch sends the model nothing")
+        self.assertIn("first question", str(prompts[0]))
+        self.assertIn("make the deck", str(prompts[0]))
+
+    def test_prelaunched_cli_launched_with_other_options_is_relaunched(self):
+        clients, prompts = self._run([(self._EMPTY, "prompt"), (self._HISTORY, "new prompt")])
+        self.assertEqual(len(clients), 2)
+        self.assertIn("first question", str(prompts[0]))
+
+    def test_empty_message_on_a_warm_session_launches_nothing(self):
+        clients, prompts = self._run([(self._HISTORY, "prompt"), (self._EMPTY, "prompt")])
+        self.assertEqual(len(clients), 1)
+        self.assertEqual(len(prompts), 1)
