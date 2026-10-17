@@ -58,6 +58,8 @@
   --color-selection-strong: var(--selection-strong);
   --color-tint: var(--tint);
   --color-tint-ink: var(--tint-ink);
+  --color-tint-2: var(--tint-2);
+  --color-tint-3: var(--tint-3);
   --color-ok: var(--ok);
   --color-warn: var(--warn);
   --color-alert: var(--alert);
