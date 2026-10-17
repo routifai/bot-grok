@@ -1,6 +1,6 @@
 # One conversation: messages link to artifacts
 
-> **Status:** Done 2026-10-17: side chats and forks removed, the chip, the hint, link-on-save, relink and `all_versions[].item_id` built on both sides. Contract: [`docs/conversation.md`](../conversation.md).
+> **Status:** Done 2026-10-17, amended by [ADR 0024](0024-the-artifact-studio.md) (edits made with a file open go to its studio chat): side chats and forks removed, the chip, the hint, link-on-save, relink and `all_versions[].item_id` built on both sides. Contract: [`docs/conversation.md`](../conversation.md).
 
 > Supersedes [ADR 0010](0010-a-fork-is-a-side-chat-with-an-anchor.md).
 
