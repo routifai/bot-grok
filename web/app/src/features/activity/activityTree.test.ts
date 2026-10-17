@@ -55,3 +55,12 @@ it("counts steps and names the latest one in plain words", () => {
   expect(stepCount(helper("w"))).toBe(0);
   expect(latestStepTitle(helper("w"))).toBeUndefined();
 });
+
+it("builds one forest per feed snapshot, shared by every reader", () => {
+  const feed = [lead, partA, partB];
+  const forest = buildActivityForest(feed);
+  expect(buildActivityForest(feed)).toBe(forest);
+  expect(buildActivityForest([...feed])).not.toBe(forest);
+  expect(findHelperNode(forest, "a")?.activity.id).toBe("sub_agent:a");
+  expect(findHelperNode(forest, "lead")).toBe(forest[0]);
+});

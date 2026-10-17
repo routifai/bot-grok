@@ -82,6 +82,13 @@ describe("artifacts", () => {
     expect(page.every((item) => item.botId === "sess-1")).toBe(true);
   });
 
+  it("names the chat and origin of each newest version", async () => {
+    const helperSaved = { ...row, id: "a3", name: "h.html", origin: "ai", chat_id: "helper-1" };
+    engine(() => json({ artifacts: [helperSaved] }));
+    const [item] = await call(artifactsRouter.artifacts.list, { botId: "sess-1" });
+    expect(item).toMatchObject({ id: "a3", origin: "ai", chatId: "helper-1" });
+  });
+
   it("resolves each chat's owner from its session once", async () => {
     const rows = Array.from({ length: 6 }, (_, i) => ({
       ...row,

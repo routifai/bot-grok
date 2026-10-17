@@ -15,6 +15,7 @@ import type { ArtifactKind } from "../../lib/artifact-kind";
 import { artifactKind, KIND_ORDER, kindFacetLabel } from "../../lib/artifact-kind";
 import { decodeArtifactBase64, downloadArtifactBytes } from "../../lib/artifact-open";
 import { rpc } from "../../lib/rpc";
+import { notifyArtifactsChanged } from "./artifactChanges";
 import { LibraryGrid, LibrarySkeletonGrid } from "./library/LibraryGrid";
 import { type FilterChip, FilterChips, LibrarySearchField } from "./library/LibraryToolbar";
 import type { ArtifactSummary } from "./library/types";
@@ -149,6 +150,7 @@ export function LibraryScreen({
     setDeleteError(null);
     try {
       await rpc.artifacts.remove({ artifactId: pendingDelete.id });
+      notifyArtifactsChanged();
       setItems((current) => current?.filter((entry) => entry.id !== pendingDelete.id) ?? current);
       setPendingDelete(null);
     } catch (error) {

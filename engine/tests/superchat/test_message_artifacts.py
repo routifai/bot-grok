@@ -289,6 +289,18 @@ def test_a_helper_save_names_the_message_the_helper_came_from(env) -> None:
     assert client.get(f"/v1/artifacts/{run['id']}").json()["all_versions"][0]["item_id"] is None
 
 
+def test_the_list_names_the_chat_and_origin_of_each_newest_version(env) -> None:
+    client, _store, conversations, chat, _updates, _steers = env
+    _ask(conversations, chat, "write the memo")
+    helper = conversations.create_conversation(parent_conversation_id=chat).id
+    _started(conversations, chat, helper)
+    _save(client, chat, "page.md")
+    _save(client, chat, "memo.md", chat_id=helper)
+    rows = {row["name"]: row for row in client.get("/v1/artifacts").json()["artifacts"]}
+    assert (rows["memo.md"]["chat_id"], rows["memo.md"]["origin"]) == (helper, "ai")
+    assert rows["page.md"]["chat_id"] != helper
+
+
 def test_the_open_artifact_links_the_message_and_leads_the_hint(env) -> None:
     client, store, conversations, chat, _updates, _steers = env
     _ask(conversations, chat, "make two files")

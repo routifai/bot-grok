@@ -2,7 +2,7 @@ import { useLingui } from "@lingui/react/macro";
 import { useMemo } from "react";
 import { SuperchatOrb } from "../../components/ai/orb";
 import { useNow } from "../../components/chrome/useNow";
-import { workingSince } from "./superchatWork";
+import { serverNow, workingSince } from "./superchatWork";
 import { useActivities } from "./useActivities";
 import { formatClock } from "./workStripState";
 
@@ -16,7 +16,8 @@ export function WorkingPill({
   turnStartedAt,
 }: {
   botId: string;
-  /** When the running turn began (ms); null while no turn runs. */
+  /** When the running turn began (ms, the engine's clock: workPlan.ts `runningSince`, which its
+   * strip counts from too); null while no turn runs. */
   turnStartedAt: number | null;
 }) {
   const { t } = useLingui();
@@ -31,12 +32,12 @@ export function WorkingPill({
   return (
     <span
       data-testid="working-pill"
-      className="relative flex animate-in items-center gap-2 rounded-full border border-separator bg-glass py-1 ps-[5px] pe-[11px] text-[12.5px] text-foreground tabular-nums fade-in slide-in-from-top-1 duration-400"
+      className="relative flex animate-in items-center gap-2 rounded-full border border-separator bg-glass py-1 ps-[5px] pe-[11px] text-[12.5px] text-foreground tabular-nums fade-in slide-in-from-top-1 duration-400 motion-reduce:animate-none"
     >
       <span aria-hidden="true" className="sc-live-ring" />
       <SuperchatOrb size={16} state="working" flies={false} />
       <span>
-        {t`Working`} · {formatClock(Math.max(0, now - since))}
+        {t`Working`} · {formatClock(Math.max(0, serverNow(now) - since))}
       </span>
     </span>
   );

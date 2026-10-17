@@ -1,7 +1,20 @@
 import type { MessageBlock, ThreadMessage } from "@superchat/contracts";
-import { expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { helper } from "./activityTestKit";
-import { answeredWhileWorking, deriveWorkStrip, formatClock } from "./workStripState";
+import { noteServerClock, resetServerClock, serverNow } from "./superchatWork";
+import type { PlanStep, TurnOutcome } from "./workPlan";
+import {
+  answeredWhileWorking,
+  composeStrip,
+  deriveWorkStrip,
+  formatClock,
+  UNLISTED_GRACE_MS,
+} from "./workStripState";
+
+afterEach(() => {
+  vi.useRealTimers();
+  resetServerClock();
+});
 
 const at = (minute: number) => `2026-10-03T11:${String(minute).padStart(2, "0")}:00.000Z`;
 
@@ -95,4 +108,128 @@ it("leaves the hand-back, later replies and replies after the work alone", () =>
 it("uses the transcript's status while the feed has not listed the Helper", () => {
   const messages = [startedWork(1), message("ask-2", "user", 2), message("reply-2", "bot", 3)];
   expect([...answeredWhileWorking(messages, undefined)]).toEqual(["reply-2"]);
+});
+
+it("marks the answer to a question asked while the work ran, however late the answer", () => {
+  const messages = [
+    message("ask-1", "user", 0),
+    startedWork(1),
+    message("ask-2", "user", 3),
+    message("reply-2", "bot", 8),
+  ];
+  const done = [helper("h1", { status: "done", startedAt: at(1), finishedAt: at(5) })];
+  expect([...answeredWhileWorking(messages, done)]).toEqual(["reply-2"]);
+});
+
+it("counts a card as the answer, so the narration after it is not marked", () => {
+  const running = [helper("h1", { status: "in_progress", startedAt: at(1), finishedAt: null })];
+  const messages = [
+    startedWork(1),
+    message("ask-2", "user", 3),
+    message("card", "bot", 4, [
+      { kind: "reply_card", card: "quote", data: { text: "Ten." }, fallback: "Ten." },
+    ]),
+    message("narration", "bot", 6),
+  ];
+  expect(answeredWhileWorking(messages, running).size).toBe(0);
+});
+
+it("keeps the window open while a part the Helper handed on still runs", () => {
+  const feed = [
+    helper("h1", { status: "done", startedAt: at(1), finishedAt: at(2) }),
+    helper("h1-part", {
+      parentChatId: "h1",
+      status: "in_progress",
+      startedAt: at(2),
+      finishedAt: null,
+    }),
+  ];
+  const messages = [startedWork(1), message("ask-2", "user", 3), message("reply-2", "bot", 4)];
+  expect([...answeredWhileWorking(messages, feed)]).toEqual(["reply-2"]);
+  expect(deriveWorkStrip([{ helperId: "h1", title: "One" }], feed, 0).kind).toBe("working");
+  // Once the part is done, its finish ends the window.
+  const finished = [
+    feed[0],
+    helper("h1-part", { parentChatId: "h1", status: "done", startedAt: at(2), finishedAt: at(4) }),
+  ].filter((activity) => activity !== undefined);
+  const later = [startedWork(1), message("ask-2", "user", 5), message("reply-2", "bot", 6)];
+  expect(answeredWhileWorking(later, finished).size).toBe(0);
+});
+
+it("settles a Helper the loaded feed does not list once the turn ends and a grace has passed", () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(Date.parse(at(10)));
+  const old = { helperId: "h-old", title: "Old", status: "in_progress" };
+  const helpers = [old];
+  const messages = [
+    message("reply-1", "bot", 1, [
+      { kind: "text", text: "On it." },
+      { kind: "helper", ...old },
+    ]),
+    message("ask-2", "user", 12),
+    message("reply-2", "bot", 13),
+  ];
+  // Found missing just now: it may have started a moment ago.
+  expect(deriveWorkStrip(helpers, [], Date.now()).kind).toBe("working");
+  vi.setSystemTime(Date.parse(at(10)) + UNLISTED_GRACE_MS);
+  expect(deriveWorkStrip(helpers, [], Date.now()).kind).toBe("settled");
+  expect(answeredWhileWorking(messages, []).size).toBe(0);
+  // While the turn runs it still counts.
+  expect(deriveWorkStrip(helpers, [], Date.now(), true).kind).toBe("working");
+  expect([...answeredWhileWorking(messages, [], true)]).toEqual(["reply-2"]);
+});
+
+const plan = (...statuses: PlanStep["status"][]): PlanStep[] =>
+  statuses.map((status, i) => ({ text: `Step ${i + 1}`, status, added: false }));
+const settledPlan = (outcome: TurnOutcome | undefined) =>
+  composeStrip(
+    deriveWorkStrip([], [], 0),
+    [],
+    {
+      plan: plan("done", "doing", "todo"),
+      live: false,
+      startedAt: 0,
+      endedAt: 1000,
+      ...(outcome ? { outcome } : {}),
+    },
+    0,
+  );
+
+it("counts the running step done only when a plan-only reply finished normally", () => {
+  const done = settledPlan("done");
+  expect(done.outcome).toBe("done");
+  expect(done.plan?.map((step) => step.status)).toEqual(["done", "done", "todo"]);
+  const cancelled = settledPlan("cancelled");
+  expect(cancelled.outcome).toBe("cancelled");
+  expect(cancelled.plan?.map((step) => step.status)).toEqual(["done", "doing", "todo"]);
+  expect(settledPlan("failed").outcome).toBe("failed");
+  expect(settledPlan("failed").plan?.[1]?.status).toBe("doing");
+  // Waiting on the person's answer: the step is not done yet.
+  expect(settledPlan("asked").outcome).toBe("done");
+  expect(settledPlan("asked").plan?.[1]?.status).toBe("doing");
+  // A failed Helper fails the strip on the plan path too.
+  const failed = composeStrip(
+    deriveWorkStrip([{ helperId: "h1", title: "One" }], [helper("h1", { status: "failed" })], 0),
+    [],
+    { plan: plan("doing"), live: false, startedAt: 0, endedAt: 1000, outcome: "done" },
+    0,
+  );
+  expect(failed.outcome).toBe("failed");
+  expect(failed.plan?.[0]?.status).toBe("doing");
+});
+
+it("counts the live clock on the engine's clock, so settling does not jump", () => {
+  const ask = message("ask", "user", 0);
+  noteServerClock([ask]);
+  // The client runs 7 s ahead: a message the engine wrote at 0:01 arrives at 0:08 on the client.
+  const reply = message("reply", "bot", 1);
+  noteServerClock([ask, reply], Date.parse(at(1)) + 7_000);
+  const start = Date.parse(ask.createdAt);
+  const clientNow = Date.parse(at(2)) + 7_000;
+  expect(serverNow(clientNow)).toBe(Date.parse(at(2)));
+  const turn = { plan: plan("doing"), startedAt: start, endedAt: Date.parse(at(2)) };
+  const live = composeStrip(deriveWorkStrip([], [], 0), [], { ...turn, live: true }, clientNow);
+  const settled = composeStrip(deriveWorkStrip([], [], 0), [], { ...turn, live: false }, clientNow);
+  expect(live.clockMs).toBe(120_000);
+  expect(settled.clockMs).toBe(120_000);
 });

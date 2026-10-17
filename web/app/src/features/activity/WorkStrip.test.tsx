@@ -19,7 +19,8 @@ vi.mock("@lingui/react/macro", () => {
     Trans: ({ children }: { children: ReactNode }) => children,
   };
 });
-vi.mock("../artifacts", () => ({
+vi.mock("../artifacts", async () => ({
+  ...(await import("../artifacts/artifactChanges")),
   ArtifactPreviewThumbnail: ({ artifact }: { artifact: { name: string; version: number } }) => (
     <span data-testid="file-thumb">{`${artifact.name} v${artifact.version}`}</span>
   ),
@@ -50,14 +51,10 @@ const fake = vi.hoisted(() => {
 });
 vi.mock("./useActivities", () => ({ activityFeedFor: () => fake.feed }));
 
-const rpcMock = vi.hoisted(() => ({
-  list: vi.fn(),
-  listVersions: vi.fn(),
-}));
-vi.mock("../../lib/rpc", () => ({
-  rpc: { artifacts: { list: rpcMock.list, listVersions: rpcMock.listVersions } },
-}));
+const rpcMock = vi.hoisted(() => ({ list: vi.fn() }));
+vi.mock("../../lib/rpc", () => ({ rpc: { artifacts: { list: rpcMock.list } } }));
 
+import { notifyArtifactsChanged } from "../artifacts/artifactChanges";
 import { AnsweredWhileWorking, useAnsweredWhileWorking } from "./AnsweredWhileWorking";
 import { settleActivityFocus, useActivityFocus } from "./activityFocus";
 import { helper } from "./activityTestKit";
@@ -71,7 +68,8 @@ afterEach(() => {
   fake.set({ status: "loading" });
   fake.refresh.mockClear();
   rpcMock.list.mockReset();
-  rpcMock.listVersions.mockReset();
+  // Forget the files list the strips share.
+  notifyArtifactsChanged();
 });
 
 const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
@@ -215,38 +213,52 @@ it("collapses to one Done line with the whole span once every Helper is done", a
   expect(container.querySelector("[data-testid=work-strip-details]")).not.toBeNull();
 });
 
+/** A row of `artifacts.list` as the engine sends it: the newest version of each file, for the
+ * whole account (the list does not scope by bot), with who saved that version and how. */
+function fileRow(
+  id: string,
+  name: string,
+  chatId: string | null,
+  origin = "ai",
+  version = 1,
+): Record<string, unknown> {
+  return {
+    id,
+    botId: "bot-1",
+    runId: null,
+    name,
+    description: null,
+    mimeType: "text/html",
+    size: 2048,
+    version,
+    createdAt: ago(1_000),
+    publish: null,
+    origin,
+    chatId,
+  };
+}
+
+const saving = (helperId: string, status: "in_progress" | "done" = "in_progress") =>
+  helper(helperId, {
+    status,
+    startedAt: ago(60_000),
+    finishedAt: status === "done" ? ago(1_000) : null,
+    steps: [toolStep("artifact_save", "Saved a file", 1)],
+  });
+
+const draftNames = (container: HTMLElement) =>
+  [...container.querySelectorAll("[data-testid=work-strip-draft]")].map((node) => node.textContent);
+
 it("shows a Helper's draft as a thumbnail filling in, then still when done", async () => {
   rpcMock.list.mockResolvedValue([
-    {
-      id: "art-deck",
-      name: "q3-lending.deck.html",
-      version: 3,
-      size: 2048,
-      createdAt: ago(1_000),
-    },
-    { id: "art-old", name: "notes.md", version: 1, size: 10, createdAt: ago(3_600_000) },
+    fileRow("v-deck-3", "q3-lending.deck.html", "h-deck", "ai", 3),
+    fileRow("v-notes-1", "notes.md", "conv", "ai"),
   ]);
-  rpcMock.listVersions.mockResolvedValue([
-    {
-      id: "v3",
-      version: 3,
-      name: "q3-lending.deck.html",
-      createdAt: ago(1_000),
-      origin: "ai",
-      chatId: "h-deck",
-    },
-  ]);
-  const running = helper("h-deck", {
-    status: "in_progress",
-    startedAt: ago(60_000),
-    finishedAt: null,
-    steps: [toolStep("artifact_save", "Saved 'Q3 lending'", 1)],
-  });
+  const running = saving("h-deck");
   const { container } = await mount([deckHelper], [running]);
   await act(async () => undefined);
-  expect(rpcMock.listVersions).toHaveBeenCalledTimes(1);
   const draft = container.querySelector("[data-testid=work-strip-draft]");
-  expect(draft?.textContent).toBe("q3-lending.deck.html v3");
+  expect(draftNames(container)).toEqual(["q3-lending.deck.html v3"]);
   expect(draft?.hasAttribute("data-updating")).toBe(true);
 
   await act(async () => {
@@ -260,33 +272,94 @@ it("shows a Helper's draft as a thumbnail filling in, then still when done", asy
   expect(settled?.hasAttribute("data-updating")).toBe(false);
 });
 
-it("shows no draft for a file someone else saved", async () => {
+it("shows no draft for a file someone else saved or edited by hand", async () => {
   rpcMock.list.mockResolvedValue([
-    { id: "art-deck", name: "deck.html", version: 2, size: 1, createdAt: ago(1_000) },
+    fileRow("v-deck-2", "deck.html", null, "manual", 2),
+    fileRow("v-memo-1", "memo.md", "h-other", "ai"),
   ]);
-  rpcMock.listVersions.mockResolvedValue([
-    {
-      id: "v2",
-      version: 2,
-      name: "deck.html",
-      createdAt: ago(1_000),
-      origin: "manual",
-      chatId: null,
-    },
-  ]);
-  const { container } = await mount(
-    [deckHelper],
-    [
-      helper("h-deck", {
-        status: "in_progress",
-        startedAt: ago(60_000),
-        finishedAt: null,
-        steps: [toolStep("artifact_save", "Saved 'deck'", 1)],
-      }),
-    ],
-  );
+  const { container } = await mount([deckHelper], [saving("h-deck")]);
   await act(async () => undefined);
   expect(container.querySelector("[data-testid=work-strip-draft]")).toBeNull();
+});
+
+it("finds a draft however many newer files others saved, and an older file it updated", async () => {
+  const others = Array.from({ length: 8 }, (_, i) => fileRow(`v-o${i}`, `o${i}.md`, "h-other"));
+  rpcMock.list.mockResolvedValue([
+    ...others,
+    fileRow("v-deck-1", "deck.html", "h-deck", "ai"),
+    fileRow("v-page-4", "page.html", "h-deck", "update", 4),
+  ]);
+  const { container } = await mount([deckHelper], [saving("h-deck")]);
+  await act(async () => undefined);
+  expect(draftNames(container)).toEqual(["deck.html v1", "page.html v4"]);
+  expect(rpcMock.list).toHaveBeenCalledTimes(1);
+});
+
+it("drops a draft once its file is deleted", async () => {
+  rpcMock.list.mockResolvedValue([fileRow("v-deck-1", "deck.html", "h-deck")]);
+  const { container } = await mount(
+    [{ ...deckHelper, status: "done" }],
+    [saving("h-deck", "done")],
+  );
+  await act(async () => undefined);
+  expect(draftNames(container)).toEqual(["deck.html v1"]);
+
+  rpcMock.list.mockResolvedValue([]);
+  await act(async () => notifyArtifactsChanged());
+  expect(draftNames(container)).toEqual([]);
+});
+
+it("asks for the files once for every settled strip, and again on each save seen live", async () => {
+  rpcMock.list.mockResolvedValue([
+    fileRow("v-a", "a.html", "h-a"),
+    fileRow("v-b", "b.html", "h-b"),
+  ]);
+  const one = await mount(
+    [{ ...deckHelper, helperId: "h-a" }],
+    [saving("h-a", "done"), saving("h-b", "done")],
+  );
+  const two = await mount(
+    [{ ...deckHelper, helperId: "h-b" }],
+    [saving("h-a", "done"), saving("h-b", "done")],
+  );
+  await act(async () => undefined);
+  expect(draftNames(one.container)).toEqual(["a.html v1"]);
+  expect(draftNames(two.container)).toEqual(["b.html v1"]);
+  expect(rpcMock.list).toHaveBeenCalledTimes(1);
+
+  // The feed moving on, or a strip mounting again, asks for nothing more.
+  await act(async () => {
+    fake.set(ready([saving("h-a", "done"), saving("h-b", "done"), saving("h-c")]));
+  });
+  await mount([{ ...deckHelper, helperId: "h-a" }], [saving("h-a", "done")]);
+  await act(async () => undefined);
+  expect(rpcMock.list).toHaveBeenCalledTimes(1);
+
+  // A save seen while a Helper works is new (a strip opening on running work cannot tell which
+  // saves the shared list already holds): every strip looks again, with one request.
+  const working = (saves: number) =>
+    helper("h-c", {
+      status: "in_progress",
+      startedAt: ago(60_000),
+      finishedAt: null,
+      steps: Array.from({ length: saves }, (_, i) => toolStep("artifact_save", "Saved", i)),
+    });
+  const live = await mount(
+    [{ ...deckHelper, helperId: "h-c" }],
+    [saving("h-a", "done"), working(1)],
+  );
+  await act(async () => undefined);
+  expect(draftNames(live.container)).toEqual([]);
+  expect(rpcMock.list).toHaveBeenCalledTimes(2);
+  rpcMock.list.mockResolvedValue([
+    fileRow("v-a", "a.html", "h-a"),
+    fileRow("v-c", "c.html", "h-c"),
+  ]);
+  await act(async () => fake.set(ready([saving("h-a", "done"), working(2)])));
+  await act(async () => undefined);
+  expect(rpcMock.list).toHaveBeenCalledTimes(3);
+  expect(draftNames(live.container)).toEqual(["c.html v1"]);
+  expect(draftNames(one.container)).toEqual(["a.html v1"]);
 });
 
 it("Show details asks the Activity panel to open on the running Helper", async () => {
@@ -490,7 +563,7 @@ describe("the plan in the strip (ADR 0023)", () => {
     expect(container.querySelector("[data-testid=work-plan]")).toBeNull();
   });
 
-  it("stops the turning edge, the glow and the shimmer under reduced motion", () => {
+  it("stops the turning edge, the glow, the shimmer and every slide under reduced motion", () => {
     const css = readFileSync(resolve(import.meta.dirname, "../../styles.css"), "utf8");
     const reduced = css.slice(css.indexOf("@property --sc-work-angle"));
     const block = reduced.slice(reduced.indexOf("@media (prefers-reduced-motion: reduce)"));
@@ -499,6 +572,10 @@ describe("the plan in the strip (ADR 0023)", () => {
       ".sc-work[data-live]::after",
       ".sc-live-ring",
       ".sc-work-thumb[data-updating]",
+      ".sc-work-added",
+      ".sc-work-flag",
+      ".sc-work-in",
+      ".sc-work-pop",
     ]) {
       expect(block.slice(0, block.indexOf("}"))).toContain(selector);
     }

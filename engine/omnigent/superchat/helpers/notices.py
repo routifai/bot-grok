@@ -7,15 +7,17 @@ Helper's transcript never does.
 
 * A **flag** always wakes the parent, by the same path as the completion notice: the engine
   steers it into the parent's running turn, or starts a turn when the parent is idle.
-* A **progress** notice is steered into the parent's running turn only (``if_running``). When
-  the parent is idle it waits, and the next wake (a flag, or a Helper's completion) carries it:
-  one line per Helper, the newest only.
+* A **progress** notice is steered into the parent's running turn (``if_running``). When the
+  parent is idle (the usual case: it speaks first, starts its Helpers and its turn ends), the
+  progress wakes it, at most once per :data:`WAKE_INTERVAL_S` per parent, carrying every
+  Helper's newest waiting line; a flag's or a completion's wake carries them too and resets the
+  interval. One line per Helper, the newest only.
 * **Throttle**: a progress notice replaces the same Helper's undelivered one, and a Helper's
-  progress is delivered at most once per :data:`PROGRESS_INTERVAL_S`; one held back goes when
+  progress is steered at most once per :data:`PROGRESS_INTERVAL_S`; one held back goes when
   the interval ends. Flags are never held back or merged.
 
-The state is the runner process's own (Helpers run on their parent's runner): what waits, and
-when each Helper's progress last went out.
+The state is the runner process's own (Helpers run on their parent's runner): what waits, when
+each Helper's progress last went out, and when each parent was last woken.
 """
 
 from __future__ import annotations
@@ -40,6 +42,10 @@ RAISE_FLAG_TOOL_NAME = "raise_flag"
 PROGRESS, FLAG = "progress", "flag"
 #: Least time between two progress deliveries of one Helper.
 PROGRESS_INTERVAL_S = 5.0
+#: Least time between two progress wakes of one idle parent (a model turn each).
+WAKE_INTERVAL_S = 30.0
+#: What a notice POST came to: the parent's running turn took it, no turn runs, or it failed.
+TAKEN, IDLE, FAILED = "taken", "idle", "failed"
 #: Longest notice text kept; a notice is one line.
 MAX_TEXT_CHARS = 240
 #: How long a notice POST may wait for the parent's verdict (it can park on an approval gate).
@@ -87,6 +93,10 @@ class HelperNotices:
         self._timers: dict[str, asyncio.TimerHandle] = {}
         #: Helpers whose first progress went out (for the one measurement log line).
         self._reported: set[str] = set()
+        #: parent id -> monotonic time it was last woken (progress, flag or completion).
+        self._woke_at: dict[str, float] = {}
+        #: parent id -> the timer that wakes it with the progress waiting then.
+        self._wake_timers: dict[str, asyncio.TimerHandle] = {}
 
     def hold(self, parent_id: str, helper_id: str, notice: str) -> float:
         """Keep *notice* as *helper_id*'s waiting progress (replacing an older one).
@@ -102,6 +112,36 @@ class HelperNotices:
     def waiting(self, parent_id: str, helper_id: str) -> str | None:
         """*helper_id*'s waiting progress for *parent_id*, if any."""
         return self._waiting.get(parent_id, {}).get(helper_id)
+
+    def waiting_items(self, parent_id: str) -> list[tuple[str, str]]:
+        """Every (helper id, notice) waiting for *parent_id*, oldest Helper first; kept."""
+        return list(self._waiting.get(parent_id, {}).items())
+
+    def wake_delay(self, parent_id: str) -> float:
+        """Seconds until *parent_id* may be woken for progress again (0: now)."""
+        last = self._woke_at.get(parent_id)
+        if last is None:
+            return 0.0
+        return max(0.0, last + WAKE_INTERVAL_S - self._clock())
+
+    def woke(self, parent_id: str) -> None:
+        """*parent_id* was woken (by progress, a flag or a completion): the interval restarts."""
+        self._woke_at[parent_id] = self._clock()
+        timer = self._wake_timers.pop(parent_id, None)
+        if timer is not None:
+            timer.cancel()
+
+    def has_wake_timer(self, parent_id: str) -> bool:
+        """Whether a progress wake of *parent_id* is already timed."""
+        return parent_id in self._wake_timers
+
+    def set_wake_timer(self, parent_id: str, timer: asyncio.TimerHandle) -> None:
+        """Remember the timer that wakes *parent_id* with its waiting progress."""
+        self._wake_timers[parent_id] = timer
+
+    def clear_wake_timer(self, parent_id: str) -> None:
+        """The timed wake fired: the timer is done."""
+        self._wake_timers.pop(parent_id, None)
 
     def sent(self, parent_id: str, helper_id: str, notice: str) -> bool:
         """Record that *notice* went out; ``True`` when it was this Helper's first progress."""
@@ -124,6 +164,7 @@ class HelperNotices:
         if done is not None:
             waiting.pop(done, None)
             self.forget(done)
+        self.woke(parent_id)
         return list(waiting.values())
 
     def forget(self, helper_id: str) -> None:
@@ -147,8 +188,10 @@ class HelperNotices:
         self._timers[helper_id] = timer
 
     def clear_timer(self, helper_id: str) -> None:
-        """The held-back progress went (or was dropped): the timer is done."""
-        self._timers.pop(helper_id, None)
+        """The held-back progress went (or was dropped): the timer is done, or cancelled."""
+        timer = self._timers.pop(helper_id, None)
+        if timer is not None:
+            timer.cancel()
 
 
 #: The runner process's notices.
@@ -191,13 +234,13 @@ async def _helper_info(client: httpx.AsyncClient, helper_id: str) -> HelperInfo 
 
 async def post_notice(
     client: httpx.AsyncClient, parent_id: str, notice: str, *, if_running: bool
-) -> bool:
+) -> str:
     """Post *notice* to the parent as a runtime notice, through the engine's message path.
 
     Without *if_running* it is steered into the parent's running turn or starts one (the wake);
     with it, only a running turn takes it (409 ``not_running`` otherwise, nothing kept).
 
-    :returns: Whether the parent took it.
+    :returns: :data:`TAKEN`, :data:`IDLE` (no turn runs to take it) or :data:`FAILED`.
     """
     try:
         resp = await client.post(
@@ -215,25 +258,78 @@ async def post_notice(
         )
     except httpx.HTTPError:
         _logger.warning("helper notice to %s failed", parent_id, extra={"session_id": parent_id})
-        return False
-    return resp.status_code < 400
+        return FAILED
+    if resp.status_code < 400:
+        return TAKEN
+    if resp.status_code == 409:
+        return IDLE  # ``not_running``: no turn runs to take an ``if_running`` notice
+    _logger.warning(
+        "helper notice to %s refused (%s)",
+        parent_id,
+        resp.status_code,
+        extra={"session_id": parent_id},
+    )
+    return FAILED
+
+
+def _log_first_progress(parent_id: str, helper_id: str, notice: str) -> None:
+    """The one measurement line, when *notice* was this Helper's first progress to go out."""
+    if not NOTICES.sent(parent_id, helper_id, notice):
+        return
+    info = _helpers.get(helper_id)
+    started = info.started_at if info is not None else time.time()
+    _logger.info(
+        "first progress for %s %.1fs after its helper started",
+        parent_id,
+        max(0.0, time.time() - started),
+        extra={"session_id": parent_id},
+    )
+
+
+async def _wake_with_progress(client: httpx.AsyncClient, parent_id: str) -> None:
+    """Wake the idle parent with every Helper's waiting progress, within the wake interval."""
+    NOTICES.clear_wake_timer(parent_id)
+    delay = NOTICES.wake_delay(parent_id)
+    if delay > 0:
+        _schedule_wake(client, parent_id, delay)
+        return
+    items = NOTICES.waiting_items(parent_id)
+    if not items:
+        return
+    body = "\n".join(notice for _, notice in items)
+    if await post_notice(client, parent_id, body, if_running=False) == FAILED:
+        return  # kept; the next progress, flag or completion tries again
+    NOTICES.woke(parent_id)
+    for helper_id, notice in items:
+        _log_first_progress(parent_id, helper_id, notice)
+
+
+def _schedule_wake(client: httpx.AsyncClient, parent_id: str, delay: float) -> None:
+    """Wake *parent_id* with the progress waiting once its wake interval ends."""
+    if NOTICES.has_wake_timer(parent_id):
+        return
+    loop = asyncio.get_running_loop()
+
+    def fire() -> None:
+        task = loop.create_task(_wake_with_progress(client, parent_id))
+        _background.add(task)
+        task.add_done_callback(_background.discard)
+
+    NOTICES.set_wake_timer(parent_id, loop.call_later(delay, fire))
 
 
 async def _deliver_progress(client: httpx.AsyncClient, helper_id: str, info: HelperInfo) -> None:
-    """Send *helper_id*'s waiting progress into the parent's running turn, if one runs."""
+    """Steer *helper_id*'s waiting progress into the parent's running turn, else wake it."""
     NOTICES.clear_timer(helper_id)
     notice = NOTICES.waiting(info.parent_id, helper_id)
     if notice is None:
         return
-    if not await post_notice(client, info.parent_id, notice, if_running=True):
-        return  # the parent is idle: the notice waits for its next wake
-    if NOTICES.sent(info.parent_id, helper_id, notice):
-        _logger.info(
-            "first progress for %s %.1fs after its helper started",
-            info.parent_id,
-            max(0.0, time.time() - info.started_at),
-            extra={"session_id": info.parent_id},
-        )
+    result = await post_notice(client, info.parent_id, notice, if_running=True)
+    if result == TAKEN:
+        _log_first_progress(info.parent_id, helper_id, notice)
+    elif result == IDLE:
+        await _wake_with_progress(client, info.parent_id)
+    # FAILED: kept; the Helper's next report or the next wake carries it.
 
 
 def _schedule(client: httpx.AsyncClient, helper_id: str, info: HelperInfo, delay: float) -> None:
@@ -264,9 +360,14 @@ async def report(ctx: HandlerCtx, kind: str, args: Mapping[str, Any]) -> str:
     helper_id = ctx.conversation_id
     if kind == FLAG:
         # A flag wakes the parent; progress waiting for that wake rides along.
-        body = "\n".join([*NOTICES.take(info.parent_id), notice])
-        delivered = await post_notice(ctx.server_client, info.parent_id, body, if_running=False)
-        return json.dumps({"ok": delivered})
+        items = NOTICES.waiting_items(info.parent_id)
+        body = "\n".join([*(line for _, line in items), notice])
+        result = await post_notice(ctx.server_client, info.parent_id, body, if_running=False)
+        if result != FAILED:
+            NOTICES.woke(info.parent_id)
+            for other_id, line in items:
+                _log_first_progress(info.parent_id, other_id, line)
+        return json.dumps({"ok": result != FAILED})
     delay = NOTICES.hold(info.parent_id, helper_id, notice)
     if delay > 0:
         _schedule(ctx.server_client, helper_id, info, delay)

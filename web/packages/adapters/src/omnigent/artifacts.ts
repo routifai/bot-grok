@@ -22,6 +22,8 @@ export interface OmnigentArtifact {
   updated_at: number | null;
   /** `"ai"` (the Muse saved it), `"manual"` (the person edited it) or `"restore"`. */
   origin?: string;
+  /** The chat that saved this version (a Helper or update run for theirs), if known. */
+  chat_id?: string | null;
   /** The version this one was edited from (set on `manual` versions). */
   parent_version_id?: string | null;
   edit_summary?: string | null;

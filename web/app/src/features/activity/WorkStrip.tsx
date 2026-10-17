@@ -1,15 +1,20 @@
 import { useLingui } from "@lingui/react/macro";
-import type { Activity } from "@superchat/contracts";
+import type { Activity, Artifact } from "@superchat/contracts";
 import { presentActivityTitle } from "@superchat/core";
 import { cn } from "@superchat/ui-web";
 import { Check, ChevronDown, TriangleAlert } from "lucide-react";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { SuperchatOrb } from "../../components/ai/orb";
 import { Shimmer } from "../../components/ai/primitives";
 import { useArtifactPanel } from "../../components/cards/context";
 import { useNow } from "../../components/chrome/useNow";
 import { rpc } from "../../lib/rpc";
-import { ArtifactPreviewThumbnail } from "../artifacts";
+import {
+  ArtifactPreviewThumbnail,
+  artifactsRevision,
+  notifyArtifactsChanged,
+  subscribeArtifactsChanged,
+} from "../artifacts";
 import { focusActivity } from "./activityFocus";
 import { activityFeedFor } from "./useActivities";
 import type { PlanStep } from "./workPlan";
@@ -216,13 +221,14 @@ export function WorkStripView({
   const current =
     plan?.find((step) => step.status === "doing") ?? plan?.find((step) => step.status === "todo");
   const now = current?.text ?? view.lines[0]?.title ?? view.progress ?? t`Working`;
-  const settled = plan
-    ? t`${done} of ${total} done`
-    : view.outcome === "failed"
+  const settled =
+    view.outcome === "failed"
       ? t`Didn't finish`
       : view.outcome === "cancelled"
         ? t`Cancelled`
-        : t`Done`;
+        : plan
+          ? t`${done} of ${total} done`
+          : t`Done`;
   const clock =
     view.clockMs !== null ? (
       <span
@@ -334,59 +340,67 @@ export function WorkStripView({
   );
 }
 
-/** At most this many recent files are checked for a Helper's draft on each save. */
-const DRAFT_CANDIDATES = 6;
+/** The newest list of files, shared by every strip of a Muse: one request each time the files
+ * change, however many strips look. */
+const fileLists = new Map<string, { revision: number; rows: Promise<Artifact[]> }>();
 
-/** The files these Helpers saved: the newest version of a recent file is a save (`ai`) or a live
- * update (`update`) by one of them. */
-async function findDrafts(
-  botId: string,
-  helperIds: readonly string[],
-  since: number,
-): Promise<DraftFile[]> {
-  const artifacts = await rpc.artifacts.list({ botId });
-  const recent = artifacts
-    .filter((artifact) => Date.parse(artifact.createdAt) >= since)
-    .slice(0, DRAFT_CANDIDATES);
-  const found: DraftFile[] = [];
-  for (const artifact of recent) {
-    const [newest] = await rpc.artifacts.listVersions({ familyId: artifact.id });
-    if (
-      newest?.chatId &&
-      helperIds.includes(newest.chatId) &&
-      (newest.origin === "ai" || newest.origin === "update")
-    ) {
-      found.push({
-        artifactId: artifact.id,
-        name: artifact.name,
-        version: artifact.version,
-        size: artifact.size,
-        mimeType: artifact.mimeType,
-      });
-    }
-  }
-  return found;
+function listFiles(botId: string): Promise<Artifact[]> {
+  const revision = artifactsRevision();
+  const cached = fileLists.get(botId);
+  if (cached?.revision === revision) return cached.rows;
+  const rows = rpc.artifacts.list({ botId });
+  fileLists.set(botId, { revision, rows });
+  rows.catch(() => {
+    if (fileLists.get(botId)?.rows === rows) fileLists.delete(botId);
+  });
+  return rows;
 }
 
-/** Looks again each time one of the Helpers saves a file (a new `artifact_save` Step). */
-function useHelperDrafts(botId: string, listed: readonly Activity[]): DraftFile[] {
+/** The files these Helpers saved: those whose newest version is a save (`ai`) or a live update
+ * (`update`) by one of them. */
+function draftsOf(rows: readonly Artifact[], helperIds: readonly string[]): DraftFile[] {
+  return rows
+    .filter(
+      (row) =>
+        row.chatId != null &&
+        helperIds.includes(row.chatId) &&
+        (row.origin === "ai" || row.origin === "update"),
+    )
+    .map((row) => ({
+      artifactId: row.id,
+      name: row.name,
+      version: row.version,
+      size: row.size,
+      mimeType: row.mimeType,
+    }));
+}
+
+/** Looks when the Helpers have saved, and again whenever the files change: a save seen while the
+ * work runs, or a file deleted. Settled strips read the shared list, so they cost no request. */
+function useHelperDrafts(botId: string, listed: readonly Activity[], live: boolean): DraftFile[] {
   const [drafts, setDrafts] = useState<DraftFile[]>([]);
   const saves = artifactSaveCount(listed);
   const helperKey = listed.map((activity) => activity.chatId).join(" ");
-  const since = Math.min(...listed.map((activity) => Date.parse(activity.startedAt)));
+  const revision = useSyncExternalStore(subscribeArtifactsChanged, artifactsRevision);
+  const seenSaves = useRef(0);
   useEffect(() => {
-    if (saves === 0 || !helperKey) return;
+    if (live && saves > seenSaves.current) notifyArtifactsChanged();
+    seenSaves.current = saves;
+  }, [live, saves]);
+  const saved = saves > 0;
+  useEffect(() => {
+    if (!saved || !helperKey) return;
     let cancelled = false;
-    findDrafts(botId, helperKey.split(" "), since).then(
-      (found) => {
-        if (!cancelled) setDrafts(found);
+    listFiles(botId).then(
+      (rows) => {
+        if (!cancelled) setDrafts(draftsOf(rows, helperKey.split(" ")));
       },
       () => undefined,
     );
     return () => {
       cancelled = true;
     };
-  }, [botId, helperKey, saves, since]);
+  }, [botId, helperKey, saved, revision]);
   return drafts;
 }
 
@@ -404,19 +418,25 @@ export function WorkStrip({
   const feed = activityFeedFor(botId);
   const { state: feedState } = useSyncExternalStore(feed.subscribe, feed.getSnapshot);
   const activities = feedState.status === "ready" ? feedState.activities : undefined;
+  const turnLive = Boolean(turn?.live);
   const helpersLive = useMemo(
-    () => deriveWorkStrip(helpers, activities, 0).kind === "working",
-    [helpers, activities],
+    () => deriveWorkStrip(helpers, activities, 0, turnLive).kind === "working",
+    [helpers, activities, turnLive],
   );
-  const live = helpersLive || Boolean(turn?.live);
+  const live = helpersLive || turnLive;
   const now = useNow(live);
   const listed = useMemo(() => helperActivities(helpers, activities), [helpers, activities]);
   const view = useMemo(
     () =>
-      composeStrip(deriveWorkStrip(helpers, activities, now), listed.flatMap(flagsOf), turn, now),
-    [helpers, activities, listed, turn, now],
+      composeStrip(
+        deriveWorkStrip(helpers, activities, now, turnLive),
+        listed.flatMap(flagsOf),
+        turn,
+        now,
+      ),
+    [helpers, activities, listed, turn, turnLive, now],
   );
-  const drafts = useHelperDrafts(botId, listed);
+  const drafts = useHelperDrafts(botId, listed, live);
   // A Helper that started a moment ago may not be listed yet: ask the feed once more.
   const missing = helpersLive && feedState.status === "ready" && listed.length < helpers.length;
   useEffect(() => {

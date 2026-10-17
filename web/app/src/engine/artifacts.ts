@@ -11,49 +11,17 @@ import {
   getOmnigentArtifact,
   listOmnigentArtifacts,
   OmnigentApiError,
-  type OmnigentArtifact,
-  type OmnigentPublication,
   restoreOmnigentArtifact,
   versionMessageId,
 } from "@superchat/adapters/omnigent/browser";
-import type { Artifact, ArtifactPublish } from "@superchat/contracts";
+import type { Artifact } from "@superchat/contracts";
+import { toArtifact } from "./artifact-shape";
 import { engineClient, museSessionId, NO_EMAIL } from "./client";
 import { os } from "./context";
 
+export { toPublish } from "./artifact-shape";
+
 const iso = (epochSeconds: number): string => new Date(epochSeconds * 1000).toISOString();
-
-/** The served content type without parameters (`text/html; charset=utf-8` -> `text/html`). */
-const baseMime = (mime: string): string => mime.split(";")[0]?.trim() || mime;
-
-export function toPublish(publication: OmnigentPublication): ArtifactPublish {
-  return {
-    slug: publication.slug,
-    urlPath: publication.url_path,
-    audience: publication.audience,
-    version: publication.version,
-    publishedAt: iso(publication.published_at),
-    stats: {
-      opensTotal: publication.stats.opens_total,
-      uniqueViewers: publication.stats.unique_viewers,
-      opens7d: publication.stats.opens_7d,
-    },
-  };
-}
-
-function toArtifact(item: OmnigentArtifact, botId: string | null): Artifact {
-  return {
-    publish: item.publish ? toPublish(item.publish) : null,
-    id: item.id,
-    botId,
-    runId: null,
-    name: item.name,
-    description: item.title,
-    mimeType: baseMime(item.mime),
-    size: item.size,
-    version: item.version,
-    createdAt: iso(item.created_at),
-  };
-}
 
 /** The engine's page cap for `GET /v1/artifacts` (it has no offset). */
 const ENGINE_LIST_MAX = 500;

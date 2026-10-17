@@ -28,6 +28,7 @@ import {
   transcriptWork,
   useAnsweredWhileWorking,
 } from "../../../features/activity";
+import { noteServerClock } from "../../../features/activity/superchatWork";
 import type { ArtifactTarget } from "../../../lib/artifact-open";
 import { quoteDraftForSelection } from "../../../lib/quote-selection";
 import { transcriptIsNearEnd, transcriptMovedDown } from "../../../lib/transcript-scroll";
@@ -137,10 +138,12 @@ const TranscriptView = memo(function Transcript({
     [messages],
   );
   // A reply given while earlier Helpers still work says so, quietly (ADR 0022).
-  const answeredWhileWorking = useAnsweredWhileWorking(artifactTarget.botId, messages);
+  const answeredWhileWorking = useAnsweredWhileWorking(artifactTarget.botId, messages, running);
   // Each reply's work strip finds its plan here (ADR 0023); a message holding only the plan
   // card a strip draws leaves no row behind.
   const work = useMemo(() => transcriptWork(messages), [messages]);
+  // Live clocks count against the engine's timestamps: learn its clock from what arrives.
+  useEffect(() => noteServerClock(messages), [messages]);
   const lastTurnHasStrip = useMemo(
     () => [...work.turns.values()].some((turn) => turn.last),
     [work],

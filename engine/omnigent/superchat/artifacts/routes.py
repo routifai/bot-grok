@@ -105,6 +105,7 @@ def artifact_to_response(
         "created_at": item.created_at,
         "updated_at": item.updated_at,
         "origin": item.origin,
+        "chat_id": item.chat_id,
         "parent_version_id": item.parent_version_id,
         "edit_summary": item.edit_summary,
     }

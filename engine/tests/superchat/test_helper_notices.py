@@ -47,9 +47,9 @@ def posted(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     async def _info(_client: Any, helper_id: str) -> HelperInfo:
         return HelperInfo(parent_id=PARENT, name=f"Helper {helper_id[:1]}", started_at=0.0)
 
-    async def _post(_client: Any, parent_id: str, notice: str, *, if_running: bool) -> bool:
+    async def _post(_client: Any, parent_id: str, notice: str, *, if_running: bool) -> str:
         state["posts"].append((parent_id, notice, if_running))
-        return state["running"] or not if_running
+        return notices.TAKEN if state["running"] or not if_running else notices.IDLE
 
     monkeypatch.setattr(notices, "_helper_info", _info)
     monkeypatch.setattr(notices, "post_notice", _post)
@@ -125,30 +125,61 @@ def test_a_held_back_progress_goes_when_its_interval_ends(posted, monkeypatch) -
     ]
 
 
-def test_progress_to_an_idle_parent_waits_for_the_next_wake(posted) -> None:
+def test_progress_to_an_idle_parent_wakes_it_once_per_interval(posted) -> None:
     posted["running"] = False
     _call("report_progress", "Read file one", helper="a" * 32)
+    # The steer is refused (no turn runs), so the first progress wakes the parent at once.
+    assert posted["posts"] == [
+        (PARENT, "[helper Helper a] progress: Read file one", True),
+        (PARENT, "[helper Helper a] progress: Read file one", False),
+    ]
     _call("report_progress", "Read file two", helper="a" * 32)
     _call("report_progress", "Found 3 vendors", helper="b" * 32)
-    # Folded into the next wake: one line per Helper, newest only; a finished Helper's line goes.
+    # Within the wake interval nothing more wakes the parent; the lines wait.
+    assert [p for p in posted["posts"] if not p[2]] == [
+        (PARENT, "[helper Helper a] progress: Read file one", False)
+    ]
+    # A completion wake folds them in: one line per Helper, newest only; a finished Helper's goes.
     assert take_waiting_progress(PARENT, done="b" * 32) == [
         "[helper Helper a] progress: Read file two"
     ]
     assert take_waiting_progress(PARENT) == []
 
 
+def test_a_held_wake_goes_when_the_wake_interval_ends(posted, monkeypatch) -> None:
+    monkeypatch.setattr(notices, "WAKE_INTERVAL_S", 0.05)
+    posted["running"] = False
+
+    async def run() -> None:
+        handler = HELPERS_FEATURE.handlers["report_progress"]
+        await handler(_ctx("report_progress", "a" * 32), {"text": "one"})
+        posted["clock"].now += 0.01
+        await handler(_ctx("report_progress", "b" * 32), {"text": "two"})
+        assert [p[1] for p in posted["posts"] if not p[2]] == ["[helper Helper a] progress: one"]
+        posted["clock"].now += 1
+        await asyncio.sleep(0.2)
+
+    asyncio.run(run())
+    assert [p[1] for p in posted["posts"] if not p[2]] == [
+        "[helper Helper a] progress: one",
+        "[helper Helper b] progress: two",
+    ]
+
+
 def test_a_flag_always_wakes_the_parent_and_carries_waiting_progress(posted) -> None:
     posted["running"] = False
-    _call("report_progress", "Read the ledger")
+    _call("report_progress", "Read the ledger")  # wakes the idle parent at once
+    _call("report_progress", "Compared the totals")  # held: inside both intervals
     assert _call("raise_flag", "The ledger and the board pack disagree; using the ledger") == {
         "ok": True
     }
     parent, body, if_running = posted["posts"][-1]
     assert (parent, if_running) == (PARENT, False)  # a wake: steered when live, else a new turn
     assert body.splitlines() == [
-        "[helper Helper a] progress: Read the ledger",
+        "[helper Helper a] progress: Compared the totals",
         "[helper Helper a] flag: The ledger and the board pack disagree; using the ledger",
     ]
+    assert take_waiting_progress(PARENT) == []  # the flag's wake carried it
     # Flags are never throttled.
     _call("raise_flag", "Q2 is missing from the ledger")
     assert posted["posts"][-1][1] == "[helper Helper a] flag: Q2 is missing from the ledger"

@@ -27,14 +27,19 @@ vi.mock("./useActivities", () => ({
   }),
 }));
 
+import type { ThreadMessage } from "@superchat/contracts";
 import { helper } from "./activityTestKit";
-import { workingSince } from "./superchatWork";
+import { noteServerClock, resetServerClock, workingSince } from "./superchatWork";
 import { WorkingPill } from "./WorkingPill";
+import { transcriptWork } from "./workPlan";
+import { composeStrip, deriveWorkStrip, formatClock } from "./workStripState";
 
 const mounted: Array<() => void> = [];
 afterEach(() => {
   for (const unmount of mounted.splice(0)) unmount();
   feed.activities = [];
+  resetServerClock();
+  vi.useRealTimers();
 });
 
 async function mount(turnStartedAt: number | null) {
@@ -78,4 +83,61 @@ it("counts from the earliest running work", () => {
       helper("h1", { status: "in_progress", startedAt: "2026-10-17T10:00:00.000Z" }),
     ]),
   ).toBe(started);
+});
+
+it("keeps still when motion is reduced", async () => {
+  const { container } = await mount(Date.now());
+  expect(pill(container)?.className).toContain("motion-reduce:animate-none");
+});
+
+it("reads the same time as the running reply's strip, before and after a reload", async () => {
+  const sec = (s: number) => new Date(Date.UTC(2026, 9, 17, 10, 0, s)).toISOString();
+  const msg = (id: string, role: "user" | "bot", createdAt: string): ThreadMessage => ({
+    id,
+    threadId: "conv",
+    seq: 0,
+    role,
+    createdAt,
+    blocks:
+      role === "user"
+        ? [{ kind: "text", text: "Make the deck" }]
+        : [
+            {
+              kind: "reply_card",
+              card: "plan",
+              id: "p",
+              data: { items: [{ text: "Read", status: "doing" }] },
+              fallback: "Read",
+            },
+          ],
+  });
+  const messages = [msg("ask", "user", sec(0)), msg("card", "bot", sec(5))];
+  // The client clock runs 9 s ahead of the engine's.
+  const skew = 9_000;
+  vi.useFakeTimers({ toFake: ["Date"] });
+  const agree = async () => {
+    const work = transcriptWork(messages);
+    const turn = work.turns.get("card");
+    const now = Date.now();
+    const strip = composeStrip(
+      deriveWorkStrip([], [], now),
+      [],
+      { plan: turn?.plan ?? null, live: true, startedAt: turn?.startedAt ?? null, endedAt: null },
+      now,
+    );
+    const { container } = await mount(work.runningSince ?? null);
+    expect(pill(container)?.textContent).toBe(`Working · ${formatClock(strip.clockMs ?? -1)}`);
+    return strip.clockMs;
+  };
+  // Open while the reply is written: the plan card arrives as it is written.
+  vi.setSystemTime(Date.parse(sec(0)) + skew);
+  noteServerClock(messages.slice(0, 1));
+  vi.setSystemTime(Date.parse(sec(5)) + skew);
+  noteServerClock(messages);
+  vi.setSystemTime(Date.parse(sec(30)) + skew);
+  expect(await agree()).toBe(30_000);
+  // Reloaded: nothing learned yet, both count from the same start on the same clock.
+  resetServerClock();
+  noteServerClock(messages);
+  await agree();
 });

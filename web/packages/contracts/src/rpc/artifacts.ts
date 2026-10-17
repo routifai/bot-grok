@@ -36,6 +36,10 @@ export const ArtifactSchema = z.object({
   createdAt: z.string(),
   /** Set when the file is published as an app. */
   publish: ArtifactPublishSchema.nullish(),
+  /** How this version came to be: "ai", "manual", "restore" or "update" (a live update). */
+  origin: z.string().optional(),
+  /** The chat that saved this version (a Helper or update run for theirs), if known. */
+  chatId: Id.nullable().optional(),
 });
 
 export type Artifact = z.infer<typeof ArtifactSchema>;

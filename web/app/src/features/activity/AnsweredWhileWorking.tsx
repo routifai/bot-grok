@@ -9,11 +9,16 @@ import { answeredWhileWorking } from "./workStripState";
 export function useAnsweredWhileWorking(
   botId: string,
   messages: readonly ThreadMessage[],
+  /** The transcript says a turn runs right now. */
+  running = false,
 ): ReadonlySet<string> {
   const feed = activityFeedFor(botId);
   const { state } = useSyncExternalStore(feed.subscribe, feed.getSnapshot);
   const activities = state.status === "ready" ? state.activities : undefined;
-  return useMemo(() => answeredWhileWorking(messages, activities), [messages, activities]);
+  return useMemo(
+    () => answeredWhileWorking(messages, activities, running),
+    [messages, activities, running],
+  );
 }
 
 /** The quiet meta line under such a reply. The engine does not report a time to first word on a

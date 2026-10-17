@@ -931,8 +931,12 @@ body {
   .sc-work[data-live]::after,
   .sc-live-ring,
   .sc-work-thumb[data-updating],
-  .sc-work-tag {
-    /* Without the fade the tag stays until the next render of the plan. */
+  .sc-work-tag,
+  .sc-work-added,
+  .sc-work-flag,
+  .sc-work-in,
+  .sc-work-pop {
+    /* The edge stays, still. Without the fade the tag stays until the next render of the plan. */
     animation: none;
   }
 }

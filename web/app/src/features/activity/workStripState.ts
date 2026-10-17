@@ -1,7 +1,8 @@
 import type { Activity, MessageBlock, ThreadMessage } from "@superchat/contracts";
-import { isRunning } from "./activityGrouping";
+import type { ActivityNode } from "./activityTree";
 import { buildActivityForest, findHelperNode, isNodeRunning } from "./activityTree";
-import type { PlanStep } from "./workPlan";
+import { serverNow } from "./superchatWork";
+import type { PlanStep, TurnOutcome } from "./workPlan";
 
 // The work strip under a reply (docs/conversation.md "The assistant narrates while helpers
 // work"): pure readings of the Activity feed for the Helpers a message started, so the strip,
@@ -97,14 +98,15 @@ export function helperActivities(
 
 /**
  * The strip for the Helpers one message started. Working while any of them (or a part it handed
- * on) runs: one line per running Helper. Otherwise settled, with the whole span. A Helper the feed
- * does not list (not loaded yet, or older than its newest page) falls back to the status the
- * transcript carried.
+ * on) runs: one line per running Helper. Otherwise settled, with the whole span. `now` is the
+ * client clock (`serverNow` turns it to the engine's).
  */
 export function deriveWorkStrip(
   helpers: readonly StripHelper[],
   activities: readonly Activity[] | undefined,
   now: number,
+  /** The transcript says a turn runs right now. */
+  turnRunning = false,
 ): WorkStripState {
   const forest = activities ? buildActivityForest(activities) : [];
   const read = helpers.map((helper) => {
@@ -112,7 +114,7 @@ export function deriveWorkStrip(
     return {
       helper,
       activity: node?.activity,
-      running: node ? isNodeRunning(node) : helper.status === "in_progress",
+      running: node ? isNodeRunning(node) : unlistedRunning(helper, activities, turnRunning),
     };
   });
   const running = read.filter((entry) => entry.running);
@@ -126,7 +128,7 @@ export function deriveWorkStrip(
         title: activity?.title || helper.title,
         progress: activity ? latestProgress(activity) : null,
         flags: activity ? flagsOf(activity) : [],
-        elapsedMs: activity ? Math.max(0, now - Date.parse(activity.startedAt)) : null,
+        elapsedMs: activity ? Math.max(0, serverNow(now) - Date.parse(activity.startedAt)) : null,
       })),
     };
   }
@@ -145,6 +147,31 @@ export function deriveWorkStrip(
   return { kind: "settled", outcome, ms, endedAt, focusId };
 }
 
+/** How long a Helper the loaded feed does not list may still count as just started. */
+export const UNLISTED_GRACE_MS = 60_000;
+/** When each such Helper was first found missing (client ms). */
+const unlistedSince = new Map<string, number>();
+
+/**
+ * Whether a Helper the feed does not list runs. Before the feed has loaded, the status the
+ * transcript carried says. Once it has, a Helper missing from it either started a moment ago or is
+ * older than the feed's newest page, and the transcript read its status once and never again: it
+ * counts as running only while the turn runs or for a short grace after it was first found
+ * missing, so it cannot stay lit for good.
+ */
+function unlistedRunning(
+  helper: StripHelper,
+  activities: readonly Activity[] | undefined,
+  turnRunning: boolean,
+): boolean {
+  if (helper.status !== "in_progress") return false;
+  if (activities === undefined || turnRunning) return true;
+  const now = Date.now();
+  const since = unlistedSince.get(helper.helperId) ?? now;
+  unlistedSince.set(helper.helperId, since);
+  return now - since < UNLISTED_GRACE_MS;
+}
+
 /** What the strip knows of the reply itself (workPlan.ts), beside its Helpers. */
 export interface StripTurn {
   /** The newest render of the reply's plan, or null without one. */
@@ -157,6 +184,8 @@ export interface StripTurn {
   endedAt: number | null;
   /** What the running turn is doing now ("Reading files…"), when it has no Helper to say so. */
   liveLabel?: string;
+  /** How the reply ended (workPlan.ts `TurnWork.outcome`); a normal finish when unknown. */
+  outcome?: TurnOutcome;
 }
 
 /** Everything the strip draws, from its Helpers and its reply. */
@@ -186,7 +215,14 @@ export function composeStrip(
 ): StripView {
   const lines = state.kind === "working" ? state.lines : [];
   const live = state.kind === "working" || Boolean(turn?.live);
-  const outcome = state.kind === "settled" ? state.outcome : "done";
+  const helpers = state.kind === "settled" ? state.outcome : "done";
+  const ended = turn?.outcome ?? "done";
+  const outcome =
+    helpers === "failed" || ended === "failed"
+      ? "failed"
+      : helpers === "cancelled" || ended === "cancelled"
+        ? "cancelled"
+        : "done";
   const start = turn?.startedAt ?? null;
   let clockMs: number | null;
   if (live) {
@@ -194,7 +230,7 @@ export function composeStrip(
       (most, line) => (line.elapsedMs === null ? most : Math.max(most ?? 0, line.elapsedMs)),
       null,
     );
-    clockMs = start !== null ? Math.max(0, now - start) : helperSpan;
+    clockMs = start !== null ? Math.max(0, serverNow(now) - start) : helperSpan;
   } else if (
     start !== null &&
     (turn?.endedAt != null || (state.kind === "settled" && state.endedAt !== null))
@@ -206,15 +242,30 @@ export function composeStrip(
   }
   const progress =
     lines.find((line) => line.progress)?.progress ?? (turn?.live ? (turn.liveLabel ?? null) : null);
-  // Settled: nothing is new any more, and the step running when the work finished is done.
+  // Settled: nothing is new any more, and the step running when the work finished normally is
+  // done (not when it failed, was stopped, or waits on the person's answer).
+  const promote = outcome === "done" && ended !== "asked";
   const finished = (step: PlanStep): PlanStep => ({
     ...step,
     added: false,
-    status: step.status === "doing" && outcome === "done" ? "done" : step.status,
+    changed: false,
+    status: step.status === "doing" && promote ? "done" : step.status,
   });
   const plan = turn?.plan ? (live ? turn.plan : turn.plan.map(finished)) : null;
   return { live, outcome, clockMs, lines, flags, progress, plan, focusId: state.focusId };
 }
+
+/** When a Helper's work ended: its own finish or a later one of a part it handed on. */
+function lastFinish(node: ActivityNode): number {
+  const ends = [Date.parse(node.activity.finishedAt ?? ""), ...node.children.map(lastFinish)];
+  const known = ends.filter((end) => !Number.isNaN(end));
+  return known.length > 0 ? Math.max(...known) : Number.NaN;
+}
+
+/** A live status line, not a reply. */
+const progressOnly = (message: ThreadMessage) =>
+  message.id.startsWith("progress:") ||
+  message.blocks.every((block) => block.kind === "progress" || block.kind === "steps");
 
 function helperBlocks(message: ThreadMessage): StripHelper[] {
   return message.blocks.flatMap((block) => (block.kind === "helper" ? [block] : []));
@@ -222,13 +273,15 @@ function helperBlocks(message: ThreadMessage): StripHelper[] {
 
 /**
  * The replies the assistant gave while earlier work was still going (ADR 0022 "Questions are
- * answered on the main turn"): the first text reply to a person's message sent after a message
- * started Helpers, arriving while one of those Helpers ran. A reply that starts Helpers of its own
- * is new work, not an answer on the side.
+ * answered on the main turn"): the first reply to a person's message sent while Helpers an
+ * earlier message started ran (or a part they handed on). Only a reply with words is marked; a
+ * reply that starts Helpers of its own is new work, not an answer on the side.
  */
 export function answeredWhileWorking(
   messages: readonly ThreadMessage[],
   activities: readonly Activity[] | undefined,
+  /** The transcript says a turn runs right now. */
+  turnRunning = false,
 ): Set<string> {
   const answered = new Set<string>();
   const forest = activities ? buildActivityForest(activities) : [];
@@ -236,12 +289,12 @@ export function answeredWhileWorking(
   messages.forEach((message, index) => {
     if (message.role !== "bot") return;
     for (const helper of helperBlocks(message)) {
-      const activity = findHelperNode(forest, helper.helperId)?.activity;
-      if (activity) {
-        const start = Date.parse(activity.startedAt);
-        const end = isRunning(activity) ? Infinity : Date.parse(activity.finishedAt ?? "");
+      const node = findHelperNode(forest, helper.helperId);
+      if (node) {
+        const start = Date.parse(node.activity.startedAt);
+        const end = isNodeRunning(node) ? Infinity : lastFinish(node);
         if (!Number.isNaN(start) && !Number.isNaN(end)) windows.push({ index, start, end });
-      } else if (helper.status === "in_progress") {
+      } else if (unlistedRunning(helper, activities, turnRunning)) {
         windows.push({ index, start: Date.parse(message.createdAt), end: Infinity });
       }
     }
@@ -255,15 +308,14 @@ export function answeredWhileWorking(
       replied = false;
       return;
     }
-    if (replied || personIndex < 0 || message.id.startsWith("progress:")) return;
-    if (!message.blocks.some((block) => block.kind === "text")) return;
+    if (replied || personIndex < 0 || progressOnly(message)) return;
     replied = true;
+    if (!message.blocks.some((block) => block.kind === "text")) return;
     if (helperBlocks(message).length > 0) return;
     const asked = Date.parse(messages[personIndex]?.createdAt ?? "");
-    const at = Date.parse(message.createdAt);
     if (
       windows.some(
-        (window) => window.index < personIndex && asked >= window.start && at < window.end,
+        (window) => window.index < personIndex && asked >= window.start && asked < window.end,
       )
     ) {
       answered.add(message.id);
