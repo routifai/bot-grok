@@ -49,6 +49,10 @@ _VIEWER_KEY_MAX = 64
 #: ``feature name -> hook(item)`` run after a deliverable is deleted, so a feature built on
 #: artifacts can drop its own rows without this module importing it.
 ON_GROUP_DELETED: dict[str, Callable[[Artifact], None]] = {}
+#: ``feature name -> hook(version)`` run after any version is saved (by the assistant, a Helper,
+#: a hand edit, a restore or a live update), so a feature can follow saves without this module
+#: importing it. Runs on the saving thread; a failing hook never fails the save.
+ON_VERSION_SAVED: dict[str, Callable[[Artifact], None]] = {}
 _logger = logging.getLogger(__name__)
 
 
@@ -147,6 +151,8 @@ class Artifact:
     :param turn_item_id: The person's message item of the turn that saved it, if known.
     :param chat_id: The chat that saved it (a Helper or update run for their saves), if known.
     :param item_id: The person's message in the Conversation that led to it, if known.
+    :param group_id: The deliverable's stable id (its first version's id), the same on every
+        version.
     """
 
     id: str
@@ -170,6 +176,7 @@ class Artifact:
     turn_item_id: str | None = None
     chat_id: str | None = None
     item_id: str | None = None
+    group_id: str | None = None
 
 
 #: How a message came to be linked to an artifact (docs/conversation.md "Contract").
@@ -230,6 +237,7 @@ def _to_entity(row: SqlArtifact) -> Artifact:
         turn_item_id=row.turn_item_id,
         chat_id=row.chat_id,
         item_id=row.item_id,
+        group_id=row.group_id,
     )
 
 
@@ -303,13 +311,24 @@ class SqlAlchemyArtifactStore:
         now = now_epoch()
 
         def write(session: Session) -> Artifact:
-            latest = session.execute(
-                select(func.max(SqlArtifact.version)).where(
-                    SqlArtifact.workspace_id == current_workspace_id(),
-                    SqlArtifact.parent_session_id == parent_session_id,
-                    SqlArtifact.name == name,
-                )
-            ).scalar()
+            group = (
+                SqlArtifact.workspace_id == current_workspace_id(),
+                SqlArtifact.parent_session_id == parent_session_id,
+                SqlArtifact.name == name,
+            )
+            head = session.execute(
+                select(SqlArtifact.version, SqlArtifact.group_id)
+                .where(*group)
+                .order_by(desc(SqlArtifact.version))
+                .limit(1)
+            ).first()
+            latest = head.version if head is not None else None
+            # A new group is named by its first version; a later version keeps the group's id.
+            group_id = artifact_id if head is None else head.group_id
+            if group_id is None:
+                group_id = session.execute(
+                    select(SqlArtifact.id).where(*group).order_by(SqlArtifact.version).limit(1)
+                ).scalar()
             if base_version is not None and (latest or 0) != base_version:
                 raise VersionConflictError(latest or 0)
             row = SqlArtifact(
@@ -334,6 +353,7 @@ class SqlAlchemyArtifactStore:
                 turn_item_id=turn_item_id,
                 chat_id=chat_id,
                 item_id=item_id,
+                group_id=group_id,
             )
             session.add(row)
             session.flush()
@@ -354,6 +374,11 @@ class SqlAlchemyArtifactStore:
         except Exception:
             blobs.delete(key)
             raise
+        for hook_name, hook in list(ON_VERSION_SAVED.items()):
+            try:
+                hook(saved)
+            except Exception:  # the version is saved either way
+                _logger.exception("artifact save hook %s failed", hook_name)
         return saved
 
     def newest(self, item: Artifact) -> Artifact | None:
@@ -361,8 +386,13 @@ class SqlAlchemyArtifactStore:
         group = self.versions(item)
         return group[0] if group else None
 
-    def pending_manual(self, *, user_id: str | None, parent_session_id: str) -> list[Artifact]:
-        """Hand-made and live-update versions not yet written back / announced, oldest first."""
+    def pending_manual(
+        self, *, user_id: str | None, parent_session_id: str, group_id: str | None = None
+    ) -> list[Artifact]:
+        """Hand-made and live-update versions not yet written back / announced, oldest first.
+
+        :param group_id: Only this deliverable's (a file's studio writes back its own file only).
+        """
         with self._session("list_pending_manual_artifacts") as session:
             stmt = (
                 select(SqlArtifact)
@@ -375,6 +405,8 @@ class SqlAlchemyArtifactStore:
                 )
                 .order_by(SqlArtifact.created_at, SqlArtifact.version)
             )
+            if group_id is not None:
+                stmt = stmt.where(SqlArtifact.group_id == group_id)
             return [_to_entity(r) for r in session.execute(stmt).scalars().all()]
 
     def mark_delivered(self, artifact_id: str, *, user_id: str | None) -> bool:
@@ -398,6 +430,21 @@ class SqlAlchemyArtifactStore:
             if row is None or row.user_id != user_id:
                 return None
             return _to_entity(row)
+
+    def newest_in_group(self, group_id: str, *, user_id: str | None) -> Artifact | None:
+        """The newest version of the owner's deliverable ``group_id``, or ``None``."""
+        with self._session("select_artifact_group_newest") as session:
+            row = session.execute(
+                select(SqlArtifact)
+                .where(
+                    SqlArtifact.workspace_id == current_workspace_id(),
+                    _owner_clause(user_id),
+                    SqlArtifact.group_id == group_id,
+                )
+                .order_by(desc(SqlArtifact.version))
+                .limit(1)
+            ).scalar_one_or_none()
+            return _to_entity(row) if row is not None else None
 
     def get_in_session(self, artifact_id: str, session_id: str) -> Artifact | None:
         """The version ``artifact_id`` when it belongs to the Conversation ``session_id``."""

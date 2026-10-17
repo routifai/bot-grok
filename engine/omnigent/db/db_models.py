@@ -1762,6 +1762,8 @@ class SqlArtifact(OmnigentBase):
     :param item_id: The person's message in the Conversation that led to it: the turn item of
         the Conversation's own save, or for a Helper's save the Conversation message the Helper
         was started from. ``None`` for hand edits, restores and unknown turns.
+    :param group_id: The deliverable's stable id, the same on every version: its first version's
+        id (ADR 0024).
     """
 
     __tablename__ = "artifacts"
@@ -1794,6 +1796,7 @@ class SqlArtifact(OmnigentBase):
     turn_item_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
     chat_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
     item_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
+    group_id: Mapped[str | None] = mapped_column(Uuid16, nullable=True)
 
     __table_args__ = (
         Index(
@@ -1813,6 +1816,7 @@ class SqlArtifact(OmnigentBase):
             unique=True,
         ),
         Index("ix_artifacts_owner", "workspace_id", "user_id", "created_at"),
+        Index("ix_artifacts_group_id", "workspace_id", "group_id", "version"),
     )
 
 
