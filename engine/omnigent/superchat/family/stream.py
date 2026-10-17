@@ -7,7 +7,8 @@ Events carry ids only; the client refetches what changed:
 * ``turn.done {chat_id, status}``: a turn in a family chat ended (completed, failed,
   incomplete or cancelled); a failed turn's error item is stored before this is sent;
 * ``message.delivery {chat_id, item_id}``: a message sent during a turn started or stopped
-  waiting behind it; refetch to see it;
+  waiting behind it, or a person's message gained or changed its artifact link; refetch to see
+  it;
 * ``chat.reset {chat_id, item_id}``: the chat was cleared (``POST .../reset``); its transcript
   now starts after ``item_id``;
 * ``chats.changed {root_id}``: the Conversation was renamed or archived, or a Helper started;

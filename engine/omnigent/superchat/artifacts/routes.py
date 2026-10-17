@@ -11,16 +11,21 @@ from __future__ import annotations
 import asyncio
 import logging
 import posixpath
+from collections.abc import Awaitable, Callable
 from typing import Any
 from urllib.parse import quote
 
+import httpx
 from fastapi import APIRouter, Query, Request, Response
+from pydantic import BaseModel
 
+from omnigent.context.rollover import _MID_TURN_LIVE_STATUSES
 from omnigent.db.db_models import InvalidUuidError, uuid_to_bytes
 from omnigent.entities import MessageData
 from omnigent.entities.conversation import is_system_notice
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.server.auth import LEVEL_OWNER, RESERVED_USER_LOCAL, AuthProvider
+from omnigent.server.redaction import session_redactor
 from omnigent.server.routes._auth_helpers import require_access, require_user
 from omnigent.stores import ConversationStore, PermissionStore
 from omnigent.superchat.artifact_kinds import (
@@ -29,15 +34,30 @@ from omnigent.superchat.artifact_kinds import (
     is_deck_name,
     kind_for_name,
 )
+from omnigent.superchat.artifacts.hint import MAX_ARTIFACTS, artifact_hint
+from omnigent.superchat.artifacts.links import (
+    conversation_item,
+    is_person_message,
+    link_saved_version,
+    open_artifact,
+    steer_text,
+)
 from omnigent.superchat.artifacts.patches import name_elements
 from omnigent.superchat.artifacts.store import (
+    LINK_CHOSEN,
     WRITEBACK_ORIGINS,
     Artifact,
+    MessageLink,
     Publication,
     SqlAlchemyArtifactStore,
     VersionConflictError,
     ViewStats,
 )
+from omnigent.superchat.family.signals import notify_item_updated
+from omnigent.superchat.transcript.blocks import project_items
+
+#: Steers the running turn of a session with one line; ``True`` when the turn took it.
+Steer = Callable[[Request, str, str], Awaitable[bool]]
 
 #: The preview is shown in a sandboxed, origin-less iframe; this keeps a page that is opened
 #: directly (or downloaded and served) from reaching anything but public https assets.
@@ -131,6 +151,59 @@ def _producing_turn(
     return chat, None
 
 
+async def steer_running_turn(
+    request: Request, conversation_store: ConversationStore, session_id: str, text: str
+) -> bool:
+    """Steer the session's running turn with *text*, through the runner's own steer path.
+
+    The line goes as a runtime notice with ``if_running``: the runner takes it into the turn
+    running now, or refuses it (nothing is kept) when none runs.
+    """
+    from omnigent.server.routes._sessions.helpers import _get_runner_client
+    from omnigent.server.routes._sessions.orchestration import (
+        _dispatch_session_event_to_runner,
+    )
+    from omnigent.server.schemas import SessionEventInput
+
+    conversation = await asyncio.to_thread(conversation_store.get_conversation, session_id)
+    if conversation is None:
+        return False
+    runner = await _get_runner_client(
+        session_id, getattr(request.app.state, "runner_router", None)
+    )
+    if runner is None:
+        return False
+    body = SessionEventInput(
+        type="message",
+        data={
+            "role": "user",
+            "is_system_notice": True,
+            "content": [{"type": "input_text", "text": text}],
+        },
+        if_running=True,
+    )
+    try:
+        await _dispatch_session_event_to_runner(
+            session_id,
+            conversation,
+            body,
+            conversation_store,
+            runner,
+            agent_name=None,
+            file_store=None,
+            artifact_store=None,
+        )
+    except (httpx.HTTPError, OmnigentError):
+        return False
+    return True
+
+
+class MessageArtifactBody(BaseModel):
+    """``POST /sessions/{id}/items/{item_id}/artifact``: the artifact picked, or ``None``."""
+
+    artifact_id: str | None
+
+
 def check_id(value: str, what: str) -> None:
     try:
         uuid_to_bytes(value)
@@ -193,9 +266,18 @@ def create_artifacts_router(
     conversation_store: ConversationStore,
     permission_store: PermissionStore | None = None,
     auth_provider: AuthProvider | None = None,
+    steer: Steer | None = None,
 ) -> APIRouter:
-    """Build the artifacts router, mounted with ``prefix="/v1"``."""
+    """Build the artifacts router, mounted with ``prefix="/v1"``.
+
+    :param steer: Steers a running turn (tests pass a fake); the runner's steer path otherwise.
+    """
     router = APIRouter()
+
+    async def _steer(request: Request, session_id: str, text: str) -> bool:
+        if steer is not None:
+            return await steer(request, session_id, text)
+        return await steer_running_turn(request, conversation_store, session_id, text)
 
     def _owner(request: Request) -> str | None:
         return request_owner(request, auth_provider)
@@ -253,6 +335,9 @@ def create_artifacts_router(
         saver, turn_item_id = await asyncio.to_thread(
             producing_turn, conversation_store, parent_session_id, chat_id
         )
+        item_id = await asyncio.to_thread(
+            conversation_item, conversation_store, parent_session_id, saver, turn_item_id
+        )
         item = await asyncio.to_thread(
             store.create,
             user_id=owner,
@@ -265,7 +350,12 @@ def create_artifacts_router(
             source_path=source_path,
             turn_item_id=turn_item_id,
             chat_id=saver,
+            item_id=item_id,
         )
+        try:
+            await asyncio.to_thread(link_saved_version, store, item)
+        except Exception:  # the chip is a label, never a reason to fail a save
+            _logger.warning("artifacts: could not link %s to its message", item.id, exc_info=True)
         return artifact_to_response(item, versions=item.version)
 
     @router.get("/artifacts")
@@ -325,6 +415,79 @@ def create_artifacts_router(
                 }
             )
         return {"edits": edits}
+
+    @router.get("/artifacts/hint")
+    async def artifacts_hint(request: Request, session_id: str = Query()) -> dict[str, Any]:
+        """The runtime hint for the start of a turn in the Conversation (``None``: none).
+
+        The runner calls this when a turn starts: this Conversation's artifacts, newest first,
+        with the one the person's latest message was sent with open marked. A Helper has none.
+        """
+        owner = _owner(request)
+        check_id(session_id, "session_id")
+        await require_access(
+            _caller(request), session_id, LEVEL_OWNER, permission_store, conversation_store
+        )
+        conversation = await asyncio.to_thread(conversation_store.get_conversation, session_id)
+        if conversation is None or conversation.parent_conversation_id is not None:
+            return {"hint": None}
+        rows = await asyncio.to_thread(
+            store.list_latest, user_id=owner, parent_session_id=session_id, limit=MAX_ARTIFACTS
+        )
+        _, asked = await asyncio.to_thread(producing_turn, conversation_store, session_id, None)
+        opened = await asyncio.to_thread(open_artifact, store, session_id, asked)
+        return {"hint": artifact_hint([a for a, _n in rows], opened)}
+
+    @router.post("/sessions/{session_id}/items/{item_id}/artifact")
+    async def set_message_artifact(
+        request: Request,
+        session_id: str,
+        item_id: str,
+        body: MessageArtifactBody,
+    ) -> dict[str, Any]:
+        """The person picks which artifact their message is about (``None``: none).
+
+        Records it as ``chosen``, tells the family stream, steers the turn the message started
+        when it is still running, and answers with the message as the transcript shows it.
+        """
+        user_id = _caller(request)
+        check_id(session_id, "session_id")
+        await require_access(
+            user_id, session_id, LEVEL_OWNER, permission_store, conversation_store
+        )
+        try:
+            uuid_to_bytes(item_id)
+            item = await asyncio.to_thread(conversation_store.get_item, session_id, item_id)
+        except InvalidUuidError:
+            item = None
+        if item is None or not is_person_message(item):
+            raise OmnigentError("Message not found", code=ErrorCode.NOT_FOUND)
+        current = await asyncio.to_thread(store.message_link, session_id, item_id)
+        artifact_id = body.artifact_id
+        if artifact_id is None:
+            link = MessageLink(None, None, None, LINK_CHOSEN)
+        else:
+            check_id(artifact_id, "artifact_id")
+            picked = await asyncio.to_thread(store.get_in_session, artifact_id, session_id)
+            if picked is None:
+                raise OmnigentError("Artifact not found", code=ErrorCode.NOT_FOUND)
+            same = current is not None and current.name == picked.name
+            version = current.version if same and current is not None else None
+            link = MessageLink(picked.id, picked.name, version, LINK_CHOSEN)
+        await asyncio.to_thread(store.set_message_link, session_id, item_id, link)
+        notify_item_updated(session_id, item_id)
+        conversation = await asyncio.to_thread(conversation_store.get_conversation, session_id)
+        if conversation is not None and conversation.live_status in _MID_TURN_LIVE_STATUSES:
+            _, latest = await asyncio.to_thread(
+                producing_turn, conversation_store, session_id, None
+            )
+            if latest == item_id:
+                await _steer(request, session_id, steer_text(link))
+        projected = project_items([item.to_api_dict()])
+        message = projected[0] if projected else {"id": item.id, "role": "user", "blocks": []}
+        message["artifact"] = link.to_wire()
+        redactor = await session_redactor(request, conversation_store, session_id, user_id)
+        return redactor.deep(message)
 
     @router.post("/artifacts/{artifact_id}/delivered")
     async def mark_delivered(request: Request, artifact_id: str) -> dict[str, Any]:
@@ -389,6 +552,7 @@ def create_artifacts_router(
                     "edit_summary": v.edit_summary,
                     "turn_item_id": v.turn_item_id,
                     "chat_id": v.chat_id,
+                    "item_id": v.item_id,
                 }
                 for v in versions
             ],

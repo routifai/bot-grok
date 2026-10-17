@@ -7,12 +7,14 @@ from typing import TYPE_CHECKING, Any
 
 from omnigent.context.labels import is_superside_chat
 from omnigent.superchat.artifacts.handlers import handle_artifact_tool
+from omnigent.superchat.artifacts.hint import fetch_artifact_hint
 from omnigent.superchat.artifacts.tools import ARTIFACT_TOOL_NAMES
 from omnigent.superchat.artifacts.writeback import deliver_manual_edits
 from omnigent.superchat.feature import Feature, InstallDeps, ToolManagerCtx
 from omnigent.superchat.risk import Risk, register_classifier, register_target_namer
 
 if TYPE_CHECKING:
+    import httpx
     from fastapi import FastAPI
 
     from omnigent.tools.base import Tool
@@ -43,9 +45,17 @@ def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]
     return [ArtifactSaveTool(), ArtifactListTool(), ArtifactDeleteTool()]
 
 
+async def _turn_prefix(server_client: httpx.AsyncClient | None, conversation_id: str) -> list[str]:
+    """Hand edits written back (one note each), then the hint naming this chat's artifacts."""
+    notes = await deliver_manual_edits(server_client, conversation_id)
+    return [*notes, *await fetch_artifact_hint(server_client, conversation_id)]
+
+
 def _install(app: FastAPI, deps: InstallDeps) -> None:
     from omnigent.runtime import get_artifact_store
+    from omnigent.server.routes._sessions.orchestration import ON_MESSAGE_CONTEXT
     from omnigent.superchat.artifacts.edit_routes import create_html_edit_router
+    from omnigent.superchat.artifacts.links import record_open_artifact
     from omnigent.superchat.artifacts.routes import create_artifacts_router
     from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore
 
@@ -58,6 +68,12 @@ def _install(app: FastAPI, deps: InstallDeps) -> None:
         return (item.title or item.name) if item is not None else None
 
     register_target_namer("artifact", _name)
+
+    def _open_artifact(session_id: str, item_id: str, context: dict[str, Any]) -> None:
+        record_open_artifact(store, session_id, item_id, context)
+
+    # Before the message reaches the runner, so the turn's hint already names it as open.
+    ON_MESSAGE_CONTEXT["artifacts"] = _open_artifact
     app.include_router(
         create_artifacts_router(
             store,
@@ -80,6 +96,6 @@ ARTIFACTS_FEATURE = Feature(
     name="artifacts",
     tools=_tools,
     handlers=dict.fromkeys(ARTIFACT_TOOL_NAMES, handle_artifact_tool),
-    turn_prefix=deliver_manual_edits,
+    turn_prefix=_turn_prefix,
     install=_install,
 )

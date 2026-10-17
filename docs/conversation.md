@@ -69,6 +69,25 @@ Artifacts in this conversation (newest first):
 
 The hint is derived from the artifact store and the send context. It is not a tool and not a model call.
 
+**Engine details** (the engine half, `engine/omnigent/superchat/artifacts/`):
+
+- *Where the link lives.* One row per linked message in the artifact store's `message_artifacts` table (session, item, artifact id, name, version, how). A person's message with no row has no `artifact` field; one the person set to "None" has `artifact: null`. Deleting an artifact drops the links to it.
+- *Item update.* A link change is sent on the family stream as `message.delivery {chat_id, item_id}`, the frame the web already refetches the transcript on.
+- *Send.* The engine reads `context.open_artifact.artifact_id` (32 hex) when it stores the message, before the runner sees it; any other shape, or an artifact of another Conversation, is ignored. The link starts as `how: "open"` with `version: null`.
+- *Link on save.* A save during the message's turn sets `how: "edited"` when the message has no link or is `open` with another artifact; a link to the same artifact (`open`, `edited` or `chosen`) gains the saved `version`; a link the person `chosen` for another artifact, or "None", is kept.
+- *Versions.* `all_versions[].item_id` is the Conversation's own save's turn message; for a Helper's save (or its own Helper's), the person's message before the `start_helper` call that started the Helper under the Conversation. Hand edits, restores, live updates and scheduled Helpers have `null`.
+- *Relink.* `404 not_found` when the item is not the person's message in that session (an assistant item, a runtime notice, an unknown id) or the artifact is not this Conversation's; `400 invalid_input` for a malformed artifact id. When the session's turn is running and the item is its newest person message, the turn is steered through the runner's `if_running` path with exactly one line: `The person means the artifact "<name>" (<artifact_id>).` or `The person says this message is not about an artifact.` An idle session is not steered.
+- *Hint.* The runner reads it from `GET /v1/artifacts/hint?session_id=<id>` (`{"hint": string | null}`) at the start of every turn in the Conversation and puts it before the turn's message. At most 8 artifacts (newest version of each, newest first), each `- <title or file name> (<kind>, v<version>, <version id>)`, the kind one of `deck`, `page`, `document`, `PDF`, `sheet`, `slides`, `image`, `data`. The artifact the person's latest message was sent with open is marked ` — open beside the chat`, and named first when it is not among the 8. `null` for a Helper and for a Conversation with no artifacts.
+
+**Helper notices** ([ADR 0022](adr/0022-the-orchestrator-narrates-while-helpers-work.md)) (`engine/omnigent/superchat/helpers/notices.py`):
+
+- *Tools.* Helpers only (offered when the session is a Helper, and allowed in the `worker` and `subworker` types): `report_progress({text})` and `raise_flag({text})`, one line each (whitespace collapsed, at most 240 characters).
+- *Text forms* (final; the prompt and the web rely on them): `[helper <name>] progress: <text>` and `[helper <name>] flag: <text>`, where `<name>` is the Helper's title. The completion notice is unchanged.
+- *Delivery.* Both are runtime notices (`is_system_notice`) posted to the parent through the engine's message path. A flag is posted plainly: steered into the parent's running turn, or a wake when it is idle. Progress is posted with `if_running`: only a running turn takes it; otherwise it waits and the next wake carries it (a flag's, or the completion notice of another Helper), one line per Helper, newest only, ahead of the notice. A finished Helper's waiting progress is dropped.
+- *Throttle.* A progress notice replaces the same Helper's undelivered one; a Helper's progress goes out at most once every 5 seconds, and one held back is sent when the interval ends. Flags are never held back or merged.
+- *Activity.* The two calls show as lines under their Helper: the progress text, and `Flagged: <text>`.
+- *Measurement.* Two log lines with the session id: `first token for <session> <s>s after the turn started` (each turn in the Conversation) and `first progress for <parent> <s>s after its helper started`.
+
 ## The assistant narrates while helpers work
 
 The rules the assistant bundle carries ([ADR 0022](adr/0022-the-orchestrator-narrates-while-helpers-work.md)):

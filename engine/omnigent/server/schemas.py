@@ -1342,6 +1342,10 @@ class SessionEventInput(BaseModel):
     :param if_running: Only for a ``message``: deliver it into the turn
         running now. With none running the session refuses it (409
         ``not_running``) and keeps nothing, instead of starting a turn.
+    :param context: Only for a ``message``: what was beside the chat when it
+        was sent, e.g. ``{"open_artifact": {"artifact_id": "...", "version": 4}}``
+        (docs/conversation.md "Send"). Read by the engine when the message is
+        stored; never part of the model's input or of what is forwarded.
     """
 
     type: str
@@ -1354,6 +1358,7 @@ class SessionEventInput(BaseModel):
     created_by: str | None = None
     # Read by the message forward only; never echoed when an event is relayed as is.
     if_running: bool = Field(default=False, exclude=True)
+    context: dict[str, Any] | None = Field(default=None, exclude=True)
 
     @field_validator("data")
     @classmethod

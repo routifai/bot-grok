@@ -24,6 +24,8 @@ from omnigent.server.routes._auth_helpers import (
 from omnigent.server.routes._errors import session_not_found as _session_not_found
 from omnigent.stores import ConversationStore
 from omnigent.stores.permission_store import PermissionStore
+from omnigent.superchat.artifacts.links import attach_links
+from omnigent.superchat.artifacts.store import SqlAlchemyArtifactStore
 from omnigent.superchat.family.tree import sub_agent_status
 from omnigent.superchat.lineage import session_lineage
 from omnigent.superchat.transcript.blocks import helper_session_ids, project_items
@@ -143,8 +145,13 @@ def register_transcript_routes(
     conversation_store: ConversationStore,
     auth_provider: AuthProvider | None = None,
     permission_store: PermissionStore | None = None,
+    artifact_store: SqlAlchemyArtifactStore | None = None,
 ) -> None:
-    """Register ``GET /sessions/{session_id}/transcript``."""
+    """Register ``GET /sessions/{session_id}/transcript``.
+
+    :param artifact_store: Where the person's messages' artifact links are read from; without
+        it no message carries ``artifact``.
+    """
 
     @router.get("/sessions/{session_id}/transcript", response_model=None)
     async def get_session_transcript(
@@ -166,7 +173,9 @@ def register_transcript_routes(
         :returns: ``{"data": [message], "has_more", "older_cursor", "lineage", "reset", "live"}``:
             ``reset`` is ``{"item_id", "created_at"}`` of the latest reset or ``None``; ``live``
             is whether a turn is in flight. A user message still waiting behind the running
-            turn has ``delivered: "queued"`` (from the runner's live queue).
+            turn has ``delivered: "queued"`` (from the runner's live queue). A person's message
+            linked to an artifact has ``artifact`` (``{artifact_id, name, version, how}``, or
+            ``None`` when the person said it is about none).
         :raises OmnigentError: 403 without READ; 404 if no session exists.
         """
         user_id = _get_user_id(request, auth_provider)
@@ -186,6 +195,8 @@ def register_transcript_routes(
             limit=limit,
             before_reset=before_reset,
         )
+        if artifact_store is not None:
+            await asyncio.to_thread(attach_links, artifact_store, conversation.id, page["data"])
         if page["live"]:
             # A message waiting behind the running turn: the runner's live queue says which.
             waiting = await _waiting_item_ids(request, conversation.id)

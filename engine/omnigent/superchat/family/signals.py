@@ -71,3 +71,11 @@ def notify_message_done(chat_id: str, item_id: str) -> None:
 def notify_chat_reset(chat_id: str, item_id: str) -> None:
     """*chat_id* was cleared (``POST .../reset``); *item_id* is its reset checkpoint."""
     _notify(f"msg:{chat_id}", {"type": "chat.reset", "chat_id": chat_id, "item_id": item_id})
+
+
+def notify_item_updated(chat_id: str, item_id: str) -> None:
+    """A stored item of *chat_id* changed (a person's message gained or changed its artifact link).
+
+    Sent as ``message.delivery``: the frame the web already refetches the chat's transcript on.
+    """
+    _notify(f"msg:{chat_id}", {"type": "message.delivery", "chat_id": chat_id, "item_id": item_id})

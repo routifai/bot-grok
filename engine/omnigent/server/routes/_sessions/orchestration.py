@@ -4922,6 +4922,13 @@ def _runner_reject_detail(response: httpx.Response) -> str:
     return f"{code}: {detail}" if code else detail
 
 
+#: ``feature name -> hook(session_id, item_id, context)``, called once a message that carried a
+#: top-level ``context`` is stored and before it reaches the runner, so a turn starting on it
+#: already sees what the context recorded (the artifact open beside the chat). Set by a
+#: feature's install; a failing hook is logged and never fails the send.
+ON_MESSAGE_CONTEXT: dict[str, Callable[[str, str, dict[str, Any]], None]] = {}
+
+
 async def _persist_user_event_item(
     session_id: str,
     conv: Conversation,
@@ -4950,6 +4957,12 @@ async def _persist_user_event_item(
     item = _build_new_item(body, f"turn_{uuid.uuid4().hex}", created_by=created_by)
     persisted_items = await asyncio.to_thread(conversation_store.append, session_id, [item])
     await _seed_missing_title_from_user_message(conv, item, conversation_store)
+    if body.type == "message" and body.context:
+        for hook in list(ON_MESSAGE_CONTEXT.values()):
+            try:
+                await asyncio.to_thread(hook, session_id, persisted_items[0].id, body.context)
+            except Exception:  # noqa: BLE001 - context is a hint, never a reason to fail a send
+                _logger.warning("message context hook failed for %s", session_id, exc_info=True)
     return persisted_items[0]
 
 
