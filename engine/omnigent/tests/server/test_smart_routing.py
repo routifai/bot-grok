@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Sequence
-from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -770,41 +769,6 @@ async def test_external_routing_client_sends_bearer_auth() -> None:
     assert captured["authorization"] == "Bearer dapi-XYZ"
 
 
-@pytest.mark.asyncio
-async def test_external_routing_client_mints_fresh_token_per_call_from_profile() -> None:
-    """With a databricks_profile, each call re-authenticates (OAuth refresh)."""
-    import httpx
-
-    from omnigent.server.smart_routing import ExternalRoutingClient
-
-    tokens = iter(["Bearer tok-1", "Bearer tok-2"])
-    captured: list[str | None] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        captured.append(request.headers.get("Authorization"))
-        return httpx.Response(
-            200,
-            json={"route_selection": [{"route_option": {"model": "m", "harness": "h"}}]},
-        )
-
-    client = ExternalRoutingClient(
-        base_url="https://host/v1", router_name="task_v0", databricks_profile="agent"
-    )
-
-    # Stub the SDK Config so each authenticate() yields the next token — proving
-    # the client re-resolves auth per call rather than caching a stale bearer.
-    class _FakeConfig:
-        def authenticate(self) -> dict[str, str]:
-            return {"Authorization": next(tokens)}
-
-    client._sdk_config = _FakeConfig()  # type: ignore[attr-defined]
-
-    with _patch_httpx(httpx.MockTransport(handler)):
-        await client.route("hi", {"h": ["m"]})
-        await client.route("hi again", {"h": ["m"]})
-    assert captured == ["Bearer tok-1", "Bearer tok-2"]
-
-
 # ── Per-request auth: auth_provider and the ambient SDK chain ──────────────
 #
 # One managed process serves many workspaces, so the credential cannot be bound
@@ -860,7 +824,6 @@ async def test_auth_provider_wins_over_the_static_auth() -> None:
         base_url="https://host/v1",
         router_name="task_v0",
         auth=_bearer_auth("static-key"),
-        databricks_profile="agent",
         auth_provider=lambda: {"Authorization": "Bearer per-caller"},
     )
     with _patch_httpx(httpx.MockTransport(_auth_handler(captured))):
@@ -943,140 +906,6 @@ async def test_auth_provider_carries_more_than_the_bearer_header() -> None:
         "workspace": "42",
         "content_type": "application/json",
     }
-
-
-class _AmbientConfig:
-    """Stand-in for a databricks-sdk ``Config`` resolved from the environment."""
-
-    def __init__(self, host: str, token: str = "ambient-tok") -> None:
-        self.host = host
-        self._token = token
-        self.calls = 0
-
-    def authenticate(self) -> dict[str, str]:
-        self.calls += 1
-        return {"Authorization": f"Bearer {self._token}-{self.calls}"}
-
-
-@contextmanager
-def _ambient_sdk(config: Any) -> Any:  # type: ignore[explicit-any]
-    """Patch the SDK ``Config`` the ambient chain builds; ``None`` raises."""
-
-    def factory(**kwargs: Any) -> Any:  # type: ignore[explicit-any]
-        assert not kwargs, "the ambient chain takes no profile"
-        if config is None:
-            raise ValueError("default auth: cannot configure default credentials")
-        return config
-
-    with patch("databricks.sdk.config.Config", factory):
-        yield
-
-
-@pytest.mark.databricks
-@pytest.mark.asyncio
-async def test_ambient_credential_is_used_when_it_names_the_router_host() -> None:
-    """No profile, no api_key: the workspace credential in the environment answers."""
-    import httpx
-
-    from omnigent.server.smart_routing import ExternalRoutingClient
-
-    captured: list[str | None] = []
-    client = ExternalRoutingClient(
-        base_url="https://ws.example.invalid/ai-gateway/routing/v1", router_name="task_v0"
-    )
-    config = _AmbientConfig("https://ws.example.invalid")
-    with _ambient_sdk(config), _patch_httpx(httpx.MockTransport(_auth_handler(captured))):
-        await client.route("hi", {"h": ["m"]})
-        await client.route("hi again", {"h": ["m"]})
-    # Re-authenticated per call, so an expiring OAuth token is refreshed.
-    assert captured == ["Bearer ambient-tok-1", "Bearer ambient-tok-2"]
-
-
-@pytest.mark.databricks
-@pytest.mark.asyncio
-async def test_ambient_credential_is_withheld_from_another_host() -> None:
-    """The guard: a workspace token never reaches an endpoint off that workspace."""
-    import httpx
-
-    from omnigent.server.smart_routing import ExternalRoutingClient
-
-    captured: list[str | None] = []
-    client = ExternalRoutingClient(
-        base_url="https://router.acme.invalid/v1", router_name="task_v0"
-    )
-    config = _AmbientConfig("https://ws.example.invalid")
-    with _ambient_sdk(config), _patch_httpx(httpx.MockTransport(_auth_handler(captured))):
-        await client.route("hi", {"h": ["m"]})
-        await client.route("hi again", {"h": ["m"]})
-    assert captured == [None, None]
-    # The chain is probed once, not on every call.
-    assert config.calls == 0
-
-
-@pytest.mark.databricks
-@pytest.mark.asyncio
-async def test_no_ambient_credential_leaves_the_request_unauthenticated() -> None:
-    """A plain unauthenticated endpoint keeps working when the SDK resolves nothing."""
-    import httpx
-
-    from omnigent.server.smart_routing import ExternalRoutingClient
-
-    captured: list[str | None] = []
-    client = ExternalRoutingClient(base_url="http://localhost:6767/v1", router_name="task_v0")
-    with _ambient_sdk(None), _patch_httpx(httpx.MockTransport(_auth_handler(captured))):
-        await client.route("hi", {"h": ["m"]})
-    assert captured == [None]
-
-
-@pytest.mark.databricks
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("host", "expected"),
-    [
-        # Scheme-less and trailing-slash spellings still match the router host.
-        ("ws.example.invalid", "Bearer ambient-tok-1"),
-        ("https://ws.example.invalid/", "Bearer ambient-tok-1"),
-        # A same-suffix host is a DIFFERENT host, not a match.
-        ("https://evil-ws.example.invalid", None),
-        ("", None),
-    ],
-)
-async def test_ambient_host_matching(host: str, expected: str | None) -> None:
-    import httpx
-
-    from omnigent.server.smart_routing import ExternalRoutingClient
-
-    captured: list[str | None] = []
-    client = ExternalRoutingClient(
-        base_url="https://ws.example.invalid/ai-gateway/routing/v1", router_name="task_v0"
-    )
-    with (
-        _ambient_sdk(_AmbientConfig(host)),
-        _patch_httpx(httpx.MockTransport(_auth_handler(captured))),
-    ):
-        await client.route("hi", {"h": ["m"]})
-    assert captured == [expected]
-
-
-@pytest.mark.databricks
-@pytest.mark.asyncio
-async def test_the_ambient_chain_is_skipped_when_any_other_mode_is_configured() -> None:
-    """Explicit config wins; the ambient chain is the last resort only."""
-    import httpx
-
-    from omnigent.server.smart_routing import ExternalRoutingClient, _bearer_auth
-
-    captured: list[str | None] = []
-    config = _AmbientConfig("https://ws.example.invalid")
-    client = ExternalRoutingClient(
-        base_url="https://ws.example.invalid/v1",
-        router_name="task_v0",
-        auth=_bearer_auth("static-key"),
-    )
-    with _ambient_sdk(config), _patch_httpx(httpx.MockTransport(_auth_handler(captured))):
-        await client.route("hi", {"h": ["m"]})
-    assert captured == ["Bearer static-key"]
-    assert config.calls == 0
 
 
 @pytest.mark.asyncio

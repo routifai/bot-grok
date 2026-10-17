@@ -37,7 +37,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping, Sequence
 
     import httpx  # used in type annotations only; runtime import is lazy in fetch_runner_models
-    from databricks.sdk.config import Config
 
     from omnigent.util.reasoning_effort import ModelEffortCaps
 
@@ -660,7 +659,7 @@ class LLMRoutingClient:
 def _bearer_auth(token: str) -> httpx.Auth:
     """Build a static ``Authorization: Bearer <token>`` httpx auth.
 
-    :param token: The bearer token, e.g. a Databricks workspace token.
+    :param token: The bearer token, e.g. a router API key.
     :returns: An ``httpx.Auth`` that adds the bearer header to each request.
     """
     import httpx
@@ -671,53 +670,6 @@ def _bearer_auth(token: str) -> httpx.Auth:
             yield request
 
     return _BearerAuth()
-
-
-def _config_bearer(
-    config: Any,  # type: ignore[explicit-any]  # databricks.sdk.config.Config
-    label: str,
-) -> Any:  # type: ignore[explicit-any]  # httpx.Auth | None
-    """Mint a bearer from a databricks-sdk ``Config``, per call.
-
-    ``authenticate()`` refreshes an expired OAuth token, so calling it on every
-    request is what keeps a long-lived server from sending a stale token.
-
-    :param config: A resolved SDK ``Config``.
-    :param label: How to name the credential's source in a warning.
-    :returns: An httpx auth, or ``None`` when the credential can't be minted
-        (auth failure degrades to unauthenticated rather than failing the turn).
-    """
-    try:
-        headers = config.authenticate()
-    except Exception:
-        _logger.warning(
-            "ExternalRoutingClient: could not resolve auth from %s", label, exc_info=True
-        )
-        return None
-    token = (dict(headers or {}).get("Authorization") or "").removeprefix("Bearer ").strip()
-    if not token:
-        return None
-    return _bearer_auth(token)
-
-
-def _same_host(candidate: str | None, url: str) -> bool:
-    """Whether *candidate* names the same host as *url*, schemes ignored.
-
-    :param candidate: A workspace host, with or without a scheme.
-    :param url: The URL being posted to.
-    :returns: ``True`` only when both resolve to a non-empty, equal hostname.
-    """
-    from urllib.parse import urlsplit
-
-    def _host(value: str) -> str:
-        value = value.strip().rstrip("/")
-        if "//" not in value:
-            value = "//" + value
-        return (urlsplit(value).hostname or "").lower()
-
-    if not candidate:
-        return False
-    return bool(_host(candidate)) and _host(candidate) == _host(url)
 
 
 def _router_error_detail(body: str) -> str:
@@ -1639,7 +1591,6 @@ class ExternalRoutingClient:
         base_url: str,
         router_name: str,
         auth: httpx.Auth | None = None,
-        databricks_profile: str | None = None,
         auth_provider: Callable[[], Mapping[str, str] | None] | None = None,
         model_prefixes: Sequence[str] | None = None,
         request_timeout: float = ROUTING_REQUEST_TIMEOUT_S,
@@ -1653,13 +1604,7 @@ class ExternalRoutingClient:
             ``/routes:select`` is appended.
         :param router_name: Router strategy name, e.g. ``"task_v1"``.
         :param auth: Optional static httpx auth (e.g. a bearer built from an
-            explicit ``api_key``). ``None`` for an unauthenticated endpoint or
-            when *databricks_profile* supplies per-call OAuth instead.
-        :param databricks_profile: Optional Databricks CLI profile. When set
-            (and *auth* is ``None``), a fresh bearer is minted per :meth:`route`
-            call via the databricks-sdk ``Config`` — which refreshes OAuth
-            tokens transparently, so a long-lived server never sends a stale
-            token (the 401 an at-startup captured token hits after ~1h).
+            explicit ``api_key``). ``None`` for an unauthenticated endpoint.
         :param auth_provider: Optional callable returning the request headers to
             authenticate ONE :meth:`route` call, e.g.
             ``{"Authorization": "Bearer ..."}``. Evaluated per call and takes
@@ -1688,15 +1633,7 @@ class ExternalRoutingClient:
         self._url = base_url.rstrip("/") + "/" + ROUTES_SELECT_PATH
         self._router_name = router_name
         self._auth = auth
-        self._databricks_profile = databricks_profile
         self._auth_provider = auth_provider
-        # Cached SDK Config for the profile (created lazily), reused across
-        # calls; its authenticate() refreshes the OAuth token as needed.
-        self._sdk_config: Config | None = None
-        # Same cache for the ambient chain, plus a latch that stops re-probing
-        # the SDK on every call once it is known not to apply here.
-        self._ambient_config: Config | None = None
-        self._ambient_off = False
         self._model_prefixes = (
             list(MODEL_ID_PREFIXES) if model_prefixes is None else list(model_prefixes)
         )
@@ -1726,18 +1663,12 @@ class ExternalRoutingClient:
         """Resolve one request's credentials as ``(httpx auth, extra headers)``.
 
         Evaluated per :meth:`route` call, in precedence order: the injected
-        *auth_provider* (per-caller identity), a static *auth* (explicit
-        api_key), the Databricks *databricks_profile* (fresh bearer per call so
-        token expiry never surfaces as a router 401), then the ambient SDK
-        chain. Both slots empty means the request goes out unauthenticated.
+        *auth_provider* (per-caller identity), then a static *auth* (explicit
+        api_key). Both empty means the request goes out unauthenticated.
         """
         if self._auth_provider is not None:
             return None, self._provider_headers()
-        if self._auth is not None:
-            return self._auth, {}
-        if self._databricks_profile is not None:
-            return self._profile_auth(), {}
-        return self._ambient_auth(), {}
+        return self._auth, {}
 
     def _provider_headers(self) -> Mapping[str, str]:
         """Call the injected provider for this request's auth headers."""
@@ -1750,64 +1681,6 @@ class ExternalRoutingClient:
             )
             return {}
         return {k: v for k, v in dict(headers or {}).items() if isinstance(v, str) and v.strip()}
-
-    def _profile_auth(self) -> Any:  # type: ignore[explicit-any]  # httpx.Auth | None
-        """Mint a bearer from the configured Databricks CLI profile."""
-        if self._sdk_config is None:
-            try:
-                from databricks.sdk.config import Config
-
-                self._sdk_config = Config(profile=self._databricks_profile)
-            except Exception:
-                _logger.warning(
-                    "ExternalRoutingClient: could not resolve auth for profile %r",
-                    self._databricks_profile,
-                    exc_info=True,
-                )
-                return None
-        return _config_bearer(self._sdk_config, f"profile {self._databricks_profile!r}")
-
-    def _ambient_auth(self) -> Any:  # type: ignore[explicit-any]  # httpx.Auth | None
-        """Mint a bearer from the ambient Databricks SDK chain, if it applies.
-
-        A server deployment has no CLI profile and no api_key: its workspace
-        credential is the ambient environment (``DATABRICKS_HOST`` plus
-        ``DATABRICKS_CLIENT_ID``/``DATABRICKS_CLIENT_SECRET``, or whatever the
-        SDK's default chain resolves). Rather than make that a config flag, it
-        engages only when the ambient workspace host IS the host this client
-        posts to.
-
-        Host matching is the safer guard than an ``auth: ambient`` opt-in: the
-        hazard is sending a workspace token to an endpoint that is not that
-        workspace, and a config value cannot prevent that (a deployment that
-        sets it and later re-points ``base_url`` leaks the token), whereas host
-        matching cannot leak regardless of config. It also keeps a plain
-        unauthenticated endpoint unauthenticated — a non-matching host never
-        attaches a credential — while costing managed no configuration.
-        """
-        if self._ambient_off:
-            return None
-        if self._ambient_config is None:
-            try:
-                from databricks.sdk.config import Config
-
-                config = Config()
-            except Exception:
-                _logger.debug(
-                    "ExternalRoutingClient: no ambient Databricks credential", exc_info=True
-                )
-                self._ambient_off = True
-                return None
-            if not _same_host(getattr(config, "host", None), self._url):
-                _logger.debug(
-                    "ExternalRoutingClient: ambient Databricks host %r is not the router host; "
-                    "sending no credential",
-                    getattr(config, "host", None),
-                )
-                self._ambient_off = True
-                return None
-            self._ambient_config = config
-        return _config_bearer(self._ambient_config, "the ambient Databricks environment")
 
     async def route(
         self,

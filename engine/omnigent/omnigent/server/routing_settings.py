@@ -18,8 +18,8 @@ def _parse_model_prefixes(
 ) -> list[str] | None:
     """Normalize the ``model_prefix`` config into a list of prefixes.
 
-    Accepts a single string (``"databricks-"``) or a list
-    (``["databricks-", "system.ai."]``); blanks are dropped.
+    Accepts a single string (``"vendor-"``) or a list
+    (``["vendor-", "system.ai."]``); blanks are dropped.
 
     :returns: The configured prefixes — an explicit empty list is honoured as
         "this catalog carries no prefix" — or ``None`` when the key is absent or
