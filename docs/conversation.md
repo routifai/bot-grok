@@ -31,7 +31,7 @@ Every save is a version: by the assistant from a message (`ai`), by hand in the 
 
 ## Contract
 
-Web ↔ engine, additive. Names are final; shapes may grow.
+Web ↔ engine, additive. Names are final; shapes may grow. The web half is merged (`a2812bace`..`d3e2933e0`); the engine matches these shapes.
 
 **Message item.** The person's message gains an optional field:
 
@@ -46,11 +46,18 @@ artifact: null | {
 
 `how: "open"` is set at send time, `"edited"` by the engine when a save happens during the turn, `"chosen"` when the person taps the chip. A change arrives on the family stream as an item update; the web redraws the chip.
 
-**Send.** `chats.send` gains `context?: { openArtifact?: { artifactId: string, version: number } }`. The engine turns it into the runtime hint and the `how: "open"` link.
+**Send.** `chats.send` gains `context?: { openArtifact?: { artifactId: string, version: number } }`. On the wire the context rides at the top level of the message event, beside `data`, so it never lands in the model's input item:
 
-**Relink.** `chats.setMessageArtifact({ itemId, artifactId: string | null })`. Updates the link (`how: "chosen"`), steers a running turn, and answers with the updated item.
+```
+{ "type": "message", "data": { "role": "user", "content": "…" },
+  "context": { "open_artifact": { "artifact_id": "art_…", "version": 4 } } }
+```
 
-**Versions.** `ArtifactVersion` gains `itemId: string | null`, the person's message that led to it. `artifacts.versions` returns it; the editor's version menu shows it.
+The engine turns it into the runtime hint and the `how: "open"` link on the stored item (`artifact: { artifact_id, name, version, how }` in snake_case on the wire).
+
+**Relink.** `chats.setMessageArtifact({ botId, itemId, artifactId: string | null })` → `POST /v1/sessions/{id}/items/{itemId}/artifact` with body `{ "artifact_id": "art_…" | null }`. The engine updates the link (`how: "chosen"`), steers a running turn, and answers with the updated transcript item in the same shape as a transcript page item. `404 not_found` when the item is not the person's message.
+
+**Versions.** `ArtifactVersion` gains `itemId: string | null`, the person's message that led to it; on the wire `all_versions[].item_id`. The engine sets it on every version saved during a turn the person's message started. The web falls back to `turn_item_id` when `item_id` is absent and the version is the conversation's own non-manual save; that fallback goes once the engine sends `item_id`.
 
 **Runtime hint.** A system notice at the start of a turn, never longer than ten lines:
 
