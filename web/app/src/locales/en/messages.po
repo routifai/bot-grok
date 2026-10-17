@@ -57,6 +57,9 @@ msgstr "{0} MB"
 msgid "{days}d ago"
 msgstr "{days}d ago"
 
+msgid "{done} of {total} done"
+msgstr "{done} of {total} done"
+
 msgid "{hours}h ago"
 msgstr "{hours}h ago"
 
@@ -1290,8 +1293,14 @@ msgstr "Pick a folder"
 msgid "Pick a time and I'll do this for you."
 msgstr "Pick a time and I'll do this for you."
 
+msgid "Plan"
+msgstr "Plan"
+
 msgid "Plan my week"
 msgstr "Plan my week"
+
+msgid "Plan updated"
+msgstr "Plan updated"
 
 msgid "Plan week"
 msgstr "Plan week"

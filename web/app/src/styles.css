@@ -771,3 +771,168 @@ body {
     background: color-mix(in srgb, var(--tint) 45%, transparent);
   }
 }
+
+/* Running work is lit (ADR 0023): the work strip under a reply (features/activity/WorkStrip.tsx)
+   and the "Working" pill in the conversation header. A slow conic edge in the tint family turns
+   while the turn or a Helper runs, with a soft blurred glow behind it; settled, the edge is a
+   hairline. Reduced motion keeps the lit edge, still. */
+@property --sc-work-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes sc-work-spin {
+  to {
+    --sc-work-angle: 360deg;
+  }
+}
+.sc-work {
+  position: relative;
+  isolation: isolate;
+  border-radius: 14px;
+  padding: 1.5px;
+}
+.sc-work::before,
+.sc-work::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+.sc-work::before {
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--separator);
+}
+.sc-work[data-live]::before {
+  background: conic-gradient(
+    from var(--sc-work-angle),
+    color-mix(in srgb, var(--tint) 18%, transparent) 0 40%,
+    var(--tint) 62%,
+    var(--tint-2) 72%,
+    var(--tint-3) 80%,
+    color-mix(in srgb, var(--tint) 18%, transparent) 92%
+  );
+  animation: sc-work-spin 4s linear infinite;
+}
+.sc-work[data-live]::after {
+  inset: -6px;
+  z-index: -2;
+  border-radius: 18px;
+  background: conic-gradient(
+    from var(--sc-work-angle),
+    transparent 0 50%,
+    var(--tint) 66%,
+    var(--tint-2) 76%,
+    transparent 90%
+  );
+  filter: blur(14px);
+  opacity: 0.45;
+  animation: sc-work-spin 4s linear infinite;
+}
+.sc-live-ring {
+  position: absolute;
+  inset: -1px;
+  border-radius: 999px;
+  padding: 1px;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--sc-work-angle),
+    transparent 0 55%,
+    var(--tint) 70%,
+    var(--tint-2) 80%,
+    transparent 92%
+  );
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: sc-work-spin 3s linear infinite;
+}
+/* A settled strip's mark: the orb gone still and grey. */
+.sc-work-still {
+  background:
+    radial-gradient(circle at 34% 30%, rgb(255 255 255 / 0.9) 0 8%, transparent 30%),
+    conic-gradient(var(--ink-3), var(--ink-2), var(--ink-3));
+  opacity: 0.8;
+}
+/* A plan step the newest render added: it slides in on a tint wash; its tag fades late. */
+@keyframes sc-work-added {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+    background: color-mix(in srgb, var(--tint) 18%, transparent);
+  }
+  60% {
+    background: color-mix(in srgb, var(--tint) 10%, transparent);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    background: transparent;
+  }
+}
+@keyframes sc-work-fade-late {
+  0%,
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes sc-work-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes sc-work-pop {
+  0% {
+    transform: scale(0.3);
+  }
+  70% {
+    transform: scale(1.15);
+  }
+}
+@keyframes sc-work-wait {
+  to {
+    background-position: -200% 0;
+  }
+}
+.sc-work-added {
+  animation: sc-work-added 0.7s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.sc-work-tag {
+  animation: sc-work-fade-late 3.5s forwards;
+}
+.sc-work-in {
+  animation: sc-work-in 0.25s ease-out;
+}
+.sc-work-pop {
+  animation: sc-work-pop 0.35s ease-out;
+}
+@keyframes sc-work-slide {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+}
+.sc-work-flag {
+  animation: sc-work-slide 0.5s ease-out;
+}
+.sc-work-thumb[data-updating] {
+  border-color: var(--tint);
+  background:
+    linear-gradient(90deg, var(--bubble) 25%, var(--content) 50%, var(--bubble) 75%) 0 0 / 200% 100%;
+  animation: sc-work-wait 1.2s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sc-work[data-live]::before,
+  .sc-work[data-live]::after,
+  .sc-live-ring,
+  .sc-work-thumb[data-updating],
+  .sc-work-tag {
+    /* Without the fade the tag stays until the next render of the plan. */
+    animation: none;
+  }
+}

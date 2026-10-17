@@ -2,6 +2,7 @@
 // and the places that draw a file (transcript, Files tab) may use.
 export { ArtifactFileCard } from "./ArtifactFileCard";
 export { ArtifactPreview } from "./ArtifactPreview";
+export { ArtifactPreviewThumbnail } from "./ArtifactPreviewThumbnail";
 export { ArtifactFileCard as ReplyArtifactFileCard } from "./cards/ArtifactFileCard";
 export { PanelOverflowMenu } from "./PanelOverflowMenu";
 export {

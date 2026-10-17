@@ -82,6 +82,10 @@ export type ColorTokens = {
   tint?: string;
   /** Muse only: accent text on a soft accent fill. */
   "tint-ink"?: string;
+  /** Muse only: the light-blue stop of the live glow (the work strip's edge while work runs). */
+  "tint-2"?: string;
+  /** Muse only: the violet stop of the live glow, and of the live orb. */
+  "tint-3"?: string;
   /** Muse only: live / done dot. */
   ok?: string;
   /** Muse only: waiting dot. */
@@ -501,6 +505,8 @@ const superchatLight = {
   "selection-strong": "rgba(0, 113, 227, 0.12)",
   tint: "#0071E3",
   "tint-ink": "#0066CC",
+  "tint-2": "#5AC8FA",
+  "tint-3": "#7D5CFF",
   ok: "#34C759",
   warn: "#FF9F0A",
   alert: "#FF3B30",
@@ -532,6 +538,8 @@ const superchatDark = {
   "selection-strong": "rgba(41, 151, 255, 0.18)",
   tint: "#0A84FF",
   "tint-ink": "#9FDCF5",
+  "tint-2": "#64D2FF",
+  "tint-3": "#9D8CFF",
   ok: "#30D158",
   warn: "#FF9F0A",
   alert: "#FF453A",

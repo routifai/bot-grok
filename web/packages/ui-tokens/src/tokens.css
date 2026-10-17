@@ -120,6 +120,8 @@
   --selection-strong: rgba(0, 113, 227, 0.12);
   --tint: #0071e3;
   --tint-ink: #0066cc;
+  --tint-2: #5ac8fa;
+  --tint-3: #7d5cff;
   --ok: #34c759;
   --warn: #ff9f0a;
   --alert: #ff3b30;
@@ -283,6 +285,8 @@
   --selection-strong: rgba(41, 151, 255, 0.18);
   --tint: #0a84ff;
   --tint-ink: #9fdcf5;
+  --tint-2: #64d2ff;
+  --tint-3: #9d8cff;
   --ok: #30d158;
   --warn: #ff9f0a;
   --alert: #ff453a;
