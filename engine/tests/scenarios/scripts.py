@@ -34,6 +34,7 @@ SCENARIOS: tuple[Scenario, ...] = (
         (
             (
                 ("request", "Make a deck from sales.csv for Monday's review"),
+                ("reply", "Building the review deck from sales.csv."),
                 ("plan", ""),
                 ("tool_call", "sys_os_bash"),
                 ("tool_call", "deck_new"),
@@ -48,6 +49,7 @@ SCENARIOS: tuple[Scenario, ...] = (
         (
             (
                 ("request", "Create some presentation about RBC vs TD"),
+                ("reply", "Building the RBC vs TD comparison deck now."),
                 ("plan", ""),
                 ("tool_call", "deck_new"),
                 ("save", ""),
@@ -69,6 +71,7 @@ SCENARIOS: tuple[Scenario, ...] = (
             (
                 ("answer", "Use mock numbers"),
                 ("reply", "Building the Q3 deck with mock numbers."),
+                ("plan", ""),
                 ("tool_call", "deck_new"),
                 ("save", ""),
                 ("reply", "Here is the Q3 deck with mock numbers."),

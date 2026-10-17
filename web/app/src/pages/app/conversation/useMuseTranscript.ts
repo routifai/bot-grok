@@ -1,4 +1,4 @@
-import type { MessageArtifact, ThreadMessage } from "@superchat/contracts";
+import type { MessageArtifact, ReplyEvent, ThreadMessage } from "@superchat/contracts";
 import type { RefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TurnStatus } from "../../../features/activity";
@@ -22,6 +22,62 @@ const REPLY_WAIT_MAX_MS = 3 * 60 * 1000;
 /** While a reply is expected the stream is the signal; this reads anyway, for a stream that is
  * down (a Muse's first message opens its Conversation, which the stream could not join before). */
 const REPLY_POLL_MS = 5_000;
+
+/** How soon a dropped reply stream reconnects while the turn runs, first and at most. */
+const REPLY_RETRY_MIN_MS = 1_000;
+const REPLY_RETRY_MAX_MS = 3_000;
+
+/**
+ * The reply as it streams, before the transcript has it. Display only: whether the turn runs is
+ * `turn`'s. `text` is still being written; `settled` was stored as a message (or its turn ended)
+ * and stays until a read started after that (`settledAt`, in `reads`) shows the stored copy, so
+ * the swap happens in one render. `textAt` is when `text` began, so a read that started before it
+ * cannot wipe it.
+ */
+type Live = { text: string; textAt: number; settled: string; settledAt: number };
+const NO_LIVE: Live = { text: "", textAt: 0, settled: "", settledAt: 0 };
+
+const joinText = (a: string, b: string) => (a && b ? `${a}\n\n${b}` : a || b);
+
+/** A streamed event onto the live reply; `replace`: the first text of a (re)connect, which is
+ * everything written so far. `now` is the count of reads started when the event arrived (read
+ * then, not in the state updater, which may run after a later read has started). */
+function applyReply(live: Live, event: ReplyEvent, replace: boolean, now: number): Live {
+  if (event.kind === "textReset") {
+    return live.text
+      ? { text: "", textAt: now, settled: joinText(live.settled, live.text), settledAt: now }
+      : live;
+  }
+  if (replace || !live.text) return { ...live, text: event.delta, textAt: now };
+  return { ...live, text: live.text + event.delta };
+}
+
+/** The bot's text stored after the person's newest message. */
+function storedReplyText(messages: readonly ThreadMessage[]): string {
+  let start = messages.length;
+  while (start > 0 && messages[start - 1]?.role !== "user") start -= 1;
+  return messages
+    .slice(start)
+    .flatMap((message) => (message.role === "bot" ? message.blocks : []))
+    .map((block) => (block.kind === "text" ? block.text : ""))
+    .join("\n");
+}
+
+/** What a read that started at `started` leaves of the live reply. `ended`: no turn runs and
+ * nothing the person sent is waiting. */
+function afterRead(
+  live: Live,
+  started: number,
+  messages: readonly ThreadMessage[] | null,
+  ended: boolean,
+): Live {
+  const settled = started > live.settledAt ? "" : live.settled;
+  const stale = started > live.textAt && Boolean(live.text);
+  const stored =
+    stale && (ended || (messages && storedReplyText(messages).includes(live.text.trim())));
+  const text = stored ? "" : live.text;
+  return settled === live.settled && text === live.text ? live : { ...live, settled, text };
+}
 
 type Loaded = {
   threadId: string;
@@ -66,6 +122,9 @@ export function useMuseTranscript(
   const generation = useRef(0);
   const throttle = useRef<number | undefined>(undefined);
   const firstRead = useRef<Promise<void>>(Promise.resolve());
+  const [live, setLive] = useState<Live>(NO_LIVE);
+  /** Reads of the newest page started so far: the clock `Live` is kept against. */
+  const reads = useRef(0);
 
   const commit = useCallback((next: (Loaded & { botId: string }) | null) => {
     loadedRef.current = next;
@@ -75,6 +134,8 @@ export function useMuseTranscript(
   const read = useCallback(async () => {
     if (!botId) return;
     const current = generation.current;
+    reads.current += 1;
+    const started = reads.current;
     try {
       const page = await rpc.chats.transcript({ botId });
       if (current !== generation.current) return;
@@ -93,6 +154,10 @@ export function useMuseTranscript(
         pendingRef.current = null;
         setPending(null);
       }
+      // The stored reply takes the streamed one's place in this same render.
+      const unrecorded = Boolean(pendingRef.current);
+      const stored = unrecorded ? null : merged.messages;
+      setLive((now) => afterRead(now, started, stored, !running && !unrecorded));
       // A message not recorded yet is still being answered, even before the engine says it runs.
       if (!running && !pendingRef.current && page.messages.at(-1)?.role !== "user") {
         setWaiting(false);
@@ -156,6 +221,7 @@ export function useMuseTranscript(
     setWaiting(false);
     setStopped(false);
     setCancelled(false);
+    setLive(NO_LIVE);
     if (!botId) return;
     firstRead.current = read();
     let connected = false;
@@ -173,6 +239,9 @@ export function useMuseTranscript(
             // the engine's word. The read that follows says whether another turn started.
             commit({ ...current, running: false });
             setStopped(false);
+            // The streamed reply stays until the read that follows brings the stored one.
+            const at = reads.current;
+            setLive((now) => applyReply(now, { kind: "textReset" }, false, at));
             // Cut short at a Stop it reads "incomplete": what the Stop said stands then.
             if (event.status !== "incomplete") setCancelled(event.status === "cancelled");
           }
@@ -198,6 +267,40 @@ export function useMuseTranscript(
       stop();
     };
   }, [botId, commit, read, refresh]);
+
+  // While a reply is expected, its words as they are written (the Conversation's own stream);
+  // reconnects shortly after a drop, and stops when the turn ends.
+  const streamChat = loaded?.botId === botId ? loaded?.threadId : undefined;
+  useEffect(() => {
+    if (!botId || !streamChat || !awaiting) return;
+    const abort = new AbortController();
+    void (async () => {
+      let retryMs = REPLY_RETRY_MIN_MS;
+      while (!abort.signal.aborted) {
+        let replace = true;
+        try {
+          const events = await rpc.chats.watchReply(
+            { botId, chatId: streamChat },
+            { signal: abort.signal },
+          );
+          for await (const event of events) {
+            if (abort.signal.aborted) return;
+            retryMs = REPLY_RETRY_MIN_MS;
+            const first = replace;
+            replace = false;
+            const at = reads.current;
+            setLive((now) => applyReply(now, event, first, at));
+          }
+        } catch {
+          // Dropped: try again shortly.
+        }
+        if (abort.signal.aborted) return;
+        await new Promise((resolve) => window.setTimeout(resolve, retryMs));
+        retryMs = Math.min(retryMs + REPLY_RETRY_MIN_MS, REPLY_RETRY_MAX_MS);
+      }
+    })();
+    return () => abort.abort();
+  }, [botId, streamChat, awaiting]);
 
   useEffect(() => {
     if (!waiting) return;
@@ -327,6 +430,21 @@ export function useMuseTranscript(
     () => (pending ? optimisticMessage(threadId ?? "", pending.text, pending.artifact) : null),
     [pending, threadId],
   );
+  const liveText = joinText(live.settled, live.text);
+  const liveMessage = useMemo<ThreadMessage | null>(
+    () =>
+      liveText && threadId
+        ? {
+            id: `live:${threadId}`,
+            threadId,
+            seq: Number.MAX_SAFE_INTEGER,
+            role: "bot",
+            blocks: [{ kind: "text", text: liveText }],
+            createdAt: new Date().toISOString(),
+          }
+        : null,
+    [liveText, threadId],
+  );
   const engineRunning = Boolean(forBot?.running);
   const turn = useMemo<TurnStatus>(
     () => ({ running: engineRunning, awaiting: waiting, stopped, cancelled }),
@@ -339,6 +457,8 @@ export function useMuseTranscript(
     threadId,
     /** The person's message sent but not yet in the transcript. */
     pendingMessage,
+    /** The reply as it streams, until the transcript has it: shown after `pendingMessage`. */
+    liveMessage,
     /** The turn's status as the engine reported it, for the work state (features/activity
      * `useWorkState`): the one reading of whether the Conversation runs. */
     turn,

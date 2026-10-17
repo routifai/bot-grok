@@ -7,6 +7,7 @@ const adapters = vi.hoisted(() => ({
   readTurnImages: vi.fn(),
   resolveChatOwnership: vi.fn(),
   streamOmnigentFamily: vi.fn(),
+  streamOmnigentSession: vi.fn(),
   resetOmnigentSession: vi.fn(),
   getOmnigentWorkspaceRoot: vi.fn(),
   moveOmnigentSessionForPerson: vi.fn(),
@@ -137,6 +138,56 @@ describe("chats.watch", () => {
       { type: "activitiesChanged" },
       { type: "heartbeat" },
     ]);
+  });
+});
+
+describe("chats.watchReply", () => {
+  async function collect(input: { botId: string; chatId: string }) {
+    const events: unknown[] = [];
+    for await (const event of await run<AsyncIterable<unknown>>(
+      chatsRouter.chats.watchReply,
+      input,
+    )) {
+      events.push(event);
+    }
+    return events;
+  }
+
+  it("streams the Conversation's reply as text and resets, nothing else", async () => {
+    adapters.streamOmnigentSession.mockImplementation(async function* () {
+      yield { type: "session.heartbeat" };
+      yield { type: "response.output_text.delta", delta: "Building " };
+      yield { type: "response.output_text.delta", delta: "the deck." };
+      yield { type: "response.output_item.done", item: { type: "function_call" } };
+      yield { type: "response.output_item.done", item: { type: "message" } };
+      yield { type: "session.status", status: "running" };
+      yield { type: "response.completed" };
+    });
+    expect(await collect({ botId: "conv_super", chatId: "conv_super" })).toEqual([
+      { kind: "text", delta: "Building " },
+      { kind: "text", delta: "the deck." },
+      { kind: "textReset" },
+      { kind: "textReset" },
+    ]);
+    expect(adapters.streamOmnigentSession).toHaveBeenCalledWith(
+      expect.anything(),
+      "",
+      "conv_super",
+      undefined,
+    );
+    expect(adapters.resolveChatOwnership).not.toHaveBeenCalled();
+  });
+
+  it("streams one of the Muse's Helpers, and refuses another Muse's chat", async () => {
+    adapters.streamOmnigentSession.mockImplementation(async function* () {});
+    adapters.resolveChatOwnership.mockResolvedValueOnce(OWNED);
+    expect(await collect({ botId: "conv_super", chatId: "conv_h" })).toEqual([]);
+    adapters.resolveChatOwnership.mockResolvedValueOnce(null);
+    await expect(collect({ botId: "conv_super", chatId: "conv_z" })).rejects.toThrow(
+      /Chat not found/,
+    );
+    await expect(collect({ botId: "other", chatId: "other" })).rejects.toThrow(/not found/i);
+    expect(adapters.streamOmnigentSession).toHaveBeenCalledTimes(1);
   });
 });
 

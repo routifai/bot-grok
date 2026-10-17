@@ -180,13 +180,12 @@ export function ShellPage() {
   });
   const readTranscript = museTranscript.refresh;
   revealMessageRef.current = museTranscript.reveal;
-  const transcriptMessages = useMemo(
-    () =>
-      museTranscript.pendingMessage
-        ? [...(museTranscript.messages ?? []), museTranscript.pendingMessage]
-        : (museTranscript.messages ?? []),
-    [museTranscript.messages, museTranscript.pendingMessage],
-  );
+  // The person's message on its way, then the reply as it streams, until the transcript has them.
+  const { messages: storedMessages, pendingMessage, liveMessage } = museTranscript;
+  const transcriptMessages = useMemo(() => {
+    const unstored = [pendingMessage, liveMessage].filter((message) => message !== null);
+    return unstored.length ? [...(storedMessages ?? []), ...unstored] : (storedMessages ?? []);
+  }, [storedMessages, pendingMessage, liveMessage]);
   // Each reply's strip and where the running work began, read once (ADR 0023).
   const work = useMemo(() => transcriptWork(transcriptMessages), [transcriptMessages]);
   const {

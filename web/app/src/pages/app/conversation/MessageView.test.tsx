@@ -364,6 +364,28 @@ it("attaches one work strip for the Helpers a reply started, after its text", as
   turnWork.drawn.clear();
 });
 
+it("draws the reply still streaming as a reply, with its lit strip under it", async () => {
+  turnWork.strips.set("live:s1", {
+    helpers: [{ helperId: "h1", title: "Research", status: "in_progress" }],
+    turn: { plan: null, live: true, startedAt: null, endedAt: null },
+    lit: true,
+  });
+  const host = await mount({
+    id: "live:s1",
+    threadId: "s1",
+    seq: Number.MAX_SAFE_INTEGER,
+    role: "bot",
+    blocks: [{ kind: "text", text: "Researching both banks first." }],
+    createdAt: "2026-10-01T10:00:00.000Z",
+  });
+  const strip = host.querySelector('[data-testid="work-strip"]');
+  expect(strip?.getAttribute("data-helpers")).toBe("h1");
+  expect(
+    strip?.previousElementSibling?.querySelector('[data-testid="message-bot-bubble"]'),
+  ).not.toBeNull();
+  turnWork.strips.clear();
+});
+
 it("draws the reply's plan in its work strip, never as a card of its own", async () => {
   turnWork.strips.set("b2", {
     helpers: [],

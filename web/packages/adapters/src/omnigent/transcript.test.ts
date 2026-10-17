@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { versionMessageId } from "./artifacts.js";
 import type { OmnigentTranscriptPage } from "./client/transcript.js";
-import { mapSessionStatusFrame, mapTranscriptMessage, mapTranscriptPage } from "./transcript.js";
+import {
+  mapReplyFrame,
+  mapSessionStatusFrame,
+  mapTranscriptMessage,
+  mapTranscriptPage,
+} from "./transcript.js";
 
 const page = (data: OmnigentTranscriptPage["data"], hasMore = false): OmnigentTranscriptPage => ({
   data,
@@ -290,6 +295,68 @@ describe("a file's studio chat (ADR 0024)", () => {
       mapSessionStatusFrame({ type: "session.status", status: "idle", blocked_on: "" }),
     ).toEqual({ status: "idle", blockedOn: null });
     expect(mapSessionStatusFrame({ type: "response.completed" })).toBeNull();
+  });
+});
+
+describe("the reply as it streams", () => {
+  it("reads each text delta, flat or wrapped", () => {
+    expect(mapReplyFrame({ type: "response.output_text.delta", delta: "Building " })).toEqual({
+      kind: "text",
+      delta: "Building ",
+    });
+    expect(
+      mapReplyFrame({ type: "response.output_text.delta", data: { delta: "the deck." } }),
+    ).toEqual({ kind: "text", delta: "the deck." });
+    expect(mapReplyFrame({ type: "response.output_text.delta", delta: "" })).toBeNull();
+  });
+
+  it("reads the in-flight text replayed on (re)connect as one delta of everything so far", () => {
+    const snapshot = [
+      { type: "session.heartbeat" },
+      { type: "response.created", response: { id: "resp_1", status: "in_progress" } },
+      { type: "response.output_text.delta", delta: "Building the deck now." },
+    ];
+    expect(snapshot.map(mapReplyFrame).filter(Boolean)).toEqual([
+      { kind: "text", delta: "Building the deck now." },
+    ]);
+    expect(
+      mapReplyFrame({
+        type: "response.output_text.delta",
+        delta: "So far.",
+        message_id: "msg_1",
+        index: 4,
+      }),
+    ).toEqual({ kind: "text", delta: "So far." });
+  });
+
+  it("resets when the text is stored as a message or the turn ends", () => {
+    expect(
+      mapReplyFrame({
+        type: "response.output_item.done",
+        item: { type: "message", role: "assistant", content: [] },
+      }),
+    ).toEqual({ kind: "textReset" });
+    for (const type of [
+      "response.completed",
+      "response.failed",
+      "response.cancelled",
+      "response.incomplete",
+    ]) {
+      expect(mapReplyFrame({ type })).toEqual({ kind: "textReset" });
+    }
+  });
+
+  it("ignores every other frame", () => {
+    for (const frame of [
+      { type: "response.output_item.done", item: { type: "function_call_output", call_id: "c" } },
+      { type: "response.output_item.done", item: { type: "function_call", call_id: "c" } },
+      { type: "response.reasoning_text.delta", delta: "hmm" },
+      { type: "session.status", status: "running" },
+      { type: "session.heartbeat" },
+      { type: "response.in_progress" },
+    ]) {
+      expect(mapReplyFrame(frame)).toBeNull();
+    }
   });
 });
 

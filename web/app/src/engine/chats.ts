@@ -6,6 +6,7 @@ import {
   getOmnigentWorkingPlace,
   getOmnigentWorkspaceRoot,
   interruptOmnigentSession,
+  mapReplyFrame,
   mapSessionStatusFrame,
   mapTranscriptMessage,
   mapTranscriptPage,
@@ -50,6 +51,12 @@ async function requireOwnHelper(botId: string, chatId: string): Promise<void> {
   if (!ownership || ownership.botId !== botId) {
     throw new ORPCError("NOT_FOUND", { message: "Chat not found" });
   }
+}
+
+/** The Muse's Conversation or one of its Helpers; `NOT_FOUND` for anything else. */
+async function requireOwnChat(botId: string, chatId: string): Promise<void> {
+  if (chatId === (await requireMuse(botId))) return;
+  await requireOwnHelper(botId, chatId);
 }
 
 /** Where a message goes: the Conversation, or one of the Muse's chats a person writes in (a
@@ -268,6 +275,22 @@ export const chatsRouter = {
         )) {
           const status = mapSessionStatusFrame(frame);
           if (status) yield status;
+        }
+      } catch (error) {
+        if (!signal?.aborted) throw error;
+      }
+    }),
+    watchReply: os.chats.watchReply.handler(async function* ({ input, signal }) {
+      await requireOwnChat(input.botId, input.chatId);
+      try {
+        for await (const frame of streamOmnigentSession(
+          engineClient(),
+          NO_EMAIL,
+          input.chatId,
+          signal,
+        )) {
+          const event = mapReplyFrame(frame);
+          if (event) yield event;
         }
       } catch (error) {
         if (!signal?.aborted) throw error;

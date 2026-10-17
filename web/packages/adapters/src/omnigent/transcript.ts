@@ -7,6 +7,7 @@ import type {
   MessageArtifact,
   MessageBlock,
   ReplyCardBlock,
+  ReplyEvent,
   ThreadMessage,
   ThreadMessagePage,
 } from "@superchat/contracts";
@@ -195,6 +196,34 @@ export function mapSessionStatusFrame(
   if (typeof body.status !== "string") return null;
   const blockedOn = typeof body.blocked_on === "string" && body.blocked_on ? body.blocked_on : null;
   return { status: body.status, blockedOn };
+}
+
+/** The turn-ending `response.*` frames: the turn's text is stored or dropped. */
+const TERMINAL_RESPONSE_FRAMES = new Set([
+  "response.completed",
+  "response.failed",
+  "response.cancelled",
+  "response.incomplete",
+]);
+
+/** The reply being written, from a frame of `/v1/sessions/{id}/stream`: each text delta (the
+ * in-flight text the engine replays on (re)connect arrives as one delta of everything so far),
+ * and `textReset` when that text is stored as a message or the turn ends. Null for any other
+ * frame. */
+export function mapReplyFrame(frame: OmnigentStreamEvent): ReplyEvent | null {
+  const body = (typeof frame.data === "object" && frame.data !== null ? frame.data : frame) as {
+    delta?: unknown;
+    item?: { type?: unknown } | null;
+  };
+  if (frame.type === "response.output_text.delta") {
+    return typeof body.delta === "string" && body.delta
+      ? { kind: "text", delta: body.delta }
+      : null;
+  }
+  if (frame.type === "response.output_item.done") {
+    return body.item?.type === "message" ? { kind: "textReset" } : null;
+  }
+  return TERMINAL_RESPONSE_FRAMES.has(frame.type) ? { kind: "textReset" } : null;
 }
 
 /** One transcript page for chat `chatId`. The engine has already redacted its secrets. */

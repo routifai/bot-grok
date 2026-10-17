@@ -128,6 +128,28 @@ def test_a_short_working_note_before_more_work_is_never_a_message() -> None:
     assert [m["id"] for m in project_items(reading)] == ["u1", "a1"]
 
 
+def test_the_spoken_opener_is_the_turn_text_until_the_answer_replaces_it() -> None:
+    opener = "Building the TD vs BMO deck now with mock figures."
+    running = [
+        _msg("u1", "user", "TD vs BMO deck"),
+        _msg("a1", "assistant", opener),
+        _call("c1", "deck_new", "k1"),  # no output yet
+    ]
+    out = project_items(running)
+    assert [m["id"] for m in out] == ["u1", "a1"]
+    assert out[1]["blocks"] == [{"type": "text", "text": opener}]
+    # a working note after more work folds back to the opener
+    noted = [
+        *running,
+        _out("o1", "k1", {"slides": 6}),
+        _msg("a2", "assistant", "Shorten slide 3."),
+        _call("c2", "sys_os_edit", "k2"),
+    ]
+    assert [m["id"] for m in project_items(noted)] == ["u1", "a1"]
+    done = [*noted, _msg("a3", "assistant", "Here is the TD vs BMO deck.")]
+    assert [m["id"] for m in project_items(done)] == ["u1", "a3"]
+
+
 def test_system_notice_and_hidden_context_are_dropped() -> None:
     items = [
         _msg("n1", "user", "timer fired", is_system_notice=True),

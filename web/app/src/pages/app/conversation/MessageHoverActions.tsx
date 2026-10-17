@@ -28,8 +28,9 @@ export function MessageHoverActions({
   const [moreOpen, setMoreOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Streaming progress bubbles keep hover free for selection / stop clicks.
-  if (message.id.startsWith("progress:")) return null;
+  // Streaming progress bubbles keep hover free for selection / stop clicks; a reply still being
+  // written has nothing to reply to or copy yet.
+  if (message.id.startsWith("progress:") || message.id.startsWith("live:")) return null;
 
   function copyMessage() {
     const text = copyableMessageText(message);

@@ -35,6 +35,15 @@ export const ChatStatusSchema = z.object({
 });
 export type ChatStatus = z.infer<typeof ChatStatusSchema>;
 
+/** The reply a chat's running turn is writing, as it streams: `text` appends to it (after a
+ * (re)connect, the first `text` is everything written so far), `textReset` says it was stored
+ * as a message or the turn ended. Display only; whether the turn runs is the transcript's. */
+export const ReplyEventSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("text"), delta: z.string() }),
+  z.object({ kind: z.literal("textReset") }),
+]);
+export type ReplyEvent = z.infer<typeof ReplyEventSchema>;
+
 export const chatsContract = {
   chats: {
     /** The Conversation (no `chatId`) or one of its Helpers, as typed blocks.
@@ -61,6 +70,11 @@ export const chatsContract = {
     watchStatus: oc
       .input(z.object({ botId: Id, chatId: Id }))
       .output(eventIterator(ChatStatusSchema)),
+    /** The reply being written in the Conversation (`chatId` is its id) or one of the Muse's
+     * chats, as it streams. */
+    watchReply: oc
+      .input(z.object({ botId: Id, chatId: Id }))
+      .output(eventIterator(ReplyEventSchema)),
     /** Sends the person's message to the Muse's Conversation. Files are already in the
      * workspace (`files.uploadAttachment`); the engine queues or steers a message sent while a
      * turn runs. */

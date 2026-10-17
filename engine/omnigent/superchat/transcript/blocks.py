@@ -19,7 +19,9 @@ out. The rules a client would otherwise copy:
   the same turn (a user message starts a turn) is interim narration and is not a message; the
   Helper rows and citation chips it would have carried move to the turn's last text. A short
   text (under :data:`NOTE_WORDS` words) that more work follows is a working note even while it
-  is the turn's last text so far (a turn still running): it is not a message either;
+  is the turn's last text so far (a turn still running): it is not a message either. The
+  turn's first text before any work is its spoken opener, never a note: it shows until a later
+  text replaces it;
 * the person's latest turn that made a page from a data file (a ``.csv``, ``.xlsx``… named in
   their message or the turn's calls) and showed no chips ends with one "Keep this page updated
   when <file> changes" chip;
@@ -383,11 +385,16 @@ def _final_text_ids(items: list[Item], outputs: Mapping[str, str]) -> set[str]:
     card belongs to the answer written before it, so text the model adds after the card is
     dropped instead of replacing the answer (and pushing the chips off the last message).
     A short text that work follows is a working note, so it never ends its turn, even while
-    the turn is still running and it is the newest text.
+    the turn is still running and it is the newest text. The turn's first text before any work
+    is its spoken opener ("Building the deck now."), never a note: it is the turn's text until
+    a later text replaces it, and a working note folded later falls back to the turn's last text
+    that was not a note.
     """
     final: dict[int, str] = {}
+    kept: dict[int, str] = {}  # the turn's last text that is not a note
     notes: set[str] = set()
     closed: set[int] = set()
+    worked: set[int] = set()
     turn = 0
     for item in items:
         if item.get("type") == "function_call":
@@ -395,8 +402,12 @@ def _final_text_ids(items: list[Item], outputs: Mapping[str, str]) -> set[str]:
                 result = _object(outputs.get(str(item.get("call_id") or "")))
                 if result and result.get("type") == "card":
                     closed.add(turn)
-            if final.get(turn) in notes and _is_work(item, outputs):
-                del final[turn]  # a working note, not the answer
+            if _is_work(item, outputs):
+                worked.add(turn)
+                if final.get(turn) in notes:
+                    del final[turn]  # a working note, not the answer
+                    if turn in kept:
+                        final[turn] = kept[turn]
             continue
         if item.get("type") != "message" or item.get("is_meta") is True:
             continue
@@ -409,8 +420,10 @@ def _final_text_ids(items: list[Item], outputs: Mapping[str, str]) -> set[str]:
             and "id" in item
         ):
             final[turn] = item["id"]
-            if len(item_text(item).split()) < NOTE_WORDS:
+            if turn in worked and len(item_text(item).split()) < NOTE_WORDS:
                 notes.add(item["id"])
+            else:
+                kept[turn] = item["id"]
     return set(final.values())
 
 
