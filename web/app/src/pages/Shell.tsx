@@ -23,7 +23,7 @@ import {
 } from "../components/ai/orb";
 import { ArtifactPanelProvider, AskPreviewsProvider } from "../components/cards/context";
 import { SuperchatLogo } from "../components/SuperchatLogo";
-import { useSuperchatWork } from "../features/activity";
+import { useSuperchatWork, WorkingPill } from "../features/activity";
 import { ApprovalCards } from "../features/approvals";
 import { appsExtension } from "../features/apps";
 import { ArtifactRegistryProvider } from "../features/artifacts/registry";
@@ -41,7 +41,7 @@ import type { ArtifactTarget } from "../lib/artifact-open";
 import { markAfterPaint, markOnce } from "../lib/performance";
 import { rpc } from "../lib/rpc";
 import { ShowMessageProvider } from "../lib/show-message";
-import { type MuseLiveRun, useTurnRuns } from "../lib/useMuseLiveState";
+import { type MuseLiveRun, runStartMs, useTurnRuns } from "../lib/useMuseLiveState";
 import { ContourGround } from "./app/chrome/ContourGround";
 import { ConversationActivity } from "./app/chrome/ConversationActivity";
 import { conversationLayout } from "./app/chrome/conversationLayout";
@@ -373,6 +373,11 @@ export function ShellPage() {
       <SuperchatLogo className="md:hidden" />
       <span className="min-w-0 flex-1" />
       <div className="app-no-drag flex shrink-0 items-center gap-2">
+        {/* Running work shows here too, for when its strip is scrolled away (ADR 0023). */}
+        <WorkingPill
+          botId={active.id}
+          turnStartedAt={running ? (runStartMs(turnRuns[0]) ?? null) : null}
+        />
         <span className="app-no-drag hidden md:inline-flex">
           <WorkInChip
             align="end"
