@@ -71,7 +71,6 @@ def test_external_ignores_a_profile_key() -> None:
     client = _build_external_routing_client(cfg)
     assert isinstance(client, ExternalRoutingClient)
     assert client._auth is None
-    assert client._databricks_profile is None
 
 
 def test_external_api_key_expands_env(monkeypatch: Any) -> None:

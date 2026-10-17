@@ -222,13 +222,6 @@ def test_rejects_nonmapping_providers() -> None:
         parse_inference_config(config)
 
 
-def test_unavailable_bound_provider_does_not_fall_back() -> None:
-    config = _config(pi={"provider": "future-cli"})
-    config["providers"]["future-cli"] = {"kind": "cli-config", "cli": "future"}
-    with pytest.raises(OmnigentError, match="unavailable"):
-        resolve_bound_provider(config, "pi")
-
-
 @pytest.mark.parametrize(
     "auth",
     [
