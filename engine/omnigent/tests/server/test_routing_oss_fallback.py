@@ -10,7 +10,7 @@ The external router is still preferred wherever it can serve (the Databricks
 posture), so these tests pin both halves: the fallback, and that a healthy
 router keeps the call.
 
-Runs against the deterministic ``routes:select`` mock the e2e routing CUJs use,
+Runs against a deterministic ``routes:select`` mock (``tests/server/_mock_router.py``)
 over loopback — a real HTTP 404 with the real body, no gateway dependency.
 """
 
@@ -31,7 +31,7 @@ from omnigent.server.smart_routing import (
     route_session_harness,
     route_turn,
 )
-from tests.e2e.routing._mock_router import MockRouter, serve_mock_router
+from tests.server._mock_router import MockRouter, serve_mock_router
 from tests.server.helpers import FakeCaps, FakeRoutingClient
 
 OPUS = "databricks-claude-opus-4-8"

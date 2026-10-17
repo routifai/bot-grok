@@ -101,7 +101,7 @@ def set_current_test(nodeid: str | None) -> None:
     between-test usage falls back to ``"<no-test>"``.
 
     :param nodeid: The running test's pytest nodeid, e.g.
-        ``"tests/e2e/test_sub_agents.py::test_spawn"``, or ``None``
+        ``"tests/inner/test_spawn.py::test_spawn"``, or ``None``
         when no test is active.
     """
     global _CURRENT_NODEID
