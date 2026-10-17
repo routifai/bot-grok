@@ -3,8 +3,9 @@
 #
 # Stages
 #   web      builds web/app (the React app) with pnpm
+#   agents   renders the agent bundles from engine/agents/templates
 #   python   installs the engine package (engine/omnigent) into a venv
-#   engine   what runs: python:3.12-slim + the venv + the web build + Superchat's bundle
+#   engine   what runs: python:3.12-slim + the venv + the web build + the rendered bundles
 #
 # Build from the repo root (deployment/build.sh does this with the right tags):
 #   docker build -f deployment/engine.Dockerfile -t superchat/engine:local .
@@ -36,6 +37,16 @@ COPY web/packages/ ./web/packages/
 COPY web/app/ ./web/app/
 RUN pnpm install --frozen-lockfile --filter "@superchat/web..."
 RUN pnpm --filter @superchat/web build
+
+# ── agents: engine/agents/templates → /src/engine/agents/bundles ───────────────
+# The image ships bundles rendered from the templates, never the committed copy (ADR 0019).
+# render-agents.mjs reads the templates and the deck kit's layout menu and writes bundles/.
+FROM ${NODE_IMAGE} AS agents
+WORKDIR /src
+COPY engine/agents/render-agents.mjs ./engine/agents/
+COPY engine/agents/templates/ ./engine/agents/templates/
+COPY engine/omnigent/superchat/decks/kit/menu.md ./engine/omnigent/superchat/decks/kit/
+RUN node engine/agents/render-agents.mjs
 
 # ── python: engine/omnigent → /opt/venv ────────────────────────────────────────
 FROM ${PYTHON_IMAGE} AS python
@@ -83,9 +94,9 @@ COPY --from=python /opt/venv /opt/venv
 COPY --from=python /src/LICENSE /src/NOTICE /opt/engine/
 # The server entrypoint: loads config, runs migrations, builds the app, serves.
 COPY deployment/entrypoint.py /app/entrypoint.py
-# The agent bundles the engine offers, the config templates and the start script that renders one
-# of them from the environment, then runs the entrypoint.
-COPY engine/agents/bundles/ /opt/bundle/agents/
+# The agent bundles the engine offers (rendered in the agents stage), the config templates and the
+# start script that renders one of them from the environment, then runs the entrypoint.
+COPY --from=agents /src/engine/agents/bundles/ /opt/bundle/agents/
 COPY --chmod=755 deployment/engine/start.sh deployment/engine/config.yaml.tmpl \
      deployment/engine/config.litellm.yaml.tmpl deployment/engine/config.byok.yaml.tmpl /opt/bundle/engine/
 # The web, served at "/" with an SPA fallback; /v1 and /health stay the API, /apps/<slug> the

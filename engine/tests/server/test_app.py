@@ -908,29 +908,6 @@ def seed_stores(tmp_path: Path, db_uri: str) -> _SeedStores:
     )
 
 
-@pytest.fixture()
-def polly_src_copy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """
-    A writable copy of the packaged polly bundle, wired as the seed
-    source.
-
-    The seeder reads from ``server_app._POLLY_BUNDLE_SOURCE`` (a
-    read-only path inside the install). Tests that need to mutate the
-    spec (change the subtitle) or its file mtimes (simulate a wheel
-    reinstall) copy it here and point the seeder at the copy.
-
-    :param tmp_path: Per-test temp dir for the copy.
-    :param monkeypatch: Used to repoint ``_POLLY_BUNDLE_SOURCE``.
-    :returns: Path to the copied polly bundle directory.
-    """
-    import shutil
-
-    dest = tmp_path / "polly_src"
-    shutil.copytree(server_app._POLLY_BUNDLE_SOURCE, dest)
-    monkeypatch.setattr(server_app, "_POLLY_BUNDLE_SOURCE", dest)
-    return dest
-
-
 def _independent_seed_stores(tmp_path: Path, label: str) -> _SeedStores:
     """A fresh, migrated, independent set of seed stores under ``tmp_path``."""
     from omnigent.db.utils import get_or_create_engine
@@ -956,13 +933,19 @@ def test_builtin_agent_id_is_stable_across_independent_stores(tmp_path: Path) ->
 
     a = _independent_seed_stores(tmp_path, "a")
     b = _independent_seed_stores(tmp_path, "b")
-    server_app._ensure_default_polly_agent(a.agent_store, a.artifact_store, a.agent_cache)
-    server_app._ensure_default_polly_agent(b.agent_store, b.artifact_store, b.agent_cache)
+    for stores in (a, b):
+        server_app._ensure_builtin_agent(
+            stores.agent_store,
+            stores.artifact_store,
+            stores.agent_cache,
+            name="builtin-probe",
+            bundle_bytes=b"bundle",
+        )
 
-    seeded_a = a.agent_store.get_by_name(server_app._POLLY_AGENT_NAME)
-    seeded_b = b.agent_store.get_by_name(server_app._POLLY_AGENT_NAME)
+    seeded_a = a.agent_store.get_by_name("builtin-probe")
+    seeded_b = b.agent_store.get_by_name("builtin-probe")
     assert seeded_a is not None and seeded_b is not None
-    assert seeded_a.id == seeded_b.id == builtin_agent_id(server_app._POLLY_AGENT_NAME)
+    assert seeded_a.id == seeded_b.id == builtin_agent_id("builtin-probe")
 
 
 def test_ensure_extra_builtin_agents_skips_bad_path_and_seeds_good(
@@ -1001,306 +984,6 @@ def test_ensure_extra_builtin_agents_skips_bad_path_and_seeds_good(
     assert seeded is not None, "valid extra built-in must seed even after a bad entry"
     assert seeded.session_id is None, "extra built-ins must be session-scope NULL"
     assert seed_stores.agent_store.get_by_name("does-not-exist") is None
-
-
-def test_ensure_default_polly_agent_seeds_card(seed_stores: _SeedStores) -> None:
-    """
-    Seeding registers polly as a built-in the picker can render.
-
-    The new-session picker reads built-ins from ``GET /v1/agents`` and
-    renders each as a card; this is what makes polly launchable next
-    to Claude Code.
-    """
-    server_app._ensure_default_polly_agent(
-        seed_stores.agent_store,
-        seed_stores.artifact_store,
-        seed_stores.agent_cache,
-    )
-
-    seeded = seed_stores.agent_store.get_by_name(server_app._POLLY_AGENT_NAME)
-    assert seeded is not None, "polly was not registered"
-    assert seeded.name == "polly"
-    # The bundle must be retrievable, not just referenced.
-    assert seed_stores.artifact_store.get(seeded.bundle_location) is not None
-
-
-def test_ensure_default_polly_agent_is_idempotent(seed_stores: _SeedStores) -> None:
-    """
-    A second seed call is a no-op — it must not register a duplicate.
-
-    Startup runs the seeder every boot; a non-idempotent seeder would
-    accumulate a new polly agent on each restart and break the
-    unique-name invariant the store enforces.
-    """
-    server_app._ensure_default_polly_agent(
-        seed_stores.agent_store,
-        seed_stores.artifact_store,
-        seed_stores.agent_cache,
-    )
-    first = seed_stores.agent_store.get_by_name(server_app._POLLY_AGENT_NAME)
-    assert first is not None
-    server_app._ensure_default_polly_agent(
-        seed_stores.agent_store,
-        seed_stores.artifact_store,
-        seed_stores.agent_cache,
-    )
-
-    # Exactly one polly row, and it's the same agent id as the first
-    # seed (no replacement, no duplicate).
-    page = seed_stores.agent_store.list(limit=100)
-    polly_rows = [a for a in page.data if a.name == "polly"]
-    assert len(polly_rows) == 1
-    assert polly_rows[0].id == first.id
-    # Unchanged re-seed must not bump version (a bump = nondeterministic bundle).
-    assert polly_rows[0].version == first.version == 1
-
-
-def test_ensure_default_polly_agent_refreshes_on_spec_change(
-    seed_stores: _SeedStores, polly_src_copy: Path
-) -> None:
-    """
-    A changed on-disk bundle refreshes the existing row in place.
-
-    This is the regression guard for the seed-once bug: when a new wheel
-    shipped a changed polly spec, the old seeder saw the row already
-    existed and returned early, so the deployed app kept serving the
-    stale bundle forever. The fix re-bundles and updates in place.
-    """
-    server_app._ensure_default_polly_agent(
-        seed_stores.agent_store,
-        seed_stores.artifact_store,
-        seed_stores.agent_cache,
-    )
-    first = seed_stores.agent_store.get_by_name(server_app._POLLY_AGENT_NAME)
-    assert first is not None
-    assert first.version == 1
-
-    # Simulate a new wheel shipping changed bundle content.
-    (polly_src_copy / "NEW_FILE.md").write_text("shipped in the new wheel")
-
-    server_app._ensure_default_polly_agent(
-        seed_stores.agent_store,
-        seed_stores.artifact_store,
-        seed_stores.agent_cache,
-    )
-
-    refreshed = seed_stores.agent_store.get_by_name(server_app._POLLY_AGENT_NAME)
-    assert refreshed is not None
-    # Same agent_id keeps task history (a delete would cascade the tasks FK).
-    assert refreshed.id == first.id
-    # Bundle + version refreshed in place; under seed-once both stayed stale (the bug).
-    assert refreshed.version == 2
-    assert refreshed.bundle_location != first.bundle_location
-    # One row (refresh, not duplicate); new bundle is retrievable.
-    page = seed_stores.agent_store.list(limit=100)
-    assert len([a for a in page.data if a.name == "polly"]) == 1
-    assert seed_stores.artifact_store.get(refreshed.bundle_location) is not None
-
-
-def test_ensure_default_polly_agent_no_churn_on_mtime_change(
-    seed_stores: _SeedStores, polly_src_copy: Path
-) -> None:
-    """
-    A redeploy with unchanged content does NOT refresh the row.
-
-    A wheel reinstall stamps fresh mtimes on identical files. Because
-    :func:`server_app._tar_gz_dir` normalizes tar member metadata, the
-    bundle bytes (and thus the content hash) are unchanged, so the
-    seeder is a no-op. Without that normalization the hash would shift
-    on every deploy and the version would climb forever.
-    """
-    import os
-
-    server_app._ensure_default_polly_agent(
-        seed_stores.agent_store,
-        seed_stores.artifact_store,
-        seed_stores.agent_cache,
-    )
-    first = seed_stores.agent_store.get_by_name(server_app._POLLY_AGENT_NAME)
-    assert first is not None
-    assert first.version == 1
-
-    # Simulate a wheel reinstall: same content, brand-new mtimes.
-    bumped = 1_700_000_000  # fixed mtime, != the copy's
-    os.utime(polly_src_copy, (bumped, bumped))
-    for path in polly_src_copy.rglob("*"):
-        os.utime(path, (bumped, bumped))
-
-    server_app._ensure_default_polly_agent(
-        seed_stores.agent_store,
-        seed_stores.artifact_store,
-        seed_stores.agent_cache,
-    )
-
-    after = seed_stores.agent_store.get_by_name(server_app._POLLY_AGENT_NAME)
-    assert after is not None
-    # Unchanged content → no-op; a v2 here means tar mtimes leaked into the hash.
-    assert after.version == 1
-    assert after.bundle_location == first.bundle_location
-
-
-def test_ensure_default_polly_agent_repairs_stale_cache(
-    seed_stores: _SeedStores, polly_src_copy: Path
-) -> None:
-    """
-    A matching-hash re-seed repairs a stale local agent cache.
-
-    ``AgentCache.load`` is keyed by ``agent_id`` and trusts its cached
-    entry without checking ``bundle_location``. If a replica boots with
-    a cache that lags the (already-current) DB row — or a prior boot's
-    cache swap failed after the row update — the seeder must not just
-    early-return and keep serving the stale spec; it evicts so the next
-    load re-fetches the row's bundle. Without the evict this test fails:
-    ``load`` would return the poisoned spec.
-    """
-    import shutil
-
-    import yaml
-
-    server_app._ensure_default_polly_agent(
-        seed_stores.agent_store,
-        seed_stores.artifact_store,
-        seed_stores.agent_cache,
-    )
-    agent = seed_stores.agent_store.get_by_name(server_app._POLLY_AGENT_NAME)
-    assert agent is not None
-    real_desc = seed_stores.agent_cache.load(agent.id, agent.bundle_location).spec.description
-
-    # Poison the local cache with a different spec (a lagging replica's stale cache).
-    stale_src = polly_src_copy.parent / "stale"
-    shutil.copytree(polly_src_copy, stale_src)
-    config = stale_src / "config.yaml"
-    raw = yaml.safe_load(config.read_text())
-    raw["description"] = "STALE CACHED SPEC"
-    config.write_text(yaml.safe_dump(raw, sort_keys=False))
-    seed_stores.agent_cache.replace(
-        agent.id, agent.bundle_location, server_app._tar_gz_dir(stale_src)
-    )
-    poisoned = seed_stores.agent_cache.load(agent.id, agent.bundle_location).spec.description
-    assert poisoned == "STALE CACHED SPEC"
-
-    # Re-seed: source unchanged → hash matches the row (the early-return path).
-    server_app._ensure_default_polly_agent(
-        seed_stores.agent_store,
-        seed_stores.artifact_store,
-        seed_stores.agent_cache,
-    )
-
-    # Cache was evicted, so load now returns the row's real bundle, not the poison.
-    repaired = seed_stores.agent_cache.load(agent.id, agent.bundle_location).spec.description
-    assert repaired == real_desc
-    assert repaired != "STALE CACHED SPEC"
-
-
-def test_ensure_default_polly_agent_repairs_lost_bundle_blob(
-    seed_stores: _SeedStores,
-) -> None:
-    """
-    A matching-hash re-seed restores a bundle blob lost from the store.
-
-    The matching-hash fast path trusts the artifact store without
-    checking the blob is present. If the row survives but the bundle is
-    gone (artifacts pruned, or the DB restored without the matching
-    store), every restart re-computes the same hash, matches the stored
-    ``bundle_location``, and returns without re-``put``-ing — so boot can
-    never self-heal and each session launch raises ``failed to load
-    agent spec``. The seeder must re-``put`` on the matching path when
-    the store is missing the blob. Without the fix this test fails: the
-    blob stays absent and the reload raises ``KeyError``.
-    """
-    server_app._ensure_default_polly_agent(
-        seed_stores.agent_store,
-        seed_stores.artifact_store,
-        seed_stores.agent_cache,
-    )
-    agent = seed_stores.agent_store.get_by_name(server_app._POLLY_AGENT_NAME)
-    assert agent is not None
-    assert seed_stores.artifact_store.exists(agent.bundle_location)
-
-    # Lose the blob while the row survives, and drop the local cache so
-    # nothing masks the missing bundle at load time.
-    seed_stores.artifact_store.delete(agent.bundle_location)
-    seed_stores.agent_cache.evict(agent.id)
-    assert not seed_stores.artifact_store.exists(agent.bundle_location)
-
-    # Re-seed: source unchanged → hash matches the row (the fast path).
-    server_app._ensure_default_polly_agent(
-        seed_stores.agent_store,
-        seed_stores.artifact_store,
-        seed_stores.agent_cache,
-    )
-
-    # The fast path re-put the lost bundle: the store has it again and a
-    # fresh load succeeds instead of raising.
-    assert seed_stores.artifact_store.exists(agent.bundle_location)
-    reloaded = seed_stores.agent_cache.load(agent.id, agent.bundle_location)
-    assert reloaded.spec is not None
-    # Row untouched on the matching path: same location, no version bump.
-    still = seed_stores.agent_store.get_by_name(server_app._POLLY_AGENT_NAME)
-    assert still is not None
-    assert still.bundle_location == agent.bundle_location
-    assert still.version == agent.version
-
-
-def test_ensure_default_polly_agent_repairs_legacy_prefixed_bundle_location(
-    seed_stores: _SeedStores,
-) -> None:
-    """
-    The lost-blob repair targets the row's own ``bundle_location``, so it
-    also heals a legacy ``ag_``-prefixed one.
-
-    Rows seeded before the binary-uuid migration keep an ``ag_``-prefixed
-    left segment in ``bundle_location`` while ``id`` is bare hex (the
-    migration excluded ``bundle_location`` as a physical artifact key), and
-    they reach the matching-hash path through the sha-segment compare.
-
-    What breaks if this fails: keying the repair off ``f"{id}/{hash}"``
-    probes and writes a key nothing reads, so an upgraded deployment whose
-    built-in blob was pruned keeps raising ``failed to load agent spec`` on
-    every session launch while boot leaves an orphan bundle behind.
-    """
-    server_app._ensure_default_polly_agent(
-        seed_stores.agent_store,
-        seed_stores.artifact_store,
-        seed_stores.agent_cache,
-    )
-    agent = seed_stores.agent_store.get_by_name(server_app._POLLY_AGENT_NAME)
-    assert agent is not None
-    bundle_hash = agent.bundle_location.rsplit("/", 1)[-1]
-    bundle_bytes = seed_stores.artifact_store.get(agent.bundle_location)
-
-    # Rewrite the row into the pre-migration shape: bare-hex id, blob and
-    # location under the ``ag_``-prefixed physical key.
-    legacy_loc = f"ag_{agent.id}/{bundle_hash}"
-    seed_stores.artifact_store.put(legacy_loc, bundle_bytes)
-    seed_stores.artifact_store.delete(agent.bundle_location)
-    legacy = seed_stores.agent_store.update(agent.id, legacy_loc)
-    assert legacy is not None
-
-    # Lose the blob while the row survives, and drop the local cache so
-    # nothing masks the missing bundle at load time.
-    seed_stores.artifact_store.delete(legacy_loc)
-    seed_stores.agent_cache.evict(agent.id)
-    assert not seed_stores.artifact_store.exists(legacy_loc)
-
-    # Re-seed: source unchanged -> hash matches the row (the fast path).
-    server_app._ensure_default_polly_agent(
-        seed_stores.agent_store,
-        seed_stores.artifact_store,
-        seed_stores.agent_cache,
-    )
-
-    # Repaired at the key the loader reads, and nothing written to the
-    # bare-hex key the row does not point at.
-    assert seed_stores.artifact_store.exists(legacy_loc)
-    assert not seed_stores.artifact_store.exists(f"{agent.id}/{bundle_hash}")
-    reloaded = seed_stores.agent_cache.load(agent.id, legacy_loc)
-    assert reloaded.spec is not None
-    # Row untouched on the matching path: same location, no version bump.
-    still = seed_stores.agent_store.get_by_name(server_app._POLLY_AGENT_NAME)
-    assert still is not None
-    assert still.bundle_location == legacy_loc
-    assert still.version == legacy.version
 
 
 def test_tar_gz_dir_is_order_independent(tmp_path: Path) -> None:
@@ -1349,72 +1032,6 @@ def test_tar_gz_dir_ignores_mode_bits(tmp_path: Path) -> None:
         return server_app._tar_gz_dir(root)
 
     assert build(0o600) == build(0o644)
-
-
-def test_ensure_default_polly_agent_skips_when_bundle_absent(
-    seed_stores: _SeedStores, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """
-    No bundle on disk → no card. Seeding is skipped, not errored.
-
-    On a deployment that didn't package the ``examples/polly`` bundle,
-    seeding must skip silently so startup doesn't fail and no broken
-    card (an agent that can't launch here) appears.
-    """
-    monkeypatch.setattr(server_app, "_POLLY_BUNDLE_SOURCE", tmp_path / "no-such-polly")
-
-    server_app._ensure_default_polly_agent(
-        seed_stores.agent_store,
-        seed_stores.artifact_store,
-        seed_stores.agent_cache,
-    )
-
-    assert seed_stores.agent_store.get_by_name(server_app._POLLY_AGENT_NAME) is None
-
-
-def test_ensure_default_debby_agent_seeds_card(seed_stores: _SeedStores) -> None:
-    """
-    Seeding registers debby as a built-in the picker can render.
-
-    The new-session picker reads built-ins from ``GET /v1/agents`` and
-    renders each as a card; this is what makes debby launchable next
-    to Claude Code and polly. The deeper refresh/idempotency
-    behavior lives in the shared ``_ensure_builtin_agent`` and is
-    covered by the polly tests above — this verifies debby's wiring
-    (name constant, packaged bundle source) specifically.
-    """
-    server_app._ensure_default_debby_agent(
-        seed_stores.agent_store,
-        seed_stores.artifact_store,
-        seed_stores.agent_cache,
-    )
-
-    seeded = seed_stores.agent_store.get_by_name(server_app._DEBBY_AGENT_NAME)
-    assert seeded is not None, "debby was not registered"
-    assert seeded.name == "debby"
-    # The bundle must be retrievable, not just referenced.
-    assert seed_stores.artifact_store.get(seeded.bundle_location) is not None
-
-
-def test_ensure_default_debby_agent_skips_when_bundle_absent(
-    seed_stores: _SeedStores, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """
-    No bundle on disk → no card. Seeding is skipped, not errored.
-
-    On a deployment that didn't package the ``examples/debby`` bundle,
-    seeding must skip silently so startup doesn't fail and no broken
-    card (an agent that can't launch here) appears.
-    """
-    monkeypatch.setattr(server_app, "_DEBBY_BUNDLE_SOURCE", tmp_path / "no-such-debby")
-
-    server_app._ensure_default_debby_agent(
-        seed_stores.agent_store,
-        seed_stores.artifact_store,
-        seed_stores.agent_cache,
-    )
-
-    assert seed_stores.agent_store.get_by_name(server_app._DEBBY_AGENT_NAME) is None
 
 
 def _build_api_only_app(db_uri: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FastAPI:
@@ -1555,15 +1172,6 @@ def test_load_debug_routers_missing_module_is_skipped() -> None:
 def test_load_debug_routers_module_without_list_is_skipped() -> None:
     """A module lacking a DEBUG_ROUTERS list is skipped (uses a stdlib module)."""
     assert server_app._load_debug_routers(["json"]) == []
-
-
-def test_load_debug_routers_collects_entries() -> None:
-    """The benchmark debug router module exposes a mountable DEBUG_ROUTERS entry."""
-    entries = server_app._load_debug_routers(["dev.benchmarks.omnigent.debug_router"])
-    assert len(entries) == 1
-    _router, prefix, tags = entries[0]
-    assert prefix == "/debug"
-    assert tags == ["debug"]
 
 
 def test_session_id_from_request_parses_session_path() -> None:

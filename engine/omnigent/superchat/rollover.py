@@ -458,7 +458,7 @@ async def roll_over_session(
                 cause=cause,
                 pending_closes=closes,
             )
-        except Exception:  # noqa: BLE001 — a rollover failure must never fail the turn
+        except Exception:  # a rollover failure must never fail the turn
             logger.warning(
                 "superside-chat rollover: failed to build the rollover item for %s",
                 conversation_id,
@@ -501,7 +501,7 @@ async def roll_over_session(
         if on_stored is not None:
             try:
                 await on_stored(compaction, items_since)
-            except Exception:  # noqa: BLE001 — the item is already persisted; log and move on
+            except Exception:  # the item is already persisted; log and move on
                 logger.warning(
                     "superside-chat rollover: on_stored failed for %s",
                     conversation_id,
@@ -510,7 +510,7 @@ async def roll_over_session(
         if on_rolled_over is not None:
             try:
                 await on_rolled_over()
-            except Exception:  # noqa: BLE001 — the item is already persisted; log and move on
+            except Exception:  # the item is already persisted; log and move on
                 logger.warning(
                     "superside-chat rollover: failed to drop the warm client for %s",
                     conversation_id,

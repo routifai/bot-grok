@@ -139,7 +139,7 @@ def _vault_values(vault_store: Any, owner: str | None) -> frozenset[str]:
         return cached[1]
     try:
         values = frozenset(vault_store.secret_values(user_id=owner))
-    except Exception:  # noqa: BLE001 — a vault that is off or unreadable has nothing to add
+    except Exception:  # a vault that is off or unreadable has nothing to add
         _logger.debug("redaction: vault values unavailable", exc_info=True)
         values = frozenset()
     with _lock:

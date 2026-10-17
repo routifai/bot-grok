@@ -185,7 +185,7 @@ async def _show_in_chat(
                 )
             ],
         )
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.warning(
             "deck_export: could not show the file in chat %s", session_id, exc_info=True
         )

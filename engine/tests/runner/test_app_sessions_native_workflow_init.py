@@ -170,14 +170,16 @@ async def test_sessions_native_resolves_file_id_before_harness() -> None:
         )
 
     assert resp.status_code == 202
-    assert server_client.get_calls == [
-        # file_id blocks are resolved first (before the harness sees them)...
-        "/v1/sessions/d43f93c220661ddaf203a63b45050304/resources/files/07b38328508bae2010c8b9933a310846",
-        "/v1/sessions/d43f93c220661ddaf203a63b45050304/resources/files/07b38328508bae2010c8b9933a310846/content",
-        # ...then the cold in-memory cache is rehydrated from the store
-        # (empty here) before the turn is dispatched.
-        "/v1/sessions/d43f93c220661ddaf203a63b45050304/items",
-    ]
+    session = "/v1/sessions/d43f93c220661ddaf203a63b45050304"
+    file_path = f"{session}/resources/files/07b38328508bae2010c8b9933a310846"
+    calls = server_client.get_calls
+    # file_id blocks are resolved first (before the harness sees them), then the cold in-memory
+    # cache is rehydrated from the store (empty here) before the turn is dispatched.
+    assert (
+        calls.index(file_path)
+        < calls.index(f"{file_path}/content")
+        < calls.index(f"{session}/items")
+    ), calls
     for _ in range(20):
         if harness_client.posted_bodies:
             break
@@ -1459,6 +1461,14 @@ async def test_create_session_envelope_is_single_flight_and_skips_metadata_callb
                     (),
                     {"status_code": 200, "json": lambda self: {"data": []}},
                 )()
+            if path.endswith("/labels"):
+                # History rehydration reads the rollover label once (a superside chat skips
+                # placeholder items).
+                return type(
+                    "Response",
+                    (),
+                    {"status_code": 200, "json": lambda self: {"labels": {}}},
+                )()
             if path.endswith("/child_sessions"):
                 # Restart recovery lists the session's children; an empty
                 # list ends the scan after this single read.
@@ -1528,10 +1538,14 @@ async def test_create_session_envelope_is_single_flight_and_skips_metadata_callb
     assert resolver_calls == 1
     assert len(pm.get_client_calls) == 1
     # The envelope supplies session metadata, so the only snapshot-style
-    # callback is the history read; restart recovery adds one read of the
-    # durable child-session list, which is empty here.
+    # callbacks are the history read (one items read for the latest
+    # checkpoint, one for the record after it) and its rollover-label lookup;
+    # restart recovery adds one read of the durable child-session list, empty
+    # here.
     assert server_client.get_paths == [
         f"/v1/sessions/{session_id}/child_sessions",
+        f"/v1/sessions/{session_id}/labels",
+        f"/v1/sessions/{session_id}/items",
         f"/v1/sessions/{session_id}/items",
     ]
 

@@ -91,11 +91,12 @@ def _note_jobs(app: FastAPI, owner: str) -> list[dict[str, Any]]:
             "name": "Daily note",
             "description": (
                 "Keeps a short note of each day: what you talked about, what was decided and "
-                "promised, and what is still open. It also saves lasting facts about you to memory."
+                "promised, and what is still open. It also saves lasting facts about you to "
+                "memory."
             ),
             "schedule": (
-                f"After a chat has been quiet {idle_minutes} minutes (up to {qm.MAX_PASSES_PER_DAY}"
-                f" times a day), and a final pass at {evening}"
+                f"After a chat has been quiet {idle_minutes} minutes (up to "
+                f"{qm.MAX_PASSES_PER_DAY} times a day), and a final pass at {evening}"
             ),
             "last_run_at": last_note,
             "next_run_at": None,

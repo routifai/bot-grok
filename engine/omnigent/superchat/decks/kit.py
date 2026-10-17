@@ -1,16 +1,16 @@
 """The deck kit: assembles a Superchat deck file from the skeleton, a template and the slides.
 
 A deck is one self-contained HTML file (``*.deck.html``): the fixed 1920x1080 skeleton (scale to
-fit, navigation, print rules, the Superchat Deck Protocol), a template's tokens, theme and Latin-subset
-fonts (embedded as data URIs, because the viewer's CSP blocks remote fonts), the shared layout
-vocabulary, and the slides the Muse wrote. Only the slides are the Muse's; everything else comes
-from here, so every deck starts exact for the PowerPoint export.
+fit, navigation, print rules, the Superchat Deck Protocol), a template's tokens, theme and
+Latin-subset fonts (embedded as data URIs, because the viewer's CSP blocks remote fonts), the
+shared layout vocabulary, and the slides the Muse wrote. Only the slides are the Muse's; everything
+else comes from here, so every deck starts exact for the PowerPoint export.
 
 Portions modified from nexu-io/open-design
 packages/contracts/src/prompts/deck-framework.ts@802708f, Apache-2.0; changes: the skeleton is
 ``kit/skeleton.html`` (see its header), slides are inserted by this module instead of being
-hand-copied by the model, and the template set, tokens and fonts are Superchat's (``kit/templates``,
-MIT upstream designs; fonts SIL OFL 1.1).
+hand-copied by the model, and the template set, tokens and fonts are Superchat's
+(``kit/templates``, MIT upstream designs; fonts SIL OFL 1.1).
 """
 
 from __future__ import annotations
@@ -166,7 +166,7 @@ def menu() -> str:
 
 @cache
 def _chart_runtime() -> str:
-    """Chart.js (vendored, MIT) and Superchat's defaults for it, as the deck's inline head script."""
+    """Chart.js (vendored, MIT) and Superchat's chart defaults: the deck's inline head script."""
     library = CHARTJS_PATH.read_text("utf-8")
     bootstrap = (CHARTS_DIR / "bootstrap.js").read_text("utf-8")
     return (
@@ -214,7 +214,8 @@ def check_slides(slides_html: str) -> tuple[list[str], list[str]]:
     if _FORBIDDEN_TAG_RE.search(plain):
         errors.append(
             "Slides may not contain <script>, <iframe>, <object>, <embed>, <link>, <base>, "
-            "<form> or <meta> (the one exception is <script data-superchat-chart>, a chart's data)."
+            "<form> or <meta> (the one exception is <script data-superchat-chart>, a chart's "
+            "data)."
         )
     for script in _CHART_SCRIPT_RE.findall(slides_html):
         if "new Chart(" not in script:
@@ -226,8 +227,8 @@ def check_slides(slides_html: str) -> tuple[list[str], list[str]]:
             script,
         ):
             errors.append(
-                "A <script data-superchat-chart> may only configure its chart: the data goes in the "
-                "script, nothing is fetched or evaluated."
+                "A <script data-superchat-chart> may only configure its chart: the data goes in "
+                "the script, nothing is fetched or evaluated."
             )
     if _EXTERNAL_RE.search(slides_html):
         errors.append(
@@ -262,7 +263,8 @@ _CSS_OPEN = "    /* superchat:theme id={id} sha={sha} \u00b7 {name} */"
 _CSS_CLOSE = "    /* /superchat:theme */"
 _DECK_HINT = (
     "    /* Per-deck rules and token overrides (for example :root { --accent: ... }) go below,\n"
-    "       after the closing superchat:theme marker; a theme switch keeps everything outside the\n"
+    "       after the closing superchat:theme marker; a theme switch keeps everything outside"
+    " the\n"
     "       markers. Do not edit between them. */"
 )
 _ROOT_RE = re.compile(r"    :root \{.*?\n    \}", re.S)

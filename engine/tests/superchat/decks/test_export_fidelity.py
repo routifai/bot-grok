@@ -1,8 +1,8 @@
 """Every template exports exactly: native PowerPoint objects only, fonts embedded, layout clean.
 
-Runs the real ``superchat-deck-export`` helper in a headless Chromium on decks built by the kit from
-the sample slides, so a template or layout change that would make the PowerPoint differ from the
-page (a picture where a shape should be, an unembedded font, content in the footer band) fails
+Runs the real ``superchat-deck-export`` helper in a headless Chromium on decks built by the kit
+from the sample slides, so a template or layout change that would make the PowerPoint differ from
+the page (a picture where a shape should be, an unembedded font, content in the footer band) fails
 here. Skipped when no Chromium is installed.
 """
 

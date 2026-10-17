@@ -474,9 +474,7 @@ class SandboxInferenceService:
                 return result
             provider = load_providers(config)[binding.provider]
             result["provider_label"] = (
-                config["providers"][provider.name].get("display_name")
-                or provider.display_name
-                or provider.name
+                config["providers"][provider.name].get("display_name") or provider.name
             )
             result["default_model"] = binding.default_model
             _wire(provider, harness)

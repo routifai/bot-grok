@@ -8,7 +8,7 @@ them. The shared OAuth flow (signed state, CSRF/replay binding, redirect
 sanitising, the four endpoints) lives in
 :mod:`omnigent.server.routes.connections_base`; this module is the GitHub
 adapter plus the GitHub-only repo/branch endpoints. See
-``docs/GITHUB_APP_SETUP.md``.
+``docs/setup.md``.
 """
 
 from __future__ import annotations

@@ -67,26 +67,19 @@ class _OutageServerClient(NullServerClient):
 
 
 async def _strand_a_completion(
-    client: Any,
+    app: Any,
     server_client: _OutageServerClient,
     parent_id: str,
     child_id: str,
 ) -> None:
     """Complete *child_id* into a dead server so its wake POST is stranded.
 
-    :param client: HTTP test client bound to the runner app.
+    :param app: The runner app (its Helper's last turn completes, as at a turn end).
     :param server_client: The outage-simulating server client (must be down).
     :param parent_id: Parent session id being watched.
     :param child_id: Child session id to report terminal.
     """
-    resp = await client.post(
-        f"/v1/sessions/{child_id}/events",
-        json={
-            "type": "external_session_status",
-            "data": {"status": "idle", "output": "CHILD_DONE"},
-        },
-    )
-    assert resp.status_code == 204, resp.text
+    app.state.mark_subagent_terminal_and_wake(child_id, status="completed", output="CHILD_DONE")
     await asyncio.wait_for(server_client.failure_seen.wait(), timeout=5.0)
     # Let the wake task burn through its bounded retries and give up.
     deadline = asyncio.get_running_loop().time() + 5.0
@@ -134,8 +127,8 @@ async def test_reconnect_redelivers_wake_stranded_by_server_outage(
         title="wake-loss",
     )
     try:
-        async with _runner_client(app) as client:
-            await _strand_a_completion(client, server_client, parent_id, child_id)
+        async with _runner_client(app):
+            await _strand_a_completion(app, server_client, parent_id, child_id)
             assert session_inbox.qsize() == 1, "completion must be in the parent inbox"
 
             # Recovery: the server is back and the tunnel reconnected.
@@ -193,8 +186,8 @@ async def test_reconnect_skips_stranded_wake_for_drained_inbox(
         title="wake-loss",
     )
     try:
-        async with _runner_client(app) as client:
-            await _strand_a_completion(client, server_client, parent_id, child_id)
+        async with _runner_client(app):
+            await _strand_a_completion(app, server_client, parent_id, child_id)
 
             # The user bumped the parent; the inbox drained before reconnect.
             session_inbox.get_nowait()

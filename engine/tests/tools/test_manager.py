@@ -16,7 +16,6 @@ from omnigent.errors import OmnigentError
 from omnigent.spec.types import (
     AgentSpec,
     BuiltinToolConfig,
-    LLMConfig,
     LocalToolInfo,
     MCPServerConfig,
     SharePolicy,
@@ -1251,39 +1250,6 @@ def test_local_tools_skipped_without_workdir(
         "No tools (apart from the always-present sys_cancel_task) "
         "should be registered when workdir is None."
     )
-
-
-# ── web_search builtin ──────────────────────────────────────────────────
-
-
-@pytest.mark.parametrize(
-    ("executor_type", "harness"),
-    [("claude_sdk", None), ("omnigent", "claude-sdk"), ("omnigent", "pi")],
-)
-def test_web_search_registers_function_schema(executor_type: str, harness: str | None) -> None:
-    """
-    A declared ``web_search`` builtin registers as a plain function tool on
-    every kept harness — no provider-native passthrough schema.
-    """
-    from omnigent.spec.types import ExecutorSpec
-
-    spec = AgentSpec(
-        spec_version=1,
-        llm=LLMConfig(model="claude-opus-4-8"),
-        executor=ExecutorSpec(
-            type=executor_type,
-            model="claude-opus-4-8",
-            config={"harness": harness} if harness else {},
-        ),
-        tools=ToolsConfig(builtins=[BuiltinToolConfig(name="web_search")]),
-    )
-    mgr = ToolManager(spec)
-    tool = mgr.get_tool("web_search")
-
-    assert tool is not None, "web_search should be registered when declared in tools.builtins"
-    schema = tool.get_schema()
-    assert schema["type"] == "function"
-    assert schema["function"]["name"] == "web_search"
 
 
 def test_read_skill_file_registered_for_root_level_resources(tmp_path: Path) -> None:

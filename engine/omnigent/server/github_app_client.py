@@ -7,7 +7,7 @@ are owned by :mod:`omnigent.server.github_app`
 (:class:`~omnigent.server.github_app.GitHubAppConfig`), which this
 module simply POSTs. Keeping the secret-owning code and the network
 sink in separate modules is deliberate. See
-``docs/GITHUB_APP_SETUP.md``.
+``docs/setup.md``.
 """
 
 from __future__ import annotations

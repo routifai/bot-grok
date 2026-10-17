@@ -2,8 +2,7 @@
 
 A small, additive safety net that checks a test run is pointed at
 throwaway resources — running under pytest, against a tmp/in-memory
-SQLite DB, and not aimed at a known dev/prod host or port — *before*
-the suite starts mutating state.
+SQLite DB — *before* the suite starts mutating state.
 
 When checks hard-fail, a violation raises :class:`TestGuardrailError`
 before the suite can mutate real resources. Set
@@ -28,26 +27,6 @@ _logger = logging.getLogger(__name__)
 # Prefix on every guardrail log line so violations are greppable and
 # hard-fail exceptions reuse the identical message.
 _WARN_PREFIX = "TEST GUARDRAIL:"
-
-# Ports we never want a test to drive: the local server default (6767),
-# the Docker server (8000), and the Vite dev server (5173). A test base
-# URL hitting any of these is almost certainly pointed at a real running
-# instance rather than an ephemeral fixture server (which binds a random
-# free port). Module-level so it's trivial to extend.
-DEV_PORTS: frozenset[int] = frozenset({6767, 8000, 5173})
-
-# Hostnames that denote a developer's own machine. A bare loopback host
-# is only flagged when paired with a dev port (handled separately), but
-# these named dev/prod hosts are always suspect for a test base URL.
-DEV_HOSTS: frozenset[str] = frozenset(
-    {
-        "localhost",
-        "127.0.0.1",
-        "0.0.0.0",
-        "::1",
-        "host.docker.internal",
-    }
-)
 
 # Env vars that, when set, explicitly assert "this process is a test run"
 # even if pytest's own PYTEST_CURRENT_TEST isn't visible yet (it's only
@@ -196,49 +175,18 @@ def _resolve(path: Path) -> Path:
         return path.absolute()
 
 
-def base_url_violation(base_url: str) -> str | None:
-    """Return a human-readable reason if *base_url* targets a dev host/port.
-
-    :param base_url: The test base URL, e.g. ``http://localhost:6767``.
-    :returns: A reason string when the URL is suspect, else ``None``.
-    """
-    if not base_url:
-        return None
-
-    from urllib.parse import urlparse
-
-    parsed = urlparse(base_url)
-    host = (parsed.hostname or "").lower()
-    port = parsed.port
-
-    if port in DEV_PORTS:
-        return f"base_url {base_url!r} targets dev/prod port {port}"
-    if host in DEV_HOSTS and port is None:
-        # A named dev host with no explicit port (default 80/443) still
-        # smells like a real instance rather than an ephemeral fixture.
-        return f"base_url {base_url!r} targets dev host {host!r}"
-    # A dev host with an explicit random/non-dev port is intentionally
-    # clean: fixture servers legitimately bind localhost on ephemeral
-    # free ports. Only known dev/prod ports, or named dev hosts with no
-    # explicit port, are flagged.
-    return None
-
-
 def check_test_environment(
     *,
     env: Mapping[str, str] | None = None,
     db_uri: str,
-    base_url: str | None = None,
     warn_only: bool = True,
 ) -> list[str]:
     """Check the test environment is pointed at throwaway resources.
 
-    Runs three checks and collects a reason string for each violation:
+    Runs two checks and collects a reason string for each violation:
 
     a. the process looks like a pytest run (:func:`looks_like_pytest`);
-    b. *db_uri* looks like a test DB (:func:`looks_like_test_db`);
-    c. *base_url*, when given, does not target a dev/prod host or port
-       (:func:`base_url_violation`).
+    b. *db_uri* looks like a test DB (:func:`looks_like_test_db`).
 
     When ``warn_only`` is ``True`` each violation is logged as a
     ``WARNING`` prefixed with ``TEST GUARDRAIL:`` and the function
@@ -253,7 +201,6 @@ def check_test_environment(
     :param env: Environment mapping; defaults to ``os.environ``.
     :param db_uri: The resolved store DB URI for this run; empty values
         skip the DB check.
-    :param base_url: Optional base URL the test will drive.
     :param warn_only: Log instead of raise on violation (default ``True``).
     :returns: The list of violation reason strings (empty when clean).
     :raises TestGuardrailError: when ``warn_only=False`` and any check fails.
@@ -277,11 +224,6 @@ def check_test_environment(
             )
     else:
         _logger.debug("%s db_uri is blank; skipping DB check", _WARN_PREFIX)
-
-    if base_url is not None:
-        reason = base_url_violation(base_url)
-        if reason is not None:
-            violations.append(reason)
 
     if not violations:
         return violations

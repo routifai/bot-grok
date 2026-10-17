@@ -1,8 +1,8 @@
 """Runner-side handler for ``deck_export``.
 
 Runs where the Computer's Chromium is: fetches the deck from the server, hands it to the
-``superchat-deck-export`` helper (override with ``SUPERCHAT_DECK_EXPORT_HELPER``) and saves the produced
-``.pptx`` / ``.pdf`` as a new artifact in the same chat.
+``superchat-deck-export`` helper (override with ``SUPERCHAT_DECK_EXPORT_HELPER``) and saves the
+produced ``.pptx`` / ``.pdf`` as a new artifact in the same chat.
 """
 
 from __future__ import annotations

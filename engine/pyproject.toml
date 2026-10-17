@@ -198,6 +198,11 @@ lint = [
 ]
 test = [
     "pytest>=7.0",
+    # Imported by the ASGI-level server tests (asgiref's ApplicationCommunicator) and the tracing
+    # tests (the OTel SDK, which the runtime only gets from the `all` extra); without them those
+    # files fail to collect.
+    "asgiref>=3.7,<4",
+    "opentelemetry-sdk>=1.20,<2",
     # Builds the tiny PDF fixtures of the knowledge tests (BSD-3-Clause; test-only).
     "reportlab>=4,<5",
     # PEP 517 frontend used by the standalone-package artifact checks.

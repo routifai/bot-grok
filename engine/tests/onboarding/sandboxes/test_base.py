@@ -126,8 +126,9 @@ def test_run_background_records_the_loops_pid_when_given_a_host_id() -> None:
     launcher.run_background("sb-1", _HOST_LAUNCH, host_id="host_abc")
 
     [cmd] = launcher.commands
+    supervised = supervise_host_command(_HOST_LAUNCH, host_id="host_abc")
     assert cmd == (
-        f"setsid nohup sh -c {shlex.quote(supervise_host_command(_HOST_LAUNCH, host_id='host_abc'))} "
+        f"setsid nohup sh -c {shlex.quote(supervised)} "
         ">> /tmp/omnigent-host.log 2>&1 < /dev/null & echo launched"
     )
     assert "$HOME/.omnigent/hosts/host_abc.pid" in cmd

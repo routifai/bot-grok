@@ -91,7 +91,10 @@ def create_session_memory_router(
         session_id: str,
         body: MemoryRememberRequest,
     ) -> dict[str, Any]:
-        """Write a durable claim, immediately indexed; reinforce a near-duplicate; supersede only the claim named by replaces_claim_id."""
+        """Write a durable claim, immediately indexed.
+
+        Reinforces a near-duplicate; supersedes only the claim named by ``replaces_claim_id``.
+        """
         owner = await _resolve_user(request, session_id, required_level=LEVEL_EDIT)
         from omnigent.entities import MemoryEvidenceLink
 

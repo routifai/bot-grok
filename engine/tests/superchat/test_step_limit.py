@@ -148,7 +148,9 @@ def test_limit_is_configurable(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_builder_spec_points_at_the_policy() -> None:
+    import omnigent.superchat.features  # noqa: F401  (registers the policy with the builder)
     from omnigent.policies.function import resolve_function_policy
-    from omnigent.runtime.policies.builder import _STEP_LIMIT_POLICY_SPEC
+    from omnigent.runtime.policies.hooks import session_policies
 
-    assert resolve_function_policy(_STEP_LIMIT_POLICY_SPEC)._callable is sl.muse_step_limit
+    assert resolve_function_policy(sl.POLICY_SPEC)._callable is sl.muse_step_limit
+    assert sl.POLICY_SPEC in [policy.spec for policy in session_policies()]

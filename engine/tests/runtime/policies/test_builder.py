@@ -1344,7 +1344,6 @@ def test_agent_rebind_after_spec_resolution_fails_closed(
             new_agent_bundle_location="other/bundle",
             new_agent_description=None,
             copy_model_settings=False,
-            carry_history_into_native=False,
             presentation_labels={},
             previous_builtin_id=None,
         )
@@ -1690,7 +1689,6 @@ def test_mid_build_change_fails_closed_on_every_provenance(
                 new_agent_bundle_location="other/bundle",
                 new_agent_description=None,
                 copy_model_settings=False,
-                carry_history_into_native=False,
                 presentation_labels={},
                 previous_builtin_id=None,
             )
@@ -1854,7 +1852,6 @@ def test_engine_refuses_a_tree_assembled_across_a_change(
                         new_agent_bundle_location="other/bundle",
                         new_agent_description=None,
                         copy_model_settings=False,
-                        carry_history_into_native=False,
                         presentation_labels={},
                         previous_builtin_id=None,
                     )

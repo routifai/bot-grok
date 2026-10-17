@@ -83,7 +83,7 @@ class KnowledgeRuntime:
         """Queue one file right away (an upload, a saved artifact) and wake the thread."""
         try:
             queued = self.indexer.add(path, explicit=explicit)
-        except Exception:  # noqa: BLE001 - an event hook must never fail its caller
+        except Exception:  # an event hook must never fail its caller
             _logger.warning("knowledge: could not queue %s", path, exc_info=True)
             return False
         if queued:
@@ -103,7 +103,7 @@ class KnowledgeRuntime:
                 while not self._stop.is_set() and self.indexer.process_next():
                     pass
                 self.indexer.maybe_reindex()
-            except Exception:  # noqa: BLE001 - the service must outlive a bad pass
+            except Exception:  # the service must outlive a bad pass
                 _logger.warning("knowledge: indexing pass failed", exc_info=True)
             self._wake.wait(timeout=self._idle)
             self._wake.clear()

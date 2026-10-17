@@ -87,10 +87,12 @@ class OutputText:
     type: str = "output_text"  # always "output_text"
     text: str
 
+
 @dataclass
 class MessageOutput:
     type: str = "message"  # always "message"
     content: list[OutputText]
+
 
 @dataclass
 class FunctionCallOutput:
@@ -99,11 +101,13 @@ class FunctionCallOutput:
     name: str
     arguments: str
 
+
 @dataclass
 class Usage:
     input_tokens: int | None
     output_tokens: int | None
     total_tokens: int | None
+
 
 @dataclass
 class Response:
@@ -120,6 +124,7 @@ class ResponseTextDeltaEvent:
     type: str = "response.output_text.delta"
     delta: str
 
+
 @dataclass
 class ResponseCompletedEvent:
     type: str = "response.completed"
@@ -135,8 +140,9 @@ Reasoning events (`response.reasoning_text.delta`, `response.reasoning_summary_t
 ```python
 @dataclass
 class RoutedModel:
-    provider: str   # e.g. "anthropic"
-    model: str      # e.g. "claude-sonnet-4-20250514"
+    provider: str  # e.g. "anthropic"
+    model: str  # e.g. "claude-sonnet-4-20250514"
+
 
 def parse_model_string(model: str) -> RoutedModel:
     """
@@ -247,18 +253,26 @@ The swap is minimal:
 ```python
 # Before
 import openai
+
 _openai_client = openai.OpenAI()
 resp = _openai_client.responses.create(
-    input=input_items, instructions=instructions,
-    model="gpt-5.4", tools=tools, stream=True,
+    input=input_items,
+    instructions=instructions,
+    model="gpt-5.4",
+    tools=tools,
+    stream=True,
 )
 
 # After
 from llms import Client
+
 _llm_client = Client()
 resp = _llm_client.responses.create(
-    input=input_items, instructions=instructions,
-    model="openai/gpt-5.4", tools=tools, stream=True,
+    input=input_items,
+    instructions=instructions,
+    model="openai/gpt-5.4",
+    tools=tools,
+    stream=True,
 )
 ```
 

@@ -17,25 +17,16 @@ from __future__ import annotations
 
 import importlib
 import logging
-from pathlib import Path
 
 import pytest
 
 from omnigent.server.managed_hosts import ManagedSandboxConfig, ManagedSandboxDeployment
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-
 
 @pytest.fixture
 def entrypoint():
     """The Docker entrypoint module, imported from its real path."""
-    import sys
-
-    sys.path.insert(0, str(_REPO_ROOT))
-    try:
-        return importlib.import_module("deploy.docker.entrypoint")
-    finally:
-        sys.path.remove(str(_REPO_ROOT))
+    return importlib.import_module("deployment.entrypoint")
 
 
 def _deployment(*, launch_supported: bool) -> ManagedSandboxDeployment:

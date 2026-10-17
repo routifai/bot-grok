@@ -42,12 +42,9 @@ class _RecordingServerClient(NullServerClient):
         return httpx.Response(200, request=request, json={})
 
 
-async def _complete_child(client: httpx.AsyncClient, child_id: str, output: str) -> None:
-    resp = await client.post(
-        f"/v1/sessions/{child_id}/events",
-        json={"type": "external_session_status", "data": {"status": "idle", "output": output}},
-    )
-    assert resp.status_code == 204, resp.text
+def _complete_child(app: Any, child_id: str, output: str) -> None:
+    """End the child's work as the runner does when a Helper's last turn completes."""
+    app.state.mark_subagent_terminal_and_wake(child_id, status="completed", output=output)
 
 
 def _notice_text(post: tuple[str, dict[str, Any]]) -> str:
@@ -80,8 +77,8 @@ async def test_superside_chat_wake_inlines_result(_no_wake_backoff: list[float])
         superside_chat=True,
     )
     try:
-        async with _runner_client(app) as client:
-            await _complete_child(client, child_id, "FINDINGS: the vault key rotated on March 3.")
+        async with _runner_client(app):
+            _complete_child(app, child_id, "FINDINGS: the vault key rotated on March 3.")
             deadline = asyncio.get_running_loop().time() + 5.0
             while not server_client.posts:
                 if asyncio.get_running_loop().time() > deadline:
@@ -129,8 +126,8 @@ async def test_a_delivered_helper_result_adds_one_journal_line(
     )
     journal_dir = _isolated_knowledge_workspace / "memory" / "journal"
     try:
-        async with _runner_client(app) as client:
-            await _complete_child(client, child_id, "FINDINGS: the vault key rotated on March 3.")
+        async with _runner_client(app):
+            _complete_child(app, child_id, "FINDINGS: the vault key rotated on March 3.")
             deadline = asyncio.get_running_loop().time() + 5.0
             while not list(journal_dir.glob("*.md")):
                 if asyncio.get_running_loop().time() > deadline:
@@ -171,8 +168,8 @@ async def test_plain_mode_wake_is_unchanged(_no_wake_backoff: list[float]) -> No
         title="auth",
     )
     try:
-        async with _runner_client(app) as client:
-            await _complete_child(client, child_id, "FINDINGS: should not be inlined.")
+        async with _runner_client(app):
+            _complete_child(app, child_id, "FINDINGS: should not be inlined.")
             deadline = asyncio.get_running_loop().time() + 5.0
             while not server_client.posts:
                 if asyncio.get_running_loop().time() > deadline:

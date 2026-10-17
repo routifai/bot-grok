@@ -27,18 +27,24 @@ Folders not named in the tree (`onboarding/`, `memory/`, `sandbox/`, `terminals/
 later wave places them.
 
 Two import-linter contracts in `pyproject.toml` hold the layers: HOST does not import `server`, and
-only `server` and the runner import `superchat`. Run them with `lint-imports` from `engine/`. They
-check direct imports. Both still report violations (runner modules that import `server.schemas`
-and the routing modules, and shared modules that import `superchat`); the layering waves fix them.
+only `server` and the runner import `superchat`. Run them with `lint-imports` from `engine/`; CI
+runs them too. They check direct imports, and both pass. When a lower layer needs something from
+a higher one, move the shape down (as `runtime/runner_wire.py` and `entities/session_project.py`
+did) or let the higher layer fill a registry: `superchat/features.py` is the product's composition
+root, and importing it registers Superchat's tools with `tools/manager.py`
+(`register_tool_source`) and its policies and owner budgets with `runtime/policies/hooks.py`.
 
 ## Where is
 
 | What | Where |
 |---|---|
-| The system prompt | Edited in `agents/templates/` (`AGENTS.md`, `filesystem.md`, `decks.md`, `config.yaml.tmpl`). `node engine/agents/render-agents.mjs` writes the bundles to `agents/bundles/superchat-claude` and `agents/bundles/superchat-pi`, which are committed; `tests/superchat/test_muse_harness_bundles.py` fails when they drift. |
+| The system prompt | Edited in `agents/templates/` (`AGENTS.md`, `filesystem.md`, `decks.md`, `config.yaml.tmpl`). `node engine/agents/render-agents.mjs` writes the bundles to `agents/bundles/superchat-claude` and `agents/bundles/superchat-pi`. The engine image renders its own copy at build (the `agents` stage of `deployment/engine.Dockerfile`); the committed copy stays for the tests, and `tests/superchat/test_muse_harness_bundles.py` fails when it drifts from a fresh render. |
 | The orchestrator (the assistant's turn) | The runner runs the turn: `runner/app.py` (turn start, message prefixes, wake delivery) and `runner/tool_dispatch.py` (`dispatch_tool_locally`, which hands Superchat tools to their feature). The features and their handlers are registered once in `superchat/features.py`; each feature is a folder under `superchat/` with a `FEATURE`. The turn prefix is built in `superchat/prompt_prefix.py`. |
 | Helpers | `start_helper` and its siblings: `superchat/helpers/` (`tools.py`, `handlers.py`). Sub-agent sessions, nesting rules and the wake notice text: `superchat/subagents.py`. The wake notice is posted back to the parent by `runner/app.py` (`_deliver_subagent_wake_post`). Helper types are the `agents/<type>/config.yaml` entries of each bundle. |
-| Tools | Engine built-ins: `tools/builtins/`; the tool manager: `tools/manager.py`. Superchat tools: each feature's `superchat/<feature>/tools.py` and `handlers.py`. |
+| Tools | Engine built-ins: `tools/builtins/`; the tool manager: `tools/manager.py`. Superchat tools: each feature's `superchat/<feature>/tools.py` and `handlers.py`, registered with the tool manager by `superchat/features.py`. |
+| Policies | The builder and engine: `runtime/policies/` (`builder.py`, `engine.py`); the hooks a product fills: `runtime/policies/hooks.py`. Superchat's approvals and step limit: `superchat/approvals/policy.py`, `superchat/step_limit/policy.py`. |
+| Runner wire shapes | `runtime/runner_wire.py` (background titles, `session.created`, the SSE event base); `server/schemas.py` re-exports them. |
+| Smart routing | `server/smart_routing.py` and `server/routing_backend.py`; native-subagent routing: the runner's relay in `runner/subagent_routing.py`, the server policy in `server/subagent_route_policy.py`. |
 | Memory and recall | Long-term memory: `memory/` (service, index, upkeep) and `superchat/memory/` (the `memory_*` tools and the profile). Recall: `superchat/recall_hint/` (the bounded hint and its planner) and `superchat/knowledge/recall.py`. File search: `superchat/knowledge/` (engine relays plus the index that runs in the host). |
 | Artifacts and decks | `superchat/artifacts/` (store, routes, patches, write-back) and `superchat/decks/` (the deck kit under `decks/kit/`, authoring, look). Live pages: `superchat/live/`. Sheets: `superchat/sheets/`. |
 | Postgres | Models: `db/db_models.py`. Migrations: `db/migrations/` (Alembic, `db/alembic.ini`). Stores: `stores/` (one folder per store) and `superchat/*/store.py` for feature stores. |

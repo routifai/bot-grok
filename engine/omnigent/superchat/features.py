@@ -1,7 +1,12 @@
-"""The ordered registry of Super Chat features and the three framework seams that read it.
+"""The ordered registry of Super Chat features and the framework seams that read it.
 
 Add a primitive by creating ``omnigent/superchat/<name>/`` with a ``FEATURE`` and listing it
 here; ``tools/manager.py``, ``runner/tool_dispatch.py`` and ``server/app.py`` need no change.
+
+This module is the product's composition root (ADR 0019): the tool manager and the policy builder
+are SHARED and never import Superchat, so importing this module registers the features' tools,
+the approvals and step-limit policies and the owner budgets with them. ``server/app.py`` and
+``runner/app.py`` import it.
 """
 
 from __future__ import annotations
@@ -10,6 +15,12 @@ import inspect
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
+from omnigent.runtime.policies.hooks import (
+    SessionPolicy,
+    register_owner_budgets,
+    register_session_policy,
+)
+from omnigent.superchat.approvals import policy as approvals_policy
 from omnigent.superchat.feature import (
     BackgroundJob,
     Feature,
@@ -18,10 +29,14 @@ from omnigent.superchat.feature import (
     InstallDeps,
     ToolManagerCtx,
 )
+from omnigent.superchat.models.budget import get_budgets
+from omnigent.superchat.step_limit import policy as step_limit_policy
+from omnigent.tools.manager import register_tool_source
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
+    from omnigent.spec import AgentSpec
     from omnigent.tools.base import Tool
 
 
@@ -99,6 +114,11 @@ def feature_tools(labels: Mapping[str, str] | None, ctx: ToolManagerCtx) -> list
     return [tool for feature in FEATURES for tool in feature.tools(labels, ctx)]
 
 
+def _superchat_tools(labels: Mapping[str, str] | None, spec: AgentSpec) -> list[Tool]:
+    """The tool manager's view of :func:`feature_tools`."""
+    return feature_tools(labels, ToolManagerCtx(spec=spec))
+
+
 def install_features(app: FastAPI, deps: InstallDeps) -> None:
     """Wire every feature's store and router onto ``app``."""
     for feature in FEATURES:
@@ -126,3 +146,10 @@ async def stop_feature_jobs(app: FastAPI) -> None:
         result = job.shutdown()
         if inspect.isawaitable(result):
             await result
+
+
+# The engine's product seams, filled once at import (registration is by name, so idempotent).
+register_tool_source("superchat", _superchat_tools)
+register_session_policy(SessionPolicy(approvals_policy.POLICY_SPEC, approvals_policy.applies))
+register_session_policy(SessionPolicy(step_limit_policy.POLICY_SPEC, step_limit_policy.applies))
+register_owner_budgets(get_budgets)

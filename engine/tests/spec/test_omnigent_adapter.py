@@ -92,7 +92,7 @@ def function_tools_yaml(tmp_path: Path) -> Path:
     config = {
         "name": "tool_user",
         "prompt": "Use tools when helpful.",
-        "executor": {"model": "databricks-claude-sonnet-4"},
+        "executor": {"model": "anthropic/claude-sonnet-4-20250514"},
         "tools": {
             "get_current_time": {
                 "type": "function",
@@ -1464,9 +1464,8 @@ def test_inline_agent_tool_inherits_parent_terminals() -> None:
 @pytest.mark.parametrize(
     "model,expected_harness",
     [
-        ("databricks-claude-sonnet-4", "claude-sdk"),
-        ("databricks-claude-opus-4-7", "claude-sdk"),
         ("anthropic/claude-sonnet-4-20250514", "claude-sdk"),
+        ("anthropic/claude-opus-4-7", "claude-sdk"),
     ],
 )
 def test_harness_auto_picks_from_model_prefix(
@@ -1654,13 +1653,13 @@ def test_inline_agent_tool_falls_through_to_model_auto_pick() -> None:
     parent = AgentDef(
         name="supervisor",
         prompt="",
-        executor=OmniExecutorSpec(model="databricks-claude-sonnet-4"),
+        executor=OmniExecutorSpec(model="anthropic/claude-sonnet-4-20250514"),
         tools={
             "worker": AgentTool(
                 name="worker",
                 prompt="",
                 executor=OmniExecutorSpec(
-                    model="databricks-claude-opus-4-7",
+                    model="anthropic/claude-opus-4-7",
                 ),
             ),
         },

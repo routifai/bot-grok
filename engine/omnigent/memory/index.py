@@ -143,7 +143,7 @@ class MemoryIndex:
                 embeddings = self._embeddings_instance()
                 embeddings.upsert([self._document(claim)])
                 embeddings.save(str(self._index_path))
-            except Exception:  # noqa: BLE001 - see docstring
+            except Exception:  # see docstring
                 _logger.warning("memory index: could not index claim %s", claim.id, exc_info=True)
 
     def delete(self, claim_id: str) -> None:
@@ -153,7 +153,7 @@ class MemoryIndex:
                 embeddings = self._embeddings_instance()
                 embeddings.delete([claim_id])
                 embeddings.save(str(self._index_path))
-            except Exception:  # noqa: BLE001 - the table stays the source of truth
+            except Exception:  # the table stays the source of truth
                 _logger.warning("memory index: could not remove claim %s", claim_id, exc_info=True)
 
     def search(

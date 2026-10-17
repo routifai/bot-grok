@@ -580,13 +580,6 @@ _SANDBOX_BACKENDS = [
             reason="linux_bwrap requires Linux + bwrap on PATH",
         ),
     ),
-    pytest.param(
-        "darwin_seatbelt",
-        marks=pytest.mark.skipif(
-            not (sys.platform == "darwin" and shutil.which("sandbox-exec")),
-            reason="darwin_seatbelt requires macOS + sandbox-exec on PATH",
-        ),
-    ),
 ]
 
 

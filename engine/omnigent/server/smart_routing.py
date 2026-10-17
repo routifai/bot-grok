@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from omnigent.db.workspace_cache import WorkspaceScopedCache
 from omnigent.models.model_fallbacks import (
+    ROUTING_HARNESS_FAMILY,
     SMART_ROUTING_CLAUDE_LADDER,
     SMART_ROUTING_CURRENT_GENERATION_GPT,
     SMART_ROUTING_FAMILY_FALLBACKS,
@@ -97,14 +98,6 @@ _CURRENT_GENERATION_MODELS: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {"gpt": SMART_ROUTING_CURRENT_GENERATION_GPT}
 )
 
-_HARNESS_FAMILY: dict[str, str] = {
-    "claude-sdk": "claude",
-    "claude_sdk": "claude",
-    "claude-native": "claude",
-    "pi": "pi",
-    "codex-native": "gpt",
-}
-
 
 def infer_models(
     harness: str | None,
@@ -122,7 +115,7 @@ def infer_models(
     """
     if harness is None:
         return None
-    family = _HARNESS_FAMILY.get(harness)
+    family = ROUTING_HARNESS_FAMILY.get(harness)
     if family is None:
         return None
     curated = MODEL_LISTS.get(family)
@@ -175,7 +168,7 @@ def catalog_models_for_harness(
     own = catalog.get(harness)
     if own:
         return list(own)
-    family = _HARNESS_FAMILY.get(harness)
+    family = ROUTING_HARNESS_FAMILY.get(harness)
     for worker, worker_models in catalog.items():
         if not worker_models:
             continue
@@ -183,7 +176,7 @@ def catalog_models_for_harness(
         if worker_harness is None:
             continue
         if worker_harness == harness or (
-            family is not None and _HARNESS_FAMILY.get(worker_harness) == family
+            family is not None and ROUTING_HARNESS_FAMILY.get(worker_harness) == family
         ):
             return list(worker_models)
     if allow_self:
@@ -1220,10 +1213,10 @@ def natural_harness_for_model(
     ]
     candidates = serving or order
     family = _model_family(model)
-    chosen = next((h for h in candidates if _HARNESS_FAMILY.get(h) == family), None)
+    chosen = next((h for h in candidates if ROUTING_HARNESS_FAMILY.get(h) == family), None)
     if chosen is None:
         chosen = next(
-            (h for h in candidates if _HARNESS_FAMILY.get(h) == _MULTI_MODEL_FAMILY), None
+            (h for h in candidates if ROUTING_HARNESS_FAMILY.get(h) == _MULTI_MODEL_FAMILY), None
         )
     if chosen is None:
         chosen = candidates[0] if candidates else None
@@ -1456,7 +1449,7 @@ class TaskV1RouteOptionSource:
 
     def _scenario(self, harnesses: Iterable[str]) -> str:
         """Map a harness set to a router scenario key."""
-        families = {_HARNESS_FAMILY.get(h) for h in harnesses}
+        families = {ROUTING_HARNESS_FAMILY.get(h) for h in harnesses}
         if families == {"claude"}:
             return "cc"
         if families == {"gpt"}:
@@ -1471,7 +1464,7 @@ class TaskV1RouteOptionSource:
         Examples: ``("codex-native", "glm-5-3") -> "codex"``;
         ``("pi", "claude-sonnet-5") -> "claude"``.
         """
-        family = _HARNESS_FAMILY.get(harness or "")
+        family = ROUTING_HARNESS_FAMILY.get(harness or "")
         if family == _MULTI_MODEL_FAMILY:
             family = _model_family(model)
         return _ROUTER_HARNESS_BY_FAMILY.get(family or "", harness)
@@ -1485,7 +1478,7 @@ class TaskV1RouteOptionSource:
         """Pick a harness by model family, falling back to the first one offered."""
         order = list(catalog) or list(harnesses)
         family = _model_family(arm)
-        match = next((h for h in order if _HARNESS_FAMILY.get(h) == family), None)
+        match = next((h for h in order if ROUTING_HARNESS_FAMILY.get(h) == family), None)
         if match is not None:
             return match
         return order[0] if order else None
@@ -1969,7 +1962,7 @@ async def route_session_harness(
         for h in (
             _AUTO_ROUTING_HARNESSES if harness_candidates is None else tuple(harness_candidates)
         )
-        if allowed_family is None or _HARNESS_FAMILY.get(h) == allowed_family
+        if allowed_family is None or ROUTING_HARNESS_FAMILY.get(h) == allowed_family
     )
     harness_models: dict[str, list[str]] = {}
     harness_catalog: dict[str, list[_RunnerModel]] = {}

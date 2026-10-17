@@ -193,7 +193,7 @@ class BackgroundSessionTitleCoordinator:
         try:
             async with asyncio.timeout(self._timeout_seconds), self._generation_slots:
                 return await self._generate_title(request)
-        except Exception:  # noqa: BLE001
+        except Exception:
             _logger.warning(
                 "agent session title generation failed session=%s",
                 request.session_id,
@@ -371,7 +371,7 @@ class BackgroundSessionTitleCoordinator:
         try:
             async with self._generation_slots:
                 return await self._generate_title(request)
-        except Exception:  # noqa: BLE001 - the caller falls back to a deterministic line
+        except Exception:  # the caller falls back to a deterministic line
             _logger.info("line generation failed session=%s", conversation.id, exc_info=True)
             return None
 
@@ -398,7 +398,7 @@ class BackgroundSessionTitleCoordinator:
             await asyncio.to_thread(save, title)
         except asyncio.CancelledError:
             raise
-        except Exception:  # noqa: BLE001 - background metadata must never fail a feed read
+        except Exception:  # background metadata must never fail a feed read
             self._failed_activity_title_keys[key] = time.monotonic()
             # A chat whose runner is gone cannot be titled; the retry cooldown keeps this quiet.
             _logger.info("activity title failed key=%s", key, exc_info=True)
@@ -504,7 +504,7 @@ class BackgroundSessionTitleCoordinator:
             )
         except asyncio.CancelledError:
             raise
-        except Exception:  # noqa: BLE001 - background metadata must never fail the user turn
+        except Exception:  # background metadata must never fail the user turn
             _logger.warning(
                 "background session title failed session=%s elapsed_ms=%.1f",
                 request.session_id,
@@ -554,7 +554,7 @@ class BackgroundSessionTitleCoordinator:
             )
         except asyncio.CancelledError:
             raise
-        except Exception:  # noqa: BLE001
+        except Exception:
             _logger.warning(
                 "background task summary failed session=%s elapsed_ms=%.1f",
                 request.session_id,

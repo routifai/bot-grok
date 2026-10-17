@@ -28,6 +28,7 @@ from omnigent.context.state_file import (
 )
 from omnigent.context.tool_digest import digest_tool_items
 from omnigent.entities import CompactionData, ConversationItem, MessageData
+from omnigent.entities.session_project import open_project
 from omnigent.runtime.compaction import count_tokens, summarize_history
 from omnigent.server.auth import local_single_user_enabled
 from omnigent.server.routes._sessions.common import (
@@ -712,8 +713,6 @@ def list_related_chats(
     :returns: ``[{"id", "title", "created_at", "updated_at", "last_message_preview",
         "archived", "live", "project"}]``; ``[]`` when *conversation_id* does not exist.
     """
-    from omnigent.superchat.lineage import open_project
-
     caller = conv_store.get_conversation(conversation_id)
     if caller is None or not caller.parent_conversation_id:
         return []

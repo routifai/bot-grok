@@ -279,6 +279,14 @@ class ModelBudgets:
         found = self.breaches(owner, only_stop=True)
         return found[0] if found else None
 
+    def any_limit(self) -> bool:
+        """Whether anyone in the workspace has a limit (the cheap gate before per-owner work)."""
+        return self.store.any_limit()
+
+    def record_approval(self, owner: str, scope: str, level: float) -> None:
+        """Remember that *owner* approved going past *scope*'s limit up to *level* this month."""
+        self.store.set_approval(owner, month_start()[:7], scope, level)
+
     def seed_for_policy(self, owner: str) -> dict[str, float | str] | None:
         """The ``owner_model_budget`` policy's context, or ``None`` when no limit applies."""
         if not self.store.any_limit():

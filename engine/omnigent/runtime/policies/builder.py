@@ -23,7 +23,6 @@ from typing import Any
 
 import cachetools
 
-from omnigent.context.labels import is_superside_chat
 from omnigent.db.workspace_cache import WorkspaceScopedCache
 from omnigent.entities import Conversation
 from omnigent.entities import Policy as StoredPolicy
@@ -37,6 +36,7 @@ from omnigent.policies.schema import (
 )
 from omnigent.policies.types import PolicyLLMClient
 from omnigent.runtime.policies.engine import PolicyEngine
+from omnigent.runtime.policies.hooks import owner_budgets, session_policies
 from omnigent.spec.types import (
     DEFAULT_ASK_TIMEOUT,
     AgentSpec,
@@ -49,9 +49,6 @@ from omnigent.spec.types import (
 )
 from omnigent.stores.conversation_store import ConversationStore
 from omnigent.stores.policy_store import PolicyStore
-from omnigent.superchat.approvals import policy as _approvals
-from omnigent.superchat.feature import is_super_chat
-from omnigent.superchat.step_limit import policy as _step_limit
 
 _logger = logging.getLogger(__name__)
 
@@ -79,31 +76,6 @@ _ASK_ON_ADD_POLICY_SPEC = FunctionPolicySpec(
     ),
 )
 
-# Asks before a Super Chat session sends, posts, deletes, spends, uploads or shares
-# (omnigent.superchat.approvals.policy). Installed only when the server bound an
-# approval store, and only for the Super Chat's tree (the Conversation and its Helpers).
-_APPROVALS_POLICY_SPEC = FunctionPolicySpec(
-    name=_approvals.POLICY_NAME,
-    on=None,
-    function=FunctionRef(
-        path="omnigent.superchat.approvals.policy.muse_approvals",
-        arguments=None,
-    ),
-    ask_timeout=_approvals.ASK_TIMEOUT_SECONDS,
-)
-
-
-# Caps the work tool calls of a Conversation turn (omnigent.superchat.step_limit.policy); the
-# policy itself ignores Helpers.
-_STEP_LIMIT_POLICY_SPEC = FunctionPolicySpec(
-    name=_step_limit.POLICY_NAME,
-    on=None,
-    function=FunctionRef(
-        path="omnigent.superchat.step_limit.policy.muse_step_limit",
-        arguments=None,
-    ),
-)
-
 # Owner/organization monthly model budget (omnigent.policies.builtins.model_budget): installed
 # for a session only when its owner or the organization has a limit, so it costs nothing otherwise.
 _OWNER_BUDGET_POLICY_SPEC = FunctionPolicySpec(
@@ -120,9 +92,7 @@ def _owner_budget_seed(
     conversation_id: str, conversation_store: ConversationStore
 ) -> dict[str, float | str] | None:
     """The owner's monthly-budget context, or ``None`` when no limit applies to the session."""
-    from omnigent.superchat.models.budget import get_budgets
-
-    budgets = get_budgets()
+    budgets = owner_budgets()
     owner = _resolve_session_owner_cached(conversation_id, conversation_store) if budgets else None
     if budgets is None or owner is None:
         return None
@@ -131,25 +101,8 @@ def _owner_budget_seed(
 
 def _budgets_may_apply() -> bool:
     """Whether any monthly budget exists in the workspace (the engine decides per owner)."""
-    from omnigent.superchat.models.budget import get_budgets
-
-    budgets = get_budgets()
-    return budgets is not None and budgets.store.any_limit()
-
-
-def _approvals_apply(conversation: Conversation | None, tree: list[Conversation] | None) -> bool:
-    """Whether the approvals policy covers this conversation (store bound, Muse session)."""
-    if _approvals.get_store() is None:
-        return False
-    if conversation is None:
-        return True
-    if tree is None:
-        # Cheap pre-check: a child may belong to a Super Chat; the engine build decides.
-        return (
-            is_superside_chat(conversation.labels)
-            or conversation.parent_conversation_id is not None
-        )
-    return any(is_superside_chat(row.labels) for row in [conversation, *tree])
+    budgets = owner_budgets()
+    return budgets is not None and budgets.any_limit()
 
 
 # Bounded cache of ``conversation_id -> session owner``. The owner
@@ -342,11 +295,9 @@ def any_policies_apply(
         return True
     if default_policies:
         return True
-    if _approvals_apply(conversation, None):
+    if any(policy.applies(conversation, None) for policy in session_policies()):
         return True
     if _budgets_may_apply():
-        return True
-    if conversation is not None and is_super_chat(conversation.labels):
         return True
     if _load_default_policy_specs(policy_store):
         return True
@@ -540,10 +491,11 @@ def build_policy_engine(
     # no other guardrails are declared (the noop-engine path below
     # is no longer reachable since all_policy_specs is never empty).
     all_policy_specs.append(_ASK_ON_ADD_POLICY_SPEC)
-    if _approvals_apply(conv, tree):
-        all_policy_specs.append(_APPROVALS_POLICY_SPEC)
-    if conv is not None and is_super_chat(conv.labels):
-        all_policy_specs.append(_STEP_LIMIT_POLICY_SPEC)
+    # The product's session policies (``runtime/policies/hooks.py``), e.g. Superchat's approvals
+    # and step limit, each on the sessions its predicate covers.
+    all_policy_specs.extend(
+        policy.spec for policy in session_policies() if policy.applies(conv, tree)
+    )
 
     budget_seed = _owner_budget_seed(conversation_id, conversation_store)
     if budget_seed is not None:
