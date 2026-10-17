@@ -128,7 +128,7 @@ don't use, so it can be removed before production.
 
 ## Built on top (not removals)
 
-- 2026-10-17: ADR 0021 both halves (`a2812bace`..`d3e2933e0` web; `e8c6a2656`..`aebbbf778` engine: `message_artifacts` table, `artifacts.item_id`, hint route, relink route with steer) and ADR 0022 engine half (`5ccbb5d47`..`cf3080ffe`: `report_progress`, `raise_flag`, throttle, fold, activity lines, timing logs). Contract: `docs/conversation.md`. Web work strip pending.
+- 2026-10-17: ADR 0021 both halves (`a2812bace`..`d3e2933e0` web; `e8c6a2656`..`aebbbf778` engine: `message_artifacts` table, `artifacts.item_id`, hint route, relink route with steer) and ADR 0022 engine half (`5ccbb5d47`..`cf3080ffe`: `report_progress`, `raise_flag`, throttle, fold, activity lines, timing logs). Contract: `docs/conversation.md`. Web work strip merged (`ca6bd26f4`..`ba2adf5aa`): one strip per reply replaces `HelperTracker`; Show details focuses the helper's row in the activity panel; "Answered while the work continues" is timing-derived until the engine exposes first-token time on the item.
 - Docs consolidated per ADR 0019 (`1cd7fcda0`..`a2009d045`): this log moved here from `docs/super-chat/ENGINE-TRIM.md`.
 
 ## Follow-ups from the flatten
