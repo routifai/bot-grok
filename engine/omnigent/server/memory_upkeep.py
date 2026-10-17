@@ -101,7 +101,7 @@ class MemoryUpkeepCoordinator:
                 )
         except asyncio.CancelledError:
             raise
-        except Exception:  # noqa: BLE001 - background job must never crash the caller
+        except Exception:  # background job must never crash the caller
             _logger.warning("memory upkeep run failed user=%s", user_id, exc_info=True)
 
     async def wait_for_idle(self) -> None:

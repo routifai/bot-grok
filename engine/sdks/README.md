@@ -43,11 +43,13 @@ pip install -e sdks/python-client
 import asyncio
 from omnigent_client import OmnigentClient
 
+
 async def main():
     async with OmnigentClient(base_url="http://localhost:8080") as client:
         session = client.session(model="archer")
         async for event in session.send("hello"):
             print(event)
+
 
 asyncio.run(main())
 ```
@@ -56,9 +58,14 @@ asyncio.run(main())
 
 ```python
 from omnigent_client import (
-    BlockStream, TextChunk, ToolGroup, ResponseEndBlock,
-    pipe, skip_intermediate_ends,
+    BlockStream,
+    TextChunk,
+    ToolGroup,
+    ResponseEndBlock,
+    pipe,
+    skip_intermediate_ends,
 )
+
 
 async def handle(websocket, session, text):
     block_stream = BlockStream()
@@ -70,9 +77,12 @@ async def handle(websocket, session, text):
             case TextChunk(text=t):
                 await websocket.send_json({"type": "text", "chunk": t})
             case ToolGroup(executions=execs):
-                await websocket.send_json({"type": "tools", "data": [
-                    {"name": e.name, "output": e.output} for e in execs
-                ]})
+                await websocket.send_json(
+                    {
+                        "type": "tools",
+                        "data": [{"name": e.name, "output": e.output} for e in execs],
+                    }
+                )
             case ResponseEndBlock(status=s):
                 await websocket.send_json({"type": "done", "status": s})
 ```

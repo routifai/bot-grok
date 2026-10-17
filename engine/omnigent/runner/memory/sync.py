@@ -97,7 +97,7 @@ async def record_checkpoint(
         await asyncio.to_thread(files.append_lines, root, entries)
         await asyncio.to_thread(files.write_state, root, files.state_text_of(item.summary))
         await asyncio.to_thread(files.write_owner, root, chat_id, keep_existing=True)
-    except Exception:  # noqa: BLE001 - a copy must never fail the turn
+    except Exception:  # a copy must never fail the turn
         _logger.warning("memory: could not record the checkpoint of %s", chat_id, exc_info=True)
 
 
@@ -128,7 +128,7 @@ async def record_helper_result(
             ),
         )
         await asyncio.to_thread(files.append_lines, workspace or default_workspace(), [entry])
-    except Exception:  # noqa: BLE001 - a copy must never fail the turn
+    except Exception:  # a copy must never fail the turn
         _logger.warning(
             "memory: could not record a Helper result for %s", parent_id, exc_info=True
         )
@@ -167,7 +167,7 @@ async def record_hand_edits(
             for edit in manual
         ]
         await asyncio.to_thread(files.append_lines, workspace or default_workspace(), entries)
-    except Exception:  # noqa: BLE001 - a copy must never fail the turn
+    except Exception:  # a copy must never fail the turn
         _logger.warning("memory: could not record the hand edits in %s", chat_id, exc_info=True)
 
 
@@ -182,7 +182,7 @@ async def record_daily_note(note: dict[str, Any], *, workspace: Path | None = No
             await asyncio.to_thread(
                 files.write_day_sections, workspace or default_workspace(), date, sections
             )
-    except Exception:  # noqa: BLE001 - a copy must never fail the tool call
+    except Exception:  # a copy must never fail the tool call
         _logger.warning("memory: could not project the daily note", exc_info=True)
 
 
@@ -254,7 +254,7 @@ async def rebuild(server_client: Any, chat_id: str, *, workspace: Path | None = 
         if isinstance(reset_id, str):
             await asyncio.to_thread(files.write_last_reset, root, reset_id)
         await asyncio.to_thread(files.write_owner, root, main_id)
-    except Exception:  # noqa: BLE001 - a copy must never fail the turn
+    except Exception:  # a copy must never fail the turn
         _logger.warning("memory: could not rebuild from %s", chat_id, exc_info=True)
 
 
@@ -324,7 +324,7 @@ async def reconcile(
         if owner is None:
             await asyncio.to_thread(files.write_owner, root, main_id)
         await _apply_reset(server_client, main_id, root)
-    except Exception:  # noqa: BLE001 - a copy must never fail the turn
+    except Exception:  # a copy must never fail the turn
         _logger.warning("memory: could not reconcile for %s", chat_id, exc_info=True)
 
 
@@ -399,7 +399,7 @@ async def index_retired_turns(
         passages = _passages(split_turns(window), origin, chat_id, project)
         if passages:
             await asyncio.to_thread(found.indexer.index_turns, passages)
-    except Exception:  # noqa: BLE001 - indexing must never fail the turn
+    except Exception:  # indexing must never fail the turn
         _logger.warning("recall: could not index the retired turns of %s", chat_id, exc_info=True)
 
 
@@ -502,7 +502,7 @@ async def backfill_turns(
         origin = files.Origin("main", main_id)
         if await _backfill_chat(server_client, found, origin, main_id, budget):
             await asyncio.to_thread(db.set_meta, f"{BACKFILLED_KEY}{main_id}", "done")
-    except Exception:  # noqa: BLE001 - indexing must never fail the turn
+    except Exception:  # indexing must never fail the turn
         _logger.warning("recall: could not backfill the turns of %s", chat_id, exc_info=True)
 
 
@@ -520,5 +520,5 @@ async def _forget_conversation(
             *(f"{CURSOR_KEY}{chat}" for chat in chats),
         ]
         await asyncio.to_thread(found.indexer.delete_chats, chats, meta_keys=keys)
-    except Exception:  # noqa: BLE001 - a copy must never fail the turn
+    except Exception:  # a copy must never fail the turn
         _logger.warning("recall: could not remove the turns of %s", main_id, exc_info=True)

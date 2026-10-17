@@ -1044,9 +1044,10 @@ class SandboxHostLauncher(SandboxLifecycle):
 
         :param agent_name: Server-resolved built-in agent name the session runs, as passed by
             every call site today.
-        :param labels: The launching session's labels (e.g. Superchat's ``superchat.bot`` / ``superchat.space``
-            — see :mod:`omnigent.onboarding.sandboxes.computer`), on a first launch. ``None`` on
-            a relaunch/resume of an existing host, which has no session labels handy.
+        :param labels: The launching session's labels (e.g. Superchat's ``superchat.bot`` /
+            ``superchat.space`` — see :mod:`omnigent.onboarding.sandboxes.computer`), on a first
+            launch. ``None`` on a relaunch/resume of an existing host, which has no session labels
+            handy.
         :param previous_sandbox_id: The host's previous :meth:`SandboxLifecycle.provision` /
             :meth:`SandboxHostLauncher.start_host` return value, on a relaunch or resume of an
             existing host, or ``None`` for a first launch. Lets a provider whose sandbox id

@@ -366,7 +366,7 @@ async def _claim_rankings(
     async def one(query: str) -> list[dict[str, Any]]:
         try:
             rows = await claims(query, _CLAIMS_PER_QUERY)
-        except Exception:  # noqa: BLE001 - claims are one source; the others still answer
+        except Exception:  # claims are one source; the others still answer
             _logger.warning("recall: claim search failed", exc_info=True)
             return []
         return [r for r in rows if isinstance(r, dict) and isinstance(r.get("claim_id"), str)]

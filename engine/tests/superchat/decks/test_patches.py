@@ -276,7 +276,7 @@ def test_set_theme_refuses_unknown_themes_and_decks_the_kit_did_not_build() -> N
 
 
 def _with_custom(deck: str) -> str:
-    """The deck as a person or Superchat leaves it: a custom rule, token and a theme-token override."""
+    """The deck as a person or Superchat leaves it: a custom rule and token, a theme override."""
     own = (
         "    .brand-card { border: 3px solid var(--brand); }\n"
         "    :root { --brand: #123456; --accent: #ff00aa; }\n"

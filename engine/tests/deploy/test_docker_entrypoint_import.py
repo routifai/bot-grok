@@ -90,6 +90,7 @@ def test_run_migrations_uses_central_schema_initializer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from deploy.docker.entrypoint import run_migrations
+
     from omnigent.db import utils
 
     engine = MagicMock()
@@ -107,9 +108,9 @@ def test_run_migrations_uses_central_schema_initializer(
 
 
 def test_run_migrations_preserves_sqlite_startup(tmp_path: Path) -> None:
+    from deploy.docker.entrypoint import run_migrations
     from sqlalchemy import create_engine
 
-    from deploy.docker.entrypoint import run_migrations
     from omnigent.db.utils import _get_current_db_revision, _get_head_db_revision
 
     database_url = f"sqlite:///{tmp_path / 'entrypoint.db'}"
@@ -217,6 +218,7 @@ def test_build_routing_carries_the_configured_settings() -> None:
 
 def test_build_routing_defaults_without_a_routing_block() -> None:
     from deploy.docker.entrypoint import _build_routing
+
     from omnigent.server.smart_routing import RoutingSettings
 
     client, settings = _build_routing({}, None)

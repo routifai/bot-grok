@@ -13,10 +13,11 @@ ordinary chat message (no new channel): ``ask_clarification`` builds an ``ask`` 
 options) and ``suggest_follow_ups`` builds a ``follow_ups`` card (quiet next-message chips).
 
 Portions modified from getnao/nao apps/shared/src/tools/clarification.ts and
-apps/shared/src/tools/suggest-follow-ups.ts@5bde830, Apache-2.0; changes: options are 2-5 required
-short distinct strings (nao allows none), results are Superchat reply cards (``ask`` and ``follow_ups``)
-that the person's click answers as an ordinary chat message, and the Muse rules (ask only when
-genuinely ambiguous, suggest only natural next steps) are in the tool descriptions; see NOTICE.
+apps/shared/src/tools/suggest-follow-ups.ts@5bde830, Apache-2.0; changes: options are 2-5
+required short distinct strings (nao allows none), results are Superchat reply cards (``ask`` and
+``follow_ups``) that the person's click answers as an ordinary chat message, and the Muse rules
+(ask only when genuinely ambiguous, suggest only natural next steps) are in the tool descriptions;
+see NOTICE.
 """
 
 from __future__ import annotations
@@ -63,9 +64,9 @@ def _kind_hints() -> str:
     return "; ".join(f"{kind} {_shape(s)}" for kind, s in CARD_DATA_SCHEMAS.items())
 
 
-# No `chart` card is offered: charts and dashboards are HTML pages `superchat-dashboard` builds from the
-# person's files, so the model never types data values. Old transcripts keep their chart cards;
-# clients still draw them.
+# No `chart` card is offered: charts and dashboards are HTML pages `superchat-dashboard` builds
+# from the person's files, so the model never types data values. Old transcripts keep their chart
+# cards; clients still draw them.
 
 # Kinds that are the answer itself. ``plan`` and ``progress`` are living cards the Muse
 # re-renders (same ``id``) while it works, so they never end the reply; ``ask`` waits on

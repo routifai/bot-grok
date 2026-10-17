@@ -114,7 +114,7 @@ def _safe_projects_block(workspace: Path | None) -> str | None:
     """The Project list block; a filesystem or parsing surprise means "no block"."""
     try:
         return projects_block(workspace)
-    except Exception:  # noqa: BLE001 - the list is a convenience, never a reason to fail a turn
+    except Exception:  # the list is a convenience, never a reason to fail a turn
         _logger.warning("Project list failed; proceeding without it", exc_info=True)
         return None
 
@@ -131,7 +131,7 @@ async def _feature_prefix_blocks(
             continue
         try:
             blocks.extend(await feature.turn_prefix(server_client, conversation_id))
-        except Exception:  # noqa: BLE001 - a convenience, never a reason to fail a turn
+        except Exception:  # a convenience, never a reason to fail a turn
             _logger.warning(
                 "%s turn prefix failed; proceeding without it", feature.name, exc_info=True
             )
@@ -162,7 +162,7 @@ async def _message_prefix_blocks(
             continue
         try:
             blocks.extend(await feature.message_prefix(server_client, conversation_id, texts))
-        except Exception:  # noqa: BLE001 - a convenience, never a reason to fail a turn
+        except Exception:  # a convenience, never a reason to fail a turn
             _logger.warning(
                 "%s message prefix failed; proceeding without it", feature.name, exc_info=True
             )

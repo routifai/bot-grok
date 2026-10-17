@@ -53,5 +53,5 @@ async def _project(resp: Any) -> None:
         from omnigent.runner.memory.sync import record_daily_note
 
         await record_daily_note(resp.json())
-    except Exception:  # noqa: BLE001 - a copy must never fail the tool call
+    except Exception:  # a copy must never fail the tool call
         _logger.warning("daily note: could not project it to memory/", exc_info=True)
