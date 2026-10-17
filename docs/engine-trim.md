@@ -126,6 +126,11 @@ don't use, so it can be removed before production.
 - `pnpm check` fails on a pre-existing error in `web/packages/adapters` (`BodyInit` not found in `src/omnigent/artifacts.ts`); CI's web job has been red on it since before the cut. Fix with the CI work in wave 5.
 - `tool-presentation.completeness.test.ts` fails because the `superchat-claude` bundle declares no `builtins`; decide whether the test or the bundle is right in wave 5.
 
+## Built on top (not removals)
+
+- 2026-10-17: ADR 0021 both halves (`a2812bace`..`d3e2933e0` web; `e8c6a2656`..`aebbbf778` engine: `message_artifacts` table, `artifacts.item_id`, hint route, relink route with steer) and ADR 0022 engine half (`5ccbb5d47`..`cf3080ffe`: `report_progress`, `raise_flag`, throttle, fold, activity lines, timing logs). Contract: `docs/conversation.md`. Web work strip pending.
+- Docs consolidated per ADR 0019 (`1cd7fcda0`..`a2009d045`): this log moved here from `docs/super-chat/ENGINE-TRIM.md`.
+
 ## Follow-ups from the flatten
 
 - Import-linter contracts are written and both report direct-import violations: HOST → server (`runner/app.py` and `runner/tool_dispatch.py` → `server/schemas`; `runner/routing` → `server/host_registry`; `runner/subagent_routing` → `server/routing_backend`, `server/smart_routing`) and shared → superchat (`context/rollover` → `superchat/lineage`; `runtime/policies/{builder,engine}` → `superchat/{approvals,feature,models.budget,step_limit}`; `tools/manager` → `superchat/{feature,features}`). Fix by moving the shared shapes down (schemas the runner needs into `runtime/` or `entities/`, the policy hooks into a registry the features fill). Needs its own small record.

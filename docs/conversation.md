@@ -103,4 +103,4 @@ Engine contract for this, additive: a `progress` and a `flag` notice kind beside
 
 ## What is gone
 
-Side chats, forks, the Chats popover, "Chat with this folder", the fork action on a message, the auto-archive setting, the `side_chat_open` tool, seeds and fork summaries. The removal and its commits are in the [trim log](super-chat/ENGINE-TRIM.md).
+Side chats, forks, the Chats popover, "Chat with this folder", the fork action on a message, the auto-archive setting, the `side_chat_open` tool, seeds and fork summaries. The removal and its commits are in the [trim log](engine-trim.md).
