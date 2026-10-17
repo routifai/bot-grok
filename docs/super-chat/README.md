@@ -12,7 +12,7 @@ Names: the product is **Superchat**. The engine is **Omnigent**, vendored at `en
 paths start with `/v1`.
 
 Related pages: [WIRING.md](WIRING.md) (screen to engine call), [RUNNERS.md](RUNNERS.md) (where turns
-run, how runners get keys), [ENGINE-TRIM.md](ENGINE-TRIM.md) (engine code we may drop). The glossary
+run, how runners get keys), [engine-trim.md](../engine-trim.md) (engine code we may drop). The glossary
 is [CONTEXT.md](../../CONTEXT.md). Engine-side design notes live in `docs/rollover/`.
 Delegation, Activity masking, session labels and failure modes: [delegation-and-activity.md](delegation-and-activity.md).
 What the model sees on each turn (instructions, history, Rollover, per-turn blocks, memory): [context-assembly.md](context-assembly.md).

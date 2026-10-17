@@ -3,7 +3,7 @@
 What `engine/omnigent` and the repo carry that Superchat does not run, grouped by how it can go.
 Written 2026-10-15 from an import graph of the package (static imports, imports inside functions,
 and the string tables the plugin registries load by name) plus the Dockerfiles, Compose files and
-CI. S3 stays (artifact store in S3/R2). `ENGINE-TRIM.md` is the running tracker; this list is the
+CI. S3 stays (artifact store in S3/R2). `docs/engine-trim.md` is the running tracker; this list is the
 one-time cut.
 
 What Superchat runs: the server (`omnigent/server`, `api`, `superchat`), the runner and host daemon
