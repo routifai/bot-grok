@@ -343,6 +343,9 @@ msgstr "Checking…"
 msgid "Choose where this chat works"
 msgstr "Choose where this chat works"
 
+msgid "Claude"
+msgstr "Claude"
+
 msgid "Clear"
 msgstr "Clear"
 
@@ -1278,6 +1281,9 @@ msgstr "PDF"
 msgid "People"
 msgstr "People"
 
+msgid "Pi"
+msgstr "Pi"
+
 msgid "Pick a folder"
 msgstr "Pick a folder"
 
@@ -1503,6 +1509,9 @@ msgstr "Running"
 
 msgid "Running…"
 msgstr "Running…"
+
+msgid "Runs on"
+msgstr "Runs on"
 
 msgid "Save"
 msgstr "Save"

@@ -26,6 +26,7 @@ const api = vi.hoisted(() => ({
   catalog: vi.fn(),
   setDefault: vi.fn(),
   setLight: vi.fn(),
+  setHarness: vi.fn(),
   budget: vi.fn(),
   setBudget: vi.fn(),
 }));
@@ -95,6 +96,11 @@ async function mount(onChanged = vi.fn()) {
   return {
     container,
     onChanged,
+    /** The status as the engine answers it after a refresh. */
+    rerender: async (next: EngineModelsStatus) => {
+      await act(async () => root.render(<ModelsPanel status={next} onChanged={onChanged} />));
+      await act(async () => {});
+    },
     button: (name: string) =>
       [...container.querySelectorAll("button")].find((b) => b.textContent === name),
     cleanup: async () => {
@@ -174,6 +180,55 @@ it("removes a key", async () => {
   try {
     await act(async () => view.button("Remove")?.click());
     expect(api.disconnect).toHaveBeenCalledWith({ provider: "anthropic" });
+  } finally {
+    await view.cleanup();
+  }
+});
+
+it("switches the harness, then shows the new harness's models once the status follows", async () => {
+  seed();
+  api.setHarness.mockResolvedValue({ ok: true });
+  const view = await mount();
+  try {
+    const runsOn = view.container.querySelector('[data-testid="runs-on"]');
+    expect(runsOn?.getAttribute("aria-label")).toBe("Runs on");
+    const claude = view.container.querySelector(
+      '[data-testid="runs-on-claude-sdk"]',
+    ) as HTMLButtonElement;
+    const pi = view.container.querySelector('[data-testid="runs-on-pi"]') as HTMLButtonElement;
+    expect([claude.textContent, pi.textContent]).toEqual(["Claude", "Pi"]);
+    expect(pi.getAttribute("aria-pressed")).toBe("true");
+
+    api.catalog.mockResolvedValue({ ...catalog, harness: "claude-sdk" });
+    await act(async () => claude.click());
+    expect(api.setHarness).toHaveBeenCalledWith({ harness: "claude-sdk" });
+    expect(view.onChanged).toHaveBeenCalled();
+    expect(claude.getAttribute("aria-pressed")).toBe("true");
+
+    await view.rerender({ ...status, harnesses: [{ id: "claude-sdk", label: "Claude" }] });
+    expect(api.catalog).toHaveBeenLastCalledWith({ harness: "claude-sdk" });
+    expect(view.container.querySelector('[data-testid="default-model-claude-sdk"]')).not.toBeNull();
+    expect(view.container.querySelector('[data-testid="default-model-pi"]')).toBeNull();
+  } finally {
+    await view.cleanup();
+  }
+});
+
+it("keeps the harness and shows the engine's message while a reply runs", async () => {
+  seed();
+  api.setHarness.mockRejectedValueOnce(new Error("Finish or stop the current reply first."));
+  const view = await mount();
+  try {
+    await act(async () =>
+      (view.container.querySelector('[data-testid="runs-on-claude-sdk"]') as HTMLElement).click(),
+    );
+    expect(view.onChanged).not.toHaveBeenCalled();
+    expect(
+      view.container.querySelector('[data-testid="runs-on-pi"]')?.getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(view.container.querySelector('[role="alert"]')?.textContent).toBe(
+      "Finish or stop the current reply first.",
+    );
   } finally {
     await view.cleanup();
   }
