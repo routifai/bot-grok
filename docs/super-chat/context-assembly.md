@@ -1088,7 +1088,7 @@ early. See [Known gaps](#15-known-gaps), item 9.
 ## 14. Glossary
 
 Terms are defined in [CONTEXT.md](../../CONTEXT.md). Engine terms are in
-`engine/omnigent/rollover/CONTEXT.md`.
+`docs/rollover/CONTEXT.md`.
 
 | Term on this page | Defined in |
 |---|---|
@@ -1099,7 +1099,7 @@ Terms are defined in [CONTEXT.md](../../CONTEXT.md). Engine terms are in
 | Project | [CONTEXT.md — Project](../../CONTEXT.md) |
 | Skill | [CONTEXT.md — Skill](../../CONTEXT.md) |
 | Proactivity (source of the timezone) | [CONTEXT.md — Proactivity](../../CONTEXT.md) |
-| Brief, Memory, Upkeep, Memory Profile, Result, Rollover | `engine/omnigent/rollover/CONTEXT.md:90-145` |
+| Brief, Memory, Upkeep, Memory Profile, Result, Rollover | `docs/rollover/CONTEXT.md:90-145` |
 
 Terms used only on this page:
 

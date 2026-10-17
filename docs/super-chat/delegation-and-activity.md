@@ -26,7 +26,7 @@ Every claim here was checked against the code, and each one carries a `file:line
 **Words.** This page uses the canonical vocabulary from [CONTEXT.md](../../CONTEXT.md): Muse,
 Conversation, Super Chat, Side chat, Fork, Helper, Computer, Activity. The engine says
 **Sub-agent** for a Helper and **Originating Chat** for the chat that started it
-(`engine/omnigent/rollover/CONTEXT.md`). See the [glossary](#7-glossary) at the end.
+(`docs/rollover/CONTEXT.md`). See the [glossary](#7-glossary) at the end.
 
 ## Contents
 
@@ -808,7 +808,7 @@ labels to a Helper (`omnigent/context/labels.py:131-136`).
 ## 7. Glossary
 
 Canonical words are from [CONTEXT.md](../../CONTEXT.md). The engine's words are from
-`engine/omnigent/rollover/CONTEXT.md`.
+`docs/rollover/CONTEXT.md`.
 
 | Word | Meaning here | Engine word |
 |---|---|---|

@@ -22,12 +22,11 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    # SDK path-deps, version-locked: the three packages release together at
-    # one version, so a published `omnigent==X` must resolve the SDK wheels
-    # built alongside it (release-omnigent.yml verifies these pins match the
+    # SDK path-dep, version-locked: the two packages release together at
+    # one version, so a published `omnigent==X` must resolve the SDK wheel
+    # built alongside it (release-omnigent.yml verifies this pin matches the
     # release tag). Local/editable installs still resolve via tool.uv.sources.
     "omnigent-client==0.17.0.dev0",
-    "omnigent-ui-sdk==0.17.0.dev0",
     # Merged from omnigent + omnigent.
     "pyyaml>=6.0,<7",
     # OpenClaw stores its wrapped acpx registry as JSON5.
@@ -267,10 +266,9 @@ omnigent = "omnigent.cli:main"
 [tool.uv]
 default-groups = []
 
-# uv path-deps for the sibling SDK packages.
+# uv path-dep for the sibling SDK package.
 [tool.uv.sources]
 omnigent-client = { path = "sdks/python-client", editable = true }
-omnigent-ui-sdk = { path = "sdks/ui", editable = true }
 
 [tool.setuptools]
 include-package-data = true
@@ -317,13 +315,12 @@ addopts = "-p no:structlog_config --ignore=tests/e2e_ui --ignore=tests/browser_u
 timeout = 300
 timeout_method = "thread"
 # SDK tests under ``tests/frontends/sdk/`` import the
-# ``omnigent_client`` and ``omnigent_ui_sdk`` packages that
-# live in ``sdks/python-client/`` and ``sdks/ui/`` respectively.
+# ``omnigent_client`` package that lives in ``sdks/python-client/``.
 # Without this pythonpath the imports fail at collection time
 # with ``ModuleNotFoundError: No module named 'omnigent_client'``
-# unless the SDKs are installed editable into the venv. Listing
-# both relative paths here keeps the test suite self-contained.
-pythonpath = [".", "sdks/python-client", "sdks/ui"]
+# unless the SDK is installed editable into the venv. Listing
+# the relative path here keeps the test suite self-contained.
+pythonpath = [".", "sdks/python-client"]
 markers = [
     "live: end-to-end tests requiring real LLM API key (run with --llm-api-key)",
     "live_app: end-to-end tests requiring a deployed Databricks App server",

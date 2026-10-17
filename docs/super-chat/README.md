@@ -13,7 +13,7 @@ paths start with `/v1`.
 
 Related pages: [WIRING.md](WIRING.md) (screen to engine call), [RUNNERS.md](RUNNERS.md) (where turns
 run, how runners get keys), [ENGINE-TRIM.md](ENGINE-TRIM.md) (engine code we may drop). The glossary
-is [CONTEXT.md](../../CONTEXT.md). Engine-side design notes live in `engine/omnigent/rollover/`.
+is [CONTEXT.md](../../CONTEXT.md). Engine-side design notes live in `docs/rollover/`.
 Delegation, Activity masking, session labels and failure modes: [delegation-and-activity.md](delegation-and-activity.md).
 What the model sees on each turn (instructions, history, Rollover, per-turn blocks, memory): [context-assembly.md](context-assembly.md).
 
@@ -151,7 +151,7 @@ The next turn waits (at most 60 seconds) only if the context is at or past **95%
 (`HARD_CONTEXT_WINDOW_FRACTION`). Only one rollover runs per session at a time. A turn that runs
 while the summary is being written is not lost: both readers split the record at the latest
 checkpoint with `split_at_latest_compaction`. Details:
-`engine/omnigent/rollover/NON-BLOCKING-ROLLOVER.md`.
+`docs/rollover/NON-BLOCKING-ROLLOVER.md`.
 
 After each rollover, memory Upkeep is scheduled for the owner (see [Memory](#6-memory)).
 
@@ -655,7 +655,7 @@ Superchat's own side of the gateway (`web/packages/adapters/src/omnigent/env.ts`
 - Glossary: [CONTEXT.md](../../CONTEXT.md). Use its words exactly: Muse, Conversation, Helper,
   Activity, Ask, Archived, Computer. The engine words differ: Conversation is the
   **Super Chat**, a Helper is a **sub-agent**, and the Activity panel is the **Activity Feed**
-  (engine glossary: `engine/omnigent/rollover/CONTEXT.md`). Superchat's "Task" is a plan item of a Goal and is not a Helper.
+  (engine glossary: `docs/rollover/CONTEXT.md`). Superchat's "Task" is a plan item of a Goal and is not a Helper.
 - [ADR 0001](../adr/0001-one-muse-per-person.md): one Muse per person.
 - [ADR 0004](../adr/0004-engine-owns-the-computer.md): the engine owns the Computer.
 - [ADR 0007](../adr/0007-the-muse-delegates-multi-step-work.md): the Muse delegates multi-step work.

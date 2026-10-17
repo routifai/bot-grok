@@ -43,7 +43,7 @@ def test_pinned_keyring_secret_resolves_in_runner(
 ) -> None:
     (tmp_path / "test_keyring_backend.py").write_text(_BACKEND_SOURCE)
     project = Path(__file__).resolve().parents[2]
-    source_paths = (tmp_path, project, project / "sdks/python-client", project / "sdks/ui")
+    source_paths = (tmp_path, project, project / "sdks/python-client")
     env = {
         "PATH": os.defpath,
         "HOME": str(tmp_path),

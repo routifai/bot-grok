@@ -56,16 +56,15 @@ RUN --mount=type=secret,id=ca_bundle,target=/usr/local/share/ca-certificates/ca_
 ENV PIP_CERT=/etc/ssl/certs/ca-certificates.crt \
     REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 WORKDIR /src
-# The package, its two sibling SDKs (hard dependencies, installed from the same tree) and the
+# The package, its sibling SDK (a hard dependency, installed from the same tree) and the
 # attribution files the image redistributes.
 COPY engine/omnigent/pyproject.toml engine/omnigent/setup.py engine/omnigent/LICENSE engine/omnigent/NOTICE ./
 COPY engine/omnigent/sdks/python-client/ ./sdks/python-client/
-COPY engine/omnigent/sdks/ui/ ./sdks/ui/
 COPY engine/omnigent/omnigent/ ./omnigent/
 RUN python -m venv /opt/venv
 ENV PATH=/opt/venv/bin:${PATH}
 RUN if [ -n "${TORCH_INDEX_URL}" ]; then pip install --index-url "${TORCH_INDEX_URL}" torch; fi \
- && pip install --index-url "${PYPI_INDEX_URL}" ".[${ENGINE_EXTRAS}]" ./sdks/python-client ./sdks/ui \
+ && pip install --index-url "${PYPI_INDEX_URL}" ".[${ENGINE_EXTRAS}]" ./sdks/python-client \
  && ! grep -R --include='*.pth' -nE '/src(/|$)' /opt/venv/lib/python*/site-packages
 
 # ── engine: the image that runs ────────────────────────────────────────────────

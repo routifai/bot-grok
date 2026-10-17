@@ -5,7 +5,7 @@ import { Id } from "../ids.js";
 // The Activity panel (CONTEXT.md "Activity", "Activity Feed", "Step"; docs/super-chat/README.md
 // "The Activity panel"): every piece of multi-step work the Muse did — a Conversation or Side
 // Chat turn that used tools, or a Helper's whole task. Derived by Omnigent on read
-// (`GET /v1/sessions/{id}/activities`, engine/omnigent/rollover/SUPERSIDE-CHAT.md) and passed
+// (`GET /v1/sessions/{id}/activities`, docs/rollover/SUPERSIDE-CHAT.md) and passed
 // through by `activities.list`/`activities.get` (this file).
 
 export const ActivityKindSchema = z.enum(["turn", "sub_agent"]);

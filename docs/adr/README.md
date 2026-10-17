@@ -26,4 +26,4 @@ One file per decision, numbered in order. A superseded record keeps its file wit
 | [0021](0021-one-conversation-messages-link-to-artifacts.md) | One conversation: messages link to artifacts | Accepted 2026-10-16; web side chats and forks removed 2026-10-17, engine half and the chip pending |
 | [0022](0022-the-orchestrator-narrates-while-helpers-work.md) | The orchestrator narrates while helpers work | Accepted 2026-10-16, to build after the trim |
 
-The engine's own record, [Omnigent owns everything](../../engine/omnigent/rollover/adr/0001-omnigent-owns-everything.md), moves here as 0006 in the docs wave; 0006 was never used.
+The engine's own record, [Omnigent owns everything](../rollover/adr/0001-omnigent-owns-everything.md), moves here as 0006 in the docs wave; 0006 was never used.

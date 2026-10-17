@@ -38,10 +38,9 @@ ENV PIP_CERT=/etc/ssl/certs/ca-certificates.crt \
 WORKDIR /src
 COPY engine/omnigent/pyproject.toml engine/omnigent/setup.py engine/omnigent/LICENSE engine/omnigent/NOTICE ./
 COPY engine/omnigent/sdks/python-client/ ./sdks/python-client/
-COPY engine/omnigent/sdks/ui/ ./sdks/ui/
 COPY engine/omnigent/omnigent/ ./omnigent/
 RUN python3 -m venv /opt/venv \
- && /opt/venv/bin/pip install --index-url "${PYPI_INDEX_URL}" . ./sdks/python-client ./sdks/ui \
+ && /opt/venv/bin/pip install --index-url "${PYPI_INDEX_URL}" . ./sdks/python-client \
  && ! grep -R --include='*.pth' -nE '/src(/|$)' /opt/venv/lib/python*/site-packages
 
 # ── computer: the image that runs ──────────────────────────────────────────────
