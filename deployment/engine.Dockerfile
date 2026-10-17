@@ -85,7 +85,7 @@ COPY --from=python /src/LICENSE /src/NOTICE /opt/engine/
 COPY deployment/entrypoint.py /app/entrypoint.py
 # The agent bundles the engine offers, the config templates and the start script that renders one
 # of them from the environment, then runs the entrypoint.
-COPY deployment/engine/agents/ /opt/bundle/agents/
+COPY engine/agents/bundles/ /opt/bundle/agents/
 COPY --chmod=755 deployment/engine/start.sh deployment/engine/config.yaml.tmpl \
      deployment/engine/config.litellm.yaml.tmpl deployment/engine/config.byok.yaml.tmpl /opt/bundle/engine/
 # The web, served at "/" with an SPA fallback; /v1 and /health stay the API, /apps/<slug> the

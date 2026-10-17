@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-AGENTS = Path(__file__).resolve().parents[5] / "infra" / "omnigent" / "agents"
+AGENTS = Path(__file__).resolve().parents[4] / "engine" / "agents" / "bundles"
 TOOLS = (
     "files_search",
     "files_vsearch",

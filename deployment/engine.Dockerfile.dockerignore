@@ -23,7 +23,7 @@
 
 # engine stage
 !deployment/entrypoint.py
-!deployment/engine/agents/
+!engine/agents/bundles/
 !deployment/engine/start.sh
 !deployment/engine/*.tmpl
 

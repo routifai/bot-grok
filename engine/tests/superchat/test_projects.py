@@ -375,7 +375,7 @@ def test_open_project_is_offered_to_the_muse_not_to_helpers() -> None:
 
 # ── a Project as the working directory ─────────────────────────────────────
 
-REPO = Path(__file__).resolve().parents[4]
+REPO = Path(__file__).resolve().parents[3]
 WORKSPACE = "/home/superchat/workspace"
 
 
@@ -387,7 +387,7 @@ def test_bundles_offer_open_project_and_keep_the_whole_workspace_reachable(
     from omnigent.spec import parse
 
     monkeypatch.setenv("SUPERCHAT_CLAUDE_MODEL", "m")
-    spec = parse(REPO / "deployment/engine/agents" / name)
+    spec = parse(REPO / "engine/agents/bundles" / name)
     worker = next(a for a in spec.sub_agents if a.name == "worker")
     assert "open_project" in spec.tools.allow
     for agent in [spec, *spec.sub_agents, *worker.sub_agents]:

@@ -153,17 +153,17 @@ responsive.
 **Who gets the tool.**
 
 - The Muse bundle allows `start_helper` and declares `worker` and `goal`
-  (`deployment/engine/agents/superchat-claude/config.yaml:65`, `:87-90`).
+  (`engine/agents/bundles/superchat-claude/config.yaml:65`, `:87-90`).
 - Side chats run on the same agent, so they get it too.
 - A `worker` declares `agents: [subworker]` and allows `start_helper`. It can start parts
-  (`deployment/engine/templates/agents/worker/config.yaml`).
+  (`engine/agents/templates/agents/worker/config.yaml`).
 - A `subworker` cannot start anything.
 - `sys_session_send` and `sys_session_create` are not in any Superchat allow list. So `start_helper` is
   the only way a Superchat model launches a Helper.
 
 ### Sub-agent Types
 
-The templates live in `deployment/engine/templates/agents/`. `deployment/engine/render-agents.mjs`
+The templates live in `engine/agents/templates/agents/`. `engine/agents/render-agents.mjs`
 renders them into both Muse bundles.
 
 | Type | How it is started | Model | `max_sessions` | Main tools |
@@ -202,7 +202,7 @@ applies (`tool_dispatch.py:3153-3171`).
   ad-hoc Helpers (`omnigent/context/rollover.py:1000-1007`).
 - **An engine-made conversation summary.** None exists on this branch. CONTEXT.md and the worker
   prompt both say the Helper starts with "a short summary of the Conversation"
-  (`deployment/engine/templates/agents/worker/config.yaml`, prompt). That summary exists only if the
+  (`engine/agents/templates/agents/worker/config.yaml`, prompt). That summary exists only if the
   Muse writes it into `task`. The engine adds nothing.
 - **The parent's tools.** Its surface is its own Type's `allow` list, narrowed further for Helpers:
   - scheduled tasks: list only (`omnigent/tools/manager.py:251-271`);
@@ -220,7 +220,7 @@ runner and current workspace ("sub-agent co-location",
 `omnigent/server/routes/_sessions/orchestration.py:10117-10150`). Scheduled and ad-hoc Helpers use
 `runner_id=parent.runner_id` (`omnigent/server/scheduled/helper_fire.py:518-578`). Every Type runs
 its shell and file tools in `/home/superchat/workspace` with no inner sandbox
-(`deployment/engine/templates/agents/worker/config.yaml`, `os_env`).
+(`engine/agents/templates/agents/worker/config.yaml`, `os_env`).
 
 ### Limits on launching
 

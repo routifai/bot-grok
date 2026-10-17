@@ -21,7 +21,7 @@ from omnigent.superchat.models.selection import ModelPicks
 
 from .test_byok_pi import _hosted_state, _service
 
-DEFAULT_TEMPLATE = Path(__file__).resolve().parents[4] / "deployment/engine/config.yaml.tmpl"
+DEFAULT_TEMPLATE = Path(__file__).resolve().parents[3] / "deployment/engine/config.yaml.tmpl"
 
 
 def _with_picks(state: SimpleNamespace, light: dict, defaults: dict | None = None):

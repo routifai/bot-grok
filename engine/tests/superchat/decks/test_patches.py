@@ -410,7 +410,7 @@ def _old_kit(rev: str, tmp: str):
     import sys
     from pathlib import Path
 
-    root = Path(__file__).resolve().parents[5]
+    root = Path(__file__).resolve().parents[4]
     base = "engine/omnigent/omnigent/superchat/decks"
     done = subprocess.run(
         f"git archive {rev} {base} | tar -x -C {tmp}",

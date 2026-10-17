@@ -23,7 +23,7 @@ Order the model reads it in, after slices 1–3. Sizes are the budgets in code.
 | # | Layer | Source | Size | Notes |
 |---|-------|--------|------|-------|
 | 1 | System prompt | bundle `AGENTS.md` + framework rules + tool-name note | ≈ 11k tok, cached | Rebuilt on hash change; the client now cold-starts with history (`claude_sdk_executor.py`) |
-| 2 | Tools | allow list `deployment/engine/templates/config.yaml.tmpl:48-70` | fixed | `memory_*`, `session_history`, `state_close`, `files_*`, `open_project`, `side_chat_open`, `start_helper`, … |
+| 2 | Tools | allow list `engine/agents/templates/config.yaml.tmpl:48-70` | fixed | `memory_*`, `session_history`, `state_close`, `files_*`, `open_project`, `side_chat_open`, `start_helper`, … |
 | 3 | Checkpoint | tagged state file + header | ≤ budget (`context/state_file.py:fit_budget`) | Entries `[tag · date]`, repaired and clipped by code after each rewrite |
 | 4 | Kept tail | whole turns since the anchor, tool calls as digests | ≤ 16k tok rendered | `context/tool_digest.py` |
 | 5 | Turns since the anchor | the record, read from the anchor | until threshold | `after=<anchor>` |
@@ -334,7 +334,7 @@ the same question with different shapes. The cut keeps every capability and remo
 
 ### 9.1 Model-facing tools
 
-| Today (allow list `deployment/engine/templates/config.yaml.tmpl:48-70`) | Fate | Replaced by |
+| Today (allow list `engine/agents/templates/config.yaml.tmpl:48-70`) | Fate | Replaced by |
 |------|------|-------------|
 | `files_search`, `files_vsearch`, `files_query` | **Cut** two, rename one | `recall`: `queries[≤3]`, `sources`, filters `project` / `file` / `chat` / `since` / `until`, `recency: on|off`, `rerank`. Hybrid by default; keyword-only is what the index returns when the owner cannot embed, with the reason, as today |
 | `memory_search` | **Cut** | `recall` with `sources: memory` (fused) or `sources: [memory]` alone |

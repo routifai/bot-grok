@@ -5,14 +5,14 @@ import { describe, expect, it } from "vitest";
 import { ALWAYS_ON_SUPERSIDE_CHAT_TOOLS, TOOL_PRESENTATION } from "./tool-presentation.js";
 
 // Forces registering a tool's presentation the moment it's added to Superchat's agent bundle
-// (deployment/engine/agents/superchat-claude/, generated from deployment/engine/templates/) — see
+// (engine/agents/bundles/superchat-claude/, generated from engine/agents/templates/) — see
 // docs/super-chat/README.md "How to register a tool". No YAML dependency in this workspace, so
 // this reads the `tools: builtins: - name: <tool>` lists with a small indentation-aware scan
 // rather than a real parser; good enough for this bundle's shape.
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, "../../../..");
-const SUPERCHAT_AGENT_BUNDLE_DIR = join(REPO_ROOT, "deployment/engine/agents/superchat-claude");
+const SUPERCHAT_AGENT_BUNDLE_DIR = join(REPO_ROOT, "engine/agents/bundles/superchat-claude");
 
 function findConfigYamlFiles(dir: string): string[] {
   const found: string[] = [];

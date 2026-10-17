@@ -36,7 +36,7 @@ from omnigent.superchat.subagents import (
 )
 
 CHAT = {CONTEXT_MODE_LABEL: SUPERSIDE_CHAT_MODE_VALUE}
-REPO = Path(__file__).resolve().parents[4]
+REPO = Path(__file__).resolve().parents[3]
 
 
 def _spec(*names: str) -> Any:
@@ -97,11 +97,11 @@ def test_a_type_declares_its_role_in_params() -> None:
 def test_bundles_declare_the_roles() -> None:
     for name in ("superchat-claude", "superchat-pi"):
         worker = yaml.safe_load(
-            (REPO / f"deployment/engine/agents/{name}/agents/worker/config.yaml").read_text()
+            (REPO / f"engine/agents/bundles/{name}/agents/worker/config.yaml").read_text()
         )
         sub = yaml.safe_load(
             (
-                REPO / f"deployment/engine/agents/{name}/agents/worker/agents/subworker/config.yaml"
+                REPO / f"engine/agents/bundles/{name}/agents/worker/agents/subworker/config.yaml"
             ).read_text()
         )
         assert worker["params"] == {"helper_type": "worker"}
@@ -109,7 +109,7 @@ def test_bundles_declare_the_roles() -> None:
 
 
 def test_bundle_surfaces() -> None:
-    bundle = REPO / "deployment/engine/agents/superchat-claude"
+    bundle = REPO / "engine/agents/bundles/superchat-claude"
     muse = yaml.safe_load((bundle / "config.yaml").read_text())["tools"]["allow"]
     worker = yaml.safe_load((bundle / "agents/worker/config.yaml").read_text())["tools"]["allow"]
     sub = yaml.safe_load((bundle / "agents/worker/agents/subworker/config.yaml").read_text())[

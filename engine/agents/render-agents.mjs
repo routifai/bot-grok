@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Renders Superchat's single Omnigent Super Chat bundle (`superchat-claude`,
-// docs/super-chat/WIRING.md slice A1) from the templates under deployment/engine/templates/, so
+// docs/super-chat/WIRING.md slice A1) from the templates under engine/agents/templates/, so
 // the prompt, config and Sub-agent Types stay generated rather than hand-edited. Run after
 // editing anything under templates/:
 //
-//   node deployment/engine/render-agents.mjs
+//   node engine/agents/render-agents.mjs
 //
 // No YAML library: every template is plain text with {{PLACEHOLDER}} tokens, substituted with
 // simple string replacement, so the output stays byte-for-byte predictable.
@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 /** Where bundles are written; `SUPERCHAT_RENDER_AGENTS_DIR` redirects it (tests render to a temp dir). */
 // biome-ignore lint/suspicious/noUndeclaredEnvVars: a test-only redirect, not a build input
-const AGENTS_DIR = process.env.SUPERCHAT_RENDER_AGENTS_DIR || join(here, "agents");
+const AGENTS_DIR = process.env.SUPERCHAT_RENDER_AGENTS_DIR || join(here, "bundles");
 /** One entry per Muse bundle. The engine's `OMNIGENT_SUPERCHAT_DEFAULT_AGENT` (`superchat-claude` |
  * `superchat-pi`) picks which one a new Muse runs on (ADR 0009): this script renders BOTH every run
  * from the same templates. The choice is total: every Sub-agent Type (worker, subworker, notes) of a bundle runs on that bundle's harness, so the Muse, its Helpers and
@@ -43,11 +43,11 @@ const MUSE_BUNDLES = [
 /** One directory per Sub-agent Type (CONTEXT.md), each a config.yaml template rendered with the
  * bundle's harness keys. */
 const SUB_AGENT_TYPES = ["worker", "worker/agents/subworker", "notes"];
-/** The deck kit's layout menu (engine/omnigent/omnigent/superchat/decks/kit/menu.md). */
-const DECK_LAYOUTS_PATH = "../../engine/omnigent/omnigent/superchat/decks/kit/menu.md";
+/** The deck kit's layout menu (engine/omnigent/superchat/decks/kit/menu.md). */
+const DECK_LAYOUTS_PATH = "../omnigent/superchat/decks/kit/menu.md";
 const GENERATED_HEADER =
   "# GENERATED FILE — do not edit by hand. Edit the matching file under\n" +
-  "# deployment/engine/templates/, then run `node deployment/engine/render-agents.mjs`.\n\n";
+  "# engine/agents/templates/, then run `node engine/agents/render-agents.mjs`.\n\n";
 
 function render(template, values) {
   return Object.entries(values).reduce((text, [key, value]) => {

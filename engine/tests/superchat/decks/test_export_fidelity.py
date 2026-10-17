@@ -19,7 +19,7 @@ import pytest
 
 from omnigent.superchat.decks import kit
 
-HELPER = Path(__file__).resolve().parents[5] / "host/bin/superchat-deck-export"
+HELPER = Path(__file__).resolve().parents[4] / "host/bin/superchat-deck-export"
 SAMPLE = (kit.KIT_DIR / "sample-slides.html").read_text("utf-8")
 
 

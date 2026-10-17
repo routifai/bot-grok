@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-REPO = Path(__file__).resolve().parents[4]
-AGENTS = REPO / "deployment/engine/agents"
+REPO = Path(__file__).resolve().parents[3]
+AGENTS = REPO / "engine/agents/bundles"
 CLAUDE = AGENTS / "superchat-claude"
 PI = AGENTS / "superchat-pi"
 
@@ -67,7 +67,7 @@ def test_the_switch_is_total_every_helper_runs_on_the_bundles_harness(helper: st
 def test_committed_bundles_match_a_fresh_render(tmp_path: Path) -> None:
     env = {**os.environ, "SUPERCHAT_RENDER_AGENTS_DIR": str(tmp_path)}
     subprocess.run(
-        ["node", str(REPO / "deployment/engine/render-agents.mjs")],
+        ["node", str(REPO / "engine/agents/render-agents.mjs")],
         check=True,
         env=env,
         capture_output=True,

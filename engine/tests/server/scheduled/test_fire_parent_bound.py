@@ -484,7 +484,7 @@ async def test_adhoc_helper_runs_now_without_waking_the_parent(
 
 # ── The Helper's harness and model follow the bundle ────────────────────────
 
-_BUNDLES = Path(__file__).resolve().parents[5] / "deployment/engine/agents"
+_BUNDLES = Path(__file__).resolve().parents[4] / "engine/agents/bundles"
 
 
 class _BundleAgentStore:

@@ -1,5 +1,5 @@
 # GENERATED FILE — do not edit by hand. Edit the matching file under
-# deployment/engine/templates/, then run `node deployment/engine/render-agents.mjs`.
+# engine/agents/templates/, then run `node engine/agents/render-agents.mjs`.
 
 spec_version: 1
 name: notes
@@ -10,12 +10,15 @@ description: >-
 # No `params.helper_type`: the Type has no Helper role, so start_helper never picks it. The
 # engine starts it for the daily-note passes (omnigent.superchat.daily_notes.quiet_moment).
 
-# Sub-agent Type: notes. Claude Agent SDK, same engine as the Super Chat (ADR 0001, ADR 0007).
+skills: none
+# Sub-agent Type: notes. Pi, same engine as the Super Chat (ADR 0001, ADR 0007).
 # No model pinned: a background run uses the person's fast tier, else the Muse's model.
 executor:
   type: omnigent
   config:
-    harness: claude-sdk
+    harness: pi
+    context_files: false
+    system_prompt_mode: replace
 
 # Concurrent `notes` Helpers on top of the default cap across all Types
 # (OMNIGENT_SUBAGENT_MAX_CONCURRENT).

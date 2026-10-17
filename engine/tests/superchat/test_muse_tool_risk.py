@@ -16,9 +16,9 @@ from omnigent.superchat.approvals.policy import classify_tool_call
 from omnigent.superchat.feature import ToolManagerCtx
 from omnigent.superchat.features import _load
 
-REPO = Path(__file__).resolve().parents[4]
+REPO = Path(__file__).resolve().parents[3]
 BUNDLES = [
-    REPO / "deployment/engine/agents" / name / "config.yaml"
+    REPO / "engine/agents/bundles" / name / "config.yaml"
     for name in ("superchat-claude", "superchat-pi")
 ]
 MUSE_LABELS = {"omnigent.context.mode": "superside-chat", "omnigent.superchat.muse": "true"}

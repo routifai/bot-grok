@@ -1,5 +1,5 @@
 # GENERATED FILE — do not edit by hand. Edit the matching file under
-# deployment/engine/templates/, then run `node deployment/engine/render-agents.mjs`.
+# engine/agents/templates/, then run `node engine/agents/render-agents.mjs`.
 
 spec_version: 1
 name: worker

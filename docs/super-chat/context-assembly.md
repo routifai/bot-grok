@@ -59,7 +59,7 @@ One Muse turn is assembled from five layers:
    `claude-sdk`) a tool-naming note. Fixed for the life of a warm session.
    See [section 2](#2-fixed-instructions).
 2. **Tool definitions.** The tools left after the bundle's allow list
-   (`deployment/engine/templates/config.yaml.tmpl:58-85`, `omnigent/tools/manager.py:221-235`).
+   (`engine/agents/templates/config.yaml.tmpl:58-85`, `omnigent/tools/manager.py:221-235`).
 3. **History.** Either the harness's own warm session, or a replay of Omnigent's stored items. After
    a Rollover, the replay starts with a checkpoint (a tagged state file plus recent turns), and tool
    calls are replayed as one digest line each.
@@ -76,7 +76,7 @@ user message (`omnigent/runner/app.py:1368-1390`, `omnigent/runner/app.py:1396-1
 ```mermaid
 flowchart TB
     subgraph SYS["System prompt (fixed per warm session)"]
-        A1["AGENTS.md from the bundle<br/>deployment/engine/agents/superchat-*/AGENTS.md"]
+        A1["AGENTS.md from the bundle<br/>engine/agents/bundles/superchat-*/AGENTS.md"]
         A2["Framework instructions<br/>wake notices, browser priority<br/>omnigent/runtime/prompt.py"]
         A3["Tool-naming note (claude-sdk only)<br/>mcp__omnigent__name"]
     end
@@ -102,7 +102,7 @@ flowchart TB
 
 | Layer | Built by | Where | When |
 |---|---|---|---|
-| `AGENTS.md`, `config.yaml` | `render-agents.mjs` from templates | `deployment/engine/render-agents.mjs:84-139` | At build time, checked in |
+| `AGENTS.md`, `config.yaml` | `render-agents.mjs` from templates | `engine/agents/render-agents.mjs:84-139` | At build time, checked in |
 | Composed system prompt | Runner, `build_instructions` | `omnigent/runtime/prompt.py:194-234`, call at `omnigent/runner/app.py:9967-9978` | Every turn (same result unless the spec changes) |
 | Tool-naming note | `claude-sdk` executor | `omnigent/inner/claude_sdk_executor.py:1049-1089`, `:2788-2791` | Every turn |
 | History list | Runner cache or cold load from stored items | `omnigent/runner/app.py:9946-9949`, `:5599-5658` | Every turn |
@@ -120,7 +120,7 @@ The gateway posts the person's words as written. It adds no context of its own:
   local-time line reads (`web/packages/adapters/src/omnigent/gateway.ts:200-207`,
   `web/packages/adapters/src/omnigent/client/settings.ts:46-52`).
 - The bundle config records the same decision: "Superchat no longer injects anything through a
-  context-provider hook" (`deployment/engine/templates/config.yaml.tmpl:9-11`).
+  context-provider hook" (`engine/agents/templates/config.yaml.tmpl:9-11`).
 
 ### 1.3 Worked example
 
@@ -196,29 +196,29 @@ Where each shape comes from:
 ### 2.1 How the bundle is rendered
 
 The Muse runs on one of two bundles, `superchat-claude` (harness `claude-sdk`) and `superchat-pi` (harness
-`pi`). Both are rendered from the same templates by `deployment/engine/render-agents.mjs`:
+`pi`). Both are rendered from the same templates by `engine/agents/render-agents.mjs`:
 
-- Bundle list and per-harness keys: `deployment/engine/render-agents.mjs:32-54`.
+- Bundle list and per-harness keys: `engine/agents/render-agents.mjs:32-54`.
 - Templates are plain text with `{{PLACEHOLDER}}` tokens; an empty placeholder line is dropped
-  (`deployment/engine/render-agents.mjs:66-72`).
+  (`engine/agents/render-agents.mjs:66-72`).
 - `AGENTS.md` is `templates/AGENTS.md` with `{{FILESYSTEM}}` and `{{DECKS}}` filled in, and its
-  leading provenance comment removed (`deployment/engine/render-agents.mjs:85-101`). The deck layout
-  menu comes from the deck kit itself (`deployment/engine/render-agents.mjs:60-61`, `:89-92`).
+  leading provenance comment removed (`engine/agents/render-agents.mjs:85-101`). The deck layout
+  menu comes from the deck kit itself (`engine/agents/render-agents.mjs:60-61`, `:89-92`).
 - Each bundle also gets the Sub-agent Types `worker`, `worker/agents/subworker` and
-  `notes` (`deployment/engine/render-agents.mjs:45`). `notes` runs the quiet-moment, Dreaming and
+  `notes` (`engine/agents/render-agents.mjs:45`). `notes` runs the quiet-moment, Dreaming and
   People passes (6.1).
 - The engine picks the bundle with `OMNIGENT_SUPERCHAT_DEFAULT_AGENT`
-  (`deployment/engine/render-agents.mjs:19-22`).
+  (`engine/agents/render-agents.mjs:19-22`).
 
 The two rendered `AGENTS.md` files are identical; only `config.yaml` differs. The checked-in
-`deployment/engine/agents/` matched a fresh render when this page was written.
+`engine/agents/bundles/` matched a fresh render when this page was written.
 
 The engine reads `AGENTS.md` as the agent's instructions (`omnigent/spec/parser.py:68`,
 `omnigent/spec/types.py:1578`).
 
 ### 2.2 What `AGENTS.md` covers
 
-Section headings in `deployment/engine/templates/AGENTS.md` (line numbers in the template):
+Section headings in `engine/agents/templates/AGENTS.md` (line numbers in the template):
 
 | Section | Line | What it tells the model about context |
 |---|---|---|
@@ -238,13 +238,13 @@ instructions apply depends on the spec and the labels (`omnigent/runtime/prompt.
 
 | Instruction | Applies to the Muse? | Why |
 |---|---|---|
-| Sub-agent wake notices (`omnigent/runtime/prompt.py:35-44`) | Yes | The bundle declares Sub-agent Types (`deployment/engine/templates/config.yaml.tmpl:89-92`; gate at `omnigent/runtime/prompt.py:132`) |
+| Sub-agent wake notices (`omnigent/runtime/prompt.py:35-44`) | Yes | The bundle declares Sub-agent Types (`engine/agents/templates/config.yaml.tmpl:89-92`; gate at `omnigent/runtime/prompt.py:132`) |
 | Embedded browser priority (`omnigent/runtime/prompt.py:48-55`) | Yes | Every agent (`omnigent/runtime/prompt.py:134`) |
 | Rollover recall rule (`omnigent/runtime/prompt.py:59-75`) | **No** | Only for `context.mode=rollover` (`omnigent/runtime/prompt.py:135-137`), not `superside-chat` |
 | Memory rule (`omnigent/runtime/prompt.py:80-97`) | **No** | Same gate |
 
 So in Super Chat mode the rollover and memory rules reach the model through `AGENTS.md` only
-(`deployment/engine/templates/AGENTS.md:77-152`).
+(`engine/agents/templates/AGENTS.md:77-152`).
 
 On `claude-sdk`, the executor appends one more note when Omnigent tools are present: tools are
 exposed as `mcp__omnigent__<name>` (`omnigent/inner/claude_sdk_executor.py:1049-1089`, applied at
@@ -254,7 +254,7 @@ exposed as `mcp__omnigent__<name>` (`omnigent/inner/claude_sdk_executor.py:1049-
 
 `tools.allow` keeps only matching tools; everything else the framework registers is dropped
 (`omnigent/tools/manager.py:213-235`). The Muse's list is
-`deployment/engine/templates/config.yaml.tmpl:58-85`. The context-relevant entries are:
+`engine/agents/templates/config.yaml.tmpl:58-85`. The context-relevant entries are:
 
 - `session_history` (recall the exact record),
 - `state_close` (close a line of the working list at the next checkpoint),
@@ -262,7 +262,7 @@ exposed as `mcp__omnigent__<name>` (`omnigent/inner/claude_sdk_executor.py:1049-
 - `files_*` (the person's indexed files),
 - `open_project`, `start_helper`, `message_helper`.
 
-A `worker` Helper has a smaller list (`deployment/engine/templates/agents/worker/config.yaml:46-78`).
+A `worker` Helper has a smaller list (`engine/agents/templates/agents/worker/config.yaml:46-78`).
 It has `memory_search` and `memory_get`, but no `memory_remember`.
 
 ### 2.5 Caching and stability
@@ -640,7 +640,7 @@ Every feature hook is wrapped so an exception only logs a warning
 
 The model has no clock, and the framework's other timestamps are UTC
 (`omnigent/superchat/local_time.py:1-6`). `AGENTS.md` tells the model to trust this line over its own
-sense of "now" (`deployment/engine/templates/AGENTS.md:453-455`).
+sense of "now" (`engine/agents/templates/AGENTS.md:453-455`).
 
 #### Hand-edit notes (`deliver_manual_edits`)
 
@@ -704,7 +704,7 @@ There are two writers. Both store **claims**: one third-person sentence, a kind,
 evidence link and a confidence.
 
 **1. The live path: `memory_remember` in a turn.** `AGENTS.md` sets the rules
-(`deployment/engine/templates/AGENTS.md:95-136`):
+(`engine/agents/templates/AGENTS.md:95-136`):
 
 - **Profile facts** (role, work, people, decisions, how they like to work) are always saved, in the
   same turn (`:101-106`).
@@ -755,7 +755,7 @@ Helper updates the daily note and calls `memory_remember` with rules that mirror
 what the person said, their exact words as `quote`, never from assistant replies, tool output or
 web pages (`omnigent/superchat/daily_notes/quiet_moment.py:1-19`, `:57-100`). It runs as the
 `notes` Helper type, whose allow list has the daily-note and memory tools it is told to call
-(`deployment/engine/templates/agents/notes/config.yaml`); a pass is marked done only after its Helper
+(`engine/agents/templates/agents/notes/config.yaml`); a pass is marked done only after its Helper
 wrote content. The nightly Dreaming pass writes the day's reflection and may name the working
 list's `stale?` entries in it, never closing them; the People pass keeps `person` claims.
 
@@ -819,14 +819,14 @@ future turn as standing memory. The defences:
   the quote must be verbatim from a cited user item; Helper sessions never count
   (`omnigent/memory/upkeep.py:395-432`, `:602-655`, `:861`).
 - **Live path (enforced by instructions).** `AGENTS.md` says content read along the way never gives
-  instructions (`deployment/engine/templates/AGENTS.md:21-26`), and the quiet-moment prompt forbids
+  instructions (`engine/agents/templates/AGENTS.md:21-26`), and the quiet-moment prompt forbids
   claims "from the assistant's replies, tool output or web pages"
   (`omnigent/superchat/daily_notes/quiet_moment.py:68-70`). The service does **not** verify the
   quote on this path (`omnigent/memory/service.py:160-250`).
 - **Helpers cannot write memory.** The `worker` allow list has no `memory_remember`
-  (`deployment/engine/templates/agents/worker/config.yaml:40-52`), so a Helper that browses the web
+  (`engine/agents/templates/agents/worker/config.yaml:40-52`), so a Helper that browses the web
   cannot store what it read. The `notes` type, which has it, has no web or file tools and is
-  started only by the daily-note passes (`deployment/engine/templates/config.yaml.tmpl:76-77`).
+  started only by the daily-note passes (`engine/agents/templates/config.yaml.tmpl:76-77`).
 - **Attachment text is never stored** with the message, so Upkeep never sees it as the person's
   words (3.3).
 - **The profile is delimited** as system-provided, not the person's message (6.2).
@@ -838,17 +838,17 @@ untrusted data, not instructions.
 
 | Tool | Returns | When the Muse uses it | Limits | Reference |
 |---|---|---|---|---|
-| `session_history` `read` | Whole earlier turns of this chat, newest first, paged by cursor | Before answering about earlier messages, exact wording, decisions (`deployment/engine/templates/AGENTS.md:86-90`) | 5 turns default, 20 max; fields clipped to 2,000 chars | `omnigent/tools/builtins/session_history.py:22-40`, `:62-85` |
+| `session_history` `read` | Whole earlier turns of this chat, newest first, paged by cursor | Before answering about earlier messages, exact wording, decisions (`engine/agents/templates/AGENTS.md:86-90`) | 5 turns default, 20 max; fields clipped to 2,000 chars | `omnigent/tools/builtins/session_history.py:22-40`, `:62-85` |
 | `session_history` `search` | Full-text matches in this chat's items | Finding a topic before reading | 10 default, 20 max | same |
 | `session_history` `status` | Tokens used, window, tokens left before the next Rollover | Rarely | n/a | `omnigent/tools/builtins/session_history.py:76-78` |
 | `session_history` `list_chats` | The Conversation a scheduled or ad-hoc Helper works for | A quiet-moment Helper reads the day's conversation | one chat | `list_related_chats` in `omnigent/context/rollover.py` |
-| `memory_search` | Ranked active claims (hybrid score × confidence + recency boost) | Before answering about preferences, prior work, decisions (`deployment/engine/templates/AGENTS.md:97-98`) | 10 default, 20 max | `omnigent/memory/service.py:52-55`, `omnigent/server/routes/session_memory.py:35-36` |
+| `memory_search` | Ranked active claims (hybrid score × confidence + recency boost) | Before answering about preferences, prior work, decisions (`engine/agents/templates/AGENTS.md:97-98`) | 10 default, 20 max | `omnigent/memory/service.py:52-55`, `omnigent/server/routes/session_memory.py:35-36` |
 | `memory_get`, `memory_explain` | One claim; the quote, sources and supersede chain | "Why do you think that?" | n/a | `omnigent/superchat/memory/handlers.py:86-95` |
-| `files_search`, `files_vsearch`, `files_query` | Passages from the person's indexed files (keyword, vector, hybrid + rerank) | Long attachments, or any question about the person's files (`deployment/engine/templates/AGENTS.md:349-357`) | 8 results default, 25 max | `omnigent/superchat/knowledge/indexer.py:79-84`, `omnigent/superchat/knowledge/handlers.py:28` |
-| `files_query` over `memory/journal` | Dated journal lines of what was done, and the daily notes and reflection | Questions about the past ("have we", "when did we") (`deployment/engine/templates/AGENTS.md:91-94`) | as above | `omnigent/superchat/knowledge/indexer.py:198` |
-| `state_close` | Records a close for one tag of the working list; the next checkpoint applies it and journals it with its reason | The person says a line is wrong, done or dropped (`deployment/engine/templates/AGENTS.md:95-96`, `:100-102`) | One tag; reason ≤ 200 chars | `omnigent/superchat/state_file/handlers.py:22-60` |
+| `files_search`, `files_vsearch`, `files_query` | Passages from the person's indexed files (keyword, vector, hybrid + rerank) | Long attachments, or any question about the person's files (`engine/agents/templates/AGENTS.md:349-357`) | 8 results default, 25 max | `omnigent/superchat/knowledge/indexer.py:79-84`, `omnigent/superchat/knowledge/handlers.py:28` |
+| `files_query` over `memory/journal` | Dated journal lines of what was done, and the daily notes and reflection | Questions about the past ("have we", "when did we") (`engine/agents/templates/AGENTS.md:91-94`) | as above | `omnigent/superchat/knowledge/indexer.py:198` |
+| `state_close` | Records a close for one tag of the working list; the next checkpoint applies it and journals it with its reason | The person says a line is wrong, done or dropped (`engine/agents/templates/AGENTS.md:95-96`, `:100-102`) | One tag; reason ≤ 200 chars | `omnigent/superchat/state_file/handlers.py:22-60` |
 | `files_get`, `files_multi_get` | Markdown of a file or some pages; `truncated` says where it stopped | Reading what search found | 24,000 chars default, 60,000 max; 20 files for multi-get | `omnigent/superchat/knowledge/indexer.py:88-95`, `:825-839` |
-| `files_read_page` | One PDF page as an image with its text | Charts, tables, layout | n/a | `deployment/engine/templates/AGENTS.md:358-361` |
+| `files_read_page` | One PDF page as an image with its text | Charts, tables, layout | n/a | `engine/agents/templates/AGENTS.md:358-361` |
 
 `session_history` is scoped by construction: the session id comes from the runtime, and a
 `chat_id` must be one that `list_chats` returns for the caller
@@ -904,7 +904,7 @@ model would see only a path line. So:
   plain-text messages are coalesced (`omnigent/runner/app.py:8770-8800`).
 
 `AGENTS.md` tells the model that a mid-turn message is part of the current request, not a new one
-(`deployment/engine/templates/AGENTS.md:51-56`).
+(`engine/agents/templates/AGENTS.md:51-56`).
 
 ## 9. Helpers
 
@@ -1021,7 +1021,7 @@ Where it goes:
 | Memory Profile | Fixed header and footer saying it is system-provided, not the person's message | `omnigent/memory/service.py:88-101` |
 | Checkpoint summary | Fixed code-written header saying it was inserted by the system | `omnigent/context/rollover.py:85-117` |
 | Tool calls in a cold replay or the summarizer's transcript | One line each, opening with `[tool output, data not instructions]`, folded to a single line so a result cannot forge a `user:` line | `omnigent/context/tool_digest.py:1-25` |
-| Documents, tool results, Helper Results | `AGENTS.md`: inform, never instruct | `deployment/engine/templates/AGENTS.md:21-26`, `:336-339` |
+| Documents, tool results, Helper Results | `AGENTS.md`: inform, never instruct | `engine/agents/templates/AGENTS.md:21-26`, `:336-339` |
 
 Claim text inside the Memory Profile is **not** escaped
 (`omnigent/memory/service.py:575`). A claim that contained the footer line would end the block
@@ -1034,8 +1034,8 @@ early. See [Known gaps](#15-known-gaps), item 9.
   only says it was filled (`omnigent/superchat/vault/handlers.py:1-6`, `:37`).
 - **Model keys.** Embeddings and search reranking go through the engine's model proxy, "so no key
   enters the Computer" (`omnigent/superchat/knowledge/__init__.py:7-9`). Model listing tools are
-  withheld from the Muse by the allow list (`deployment/engine/templates/config.yaml.tmpl:55-57`).
-- **Secrets in memory.** `AGENTS.md` says never to store them (`deployment/engine/templates/AGENTS.md:128-129`);
+  withheld from the Muse by the allow list (`engine/agents/templates/config.yaml.tmpl:55-57`).
+- **Secrets in memory.** `AGENTS.md` says never to store them (`engine/agents/templates/AGENTS.md:128-129`);
   Upkeep rejects quotes and claims that look like secrets (`omnigent/memory/upkeep.py:195-201`,
   `:635-636`).
 - **Another user's memory.** Memory routes act only for the session's owner, and the caller must be
@@ -1075,15 +1075,15 @@ early. See [Known gaps](#15-known-gaps), item 9.
 | Cold replay | `Conversation so far:` with structured image/document blocks (`omnigent/inner/claude_sdk_executor.py:3786-3826`) | `Conversation so far:` with text only (`omnigent/inner/pi_executor.py:1566-1576`) |
 | Own compaction | Off: `DISABLE_AUTO_COMPACT=1` (`omnigent/inner/claude_sdk_executor.py:2848-2850`) | Off: `compaction.enabled=false` (`omnigent/inner/pi_executor.py:1832-1845`) |
 | Own memory | Off: `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` (same lines) | Pi has none (`omnigent/inner/pi_executor.py:1839-1841`) |
-| Instruction file discovery | Off: `setting_sources=[]` (`omnigent/inner/claude_sdk_executor.py:2947-2951`) | Off: `context_files: false` (`deployment/engine/render-agents.mjs:47`) |
-| System prompt | Passed as `system_prompt` (`omnigent/inner/claude_sdk_executor.py:2917`) | Replaces Pi's base prompt: `system_prompt_mode: replace` (`deployment/engine/render-agents.mjs:47`) |
-| Host skills | Only bundle skills (none today) (`omnigent/inner/claude_sdk_executor.py:2952-2955`) | `skills: none` (`deployment/engine/render-agents.mjs:48`) |
+| Instruction file discovery | Off: `setting_sources=[]` (`omnigent/inner/claude_sdk_executor.py:2947-2951`) | Off: `context_files: false` (`engine/agents/render-agents.mjs:47`) |
+| System prompt | Passed as `system_prompt` (`omnigent/inner/claude_sdk_executor.py:2917`) | Replaces Pi's base prompt: `system_prompt_mode: replace` (`engine/agents/render-agents.mjs:47`) |
+| Host skills | Only bundle skills (none today) (`omnigent/inner/claude_sdk_executor.py:2952-2955`) | `skills: none` (`engine/agents/render-agents.mjs:48`) |
 | Built-in sub-agents | `Agent` and `Task` disallowed (`omnigent/inner/claude_sdk_executor.py:751-754`, `:2934`) | Not traced |
 | System prompt change | Hash differs: close and reconnect, then replay the full history (`omnigent/inner/claude_sdk_executor.py:3170-3182`) | Respawn (`omnigent/inner/pi_executor.py:2591-2600`) |
 | Steer | Stdin user message, `priority: "next"`, echoed back (`omnigent/inner/claude_sdk_executor.py:713-733`, `:2182-2222`) | RPC `steer` (`omnigent/inner/pi_executor.py:2097-2127`) |
 | `context_tokens` | Last call: input + cache creation + cache read (`omnigent/inner/claude_sdk_executor.py:3523-3533`) | Last call's `total_tokens` (`omnigent/inner/pi_executor.py:1806-1814`) |
 | Tool names seen by the model | `mcp__omnigent__<name>`, with a note in the system prompt (`omnigent/inner/claude_sdk_executor.py:1049-1089`) | Not traced |
-| Background Helper model | Pinned to Haiku (`deployment/engine/render-agents.mjs:39-41`) | Follows the `fast` mapping (`deployment/engine/render-agents.mjs:49-52`) |
+| Background Helper model | Pinned to Haiku (`engine/agents/render-agents.mjs:39-41`) | Follows the `fast` mapping (`engine/agents/render-agents.mjs:49-52`) |
 
 ## 14. Glossary
 
@@ -1120,8 +1120,8 @@ writing this page.
 1. **Fixed: `explicitness` is dropped on the runner path.** The runner handler and the route now
    pass it to the service (6.1).
 2. **Helpers do not get a conversation summary, but three documents say they do.** `CONTEXT.md:20`,
-   `deployment/engine/templates/AGENTS.md:40-41` and `:145-146`, and the worker prompt
-   (`deployment/engine/templates/agents/worker/config.yaml:86-88`) all say a Helper starts with "a short
+   `engine/agents/templates/AGENTS.md:40-41` and `:145-146`, and the worker prompt
+   (`engine/agents/templates/agents/worker/config.yaml:86-88`) all say a Helper starts with "a short
    summary of the Conversation". The code adds only the Memory Profile
    (`omnigent/runner/tool_dispatch.py:3392-3397`). `start_helper` says it "does not see this
    conversation" (`omnigent/superchat/helpers/tools.py:26-30`), and the engine glossary agrees
@@ -1129,11 +1129,11 @@ writing this page.
    nothing enforces that. README already notes this (`docs/super-chat/README.md:912-915`).
 3. **An ordinary Helper cannot look up the Conversation.** The worker prompt says "When the brief is
    not enough, look up exact earlier messages with `session_history`"
-   (`deployment/engine/templates/agents/worker/config.yaml:88`), and the README table says the same
+   (`engine/agents/templates/agents/worker/config.yaml:88`), and the README table says the same
    (`docs/super-chat/README.md:445`). But `list_chats` returns the parent only for scheduled and
    ad-hoc Helpers (`omnigent/context/rollover.py:1100-1104`), so a `start_helper` worker can read
    only its own session. It can read `memory/STATE.md` and the journal, which the worker prompt
-   now points it at (`deployment/engine/templates/agents/worker/config.yaml:78-79`).
+   now points it at (`engine/agents/templates/agents/worker/config.yaml:78-79`).
 4. **Fixed: the quiet-moment pass lacked the tools it needs.** The passes now run as the `notes`
    Helper type, whose allow list has them, and are marked done only after they wrote content (6.1).
 5. **A Helper's first turn carries the Memory Profile twice.** The Brief gets it
@@ -1173,7 +1173,7 @@ writing this page.
     reinforcement adds +0.05 (`omnigent/memory/service.py:50`), so it would take seven.
 11. **Profile sections differ from the Memory tab sections.** `AGENTS.md` describes the person's
     editable sections (About you, Commitments, Projects & focus, People, How Superchat works with you:
-    `deployment/engine/templates/AGENTS.md:122-127`). The per-turn profile uses other titles and leaves
+    `engine/agents/templates/AGENTS.md:122-127`). The per-turn profile uses other titles and leaves
     out `person` claims (`omnigent/memory/service.py:62-79`). Not wrong, but the two views differ.
 12. **Steered messages get no turn context.** Not a document conflict, but worth knowing: a steer
     joins the running turn without a fresh local time, profile or Projects block (8.2).

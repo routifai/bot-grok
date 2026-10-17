@@ -1,5 +1,5 @@
 # GENERATED FILE — do not edit by hand. Edit the matching file under
-# deployment/engine/templates/, then run `node deployment/engine/render-agents.mjs`.
+# engine/agents/templates/, then run `node engine/agents/render-agents.mjs`.
 
 spec_version: 1
 name: subworker
@@ -12,15 +12,12 @@ description: >-
 params:
   helper_type: subworker
 
-skills: none
 # Leaf worker: same as the coordinator minus Helper management, so nesting stops here (the
 # engine refuses it too: omnigent.superchat.subagents.refuse_subagent_nesting).
 executor:
   type: omnigent
   config:
-    harness: pi
-    context_files: false
-    system_prompt_mode: replace
+    harness: claude-sdk
 
 os_env:
   type: caller_process
