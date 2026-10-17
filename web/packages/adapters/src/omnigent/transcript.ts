@@ -72,7 +72,12 @@ function mapBlock(block: OmnigentTranscriptBlock): MessageBlock {
         ...(block.pending ? { pending: true } : {}),
       };
     case "helper":
-      return { kind: "helper", helperId: block.session_id, title: block.title };
+      return {
+        kind: "helper",
+        helperId: block.session_id,
+        title: block.title,
+        ...(block.status ? { status: block.status } : {}),
+      };
     case "file":
       return fileCard(block);
     case "secure_entry":

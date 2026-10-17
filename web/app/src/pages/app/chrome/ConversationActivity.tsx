@@ -1,15 +1,21 @@
 import { useLingui } from "@lingui/react/macro";
 import { Clock } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useActivityFocus } from "../../../features/activity";
 import { HomeActivity } from "./HomeActivity";
 
 /**
  * The Activity card in the Conversation: a small glass pill bottom-right that opens the same
- * card the home shows, so it never sits over the transcript unless asked for.
+ * card the home shows, so it never sits over the transcript unless asked for. "Show details" on
+ * a reply's work strip opens it too (the panel then brings that Helper's row into view).
  */
 export function ConversationActivity({ botId }: { botId: string }) {
   const { t } = useLingui();
   const [open, setOpen] = useState(false);
+  const focus = useActivityFocus();
+  useEffect(() => {
+    if (focus) setOpen(true);
+  }, [focus]);
   if (!open) {
     return (
       <button

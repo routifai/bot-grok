@@ -92,6 +92,7 @@ export function ActivityLine({
   variant = "list",
   onClick,
   testId,
+  activityId,
 }: {
   /** Undefined while the feed has not listed it yet: a plain muted dot. */
   status?: Activity["status"];
@@ -107,6 +108,8 @@ export function ActivityLine({
   variant?: "list" | "inline";
   onClick?: () => void;
   testId?: string;
+  /** The list row's Activity, so "Show details" from the chat can find it (activityFocus.ts). */
+  activityId?: string;
 }) {
   const { t } = useLingui();
   const sub = liveStep ? (
@@ -204,13 +207,19 @@ export function ActivityLine({
     "superchat-row grid min-h-[52px] w-full grid-cols-[28px_minmax(0,1fr)_auto_8px] items-center gap-x-3 py-2 pe-3 text-start",
     nested ? "ps-6" : "ps-3",
   );
-  if (!onClick) return <div className={className}>{body}</div>;
+  if (!onClick)
+    return (
+      <div className={className} data-activity-id={activityId}>
+        {body}
+      </div>
+    );
   return (
     <button
       type="button"
       onClick={onClick}
       data-testid={testId}
       data-status={status}
+      data-activity-id={activityId}
       className={cn(
         className,
         "transition-colors hover:bg-selection focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",

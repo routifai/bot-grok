@@ -85,7 +85,7 @@ describe("mapTranscriptPage", () => {
     expect(result.messages[0]?.createdAt).toBe("1970-01-01T00:01:40.000Z");
     expect(result.messages[1]?.blocks).toEqual([
       { kind: "text", text: "On it." },
-      { kind: "helper", helperId: "h1", title: "Research" },
+      { kind: "helper", helperId: "h1", title: "Research", status: "running" },
     ]);
     expect(result.messages[2]?.blocks).toEqual([
       {

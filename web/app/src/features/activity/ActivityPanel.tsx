@@ -2,11 +2,13 @@ import { useLingui } from "@lingui/react/macro";
 import type { Activity } from "@superchat/contracts";
 import { presentActivityTitle } from "@superchat/core";
 import { Button } from "@superchat/ui-web";
-import { useEffect, useMemo, useState } from "react";
+import type { RefObject } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PanelRowSkeletonList } from "../../components/chrome/PanelSkeleton";
 import { useNow } from "../../components/chrome/useNow";
 import { ActivityBranch, ActivityLine } from "./ActivityLine";
 import { ActivityRunDialog, type ActivityWire } from "./ActivityRunDialog";
+import { settleActivityFocus, useActivityFocus } from "./activityFocus";
 import {
   activityDurationMs,
   activityLineText,
@@ -69,6 +71,7 @@ function ActivityRow({
         nested={depth > 0}
         onClick={() => onOpen(activity.id)}
         testId="activity-row"
+        activityId={activity.id}
       />
       {children.length > 0 ? (
         <ActivityBranch>
@@ -117,6 +120,33 @@ function useLoadingOverdue(loading: boolean): boolean {
     return () => window.clearTimeout(timer);
   }, [loading]);
   return overdue;
+}
+
+/** "Show details" from the chat (activityFocus.ts): once the list is here, bring the asked-for
+ * row into view with the transcript's one-time wash (styles.css `sc-message-flash`). */
+function useFocusedRow(
+  listRef: RefObject<HTMLDivElement | null>,
+  status: ActivitiesState["status"],
+) {
+  const focus = useActivityFocus();
+  useEffect(() => {
+    if (!focus || status === "loading") return;
+    const row = focus.activityId
+      ? listRef.current?.querySelector<HTMLElement>(
+          `[data-activity-id="${CSS.escape(focus.activityId)}"]`,
+        )
+      : null;
+    settleActivityFocus(focus.nonce);
+    if (!row) return;
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    row.scrollIntoView?.({ block: "nearest", behavior: reducedMotion ? "auto" : "smooth" });
+    row.classList.remove("sc-message-flash");
+    void row.offsetWidth;
+    row.classList.add("sc-message-flash");
+    row.addEventListener("animationend", () => row.classList.remove("sc-message-flash"), {
+      once: true,
+    });
+  }, [focus, status, listRef]);
 }
 
 /** A slow or paused first read: say it is loading, never "Nothing yet", which would claim the
@@ -185,6 +215,8 @@ export function ActivityPanel({
   }, [activities, i18n.locale]);
   const now = useNow(working.length > 0);
   const loadingOverdue = useLoadingOverdue(state.status === "loading");
+  const listRef = useRef<HTMLDivElement>(null);
+  useFocusedRow(listRef, state.status);
 
   // Both read as "nothing to show yet" — a brand new Muse with no Conversation
   // (NOT_FOUND) looks the same here as a feature not wired up in this environment
@@ -206,7 +238,7 @@ export function ActivityPanel({
   }
 
   return (
-    <div className="flex flex-col gap-4" data-testid="activity-panel">
+    <div ref={listRef} className="flex flex-col gap-4" data-testid="activity-panel">
       {working.length > 0 ? (
         <section className="flex flex-col gap-1.5" data-testid="activity-working">
           <h3 className={GROUP_LABEL}>

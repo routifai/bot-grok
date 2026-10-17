@@ -39,9 +39,12 @@ const ArtifactPreviewDialog = lazy(() =>
 export function ArtifactFileCard({
   title,
   data,
+  updating = false,
 }: {
   title?: string;
   data: ReplyCardDataOf<"file">;
+  /** A Helper is still writing it (the work strip's draft): marked "Updating". */
+  updating?: boolean;
 }) {
   // A capability may draw the result itself (a chart is a chart, never a JSON file card).
   const extensions = useArtifactExtensions();
@@ -55,13 +58,21 @@ export function ArtifactFileCard({
     : null;
   if (custom) return <>{custom}</>;
   return data.artifactId ? (
-    <SavedFileCard title={title} data={data} />
+    <SavedFileCard title={title} data={data} updating={updating} />
   ) : (
     <catalog.file title={title} data={data} />
   );
 }
 
-function SavedFileCard({ title, data }: { title?: string; data: ReplyCardDataOf<"file"> }) {
+function SavedFileCard({
+  title,
+  data,
+  updating,
+}: {
+  title?: string;
+  data: ReplyCardDataOf<"file">;
+  updating: boolean;
+}) {
   const { t } = useLingui();
   const artifactId = data.artifactId;
   const [open, setOpen] = useState(false);
@@ -143,7 +154,14 @@ function SavedFileCard({ title, data }: { title?: string; data: ReplyCardDataOf<
         brand={tileKind === "document" ? t`Report` : (kindText ?? t`File`)}
         title={heading}
         badge={
-          superseded ? (
+          updating ? (
+            <span
+              data-testid="artifact-updating"
+              className="ms-1.5 rounded-full bg-white/15 px-2 py-0.5 text-[11.5px] font-normal text-white motion-safe:animate-[rkPulse_1.6s_ease-in-out_infinite]"
+            >
+              {t`Updating`}
+            </span>
+          ) : superseded ? (
             <button
               type="button"
               data-testid="artifact-updated"

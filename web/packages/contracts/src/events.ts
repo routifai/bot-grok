@@ -115,6 +115,9 @@ export const MessageBlock = z.discriminatedUnion("kind", [
     kind: z.literal("helper"),
     helperId: z.string(),
     title: z.string(),
+    /** The Helper's Activity status when the transcript was read (`in_progress`, `done`,
+        `failed`, `cancelled`, `unknown`): the fallback for a Helper the feed does not list. */
+    status: z.string().optional(),
   }),
   z.object({
     /** Compact card for a remote cloud coding agent (not the bot computer). */
