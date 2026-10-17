@@ -387,12 +387,6 @@ _PUBLIC_USER_SENTINEL = "__public__"
 _SHARE_ENABLED_POLICIES = frozenset({"non-public", "public"})
 _SHARE_PUBLIC_POLICY = "public"
 
-# Priority 5f.1: web_search — the first-party search builtin. Runner-local
-# so web_search calls resolve to the spec's configured Tavily backend via
-# WebSearchTool.invoke. Without this entry the call fell through to the
-# spec-callable branch and errored "tool unavailable".
-_WEB_SEARCH_TOOLS = frozenset({"web_search"})
-
 # Priority 5f.2: sys_list_models — runner-local because provider resolution
 # reads the runner host's config/credentials, same as the spawn paths.
 _LIST_MODELS_TOOLS = frozenset({"sys_list_models"})
@@ -933,7 +927,6 @@ _ALL_LOCAL_TOOLS = (
     | _SESSION_QUERY_TOOLS
     | _SESSION_SELF_WRITE_TOOLS
     | _SESSION_HISTORY_TOOLS
-    | _WEB_SEARCH_TOOLS
     | _TIMER_TOOLS
     | _TASK_LIFECYCLE_TOOLS
     | _SKILL_TOOLS
@@ -4246,63 +4239,6 @@ async def _session_create_from_config_path(
     )
 
 
-def _web_search_config_from_spec(agent_spec: AgentSpec | None) -> dict[str, str]:
-    """
-    Return the ``web_search`` builtin's config dict from the parent spec.
-
-    Mirrors ``ToolManager._register_builtin_tools``: scans
-    ``spec.tools.builtins`` for the entry named ``"web_search"`` and returns
-    its ``config`` (``search_provider`` + credentials). Empty dict when the
-    builtin is declared as a bare string or absent.
-
-    :param agent_spec: Parent agent's spec, or ``None``.
-    :returns: The web_search config dict, e.g.
-        ``{"search_provider": "tavily", "api_key": "..."}``.
-    """
-    if agent_spec is None:
-        return {}
-    tools = getattr(agent_spec, "tools", None)
-    builtins = getattr(tools, "builtins", None) or []
-    for entry in builtins:
-        if getattr(entry, "name", None) == "web_search":
-            return getattr(entry, "config", None) or {}
-    return {}
-
-
-async def _execute_web_search_tool(
-    args: _JsonObject,
-    *,
-    agent_spec: AgentSpec | None,
-    conversation_id: str | None = None,
-    task_id: str | None = None,
-    agent_id: str | None = None,
-) -> str:
-    """
-    Dispatch a ``web_search`` tool call to the spec's configured backend.
-
-    Builds ``WebSearchTool`` from the spec's ``web_search`` builtin config and
-    runs its synchronous ``invoke`` off the event loop (the backend makes a
-    blocking HTTP call).
-
-    :param args: Parsed LLM arguments — ``query`` (required).
-    :param agent_spec: Parent agent's spec; carries the web_search config.
-    :param conversation_id: Parent session id, threaded into the context.
-    :param task_id: Calling task id, threaded into the context.
-    :param agent_id: Calling agent id, threaded into the context.
-    :returns: The formatted search results, or an error string.
-    """
-    from omnigent.tools.base import ToolContext
-    from omnigent.tools.builtins.web_search import WebSearchTool
-
-    tool = WebSearchTool(config=_web_search_config_from_spec(agent_spec))
-    ctx = ToolContext(
-        task_id=task_id or "web_search",
-        agent_id=agent_id or "web_search",
-        conversation_id=conversation_id,
-    )
-    return await asyncio.to_thread(tool.invoke, json.dumps(args), ctx)
-
-
 def _has_subagent(
     sub_agent_name: str,
     agent_spec: AgentSpec | None,
@@ -7057,14 +6993,6 @@ async def execute_tool(
                 args,
                 conversation_id=conversation_id,
                 server_client=server_client,
-            )
-        elif tool_name in _WEB_SEARCH_TOOLS:
-            output = await _execute_web_search_tool(
-                args,
-                agent_spec=agent_spec,
-                conversation_id=conversation_id,
-                task_id=task_id,
-                agent_id=agent_id,
             )
         elif tool_name in _TIMER_TOOLS:
             if tool_name == "sys_timer_set":

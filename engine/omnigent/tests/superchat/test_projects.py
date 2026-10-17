@@ -386,7 +386,6 @@ def test_bundles_offer_open_project_and_keep_the_whole_workspace_reachable(
     """File tools are confined to the cwd; a Project cwd must not cut them off from the rest."""
     from omnigent.spec import parse
 
-    monkeypatch.setenv("TAVILY_API_KEY", "x")
     monkeypatch.setenv("SUPERCHAT_CLAUDE_MODEL", "m")
     spec = parse(REPO / "deployment/engine/agents" / name)
     worker = next(a for a in spec.sub_agents if a.name == "worker")

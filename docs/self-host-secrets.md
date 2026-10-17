@@ -32,7 +32,6 @@ in `.env`, or change them in place with `ALTER ROLE`; recreate the volume only a
 | `ANTHROPIC_API_KEY` | models without LiteLLM |
 | `LITELLM_BASE_URL`, `LITELLM_API_KEY` | models through a LiteLLM proxy (the engine switches to it when set) |
 | `OPENROUTER_API_KEY` | OpenRouter models |
-| `TAVILY_API_KEY` | web search |
 | `COMPOSIO_API_KEY` | app-integration catalog |
 | `SMTP_URL` | email delivery for sign-up modes other than `closed` on a hosted deployment |
 

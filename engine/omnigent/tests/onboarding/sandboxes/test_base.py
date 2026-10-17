@@ -194,21 +194,21 @@ def test_start_host_forwards_runner_env_and_sets_the_passthrough_var() -> None:
         host_id="host_abc",
         host_name="managed-abc",
         server_url="https://srv",
-        runner_env={"ANTHROPIC_API_KEY": "sk-secret", "TAVILY_API_KEY": "tv-secret"},
+        runner_env={"ANTHROPIC_API_KEY": "sk-secret", "OPENROUTER_API_KEY": "or-secret"},
     )
 
     [env] = launcher.backgrounded_env
     assert env is not None
     assert env["ANTHROPIC_API_KEY"] == "sk-secret"
-    assert env["TAVILY_API_KEY"] == "tv-secret"
+    assert env["OPENROUTER_API_KEY"] == "or-secret"
     assert set(env["OMNIGENT_RUNNER_ENV_PASSTHROUGH"].split(",")) == {
         "ANTHROPIC_API_KEY",
-        "TAVILY_API_KEY",
+        "OPENROUTER_API_KEY",
     }
     # Never in the launched command string itself.
     [raw] = launcher.backgrounded
     assert "sk-secret" not in raw
-    assert "tv-secret" not in raw
+    assert "or-secret" not in raw
 
 
 def test_start_host_without_runner_env_passes_no_env() -> None:

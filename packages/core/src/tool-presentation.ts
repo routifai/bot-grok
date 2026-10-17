@@ -166,10 +166,9 @@ function navigateTitle(args: Record<string, unknown>): string {
   return `Opened ${domainOf(raw.trim())}`;
 }
 
-/** Parses Tavily's `/search` text format (engine/omnigent/omnigent/tools/builtins/
- * web_search_tavily.py `_format_results`): an optional answer paragraph, then
- * `"<n>. <title>\n   <url>\n   <snippet>"` entries separated by blank lines. Also accepts the
- * raw Tavily JSON shape (`{results: [{title, url}]}`) in case a caller passes that instead. */
+/** Parses web search results as text: an optional answer paragraph, then
+ * `"<n>. <title>\n   <url>\n   <snippet>"` entries separated by blank lines. Also accepts a
+ * JSON shape (`{results: [{title, url}]}`). */
 function parseWebSearchResults(output: string): WebResult[] {
   const parsed = tryParseJson(output);
   if (parsed !== undefined && Array.isArray(field(parsed, "results"))) {

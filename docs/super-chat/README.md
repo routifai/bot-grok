@@ -882,7 +882,6 @@ Engine-side:
 | Upkeep model | server `--config` `llm:` block | required for Upkeep |
 | Upkeep sweep interval, concurrency | `OMNIGENT_UPKEEP_SWEEP_INTERVAL_SECONDS`, `OMNIGENT_UPKEEP_MAX_CONCURRENCY` | 3600, 4 |
 | Memory search | `OMNIGENT_MEMORY_EMBEDDINGS_MODEL` plus its provider key | `openai/text-embedding-3-small` |
-| Web search | `TAVILY_API_KEY` on the host, plus `OMNIGENT_RUNNER_ENV_PASSTHROUGH=TAVILY_API_KEY` | required for `web_search` |
 
 Superchat's own side of the gateway (`packages/adapters/src/omnigent/env.ts`,
 `omnigentSuperChatConfigFromEnv`):

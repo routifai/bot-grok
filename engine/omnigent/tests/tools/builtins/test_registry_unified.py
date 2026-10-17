@@ -91,13 +91,13 @@ def test_get_builtin_tool_returns_none_for_unknown_name() -> None:
 
 def test_get_builtin_tool_instantiates_known_tools() -> None:
     """Instantiable tools produce a real Tool instance. Smoke
-    test — if this breaks, every agent with `web_search`
+    test — if this breaks, every agent with `list_files`
     declared starts failing at load time."""
-    tool = get_builtin_tool("web_search")
+    tool = get_builtin_tool("list_files")
     # Not None + correct name — proves both the factory ran
     # and produced an instance with the expected identity.
     assert tool is not None
-    assert tool.name() == "web_search"
+    assert tool.name() == "list_files"
 
 
 def test_builtin_names_size_matches_registry() -> None:
@@ -111,7 +111,6 @@ def test_builtin_names_size_matches_registry() -> None:
         frozenset(
             {
                 # Instantiable
-                "web_search",
                 "upload_file",
                 "list_files",
                 "download_file",

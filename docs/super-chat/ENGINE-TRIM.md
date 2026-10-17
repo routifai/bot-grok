@@ -33,7 +33,7 @@ don't use, so it can be removed before production.
 | OS tools | `omnigent/inner/os_env.py` (`sys_os_*`) | The Muse acting on its Computer |
 | Browser prompt instruction | `omnigent/runtime/prompt.py` | Steers the Muse to `browser_*` |
 | Agent spec / bundles | `omnigent/spec` | `deployment/engine/agents/superchat-claude` |
-| Built-in tools in use | `omnigent/tools` (`web_search` with the Tavily backend, `session_history`, `memory_*`, `side_chat_open`, `sys_session_*`) | The Muse and Helpers |
+| Built-in tools in use | `omnigent/tools` (`session_history`, `memory_*`, `side_chat_open`, `sys_session_*`) | The Muse and Helpers |
 | Example bundle | `examples/super-chat` | Reference for `deployment/engine/agents/superchat-claude` |
 
 ## Candidates
@@ -101,3 +101,4 @@ don't use, so it can be removed before production.
 | Superchat's own engine package `omnigent/superchat` (notes memory, feed, episodes, goals, asks, skills, context provider) | 2026-10-03 | `bfe6886e` (replaced by superside-chat) |
 | Omnigent's web app, deploy recipes, docs, designs, feature map, editors, Slack integration, dev tools, example agents other than `super-chat`, release scripts, pnpm workspace | 2026-10-16 | engine-only: groups A and B of `engine-axe-list.md` |
 | `infra/` and `scripts/` (moved into `deployment/`; old Dockerfiles, compose overlay and Railway config deleted) | 2026-10-16 | same |
+| `web_search` and its Tavily backend (no bundle enabled it and no deployment passed the key) | 2026-10-16 | web search returns later as its own capability |

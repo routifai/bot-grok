@@ -87,7 +87,6 @@ def test_spec_loader_loads_both_bundles(
 ) -> None:
     from omnigent.spec import parse
 
-    monkeypatch.setenv("TAVILY_API_KEY", "x")
     spec = parse(AGENTS / name)
     # No model is named: a session runs on the model picked from its connection.
     assert spec.executor.model is None

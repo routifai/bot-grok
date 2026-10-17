@@ -69,7 +69,6 @@ from omnigent.tools.builtins.timer import (
     SysTimerSetTool,
 )
 from omnigent.tools.builtins.update_comment import UpdateCommentTool
-from omnigent.tools.builtins.web_search import WebSearchTool
 
 __all__ = [
     "BUILTIN_NAMES",
@@ -101,7 +100,6 @@ __all__ = [
     "SysTimerCancelTool",
     "SysTimerSetTool",
     "UpdateCommentTool",
-    "WebSearchTool",
     "any_skill_has_resources",
     "find_skill_by_name",
     "format_skill_content",
@@ -186,7 +184,6 @@ def _create_download_file(config: dict[str, str]) -> Tool:
 # instead.
 _BUILTIN_REGISTRY: dict[str, _BuiltinFactory | None] = {
     # User-enablable tools (factory present).
-    "web_search": lambda config: WebSearchTool(config=config),
     "upload_file": _create_upload_file,
     "list_files": _create_list_files,
     "download_file": _create_download_file,
@@ -265,7 +262,7 @@ def get_builtin_tool(
     Instantiate a built-in tool by name with optional config.
 
     :param name: The tool name from ``tools.builtins`` in
-        config.yaml, e.g. ``"web_search"``.
+        config.yaml, e.g. ``"load_skill"``.
     :param config: Tool-specific key-value pairs from the spec,
         e.g. ``{"api_key": "sk-...", "engine_id": "abc"}``.
         ``None`` or empty dict means no spec-level config was

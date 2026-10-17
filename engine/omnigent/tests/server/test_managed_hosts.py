@@ -268,12 +268,12 @@ def test_parse_runner_env_accepts_valid_names() -> None:
         {
             "provider": "computer",
             "server_url": "https://s.example.com",
-            "runner_env": ["ANTHROPIC_API_KEY", "TAVILY_API_KEY", "SUPERCHAT_CLAUDE_MODEL"],
+            "runner_env": ["ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "SUPERCHAT_CLAUDE_MODEL"],
         }
     )
     assert cfg is not None
     cfg = cfg.default
-    assert cfg.runner_env == ("ANTHROPIC_API_KEY", "TAVILY_API_KEY", "SUPERCHAT_CLAUDE_MODEL")
+    assert cfg.runner_env == ("ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "SUPERCHAT_CLAUDE_MODEL")
 
 
 def test_parse_absent_runner_env_is_empty() -> None:
@@ -287,11 +287,11 @@ def test_parse_runner_env_deduplicates_preserving_first_occurrence() -> None:
         {
             "provider": "computer",
             "server_url": "https://s.example.com",
-            "runner_env": ["ANTHROPIC_API_KEY", "TAVILY_API_KEY", "ANTHROPIC_API_KEY"],
+            "runner_env": ["ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "ANTHROPIC_API_KEY"],
         }
     )
     assert cfg is not None
-    assert cfg.default.runner_env == ("ANTHROPIC_API_KEY", "TAVILY_API_KEY")
+    assert cfg.default.runner_env == ("ANTHROPIC_API_KEY", "OPENROUTER_API_KEY")
 
 
 @pytest.mark.parametrize(

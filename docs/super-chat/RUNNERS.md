@@ -42,8 +42,7 @@ things widen that on purpose:
   `HARNESS_CREDENTIAL_ENV_VARS` in `connect.py`) forward automatically when
   present in the **host's own** process environment.
 - **`OMNIGENT_RUNNER_ENV_PASSTHROUGH`**, a comma-separated list of extra
-  variable names the host owner names explicitly (e.g. `TAVILY_API_KEY` for
-  web search), also read from the host's own environment.
+  variable names the host owner names explicitly (e.g. `OPENROUTER_API_KEY`), also read from the host's own environment.
 
 Both of those depend on the variable already being set in the *host's*
 environment. On a laptop that's just the developer's shell. A managed host
@@ -55,7 +54,7 @@ say which of its own environment variables to hand down:
 sandbox:
   provider: computer
   server_url: http://<host reachable from the container>:<the server's port>
-  runner_env: [ANTHROPIC_API_KEY, TAVILY_API_KEY, SUPERCHAT_CLAUDE_MODEL,
+  runner_env: [ANTHROPIC_API_KEY, SUPERCHAT_CLAUDE_MODEL,
                OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS, OMNIGENT_SUBAGENT_MAX_CONCURRENT,
                OMNIGENT_BROWSER_BACKEND, OMNIGENT_HELPER_MODEL_FAST,
                OMNIGENT_HELPER_MODEL_STRONG]

@@ -465,7 +465,7 @@ class ManagedSandboxConfig:
     :param runner_env: Names (not values) of environment variables to resolve
         from THIS SERVER PROCESS's own environment at launch and forward to
         the sandboxed host's process — e.g. ``("ANTHROPIC_API_KEY",
-        "TAVILY_API_KEY")``. The host, in turn, forwards them to every runner
+        "OPENROUTER_API_KEY")``. The host, in turn, forwards them to every runner
         it spawns (:data:`omnigent.host.connect.RUNNER_ENV_PASSTHROUGH_ENV_VAR`).
         Provider-neutral in config; delivered today only by launchers whose
         ``start_host`` accepts a ``runner_env`` argument (the exec-model
@@ -1304,7 +1304,7 @@ def _parse_runner_env(raw: dict[str, object]) -> tuple[str, ...]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise ValueError(
             "server config 'sandbox.runner_env' must be a list of environment variable "
-            "names, e.g. [ANTHROPIC_API_KEY, TAVILY_API_KEY]"
+            "names, e.g. [ANTHROPIC_API_KEY, OPENROUTER_API_KEY]"
         )
     seen: dict[str, None] = {}
     for name in value:
@@ -1322,7 +1322,7 @@ def _resolve_runner_env(names: Sequence[str]) -> dict[str, str]:
     Resolve ``sandbox.runner_env`` names against THIS SERVER PROCESS's own environment.
 
     Only names that are actually set are forwarded — an operator may list a variable that's
-    optional in some deployments (e.g. ``TAVILY_API_KEY`` when web search isn't configured),
+    optional in some deployments (e.g. ``OPENROUTER_API_KEY`` when OpenRouter isn't configured),
     and silently skipping an absent one is the right behavior, not an error. Never logs
     values: the names are already non-secret (see :attr:`ManagedSandboxConfig.runner_env`),
     and nothing here ever formats the resolved value into a message.

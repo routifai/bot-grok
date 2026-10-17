@@ -513,7 +513,6 @@ async def _scheduled_model(
 ) -> str | None:
     from omnigent.superchat.models import tiers
 
-    monkeypatch.setenv("TAVILY_API_KEY", "x")
 
     # The owner's Light (fast) and Default (strong) per harness (Settings > Models).
     async def tier_models(_state: Any, _owner: str | None, harness: str | None) -> dict:
