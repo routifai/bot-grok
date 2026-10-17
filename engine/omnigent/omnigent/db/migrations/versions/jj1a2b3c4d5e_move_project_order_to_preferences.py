@@ -42,35 +42,17 @@ def _begin_sqlite_transaction(bind: sa.Connection) -> None:
         bind.exec_driver_sql("BEGIN")
 
 
-def _publish_crdb_changes(bind: sa.Connection) -> None:
-    if bind.dialect.name == "cockroachdb":
-        # Publish schema changes before copying, and durable copies before dropping their source.
-        bind.commit()
-        bind.execute(sa.text("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"))
-
-
 def _copy_with_retries(
     bind: sa.Connection, statements: Sequence[Executable], *, operation: str
 ) -> None:
-    is_crdb = bind.dialect.name == "cockroachdb"
     for attempt in range(3):
         try:
-            if is_crdb:
-                # Serialization failures require a new transaction, including failures at commit.
-                if not bind.in_transaction():
-                    bind.execute(sa.text("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"))
+            # PostgreSQL needs rollback to the savepoint before another statement can run.
+            with bind.begin_nested():
                 for statement in statements:
                     bind.execute(statement)
-                bind.commit()
-            else:
-                # PostgreSQL needs rollback to the savepoint before another statement can run.
-                with bind.begin_nested():
-                    for statement in statements:
-                        bind.execute(statement)
             return
         except sa.exc.SQLAlchemyError:
-            if is_crdb:
-                bind.rollback()
             if attempt == 2:
                 _logger.warning(
                     "Could not %s project order preferences after 3 attempts; "
@@ -120,11 +102,9 @@ def upgrade() -> None:
             sa.Column("value", _BINARY, nullable=False),
             sa.PrimaryKeyConstraint("workspace_id", "user_id", "key"),
         )
-    _publish_crdb_changes(bind)
     if not _project_order_column_exists(bind):
         return
     _copy_with_retries(bind, [_copy_to_preferences()], operation="migrate")
-    _publish_crdb_changes(bind)
     with op.batch_alter_table("users") as batch:
         batch.drop_column("project_order")
 
@@ -167,9 +147,7 @@ def downgrade() -> None:
     if not _project_order_column_exists(bind):
         with op.batch_alter_table("users") as batch:
             batch.add_column(sa.Column("project_order", _BINARY, nullable=True))
-    _publish_crdb_changes(bind)
     if not sa.inspect(bind).has_table("preferences"):
         return
     _copy_with_retries(bind, _restore_project_orders(), operation="restore")
-    _publish_crdb_changes(bind)
     op.drop_table("preferences")

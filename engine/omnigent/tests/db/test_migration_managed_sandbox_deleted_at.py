@@ -116,7 +116,7 @@ def test_upgrade_widens_hosts_deleted_at_and_preserves_data(tmp_path: Path) -> N
     clear_engine_cache()
 
 
-def test_upgrade_tolerates_current_schema_stamped_at_crdb_baseline(tmp_path: Path) -> None:
+def test_upgrade_tolerates_current_schema_stamped_at_prior_revision(tmp_path: Path) -> None:
     uri = f"sqlite:///{tmp_path / 'managed-sandbox-current-schema.db'}"
     engine = sa.create_engine(uri)
 

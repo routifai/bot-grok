@@ -97,9 +97,8 @@ def run_migrations(database_url: str) -> None:
     """Initialize or upgrade the schema at ``database_url``.
 
     The SQLAlchemy stores refuse to start on a stale schema, so this
-    runs before any store boots. The central initializer preserves the
-    normal Alembic path for existing backends and uses the safe fresh-schema
-    bootstrap for CockroachDB.
+    runs before any store boots; the central initializer runs the normal
+    Alembic path.
     """
     from omnigent.db.utils import (
         _create_engine,

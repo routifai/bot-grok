@@ -26,9 +26,8 @@ _INDEX = "ix_conversation_items_search_text_trgm"
 
 
 def upgrade() -> None:
-    """Remove the unused content trigram index on PostgreSQL-family databases."""
-    dialect = op.get_bind().dialect.name
-    if dialect == "postgresql":
+    """Remove the unused content trigram index on PostgreSQL."""
+    if op.get_bind().dialect.name == "postgresql":
         # A plain DROP INDEX takes an ACCESS EXCLUSIVE lock on
         # conversation_items for the drop's duration; CONCURRENTLY avoids
         # stalling writers, matching the concurrent build in d5e9f1a2b3c4.
@@ -36,9 +35,6 @@ def upgrade() -> None:
         # (safe: the statement is idempotent via IF EXISTS).
         with op.get_context().autocommit_block():
             op.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {_INDEX}")
-    elif dialect == "cockroachdb":
-        # CockroachDB performs index drops online as a schema change.
-        op.execute(f"DROP INDEX IF EXISTS {_INDEX}")
 
 
 def downgrade() -> None:
