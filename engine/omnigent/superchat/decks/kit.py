@@ -263,8 +263,9 @@ _CSS_OPEN = "    /* superchat:theme id={id} sha={sha} \u00b7 {name} */"
 _CSS_CLOSE = "    /* /superchat:theme */"
 _DECK_HINT = (
     "    /* Per-deck rules and token overrides (for example :root { --accent: ... }) go below,\n"
-    "       after the closing superchat:theme marker; a theme switch keeps everything outside\n"
-    "       the markers. Do not edit between them. */"
+    "       after the closing superchat:theme marker; a theme switch keeps everything outside"
+    " the\n"
+    "       markers. Do not edit between them. */"
 )
 _ROOT_RE = re.compile(r"    :root \{.*?\n    \}", re.S)
 _TOKENS_RE = re.compile(
