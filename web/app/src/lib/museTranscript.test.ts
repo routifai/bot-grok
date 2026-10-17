@@ -83,5 +83,11 @@ describe("userCount and optimisticMessage", () => {
     const sent = optimisticMessage("conv", "hello");
     expect(sent.role).toBe("user");
     expect(sent.blocks).toEqual([{ kind: "text", text: "hello" }]);
+    expect("artifact" in sent).toBe(false);
+  });
+
+  it("carries the chip of the artifact open beside the chat", () => {
+    const artifact = { artifactId: "a", name: "deck.html", version: null, how: "open" as const };
+    expect(optimisticMessage("conv", "bigger", artifact).artifact).toEqual(artifact);
   });
 });

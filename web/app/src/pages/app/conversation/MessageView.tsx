@@ -28,6 +28,7 @@ import {
   useInfoNoteText,
 } from "./FailureNote";
 import { FoldedText } from "./FoldedText";
+import { MessageArtifactChip } from "./MessageArtifactChip";
 import { ArtifactImage } from "./message-cards";
 
 /** Muse mode only: one quiet line for a tool-activity block (docs/muse/DESIGN.md "Conversation"). */
@@ -74,6 +75,7 @@ export const MessageView = memo(function MessageView({
       (block) => block.kind === "text" || block.kind === "progress" || block.kind === "steps",
     );
   const quoteMessageId = message.id.includes(":") ? undefined : message.id;
+  const firstTextBlock = message.blocks.findIndex((block) => block.kind === "text");
   if (isNarration) {
     if (message.blocks.length === 0) return null;
     return (
@@ -258,6 +260,14 @@ export const MessageView = memo(function MessageView({
                   testId={`message-${chip.kind}-ask`}
                 />
               ))}
+              {/* One chip per message: an element ask already says which artifact, and more. */}
+              {message.artifact && ask.chips.length === 0 && i === firstTextBlock ? (
+                <MessageArtifactChip
+                  botId={artifactTarget.botId}
+                  itemId={message.id}
+                  artifact={message.artifact}
+                />
+              ) : null}
               {body || !hasChips ? (
                 <div
                   data-testid="message-user-bubble"

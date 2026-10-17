@@ -84,7 +84,16 @@ export function seedMessages(scenario: CardsScenario): ThreadMessage[] {
     ];
   }
   return [
-    message("user", text("How is the loan file audit backlog trending?")),
+    {
+      ...message("user", text("How is the loan file audit backlog trending?")),
+      // The chip of the artifact the message is about (docs/conversation.md).
+      artifact: {
+        artifactId: "art_dev_backlog",
+        name: "Audit backlog.html",
+        version: 3,
+        how: "edited",
+      },
+    },
     message(
       "bot",
       text(

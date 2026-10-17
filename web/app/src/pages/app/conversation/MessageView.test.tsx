@@ -38,6 +38,9 @@ vi.mock("../../../features/activity/HelperTracker", () => ({ HelperTracker: () =
 vi.mock("@superchat/ui-web", () => ({
   Button: () => null,
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
+  Popover: ({ children }: { children: ReactNode }) => children,
+  PopoverTrigger: ({ render }: { render: ReactNode }) => render,
+  PopoverContent: () => null,
 }));
 
 const filesRead = vi.hoisted(() => vi.fn());
@@ -169,6 +172,33 @@ it("shows only the chip when the person sent a selection with no text", async ()
   const host = await mount(userMessage(BLOCK));
   expect(host.querySelector('[data-testid="message-sheet-ask"]')).not.toBeNull();
   expect(host.querySelector('[data-testid="message-user-bubble"]')).toBeNull();
+});
+
+describe("the artifact a message is about", () => {
+  const artifact = {
+    artifactId: "art_1",
+    name: "Q3   Lending Review.html",
+    version: 4,
+    how: "edited" as const,
+  };
+
+  it("shows the file name as the message's chip, above the words", async () => {
+    const host = await mount({ ...userMessage("make the title bigger"), artifact });
+    expect(host.querySelector('[data-testid="message-artifact-chip"]')?.textContent).toBe(
+      "Q3 Lending Review.html",
+    );
+    expect(host.querySelector('[data-testid="message-user-bubble"]')?.textContent).toBe(
+      "make the title bigger",
+    );
+  });
+
+  it("has no chip without a link, and an ask's chip wins over the link", async () => {
+    const plain = await mount({ ...userMessage("hi"), artifact: null });
+    expect(plain.querySelector('[data-testid="message-artifact-chip"]')).toBeNull();
+    const asked = await mount({ ...userMessage(`${BLOCK}\n\nwhat is the trend?`), artifact });
+    expect(asked.querySelector('[data-testid="message-sheet-ask"]')).not.toBeNull();
+    expect(asked.querySelector('[data-testid="message-artifact-chip"]')).toBeNull();
+  });
 });
 
 it("leaves ordinary text alone", async () => {

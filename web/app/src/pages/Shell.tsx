@@ -293,6 +293,7 @@ export function ShellPage() {
     userId,
     messages: transcriptMessages,
     transcript: museTranscript,
+    openArtifact: chatArtifacts.shown,
     botsRef,
     flushPendingBrowserNotifications,
   });

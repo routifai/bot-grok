@@ -8,6 +8,9 @@ import { useArtifactContent } from "./library/useArtifactContent";
 import { artifactPanelLayout, useParentWidth } from "./panel-layout";
 import { useArtifactEditorKind, useArtifactPanelParts } from "./registry";
 
+/** The artifact on screen in the panel: which file, under which name, at which version. */
+export type ShownArtifact = { artifactId: string; name: string; version: number };
+
 /** The panel's width from `md` up before its row is measured: usual, wider for a file that needs
  * room, widest while a file is being edited. Once measured, `artifactPanelLayout` decides. */
 export const artifactPanelWidth = ({ wide, expanded }: { wide?: boolean; expanded?: boolean }) =>
@@ -23,16 +26,27 @@ export function ArtifactPanel({
   title,
   page,
   onClose,
+  onShown,
 }: {
   artifactId: string;
   title?: string;
   /** Open a PDF at this page (a citation chip). */
   page?: number;
   onClose: () => void;
+  /** The version on screen once it has loaded, and `null` when the panel goes. */
+  onShown?: (shown: ShownArtifact | null) => void;
 }) {
   const { t } = useLingui();
   const state = useArtifactContent(artifactId);
   const ready = state.status === "ready" ? state : null;
+  const shownId = ready?.artifact.id;
+  const shownName = ready?.artifact.name;
+  const shownVersion = ready?.artifact.version;
+  useEffect(() => {
+    if (!onShown || !shownId || shownName === undefined || shownVersion === undefined) return;
+    onShown({ artifactId: shownId, name: shownName, version: shownVersion });
+  }, [onShown, shownId, shownName, shownVersion]);
+  useEffect(() => (onShown ? () => onShown(null) : undefined), [onShown]);
   const [fullScreen, setFullScreen] = useState(false);
   const [element, setElement] = useState<HTMLElement | null>(null);
   const rowWidth = useParentWidth(element);

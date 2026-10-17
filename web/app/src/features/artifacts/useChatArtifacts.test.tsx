@@ -5,13 +5,28 @@ import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 
 vi.mock("./ArtifactPanel", () => ({
-  ArtifactPanel: ({ artifactId, page }: { artifactId: string; page?: number }) => (
-    <div data-panel data-page={page}>
-      {artifactId}
-    </div>
-  ),
+  ArtifactPanel: ({
+    artifactId,
+    page,
+    onShown,
+  }: {
+    artifactId: string;
+    page?: number;
+    onShown?: (shown: { artifactId: string; name: string; version: number } | null) => void;
+  }) => {
+    useEffect(() => {
+      onShown?.({ artifactId, name: `${artifactId}.html`, version: 2 });
+      return () => onShown?.(null);
+    }, [artifactId, onShown]);
+    return (
+      <div data-panel data-page={page}>
+        {artifactId}
+      </div>
+    );
+  },
 }));
 
+import { useEffect } from "react";
 import type { ArtifactPanelApi } from "../../components/cards/context";
 import { useChatArtifacts } from "./useChatArtifacts";
 
@@ -48,6 +63,17 @@ it("opens an artifact in the shared panel and closes it", async () => {
   await vi.waitFor(() => expect(s.host.querySelector("[data-panel]")?.textContent).toBe("art-1"));
   act(() => s.get().api.close());
   expect(s.get().isOpen).toBe(false);
+});
+
+it("knows the version on screen while the panel is open, and nothing once it closes", async () => {
+  const s = setup("bot:a");
+  expect(s.get().shown).toBeNull();
+  await act(async () => s.get().api.open("art-1"));
+  await vi.waitFor(() =>
+    expect(s.get().shown).toEqual({ artifactId: "art-1", name: "art-1.html", version: 2 }),
+  );
+  act(() => s.get().api.close());
+  expect(s.get().shown).toBeNull();
 });
 
 it("closes when the chat changes", async () => {

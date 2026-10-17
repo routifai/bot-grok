@@ -1,4 +1,4 @@
-import type { ThreadMessage } from "@superchat/contracts";
+import type { MessageArtifact, ThreadMessage } from "@superchat/contracts";
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { watchFamily } from "../../../lib/family-stream";
 import {
@@ -7,6 +7,9 @@ import {
   userCount,
 } from "../../../lib/museTranscript";
 import { rpc } from "../../../lib/rpc";
+
+/** What the person just sent, until the transcript has it (`base`: their message count then). */
+type Pending = { text: string; base: number; artifact?: MessageArtifact };
 
 /** Events arrive in bursts (a reply, a Helper starting): read the page once per burst. */
 const REFRESH_THROTTLE_MS = 150;
@@ -49,8 +52,8 @@ export function useMuseTranscript(
   const [loaded, setLoaded] = useState<(Loaded & { botId: string }) | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   /** Sent but not yet in the transcript; shown at once, dropped when it arrives. */
-  const [pending, setPending] = useState<{ text: string; base: number } | null>(null);
-  const pendingRef = useRef<{ text: string; base: number } | null>(null);
+  const [pending, setPending] = useState<Pending | null>(null);
+  const pendingRef = useRef<Pending | null>(null);
   /** A reply is expected: from send until the engine has answered and gone idle. */
   const [waiting, setWaiting] = useState(false);
   const loadedRef = useRef<(Loaded & { botId: string }) | null>(null);
@@ -185,9 +188,14 @@ export function useMuseTranscript(
     return () => window.clearTimeout(timer);
   }, [waiting]);
 
-  /** The person's message is on its way: show it at once and hold the Conversation as running. */
-  const beginSend = useCallback((text: string) => {
-    const next = { text, base: userCount(loadedRef.current?.messages ?? null) };
+  /** The person's message is on its way: show it at once (with the chip of the artifact open
+   * beside the chat, if any) and hold the Conversation as running. */
+  const beginSend = useCallback((text: string, artifact?: MessageArtifact) => {
+    const next: Pending = {
+      text,
+      base: userCount(loadedRef.current?.messages ?? null),
+      ...(artifact ? { artifact } : {}),
+    };
     pendingRef.current = next;
     setPending(next);
     setWaiting(true);
@@ -291,7 +299,7 @@ export function useMuseTranscript(
   const forBot = loaded?.botId === botId ? loaded : null;
   const threadId = forBot?.threadId || null;
   const pendingMessage = useMemo(
-    () => (pending ? optimisticMessage(threadId ?? "", pending.text) : null),
+    () => (pending ? optimisticMessage(threadId ?? "", pending.text, pending.artifact) : null),
     [pending, threadId],
   );
   return {

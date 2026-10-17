@@ -495,6 +495,9 @@ msgstr "Could not switch model."
 msgid "Could not upload this."
 msgstr "Could not upload this."
 
+msgid "Couldn't change"
+msgstr "Couldn't change"
+
 msgid "Couldn't index"
 msgstr "Couldn't index"
 
@@ -1127,6 +1130,9 @@ msgstr "No sign-in needed"
 
 msgid "No steps recorded"
 msgstr "No steps recorded"
+
+msgid "None"
+msgstr "None"
 
 msgid "Not connected"
 msgstr "Not connected"

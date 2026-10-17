@@ -1,4 +1,4 @@
-import type { ThreadMessage, ThreadMessagePage } from "@superchat/contracts";
+import type { MessageArtifact, ThreadMessage, ThreadMessagePage } from "@superchat/contracts";
 
 /** The newest transcript page merged into what is loaded. Older pages already loaded stay when
  * the new page overlaps them; otherwise (a long gap) the new page stands alone. */
@@ -28,7 +28,11 @@ export const userCount = (messages: readonly ThreadMessage[] | null) =>
   messages?.filter((message) => message.role === "user").length ?? 0;
 
 /** What the person just sent, shown before the engine has recorded it. */
-export function optimisticMessage(chatId: string, text: string): ThreadMessage {
+export function optimisticMessage(
+  chatId: string,
+  text: string,
+  artifact?: MessageArtifact,
+): ThreadMessage {
   return {
     id: "optimistic",
     threadId: chatId,
@@ -36,6 +40,7 @@ export function optimisticMessage(chatId: string, text: string): ThreadMessage {
     role: "user",
     blocks: [{ kind: "text", text }],
     createdAt: new Date().toISOString(),
+    ...(artifact ? { artifact } : {}),
   };
 }
 
