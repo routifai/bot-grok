@@ -1,4 +1,4 @@
-# Build context for deployment/computer.Dockerfile (the repo root). Everything is excluded, then
+# Build context for deployment/host.Dockerfile (the repo root). Everything is excluded, then
 # only what the Dockerfile COPYs is let back in.
 *
 
@@ -10,7 +10,7 @@
 !engine/sdks/python-client/
 !engine/omnigent/
 
-# computer stage
+# host stage
 !host/bin/
 !host/share/
 

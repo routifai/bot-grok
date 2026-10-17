@@ -1,6 +1,6 @@
 # Deployment
 
-The whole Superchat deployment: two images (`engine.Dockerfile`, `computer.Dockerfile`), the
+The whole Superchat deployment: two images (`engine.Dockerfile`, `host.Dockerfile`), the
 Compose file, and the scripts. The walkthrough, env keys and secrets are in
 [docs/setup.md](../docs/setup.md). From the repo root:
 

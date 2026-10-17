@@ -6,9 +6,9 @@
 # Background work (memory upkeep, summaries) runs on the fast model through this same provider.
 host:
   provider: docker
-  # Where the runner inside each Computer dials back: this service's PUBLIC https URL.
+  # Where the runner inside each host dials back: this service's PUBLIC https URL.
   server_url: __ENGINE_PUBLIC_URL__
-  # NAMES only. Resolved from this service's environment and handed to each Computer's runner.
+  # NAMES only. Resolved from this service's environment and handed to each host's runner.
   runner_env:
     - ANTHROPIC_API_KEY
     - OPENROUTER_API_KEY
@@ -16,7 +16,7 @@ host:
     - OMNIGENT_SUBAGENT_MAX_CONCURRENT
   host_config:
     providers:
-      # The operator's Anthropic key for everyone (readable inside the Computer, like any
+      # The operator's Anthropic key for everyone (readable inside the host, like any
       # operator key). To keep keys in the engine, use the BYOK template's model connection.
       anthropic:
         kind: gateway

@@ -1,9 +1,9 @@
 name: superchat
 
-# Superchat, the whole stack: Postgres, the engine (API + web + published apps) and the Computer
+# Superchat, the whole stack: Postgres, the engine (API + web + published apps) and the host
 # image the engine starts for each person. Nothing else. From the repo root:
 #
-#   deployment/build.sh                                  # builds superchat/engine and superchat/computer
+#   deployment/build.sh                                  # builds superchat/engine and superchat/host
 #   docker compose --env-file .env -f deployment/compose.yaml up -d --wait
 #
 # Paths in this file are relative to deployment/, so the repo root is "..". Values come from .env
@@ -36,7 +36,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # The engine. Each Computer's runner dials it back at ENGINE_PUBLIC_URL, so it is published on
+  # The engine. Each host's runner dials it back at ENGINE_PUBLIC_URL, so it is published on
   # the host as well as serving the web.
   engine:
     image: ${IMAGE_REGISTRY:-superchat}/engine:${IMAGE_TAG:-local}
@@ -64,12 +64,12 @@ services:
       OMNIGENT_LOCAL_SINGLE_USER: ${OMNIGENT_LOCAL_SINGLE_USER:-1}
       OMNIGENT_AUTH_HEADER_SECRET: ${OMNIGENT_PROXY_SECRET:?Set OMNIGENT_PROXY_SECRET in .env}
       OMNIGENT_VAULT_KEY: ${OMNIGENT_VAULT_KEY:?Set OMNIGENT_VAULT_KEY in .env}
-      # Each person's Computer: a container from the image below, home on its own volume.
+      # Each person's host: a container from the image below, home on its own volume.
       OMNIGENT_HOST_PROVIDER: docker
-      OMNIGENT_HOST_IMAGE: ${IMAGE_REGISTRY:-superchat}/computer:${IMAGE_TAG:-local}
-      OMNIGENT_HOST_MEMORY: ${COMPUTER_MEMORY:-2g}
-      OMNIGENT_HOST_CPUS: ${COMPUTER_CPUS:-2}
-      OMNIGENT_HOST_PIDS_LIMIT: ${COMPUTER_PIDS_LIMIT:-2048}
+      OMNIGENT_HOST_IMAGE: ${IMAGE_REGISTRY:-superchat}/host:${IMAGE_TAG:-local}
+      OMNIGENT_HOST_MEMORY: ${HOST_MEMORY:-2g}
+      OMNIGENT_HOST_CPUS: ${HOST_CPUS:-2}
+      OMNIGENT_HOST_PIDS_LIMIT: ${HOST_PIDS_LIMIT:-2048}
       # Model access: a key, or both LiteLLM values to route every model call through a proxy.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
@@ -84,7 +84,7 @@ services:
       - "127.0.0.1:${SUPERCHAT_WEB_PORT:-5173}:8000"
     volumes:
       - artifact-data:/data
-      # The engine starts each person's Computer over this socket. Never mounted into a Computer.
+      # The engine starts each person's host over this socket. Never mounted into a host.
       - ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:/var/run/docker.sock
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
@@ -93,14 +93,14 @@ services:
       retries: 30
       start_period: 60s
 
-  # Build-only: the Computer image. Under the "build" profile so `up` never starts one; the engine
+  # Build-only: the host image. Under the "build" profile so `up` never starts one; the engine
   # starts them, one per person.
-  computer:
-    image: ${IMAGE_REGISTRY:-superchat}/computer:${IMAGE_TAG:-local}
+  host:
+    image: ${IMAGE_REGISTRY:-superchat}/host:${IMAGE_TAG:-local}
     profiles: ["build"]
     build:
       context: ..
-      dockerfile: deployment/computer.Dockerfile
+      dockerfile: deployment/host.Dockerfile
       args:
         - UBUNTU_IMAGE
         - NODE_IMAGE

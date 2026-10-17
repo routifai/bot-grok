@@ -9,10 +9,10 @@
 # Background work (memory upkeep, summaries) runs on the fast model with the owner's key.
 host:
   provider: docker
-  # Where the runner inside each Computer dials back: this service's PUBLIC https URL.
+  # Where the runner inside each host dials back: this service's PUBLIC https URL.
   server_url: __ENGINE_PUBLIC_URL__
-  # NAMES only. Resolved from this service's environment and handed to each Computer's runner.
-  # No model key here: the agent can run shell commands in its Computer, so a key in its env is
+  # NAMES only. Resolved from this service's environment and handed to each host's runner.
+  # No model key here: the agent can run shell commands in its host, so a key in its env is
   # readable. Model calls go through the engine's model proxy with the PERSON's own saved key
   # (host_config below). Self-hosting with one operator key for everyone: in host_config, replace
   # the `byok` provider with the `operator` block, and add ANTHROPIC_API_KEY back to this list.

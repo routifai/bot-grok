@@ -22,7 +22,7 @@ body:
     attributes:
       label: Description
       description: What went wrong? Keep it concise.
-      placeholder: The bot computer pane stays blank after sending a message.
+      placeholder: The Files tab stays blank after sending a message.
     validations:
       required: true
 
@@ -34,7 +34,7 @@ body:
       placeholder: |
         1. `pnpm dev`
         2. Create a bot and send "hello"
-        3. Open the computer pane
+        3. Open the Files tab
     validations:
       required: true
 

@@ -1,15 +1,15 @@
 # syntax=docker/dockerfile:1.7
-# The Computer: the container each person gets. The runner runs here, next to the person's files,
+# The host: the container each person gets. The runner runs here, next to the person's files,
 # and dials the engine back. Headless: no desktop, no screen.
 #
 # Stages
 #   chromium   Chromium alone, copied out of Playwright's image (deck and dashboard export, browser tools)
 #   node       Node 22 from the official image (the claude and pi CLIs are npm packages)
 #   venv       the engine package (its runner half is what runs here) installed on the same Ubuntu
-#   computer   ubuntu:24.04 + Python data stack + Chromium + pptx runtime + the two CLIs + Superchat helpers
+#   host       ubuntu:24.04 + Python data stack + Chromium + pptx runtime + the two CLIs + Superchat helpers
 #
 # Build from the repo root (deployment/build.sh does this with the right tags):
-#   docker build -f deployment/computer.Dockerfile -t superchat/host:local .
+#   docker build -f deployment/host.Dockerfile -t superchat/host:local .
 
 ARG UBUNTU_IMAGE=ubuntu:24.04@sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55
 ARG NODE_IMAGE=node:22-slim
@@ -43,8 +43,8 @@ RUN python3 -m venv /opt/venv \
  && /opt/venv/bin/pip install --index-url "${PYPI_INDEX_URL}" . ./sdks/python-client \
  && ! grep -R --include='*.pth' -nE '/src(/|$)' /opt/venv/lib/python*/site-packages
 
-# ── computer: the image that runs ──────────────────────────────────────────────
-FROM ${UBUNTU_IMAGE} AS computer
+# ── host: the image that runs ──────────────────────────────────────────────
+FROM ${UBUNTU_IMAGE} AS host
 ARG PYPI_INDEX_URL=https://pypi.org/simple
 # Pin the two CLIs here. pi is pinned to the version the superchat-pi bundle is verified against.
 ARG CLAUDE_CODE_VERSION=latest
@@ -121,7 +121,7 @@ RUN ln -sf /opt/venv/bin/omnigent /usr/local/bin/omnigent \
  && echo 'export PATH="/opt/venv/bin:${PATH}"' > /etc/profile.d/omnigent-venv.sh
 
 # Superchat's helpers and the skill files the model's instructions point at.
-COPY --chmod=755 host/bin/start.sh /usr/local/bin/superchat-computer
+COPY --chmod=755 host/bin/start.sh /usr/local/bin/superchat-host
 COPY --chmod=755 host/bin/superchat-browser host/bin/superchat-page-browser \
      host/bin/superchat-deck-export host/bin/superchat-dashboard /usr/local/bin/
 COPY --chmod=644 host/bin/superchat-local-bin.sh /etc/profile.d/superchat-local-bin.sh
@@ -133,7 +133,7 @@ COPY --chmod=644 engine/omnigent/superchat/decks/kit/vendor/chart.js/chart.umd.j
 COPY --chmod=644 engine/omnigent/superchat/decks/kit/vendor/chart.js/LICENSE.md /usr/local/share/superchat/dashboard/chart.js.LICENSE.md
 COPY host/share/pptx/skill/pptx-generator/ /usr/local/share/superchat/skills/pptx-generator/
 
-# The Computer user is uid 1000 with its home at /home/superchat (a per-person volume at runtime).
+# The host user is uid 1000 with its home at /home/superchat (a per-person volume at runtime).
 # CRs are stripped so the helpers' shebangs work from a CRLF checkout.
 RUN find /usr/local/share/superchat -type d -exec chmod 755 {} + \
  && chmod -R a+rX /usr/local/share/superchat /opt/superchat-pptx \
@@ -146,4 +146,4 @@ ENV HOME=/home/superchat
 WORKDIR /home/superchat
 USER 1000:1000
 # PID 1 only keeps the container alive; the runner and every tool arrive through `docker exec`.
-CMD ["/usr/local/bin/superchat-computer"]
+CMD ["/usr/local/bin/superchat-host"]

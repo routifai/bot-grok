@@ -75,7 +75,7 @@ pptx-generator skill from MiniMax-AI/skills (https://github.com/MiniMax-AI/skill
 60aaae52bb2af8162732751a4332f62a5fef518b, path skills/pptx-generator), Copyright (c) 2026 MiniMax,
 licensed under the MIT License; the license text is kept beside the skill in
 host/share/pptx/skill/pptx-generator/LICENSE. Each ported file carries a "Portions
-from MiniMax-AI/skills <path>@60aaae5, MIT; changes: ..." header. The Computer image installs
+from MiniMax-AI/skills <path>@60aaae5, MIT; changes: ..." header. The host image installs
 PptxGenJS 4.0.1 (MIT, Copyright (c) Brent Ely), react, react-dom, react-icons, sharp, python-pptx
 and markitdown for it, each under its own permissive license, and applies the upstream PptxGenJS
 fixes for gitbrent/PptxGenJS issue 1531 and pull requests 1537 and 1540

@@ -3,7 +3,7 @@
 # images and starts the stack. Safe to re-run: existing values are kept.
 #
 # The same by hand, from the repo root (docs/setup.md explains each step):
-#   docker compose --env-file .env -f deployment/compose.yaml --profile build build computer
+#   docker compose --env-file .env -f deployment/compose.yaml --profile build build host
 #   docker compose --env-file .env -f deployment/compose.yaml build engine
 #   docker compose --env-file .env -f deployment/compose.yaml up -d --wait
 set -euo pipefail
@@ -38,9 +38,9 @@ done
 [[ -n "$(env_get ANTHROPIC_API_KEY)$(env_get LITELLM_BASE_URL)" ]] ||
   echo "warning: set ANTHROPIC_API_KEY (or LITELLM_BASE_URL + LITELLM_API_KEY) in .env for the engine." >&2
 
-# The Computer image first (the "build" profile keeps it out of `up`; the engine starts Computers
+# The host image first (the "build" profile keeps it out of `up`; the engine starts hosts
 # itself), then the engine, then the stack.
-"${compose[@]}" --profile build build computer
+"${compose[@]}" --profile build build host
 "${compose[@]}" build engine
 "${compose[@]}" up -d --wait --wait-timeout 300
 echo "Superchat is running: http://127.0.0.1:$(env_get SUPERCHAT_WEB_PORT | grep . || echo 5173)"

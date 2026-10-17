@@ -1,6 +1,6 @@
 name: publish-images
 
-# Builds the engine and Computer images from deployment/. Pull requests build without pushing;
+# Builds the engine and host images from deployment/. Pull requests build without pushing;
 # main publishes `edge`; release tags publish semver tags and `latest`. Each architecture builds
 # natively on its own runner and is merged into one manifest per image.
 on:
@@ -37,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: [engine, computer]
+        name: [engine, host]
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -64,7 +64,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: [engine, computer]
+        name: [engine, host]
         arch: [amd64, arm64]
         include:
           - arch: amd64
@@ -126,7 +126,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: [engine, computer]
+        name: [engine, host]
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
