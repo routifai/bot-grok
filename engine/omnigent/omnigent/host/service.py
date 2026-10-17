@@ -245,38 +245,6 @@ def _enable_systemd(service: HostService, content: bytes) -> None:
         raise
 
 
-def _record_service(service: HostService) -> None:
-    """Add the service to the uninstall ledger."""
-    from omnigent.install_ledger import LaunchAgentEntry, record_launch_agent
-
-    try:
-        record_launch_agent(
-            LaunchAgentEntry(
-                kind=service.kind,
-                path=str(service.path),
-                label=service.label,
-                source="recorded",
-                confidence="certain",
-            )
-        )
-    except OSError as exc:
-        raise HostServiceError(
-            f"The service was enabled, but its uninstall record could not be written: {exc}"
-        ) from exc
-
-
-def _forget_service(service: HostService) -> None:
-    """Remove the service from install ledgers."""
-    from omnigent.install_ledger import remove_launch_agent
-
-    try:
-        remove_launch_agent(kind=service.kind, label=service.label)
-    except OSError as exc:
-        raise HostServiceError(
-            f"The service was disabled, but its uninstall record could not be updated: {exc}"
-        ) from exc
-
-
 def enable_user_host_service(
     server_url: str,
     *,
@@ -296,7 +264,6 @@ def enable_user_host_service(
     else:
         content = _systemd_unit(command=command, environment=clean_environment)
         _enable_systemd(service, content)
-    _record_service(service)
     return service
 
 
@@ -320,7 +287,6 @@ def disable_user_host_service() -> HostService:
             _run_best_effort(disable_args)
         service.path.unlink(missing_ok=True)
         _run_checked(["systemctl", "--user", "daemon-reload"])
-    _forget_service(service)
     if still_running:
         raise HostServiceError(
             f"launchd service {service.label!r} is still running; its definition "

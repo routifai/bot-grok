@@ -44,7 +44,6 @@ import os
 from dataclasses import dataclass, field, replace
 from typing import Literal
 
-from omnigent.cli_invocation import cli_invocation
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.harness_aliases import canonicalize_harness
 from omnigent.spec.parser import check_unresolved_env_vars
@@ -498,7 +497,7 @@ def resolve_secret(ref: str) -> str:
         value = secrets.load_secret(name)
         if value is None:
             raise OmnigentError(
-                f"no stored secret named {name!r}; run `{cli_invocation()} setup` to set it.",
+                f"no stored secret named {name!r}.",
                 code=ErrorCode.INVALID_INPUT,
             )
         return value

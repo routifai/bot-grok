@@ -37,7 +37,6 @@ from omnigent._platform import (
     installed_interactive_shells,
     normalize_interactive_shells,
 )
-from omnigent.cli_invocation import cli_invocation
 from omnigent.debug_logging import (
     ORIGIN_WORKSPACE_ID_ENV_VAR,
     PRIMARY_SESSION_ID_ENV_VAR,
@@ -1386,33 +1385,18 @@ class HostProcess:
 
         Shared by the login-redirect and HTTP 401 messages.
 
-        :returns: An actionable remedy sentence naming the exact
-            command, e.g. ``"Run `omnigent login <url>` ..."``.
+        :returns: An actionable remedy sentence naming the server.
         """
-        return (
-            f"Run `{cli_invocation()} login {self._login_hint_url()}` to authenticate (it "
-            "detects Databricks-fronted servers and logs in to the right "
-            "workspace), or check your ambient Databricks credentials."
-        )
+        return f"Check the credentials this host presents to {self._login_hint_url()}."
 
     def _login_fix_hint(self) -> str:
-        """Suggest ``omnigent login`` as a remedy for an auth rejection.
+        """Name the missing session token as a remedy for an auth rejection.
 
-        The host tunnel's bearer is resolved from a stored ``omnigent
-        login`` record first, then ambient Databricks credentials (see
-        :func:`omnigent.runner._entry._make_auth_token_factory`). When
-        the server runs Omnigent accounts or OIDC auth, a Databricks
-        workspace token can authenticate at the proxy yet still be rejected
-        by the server itself — so the actionable fix is to log in to the
-        server directly, which stores the session token the tunnel needs.
-
-        :returns: A one-sentence remedy naming the exact command, e.g.
-            ``"If this server uses Omnigent accounts or OIDC login, run
-            `omnigent login http://localhost:6767` to authenticate."``.
+        :returns: A one-sentence remedy naming the server.
         """
         return (
-            "If this server uses Omnigent accounts or OIDC login, run "
-            f"`{cli_invocation()} login {self._login_hint_url()}` to authenticate."
+            "If this server uses Omnigent accounts or OIDC login, this host "
+            f"needs a session token for {self._login_hint_url()}."
         )
 
     def _fatal_upgrade_error(self, exc: InvalidURI | InvalidStatus) -> HostConnectError | None:
@@ -1530,9 +1514,8 @@ class HostProcess:
                         f"{cause} The server has rejected it "
                         f"{self._auth_retry_streak} times in a row — this is no "
                         "longer a transient network blip. If it persists, the "
-                        "stored credential is likely no longer valid: run "
-                        f"`{cli_invocation()} login {self._login_hint_url()}` and restart the "
-                        "host. Still retrying."
+                        "credential is likely no longer valid: renew it for "
+                        f"{self._login_hint_url()} and restart the host. Still retrying."
                     )
                     _logger.warning("%s", escalated)
                     print(f"⚠ {escalated}", file=sys.stderr, flush=True)
@@ -1591,7 +1574,7 @@ class HostProcess:
                 "(e.g. an M2M service principal selected from "
                 "~/.databrickscfg, or the single-user 'local' owner before "
                 "the server switched to accounts auth). Run "
-                f"`{cli_invocation()} host reset-id` to mint a fresh host id "
+                "`omnigent host reset-id` to mint a fresh host id "
                 "for this machine and retry, or ask an administrator to "
                 "remove the existing host registration. " + self._login_fix_hint()
             )
@@ -3560,7 +3543,7 @@ class HostProcess:
                                 f"{self._refused_streak} consecutive connection "
                                 "attempts — nothing is listening on that local "
                                 "address anymore. Start the server, then run "
-                                f"`{cli_invocation()} host` again."
+                                f"`omnigent host` again."
                             ) from exc
                     else:
                         self._refused_streak = 0
@@ -3891,8 +3874,6 @@ class HostProcess:
         if self._owner_user_id is not None:
             return
         try:
-            from omnigent.resume_dispatch import _resolve_current_user_id
-
             request_headers = headers
             if request_headers is None:
                 request_headers = await self._run_host_subprocess_in_thread(
@@ -4387,11 +4368,6 @@ def run_host_process(
     # own diagnostics go to the host destination.
     print(f"Session logs: {display_log_path(_runner_log_dir())}/")
     print(f"This host's log: {display_log_path(host_log_path)}")
-    from omnigent.cli_diagnostics import current_cli_log_path
-
-    _cli_log = current_cli_log_path()
-    if _cli_log is not None and _cli_log != host_log_path:
-        print(f"CLI diagnostics: {display_log_path(_cli_log)}")
 
     # Executor-agnostic GitHub setup: point git at the server's credential
     # broker and attribute commits to the owner. Best-effort; the host runs in
@@ -4442,3 +4418,32 @@ def run_host_process(
             flush=True,
         )
         raise SystemExit(HOST_FATAL_EXIT_CODE) from exc
+
+
+def _resolve_current_user_id(
+    *,
+    base_url: str,
+    headers: dict[str, str],
+) -> str | None:
+    """
+    Best-effort ``GET /v1/me`` to learn which user owns this host.
+
+    :param base_url: Server URL without a trailing slash.
+    :param headers: Request headers (auth and routing) for the call.
+    :returns: The caller's ``user_id``, or ``None`` when it can't be
+        resolved (unauthenticated, non-200, non-JSON, or unreachable).
+    """
+    try:
+        resp = httpx.get(f"{base_url}/v1/me", headers=headers, timeout=10.0)
+    except httpx.HTTPError:
+        return None
+    if resp.status_code != 200:
+        return None
+    try:
+        body = resp.json()
+    except ValueError:
+        return None
+    if not isinstance(body, dict):
+        return None
+    user_id = body.get("user_id")
+    return user_id if isinstance(user_id, str) and user_id else None

@@ -26,7 +26,6 @@ from fastapi import (
 from fastapi.responses import Response
 from pydantic import ValidationError
 
-from omnigent.cli_invocation import cli_invocation
 from omnigent.db.utils import generate_agent_id, generate_task_id
 from omnigent.db.workspace_cache import WorkspaceScopedCache
 from omnigent.debug_logging import debug_event, runner_log_scope
@@ -4732,8 +4731,7 @@ async def _persist_host_launch_failure_turn(
     }:
         raise ValueError(f"unsafe host launch error code: {host_error_code!r}")
     fallback_message = (
-        "the agent's harness is not configured on the selected host — "
-        f"run `{cli_invocation()} setup`"
+        "the agent's harness is not configured on the selected host"
         if host_error_code == _HARNESS_NOT_CONFIGURED_ERROR_CODE
         else "The session workspace no longer exists on the selected host."
     )

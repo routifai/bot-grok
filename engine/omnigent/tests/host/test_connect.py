@@ -390,7 +390,7 @@ async def test_handle_launch_refuses_unconfigured_harness(
     """
     Verify _handle_launch refuses to spawn when the frame's harness is
     not configured, with the structured error_code and a message that
-    names the harness, the host, and the `omni setup` fix.
+    names the harness, the host, and the install fix.
 
     If this regresses, an unconfigured launch spawns a runner whose
     first turn dies inside the executor — the exact dead-session UX
@@ -423,7 +423,7 @@ async def test_handle_launch_refuses_unconfigured_harness(
     # harness, the host, and the remediation command.
     assert "'codex'" in (result.error or "")
     assert "test-laptop" in (result.error or "")
-    assert "omni setup" in (result.error or "")
+    assert "install the harness" in (result.error or "")
     assert result.runner_id is None
     # No runner subprocess may exist after a refusal.
     assert host._runners == {}
@@ -2491,42 +2491,6 @@ def test_dispatch_trace_context_reaches_runner_but_not_daemon(
         assert DISPATCH_TRACESTATE_ENV_VAR not in daemon_env
 
 
-def test_build_runner_env_passthrough_survives_remote_daemon_hop(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """OMNIGENT_RUNNER_ENV_PASSTHROUGH forwards a named var through BOTH hops.
-
-    In ``--server`` mode the env crosses two strips: CLI→daemon
-    (``_build_host_daemon_env``) then daemon→runner (``_build_runner_env``). The
-    control var must survive the first hop or the second never sees the names it
-    lists. A named var travels via the ``DATABRICKS_`` prefix on the first hop and
-    the passthrough on the second, so it must reach the runner; an unnamed secret
-    must not.
-    """
-    from omnigent.cli import _build_host_daemon_env
-
-    monkeypatch.setenv("PATH", "/usr/bin")
-    monkeypatch.setenv("OMNIGENT_RUNNER_ENV_PASSTHROUGH", "DATABRICKS_LINEAR_API_KEY")
-    monkeypatch.setenv("DATABRICKS_LINEAR_API_KEY", "lin-secret")
-    monkeypatch.setenv("DATABRICKS_UNNAMED", "should-not-forward")
-
-    server = "https://example.databricksapps.com"
-    daemon_env = _build_host_daemon_env()
-    # The first hop must keep the control var (regression guard for the remote no-op).
-    assert daemon_env["OMNIGENT_RUNNER_ENV_PASSTHROUGH"] == "DATABRICKS_LINEAR_API_KEY"
-
-    runner_env = _build_runner_env(
-        daemon_env,
-        server_url=server,
-        runner_id="runner_abc",
-        binding_token="tok",
-        workspace="/ws",
-        parent_pid=42,
-    )
-
-    # The named var reaches the runner; an unnamed one does not.
-    assert runner_env["DATABRICKS_LINEAR_API_KEY"] == "lin-secret"
-    assert "DATABRICKS_UNNAMED" not in runner_env
 
 
 @pytest.mark.parametrize("server_url", [None, "https://example.databricksapps.com"])
@@ -3555,7 +3519,7 @@ async def test_run_retries_on_login_redirect(
     ``InvalidURI`` because the redirect scheme isn't ws/wss. This can
     happen transiently during server restarts, so the host must retry
     with backoff rather than dying. The warning still surfaces the single
-    ``omnigent login`` remediation so the operator can act if the cause
+    credential remediation so the operator can act if the cause
     is persistent.
     """
     monkeypatch.setattr("omnigent.host.connect._RECONNECT_BASE_S", 0.0)
@@ -3574,10 +3538,10 @@ async def test_run_retries_on_login_redirect(
     # 2 = redirect attempt + cancel attempt → it genuinely reconnected.
     assert spy.call_count == 2
     # The warning surfaces the login-page cause and the credentials hint —
-    # the single remediation message recommending `omnigent login <url>`.
+    # the single remediation message naming the server's credentials.
     assert any("login page" in r.message for r in caplog.records)
     assert any(
-        "omnigent login https://app.example.databricks.com" in r.message for r in caplog.records
+        "Check the credentials this host presents to https://app.example.databricks.com" in r.message for r in caplog.records
     )
 
 
@@ -3591,7 +3555,7 @@ async def test_login_redirect_prints_warning_to_terminal(
     not-logged-in ``omnigent host`` sat completely silent on the terminal
     while retrying (the user's only signal was Ctrl-C and reading the log).
     The terminal warning must name the cause and the copy-pasteable
-    ``omnigent login <url>`` remedy.
+    credential remedy naming the server.
     """
     monkeypatch.setattr("omnigent.host.connect._RECONNECT_BASE_S", 0.0)
     spy = _ConnectSpy(
@@ -3610,7 +3574,7 @@ async def test_login_redirect_prints_warning_to_terminal(
     # regression is back (warning only in the log file).
     assert "login page" in err
     # The exact remedy command, URL included, so the user can copy-paste.
-    assert "omnigent login https://app.example.databricks.com" in err
+    assert "Check the credentials this host presents to https://app.example.databricks.com" in err
 
 
 async def test_fresh_host_fails_loud_after_persistent_login_redirects(
@@ -3637,7 +3601,7 @@ async def test_fresh_host_fails_loud_after_persistent_login_redirects(
     message = str(excinfo.value)
     # The fatal message identifies the auth cause and the exact remedy.
     assert "login page" in message
-    assert "omnigent login https://app.example.databricks.com" in message
+    assert "Check the credentials this host presents to https://app.example.databricks.com" in message
     # 3 = _LOGIN_REDIRECT_FATAL_ATTEMPTS: enough retries to absorb a
     # one-off proxy blip, then fail. 1 would mean the blip
     # tolerance regressed; more (or no raise at all) would mean the
@@ -3835,8 +3799,8 @@ async def test_never_connected_host_fails_loud_on_404(
     message = str(excinfo.value)
     assert "HTTP 404" in message
     assert "host tunnel route" in message
-    # A 404 is not an auth failure, so no `omnigent login` remedy.
-    assert "omnigent login" not in message
+    # A 404 is not an auth failure, so no credential remedy.
+    assert "Check the credentials" not in message
     # Exactly one attempt — fails loud immediately, unlike the
     # already-connected ride-out path above.
     assert spy.call_count == 1
@@ -4000,10 +3964,10 @@ async def test_run_fails_loud_on_permanent_4xx(
 
 
 @pytest.mark.parametrize("status", [401, 403])
-async def test_auth_rejection_suggests_omnigent_login(
+async def test_auth_rejection_suggests_session_token(
     monkeypatch: pytest.MonkeyPatch, status: int
 ) -> None:
-    """401/403 rejections point the user at ``omnigent login``.
+    """401/403 rejections point the user at the missing session token.
 
     Both statuses are auth failures the user can resolve by logging in to
     an accounts/OIDC-mode server (a Databricks profile token may
@@ -4022,13 +3986,13 @@ async def test_auth_rejection_suggests_omnigent_login(
 
     # The exact, copy-pasteable command — URL included — must be present,
     # not just the bare word "login".
-    assert f"omnigent login {server_url}" in str(excinfo.value)
+    assert f"session token for {server_url}" in str(excinfo.value)
 
 
 async def test_non_auth_permanent_4xx_omits_login_hint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A non-auth permanent 4xx (404) does NOT suggest ``omnigent login``.
+    """A non-auth permanent 4xx (404) does NOT suggest a credential fix.
 
     The login remedy is specific to credential/authorization failures;
     surfacing it on a 404 ("wrong URL / route missing") would misdirect
@@ -4045,7 +4009,7 @@ async def test_non_auth_permanent_4xx_omits_login_hint(
     # Confirm we got the actual 404 fatal message (not some unrelated
     # error that happens to lack "login") before asserting the absence.
     assert "HTTP 404" in message
-    assert "omnigent login" not in message
+    assert "Check the credentials" not in message
 
 
 async def test_409_rejection_names_the_self_service_reset_command(
@@ -5120,7 +5084,7 @@ def test_post_connect_auth_rejection_escalates_without_going_fatal(
 ) -> None:
     """A 401/403 AFTER the host has connected retries forever (never fatal),
     but a sustained streak escalates the operator message from a transient-
-    network hint to a re-auth prompt that names ``omnigent login`` — so a
+    network hint to a re-auth prompt that names the server — so a
     permanently-rejected credential surfaces instead of looping silently.
     """
     from omnigent.host.connect import _AUTH_REJECT_ESCALATE_ATTEMPTS
@@ -5132,19 +5096,19 @@ def test_post_connect_auth_rejection_escalates_without_going_fatal(
     assert host._classify_http_status(403) is None
     first = capsys.readouterr().err
     assert "network dropped" in first
-    assert "omnigent login" not in first
+    assert "renew it for" not in first
 
     # Streak climbs toward — but not to — the escalation threshold: stays quiet
     # so a brief VPN outage never raises a false re-auth alarm.
     for _ in range(2, _AUTH_REJECT_ESCALATE_ATTEMPTS):
         assert host._classify_http_status(403) is None
-    assert "omnigent login" not in capsys.readouterr().err
+    assert "renew it for" not in capsys.readouterr().err
 
     # Crossing the threshold escalates — names the real remedy — and is STILL
     # retryable (no fatal error, so a recoverable daemon is never killed).
     assert host._classify_http_status(403) is None
     escalated = capsys.readouterr().err
-    assert "omnigent login http://localhost:8000" in escalated
+    assert "renew it for http://localhost:8000" in escalated
     assert "no longer a transient network blip" in escalated
     assert host._auth_retry_streak == _AUTH_REJECT_ESCALATE_ATTEMPTS
 

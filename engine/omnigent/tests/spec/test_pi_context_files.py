@@ -1,11 +1,10 @@
-"""Pi prompt settings survive YAML loading and CLI bundle transport."""
+"""Pi prompt settings survive YAML and agent-directory loading."""
 
 from pathlib import Path
 
 import pytest
 import yaml
 
-from omnigent.chat import _bundle_agent
 from omnigent.errors import OmnigentError
 from omnigent.spec import load
 from omnigent.spec.omnigent import agent_def_to_agent_spec, agent_spec_to_agent_def
@@ -46,7 +45,7 @@ def test_context_files_survives_bundle_transport(
         executor["context_files"] = enabled
     path = _write_agent(tmp_path, directory=directory, executor=executor)
 
-    spec = load(_bundle_agent(path), dest=tmp_path / "uploaded")
+    spec = load(path, dest=tmp_path / "uploaded")
 
     assert spec.executor.config.get("context_files", True) is (enabled is not False)
     assert spec.instructions == "Explicit agent instructions."
@@ -84,7 +83,7 @@ def test_system_prompt_mode_survives_bundle_transport(
     if mode is not None:
         executor["system_prompt_mode"] = mode
     path = _write_agent(tmp_path, directory=directory, executor=executor)
-    spec = load(_bundle_agent(path), dest=tmp_path / "uploaded")
+    spec = load(path, dest=tmp_path / "uploaded")
 
     for candidate in (spec, agent_def_to_agent_spec(agent_spec_to_agent_def(spec))):
         assert candidate.executor.config.get("system_prompt_mode", "append") == (mode or "append")
@@ -130,7 +129,7 @@ def test_inline_subagent_preserves_system_prompt_mode(tmp_path: Path) -> None:
             }
         )
     )
-    spec = load(_bundle_agent(path), dest=tmp_path / "uploaded")
+    spec = load(path, dest=tmp_path / "uploaded")
     for candidate in (spec, agent_def_to_agent_spec(agent_spec_to_agent_def(spec))):
         assert candidate.executor.config["system_prompt_mode"] == "replace"
         assert candidate.sub_agents[0].executor.config["system_prompt_mode"] == "append"
@@ -159,7 +158,7 @@ tools:
         prompt: Nested instructions.
 """
     )
-    spec = load(_bundle_agent(path), dest=tmp_path / "uploaded")
+    spec = load(path, dest=tmp_path / "uploaded")
     assert spec.sub_agents[0].sub_agents[0].executor.config["context_files"] is False
     for candidate in (spec, agent_def_to_agent_spec(agent_spec_to_agent_def(spec))):
         assert candidate.executor.config["context_files"] is False

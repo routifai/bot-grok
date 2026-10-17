@@ -21,8 +21,6 @@ def _capture_runs(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
         return subprocess.CompletedProcess(args, returncode, "", "")
 
     monkeypatch.setattr(service.subprocess, "run", _run)
-    monkeypatch.setattr(service, "_record_service", lambda installed: None)
-    monkeypatch.setattr(service, "_forget_service", lambda installed: None)
     return calls
 
 
@@ -107,7 +105,6 @@ def test_disable_launchd_tolerates_stale_print_during_async_unload(
         return subprocess.CompletedProcess(args, returncode, "", "")
 
     monkeypatch.setattr(service.subprocess, "run", _run)
-    monkeypatch.setattr(service, "_forget_service", lambda installed: None)
 
     removed = service.disable_user_host_service()
 
@@ -136,19 +133,16 @@ def test_disable_launchd_removes_plist_even_when_job_never_unloads(
     path = tmp_path / "Library/LaunchAgents/ai.omnigent.host.plist"
     path.parent.mkdir(parents=True)
     path.write_text("old")
-    forgotten: list[service.HostService] = []
 
     def _run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(args, 0, "", "")
 
     monkeypatch.setattr(service.subprocess, "run", _run)
-    monkeypatch.setattr(service, "_forget_service", forgotten.append)
 
     with pytest.raises(service.HostServiceError, match="still running"):
         service.disable_user_host_service()
 
     assert not path.exists()
-    assert forgotten, "the uninstall ledger entry must still be cleared"
 
 
 def test_enable_systemd_user_service(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

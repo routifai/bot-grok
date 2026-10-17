@@ -109,10 +109,8 @@ dependencies = [
     "openai-agents>=0.0.17",
     "PyJWT[crypto]>=2.8,<3",
     "argon2-cffi>=23.1,<24",
-    # PEP 440 version comparison for the update check / `omni upgrade`
-    # (omnigent/update_check.py, omnigent/cli.py): compares the installed
-    # version against the latest PyPI release. Previously only a
-    # transitive dep; pinned here now that we import it directly.
+    # PEP 440 version parsing (runner, extensions, telemetry); imported
+    # directly, so pinned here rather than left transitive.
     "packaging>=23,<26",
     # CA root bundle for client TLS verification (omnigent/tls.py,
     # omnigent/inner/egress/ca.py). Required as a real fallback on uv /
@@ -264,14 +262,8 @@ dev = [
 ]
 
 [project.scripts]
-# Unified entry point. `omnigent` is the click-based CLI that absorbs
-# the legacy argparse commands from `omnigent/inner/cli.py` plus the
-# omnigent `ap` subcommands. See designs/UNIFICATION.md § CLI
-# absorption. `omni` is installed as a short alias — both resolve to
-# the same entry point. (No former-name aliases: only `omnigent` and
-# `omni` ship, internal and OSS alike.)
+# `omnigent host --server <url>` runs in every host container.
 omnigent = "omnigent.cli:main"
-omni = "omnigent.cli:main"
 
 [tool.uv]
 default-groups = []

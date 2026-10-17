@@ -282,14 +282,10 @@ def test_required_cli_for_cli_backed_harness(harness: str, binary: str) -> None:
 
 
 @pytest.mark.parametrize("harness", ["codex", "pi", "claude-sdk", None])
-def test_setup_hint_defaults_to_omnigent_setup(harness: str | None) -> None:
-    """Harnesses whose CLI ``omni setup`` installs (npm CLIs) — and the
-    SDK / unknown / ``None`` cases — route to the ``omni setup`` hint.
-
-    ``claude-native`` is absent: it names Anthropic's installer instead.
-    """
+def test_setup_hint_defaults_to_generic_install(harness: str | None) -> None:
+    """Harnesses without a named installer get the generic install hint."""
     hint = hi.harness_setup_hint(harness)
-    assert "omni setup" in hint
+    assert "install the harness" in hint
 
 
 @pytest.mark.parametrize("harness", ["claude-sdk"])

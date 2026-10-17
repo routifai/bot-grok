@@ -19,7 +19,6 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from omnigent.cli_invocation import cli_invocation
 from omnigent.errors import ErrorCategory
 
 __all__ = [
@@ -143,7 +142,7 @@ _TERMINAL_EXIT_MATCHERS: tuple[_TerminalMatcher, ...] = (
                 "The host couldn't find the agent's CLI on its PATH, so the terminal "
                 "exited before the session could start."
             ),
-            remediation=f"Install the harness on the host (e.g. run `{cli_invocation()} setup`).",
+            remediation="Install the harness on the host.",
         ),
     ),
     _TerminalMatcher(
@@ -155,10 +154,7 @@ _TERMINAL_EXIT_MATCHERS: tuple[_TerminalMatcher, ...] = (
                 "The agent CLI exited because it has no valid credentials for this "
                 "host — it needs to be logged in before it can run a session."
             ),
-            remediation=(
-                f"Sign the agent in on the host (e.g. run its `/login`, "
-                f"or `{cli_invocation()} login`)."
-            ),
+            remediation="Sign the agent in on the host (e.g. run its `/login`).",
         ),
     ),
     _TerminalMatcher(

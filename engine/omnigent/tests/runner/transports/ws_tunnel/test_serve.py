@@ -558,7 +558,7 @@ async def test_serve_tunnel_fails_loud_on_auth_redirect(
     # what the server is asking for.
     assert login_url in message
     # User-actionable next step.
-    assert "omnigent setup" in message
+    assert "check the credentials" in message
 
 
 @pytest.mark.asyncio

@@ -48,7 +48,6 @@ from typing import NamedTuple
 from packaging.version import InvalidVersion, Version
 
 from omnigent._platform import resolve_cli_binary
-from omnigent.cli_invocation import cli_invocation
 from omnigent.harness_install_spec import HarnessInstallSpec, SetupStep
 from omnigent.onboarding.provider_config import ANTHROPIC_FAMILY, OPENAI_FAMILY
 
@@ -385,7 +384,7 @@ def harness_setup_hint(harness: str | None) -> str:
     :returns: A remediation clause for the "harness not configured" message,
         e.g. ``"install the claude CLI on that machine with `curl -fsSL
         https://claude.ai/install.sh | bash`, then run `claude auth login
-        --claudeai`"`` for Claude, or the ``omni setup`` hint otherwise.
+        --claudeai`"`` for Claude, or a generic install hint otherwise.
     """
     spec = required_cli_for_harness(harness or "")
     if spec is not None and spec.package is None and spec.install_hint:
@@ -393,10 +392,7 @@ def harness_setup_hint(harness: str | None) -> str:
         if spec.login_args:
             login = f", then run `{spec.binary} {' '.join(spec.login_args)}`"
         return f"install the {spec.binary} CLI on that machine with `{spec.install_hint}`{login}"
-    return (
-        f"run `{cli_invocation(name='omni')} setup` on that machine to install "
-        "the CLI and set a default credential"
-    )
+    return "install the harness on that machine and set a default credential"
 
 
 _VERSION_RE = re.compile(r"(\d+\.\d+\.\d+(?:[-.][0-9A-Za-z]+)*)")

@@ -28,7 +28,6 @@ from pathlib import Path
 from typing import Any, TypeAlias, cast
 
 from omnigent._platform import IS_WINDOWS
-from omnigent.cli_invocation import cli_invocation
 from omnigent.debug_logging import debug_event
 from omnigent.inner import terminal_owner_claim as owner_claim
 from omnigent.process_logging import redact_log_text
@@ -2623,8 +2622,7 @@ def create_terminal_instance(
     if IS_WINDOWS:
         raise RuntimeError(
             "Native terminal harnesses (tmux/PTY) are not supported on Windows. "
-            f"Run an SDK-based harness via `{cli_invocation()} run <agent.yaml>` (e.g. the "
-            "claude-sdk or pi harness) or use the web UI."
+            "Run an SDK-based harness (claude-sdk or pi) instead."
         )
     _require_supported_tmux()
 

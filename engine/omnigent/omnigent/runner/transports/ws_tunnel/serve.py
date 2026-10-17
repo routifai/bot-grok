@@ -34,7 +34,6 @@ from websockets.exceptions import (
     WebSocketException,
 )
 
-from omnigent.cli_invocation import cli_invocation
 from omnigent.debug_logging import debug_event, runner_primary_session_id
 from omnigent.runner.identity import (
     OMNIGENT_INTERNAL_WS_ORIGIN,
@@ -516,9 +515,8 @@ async def serve_tunnel(
                         f"{RUNNER_TUNNEL_REJECTION_PREFIX}"
                         f"(redirect to non-WebSocket URL {redirect_url} "
                         f"persisted across {login_redirect_streak} attempts); "
-                        "the server likely requires auth — "
-                        f"run `{cli_invocation()} login {display_server_url(server_url)}` or "
-                        f"`{cli_invocation()} setup` to configure credentials"
+                        "the server likely requires auth — check the credentials "
+                        f"this host presents to {display_server_url(server_url)}"
                     ) from exc
                 retry_reason = (
                     f"login-page redirect during upgrade ({redirect_url}); "

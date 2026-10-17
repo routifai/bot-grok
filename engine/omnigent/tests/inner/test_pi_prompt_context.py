@@ -18,7 +18,6 @@ from typing import Any
 
 import pytest
 
-from omnigent.chat import _bundle_agent
 from omnigent.inner import pi_executor
 from omnigent.inner.executor import ExecutorError, TurnComplete
 from omnigent.runtime.prompt import build_instructions
@@ -33,7 +32,7 @@ _REQUEST_MARKER = "PI_REQUEST_INSTRUCTIONS_21E6"
 
 
 def _uploaded_spec(tmp_path: Path, *, directory: bool) -> tuple[AgentSpec, Path]:
-    """Round-trip the CLI bundle with an inline prompt and a sibling context file."""
+    """Load the agent with an inline prompt and a sibling context file."""
     source = tmp_path / "agent"
     source.mkdir()
     yaml_path = source / "agent.yaml"
@@ -45,7 +44,7 @@ def _uploaded_spec(tmp_path: Path, *, directory: bool) -> tuple[AgentSpec, Path]
         encoding="utf-8",
     )
     (source / "AGENTS.md").write_text(_BUNDLE_MARKER, encoding="utf-8")
-    bundle = _bundle_agent(source if directory else yaml_path)
+    bundle = source if directory else yaml_path
     extracted = tmp_path / "uploaded"
     return load(bundle, dest=extracted), extracted
 
