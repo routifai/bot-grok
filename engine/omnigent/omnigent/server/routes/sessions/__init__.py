@@ -398,7 +398,6 @@ from omnigent.server.routes._sessions.helpers import (
     _record_turn_failure as _record_turn_failure,
     _relay_persist_error_once as _relay_persist_error_once,
     _remove_session_worktree_best_effort as _remove_session_worktree_best_effort,
-    _repl_terminal_ui_labels as _repl_terminal_ui_labels,
     _replace_text_in_message_body as _replace_text_in_message_body,
     _require_cost_control_label_authority as _require_cost_control_label_authority,
     _require_declared_subagent as _require_declared_subagent,

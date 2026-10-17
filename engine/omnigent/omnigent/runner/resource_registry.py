@@ -54,13 +54,6 @@ _DEFAULT_WORKSPACE_ROOT = os.path.join(
     "omnigent-sessions",
 )
 
-# Role marker for the embedded Omnigent REPL terminal auto-created for
-# runner-hosted SDK sessions (``omnigent attach`` in a tmux pane). The
-# attach WebSocket uses
-# this marker to recreate the terminal when its tmux session has died
-# (the REPL exited or crashed) instead of rejecting the attach.
-OMNIGENT_REPL_TERMINAL_ROLE = "omnigent-repl"
-
 _IS_ALIVE_CACHE_TTL_S = 2.0
 _IS_ALIVE_CACHE_MAX = 256
 

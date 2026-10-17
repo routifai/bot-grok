@@ -600,35 +600,6 @@ async def test_no_reasoning_effort_when_spec_has_none() -> None:
 
 
 @pytest.mark.asyncio
-async def test_non_native_host_bound_task_stamps_repl_terminal_label() -> None:
-    """A non-native SDK automation on a host gets ``omnigent.ui = terminal``.
-
-    Its runner auto-creates the omnigent REPL terminal, so the switcher must be
-    available from creation — mirroring ``_repl_terminal_ui_labels``.
-    """
-    conv_store = FakeConversationStore()
-    store = FakeScheduledTaskStore(rows={"task_1": _task()})
-    deps = _deps(
-        store,
-        conversation_store=conv_store,
-        agent_store=FakeAgentStore({"ag_1": _FakeAgent("ag_1", bundle_location="ag_1/hash")}),
-        agent_cache=FakeAgentCache(harness="claude-sdk"),
-    )
-
-    async def _launch(conv: Any, task: Any) -> None:
-        return None
-
-    on_fire = build_on_fire(deps, launch_dispatch=_launch)
-    await on_fire(0, "task_1")
-    await _drain()
-
-    assert conv_store.label_writes["conv_1"] == {
-        "omnigent.ui": "terminal",
-        "omnigent.scheduled_task_id": "task_1",
-    }
-
-
-@pytest.mark.asyncio
 async def test_non_native_task_without_agent_cache_stamps_no_labels() -> None:
     """A non-native SDK task without an agent cache stays Chat-only.
 

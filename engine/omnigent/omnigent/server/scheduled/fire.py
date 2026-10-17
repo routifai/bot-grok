@@ -802,46 +802,6 @@ async def _spec_reasoning_effort(deps: FireDeps, task: ScheduledTask) -> str | N
         return None
 
 
-async def _presentation_labels(deps: FireDeps, task: ScheduledTask) -> dict[str, str]:
-    """Resolve the terminal-first presentation labels for a fired session.
-
-    The interactive New Chat path stamps ``omnigent.ui = "terminal"`` at create
-    time so the web UI's Chat/Terminal switcher is available; the fire path
-    bypasses that path and must stamp the same labels itself, or an
-    automation-created session renders Chat-only with no way to reach its live
-    terminal. Only an SDK agent whose runner auto-creates the ``omnigent`` REPL
-    terminal gets one — host-bound only (an in-process session has no runner to
-    host a terminal), mirroring ``_repl_terminal_ui_labels``.
-
-    Fail-safe: any resolution error omits the labels rather than guessing, so
-    the session falls back to Chat-only rather than breaking the fire.
-    """
-    from omnigent.server.routes.sessions import _repl_terminal_ui_labels
-
-    try:
-        agent = await asyncio.to_thread(deps.agent_store.get, task.agent_id)
-        if agent is None:
-            return {}
-        # The session only gets a REPL terminal when a runner hosts it, so a
-        # task with no resolved host stays Chat-only. Resolving the harness
-        # needs the cache.
-        if task.host_id is None or deps.agent_cache is None:
-            return {}
-        return await asyncio.to_thread(
-            _repl_terminal_ui_labels,
-            agent=agent,
-            agent_cache=deps.agent_cache,
-            harness_override=None,
-        )
-    except Exception:
-        _logger.exception(
-            "scheduled fire: could not resolve presentation labels for task %s; "
-            "session will render Chat-only",
-            task.id,
-        )
-        return {}
-
-
 async def _create_session(
     deps: FireDeps, task: ScheduledTask, *, scheduled_at: int = 0
 ) -> Conversation:
@@ -875,7 +835,7 @@ async def _create_session(
     # Chat/Terminal switcher instead of rendering Chat-only. Stamped last (after
     # the override reload above) so the labels land on the conversation returned
     # to the launch/dispatch caller, not a stale pre-label reload of it.
-    labels = {**await _presentation_labels(deps, task), SCHEDULED_FIRE_LABEL_KEY: task.id}
+    labels = {SCHEDULED_FIRE_LABEL_KEY: task.id}
     await asyncio.to_thread(deps.conversation_store.set_labels, conv.id, labels)
     conv.labels.update(labels)
     return conv

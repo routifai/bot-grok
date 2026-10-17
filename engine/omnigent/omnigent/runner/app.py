@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from omnigent.llms.client import Client as LLMClient
     from omnigent.runner.mcp_manager import RunnerMcpManager
     from omnigent.runner.policy import PolicyVerdict
-    from omnigent.terminals.registry import TerminalListEntry, TerminalRegistry
+    from omnigent.terminals.registry import TerminalRegistry
 
 import httpcore
 import httpx
@@ -97,14 +97,7 @@ from omnigent.runner.mcp_execution_registry import (
     McpExecutionResult,
 )
 from omnigent.runner.proxy_mcp_manager import ProxyMcpManager
-from omnigent.runner.repl_terminal import (
-    REPL_TERMINAL_NAME,
-    REPL_TERMINAL_SESSION_KEY,
-    auto_create_repl_terminal,
-    publish_terminal_pending,
-)
 from omnigent.runner.resource_registry import (
-    OMNIGENT_REPL_TERMINAL_ROLE,
     SessionResourceRegistry,
     TerminalExitEvent,
     trim_terminal_output,
@@ -2904,7 +2897,6 @@ def create_runner_app(
         """True only when the captured generation still matches — fill may write."""
         return _session_cache_generations.get(session_id, 0) == generation
 
-    _repl_terminal_ensure_locks: dict[str, asyncio.Lock] = {}
     _active_turns: dict[str, asyncio.Task[None] | None] = {}
     app.state.active_turns = _active_turns
     # Conversations whose claude-sdk `/compact` published an up-front
@@ -3968,35 +3960,6 @@ def create_runner_app(
         if _sa_name:
             _session_sub_agent_names[session_id] = _sa_name
 
-        if spec is not None and not _sa_name and resource_registry.terminal_registry is not None:
-            _repl_lock = _repl_terminal_ensure_locks.setdefault(session_id, asyncio.Lock())
-            async with _repl_lock:
-                _tr = resource_registry.terminal_registry
-                _has_repl_terminal = (
-                    _tr.get(session_id, REPL_TERMINAL_NAME, REPL_TERMINAL_SESSION_KEY) is not None
-                )
-                if not _has_repl_terminal:
-                    publish_terminal_pending(_publish_event, session_id, True)
-                    try:
-                        repl_agent_spec = await _resolve_session_agent_spec(session_id)
-                    except OmnigentError:
-                        repl_agent_spec = None
-                    try:
-                        await auto_create_repl_terminal(
-                            session_id,
-                            resource_registry,
-                            _publish_event,
-                            server_client=server_client,
-                            agent_spec=repl_agent_spec,
-                        )
-                    except Exception:
-                        _logger.exception(
-                            "Failed to auto-create omnigent REPL terminal for %s",
-                            session_id,
-                        )
-                    finally:
-                        publish_terminal_pending(_publish_event, session_id, False)
-
         # Preserve the initialization contract: undrained child results are
         # recovered before POST /sessions returns. The scan no longer delays
         # native terminal registration because it ran concurrently above.
@@ -4394,7 +4357,6 @@ def create_runner_app(
         _ingest_next_seq.pop(session_id, None)
         _ingest_now_serving.pop(session_id, None)
         _ingest_cond.pop(session_id, None)
-        _repl_terminal_ensure_locks.pop(session_id, None)
         _interrupted_sessions.discard(session_id)
 
         if process_manager is not None:
@@ -8591,37 +8553,6 @@ def create_runner_app(
             },
         )
 
-    async def _recreate_repl_terminal(
-        session_id: str, terminal_id: str
-    ) -> TerminalListEntry | None:
-        if resource_registry is None or resource_registry.terminal_registry is None:
-            return None
-        registry = resource_registry.terminal_registry
-        lock = _repl_terminal_ensure_locks.setdefault(session_id, asyncio.Lock())
-        async with lock:
-            existing = registry.get(session_id, REPL_TERMINAL_NAME, REPL_TERMINAL_SESSION_KEY)
-            if existing is None or not existing.running or not await existing.is_alive():
-                await registry.close(session_id, REPL_TERMINAL_NAME, REPL_TERMINAL_SESSION_KEY)
-                try:
-                    repl_agent_spec = await _resolve_session_agent_spec(session_id)
-                except OmnigentError:
-                    repl_agent_spec = None
-                try:
-                    await auto_create_repl_terminal(
-                        session_id,
-                        resource_registry,
-                        _publish_event,
-                        server_client=server_client,
-                        agent_spec=repl_agent_spec,
-                    )
-                except Exception:
-                    _logger.exception(
-                        "Failed to recreate omnigent REPL terminal for %s",
-                        session_id,
-                    )
-                    return None
-        return resolve_terminal_entry_by_resource_id(session_id, terminal_id, registry)
-
     @app.websocket("/v1/sessions/{session_id}/resources/terminals/{terminal_id}/attach")
     async def terminal_resource_attach_ws(
         websocket: WebSocket,
@@ -8635,23 +8566,12 @@ def create_runner_app(
             terminal_id,
             terminal_registry,
         )
-        terminal_role = (
-            resource_registry.terminal_resource_role(session_id, terminal_id)
-            if resource_registry is not None
-            else None
-        )
         if entry is None or not entry.instance.running or not await entry.instance.is_alive():
-            entry = (
-                await _recreate_repl_terminal(session_id, terminal_id)
-                if terminal_role == OMNIGENT_REPL_TERMINAL_ROLE
-                else None
+            await websocket.close(
+                code=WS_CLOSE_TERMINAL_NOT_FOUND,
+                reason="terminal resource not found or not running",
             )
-            if entry is None:
-                await websocket.close(
-                    code=WS_CLOSE_TERMINAL_NOT_FOUND,
-                    reason="terminal resource not found or not running",
-                )
-                return
+            return
         await bridge_tmux_control_to_websocket(
             websocket,
             socket_path=str(entry.instance.socket_path),
@@ -9730,7 +9650,6 @@ def create_runner_app(
     async def cleanup_session_resources(
         session_id: str,
     ) -> JSONResponse:
-        _repl_terminal_ensure_locks.pop(session_id, None)
         if process_manager is not None:
             await process_manager.release(session_id)
         await resource_registry.cleanup_session(session_id)
@@ -9745,7 +9664,6 @@ def create_runner_app(
 
     @app.post("/v1/sessions/{session_id}/reset-state")
     async def reset_session_state(session_id: str) -> JSONResponse:
-        _repl_terminal_ensure_locks.pop(session_id, None)
         await _teardown_session_terminals(session_id)
         if process_manager is not None:
             await process_manager.release(session_id)

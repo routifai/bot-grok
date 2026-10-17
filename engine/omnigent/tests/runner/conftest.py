@@ -75,9 +75,8 @@ def _drain_session_event_queue(queue: asyncio.Queue[Any] | None) -> list[dict[st
     """
     Drain and return every dict item currently on a runner session queue.
 
-    Used by the control-event tests to clear creation-time events (e.g.
-    the ``session.terminal_pending`` pair the REPL-terminal auto-create
-    path enqueues) so a later drain isolates only the events a specific
+    Used by the control-event tests to clear creation-time events so a
+    later drain isolates only the events a specific
     control signal produced.
 
     :param queue: The per-session event queue from
