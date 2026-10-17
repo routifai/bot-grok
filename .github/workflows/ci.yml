@@ -80,6 +80,49 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
 
+  engine:
+    name: Engine (Python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: engine
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      # uv reads engine/.python-version (3.12) and installs that interpreter.
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: engine/uv.lock
+      - run: uv sync --locked --group dev
+      # The locked ruff (dev group), so a new ruff release cannot turn the job red on its own.
+      - name: Ruff
+        run: |
+          uv run --no-sync ruff check .
+          uv run --no-sync ruff format --check .
+      - name: Layer contracts (ADR 0019)
+        run: uv run --no-sync lint-imports
+      - name: Tests
+        run: uv run --no-sync pytest tests -q -p no:randomly -n auto -m "not databricks"
+
+  host-tests:
+    name: Host scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: engine/.python-version
+      # The host scripts (host/bin) run in the Computer image, not the engine venv; the dashboard
+      # tests need pandas.
+      - run: pip install pandas pytest
+      - run: pytest host/tests -q -p no:randomly
+
   deploy-production:
     if: >-
       github.event_name == 'push' &&
