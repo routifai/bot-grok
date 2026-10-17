@@ -1,8 +1,6 @@
----
-status: accepted
----
-
 # Omnigent owns everything; the engine only runs the model loop
+
+> **Status:** accepted as the engine's own record (it was `rollover/adr/0001`); moved here as 0006. The principle stands; the Side Chats it names were removed by [ADR 0021](0021-one-conversation-messages-link-to-artifacts.md).
 
 The Super Chat (one per user), its Side Chats and its Sub-agents run on the
 Claude SDK engine, switched on per session with
