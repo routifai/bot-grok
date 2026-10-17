@@ -71,7 +71,7 @@ ROLLOVER_CONTEXT_INSTRUCTION = (
     "happened."
 )
 
-# Long-term memory (rollover/MEMORY-PLAN.md Phase 1): what was said in THIS
+# Long-term memory (docs/context.md): what was said in THIS
 # session is session_history's job; what is known about the user ACROSS
 # sessions is memory's. Appended only when the session's labels select
 # rollover, same gate as ROLLOVER_CONTEXT_INSTRUCTION.

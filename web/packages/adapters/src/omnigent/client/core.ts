@@ -101,7 +101,7 @@ export function isSessionNotFoundError(error: unknown): boolean {
 
 /**
  * Throws `OmnigentApiError` on a non-2xx response. The body is redacted with `secrets` before
- * it reaches the thrown message (item 5, docs/super-chat/WIRING.md review); when `secrets` is
+ * it reaches the thrown message (an earlier wiring review); when `secrets` is
  * `undefined` (not just empty — a caller that never wired up the list at all) the body is
  * dropped rather than risking an unredacted leak into a log or an API error message.
  */

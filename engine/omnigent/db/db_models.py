@@ -2217,7 +2217,7 @@ class SqlMemoryClaim(OmnigentBase):
     about a user, written by the ``memory_remember`` tool (Phase 1) or a
     future upkeep job (Phase 3). The table is the source of truth; the txtai
     search index (``omnigent/memory/index.py``) is rebuilt from it on demand.
-    See ``rollover/MEMORY-PLAN.md`` section 3 for the field-by-field design.
+    See ``docs/context.md`` for the field-by-field design.
 
     :param id: UUID primary key stored as 16 raw bytes (see :class:`Uuid16`),
         surfaced as a bare 32-char hex string (no dashes).
@@ -2323,7 +2323,7 @@ class SqlMemoryUpkeepRun(OmnigentBase):
     verify -> apply -> project -> record). The per-user watermark is the
     last ``succeeded`` run's ``window_until`` — there is no separate
     watermark table — and a ``running`` row doubles as that user's
-    single-run lease. See ``rollover/MEMORY-PLAN.md`` section 4.
+    single-run lease. See ``docs/context.md``.
 
     :param id: Unique run identifier (bare 32-char hex string).
     :param user_id: The user this run processed.

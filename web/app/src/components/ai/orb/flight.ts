@@ -1,5 +1,5 @@
 /**
- * The orb's flight from the start page to its home (docs/muse/DESIGN.md "Orb"): one object
+ * The orb's flight from the start page to its home (the old design notes "Orb"): one object
  * moving, not two. Both the hero orb and its destination carry `view-transition-name: superchat-orb`
  * (only one is ever mounted), so the View Transitions API morphs one into the other while the
  * rest of the page crossfades. Where View Transitions are missing, a WAAPI FLIP flies the new

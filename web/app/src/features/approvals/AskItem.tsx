@@ -21,7 +21,7 @@ const KIND_ICON = {
 /**
  * Splits `Key: value` lines (an approval's To / Subject / Body headers) into rows for
  * `DetailRows`; null when the detail doesn't look like that shape, so it renders as quiet
- * text instead (docs/muse/DESIGN.md, "Waiting on you").
+ * text instead (the old design notes, "Waiting on you").
  */
 function parseDetailRows(detail: string): { label: string; value: string }[] | null {
   const lines = detail.split("\n").filter((line) => line.trim().length > 0);
@@ -36,11 +36,11 @@ function parseDetailRows(detail: string): { label: string; value: string }[] | n
 }
 
 /**
- * Renders one open Ask (docs/muse/DESIGN.md, "Waiting on you") as a big decision card: a
+ * Renders one open Ask (the old design notes, "Waiting on you") as a big decision card: a
  * 44px tile for its kind, the title, where it came from and when, what it would do, then the
  * choices (two as an equal pair, the primary in the accent on the right).
  * Shared by the Feed and the Waiting-on-you sheet, so an Ask looks and answers the same
- * everywhere (CONTEXT.md: answering anywhere closes it everywhere). Matches the look of
+ * everywhere (docs/glossary.md: answering anywhere closes it everywhere). Matches the look of
  * `AskCard.tsx` (the Conversation's own ask block), but reads the `Ask` view type instead
  * of a thread message block's shape.
  */
@@ -248,7 +248,7 @@ export type AskGroup = { label: string | null; asks: Ask[] };
 
 /**
  * Splits open Asks into small plain-heading groups (Approvals, Questions, Plans) once
- * there are enough of them that a flat list gets hard to scan (docs/muse/DESIGN.md,
+ * there are enough of them that a flat list gets hard to scan (the old design notes,
  * "Group Asks under small plain headings only when there are more than 4"). Below that,
  * a single ungrouped bucket (`label: null`) keeps the list flat.
  */

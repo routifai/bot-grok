@@ -1032,8 +1032,8 @@ def _apply_memory_profile_to_body(body: _JsonObject, block: str | None) -> _Json
     empty block). Mutates only the in-flight request for this turn — the
     persisted user item, ``_session_histories`` and
     ``_session_message_buffers`` copies of *body* are untouched, and the
-    block never reaches a rollover summary (``rollover/SUPERSIDE-CHAT-PLAN.md``
-    S6). Shares :func:`_prefix_content_with_tail`'s shape handling (flat
+    block never reaches a rollover summary (``docs/context.md``). Shares
+    :func:`_prefix_content_with_tail`'s shape handling (flat
     content blocks vs. a history-list turn).
 
     :param body: This turn's outgoing harness body (``{"content": ...}``).
@@ -5933,7 +5933,7 @@ def create_runner_app(
             return
         if entry.superside_chat:
             # Inline the Result itself rather than only "N results waiting"
-            # (rollover/SUPERSIDE-CHAT-PLAN.md slice S3); sys_read_inbox
+            # (docs/helpers.md); sys_read_inbox
             # later sees entry.wake_inlined and won't repeat it.
             notice = format_subagent_wake_notice_with_result(
                 agent=entry.agent,
@@ -7818,8 +7818,7 @@ def create_runner_app(
                 # superside-chat turn sent this way would run with the
                 # engine's own competing compaction/memory still on (ADR
                 # 0001: Omnigent, not the engine, owns that). Refuse rather
-                # than silently degrade (rollover/SUPERSIDE-CHAT.md Known
-                # limits).
+                # than silently degrade (docs/context.md, ADR 0006).
                 from omnigent.context.labels import is_superside_chat
 
                 _stream_guard_labels = await _rollover_labels_for_session(conversation_id)

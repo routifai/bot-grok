@@ -18,7 +18,7 @@ const BUTTON =
   "h-[34px] min-w-0 truncate rounded-xl px-3 text-[14px] font-medium transition-[background-color,filter] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60";
 
 /**
- * One open Ask as a decision card (docs/muse/DESIGN.md "Waiting on you"): a colored tile, the
+ * One open Ask as a decision card (the old design notes "Waiting on you"): a colored tile, the
  * title and a quiet line, then two equal buttons, the secondary choice on the left and the
  * primary in the accent on the right. An Ask that needs typing, or has more choices, offers
  * one button that opens Waiting on you instead.

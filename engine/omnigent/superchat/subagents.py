@@ -1,6 +1,6 @@
 """Sub-agents for ``superside-chat``: launch-by-Type, caps, Result delivery.
 
-Pure decision logic for slice S3 (``rollover/SUPERSIDE-CHAT-PLAN.md``): the
+Pure decision logic for slice S3 (``docs/helpers.md``): the
 async I/O (REST lookups, the wake POST) stays in ``omnigent/runner/app.py``
 and ``omnigent/runner/tool_dispatch.py``; this module holds the gated,
 testable rules those call sites apply. Everything here is a no-op outside
@@ -98,7 +98,7 @@ def refuse_subagent_concurrency(
     Two independent caps, either can refuse: the Sub-agent Type's own
     ``max_sessions`` (counted against sub-agents of that one Type under the
     caller), and the tree-wide default (counted against every Sub-agent
-    Type together) — see ``rollover/SUPERSIDE-CHAT-PLAN.md`` slice S3.
+    Type together) — see ``docs/helpers.md``.
 
     :param live_count_of_type: Live children of the Type about to be
         dispatched.
@@ -128,7 +128,7 @@ def refuse_subagent_concurrency(
 def refuse_subagent_nesting(*, caller_kind: str | None, parent_kind: str | None) -> str | None:
     """Return why a sub-agent launch must be refused for nesting, or ``None``.
 
-    ``rollover/CONTEXT.md`` Relationships: "A Sub-agent launched by a chat
+    ``docs/glossary.md`` Relationships: "A Sub-agent launched by a chat
     may launch its own Sub-agents (acting as a coordinator); those cannot
     launch any further. At most two levels below a chat." The chat itself
     (``caller_kind != "sub_agent"``) and its direct Sub-agent (one level
@@ -160,7 +160,7 @@ def refuse_subagent_dispatch_override(
 ) -> str | None:
     """Return why a per-dispatch override must be refused, or ``None``.
 
-    ``rollover/CONTEXT.md`` ("Sub-agent Type"): a superside-chat session
+    ``docs/glossary.md`` ("Sub-agent Type"): a superside-chat session
     launches a Sub-agent by its declared Type, never by naming a model —
     the Type's own ``config.yaml`` (model, reasoning effort) decides.
 
@@ -294,7 +294,7 @@ def format_subagent_wake_notice_with_result(
 ) -> str:
     """Build a superside-chat wake notice that inlines the Result itself.
 
-    ``rollover/CONTEXT.md`` ("Result"): the sub-agent's final message is
+    ``docs/glossary.md`` ("Result"): the sub-agent's final message is
     "the only thing a chat receives from a sub-agent without asking" — so
     for a superside-chat parent the wake carries that message directly
     rather than only "N results waiting in inbox".

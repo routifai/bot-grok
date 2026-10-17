@@ -341,7 +341,7 @@ def register_items_routes(
         return {"session_id": session_id, "unread": False, "last_read_at": read_at}
 
     # ── GET /sessions/{session_id}/context_summary ────────────────
-    # "Knows our conversation" hover (docs/super-chat/WIRING.md): the
+    # "Knows our conversation" hover (docs/architecture.md): the
     # session's own latest rollover checkpoint, if it has rolled over.
 
     @router.get(

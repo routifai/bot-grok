@@ -31,7 +31,7 @@ import { FoldedText } from "./FoldedText";
 import { MessageArtifactChip } from "./MessageArtifactChip";
 import { ArtifactImage } from "./message-cards";
 
-/** Muse mode only: one quiet line for a tool-activity block (docs/muse/DESIGN.md "Conversation"). */
+/** Muse mode only: one quiet line for a tool-activity block (the old design notes "Conversation"). */
 function ToolActivityStep({ block }: { block: ThreadMessage["blocks"][number] }) {
   const label =
     block.kind === "steps"

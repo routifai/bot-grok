@@ -1,8 +1,8 @@
 import type { Activity, ActivityStatus } from "@superchat/contracts";
 import { markdownToLine } from "../../lib/markdown-plain-text";
 
-// Pure helpers for the Activity panel (docs/super-chat/README.md "The Activity panel";
-// docs/super-chat/WIRING.md "Activity panel"): grouping by day, the line shown under a title,
+// Pure helpers for the Activity panel (docs/helpers.md "The activity panel";
+// docs/helpers.md "The activity panel"): grouping by day, the line shown under a title,
 // clock times, and the polling cadence decision. Kept free of React/i18n so
 // activityGrouping.test.ts can exercise every branch directly.
 
@@ -28,7 +28,7 @@ export function activitiesPollIntervalMs(
   return watching ? ACTIVITY_POLL_IDLE_WATCHED_MS : ACTIVITY_POLL_IDLE_MS;
 }
 
-/** A Helper's whole task (CONTEXT.md "Helper"; engine "sub_agent"), whose run page can show
+/** A Helper's whole task (docs/glossary.md "Helper"; engine "sub_agent"), whose run page can show
  * the Helper's own messages, as opposed to a plain Conversation/Side Chat turn ("turn"). */
 export function isHelperActivity(activity: Pick<Activity, "kind">): boolean {
   return activity.kind === "sub_agent";

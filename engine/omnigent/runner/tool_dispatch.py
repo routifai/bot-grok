@@ -2426,7 +2426,7 @@ async def _execute_subagent_tool(
         concurrency cap, Memory Profile, Result-in-wake) and, when the
         caller is a superside-chat session, is forwarded (filtered to the
         inheritable set) so the child inherits the mode — see
-        ``rollover/SUPERSIDE-CHAT-PLAN.md`` slice S3.
+        ``docs/helpers.md``.
     :param workspace: Absolute folder a newly created child works in, set before its first
         message; ``None`` keeps the parent's current folder, which the child inherits at create.
     :param project_name: Card name of the Project ``workspace`` is, if it is one.
@@ -3112,7 +3112,7 @@ async def _execute_subagent_tool(
 
     if created_child and is_superside_chat(labels):
         # A new sub-agent starts from its Brief plus the Memory Profile
-        # (rollover/CONTEXT.md: "Sub-agent"); never on a continuation.
+        # (docs/glossary.md: "Sub-agent"); never on a continuation.
         message = prepend_memory_profile(
             message, await _fetch_memory_profile_block(server_client, conversation_id)
         )
@@ -3638,7 +3638,7 @@ async def _execute_session_create(
         message = args.get("message")
         if is_superside_chat(labels) and isinstance(message, str) and message:
             # A new child starts from its Brief plus the Memory Profile
-            # (rollover/CONTEXT.md: "Sub-agent"), same as the named launch path.
+            # (docs/glossary.md: "Sub-agent"), same as the named launch path.
             message = prepend_memory_profile(
                 message, await _fetch_memory_profile_block(server_client, conversation_id)
             )

@@ -83,7 +83,7 @@ function activeRunFor(runs: readonly MuseLiveRun[]): MuseLiveRun | undefined {
 }
 
 /**
- * Standalone derivation of the live Muse state (docs/muse/DESIGN.md), self-sufficient
+ * Standalone derivation of the live Muse state (the old design notes), self-sufficient
  * beyond the live run/message data every muse-mode surface already has: the sidebar's
  * top card, the Conversation header's live label, the transcript's gutter face, and
  * its bottom-of-transcript "thinking/working" row all call this directly instead of

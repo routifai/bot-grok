@@ -1172,12 +1172,12 @@ def create_app(
         tools themselves still register in rollover sessions but return a
         clear "not configured" error when invoked.
     :param memory_upkeep_store: Store backing Phase 3 memory upkeep runs
-        (``rollover/MEMORY-PLAN.md``). When set together with
+        (``docs/context.md``). When set together with
         *memory_service*, a :class:`~omnigent.server.memory_upkeep.MemoryUpkeepCoordinator`
         is exposed on ``app.state.memory_upkeep_coordinator`` and an hourly
         sweep runs for the server's lifetime; a ``superside-chat`` session's
         compaction event schedules a run through it
-        (``rollover/SUPERSIDE-CHAT-PLAN.md`` S6). ``None`` leaves the
+        (``docs/context.md``). ``None`` leaves the
         trigger disabled (``app.state.memory_upkeep_coordinator`` is
         ``None``), not broken.
     :param project_store: Store for first-class projects (owner-private
@@ -1600,7 +1600,7 @@ def create_app(
         # Super Chat feature background jobs (quiet moment, ...).
         await start_feature_jobs(app_inst)
 
-        # Memory upkeep hourly sweep (rollover/SUPERSIDE-CHAT-PLAN.md S6):
+        # Memory upkeep hourly sweep (docs/context.md):
         # the compaction trigger (routes_events.py) catches most signal
         # promptly; this catches a superside-chat user whose session never
         # compacted. The coordinator itself was already built above (not
@@ -3075,7 +3075,7 @@ def create_app(
             prefix="/v1",
             tags=["memory"],
         )
-    # Memory upkeep trigger (rollover/SUPERSIDE-CHAT-PLAN.md S6): built
+    # Memory upkeep trigger (docs/context.md): built
     # eagerly (not inside the lifespan) so a test — or any caller — that
     # never triggers ASGI startup still sees the real coordinator (or
     # ``None``) on ``app.state`` right after construction. The hourly

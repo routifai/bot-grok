@@ -1,4 +1,4 @@
-"""Phase 3 of ``rollover/MEMORY-PLAN.md``: the memory upkeep job.
+"""``docs/context.md``: the memory upkeep job.
 
 The self-improvement loop: window -> gate -> extract -> verify -> apply ->
 record (section 4). Pure pipeline logic lives here;

@@ -1,7 +1,7 @@
 """Rollover: thresholds, the checkpoint header and summarizer instruction.
 
 In a rollover session each native CLI compacts its own context at
-:func:`resolve_rollover_threshold` (see ``rollover/README.md``).
+:func:`resolve_rollover_threshold` (see ``docs/context.md``).
 """
 
 from __future__ import annotations
@@ -802,7 +802,7 @@ def build_post_compaction_tail(
     Build the once-per-compaction verbatim-tail block, or ``None``.
 
     Claude Code and Codex compact themselves at Omnigent's threshold, but
-    their own compaction keeps less than Pi's (see ``rollover/README.md``):
+    their own compaction keeps less than Pi's (see ``docs/context.md``):
     Claude Code keeps only its summary; Codex keeps its summary plus user
     text only. This reproduces Pi's (and Muse's) design elsewhere — a
     verbatim tail of the whole turns right before the boundary — from what

@@ -9,7 +9,7 @@
 @source "../../packages/ui-web/src/**/*.{ts,tsx}";
 @source "./src/**/*.{ts,tsx}";
 
-/* Muse edition type and elevation (docs/muse/DESIGN.md). */
+/* Muse edition type and elevation (the old design notes). */
 @theme {
   --font-display: "Instrument Serif", ui-serif, Georgia, serif;
   --font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
@@ -324,14 +324,14 @@ body {
   mask-image: linear-gradient(to bottom, transparent 0, #000 88px);
 }
 
-/* Muse glass shell (docs/muse/DESIGN.md "Background wash"): the shell root paints the
+/* Muse glass shell (the old design notes "Background wash"): the shell root paints the
    ground with one soft radial wash; the rail, chat and context panels float above it as
    translucent `panel` surfaces. A plain gradient, not a blur filter, so it paints once. */
 [data-product="muse"] .muse-wash {
   background-color: var(--window);
 }
 
-/* Superchat's Mac window (docs/muse/DESIGN.md "Window"): the content is one rounded window on
+/* Superchat's Mac window (the old design notes "Window"): the content is one rounded window on
    the window ground; the sidebar and inspector float inside it as glass panels inset 8px. */
 [data-product="muse"] {
   --superchat-window-shadow: 0 10px 30px rgb(0 0 0 / 0.08), 0 0 0 0.5px rgb(0 0 0 / 0.1);

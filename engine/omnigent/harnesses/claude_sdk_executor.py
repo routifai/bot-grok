@@ -726,7 +726,7 @@ _CLAUDE_PATH_ENV = "OMNIGENT_CLAUDE_PATH"
 
 # superside-chat turns off every Claude Code feature that would compete
 # with Omnigent for ownership of context/sub-agents/memory (ADR
-# rollover/adr/0001-omnigent-owns-everything.md). Same env vars
+# docs/adr/0006-omnigent-owns-everything.md). Same env vars
 # claude_native/main.py sets for a rollover terminal.
 _CLAUDE_CODE_DISABLE_AUTO_COMPACT_ENV = "DISABLE_AUTO_COMPACT"
 _CLAUDE_CODE_DISABLE_AUTO_MEMORY_ENV = "CLAUDE_CODE_DISABLE_AUTO_MEMORY"
@@ -2579,7 +2579,7 @@ class ClaudeSDKExecutor(Executor):
         model = cfg.model or self._model_override
 
         # Omnigent owns context, memory and sub-agents for a superside-chat
-        # session (rollover/adr/0001-omnigent-owns-everything.md); every
+        # session (docs/adr/0006-omnigent-owns-everything.md); every
         # competing Claude Code feature below is gated on this and a no-op
         # otherwise.
         is_superside_chat = cfg.extra.get("context_mode") == SUPERSIDE_CHAT_MODE_VALUE

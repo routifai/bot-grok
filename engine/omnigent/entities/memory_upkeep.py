@@ -1,6 +1,6 @@
 """Memory upkeep run entity — persisted in the ``memory_upkeep_runs`` table.
 
-See ``rollover/MEMORY-PLAN.md`` Phase 3 for the design: one row per upkeep
+See ``docs/context.md`` for the design: one row per upkeep
 run (window -> gate -> extract -> verify -> apply -> project -> record),
 watermarked per user from the last *succeeded* run's ``window_until``.
 """

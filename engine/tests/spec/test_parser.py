@@ -2012,7 +2012,7 @@ def test_parse_sub_agent_max_sessions(tmp_path: Path) -> None:
     """A Sub-agent Type's own top-level max_sessions: parses onto its spec.
 
     Mirrors examples/super-chat/agents/*/config.yaml (slice S3,
-    rollover/SUPERSIDE-CHAT-PLAN.md): the directory-bundle parser must read
+    docs/architecture.md): the directory-bundle parser must read
     this into AgentSpec.max_sessions, not just the legacy inline loader.
     """
     parent_config = {

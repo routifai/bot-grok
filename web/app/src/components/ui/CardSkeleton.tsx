@@ -2,7 +2,7 @@ import { t } from "@lingui/core/macro";
 
 /**
  * Quiet placeholder blocks for a loading list of cards — no "Loading…" text
- * (docs/muse/DESIGN.md, "Motion" and the redesign brief's loading-state rule).
+ * (the old design notes, "Motion" and the redesign brief's loading-state rule).
  */
 export function CardSkeletonList({ count = 3 }: { count?: number }) {
   return (

@@ -1,4 +1,4 @@
-"""Routes for long-term memory (``rollover/MEMORY-PLAN.md`` Phase 1).
+"""Routes for long-term memory (``docs/context.md``).
 
 All endpoints live under ``/v1/sessions/{session_id}/memory``: reads require
 ``LEVEL_READ`` on the session, writes (``remember``/``forget``) require
@@ -114,7 +114,7 @@ def create_session_memory_router(
         """The session owner's Memory Profile, wrapped in the delimiter block.
 
         Read by the runner process (``omnigent/runner/app.py``) every
-        ``superside-chat`` turn (SUPERSIDE-CHAT-PLAN.md S6) — a plain HTTP
+        ``superside-chat`` turn (docs/context.md) — a plain HTTP
         GET rather than an in-process call since the runner may be a
         separate process with no runtime access.
         """

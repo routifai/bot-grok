@@ -2,7 +2,7 @@ import type { Activity } from "@superchat/contracts";
 import { presentStep } from "@superchat/core";
 import { isRunning } from "./activityGrouping";
 
-// Helpers nest: a Helper that hands part of its task to others (CONTEXT.md "Helper") lists those
+// Helpers nest: a Helper that hands part of its task to others (docs/glossary.md "Helper") lists those
 // parts under it. Pure, so the panel row and the chat's tracker share one reading of the feed.
 
 export interface ActivityNode {

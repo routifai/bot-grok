@@ -142,7 +142,7 @@ function EmptyActivities() {
 }
 
 /**
- * The Activity panel's ledger (docs/super-chat/README.md "The Activity panel"): a quiet
+ * The Activity panel's ledger (docs/helpers.md "The activity panel"): a quiet
  * log beside the Conversation, one calm line per piece of work, grouped by day, newest
  * first. Opening a line opens the run page (ActivityRunDialog), which is kept resynced
  * to this same list by id, so it never shows a stale snapshot while the poll updates

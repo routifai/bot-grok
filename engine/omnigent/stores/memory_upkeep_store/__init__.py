@@ -1,6 +1,6 @@
 """Memory-upkeep-run store — persists Phase 3 upkeep run records.
 
-See ``rollover/MEMORY-PLAN.md`` section 4 for the design: one row per
+See ``docs/context.md`` for the design: one row per
 upkeep run; the per-user watermark is derived from the last ``succeeded``
 run's ``window_until`` (no separate watermark table), and a ``running`` row
 doubles as that user's single-run lease.

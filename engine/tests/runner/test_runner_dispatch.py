@@ -3442,7 +3442,7 @@ async def test_sys_session_send_superside_chat_refuses_dispatch_override(
 async def test_sys_session_send_superside_chat_nesting_cap_refuses_coordinators_child() -> None:
     """A sub-agent whose own parent is already a sub-agent cannot launch further.
 
-    rollover/CONTEXT.md Relationships: at most two levels below a chat.
+    docs/glossary.md Relationships: at most two levels below a chat.
     """
     from omnigent.runner import app as runner_app
     from omnigent.runner.tool_dispatch import execute_tool
@@ -4933,7 +4933,7 @@ async def test_sys_cancel_task_interrupts_non_native_subagent() -> None:
 async def test_sys_cancel_task_rejects_foreign_tracked_entry() -> None:
     """A tracked sub-agent can only be cancelled by its own Originating Chat.
 
-    rollover/SUPERSIDE-CHAT-PLAN.md slice S3 item 7: verify
+    docs/helpers.md: verify
     ``sys_cancel_task`` refuses a cancel from a session that is not the
     work entry's registered ``parent_session_id`` — the primary (non-evicted)
     ownership guard, distinct from the eviction-recovery path covered by

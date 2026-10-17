@@ -2,7 +2,7 @@
 
 A :class:`MemoryClaim` is one durable fact, preference, instruction, decision,
 person, project, or working-style note learned about a user. See
-``rollover/MEMORY-PLAN.md`` section 3 for the design and
+``docs/context.md`` for the design and
 ``omnigent/memory/`` for the service built on top of this store.
 """
 

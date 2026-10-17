@@ -3,8 +3,8 @@
 An **Activity** is never stored: it is derived on read from existing
 conversations and items — a Super Chat turn that
 included at least one tool call, or a whole Sub-agent session. See
-``rollover/CONTEXT.md`` (Activity, Activity Feed, Step) and
-``rollover/SUPERSIDE-CHAT-PLAN.md`` (slice S5).
+``docs/glossary.md`` (Activity, Activity Feed, Step) and
+``docs/helpers.md``.
 
 Reuses ``_project_activity_item`` from ``omnigent.tools.builtins.spawn``
 for step/detail projection rather than re-implementing it.

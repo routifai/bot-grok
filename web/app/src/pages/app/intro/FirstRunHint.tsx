@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { useFirstRun } from "./useFirstRun";
 
 /**
- * A one-time contextual hint (docs/muse/DESIGN.md-style: calm, one line, no slideshow):
+ * A one-time contextual hint (the old design notes-style: calm, one line, no slideshow):
  * wraps the real element it explains and, the first time that element is seen, shows a
  * small callout under (or over) it with the explanation and a "Got it". Once dismissed —
  * by "Got it" or, for the person who never notices it, simply by moving on — it never

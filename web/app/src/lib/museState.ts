@@ -21,7 +21,7 @@ function dominantRunStatus(runs: readonly MuseStateRun[]): string | undefined {
 }
 
 /**
- * One source of truth for the live Muse state (docs/muse/DESIGN.md): derived from the
+ * One source of truth for the live Muse state (the old design notes): derived from the
  * live run data — never a bot row's `status`, which is a snapshot that rarely reflects
  * an in-flight run — plus the open-Ask count, which always wins over an active run.
  * Reuses `museAvatarState`'s idle/thinking/working/waiting rules for a single status.

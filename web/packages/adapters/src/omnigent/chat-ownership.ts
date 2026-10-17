@@ -3,7 +3,7 @@ import { isSessionNotFoundError } from "./client/core.js";
 import { getOmnigentSession } from "./client/sessions.js";
 
 // The ownership rule that lets a client resolve a bare chatId (a Helper's chat) to the
-// Conversation (bot) it belongs to before ever trusting it (docs/super-chat/WIRING.md "chats.*").
+// Conversation (bot) it belongs to before ever trusting it (docs/architecture.md).
 
 export interface ChatOwnership {
   /** The Conversation's bot the chat belongs to. */

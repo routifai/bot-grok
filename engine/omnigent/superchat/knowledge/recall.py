@@ -1,6 +1,6 @@
 """Recall: one search over the person's files, journal, conversation turns and claims.
 
-ADR 0016, contract C2; ``docs/super-chat/recall.md`` 3.2, 7, 8.3 and 9. The ``recall`` tool (the
+ADR 0016, contract C2; ``docs/context.md`` "Recall". The ``recall`` tool (the
 pull) and the hint both call :func:`recall_search`. Each sub-query runs BM25 and vectors over
 the Computer's index (keyword-only when the owner cannot embed); claims about the person come
 from the engine through the caller's *claims* search. Every ranking of every sub-query is fused

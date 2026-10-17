@@ -109,7 +109,7 @@ export const MessageBlock = z.discriminatedUnion("kind", [
     result: z.string().optional(),
   }),
   z.object({
-    /** A Helper the Muse started (CONTEXT.md "Helper"): a live row under the hand-off message.
+    /** A Helper the Muse started (docs/glossary.md "Helper"): a live row under the hand-off message.
         Only the id and a fallback title travel here; its progress is read live from the Activity
         feed (`helperId` is the Helper's chat id, an Activity's `chatId`). */
     kind: z.literal("helper"),

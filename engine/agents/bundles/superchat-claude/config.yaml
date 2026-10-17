@@ -1,13 +1,13 @@
 # GENERATED FILE — do not edit by hand. Edit engine/agents/templates/ (config.yaml.tmpl,
 # AGENTS.md, agents/<type>/config.yaml), then run `node engine/agents/render-agents.mjs`.
 #
-# Superchat's Super Chat bundle (docs/super-chat/README.md, WIRING.md slice A1): the one agent
+# Superchat's Super Chat bundle (docs/architecture.md): the one agent
 # bundle backing `omnigent.context.mode=superside-chat` Conversations, adapted from
 # engine/omnigent/examples/super-chat/ for Superchat. Runs on the Claude Agent SDK harness, with
 # Sub-agent Types worker under agents/<type>/ — a Muse launches one by its
 # declared name, never by naming a model. The prompt (AGENTS.md) carries the Superchat/Muse voice;
 # per-turn Memory, Rollover and the Activity Feed all come from Omnigent itself
-# (ADR 0001, docs/rollover/adr/0001-omnigent-owns-everything.md) — Superchat no longer
+# (ADR 0001, docs/adr/0006-omnigent-owns-everything.md) — Superchat no longer
 # injects anything through a context-provider hook.
 spec_version: 1
 name: superchat-claude
@@ -69,7 +69,7 @@ tools:
     - suggest_follow_ups
   # The Sub-agent Types this Super Chat may launch — see agents/<dir>/. Each has its own
   # executor and max_sessions; a turn launches one by its declared `name`, never by naming a
-  # model (CONTEXT.md "Sub-agent Type").
+  # model (docs/glossary.md "Sub-agent Type").
   agents:
     - worker
     # System-started only (daily-note passes): no Helper role, so start_helper never picks it.

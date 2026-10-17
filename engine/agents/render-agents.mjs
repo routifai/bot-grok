@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Renders Superchat's single Omnigent Super Chat bundle (`superchat-claude`,
-// docs/super-chat/WIRING.md slice A1) from the templates under engine/agents/templates/, so
+// docs/architecture.md) from the templates under engine/agents/templates/, so
 // the prompt, config and Sub-agent Types stay generated rather than hand-edited. Run after
 // editing anything under templates/:
 //
@@ -40,8 +40,8 @@ const MUSE_BUNDLES = [
     skillsFilter: "skills: none",
   },
 ];
-/** One directory per Sub-agent Type (CONTEXT.md), each a config.yaml template rendered with the
- * bundle's harness keys. */
+/** One directory per Sub-agent Type (docs/glossary.md), each a config.yaml template rendered
+ * with the bundle's harness keys. */
 const SUB_AGENT_TYPES = ["worker", "worker/agents/subworker", "notes"];
 /** The deck kit's layout menu (engine/omnigent/superchat/decks/kit/menu.md). */
 const DECK_LAYOUTS_PATH = "../omnigent/superchat/decks/kit/menu.md";

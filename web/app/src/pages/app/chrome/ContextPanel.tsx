@@ -134,7 +134,7 @@ function IdentityHeader({
 }
 
 /**
- * The Conversation's right-hand context panel (docs/muse/DESIGN.md): the Muse's identity,
+ * The Conversation's right-hand context panel (the old design notes): the Muse's identity,
  * then its Activity, Memory, and (what's waiting / in progress / coming up) in a segmented
  * tab bar — nothing that isn't already shown elsewhere, just surfaced beside the chat
  * instead of a click away. Hidden below 1280px (the caller controls that with CSS;

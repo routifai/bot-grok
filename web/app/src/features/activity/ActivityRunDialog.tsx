@@ -33,7 +33,7 @@ function RunStatusPill({ status, label }: { status: Activity["status"]; label: s
 }
 
 /** One Step's icon on the Steps timeline: the tool's own icon (never its raw name —
- * docs/super-chat/README.md "The Activity panel"), gently pulsing only for the latest
+ * docs/helpers.md "The activity panel"), gently pulsing only for the latest
  * step of a run still in progress (the motion is the signal, not a color), respecting
  * reduced motion via `motion-safe:`. */
 function StepIcon({ icon, live }: { icon: keyof typeof TOOL_ICON_COMPONENT; live: boolean }) {
@@ -132,7 +132,7 @@ function StepsTimeline({ steps, running }: { steps: ActivityStep[]; running: boo
   );
 }
 
-/** A Helper's messages, read-only (CONTEXT.md "Helper": "Visible, read-only"): no
+/** A Helper's messages, read-only (docs/glossary.md "Helper": "Visible, read-only"): no
  * composer, one line saying so, reusing the Side Chat session's own bubble rendering. */
 function HelperReadView({
   botId,

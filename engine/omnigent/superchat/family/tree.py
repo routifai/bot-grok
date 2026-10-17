@@ -111,7 +111,7 @@ def list_chat_family(conv_store: ConversationStore, super_chat_id: str) -> list[
 
     Returns ``[]`` when ``super_chat_id`` does not exist or is not a
     ``superside-chat`` session — the Activity Feed only ever covers that
-    mode (``rollover/SUPERSIDE-CHAT-PLAN.md`` S5).
+    mode (``docs/helpers.md``).
 
     :param conv_store: Store to query.
     :param super_chat_id: The Super Chat's conversation id.

@@ -12,7 +12,7 @@ export type TileTone =
   | "teal"
   | "gray";
 
-/** A colored app tile (docs/muse/DESIGN.md "Tiles"): a rounded square with a soft gradient
+/** A colored app tile (the old design notes "Tiles"): a rounded square with a soft gradient
  * (`tile-*` tokens, `.superchat-tile` in styles.css) and a white glyph. */
 export function SuperchatTile({
   tone,

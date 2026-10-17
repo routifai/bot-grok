@@ -17,7 +17,7 @@ type InboxTab = "all" | "approvals" | "questions";
  * The Inbox: every open Ask, newest first, as decision cards answerable in place (approvals
  * with their choices, questions with theirs), then what was decided here this session. Tabs
  * split All / Approvals / Questions. The dock's dot and this list share `useAsks`, so answering
- * here (or in the Conversation) closes the Ask everywhere at once (CONTEXT.md, "Ask").
+ * here (or in the Conversation) closes the Ask everywhere at once (docs/glossary.md, "Ask").
  */
 export function WaitingSheet({
   botId,

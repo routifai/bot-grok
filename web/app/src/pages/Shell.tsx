@@ -69,7 +69,7 @@ import { SettingsHost } from "./app/settings/SettingsHost";
 import { useShellSettings } from "./app/settings/useShellSettings";
 import { DockSheets } from "./app/sheets/DockSheets";
 
-/** Superchat's Mac window (docs/muse/DESIGN.md "Window"): the Conversation and the other screens
+/** Superchat's Mac window (the old design notes "Window"): the Conversation and the other screens
  * sit flat on the rounded content window; only the sidebar, the inspector and side panels
  * float as glass inside it. */
 /** Every orb brightens while Superchat works (useSuperchatWork). */

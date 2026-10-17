@@ -4,8 +4,9 @@ Thanks for helping improve Superchat. Keep changes focused and testable.
 
 ## Run locally
 
-Follow the [source checkout setup](README.md#local-development-source-checkout) for prerequisites,
-required secrets, and startup commands.
+Run the stack with Docker as in [docs/setup.md](docs/setup.md), then `pnpm install && pnpm dev` for
+the web dev server against it (see [Builds](docs/setup.md#builds)). Engine tests run one file at a
+time from `engine/` ([engine/README.md](engine/README.md)).
 
 ## Checks before you open a PR
 
@@ -34,12 +35,8 @@ Update the locale unit tests for the new locale.
 - **Never** paste API keys, tokens, or passwords in issues or PRs.
 - Use placeholders in examples (`your-openrouter-key`, etc.).
 
-Turns run on the Omnigent engine; `pnpm dev` proxies to it at `OMNIGENT_URL`.
-
-**Integrations** can use [Composio](https://composio.dev/) or Pipedream Connect as optional managed
-app catalogs. Users can also install HTTPS MCP servers (including Treg) and bounded OpenAPI tool
-sources. Connector tests must stay deterministic and offline. Never put connector credentials in
-capability config, fixtures, logs, or snapshots; use the encrypted secret store and fake placeholders.
+Turns run on the engine; `pnpm dev` proxies to it at `OMNIGENT_URL`. Which secrets exist and which
+never leave the engine: [docs/setup.md](docs/setup.md#secrets).
 
 ## Pull requests
 

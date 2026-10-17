@@ -13,7 +13,7 @@ const KIND_GLYPH: Record<ArtifactKind, typeof FileText> = {
 };
 
 /**
- * A result in the Conversation as a media tile (docs/muse/DESIGN.md "Results"): a dark rounded
+ * A result in the Conversation as a media tile (the old design notes "Results"): a dark rounded
  * card with a deep blue glow, the brand line and a big title on the left, art on the right, and
  * a white "Open" pill with a meta line at the bottom. `art` is the real preview when Superchat has
  * one (framed like a window rising from the bottom edge); otherwise `MediaArt` draws one for

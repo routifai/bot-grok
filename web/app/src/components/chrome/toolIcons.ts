@@ -13,7 +13,7 @@ import {
   Search,
 } from "lucide-react";
 
-// A Step's icon (docs/super-chat/README.md "The Activity panel"; the owner's "always show
+// A Step's icon (docs/helpers.md "The activity panel"; the owner's "always show
 // icons, never the tool name"): one lucide icon per `ToolIconKey`
 // (web/packages/core/src/tool-presentation.ts), reusing `Fingerprint` from the Memory tab
 // (ContextPanel.tsx) so "memory" reads the same way in both places.

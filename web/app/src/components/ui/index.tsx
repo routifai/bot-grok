@@ -3,7 +3,7 @@ import type { LucideIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { type IllustrationKey, illustrationUrl } from "../../lib/illustrations";
 
-// Shared building blocks for the Muse screens (docs/muse/DESIGN.md). Every Muse screen
+// Shared building blocks for the Muse screens (the old design notes). Every Muse screen
 // composes these so spacing, type, and surfaces stay identical across Conversation,
 // Library, and the Inbox. Colors come only from the semantic
 // tokens; type comes only from the scale below.
@@ -67,7 +67,7 @@ export function MuseWideCenter({ className, ...props }: ComponentProps<"div">) {
 }
 
 /**
- * A screen's hero (docs/muse/DESIGN.md "Screens"): the section's colored tile, a 28px bold
+ * A screen's hero (the old design notes "Screens"): the section's colored tile, a 28px bold
  * title over one quiet line, and an optional control on the right.
  */
 export function ScreenHero({
@@ -193,7 +193,7 @@ export function MuseScreen({
 }
 
 /**
- * The one top chrome bar, shared by every Muse section (docs/muse/DESIGN.md): same
+ * The one top chrome bar, shared by every Muse section (the old design notes): same
  * height, padding and hairline border as the Conversation's, a title, optional inline
  * `meta` next to it (a status pill, a count), and a right-side `actions` slot.
  */
@@ -456,7 +456,7 @@ export function Progress({ value, label }: { value: number; label: string }) {
 }
 
 /**
- * The one empty state (docs/muse/DESIGN.md): centered in the available space, the
+ * The one empty state (the old design notes): centered in the available space, the
  * section's illustration, a plain sans headline, one muted line, and — when
  * `suggestions` and `onSuggestion` are both given — a few chips that start a
  * Conversation with that prompt. Omit them for a quieter inline message (e.g. "nothing

@@ -6,7 +6,7 @@ import { ALWAYS_ON_SUPERSIDE_CHAT_TOOLS, TOOL_PRESENTATION } from "./tool-presen
 
 // Forces registering a tool's presentation the moment it's added to Superchat's agent bundle
 // (engine/agents/bundles/superchat-claude/, generated from engine/agents/templates/) — see
-// docs/super-chat/README.md "How to register a tool". No YAML dependency in this workspace, so
+// docs/helpers.md "How to register a tool". No YAML dependency in this workspace, so
 // this reads the `tools: builtins: - name: <tool>` lists with a small indentation-aware scan
 // rather than a real parser; good enough for this bundle's shape.
 

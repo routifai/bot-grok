@@ -34,7 +34,7 @@ export function SettingsGroup({
 export const SETTINGS_ROW =
   "superchat-row flex min-h-[52px] w-full items-center justify-between gap-3 px-3 py-2 text-[14px] tracking-[-0.15px]";
 
-/** A row's colored tile (docs/muse/DESIGN.md "Settings"). */
+/** A row's colored tile (the old design notes "Settings"). */
 export type SettingsIcon = { tone: TileTone; glyph: ReactNode };
 
 /** The row's lead: its tile, then the label with an optional quiet line under it. */

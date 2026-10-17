@@ -1,4 +1,4 @@
-"""What a live update may change: the rules of ``docs/live-artifacts.md`` as a pure function.
+"""What a live update may change: the rules of ``docs/artifacts.md`` as a pure function.
 
 Per change: apply it, turn it into a suggestion (the person owns that part now), skip it (the
 person undid that value, or deleted the part) or report it unplaced.

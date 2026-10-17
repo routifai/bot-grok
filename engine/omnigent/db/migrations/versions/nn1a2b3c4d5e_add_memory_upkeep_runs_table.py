@@ -5,7 +5,7 @@ Revises: mm1a2b3c4d5e
 Create Date: 2026-10-03 00:00:00.000000
 
 Adds the ``memory_upkeep_runs`` table backing Phase 3 of the long-term
-memory reference implementation (``rollover/MEMORY-PLAN.md`` section 4).
+memory reference implementation (``docs/context.md``).
 One row per upkeep run; the per-user watermark is derived from the last
 ``succeeded`` run's ``window_until`` (no separate watermark table).
 

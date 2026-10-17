@@ -6,7 +6,7 @@ function roundRect(x: number, y: number, w: number, h: number, r: number): strin
 }
 
 /**
- * Superchat's own filled glyphs (docs/muse/DESIGN.md "Sidebar"): solid, rounded shapes in the
+ * Superchat's own filled glyphs (the old design notes "Sidebar"): solid, rounded shapes in the
  * spirit of a Mac sidebar, drawn for Superchat on a 20px grid. Not Apple's SF Symbols (their
  * license does not allow this use). They paint with `currentColor`; cut-outs are real holes,
  * so a glyph reads on any surface (glass, a selected row, a colored tile).

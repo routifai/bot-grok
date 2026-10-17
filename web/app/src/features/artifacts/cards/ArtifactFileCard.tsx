@@ -134,7 +134,7 @@ function SavedFileCard({ title, data }: { title?: string; data: ReplyCardDataOf<
     window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
 
-  // The result tile (docs/muse/DESIGN.md "Results"): the live preview framed on the right,
+  // The result tile (the old design notes "Results"): the live preview framed on the right,
   // Open as the white pill, Download and Open in new tab in the menu.
   return (
     <div>

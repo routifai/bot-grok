@@ -8,7 +8,7 @@ how many update runs the engine starts at once. The engine debounces and starts 
 first look at a file only records it, so a restart starts nothing; nothing is seen while the
 Computer sleeps (the schedule is the safety net). Files
 change here without going through the engine (the AI or a shell writes them), which is why this
-polls the disk instead of listening to uploads. Rules: ``docs/live-artifacts.md``.
+polls the disk instead of listening to uploads. Rules: ``docs/artifacts.md``.
 """
 
 from __future__ import annotations

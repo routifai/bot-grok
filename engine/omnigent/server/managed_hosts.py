@@ -64,7 +64,7 @@ stores into ``create_app``):
                  wire_api: chat
 
    The computer launcher (Superchat's per-Muse sandbox computer,
-   docs/omnigent-spike.md) needs no provider block: it reads
+   docs/architecture.md) needs no provider block: it reads
    ``OMNIGENT_SUPERCHAT_SUPERVISOR_URL`` and ``OMNIGENT_SUPERCHAT_SUPERVISOR_TOKEN``
    from the server process environment (12-factor) — see
    :mod:`omnigent.onboarding.sandboxes.computer`. Providers contributed
@@ -138,7 +138,7 @@ MANAGED_HOST_ONLINE_TIMEOUT_S = 120
 _ONLINE_POLL_INTERVAL_S = 1.0
 
 # Launch-token lifetime for the "computer" provider (Superchat's per-Muse sandbox computer,
-# docs/omnigent-spike.md). The computer itself has no lifetime cap — it is a persistent,
+# docs/architecture.md). The computer itself has no lifetime cap — it is a persistent,
 # Superchat-managed resource that outlives any one launch — so the bound here is policy: seven
 # days keeps a long-lived host re-authenticating across tunnel reconnects while still expiring
 # tokens nobody renewed. A relaunch mints a fresh token.

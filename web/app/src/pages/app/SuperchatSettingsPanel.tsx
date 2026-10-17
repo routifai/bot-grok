@@ -10,7 +10,7 @@ import { VaultSettings } from "../../features/vault";
 import { resetFirstRun } from "./intro";
 
 /**
- * What the person tunes about their Muse, gathered in one place (docs/muse/DESIGN.md):
+ * What the person tunes about their Muse, gathered in one place (the old design notes):
  * Superchat is always the orb, with the name the engine gives it.
  */
 export function SuperchatSettingsPanel({ bot, userId }: { bot: Bot; userId: string | undefined }) {

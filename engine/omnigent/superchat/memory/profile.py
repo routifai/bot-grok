@@ -1,4 +1,4 @@
-"""Memory Profile delivery for ``superside-chat`` (SUPERSIDE-CHAT-PLAN.md S6).
+"""Memory Profile delivery for ``superside-chat`` (docs/context.md).
 
 :func:`memory_profile_for` is the one function other slices call for a
 user's Memory Profile, already wrapped in the per-turn delimiter block

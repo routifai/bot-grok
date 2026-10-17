@@ -9,7 +9,7 @@ export type { ActivitiesState } from "./activityFeed";
 
 // `NOT_IMPLEMENTED`: the backend doesn't serve `activities.*` in this environment.
 // `NOT_FOUND`: this Muse has no Conversation yet (a brand new Muse) — both are the
-// calm "nothing yet" state, never "Could not load…" (docs/super-chat/README.md: the
+// calm "nothing yet" state, never "Could not load…" (docs/helpers.md: the
 // Activity panel's own empty state already says this plainly).
 const isUnavailable = (error: unknown) =>
   error instanceof ORPCError && (error.code === "NOT_IMPLEMENTED" || error.code === "NOT_FOUND");
@@ -38,7 +38,7 @@ export function activityFeedFor(botId: string): ActivityFeed {
 }
 
 /**
- * The Activity feed's data (docs/super-chat/WIRING.md "Activity panel"): live while mounted
+ * The Activity feed's data (docs/helpers.md "The activity panel"): live while mounted
  * (see ActivityFeed — event-driven, polled only as a safety net, live even while the tab is hidden).
  */
 export function useActivities(botId: string): {

@@ -1,8 +1,7 @@
 """Server-side scheduling for the memory upkeep job (Phase 3).
 
-Two triggers (``rollover/MEMORY-PLAN.md`` section 9, ``SUPERSIDE-CHAT-PLAN.md``
-S6): applies only to ``superside-chat`` sessions (native-CLI ``rollover``
-sessions keep today's behaviour unchanged).
+Two triggers (``docs/context.md``): applies only to ``superside-chat`` sessions
+(native-CLI ``rollover`` sessions keep today's behaviour unchanged).
 
 - :class:`MemoryUpkeepCoordinator` — fire-and-forget, at most one in-flight
   run per user, scheduled right after a ``superside-chat`` session's

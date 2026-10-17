@@ -1,5 +1,5 @@
 /**
- * Time-of-day greeting for the empty Conversation (docs/muse/DESIGN.md
+ * Time-of-day greeting for the empty Conversation (the old design notes
  * "Conversation"): "Good morning, {name}." — morning 05:00–11:59, afternoon
  * 12:00–17:59, evening otherwise.
  */

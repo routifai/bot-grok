@@ -326,7 +326,7 @@ describe("daily notes", () => {
   });
 });
 
-describe("throwOnError redaction (docs/super-chat/WIRING.md review item 5)", () => {
+describe("throwOnError redaction (an earlier wiring review)", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("redacts a secret value out of the error body before it reaches the thrown message", async () => {

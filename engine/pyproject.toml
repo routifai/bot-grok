@@ -163,7 +163,7 @@ kms = ["boto3>=1.30,<2", "botocore>=1.30,<2"]
 # lazily, so only users of this backend need the extra.
 s3 = ["boto3>=1.30,<2", "botocore>=1.30,<2"]
 # Omnigent's own long-term memory (the memory_* built-in tools backing
-# rollover/MEMORY-PLAN.md). txtai (hybrid BM25 + dense search) and litellm
+# docs/context.md). txtai (hybrid BM25 + dense search) and litellm
 # (its embeddings backend) are imported lazily, so only servers that wire a
 # MemoryService need this extra — several GB (txtai pulls faiss-cpu and
 # transformers/torch, unused at runtime since the index uses the pure-numpy

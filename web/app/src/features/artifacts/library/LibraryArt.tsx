@@ -1,7 +1,7 @@
 import type { ArtifactKind } from "../../../lib/artifact-kind";
 
 /**
- * A Library preview drawn for a kind without a real thumbnail (docs/muse/DESIGN.md
+ * A Library preview drawn for a kind without a real thumbnail (the old design notes
  * "Library"): a report as a small dark result tile with its name, a deck as a bright slide, a
  * page or file as a sheet of paper with text lines, an image as a soft landscape.
  */

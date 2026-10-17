@@ -1488,7 +1488,7 @@ def register_events_routes(
                 session_id,
                 [item],
             )
-            # Memory upkeep trigger (rollover/SUPERSIDE-CHAT-PLAN.md S6):
+            # Memory upkeep trigger (docs/context.md):
             # a superside-chat session's own compaction is the signal that
             # there is new, settled conversation to learn from. Native-CLI
             # rollover sessions are untouched — upkeep for them is out of

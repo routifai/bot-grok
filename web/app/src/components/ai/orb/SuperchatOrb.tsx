@@ -6,7 +6,7 @@ import { useSuperchatPresence } from "./presence";
 import { type OrbHandle, registerOrb } from "./renderer";
 
 /**
- * Superchat's presence: a live shader orb (docs/muse/DESIGN.md "Orb"). Shader inspired by
+ * Superchat's presence: a live shader orb (the old design notes "Orb"). Shader inspired by
  * "Shader Reminder" by Daniela Muntyan (CC BY 4.0); original implementation.
  *
  * Superchat has one orb on screen (placement.tsx): the start page, the sidebar header, or the toolbar.

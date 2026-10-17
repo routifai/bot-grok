@@ -88,7 +88,7 @@ export interface BotAvatarProps {
   identity?: string;
   className?: string;
   variant?: AvatarStyle;
-  /** Renders the Muse face (docs/muse/DESIGN.md) instead of the shipped mascot shapes. */
+  /** Renders the Muse face (the old design notes) instead of the shipped mascot shapes. */
   face?: "muse";
   /** Open-Ask count for the `waiting` Muse state; ignored unless `face="muse"`. */
   waitingCount?: number;
@@ -386,7 +386,7 @@ function OrganicAvatar({
 }
 
 /**
- * Fixed accents for the Muse face (docs/muse/DESIGN.md). The body is the only part that
+ * Fixed accents for the Muse face (the old design notes). The body is the only part that
  * takes the bot's identity color; everything else — including the gradient/rim-light
  * overlays used for depth — is built from these constants or from the color prop, never
  * a new hardcoded hex.

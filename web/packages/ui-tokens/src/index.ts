@@ -370,7 +370,7 @@ export const lightTokens = {
 } as const satisfies ColorTokens;
 
 /**
- * Superchat's surfaces (docs/muse/DESIGN.md): a Mac app. The content sits in one rounded
+ * Superchat's surfaces (the old design notes): a Mac app. The content sits in one rounded
  * `content` window on the `window` ground; the sidebar and inspector float inside it as
  * blurred `glass` panels with a half-pixel `glass-line`; iOS inset grouped lists sit on
  * `group`. Ink comes in three strengths, hairlines are `separator`. The Muse palettes below

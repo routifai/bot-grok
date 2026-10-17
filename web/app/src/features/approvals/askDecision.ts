@@ -3,7 +3,7 @@ import type { TileTone } from "../../components/chrome/SuperchatTile";
 
 type Choice = Ask["choices"][number];
 
-/** An open Ask as the inspector's decision card (docs/muse/DESIGN.md "Waiting on you"). */
+/** An open Ask as the inspector's decision card (the old design notes "Waiting on you"). */
 export type AskDecision = {
   tone: TileTone;
   title: string;

@@ -1,4 +1,4 @@
-"""Built-in tools: long-term memory (Phase 1 of ``rollover/MEMORY-PLAN.md``).
+"""Built-in tools: long-term memory (``docs/context.md``).
 
 Five Muse-style tools backed by :class:`~omnigent.memory.service.MemoryService`:
 ``memory_remember`` (write), ``memory_search``, ``memory_get``,

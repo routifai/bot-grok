@@ -2,7 +2,7 @@
 export type ConversationLayout = "start" | "thread";
 
 /**
- * Whether the Conversation shows its start page (docs/muse/DESIGN.md "Conversation"): the
+ * Whether the Conversation shows its start page (the old design notes "Conversation"): the
  * Muse's own Conversation, loaded, with no messages and nothing running. Anything else (still
  * loading, a first message on its way) is the thread with the composer docked.
  */

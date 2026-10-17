@@ -1,4 +1,4 @@
-"""Tests for the memory-upkeep compaction trigger (``rollover/SUPERSIDE-CHAT-PLAN.md`` S6).
+"""Tests for the memory-upkeep compaction trigger (``docs/context.md``).
 
 Posting a ``compaction`` event to a ``superside-chat`` session must enqueue
 a memory upkeep run for the session's owner; a plain or ``rollover``

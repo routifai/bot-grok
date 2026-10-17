@@ -1,5 +1,5 @@
 // Superchat's orb shader. Shader inspired by "Shader Reminder" by Daniela Muntyan (CC BY 4.0);
-// original implementation. Ported exactly from the approved mockup (docs/muse/DESIGN.md "Orb").
+// original implementation. Ported exactly from the approved mockup (the old design notes "Orb").
 
 export const ORB_VERTEX_SHADER = "attribute vec2 p; void main(){ gl_Position = vec4(p,0.,1.); }";
 

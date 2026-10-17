@@ -1,6 +1,6 @@
 """Live artifact operations over the artifact, live and scheduled-task stores.
 
-Blocking: callers run them in a thread. Rules: ``docs/live-artifacts.md``.
+Blocking: callers run them in a thread. Rules: ``docs/artifacts.md``.
 """
 
 from __future__ import annotations

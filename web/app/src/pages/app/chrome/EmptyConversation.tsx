@@ -7,7 +7,7 @@ import { SuperchatTile, type TileTone } from "../../../components/chrome/Superch
 import { greetingLead } from "./greeting";
 
 /**
- * The empty Conversation's start page, above the composer (docs/muse/DESIGN.md "First run"):
+ * The empty Conversation's start page, above the composer (the old design notes "First run"):
  * Superchat's orb, a time-of-day greeting and one muted line, sitting on the Ask field (Shell.tsx
  * centers the composer between this and `EmptyConversationSuggestions`).
  */

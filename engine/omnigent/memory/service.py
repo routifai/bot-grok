@@ -2,7 +2,7 @@
 
 Combines the :class:`~omnigent.stores.memory_store.MemoryStore` (source of
 truth) with the :class:`~omnigent.memory.index.MemoryIndex` (search). See
-``rollover/MEMORY-PLAN.md`` section 4-5 for the design this implements.
+``docs/context.md`` for the design this implements.
 """
 
 from __future__ import annotations
@@ -99,7 +99,7 @@ def _profile_safe(text: str) -> str:
 def render_profile_block(profile: str) -> str:
     """Wrap a rendered profile in the delimiters prepended to every turn.
 
-    Shared by every per-turn delivery seam (``rollover/MEMORY-PLAN.md``
+    Shared by every per-turn delivery seam (``docs/context.md``
     Phase 2) so the wording lives in one place, next to the projection it
     wraps.
     """
@@ -532,7 +532,7 @@ class MemoryService:
         """Render the standing work profile injected every turn.
 
         A projection of *user_id*'s active claims — Muse's ``USER.md``
-        (``rollover/MEMORY-PLAN.md`` Phase 2): claims of :data:`PROFILE_KINDS`
+        (``docs/context.md``): claims of :data:`PROFILE_KINDS`
         with confidence at least :data:`_PROFILE_MIN_CONFIDENCE`, grouped by
         kind, newest-reinforced first within a group, capped at roughly
         :data:`_PROFILE_MAX_CHARS` characters. Cached per user until the next

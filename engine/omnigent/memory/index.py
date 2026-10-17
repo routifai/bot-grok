@@ -23,7 +23,7 @@ from omnigent.memory.config import MemoryConfig
 
 # Pure-numpy ANN backend: avoids pulling faiss into the query path (faiss's
 # IVF/nprobe selection errors out on the small per-user corpora this index
-# holds — see the design notes in rollover/MEMORY-PLAN.md) and keeps a
+# holds — see the design notes in docs/context.md) and keeps a
 # per-user claim set (expected: low thousands at most) fast enough without
 # an approximate index.
 _ANN_BACKEND = "numpy"

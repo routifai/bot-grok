@@ -2,10 +2,10 @@ import { eventIterator, oc } from "@orpc/contract";
 import * as z from "zod";
 import { Id } from "../ids.js";
 
-// The Activity panel (CONTEXT.md "Activity", "Activity Feed", "Step"; docs/super-chat/README.md
-// "The Activity panel"): every piece of multi-step work the Muse did — a Conversation or Side
+// The Activity panel (docs/glossary.md "Activity", "Activity Feed", "Step"; docs/helpers.md
+// "The activity panel"): every piece of multi-step work the Muse did — a Conversation or Side
 // Chat turn that used tools, or a Helper's whole task. Derived by Omnigent on read
-// (`GET /v1/sessions/{id}/activities`, docs/rollover/SUPERSIDE-CHAT.md) and passed
+// (`GET /v1/sessions/{id}/activities`, docs/helpers.md) and passed
 // through by `activities.list`/`activities.get` (this file).
 
 export const ActivityKindSchema = z.enum(["turn", "sub_agent"]);
@@ -20,7 +20,7 @@ export type ActivitySource = z.infer<typeof ActivitySourceSchema>;
 export const ActivityStatusSchema = z.enum(["in_progress", "done", "failed", "cancelled"]);
 export type ActivityStatus = z.infer<typeof ActivityStatusSchema>;
 
-/** One action within an Activity, in plain language (CONTEXT.md "Step"). Populated only when
+/** One action within an Activity, in plain language (docs/glossary.md "Step"). Populated only when
  * the Activity is read in full (`activities.get`), not on the list view. */
 export const ActivityStepSchema = z.object({
   itemId: z.string(),

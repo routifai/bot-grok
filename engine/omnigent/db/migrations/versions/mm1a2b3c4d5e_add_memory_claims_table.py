@@ -5,7 +5,7 @@ Revises: ll1a2b3c4d5e
 Create Date: 2026-09-30 00:00:00.000000
 
 Adds the ``memory_claims`` table backing the long-term memory reference
-implementation (``rollover/MEMORY-PLAN.md``). One row per claim learned about
+implementation (``docs/context.md``). One row per claim learned about
 a user (preference, instruction, fact, decision, person, project, or working
 style); the table is the source of truth and the txtai search index
 (``omnigent/memory/index.py``) is rebuilt from it on demand.

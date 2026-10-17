@@ -1,7 +1,7 @@
 """Built-in tool: read-only recall over the calling session and its chats.
 
 The rollover super chat compacts older messages into a summary — "the
-summary is a pointer, not the truth" (``rollover/README.md``). This tool
+summary is a pointer, not the truth" (``docs/context.md``). This tool
 lets the model page backward through, or full-text search, the exact items
 that summary was built from, check how much context headroom is left, and,
 from a scheduled or ad-hoc Helper, read the Conversation it works for

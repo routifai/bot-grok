@@ -1,6 +1,6 @@
 """Memory-claim store — persists long-term memory claims.
 
-See ``rollover/MEMORY-PLAN.md`` section 3 for the design: the
+See ``docs/context.md`` for the design: the
 ``memory_claims`` table is the source of truth; the txtai search index
 (``omnigent/memory/index.py``) is rebuilt from it on demand.
 """

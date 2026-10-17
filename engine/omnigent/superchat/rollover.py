@@ -1,8 +1,8 @@
 """Rollover for superside-chat sessions on the Claude SDK engine (S2).
 
 A superside-chat session (Super Chat, Side Chat, or Sub-agent alike) rolls
-over at two points — see ``rollover/SUPERSIDE-CHAT-PLAN.md`` S2 and the
-**Rollover** term in ``rollover/CONTEXT.md``:
+over at two points — see ``docs/context.md`` and the
+**Rollover** term in ``docs/glossary.md``:
 
 - the engine-reported context size crosses :func:`~omnigent.context.rollover.
   resolve_rollover_threshold` after a turn (:func:`should_roll_over_for_threshold`);

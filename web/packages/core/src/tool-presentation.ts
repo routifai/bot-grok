@@ -1,7 +1,7 @@
 import type { ActivityStep } from "@superchat/contracts";
 
 // One registry, one source of truth for how an Activity Step reads in the UI
-// (docs/super-chat/README.md "The Activity panel"; AGENTS.md "no hex, tokens only" applies to
+// (docs/helpers.md "The activity panel"; AGENTS.md "no hex, tokens only" applies to
 // the icon, never the copy). The owner's three rules: register every tool here once; never
 // show a tool's raw name, only an icon and a plain-language title; never show the full
 // call/result trace, only a short snippet of the output.
@@ -653,7 +653,7 @@ function resultContentOf(detail: ActivityStep["detail"]): string {
 
 /** The one place a Step becomes UI: an icon, a plain-language title, and a short result
  * snippet — preferring the registry, and never the tool's raw name. A tool with no
- * registry entry (not yet registered — see docs/super-chat/README.md "How to register a
+ * registry entry (not yet registered — see docs/helpers.md "How to register a
  * tool") falls back to the engine's own `step.title` and a generic JSON-stripped snippet. */
 export function presentStep(step: Pick<ActivityStep, "tool" | "title" | "detail">): PresentedStep {
   const output = resultContentOf(step.detail);

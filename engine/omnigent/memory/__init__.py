@@ -1,4 +1,4 @@
-"""Long-term memory: reference implementation of ``rollover/MEMORY-PLAN.md``.
+"""Long-term memory: reference implementation of ``docs/context.md``.
 
 Phase 1 (store and tools): a ``memory_claims`` table
 (``omnigent.stores.memory_store``) is the source of truth; a txtai hybrid

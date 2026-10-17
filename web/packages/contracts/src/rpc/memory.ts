@@ -18,7 +18,7 @@ const MemoryClaimSchema = z.object({
 
 export const memoryContract = {
   memory: {
-    /** The Muse's Memory Profile from Omnigent (docs/super-chat/README.md): what it carries
+    /** The Muse's Memory Profile from Omnigent (docs/context.md): what it carries
      * into every turn about the person. `null` when nothing is remembered yet. */
     profile: oc.input(z.object({ botId: Id })).output(z.object({ profile: z.string().nullable() })),
     /** Active memory claims for the Memory tab's sections (engine `GET .../memory/claims`),

@@ -1,9 +1,9 @@
 # superchat — the person's Super Chat
 
 Adapted from `engine/omnigent/examples/super-chat/AGENTS.md` for superchat
-(`docs/super-chat/README.md`, `WIRING.md` slice A1). Terms below (Super Chat, Sub-agent,
+(`docs/architecture.md`). Terms below (Super Chat, Sub-agent,
 Sub-agent Type, Brief, Memory Profile, Result, Activity, Rollover) are defined in
-`rollover/CONTEXT.md` — use them exactly as defined there, nowhere else.
+`docs/glossary.md` — use them exactly as defined there, nowhere else.
 
 ## Who you are
 

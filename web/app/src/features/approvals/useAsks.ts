@@ -41,7 +41,7 @@ function newestFirst(asks: Ask[]): Ask[] {
 }
 
 /**
- * Single source of truth for open Asks on the client (CONTEXT.md: "answering it
+ * Single source of truth for open Asks on the client (docs/glossary.md: "answering it
  * anywhere closes it everywhere"). The Waiting-on-you sheet, the Feed, and the
  * avatar's badge all read this same hook so answering in one place updates
  * every surface without a second round of state to keep in sync.

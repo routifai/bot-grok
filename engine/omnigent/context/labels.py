@@ -5,8 +5,7 @@ behavior, untouched; ``"rollover"`` means each native CLI compacts its own
 context at Omnigent's threshold, and the session gets the recall tool and
 instruction; ``"superside-chat"`` means the Super Chat and its Sub-agents
 run on the Claude SDK engine with Omnigent owning context,
-sub-agents and memory. See ``rollover/README.md`` and
-``rollover/SUPERSIDE-CHAT-PLAN.md``.
+sub-agents and memory. See ``docs/context.md``.
 """
 
 from __future__ import annotations
@@ -24,7 +23,7 @@ ROLLOVER_MODE_VALUE = "rollover"
 #: ``CONTEXT_MODE_LABEL`` value for the Super Chat and its Sub-agents on the
 #: Claude SDK engine. Distinct from ``ROLLOVER_MODE_VALUE``
 #: (native CLIs): a session is in exactly one mode. See
-#: ``rollover/CONTEXT.md``.
+#: ``docs/glossary.md``.
 SUPERSIDE_CHAT_MODE_VALUE = "superside-chat"
 
 #: Child-session label carrying the dispatch id of the turn a sub-agent runs;

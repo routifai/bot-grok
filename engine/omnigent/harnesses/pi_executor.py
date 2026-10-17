@@ -1787,7 +1787,7 @@ def _pi_owned_context_settings() -> dict[str, object]:
     Pi settings that hand context ownership to Omnigent (superside-chat).
 
     Omnigent's rollover bounds the conversation
-    (rollover/adr/0001-omnigent-owns-everything.md), so Pi's own
+    (docs/adr/0006-omnigent-owns-everything.md), so Pi's own
     auto-compaction must not fight it: ``compaction.enabled=false`` in
     ``settings.json`` (Pi docs ``settings.md`` / ``compaction.md``; Pi's
     ``autoCompactionEnabled`` getter reads exactly this key, so it covers the

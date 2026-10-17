@@ -13,7 +13,7 @@ import { supportsWebGL } from "../webgl";
 import { bloopPalette } from "./expression";
 import type { LiveBloopHandle } from "./live";
 
-// The Muse's 3D face (docs/muse/DESIGN.md): a jelly drop whose expression follows the Muse state.
+// The Muse's 3D face (the old design notes): a jelly drop whose expression follows the Muse state.
 // It is supplied app-wide through `LiveMuseFaceProvider`, so every `BotAvatar face="muse"` uses
 // it. The static SVG face is only a fallback, shown when WebGL is unavailable, fails to start, or
 // the page already shows its share of live faces; it is never drawn first and then replaced. The
