@@ -199,3 +199,14 @@ def _helper_origin(
         elif is_person_message(item):
             return item.id
     return None
+
+
+STEER_CHOSEN = 'The person means the artifact "{name}" ({artifact_id}).'
+STEER_NONE = "The person says this message is not about an artifact."
+
+
+def steer_text(link: MessageLink) -> str:
+    """The one line a running turn is steered with after the person relinks its message."""
+    if link.artifact_id is None:
+        return STEER_NONE
+    return STEER_CHOSEN.format(name=link.name or "", artifact_id=link.artifact_id)
