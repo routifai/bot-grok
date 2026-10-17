@@ -91,8 +91,9 @@ writing. If a parent turn is running, the notice is steered into it or runs next
 hides the notice and shows the helper as a `helper` block (`session_id`, `title`, `status`).
 
 Two more notice kinds, `progress` (one line per completed helper step) and `flag` (a decision or
-surprise the person should hear now), come from ADR 0022 and are not built yet; their contract is
-in [conversation.md](conversation.md#the-assistant-narrates-while-helpers-work).
+surprise the person should hear now), come from ADR 0022; a progress notice wakes an idle parent
+at most once every 30 seconds, a flag always. Their contract is in
+[conversation.md](conversation.md#the-assistant-narrates-while-helpers-work).
 
 ## The activity panel
 

@@ -22,3 +22,11 @@ ADR 0022 made the assistant talk while helpers work. In use, the reply still rea
 - **A new `plan_update` tool and plan events.** Rejected: the living `plan` card already carries exactly this (todo, doing, done; updated in place by `id`).
 - **The plan in the activity panel.** Rejected: the panel is a view of what ran, closed by default; the plan belongs next to the words that describe it.
 - **A coloured accent for "working" separate from the bot colour.** Rejected: the UI is monochrome, and the bot colour is already the one identity colour.
+
+## Update: after review (2026-10-17)
+
+- The plan's `id` is kept for the whole piece of work, across every turn a helper's notice wakes, until the last step is done; steps a helper does move when its notices arrive. The web follows the plan by `id`, so a message steered into the running turn, or a wake narration after a later message, no longer splits or relights a strip.
+- A reworded step cross-fades (`changed`); only an inserted or repeated step is `added`. Steps compare by position and text.
+- The strip reads the turn's outcome: a failed or cancelled turn says so on the plan path too, and the running step is checked only on a normal finish. The engine has no cancel marker, so a settled reply with no text, no error and no question reads as cancelled.
+- The strip's live clock and the header pill count from the same server time, offset-corrected, so they agree before and after a reload; a helper the activity feed does not list settles after a minute unless the turn runs.
+- Reduced motion also stops the step, flag and pill entry animations; the static edge stays.

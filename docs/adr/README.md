@@ -25,8 +25,8 @@ One file per decision, numbered in order. A superseded record keeps its file wit
 | [0019](0019-repository-layout-and-layers.md) | Repository layout and layers | Done 2026-10-17 (moves, flatten, docs, layer contracts in CI) |
 | [0020](0020-the-engine-keeps-only-what-superchat-runs.md) | The engine keeps only what Superchat runs | Done 2026-10-17; log in [`docs/engine-trim.md`](../engine-trim.md) |
 | [0021](0021-one-conversation-messages-link-to-artifacts.md) | One conversation: messages link to artifacts | Done 2026-10-17; amended by 0024 (both halves; contract in [`docs/conversation.md`](../conversation.md)) |
-| [0022](0022-the-orchestrator-narrates-while-helpers-work.md) | The orchestrator narrates while helpers work | Done 2026-10-17 (engine notices, bundle rules, web work strip) |
-| [0023](0023-the-plan-is-visible-and-the-work-is-alive.md) | The plan is visible and the work is alive | Done 2026-10-17 (plan in the work strip, lit state, header pill; merge `d18372e18`) |
+| [0022](0022-the-orchestrator-narrates-while-helpers-work.md) | The orchestrator narrates while helpers work | Done 2026-10-17 (engine notices, bundle rules, web work strip); updated after review the same day: progress wakes an idle parent, helpers save drafts |
+| [0023](0023-the-plan-is-visible-and-the-work-is-alive.md) | The plan is visible and the work is alive | Done 2026-10-17 (plan in the work strip, lit state, header pill; merge `d18372e18`); updated after review the same day: plan id across wake turns, outcome on the strip, one clock |
 | [0024](0024-the-artifact-studio.md) | The artifact studio | Accepted 2026-10-17, refined after review the same day (engine shape, concurrency rules, web rules); amends 0021 |
 
 The pages that explain the current system are listed in [../README.md](../README.md).

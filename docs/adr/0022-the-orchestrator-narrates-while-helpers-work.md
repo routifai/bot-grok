@@ -28,3 +28,14 @@ The assistant stays in the conversation. It speaks first, reports progress in se
 - **Stream helper tokens into the chat.** Rejected: that is the machinery the person should not have to read, and it floods the parent's context.
 - **Narrate only at completion.** Rejected: that is today's behaviour, and the silence is the problem.
 - **A separate progress feed in the chat, apart from the reply.** Rejected: two voices in one conversation; the assistant's reply is the one place to say what is happening.
+
+## Update: progress wakes an idle parent (review, 2026-10-17)
+
+The first build steered a progress notice only into a turn streaming at that moment. The parent's turn ends right after it starts its helpers, so in the usual one-helper case no progress line ever reached the chat; it was held and then dropped when that helper finished. "Narrate only at completion", the rejected option above, is what shipped.
+
+- A progress notice still tries the running turn first; when the parent is idle it **wakes it**, at most once every 30 seconds per parent, with every helper's newest waiting line in one notice. A flag's wake and a completion notice carry the waiting lines the same way and restart the interval. Each wake is a short model turn; that is the price of narration, bounded by the interval.
+- Helpers report at most one line per minute of work, and **save a file early and again as it fills in**, so "drafts are versions" is a prompt rule, not a hope.
+- The first-token log line counts from the runner's turn start, after the engine's dispatch and any host wake: it measures the model and the prefix, not the person's wait.
+- The runner's notice state does not survive its restart.
+
+Contract: [`docs/conversation.md`](../conversation.md#helper-notices).
