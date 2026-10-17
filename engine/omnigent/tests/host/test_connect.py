@@ -2486,7 +2486,7 @@ def test_dispatch_trace_context_reaches_runner_but_not_daemon(
     monkeypatch.setenv(DISPATCH_TRACEPARENT_ENV_VAR, traceparent)
     monkeypatch.setenv(DISPATCH_TRACESTATE_ENV_VAR, "vendor=abc")
     for server_url in (None, "https://example.databricksapps.com"):
-        daemon_env = _build_host_daemon_env(server_url=server_url)
+        daemon_env = _build_host_daemon_env()
         assert DISPATCH_TRACEPARENT_ENV_VAR not in daemon_env
         assert DISPATCH_TRACESTATE_ENV_VAR not in daemon_env
 
@@ -2511,7 +2511,7 @@ def test_build_runner_env_passthrough_survives_remote_daemon_hop(
     monkeypatch.setenv("DATABRICKS_UNNAMED", "should-not-forward")
 
     server = "https://example.databricksapps.com"
-    daemon_env = _build_host_daemon_env(server_url=server)
+    daemon_env = _build_host_daemon_env()
     # The first hop must keep the control var (regression guard for the remote no-op).
     assert daemon_env["OMNIGENT_RUNNER_ENV_PASSTHROUGH"] == "DATABRICKS_LINEAR_API_KEY"
 
@@ -2548,7 +2548,7 @@ async def test_harness_stderr_opt_in_survives_daemon_and_runner_hops(
     if setting is not None:
         monkeypatch.setenv(flag_name, setting)
 
-    daemon_env = _build_host_daemon_env(server_url=server_url)
+    daemon_env = _build_host_daemon_env()
     runner_env = _build_runner_env(
         daemon_env,
         server_url=server_url or "http://localhost:8000",

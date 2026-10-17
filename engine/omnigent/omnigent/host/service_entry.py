@@ -12,17 +12,14 @@ from omnigent.host import HOST_FATAL_EXIT_CODE
 def main() -> int:
     """Run the foreground host command and normalize permanent failures."""
     parser = argparse.ArgumentParser(description="Omnigent host service")
-    mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--server", help="Remote Omnigent server URL.")
-    mode.add_argument("--local", action="store_true", help="Run a local Omnigent server.")
+    parser.add_argument("--server", required=True, help="Omnigent server URL.")
     args = parser.parse_args()
 
     from omnigent.cli import cli
 
-    server = "" if args.local else args.server
     try:
         cli.main(
-            args=["host", "--server", server, "--non-interactive"],
+            args=["host", "--server", args.server, "--non-interactive"],
             prog_name="omnigent",
             standalone_mode=False,
         )

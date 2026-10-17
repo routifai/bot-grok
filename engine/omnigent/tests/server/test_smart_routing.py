@@ -1783,7 +1783,7 @@ def test_parse_routing_settings(
     cfg: dict[str, Any] | None,  # type: ignore[explicit-any]
     expected: dict[str, Any],  # type: ignore[explicit-any]
 ) -> None:
-    from omnigent.cli import parse_routing_settings
+    from omnigent.server.routing_settings import parse_routing_settings
     from omnigent.server.smart_routing import MODEL_ID_PREFIXES
 
     settings = parse_routing_settings(cfg)

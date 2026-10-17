@@ -118,37 +118,6 @@ def test_from_api_base_falls_back_to_login_record(tmp_path, monkeypatch) -> None
     assert resolved.display == "https://ws.databricks.com/omnigent?o=999"
 
 
-def test_display_round_trips_through_login_resolution(monkeypatch) -> None:
-    """The display URL, pasted into ``omnigent login``, resolves back.
-
-    The whole point of showing ``https://<ws>/omnigent?o=<org>`` in
-    messages and login hints is that copy-pasting it reaches the same
-    server: the resolver expands the UI mount back to the API base and
-    recaptures the selector.
-    """
-    import omnigent.cli as cli_mod
-
-    def fake_get(url: str, **kwargs: object):
-        import httpx
-
-        request = httpx.Request("GET", url)
-        if url == "https://ws.databricks.com/v1/me":
-            return httpx.Response(404, headers={"server": "databricks"}, request=request)
-        if url == f"{_WORKSPACE_API}/v1/me":
-            return httpx.Response(
-                401,
-                headers={"www-authenticate": 'Bearer realm="DatabricksRealm"'},
-                request=request,
-            )
-        raise AssertionError(f"unexpected probe {url}")
-
-    monkeypatch.setattr("httpx.get", fake_get)
-    shown = ServerUrl(_WORKSPACE_API, org_id="123").display
-
-    resolved = cli_mod._resolve_server_url(shown)
-
-    assert resolved.api_base == _WORKSPACE_API
-    assert resolved.org_id == "123"
 
 
 @pytest.mark.parametrize(

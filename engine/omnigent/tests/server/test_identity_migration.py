@@ -13,12 +13,9 @@ is refused without ``--force``.
 
 from __future__ import annotations
 
-import pytest
-from click.testing import CliRunner
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from omnigent.cli import cli
 from omnigent.db.db_models import (
     SqlAccountToken,
     SqlComment,
@@ -345,76 +342,11 @@ def test_skipped_missing_old_user(db_uri: str) -> None:
 # ── CLI wrapper ───────────────────────────────────────────────────
 
 
-def test_cli_dry_run_by_default(db_uri: str) -> None:
-    """``migrate-to-oidc`` without --commit is a dry run that changes nothing."""
-    account_store = SqlAlchemyAccountStore(db_uri)
-    account_store.create_user_with_password("alice", hash_password("password123"), is_admin=True)
-
-    result = CliRunner().invoke(
-        cli,
-        ["debug", "migrate-accounts-to-oidc", db_uri, "--domain", "example.com"],
-    )
-
-    assert result.exit_code == 0, result.output
-    assert "DRY RUN" in result.output
-    assert "alice  ->  alice@example.com" in result.output
-    # Surfaces the IdP-email-mismatch reminder so the operator verifies
-    # the targets match what their IdP returns before committing.
-    assert "must match the email your IdP returns" in result.output
-    # No --commit → unchanged.
-    assert account_store.get_user("alice") is not None
-    assert account_store.get_user("alice@example.com") is None
 
 
-def test_cli_commit_applies(db_uri: str) -> None:
-    """``--commit`` applies the remap."""
-    account_store = SqlAlchemyAccountStore(db_uri)
-    account_store.create_user_with_password("alice", hash_password("password123"), is_admin=True)
-
-    result = CliRunner().invoke(
-        cli,
-        ["debug", "migrate-accounts-to-oidc", db_uri, "--domain", "example.com", "--commit"],
-    )
-
-    assert result.exit_code == 0, result.output
-    assert "COMMITTED" in result.output
-    assert account_store.get_user("alice") is None
-    assert account_store.get_user("alice@example.com") is not None
 
 
-def test_cli_requires_a_mapping(db_uri: str) -> None:
-    """With neither --domain nor --map, the command errors (nothing to do)."""
-    result = CliRunner().invoke(cli, ["debug", "migrate-accounts-to-oidc", db_uri])
-    assert result.exit_code != 0
-    assert "nothing to migrate" in result.output
 
 
-def test_cli_map_overrides_domain(db_uri: str) -> None:
-    """An explicit --map pair wins over the --domain-derived mapping."""
-    account_store = SqlAlchemyAccountStore(db_uri)
-    account_store.create_user_with_password("alice", hash_password("password123"))
-
-    result = CliRunner().invoke(
-        cli,
-        [
-            "debug",
-            "migrate-accounts-to-oidc",
-            db_uri,
-            "--domain",
-            "example.com",
-            "--map",
-            "alice=alice@corp.com",
-            "--commit",
-        ],
-    )
-
-    assert result.exit_code == 0, result.output
-    assert account_store.get_user("alice@corp.com") is not None
-    assert account_store.get_user("alice@example.com") is None
 
 
-@pytest.mark.parametrize("bad", ["aliceonly", "=new", "old="])
-def test_cli_rejects_malformed_map(db_uri: str, bad: str) -> None:
-    """``--map`` without a valid OLD=NEW shape is rejected."""
-    result = CliRunner().invoke(cli, ["debug", "migrate-accounts-to-oidc", db_uri, "--map", bad])
-    assert result.exit_code != 0

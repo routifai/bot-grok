@@ -159,7 +159,7 @@ def test_enable_systemd_user_service(tmp_path: Path, monkeypatch: pytest.MonkeyP
     calls = _capture_runs(monkeypatch)
 
     installed = service.enable_user_host_service(
-        None,
+        "https://engine.example.com",
         environment={"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"},
     )
 
@@ -167,7 +167,8 @@ def test_enable_systemd_user_service(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert installed.path == tmp_path / "xdg/systemd/user/omnigent-host.service"
     assert 'Environment="HOME=' in unit
     assert (
-        'ExecStart="/opt/omnigent/bin/python" "-m" "omnigent.host.service_entry" "--local"'
+        'ExecStart="/opt/omnigent/bin/python" "-m" "omnigent.host.service_entry" '
+        '"--server" "https://engine.example.com"'
     ) in unit
     assert "Restart=on-failure" in unit
     assert "RestartPreventExitStatus=78 143" in unit
@@ -212,14 +213,14 @@ def test_host_service_rejects_unsupported_platform(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(service.platform, "system", lambda: "Windows")
 
     with pytest.raises(service.HostServiceError, match="macOS and Linux"):
-        service.enable_user_host_service(None, environment={})
+        service.enable_user_host_service("https://engine.example.com", environment={})
 
 
 def test_service_entry_maps_fatal_host_exit(monkeypatch: pytest.MonkeyPatch) -> None:
     from omnigent.cli import cli
     from omnigent.host import HOST_FATAL_EXIT_CODE, service_entry
 
-    monkeypatch.setattr(sys, "argv", ["service-entry", "--local"])
+    monkeypatch.setattr(sys, "argv", ["service-entry", "--server", "https://engine.example.com"])
 
     def _fatal(**kwargs: object) -> None:
         raise SystemExit(HOST_FATAL_EXIT_CODE)

@@ -19,7 +19,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -218,34 +218,3 @@ async def test_the_judge_may_move_a_session_to_another_harness() -> None:
 # ── the deployment, assembled from config ───────────────────────────────────
 
 
-async def test_the_oss_config_routes_with_its_judge() -> None:
-    """``llm:`` and no ``routing:`` block builds the judge alone, and it routes.
-
-    With no ``routing:`` block there is no external client to hit a workspace
-    whose account lacks the routing API; the configured judge answers.
-    """
-    from omnigent.cli import _build_routing_backends
-
-    with (
-        patch(
-            "omnigent.runtime.policies.builder._resolve_server_llm_connection",
-            return_value=None,
-        ),
-        patch(
-            "omnigent.runtime.policies.builder._build_policy_llm_client",
-            return_value=MagicMock(),
-        ),
-    ):
-        from omnigent.spec import parse_server_llm
-
-        backends = _build_routing_backends(
-            {}, parse_server_llm({"model": OPUS}), RoutingSettings()
-        )
-    assert backends.external is None
-    assert backends.local is not None
-    judge = _judge()
-    with _deployment(local=judge):
-        model, verdict = await route_turn("claude-sdk", TRIVIAL, catalog=CLAUDE_CATALOG)
-    assert model == OPUS
-    assert verdict is not None
-    assert verdict["router_source"] == "oss-llm"

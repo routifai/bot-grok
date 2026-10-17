@@ -34,7 +34,7 @@ _PROXY_ENV: Final = {
 }
 
 
-@pytest.mark.parametrize("server_url", [None, _REMOTE_SERVER_URL])
+@pytest.mark.parametrize("server_url", [_REMOTE_SERVER_URL])
 @pytest.mark.parametrize("codex_path", [None, "/selected install/bin/codex"])
 def test_codex_executable_selection_survives_daemon_and_runner_boundaries(
     monkeypatch: pytest.MonkeyPatch,
@@ -50,7 +50,7 @@ def test_codex_executable_selection_survives_daemon_and_runner_boundaries(
     monkeypatch.setenv("UNRELATED_SECRET", "synthetic-secret")
     monkeypatch.setattr("omnigent.onboarding.provider_config.load_config", dict)
 
-    daemon_env = _build_host_daemon_env(server_url=server_url)
+    daemon_env = _build_host_daemon_env()
     runner_env = _build_runner_env(
         daemon_env,
         server_url=server_url or "http://localhost:6767",
@@ -71,7 +71,7 @@ def test_codex_executable_selection_survives_daemon_and_runner_boundaries(
     assert RUNNER_TUNNEL_BINDING_TOKEN_ENV_VAR not in terminal_env
 
 
-@pytest.mark.parametrize("server_url", [None, _REMOTE_SERVER_URL])
+@pytest.mark.parametrize("server_url", [_REMOTE_SERVER_URL])
 def test_pi_env_denylist_reaches_runner_through_host_daemon(
     monkeypatch: pytest.MonkeyPatch,
     server_url: str | None,
@@ -82,7 +82,7 @@ def test_pi_env_denylist_reaches_runner_through_host_daemon(
     monkeypatch.setenv("UNRELATED_SECRET", "synthetic-unrelated-secret")
     monkeypatch.setattr("omnigent.onboarding.provider_config.load_config", dict)
 
-    daemon_env = _build_host_daemon_env(server_url=server_url)
+    daemon_env = _build_host_daemon_env()
     runner_env = _build_runner_env(
         daemon_env,
         server_url=server_url or "http://localhost:6767",
@@ -97,7 +97,7 @@ def test_pi_env_denylist_reaches_runner_through_host_daemon(
         assert "UNRELATED_SECRET" not in env
 
 
-@pytest.mark.parametrize("server_url", [None, _REMOTE_SERVER_URL])
+@pytest.mark.parametrize("server_url", [_REMOTE_SERVER_URL])
 def test_runner_can_read_keyring_from_cli_desktop_session(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -124,7 +124,7 @@ def test_runner_can_read_keyring_from_cli_desktop_session(
     monkeypatch.setattr(keyring, "get_password", get_password)
     assert resolve_secret("keychain:openrouter") == "test-openrouter-key"
 
-    daemon_env = _build_host_daemon_env(server_url=server_url)
+    daemon_env = _build_host_daemon_env()
     runner_env = _build_runner_env(
         daemon_env,
         server_url=server_url or "http://localhost:6767",
@@ -143,29 +143,21 @@ def test_runner_can_read_keyring_from_cli_desktop_session(
         assert resolve_secret("keychain:openrouter") == "test-openrouter-key"
 
 
-@pytest.mark.parametrize(
-    ("server_url", "keeps_provider_secret"),
-    [(None, True), (_REMOTE_SERVER_URL, False)],
-)
-def test_host_daemon_env_preserves_proxy_vars_and_provider_secret_split(
+def test_host_daemon_env_preserves_proxy_vars_without_provider_secrets(
     monkeypatch: pytest.MonkeyPatch,
-    server_url: str | None,
-    keeps_provider_secret: bool,
 ) -> None:
-    """Proxy selectors reach both daemon modes without widening provider secrets."""
+    """Proxy selectors reach the daemon without widening provider secrets."""
     # Given
     for name, value in _PROXY_ENV.items():
         monkeypatch.setenv(name, value)
-    monkeypatch.setenv("DATABRICKS_CONFIG_PROFILE", "corp")
     monkeypatch.setenv("OPENAI_API_KEY", "local-provider-secret")
 
     # When
-    env = _build_host_daemon_env(server_url=server_url)
+    env = _build_host_daemon_env()
 
     # Then
     assert {name: env.get(name) for name in _PROXY_ENV} == _PROXY_ENV
-    assert env["DATABRICKS_CONFIG_PROFILE"] == "corp"
-    assert ("OPENAI_API_KEY" in env) is keeps_provider_secret
+    assert "OPENAI_API_KEY" not in env
 
 
 def test_runner_env_excludes_proxy_vars_by_default() -> None:
@@ -214,7 +206,7 @@ def test_runner_env_explicit_proxy_passthrough_remains_available() -> None:
     assert (set(_PROXY_ENV) - explicit_names).isdisjoint(env)
 
 
-@pytest.mark.parametrize("server_url", [None, _REMOTE_SERVER_URL])
+@pytest.mark.parametrize("server_url", [_REMOTE_SERVER_URL])
 @pytest.mark.parametrize("enabled", ["0", "1"])
 def test_host_slice_key_gate_reaches_daemon_and_runner(
     monkeypatch: pytest.MonkeyPatch,
@@ -224,7 +216,7 @@ def test_host_slice_key_gate_reaches_daemon_and_runner(
     """The host and its spawned runner make the same slice-key decision."""
     monkeypatch.setenv("OMNIGENT_HOST_SLICE_KEY_ENABLED", enabled)
 
-    daemon_env = _build_host_daemon_env(server_url=server_url)
+    daemon_env = _build_host_daemon_env()
     runner_env = _build_runner_env(
         daemon_env,
         server_url=_REMOTE_SERVER_URL,
@@ -244,7 +236,7 @@ _CLAUDE_TOOL_SEARCH_ENV: Final = {
 }
 
 
-@pytest.mark.parametrize("server_url", [None, _REMOTE_SERVER_URL])
+@pytest.mark.parametrize("server_url", [_REMOTE_SERVER_URL])
 def test_host_daemon_env_preserves_claude_tool_search_flags(
     monkeypatch: pytest.MonkeyPatch,
     server_url: str | None,
@@ -255,7 +247,7 @@ def test_host_daemon_env_preserves_claude_tool_search_flags(
         monkeypatch.setenv(name, value)
 
     # When
-    env = _build_host_daemon_env(server_url=server_url)
+    env = _build_host_daemon_env()
 
     # Then
     assert {name: env.get(name) for name in _CLAUDE_TOOL_SEARCH_ENV} == _CLAUDE_TOOL_SEARCH_ENV
@@ -294,7 +286,7 @@ _GCLOUD_ADC_ENV: Final = {
 }
 
 
-@pytest.mark.parametrize("server_url", [None, _REMOTE_SERVER_URL])
+@pytest.mark.parametrize("server_url", [_REMOTE_SERVER_URL])
 def test_host_daemon_env_preserves_gcloud_adc_selectors(
     monkeypatch: pytest.MonkeyPatch,
     server_url: str | None,
@@ -309,7 +301,7 @@ def test_host_daemon_env_preserves_gcloud_adc_selectors(
         monkeypatch.setenv(name, value)
 
     # When
-    env = _build_host_daemon_env(server_url=server_url)
+    env = _build_host_daemon_env()
 
     # Then
     assert {name: env.get(name) for name in _GCLOUD_ADC_ENV} == _GCLOUD_ADC_ENV
@@ -347,7 +339,7 @@ _GCLOUD_TOKEN_ENV: Final = {
 }
 
 
-@pytest.mark.parametrize("server_url", [None, _REMOTE_SERVER_URL])
+@pytest.mark.parametrize("server_url", [_REMOTE_SERVER_URL])
 def test_host_daemon_env_strips_gcloud_auth_tokens(
     monkeypatch: pytest.MonkeyPatch,
     server_url: str | None,
@@ -358,7 +350,7 @@ def test_host_daemon_env_strips_gcloud_auth_tokens(
         monkeypatch.setenv(name, value)
 
     # When
-    env = _build_host_daemon_env(server_url=server_url)
+    env = _build_host_daemon_env()
 
     # Then
     assert not set(_GCLOUD_TOKEN_ENV) & set(env)
@@ -383,7 +375,7 @@ def test_runner_env_strips_gcloud_auth_tokens() -> None:
     assert not set(_GCLOUD_TOKEN_ENV) & set(env)
 
 
-@pytest.mark.parametrize("server_url", [None, _REMOTE_SERVER_URL])
+@pytest.mark.parametrize("server_url", [_REMOTE_SERVER_URL])
 def test_host_daemon_env_preserves_claude_telemetry_opt_in(
     monkeypatch: pytest.MonkeyPatch,
     server_url: str | None,
@@ -394,7 +386,7 @@ def test_host_daemon_env_preserves_claude_telemetry_opt_in(
     monkeypatch.setenv("OTEL_METRICS_EXPORTER", "otlp")
 
     # When
-    env = _build_host_daemon_env(server_url=server_url)
+    env = _build_host_daemon_env()
 
     # Then: the opt-in flag travels with the OTEL exporter config it belongs to.
     assert env.get("OTEL_METRICS_EXPORTER") == "otlp"
