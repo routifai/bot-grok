@@ -426,33 +426,6 @@ class ApiKeyAuth:
 
 
 @dataclass(frozen=True)
-class DatabricksAuth:
-    """
-    Executor authentication via a Databricks profile from
-    ``~/.databrickscfg``.
-
-    Use this to route LLM calls through Databricks model serving
-    (Unity AI Gateway or another Databricks-hosted endpoint) using
-    a named credential profile.
-
-    Example YAML::
-
-        executor:
-          auth:
-            type: databricks
-            profile: oss
-
-    :param profile: Databricks profile name from ``~/.databrickscfg``,
-        e.g. ``"oss"``. The executor resolves workspace host and
-        OAuth token from this profile at runtime.
-    """
-
-    # Required: Databricks profile name from ~/.databrickscfg (e.g. "oss").
-    profile: str
-    type: Literal["databricks"] = "databricks"
-
-
-@dataclass(frozen=True)
 class ProviderAuth:
     """
     Executor authentication via a named generic model provider.
@@ -461,11 +434,10 @@ class ProviderAuth:
     ``~/.omnigent/config.yaml`` (see
     ``designs/oss-cuj/04-model-selection-implementation.md``). The
     provider entry carries a ``kind`` (``key`` / ``subscription`` /
-    ``gateway`` / ``local`` / ``databricks``) and, for the inline
+    ``gateway`` / ``local``) and, for the inline
     kinds, per-harness families (``anthropic`` for Claude-style
     harnesses, ``openai`` for Codex-style) supplying base URLs, secret
-    references, default models, and wire protocols. This is the
-    open-source counterpart to :class:`DatabricksAuth`: a single named
+    references, default models, and wire protocols. A single named
     provider (e.g. a LiteLLM proxy or OpenRouter) can route every
     harness family.
 
@@ -483,7 +455,7 @@ class ProviderAuth:
         runtime.
     :param type: Discriminator literal, always ``"provider"``. Lets the
         :data:`ExecutorAuth` union distinguish this from
-        :class:`ApiKeyAuth` / :class:`DatabricksAuth`.
+        :class:`ApiKeyAuth`.
     """
 
     # Required: provider name from ~/.omnigent/config.yaml providers:.
@@ -493,7 +465,7 @@ class ProviderAuth:
 
 # Discriminated union of all supported executor auth types.
 # Discriminator field is ``type``.
-ExecutorAuth = ApiKeyAuth | DatabricksAuth | ProviderAuth
+ExecutorAuth = ApiKeyAuth | ProviderAuth
 
 
 @dataclass
@@ -518,9 +490,8 @@ class ExecutorSpec:  # type: ignore[explicit-any]  # config: dict[str, Any] fiel
         means resolve via env vars / DEFAULT section.
 
         .. deprecated::
-            Set ``executor.auth: {type: databricks, profile: <name>}``
-            instead. Direct ``executor.profile`` / ``executor.config.profile``
-            will be removed once all callers migrate.
+            A Databricks leftover still read by the omnigent-compat
+            translator; nothing in Superchat sets it.
     :param config: Executor-type-specific configuration. For
         ``type == "omnigent"`` this carries ``"harness"`` (e.g.
         ``"claude-sdk"`` or ``"codex"``), optional ``"profile"``
@@ -595,8 +566,7 @@ class ExecutorSpec:  # type: ignore[explicit-any]  # config: dict[str, Any] fiel
     :param auth: Explicit LLM authentication configuration. When set,
         the harness uses this to authenticate instead of falling back
         to ambient environment variables or profile auto-detection.
-        Supports three types: :class:`ApiKeyAuth` (inline bearer token),
-        :class:`DatabricksAuth` (Databricks profile, ucode-backed), and
+        Supports two types: :class:`ApiKeyAuth` (inline bearer token) and
         :class:`ProviderAuth` (a named generic provider from
         ``~/.omnigent/config.yaml``). ``None`` means fall back to
         environment variable / profile defaults.
@@ -609,7 +579,7 @@ class ExecutorSpec:  # type: ignore[explicit-any]  # config: dict[str, Any] fiel
     # During the omnigent-compat sunset, lifted from raw YAML's
     # executor.profile in the omnigent path too. None = resolve
     # via env vars / DEFAULT section. See class docstring.
-    # DEPRECATED: use executor.auth: {type: databricks, profile: <name>} instead.
+    # DEPRECATED: Databricks leftover kept for the omnigent-compat translator.
     profile: str | None = None
     # TECH DEBT (omnigent compat only — see class docstring).
     # Remove when Omnigent consolidation lands; do NOT extend.
@@ -631,7 +601,7 @@ class ExecutorSpec:  # type: ignore[explicit-any]  # config: dict[str, Any] fiel
     # Explicit executor auth. Populated from executor.auth in the YAML.
     # Takes precedence over ambient env vars and profile auto-detection.
     # None = fall back to env vars / profile defaults.
-    auth: ApiKeyAuth | DatabricksAuth | ProviderAuth | None = None
+    auth: ApiKeyAuth | ProviderAuth | None = None
 
     @property
     def harness_kind(self) -> str:
@@ -953,12 +923,6 @@ class MCPServerConfig:
     :param headers: HTTP headers, e.g.
         ``{"Authorization": "Bearer tok_xyz"}``. Valid only on
         ``"http"``.
-    :param databricks_profile: Databricks profile name from
-        ``~/.databrickscfg``, e.g. ``"oss"``. When set, the
-        connection resolves an OAuth token at runtime and injects
-        ``Authorization: Bearer <token>`` into the HTTP headers.
-        Valid only on ``"http"``. Avoids hardcoding short-lived
-        tokens in the YAML.
     :param command: Executable to spawn, e.g. ``"npx"``. Required
         when ``transport == "stdio"``; invalid for ``"http"``.
     :param args: Arguments to pass to *command*, e.g.
@@ -985,11 +949,6 @@ class MCPServerConfig:
     # HTTP-only fields.
     url: str | None = None
     headers: dict[str, str] = field(default_factory=dict, repr=False)
-    # Databricks profile auth — resolves a bearer token at connection
-    # time from ``~/.databrickscfg`` and injects it as the
-    # ``Authorization`` header. Mutually usable with ``headers``:
-    # explicit headers win if both set ``Authorization``.
-    databricks_profile: str | None = None
     # Stdio-only fields.
     command: str | None = None
     args: list[str] = field(default_factory=list)
@@ -1021,7 +980,6 @@ class MCPServerConfig:
         return (
             f"MCPServerConfig(name={self.name!r}, transport={self.transport!r}, "
             f"url={self.url!r}, headers={redacted_headers!r}, "
-            f"databricks_profile={self.databricks_profile!r}, "
             f"command={self.command!r}, args={self.args!r}, "
             f"env={redacted_env!r}, "
             f"timeout={self.timeout!r}, retry={self.retry!r})"
@@ -1034,16 +992,10 @@ class ToolRuntime(str, Enum):
     - :attr:`SERVER`: server loads a dotted ``callable:`` path.
     - :attr:`CLIENT`: SDK consumer provides the impl at stream
       start. ``callable:`` is forbidden (validation error).
-    - :attr:`UC_FUNCTION`: tool backed by a Unity Catalog SQL
-      function. Executed via ``WorkspaceClient
-      .statement_execution.execute_statement()`` at tool-call
-      time. ``path`` is ``None``; ``catalog_path`` carries the
-      three-level UC name (``catalog.schema.function``).
     """
 
     SERVER = "server"
     CLIENT = "client"
-    UC_FUNCTION = "uc_function"
 
 
 class SharePolicy(str, Enum):
@@ -1101,16 +1053,6 @@ class LocalToolInfo:  # type: ignore[explicit-any]  # parameters: dict[str, Any]
         (no server-side callable).
     :param runtime: See :class:`ToolRuntime`. Client tools forbid
         :attr:`path` and require explicit :attr:`parameters`.
-    :param catalog_path: Three-level Unity Catalog function name,
-        e.g. ``"my_catalog.my_schema.classify_sentiment"``.
-        ``None`` for non-UC tools. Mutually exclusive with
-        :attr:`path` — UC tools have no server-side callable.
-        Set only when :attr:`runtime` is
-        :attr:`ToolRuntime.UC_FUNCTION`.
-    :param warehouse_id: Databricks SQL warehouse ID for UC
-        function execution, e.g. ``"abc123def456"``. Required
-        when :attr:`runtime` is :attr:`ToolRuntime.UC_FUNCTION`.
-        ``None`` for non-UC tools.
     """
 
     name: str
@@ -1126,8 +1068,6 @@ class LocalToolInfo:  # type: ignore[explicit-any]  # parameters: dict[str, Any]
     inline_deps: list[str] | None = None
     parameters: dict[str, Any] | None = None  # type: ignore[explicit-any]
     runtime: ToolRuntime = ToolRuntime.SERVER
-    catalog_path: str | None = None
-    warehouse_id: str | None = None
     description: str | None = None
 
 

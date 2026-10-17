@@ -1046,109 +1046,6 @@ async def _execute_spec_callable_tool(
     return str(result) if result is not None else ""
 
 
-# ── Unity Catalog function dispatch ───────────────────────────
-#
-# UC function tools are declared with ``catalog_path:`` in the YAML
-# and executed via the Databricks SQL Statement Execution API.
-
-
-def _is_uc_function_tool(
-    tool_name: str,
-    agent_spec: AgentSpec | None,
-) -> bool:
-    """
-    Check whether *tool_name* is a UC function tool in the spec.
-
-    :param tool_name: Tool name from the LLM, e.g.
-        ``"classify_text"``.
-    :param agent_spec: The session's :class:`AgentSpec`. ``None``
-        when no spec is available.
-    :returns: ``True`` if the tool is a
-        :attr:`ToolRuntime.UC_FUNCTION` tool.
-    """
-    if agent_spec is None:
-        return False
-    local_tools = agent_spec.local_tools
-    from omnigent.spec.types import ToolRuntime
-
-    return any(
-        lt.name == tool_name and lt.runtime == ToolRuntime.UC_FUNCTION for lt in local_tools
-    )
-
-
-def _resolve_uc_profile(agent_spec: AgentSpec) -> str | None:
-    """
-    Extract the Databricks profile from the agent spec's executor
-    auth configuration.
-
-    Checks ``executor.auth`` (preferred) then falls back to
-    ``executor.profile`` (deprecated) and finally
-    ``executor.config["profile"]`` (compat bridge).
-
-    :param agent_spec: The session's :class:`AgentSpec`.
-    :returns: The profile name, e.g. ``"oss"``, or ``None`` for
-        SDK default resolution.
-    """
-    executor = agent_spec.executor
-    # Preferred: executor.auth.profile (DatabricksAuth).
-    auth = executor.auth
-    auth_profile = getattr(auth, "profile", None)
-    if isinstance(auth_profile, str) and auth_profile:
-        return auth_profile
-    # Deprecated: executor.profile.
-    if executor.profile:
-        return executor.profile
-    # Compat bridge: executor.config["profile"].
-    config = _string_object_dict(getattr(executor, "config", None))
-    if config is None:
-        return None
-    profile = config.get("profile")
-    return profile if isinstance(profile, str) and profile else None
-
-
-async def _execute_uc_function_tool(
-    tool_name: str,
-    args: _JsonObject,
-    *,
-    agent_spec: AgentSpec | None = None,
-) -> str:
-    """
-    Execute a Unity Catalog function tool and return the output
-    string.
-
-    Resolves the ``catalog_path`` from the spec's ``local_tools``,
-    extracts the Databricks profile and warehouse ID from the
-    executor config, then delegates to
-    :func:`omnigent.runner.uc_function.execute_uc_function`.
-
-    :param tool_name: Tool name from the LLM, e.g.
-        ``"classify_text"``.
-    :param args: Parsed argument dict from the LLM.
-    :param agent_spec: The session's :class:`AgentSpec`. Must not
-        be ``None`` (caller checks via :func:`_is_uc_function_tool`
-        first).
-    :returns: Tool output as a string, or an error message.
-    """
-    from omnigent.runner.uc_function import execute_uc_function
-
-    if agent_spec is None:
-        return f"Error: {tool_name} is not a UC function tool"
-    local_tools = agent_spec.local_tools
-    tool_info = next((lt for lt in local_tools if lt.name == tool_name), None)
-    if tool_info is None or tool_info.catalog_path is None:
-        return f"Error: {tool_name} is not a UC function tool"
-
-    profile = _resolve_uc_profile(agent_spec)
-    warehouse_id = getattr(tool_info, "warehouse_id", None)
-
-    return await execute_uc_function(
-        catalog_path=tool_info.catalog_path,
-        args=args,
-        profile=profile,
-        warehouse_id=warehouse_id,
-    )
-
-
 @dataclass(frozen=True)
 class _SubagentLabel:
     """
@@ -6874,8 +6771,6 @@ async def execute_tool(
                     else cast(Path | None, local_tool_workdir)
                 ),
             )
-        elif _is_uc_function_tool(tool_name, agent_spec):
-            output = await _execute_uc_function_tool(tool_name, args, agent_spec=agent_spec)
         else:
             output = await _execute_spec_callable_tool(tool_name, args, agent_spec=agent_spec)
     except Exception as exc:

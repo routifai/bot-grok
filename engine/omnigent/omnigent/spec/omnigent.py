@@ -300,18 +300,6 @@ def _translate_tools_to_omnigent(spec: AgentSpec) -> dict[str, Tool]:
                 runtime="client",
             )
             continue
-        # UC function tools have a catalog_path and no server-side
-        # callable. Round-trip them as a ``FunctionTool`` with the
-        # catalog_path preserved so the inner stack can delegate to
-        # the runner's UC executor at call time.
-        if tool_info.runtime == ToolRuntime.UC_FUNCTION:
-            tools[tool_info.name] = FunctionTool(
-                name=tool_info.name,
-                catalog_path=tool_info.catalog_path,
-                input_schema=tool_info.parameters,
-                warehouse_id=tool_info.warehouse_id,
-            )
-            continue
         # Step (c): every ``LocalToolInfo`` resolves to a plain
         # callable. The runner-protocol fallback (instances with
         # ``.start(args, on_complete)``) was removed once
@@ -937,9 +925,7 @@ def agent_def_to_agent_spec(
     :raises OmnigentError: When *agent_def* uses an omnigent
         concept Omnigent' :class:`AgentSpec` cannot currently
         represent. Each such case names the specific field.
-        Current unsupported concepts: MCP-type tools.
     """
-    _fail_on_unsupported_concepts_def(agent_def)
     name = _translate_name_from_def(agent_def.name)
     # ``instructions:`` (resolved from a sibling file or inline text by
     # ``omnigent.inner.loader.load_agent_def``) wins over ``prompt:``
@@ -1433,73 +1419,6 @@ def _resolve_inline_agent_tool_os_env(
     return tool_os_env
 
 
-def _fail_on_unsupported_concepts_def(agent_def: AgentDef) -> None:
-    """
-    Raise :class:`OmnigentError` for every omnigent concept
-    Omnigent' :class:`AgentSpec` cannot currently represent.
-
-    Each unsupported concept gets its own clear error message
-    naming the specific field.
-
-    :param agent_def: Parsed omnigent agent definition.
-    :raises OmnigentError: On the first unsupported concept
-        encountered. Currently the only rejection is MCP-type
-        tools; ``policies`` are lifted into
-        ``AgentSpec.guardrails.policies`` and enforced by the
-        omnigent workflow (see
-        :func:`_translate_guardrails_yaml`), and ``os_env`` is
-        translated and placed on ``AgentSpec.os_env``.
-    """
-    for tool_name, tool in agent_def.tools.items():
-        _fail_on_unsupported_tool(agent_def.name, tool_name, tool)
-
-
-def _fail_on_unsupported_tool(
-    agent_name: str | None,
-    tool_name: str,
-    tool: Tool,
-) -> None:
-    """
-    Raise :class:`OmnigentError` when *tool* uses an omnigent
-    tool concept omnigent cannot currently represent.
-
-    :param agent_name: Enclosing agent name, for error messages,
-        e.g. ``"coder"``. ``None`` when the agent was not given a
-        name — the error message then renders ``None`` verbatim.
-    :param tool_name: The YAML key for this tool, e.g.
-        ``"glean_search"``.
-    :param tool: The parsed omnigent tool instance.
-    :raises OmnigentError: On MCP tools or cancellable_function
-        tools.
-    """
-    # FunctionTool, CancellableFunctionTool, and AgentTool are all
-    # supported — the caller dispatches them appropriately.
-    # Agent-plane treats every tool as cancellable at the runtime
-    # layer so FunctionTool vs CancellableFunctionTool isn't a
-    # meaningful distinction at the spec level.
-    if isinstance(tool, FunctionTool | CancellableFunctionTool | AgentTool):
-        return
-    if isinstance(tool, MCPTool):
-        # MCPTool is translated into ``AgentSpec.mcp_servers`` by
-        # :func:`_translate_mcp_tool_from_def` — except for the
-        # ``databricks_server=<name>`` shape, which references a
-        # Databricks-managed MCP endpoint that Omnigent'
-        # runtime has no resolver for yet. Reject that shape loud;
-        # HTTP + stdio MCPTools fall through and translate below.
-        if tool.databricks_server is not None:
-            raise OmnigentError(
-                f"omnigent agent {agent_name!r} declares tool "
-                f"{tool_name!r} of type `mcp` with "
-                f"``databricks_server={tool.databricks_server!r}`` — "
-                f"Omnigent' MCPServerConfig doesn't understand the "
-                f"named-Databricks-server shape. Translate to an "
-                f"explicit HTTP ``url`` or stdio ``command``+``args`` "
-                f"MCP first.",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        return
-
-
 def _translate_name_from_def(raw_name: str | None) -> str | None:
     """
     Translate omnigent ``AgentDef.name`` to :attr:`AgentSpec.name`.
@@ -1768,9 +1687,7 @@ def _translate_mcp_tool_from_def(
     :param tool: The parsed omnigent :class:`MCPTool` instance.
     :returns: A fully populated :class:`MCPServerConfig`.
     :raises OmnigentError: If *tool* has neither ``url`` nor
-        ``command`` (shouldn't happen for normal MCPTools, but the
-        ``databricks_server`` shape is caught upstream by
-        :func:`_fail_on_unsupported_tool`).
+        ``command``.
     """
     if tool.url is not None:
         return MCPServerConfig(
@@ -1778,7 +1695,6 @@ def _translate_mcp_tool_from_def(
             transport="http",
             url=tool.url,
             headers=dict(tool.headers) if tool.headers else {},
-            databricks_profile=tool.profile,
             tools=list(tool.tools) if tool.tools else None,
         )
     if tool.command is not None:
@@ -1814,9 +1730,7 @@ def _translate_function_tool_from_def(
     :param tool_name: The YAML key for this tool, e.g.
         ``"get_current_time"``.
     :param tool: The parsed omnigent tool. Must be a
-        :class:`FunctionTool` at this point (fail-loud in
-        :func:`_fail_on_unsupported_tool` rejects the other
-        concrete subtypes).
+        :class:`FunctionTool` at this point.
     :returns: A :class:`LocalToolInfo` with ``name``, ``path``
         (dotted callable), and ``language`` =
         :data:`OMNIGENT_TOOL_LANGUAGE`.
@@ -1855,25 +1769,6 @@ def _translate_function_tool_from_def(
             language=OMNIGENT_TOOL_LANGUAGE,
             parameters=dict(tool.input_schema) if tool.input_schema else None,
             runtime=ToolRuntime.CLIENT,
-        )
-    # Unity Catalog tools declare ``catalog_path:`` instead of
-    # ``callable:``. They are executed at tool-call time via
-    # ``WorkspaceClient.statement_execution.execute_statement()``.
-    # No server-side callable to resolve or introspect — the
-    # parameter schema must come from the YAML ``parameters:``
-    # block or be fetched from UC metadata at registration time
-    # (future enhancement).
-    catalog_path = getattr(tool, "catalog_path", None)
-    if catalog_path:
-        return LocalToolInfo(
-            name=tool_name,
-            path=None,
-            language=OMNIGENT_TOOL_LANGUAGE,
-            parameters=dict(tool.input_schema) if tool.input_schema else None,
-            runtime=ToolRuntime.UC_FUNCTION,
-            catalog_path=catalog_path,
-            warehouse_id=getattr(tool, "warehouse_id", None),
-            description=tool.description,
         )
     callable_path = _recover_callable_path(tool_name, tool)
     # Mirror the legacy ``Tool.tool_schema()`` precedence: an

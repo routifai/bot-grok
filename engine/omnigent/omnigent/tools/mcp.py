@@ -87,46 +87,6 @@ _MCP_RECONNECT_DEFAULTS = RetryPolicy(
 _CIRCUIT_BREAKER_THRESHOLD = 5
 
 
-def _resolve_databricks_token(profile: str) -> str:
-    """
-    Resolve an OAuth bearer token from a Databricks config profile.
-
-    Uses the Databricks SDK's ``WorkspaceClient`` to read
-    ``~/.databrickscfg`` and obtain a fresh token. The client is
-    NOT cached here — token resolution happens once per
-    ``connect()`` call and the token is short-lived (typically 1h).
-
-    :param profile: Databricks config profile name, e.g.
-        ``"<your-profile>"``.
-    :returns: A bearer token string.
-    :raises ImportError: If ``databricks-sdk`` is not installed.
-    :raises RuntimeError: If the profile cannot resolve a token
-        (bad profile, expired credentials, network error).
-    """
-    try:
-        from databricks.sdk import WorkspaceClient
-    except ImportError:
-        raise ImportError(
-            "databricks-sdk is required for MCP Databricks auth (pip install databricks-sdk)"
-        ) from None
-
-    try:
-        client = WorkspaceClient(profile=profile)
-        result = client.config.authenticate()
-        # SDK returns either a dict (newer versions) or a callable
-        # that produces headers (older versions).
-        headers: dict[str, str] = result if isinstance(result, dict) else result(None)
-        auth_header = headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            return auth_header[len("Bearer ") :]
-        # Some auth flows return the token directly.
-        return auth_header
-    except Exception as exc:
-        raise RuntimeError(
-            f"Failed to resolve Databricks token from profile {profile!r}: {exc}"
-        ) from exc
-
-
 # Seconds to wait after tripping before allowing a single
 # half-open probe. Long enough that a restarting server has
 # time to come back; short enough that recovery isn't delayed
@@ -387,9 +347,7 @@ def _cache_key(config: MCPServerConfig, cwd: Path | None = None) -> str:
     observe — anything that can change what ``tools/list`` returns.
     For stdio that is the spawned command line (``command`` /
     ``args`` / ``cwd``) and the ``env`` overlay; for HTTP it is the
-    ``url`` and the request identity (``headers``, and
-    ``databricks_profile``, which resolves to an Authorization
-    header at connect() time). A server may register different
+    ``url`` and the request identity (``headers``). A server may register different
     tools depending on any of these (an env-gated read-only mode, a
     remote server that scopes tools per principal), and two configs
     differing in one must never share a cached tools/list — the
@@ -414,12 +372,7 @@ def _cache_key(config: MCPServerConfig, cwd: Path | None = None) -> str:
         env_part = _mapping_digest(config.env)
         return f"stdio:{config.name}:{config.command}:{args_part}:{cwd_part}:{env_part}"
     headers_part = _mapping_digest(config.headers)
-    # databricks_profile resolves to an Authorization header at
-    # connect() time, so it is an identity field even though the
-    # static ``headers`` map doesn't show it. A profile name is not
-    # a secret; keyed verbatim.
-    profile_part = config.databricks_profile or ""
-    return f"http:{config.name}:{config.url}:{profile_part}:{headers_part}"
+    return f"http:{config.name}:{config.url}:{headers_part}"
 
 
 def clear_discovery_cache() -> None:
@@ -1196,20 +1149,10 @@ class McpServerConnection:
         """
         Build the HTTP headers for the MCP connection.
 
-        Merges explicit ``headers`` from the config with a
-        Databricks OAuth token when ``databricks_profile`` is set.
-        The token is resolved fresh on each call so reconnects
-        pick up rotated credentials.
-
-        :returns: Merged headers dict, or ``None`` if no headers
-            are needed (empty config headers and no profile).
+        :returns: The config's explicit headers, or ``None`` when it
+            declares none.
         """
-        merged = dict(self.config.headers) if self.config.headers else {}
-        if self.config.databricks_profile is not None:
-            token = _resolve_databricks_token(self.config.databricks_profile)
-            # Explicit Authorization header wins — don't overwrite.
-            merged.setdefault("Authorization", f"Bearer {token}")
-        return merged or None
+        return dict(self.config.headers) if self.config.headers else None
 
     async def _open_streamable_http_transport(
         self,

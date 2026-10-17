@@ -246,40 +246,30 @@ def test_cache_key_stdio_env_changes_key() -> None:
     assert "sk-hunter2" not in key_secret
 
 
-def _http_config(
-    headers: dict[str, str] | None = None,
-    databricks_profile: str | None = None,
-) -> MCPServerConfig:
-    """An HTTP config fixed in every field except headers / profile."""
+def _http_config(headers: dict[str, str] | None = None) -> MCPServerConfig:
+    """An HTTP config fixed in every field except headers."""
     return MCPServerConfig(
         name="remote",
         transport="http",
         url="https://mcp.example.com/sse",
         headers=headers or {},
-        databricks_profile=databricks_profile,
     )
 
 
-def test_cache_key_http_headers_and_profile_change_key() -> None:
+def test_cache_key_http_headers_change_key() -> None:
     """
     Different HTTP ``headers`` (e.g. different Authorization
-    bearers) or a different ``databricks_profile`` produce
-    different cache keys, and header values never appear verbatim
-    in the key.
+    bearers) produce different cache keys, and header values never
+    appear verbatim in the key.
 
     What breaks if this fails: two agents pointing at one MCP URL
     with different credentials share a cached tools/list even when
-    the server scopes its tool surface by principal —
-    ``databricks_profile`` resolves to an Authorization header at
-    connect() time, so it is an identity field too.
+    the server scopes its tool surface by principal.
     """
     key_a = _cache_key(_http_config(headers={"Authorization": "Bearer tok_a"}))
     key_b = _cache_key(_http_config(headers={"Authorization": "Bearer tok_b"}))
     assert key_a != key_b
     assert "tok_a" not in key_a
-    assert _cache_key(_http_config(databricks_profile="oss")) != _cache_key(
-        _http_config(databricks_profile="prod")
-    )
 
 
 def test_cache_key_stdio_and_http_do_not_collide() -> None:

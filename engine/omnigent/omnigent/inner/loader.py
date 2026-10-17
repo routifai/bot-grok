@@ -413,11 +413,9 @@ def _parse_tool(name: str, data: str | YamlData, *, allow_dynamic_tools: bool) -
         tool = FunctionTool(
             name=name,
             description=data.get("description"),
-            catalog_path=data.get("catalog_path"),
             input_schema=data.get("parameters") or data.get("input_schema"),
             cancellable=bool(data.get("cancellable", False)),
             runtime=runtime_raw,
-            warehouse_id=data.get("warehouse_id"),
         )
         callable_path = data.get("callable")
         if callable_path and isinstance(callable_path, str):
@@ -445,15 +443,6 @@ def _parse_tool(name: str, data: str | YamlData, *, allow_dynamic_tools: bool) -
         )
 
     if tool_type == "mcp":
-        # ``profile`` can be declared directly (``profile: myprof``)
-        # or inside an ``auth:`` block (``auth: {type: databricks,
-        # profile: myprof}``). The ``auth:`` block is the preferred
-        # form — it matches the executor auth shape.
-        mcp_profile = data.get("profile")
-        raw_auth = data.get("auth")
-        if mcp_profile is None and isinstance(raw_auth, dict):
-            if str(raw_auth.get("type", "")) == "databricks":
-                mcp_profile = raw_auth.get("profile")
         return MCPTool(
             name=name,
             description=data.get("description"),
@@ -463,8 +452,6 @@ def _parse_tool(name: str, data: str | YamlData, *, allow_dynamic_tools: bool) -
             env=data.get("env"),
             tools=data.get("tools"),
             tool_name=data.get("tool_name"),
-            profile=mcp_profile,
-            databricks_server=data.get("databricks_server"),
             headers=data.get("headers"),
         )
 

@@ -15,8 +15,6 @@ from omnigent.inner.datamodel import (
     CredentialProxyEntry,
     CredentialProxySpec,
     CredentialSourceSpec,
-    DatabricksProfileBinding,
-    DatabricksProxySpec,
     OSEnvSandboxSpec,
     OSEnvSpec,
 )
@@ -85,35 +83,6 @@ def test_harness_credential_proxy_resolves_parent_secret(
     assert runtime.rewrites[0].real_secret == "test-secret"
     assert runtime.helper_env_updates["API_TOKEN"].startswith("oa_cred_")
     assert "test-secret" not in runtime.helper_env_updates.values()
-
-
-def test_harness_preserves_nested_sources_and_databricks_profiles(
-    decode_sandbox: Callable[[OSEnvSandboxSpec], OSEnvSandboxSpec],
-) -> None:
-    sources = [
-        CredentialSourceSpec(kind="file", path="/tmp/token", refresh_interval_seconds=60),
-        CredentialSourceSpec(kind="command", command="example-token-provider"),
-        CredentialSourceSpec(
-            kind="unix_socket", path="/tmp/token.sock", refresh_interval_seconds=30
-        ),
-    ]
-    sandbox = OSEnvSandboxSpec(
-        type="linux_bwrap",
-        credential_proxy=CredentialProxySpec(
-            entries=[
-                CredentialProxyEntry(
-                    host="api.example.com", scheme="basic", source=source, username="test-user"
-                )
-                for source in sources
-            ],
-            databricks=DatabricksProxySpec(
-                profiles=[DatabricksProfileBinding(profile="test-workspace")],
-                default="test-workspace",
-                config_env="TEST_DATABRICKS_CONFIG",
-            ),
-        ),
-    )
-    assert decode_sandbox(sandbox) == sandbox
 
 
 @pytest.mark.parametrize("proxy", [None, CredentialProxySpec(entries=[])])

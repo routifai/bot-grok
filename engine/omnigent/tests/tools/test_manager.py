@@ -27,7 +27,6 @@ from omnigent.spec.types import (
 from omnigent.tools import ToolManager
 from omnigent.tools.base import Tool, ToolContext
 from omnigent.tools.client_specified import ClientSideTool, ClientSideToolSpec
-from omnigent.tools.manager import _UCFunctionSchemaTool
 from omnigent.tools.mcp import clear_discovery_cache
 
 _TEST_CTX = ToolContext(task_id="task_test", agent_id="agent_test")
@@ -1305,14 +1304,6 @@ def test_read_skill_file_registered_for_root_level_resources(tmp_path: Path) -> 
     assert any_skill_has_resources([skill]) is True
 
 
-def test_uc_function_schema_tool_description_falls_back_for_non_dict_function() -> None:
-    tool = _UCFunctionSchemaTool(tool_name="warehouse_query", schema={"function": "oops"})
-
-    assert tool.name() == "warehouse_query"
-    assert tool.description() == ""
-    assert tool.get_schema() == {"function": "oops"}
-
-
 def test_async_inbox_tools_not_registered_when_async_disabled() -> None:
     mgr = ToolManager(AgentSpec(spec_version=1, async_enabled=False))
     names = {schema["function"]["name"] for schema in mgr.get_tool_schemas()}
@@ -1411,56 +1402,6 @@ def test_spec_declared_client_local_tool_requires_parameters() -> None:
 
     with pytest.raises(ValueError, match="has no ``parameters`` block"):
         ToolManager(spec)
-
-
-def test_uc_function_local_tool_registers_schema_defaults_and_description() -> None:
-    spec = AgentSpec(
-        spec_version=1,
-        local_tools=[
-            LocalToolInfo(
-                name="warehouse_query",
-                path=None,
-                language="python",
-                runtime=ToolRuntime.UC_FUNCTION,
-                parameters=None,
-                description="Run a warehouse SQL statement.",
-            )
-        ],
-    )
-    mgr = ToolManager(spec)
-
-    tool = mgr.get_tool("warehouse_query")
-
-    assert isinstance(tool, _UCFunctionSchemaTool)
-    assert tool.description() == "Run a warehouse SQL statement."
-    assert tool.get_schema() == {
-        "type": "function",
-        "function": {
-            "name": "warehouse_query",
-            "parameters": {"type": "object", "properties": {}},
-            "description": "Run a warehouse SQL statement.",
-        },
-    }
-
-
-def test_invalid_uc_function_name_is_skipped(caplog: pytest.LogCaptureFixture) -> None:
-    spec = AgentSpec(
-        spec_version=1,
-        local_tools=[
-            LocalToolInfo(
-                name="bad name",
-                path=None,
-                language="python",
-                runtime=ToolRuntime.UC_FUNCTION,
-            )
-        ],
-    )
-
-    with caplog.at_level(logging.WARNING, logger="omnigent.tools.manager"):
-        mgr = ToolManager(spec)
-
-    assert mgr.get_tool("bad name") is None
-    assert "UC function tool 'bad name' has invalid name" in caplog.text
 
 
 def test_invalid_local_python_tool_name_is_skipped(
