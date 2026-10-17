@@ -9,7 +9,6 @@ import {
   Globe,
   History,
   MessageCircle,
-  MessagesSquare,
   NotebookPen,
   Search,
 } from "lucide-react";
@@ -23,17 +22,15 @@ export const TOOL_ICON_COMPONENT: Record<ToolIconKey, LucideIcon> = {
   web: Globe,
   memory: Fingerprint,
   helper: Bot,
-  sideChat: MessagesSquare,
   history: History,
   generic: Circle,
 };
 
 /** An Activity's icon by where it came from (web/packages/contracts/src/rpc/activity.ts
- * `ActivitySource`): a Conversation turn, a Side Chat turn, background work, a scheduled
+ * `ActivitySource`): a Conversation turn, background work, upkeep, a scheduled
  * Helper (standing task, followed topic) or a Goal's cadence. */
 export const ACTIVITY_SOURCE_ICON: Record<ActivitySource, LucideIcon> = {
   turn: MessageCircle,
-  side_chat: MessagesSquare,
   background: Bot,
   housekeeping: NotebookPen,
   scheduled: CalendarClock,

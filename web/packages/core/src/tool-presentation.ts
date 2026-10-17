@@ -12,14 +12,7 @@ import type { ActivityStep } from "@superchat/contracts";
 
 /** A small, closed set of line icons a tool can present as — never the tool's own name.
  * web/app/src/components/chrome/toolIcons.ts maps each to a lucide icon. */
-export type ToolIconKey =
-  | "search"
-  | "web"
-  | "memory"
-  | "helper"
-  | "sideChat"
-  | "history"
-  | "generic";
+export type ToolIconKey = "search" | "web" | "memory" | "helper" | "history" | "generic";
 
 /** One tool's presentation: an icon, a plain-language title derived from its call
  * arguments, and a short snippet of its result — never the tool's own name, never the
@@ -41,7 +34,7 @@ export interface PresentedStep {
 }
 
 /** The engine's always-on superside-chat tools (engine/omnigent/omnigent/tools/builtins/
- * memory.py, session_history.py, side_chat.py, spawn.py, async_inbox.py) — registered for
+ * memory.py, session_history.py, spawn.py, async_inbox.py) — registered for
  * every `omnigent.context.mode=superside-chat` session regardless of the agent bundle's own
  * `tools.builtins` list. Kept next to the registry so the completeness test
  * (tool-presentation.completeness.test.ts) can assert every one of these has an entry too. */
@@ -52,7 +45,6 @@ export const ALWAYS_ON_SUPERSIDE_CHAT_TOOLS = [
   "memory_explain",
   "memory_forget",
   "session_history",
-  "side_chat_open",
   "sys_session_send",
   "sys_session_create",
   "sys_read_inbox",
@@ -244,7 +236,7 @@ function sessionHistoryTitle(args: Record<string, unknown>): string {
       ? `Searched earlier messages for “${query.trim()}”`
       : "Searched earlier messages";
   }
-  if (action === "list_chats") return "Listed side chats";
+  if (action === "list_chats") return "Listed chats";
   if (action === "status") return "Checked how much room is left";
   return "Checked the conversation";
 }
@@ -438,17 +430,6 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
   sys_scheduled_task_delete: {
     icon: "helper",
     title: () => "Stopped following a topic",
-    snippet: () => null,
-  },
-
-  side_chat_open: {
-    icon: "sideChat",
-    title: (args) => {
-      const title = args.title;
-      return isNonEmptyString(title)
-        ? `Opened a side chat “${title.trim()}”`
-        : "Opened a side chat";
-    },
     snippet: () => null,
   },
 

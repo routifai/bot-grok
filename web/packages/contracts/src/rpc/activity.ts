@@ -11,16 +11,10 @@ import { Id } from "../ids.js";
 export const ActivityKindSchema = z.enum(["turn", "sub_agent"]);
 export type ActivityKind = z.infer<typeof ActivityKindSchema>;
 
-/** Where an Activity came from, for the icon beside it: a Conversation turn, a Side Chat turn,
- * background work the Muse started, or a scheduled Helper (an automation). Distinct from `kind`,
+/** Where an Activity came from, for the icon beside it: a Conversation turn, background work
+ * the Muse started, upkeep, or a scheduled Helper (an automation). Distinct from `kind`,
  * which says how the engine stores it. */
-export const ActivitySourceSchema = z.enum([
-  "turn",
-  "side_chat",
-  "background",
-  "housekeeping",
-  "scheduled",
-]);
+export const ActivitySourceSchema = z.enum(["turn", "background", "housekeeping", "scheduled"]);
 export type ActivitySource = z.infer<typeof ActivitySourceSchema>;
 
 export const ActivityStatusSchema = z.enum(["in_progress", "done", "failed", "cancelled"]);
@@ -40,8 +34,8 @@ export type ActivityStep = z.infer<typeof ActivityStepSchema>;
 export const ActivitySchema = z.object({
   id: Id,
   kind: ActivityKindSchema,
-  /** The chat this Activity happened in: the Conversation / a Side Chat for a turn, or the
-   * Helper's own chat for a `sub_agent` Activity. */
+  /** The chat this Activity happened in: the Conversation for a turn, or the Helper's own
+   * chat for a `sub_agent` Activity. */
   chatId: Id,
   source: ActivitySourceSchema,
   /** A short action-first title ("Check Tesla's latest price"), model-written by the engine. */
@@ -57,8 +51,8 @@ export const ActivitySchema = z.object({
   finishedAt: z.string().nullable(),
   /** Calendar date (local to the Activity) the panel groups by, e.g. "2026-10-03". */
   date: z.string(),
-  /** For a Helper, the chat that started it: the Conversation, a Side Chat, or — for a part of
-   * a bigger task — another Helper's chat (its `chatId`), which is how parts nest under it. */
+  /** For a Helper, the chat that started it: the Conversation, or — for a part of a bigger
+   * task — another Helper's chat (its `chatId`), which is how parts nest under it. */
   parentChatId: Id.nullable().optional(),
   /** Present (possibly empty) on `activities.get`; omitted on the `activities.list` summary. */
   steps: z.array(ActivityStepSchema).optional(),

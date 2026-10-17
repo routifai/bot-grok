@@ -120,7 +120,7 @@ describe("TOOL_PRESENTATION", () => {
     expect(entry.title({ action: "search", query: "Q4" })).toBe(
       "Searched earlier messages for “Q4”",
     );
-    expect(entry.title({ action: "list_chats" })).toBe("Listed side chats");
+    expect(entry.title({ action: "list_chats" })).toBe("Listed chats");
     expect(entry.title({ action: "status" })).toBe("Checked how much room is left");
 
     const readOutput = JSON.stringify({
@@ -131,18 +131,6 @@ describe("TOOL_PRESENTATION", () => {
 
     const listChatsOutput = JSON.stringify({ chats: [{ id: "c1", title: "Q4 checklist" }] });
     expect(entry.snippet(listChatsOutput)).toContain("Q4 checklist");
-  });
-
-  it("side_chat_open: opens a side chat by title, no snippet", () => {
-    const entry = TOOL_PRESENTATION.side_chat_open as ToolPresentation;
-    expect(entry.icon).toBe("sideChat");
-    expect(entry.title({ title: "Q4 checklist", start: "with_context" })).toBe(
-      "Opened a side chat “Q4 checklist”",
-    );
-    expect(entry.title({ start: "blank" })).toBe("Opened a side chat");
-    expect(
-      entry.snippet('{"conversation_id":"conv_1","title":"Q4 checklist","start":"blank"}'),
-    ).toBeNull();
   });
 
   it("sys_session_send: starts background work for a title, snippet says who started", () => {
@@ -339,11 +327,6 @@ describe("never reveals the tool's raw name", () => {
       tool: "session_history",
       args: { action: "read" },
       output: JSON.stringify({ turns: [], next_cursor: null }),
-    },
-    {
-      tool: "side_chat_open",
-      args: { title: "Q4 checklist", start: "blank" },
-      output: JSON.stringify({ conversation_id: "conv_1" }),
     },
     {
       tool: "sys_session_send",
