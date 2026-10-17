@@ -9,8 +9,8 @@ import { ForkThread } from "../../features/side-chats/ForkThread";
 import type { ChatListState } from "../../features/side-chats/useChatList";
 import { useForkView } from "../../features/side-chats/useForkView";
 import type { ArtifactTarget } from "../../lib/artifact-open";
-import { MuseSidebar } from "../muse/chrome/MuseSidebar";
-import { Transcript } from "../muse/conversation/Transcript";
+import { MuseSidebar } from "../app/chrome/MuseSidebar";
+import { Transcript } from "../app/conversation/Transcript";
 import {
   conversationWithForks,
   FORK_DEV_CONVERSATION,

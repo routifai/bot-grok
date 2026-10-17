@@ -5,7 +5,7 @@ import { AskPreviewsProvider } from "../../components/cards/context";
 import { DeckThemeChoice } from "../../features/decks";
 import type { ArtifactTarget } from "../../lib/artifact-open";
 import { setDeckThemeSources } from "../../lib/deck-themes";
-import { Transcript } from "../muse/conversation/Transcript";
+import { Transcript } from "../app/conversation/Transcript";
 import { type CardsScenario, replyTo, seedMessages } from "./cards-fixture";
 import { DEV_BOT_ID, DEV_MUSE_COLOR, DEV_MUSE_NAME } from "./side-chat-fixture";
 

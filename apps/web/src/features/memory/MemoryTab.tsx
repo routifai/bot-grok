@@ -29,7 +29,7 @@ type MemoryState =
  * under the headings the engine gives it. When the claim wire is there, the tab shows the
  * editable sections instead (About you, Commitments, Projects & focus, People, How Superchat works
  * with you; see MemorySections.tsx). The Days section (daily notes, supplied through `days`) sits under them; Memory settings
- * (apps/web/src/pages/muse/settings/MemoryPanel.tsx) owns changing it.
+ * (apps/web/src/pages/app/settings/MemoryPanel.tsx) owns changing it.
  */
 export function MemoryTab({
   botId,

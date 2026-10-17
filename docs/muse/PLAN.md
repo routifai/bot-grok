@@ -100,7 +100,7 @@ IDs: `B` = backend agent, `F` = frontend agent. "Depends on" lists what must be 
 
 **F1 · Single-Muse shell** — depends on B1
 - In muse mode, remove the bot list, the "+" new-bot entry, bot duplicate/archive in `BotContextMenu.tsx`, and group chat entry points. The app opens straight into the Muse's Conversation.
-- Add rail entries in `AppRail.tsx`: Conversation, Goals, Feed, Library (Ideas lives inside Feed, "Waiting on you" opens from the avatar). Build each screen as its own file under `apps/web/src/pages/muse/`; `Shell.tsx` only routes to them.
+- Add rail entries in `AppRail.tsx`: Conversation, Goals, Feed, Library (Ideas lives inside Feed, "Waiting on you" opens from the avatar). Build each screen as its own file under `apps/web/src/pages/app/`; `Shell.tsx` only routes to them.
 - Replace "bot" with the Muse's name or "Muse" in any copy the person sees in muse mode.
 - Acceptance: web test opens `/app` in muse mode and asserts no bot list and the four rail entries.
 
@@ -130,7 +130,7 @@ IDs: `B` = backend agent, `F` = frontend agent. "Depends on" lists what must be 
 - Acceptance: RPC tests, including authorization (space and user scoping like existing routes).
 
 **F2 · Goals screen** — depends on B1 (build on contracts), wire to B6
-- `pages/muse/Goals.tsx`: list of Goals (status, next Task, due, check-in). Goal detail: the plan (Tasks with status), the open Proposal with Accept / Dismiss (reuse `AskCard.tsx`), and a read-only Goal log view reusing the existing thread message rendering from `chat-ui`.
+- `pages/app/Goals.tsx`: list of Goals (status, next Task, due, check-in). Goal detail: the plan (Tasks with status), the open Proposal with Accept / Dismiss (reuse `AskCard.tsx`), and a read-only Goal log view reusing the existing thread message rendering from `chat-ui`.
 - Check-in editor reuses `RoutineSchedule.tsx`.
 - New Goal is created by talking to the Muse; the screen has no create form in v1.
 - Acceptance: web test renders a seeded Goal with a Proposal and accepts it.
@@ -175,7 +175,7 @@ IDs: `B` = backend agent, `F` = frontend agent. "Depends on" lists what must be 
 - `Idea` model (botId, text, area, createdAt), replaced wholesale on refresh. Job `ideas.refresh` daily and after a Goal changes status; one model call over active Goals, memory, and the Conversation summary returning 6 short ideas (prompt adapted from the reference agent's ideas). `ideas.refresh` RPC for manual refresh.
 
 **F5 · Feed** — depends on B1, wire to B10
-- `pages/muse/Feed.tsx`: open Asks pinned (same `AskCard`), then Posts; each Post links to its Goal log or source. Ideas section at the bottom (F6).
+- `pages/app/Feed.tsx`: open Asks pinned (same `AskCard`), then Posts; each Post links to its Goal log or source. Ideas section at the bottom (F6).
 
 **F6 · Ideas** — depends on B1, wire to B11
 - Chips grouped by area; tapping one sends it as a message in the Conversation and switches to it.

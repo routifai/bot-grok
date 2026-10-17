@@ -5,9 +5,9 @@ import { Cpu, Monitor, Settings, UserRound, XIcon } from "lucide-react";
 import { type ComponentType, useEffect, useRef, useState } from "react";
 import { SuperchatTile, type TileTone } from "../components/chrome/SuperchatTile";
 import { ModelsPanel, useEngineModelsStatus } from "../features/models";
-import { SuperchatSettingsPanel } from "./muse/SuperchatSettingsPanel";
-import { ComputerStatusPanel } from "./muse/settings/ComputerStatusPanel";
-import { GeneralPanel } from "./muse/settings/GeneralPanel";
+import { SuperchatSettingsPanel } from "./app/SuperchatSettingsPanel";
+import { ComputerStatusPanel } from "./app/settings/ComputerStatusPanel";
+import { GeneralPanel } from "./app/settings/GeneralPanel";
 
 export type SettingsSection = "superchat" | "general" | "models" | "computer";
 

@@ -54,34 +54,34 @@ import { watchFamily } from "../lib/family-stream";
 import { markAfterPaint, markOnce } from "../lib/performance";
 import { rpc } from "../lib/rpc";
 import { type MuseLiveRun, useTurnRuns } from "../lib/useMuseLiveState";
-import { ChatsPopover } from "./muse/chrome/ChatsPopover";
-import { ContourGround } from "./muse/chrome/ContourGround";
-import { ConversationActivity } from "./muse/chrome/ConversationActivity";
-import { conversationLayout } from "./muse/chrome/conversationLayout";
-import { ConnectedDock, type DockKey, SettingsButton } from "./muse/chrome/Dock";
+import { ChatsPopover } from "./app/chrome/ChatsPopover";
+import { ContourGround } from "./app/chrome/ContourGround";
+import { ConversationActivity } from "./app/chrome/ConversationActivity";
+import { conversationLayout } from "./app/chrome/conversationLayout";
+import { ConnectedDock, type DockKey, SettingsButton } from "./app/chrome/Dock";
 import {
   EmptyConversationLead,
   EmptyConversationSuggestions,
-} from "./muse/chrome/EmptyConversation";
-import { Home } from "./muse/chrome/Home";
-import { HomeActivity } from "./muse/chrome/HomeActivity";
-import { BotSettingsPanel } from "./muse/chrome/PanelForms";
-import type { Panel } from "./muse/chrome/panel";
-import { SidePanelHeader } from "./muse/chrome/SidePanelHeader";
-import { useBotRoster } from "./muse/chrome/useBotRoster";
-import { useBrowserNotifications } from "./muse/chrome/useBrowserNotifications";
-import { useReplyAlerts } from "./muse/chrome/useReplyAlerts";
-import { ClearConversationHost } from "./muse/conversation/ClearConversationHost";
-import { Composer } from "./muse/conversation/Composer";
-import { sideChatView } from "./muse/conversation/sideChatView";
-import { Transcript } from "./muse/conversation/Transcript";
-import { useComposerSend } from "./muse/conversation/useComposerSend";
-import { useDockTransition } from "./muse/conversation/useDockTransition";
-import { useMuseTranscript } from "./muse/conversation/useMuseTranscript";
-import { useTranscriptScroll } from "./muse/conversation/useTranscriptScroll";
-import { SettingsHost } from "./muse/settings/SettingsHost";
-import { useShellSettings } from "./muse/settings/useShellSettings";
-import { DockSheets } from "./muse/sheets/DockSheets";
+} from "./app/chrome/EmptyConversation";
+import { Home } from "./app/chrome/Home";
+import { HomeActivity } from "./app/chrome/HomeActivity";
+import { BotSettingsPanel } from "./app/chrome/PanelForms";
+import type { Panel } from "./app/chrome/panel";
+import { SidePanelHeader } from "./app/chrome/SidePanelHeader";
+import { useBotRoster } from "./app/chrome/useBotRoster";
+import { useBrowserNotifications } from "./app/chrome/useBrowserNotifications";
+import { useReplyAlerts } from "./app/chrome/useReplyAlerts";
+import { ClearConversationHost } from "./app/conversation/ClearConversationHost";
+import { Composer } from "./app/conversation/Composer";
+import { sideChatView } from "./app/conversation/sideChatView";
+import { Transcript } from "./app/conversation/Transcript";
+import { useComposerSend } from "./app/conversation/useComposerSend";
+import { useDockTransition } from "./app/conversation/useDockTransition";
+import { useMuseTranscript } from "./app/conversation/useMuseTranscript";
+import { useTranscriptScroll } from "./app/conversation/useTranscriptScroll";
+import { SettingsHost } from "./app/settings/SettingsHost";
+import { useShellSettings } from "./app/settings/useShellSettings";
+import { DockSheets } from "./app/sheets/DockSheets";
 
 /** Superchat's Mac window (docs/muse/DESIGN.md "Window"): the Conversation and the other screens
  * sit flat on the rounded content window; only the sidebar, the inspector and side panels

@@ -49,13 +49,13 @@ vi.mock("@superchat/ui-web", () => ({
 // Every panel below is presentational chrome not under test here: this file only
 // exercises the nav (which sections exist, in which order) and the wiring into the
 // Superchat section.
-vi.mock("./muse/settings/GeneralPanel", () => ({
+vi.mock("./app/settings/GeneralPanel", () => ({
   GeneralPanel: () => <div data-testid="general-panel" />,
 }));
-vi.mock("./muse/settings/ComputerStatusPanel", () => ({
+vi.mock("./app/settings/ComputerStatusPanel", () => ({
   ComputerStatusPanel: () => <div data-testid="computer-panel" />,
 }));
-vi.mock("./muse/SuperchatSettingsPanel", () => ({
+vi.mock("./app/SuperchatSettingsPanel", () => ({
   SuperchatSettingsPanel: ({ bot }: { bot: Bot }) => (
     <div data-testid="superchat-panel" data-bot-name={bot.name} />
   ),

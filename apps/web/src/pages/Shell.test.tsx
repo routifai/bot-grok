@@ -147,7 +147,7 @@ vi.mock("../features/artifacts/ArtifactFileCard", () => ({ ArtifactFileCard: Stu
 vi.mock("../features/approvals/AskCard", () => ({ AskCard: Stub }));
 vi.mock("../components/CloudAgentCard", () => ({ CloudAgentCard: Stub }));
 vi.mock("../components/MessageHoverMetadata", () => ({ MessageHoverMetadata: Stub }));
-vi.mock("./muse/sheets/DockSheets", () => ({ DockSheets: Stub }));
+vi.mock("./app/sheets/DockSheets", () => ({ DockSheets: Stub }));
 vi.mock("../features/projects/WorkIn", () => ({
   useChatPlace: () => ({ place: null, reload: () => undefined }),
   WorkInChip: Stub,

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import type { DaysWire } from "../../features/daily-notes";
 import type { MemoryClaim, MemoryWire } from "../../features/memory";
-import { ContextPanel } from "../muse/chrome/ContextPanel";
+import { ContextPanel } from "../app/chrome/ContextPanel";
 import { DEV_CLAIMS, DEV_MEMORY_BOT_ID, DEV_NOTES } from "./memory-fixture";
 import { DEV_MUSE_NAME } from "./side-chat-fixture";
 
