@@ -3497,7 +3497,7 @@ def create_app(
             prefix="/v1",
             tags=["hosts"],
         )
-        # Model proxy: a Computer's model calls are made with its owner's own key, which
+        # Model proxy: a host's model calls are made with its owner's own key, which
         # stays in the engine (see omnigent.superchat.models.proxy). The saved-key store is
         # read at request time; without it the route answers model_key_required.
         from omnigent.superchat.models.proxy import create_model_proxy_router

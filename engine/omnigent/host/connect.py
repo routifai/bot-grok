@@ -4368,7 +4368,7 @@ def run_host_process(
     configure_host_gh(server_url, identity.host_id)
     start_host_gh_refresh(server_url, identity.host_id)
 
-    # Model proxy credential (the Computer's launch token only; the owner's model key stays in
+    # Model proxy credential (the host's launch token only; the owner's model key stays in
     # the engine). No-op outside a managed sandbox.
     from omnigent.host.model_credential import configure_host_model
 

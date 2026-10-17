@@ -1,6 +1,6 @@
-"""The Computer's file index: one SQLite file with the files, their passages and both indexes.
+"""The host's file index: one SQLite file with the files, their passages and both indexes.
 
-Layout (all in ``<home>/.superchat/knowledge/index.sqlite3``, on the Computer's persistent home
+Layout (all in ``<home>/.superchat/knowledge/index.sqlite3``, on the host's persistent home
 volume):
 
 * ``files``: one row per indexed file, keyed by its workspace-relative path, with the pass state

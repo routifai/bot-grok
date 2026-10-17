@@ -254,7 +254,7 @@ def test_deleting_the_page_drops_its_live_row_and_task(env, monkeypatch) -> None
     assert env.service.tasks.get(task_id) is None
 
 
-def test_on_change_is_a_setting_and_the_computer_routes_need_its_launch_token(env) -> None:
+def test_on_change_is_a_setting_and_the_host_routes_need_its_launch_token(env) -> None:
     page = _page(env)
     live = _put(env, page.id, sources=["your_files/tea.csv"]).json()["live"]
     assert live["on_change"] is True
@@ -280,7 +280,7 @@ def test_on_change_is_a_setting_and_the_computer_routes_need_its_launch_token(en
     )
     assert client.get("/v1/live/watch").status_code != 200
     assert client.get("/v1/live/watch", headers=good).json() == {"paths": ["your_files/tea.csv"]}
-    # The same call carries the Computer's load, which sizes its owner's room for runs.
+    # The same call carries the host's load, which sizes its owner's room for runs.
     task = SimpleNamespace(workspace_id=0, user_id="alice")
     assert env.service.room(task) is None
     assert client.get("/v1/live/watch?mem_free=0.5&load=0.1", headers=good).is_success
@@ -316,8 +316,8 @@ def test_note_and_start_fresh_routes(env) -> None:
     )
 
 
-def test_the_local_computer_watches_unowned_pages(env) -> None:
-    # Single-user mode: rows are unowned while the Computer's token names the local person.
+def test_the_local_host_watches_unowned_pages(env) -> None:
+    # Single-user mode: rows are unowned while the host's token names the local person.
     from omnigent.server.auth import RESERVED_USER_LOCAL
 
     local = {"x-user": RESERVED_USER_LOCAL}

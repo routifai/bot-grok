@@ -6,7 +6,7 @@ takes one ``set-full-source`` patch: the document editor sends the whole new tex
 changed in the patch's ``summary``. The engine applies them to the version
 it names and stores the result as a new version tagged ``manual``. A stale ``base_version`` is an
 ``artifact_stale`` 409 the editor reloads from; a patch that cannot be applied exactly is a
-``conflict`` 409 whose message says to ask Superchat instead. The write-back to the Computer and
+``conflict`` 409 whose message says to ask Superchat instead. The write-back to the host and
 the "you changed X" note are the artifacts capability's turn prefix.
 """
 

@@ -44,7 +44,7 @@ class DashboardTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.dir = Path(self.tmp.name).resolve()
         (self.dir / "sales.csv").write_text(CSV, "utf-8")
-        # The temp folder plays the person's workspace (~/workspace in the Computer).
+        # The temp folder plays the person's workspace (~/workspace in the host).
         self.workspace(self.dir)
 
     def workspace(self, root: Path) -> None:

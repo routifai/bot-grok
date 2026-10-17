@@ -41,7 +41,7 @@ def _isolated_model_catalog_store(
 def _isolated_knowledge_workspace(
     monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
 ) -> Path:
-    """Point the Computer's workspace (``memory/``, the index root) at a temp folder.
+    """Point the host's workspace (``memory/``, the index root) at a temp folder.
 
     A stored checkpoint writes ``~/workspace/memory/`` in the runner; a test must never write
     the developer's real home. ``memory/`` exists, so the rebuild that heals a missing folder

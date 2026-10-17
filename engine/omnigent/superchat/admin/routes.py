@@ -1,7 +1,7 @@
 """Organization admin routes (``/v1/admin/...``), admin-only; the organization is the workspace.
 
 * ``GET /admin/users``: every person with role, status, spend, sessions, connections, budget and
-  Computer; ``GET /admin/usage?window=day|month``: org totals, per-person and per-day.
+  host; ``GET /admin/usage?window=day|month``: org totals, per-person and per-day.
 * ``POST /admin/users/{id}/suspend`` and ``/resume``: stop and restore a person's usage.
 * ``DELETE /admin/users/{id}``: remove a person and what they own.
 
@@ -308,7 +308,7 @@ def create_org_admin_router(
 
     @router.delete("/admin/users/{user_id}")
     async def delete_user(request: Request, user_id: str) -> dict[str, Any]:
-        """Delete a person: sessions, Computer, keys, preferences, memory, the account. Idempotent.
+        """Delete a person: sessions, host, keys, preferences, memory, the account. Idempotent.
 
         Refuses the caller's own account and the last admin. A person already gone is a no-op.
         """

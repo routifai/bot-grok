@@ -210,9 +210,9 @@ class ErrorCode:
         next month lets the same request succeed.
     :cvar ACCOUNT_SUSPENDED: An admin suspended the caller's account. HTTP 403: nothing the
         caller does changes it until an admin resumes the account.
-    :cvar KNOWLEDGE_TIMEOUT: The Computer was reached but did not finish reading a file in time
-        (a big file, or a busy index). HTTP 504: the Computer is awake; the same request may
-        succeed when retried, so callers must not describe it as the Computer starting.
+    :cvar KNOWLEDGE_TIMEOUT: The host was reached but did not finish reading a file in time
+        (a big file, or a busy index). HTTP 504: the host is awake; the same request may
+        succeed when retried, so callers must not describe it as the host starting.
     :cvar MODEL_KEY_REQUIRED: The session owner has not saved a model API key (Anthropic or
         OpenRouter) and the deployment bills model calls to the owner's key. HTTP 412, like
         ``HARNESS_NOT_CONFIGURED``: the request is valid and a retry cannot succeed until

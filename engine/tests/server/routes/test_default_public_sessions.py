@@ -53,7 +53,7 @@ from tests.server.helpers import (
     FakeSandboxLauncher,
     build_agent_bundle,
     create_test_agent,
-    install_fake_computer_launcher,
+    install_fake_host_launcher,
 )
 
 _ADMIN = "admin@public-default.test"
@@ -445,7 +445,7 @@ async def test_managed_create_follows_policy(
 ) -> None:
     """A ``host_type="managed"`` (cloud sandbox) session is public under ``sandbox``,
     while a local session on the same server stays private."""
-    install_fake_computer_launcher(monkeypatch, FakeSandboxLauncher())
+    install_fake_host_launcher(monkeypatch, FakeSandboxLauncher())
     # Keep the background launch from outliving the test.
     monkeypatch.setattr("omnigent.server.hosts.HOST_ONLINE_TIMEOUT_S", 0.1)
     write_default_public_sessions_override(DefaultPublicSessions(policy))

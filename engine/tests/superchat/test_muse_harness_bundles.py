@@ -112,7 +112,7 @@ def test_the_muse_may_call_its_reply_tools(bundle: Path) -> None:
     allow = {line.strip().removeprefix("- ") for line in _lines(bundle / "config.yaml")}
     for name in ("render_card", "ask_clarification", "suggest_follow_ups"):
         assert name in allow, name
-    # Charts and dashboards are pages built in the Computer; the retired JSON chart tools stay out.
+    # Charts and dashboards are pages built in the host; the retired JSON chart tools stay out.
     assert not {"display_chart", "display_dashboard"} & allow
 
 

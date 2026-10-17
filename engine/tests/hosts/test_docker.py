@@ -26,7 +26,7 @@ from omnigent.hosts.launcher import RemoteCommandResult, supervise_host_command
 
 KEY = "bot_abc123"
 TENANT = "space_xyz789"
-IMAGE = "superchat/computer:test"
+IMAGE = "superchat/host:test"
 IMAGE_ID = "sha256:image-1"
 SANDBOX_ID = f"{KEY}:{TENANT}:c0ffee"
 
@@ -284,7 +284,7 @@ def test_is_running_reports_the_container_state() -> None:
     assert launcher.is_running("malformed") is None
 
 
-def test_terminate_is_not_supported_since_the_computer_outlives_the_session() -> None:
+def test_terminate_is_not_supported_since_the_host_outlives_the_session() -> None:
     docker = FakeDocker()
     with pytest.raises(click.ClickException):
         make_launcher(docker).terminate(SANDBOX_ID)

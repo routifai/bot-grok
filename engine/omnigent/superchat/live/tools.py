@@ -20,7 +20,7 @@ _PAGE = {"type": "string", "description": "The file's name in this chat, e.g. 'p
 _SOURCES = {
     "type": "array",
     "items": {"type": "string"},
-    "description": "Web page URLs or Computer file paths the facts come from.",
+    "description": "Web page URLs or host file paths the facts come from.",
 }
 
 
@@ -50,7 +50,7 @@ class KeepUpdatedTool(ArtifactTool):
         "on_change": {
             "type": "boolean",
             "description": (
-                "Also update a couple of minutes after a source file changes in the Computer. "
+                "Also update a couple of minutes after a source file changes in the host. "
                 "Default: true."
             ),
         },

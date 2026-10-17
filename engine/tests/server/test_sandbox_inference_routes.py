@@ -72,7 +72,7 @@ class _Catalog:
         self.calls.append((provider, harness, user_id))
         return {
             "version": 1,
-            "target_id": "sandbox:computer",
+            "target_id": "sandbox:host",
             "configuration_revision": self.revision,
             "harness": harness,
             "owner_id": self.owner,

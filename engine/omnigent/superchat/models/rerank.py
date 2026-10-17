@@ -1,7 +1,7 @@
-"""Which model reorders a Computer's search hits, resolved through the model layer.
+"""Which model reorders a host's search hits, resolved through the model layer.
 
 ``files_query`` reads its best hits again with a small chat model. Like embeddings, the call is
-made by the Computer through the model proxy; this only answers *which* provider and model, with
+made by the host through the model proxy; this only answers *which* provider and model, with
 the same resolution as a run (the person's own connection, then the organization's, among the
 providers whose upstream speaks Chat Completions) and the same suspension and budget checks. It
 never falls back to an operator key. A cheap model is used on purpose: the rerank reads twenty
@@ -55,7 +55,7 @@ class ModelRerank:
         self._checks = checks
 
     def plan(self, owner_id: str, model: str | None) -> RerankPlan:
-        """The model *owner_id*'s Computer reranks with through the model proxy.
+        """The model *owner_id*'s host reranks with through the model proxy.
 
         :param model: The owner's Light model, or ``None`` when they have none.
         :raises RerankUnavailable: suspended, budget used up, no chat-capable connection, or no

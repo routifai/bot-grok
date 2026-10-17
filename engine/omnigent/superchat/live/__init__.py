@@ -1,6 +1,6 @@
 """Live artifacts: a page that keeps itself up to date (rules: ``docs/artifacts.md``).
 
-Built on ``superchat/artifacts``, which knows nothing of this folder. ``watcher`` is the Computer
+Built on ``superchat/artifacts``, which knows nothing of this folder. ``watcher`` is the host
 side: it tells the engine when a source file of a live page changed.
 """
 

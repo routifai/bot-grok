@@ -258,7 +258,7 @@ def test_admin_route_reads_and_sets_the_embedding_model(uri) -> None:
     assert reset.json()["model"] == "openai/text-embedding-3-small"
 
 
-def test_plan_names_the_provider_and_model_a_computer_embeds_with(uri, monkeypatch) -> None:
+def test_plan_names_the_provider_and_model_a_host_embeds_with(uri, monkeypatch) -> None:
     connections, layer = _layer(uri, monkeypatch, _FakeLitellm())
     with pytest.raises(emb.EmbeddingUnavailable) as raised:
         layer.plan("alice")

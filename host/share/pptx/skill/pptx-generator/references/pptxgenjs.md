@@ -1,4 +1,4 @@
-<!-- Portions from MiniMax-AI/skills skills/pptx-generator/references/pptxgenjs.md@60aaae5, MIT; changes: the icon install line (libraries are preinstalled in Superchat's Computer). See ../NOTICE.md and ../LICENSE. -->
+<!-- Portions from MiniMax-AI/skills skills/pptx-generator/references/pptxgenjs.md@60aaae5, MIT; changes: the icon install line (libraries are preinstalled in Superchat's host). See ../NOTICE.md and ../LICENSE. -->
 
 # PptxGenJS Tutorial
 
@@ -237,7 +237,7 @@ slide.addImage({
 
 ### Icon Libraries
 
-The libraries are preinstalled in the Computer; do not install anything.
+The libraries are preinstalled in the host; do not install anything.
 
 Popular icon sets in react-icons:
 - `react-icons/fa` - Font Awesome

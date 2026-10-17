@@ -240,7 +240,7 @@ def test_keys_and_credentials_never_reach_logs(store, caplog) -> None:
         assert secret not in caplog.text
 
 
-def test_in_computer_auth_command_prints_only_the_launch_credential(tmp_path, monkeypatch) -> None:
+def test_in_host_auth_command_prints_only_the_launch_credential(tmp_path, monkeypatch) -> None:
     sidecar = tmp_path / "side.json"
     monkeypatch.setenv("IS_SANDBOX", "1")
     monkeypatch.setenv("OMNIGENT_HOST_TOKEN", "tok-a")

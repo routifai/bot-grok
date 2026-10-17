@@ -217,23 +217,23 @@ def test_validation_rejects_name_collision(
     """A community plugin cannot override an existing provider name."""
     reset_plugin_state_for_tests()
     contribution = HostProviderContribution(
-        name="computer-duplicate",
+        name="host-duplicate",
         providers={
             "docker": HostProviderMetadata(
                 name="docker",
-                launcher_class=f"{COMMUNITY_MODULE_PREFIX}computer:DockerHostLauncher",
+                launcher_class=f"{COMMUNITY_MODULE_PREFIX}host:DockerHostLauncher",
             )
         },
     )
     _set_entry_points(
         monkeypatch,
-        _FakeEntryPoint(name="computer-duplicate", value=lambda: contribution),
+        _FakeEntryPoint(name="host-duplicate", value=lambda: contribution),
     )
     state = plugin_state()
 
     assert "docker" in state.providers  # original built-in still present
-    assert "computer-duplicate" in state.load_errors
-    assert "override existing provider" in state.load_errors["computer-duplicate"]
+    assert "host-duplicate" in state.load_errors
+    assert "override existing provider" in state.load_errors["host-duplicate"]
 
 
 def test_validation_rejects_name_mismatch(

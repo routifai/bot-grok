@@ -362,7 +362,7 @@ async def test_one_live_run_at_a_time_while_the_conversation_has_a_turn_running(
     assert len(conv_store.created) == 1
 
 
-async def test_the_cap_follows_the_room_the_computer_reports(
+async def test_the_cap_follows_the_room_the_host_reports(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from omnigent.server.scheduled import helper_fire
@@ -373,14 +373,14 @@ async def test_the_cap_follows_the_room_the_computer_reports(
     room = {"now": 1}
     monkeypatch.setattr(helper_fire, "_ROOM", [lambda task: room["now"]])
     store.running = _running("t0")
-    await _fire(store, conv_store, _ok_launch)  # a loaded Computer: one at a time
+    await _fire(store, conv_store, _ok_launch)  # a loaded host: one at a time
     assert store.runs[-1]["error_code"] == "owner_busy_deferred" and conv_store.created == []
     fire_mod._REFIRES.pop((0, "task_1")).cancel()
     room["now"] = 5
     store.running = _running("t0", "t1", "t2", "t3")
     await _fire(store, conv_store, _ok_launch)  # an idle one: four running, room for a fifth
     assert len(conv_store.created) == 1
-    # A cap the operator set wins over what the Computer reports; no report is the default.
+    # A cap the operator set wins over what the host reports; no report is the default.
     monkeypatch.setenv("OMNIGENT_AUTOMATION_MAX_CONCURRENT", "2")
     assert fire_mod._max_concurrent(5) == 2
     monkeypatch.delenv("OMNIGENT_AUTOMATION_MAX_CONCURRENT")
@@ -572,10 +572,10 @@ def _wake_deps(store: Any, conv_store: Any) -> Any:
     return _deps(store, conversation_store=conv_store, app_state=SimpleNamespace())
 
 
-async def test_scheduled_fire_wakes_the_parent_computer_before_dispatch(
+async def test_scheduled_fire_wakes_the_parent_host_before_dispatch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A sleeping Computer is launched through the message path, then the Helper is dispatched."""
+    """A sleeping host is launched through the message path, then the Helper is dispatched."""
     from omnigent.server.routes._sessions import orchestration
 
     order: list[str] = []
@@ -621,7 +621,7 @@ async def test_failed_wake_records_launch_failed_and_retries_quietly(
 
     run = store.runs[0]
     assert run["status"] == "failed" and run["error_code"] == "launch_failed"
-    assert "your Computer didn't start: sandbox quota" in run["error"]
+    assert "your machine didn't start: sandbox quota" in run["error"]
     assert "retry scheduled" in run["error"]
     assert (0, "task_1") in fire_mod._REFIRES
     assert dispatched == [] and conv_store.created == []
@@ -656,12 +656,12 @@ async def test_final_failure_posts_a_note_and_shows_as_a_failed_helper(
     assert run["conversation_id"] == "conv_1"
     assert conv_store.live_status == {"conv_1": "failed"}
     helper_error = conv_store.appended["conv_1"][0].data
-    assert helper_error.message == "Your Computer didn't start."
+    assert helper_error.message == "Your machine didn't start."
     # The parent Conversation gets one calm note.
     note = conv_store.appended["conv_parent"][0].data
     assert note.level == "info"
     assert note.message.startswith(
-        "Your 8am market report couldn't run: your Computer didn't start."
+        "Your 8am market report couldn't run: your machine didn't start."
     )
     assert "next scheduled time" in note.message
 

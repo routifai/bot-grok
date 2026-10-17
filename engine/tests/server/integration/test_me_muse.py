@@ -156,7 +156,7 @@ async def test_get_creates_the_super_chat_once_then_finds_it(
     assert conv.labels["omnigent.context.mode"] == "superside-chat"
     assert conv.labels[MUSE_LABEL_KEY] == "true"
     assert conv.labels["omnigent.superchat.muse.key"] == body["session_id"]
-    # The computer is keyed by the opaque Muse key, never the email.
+    # The host is keyed by the opaque Muse key, never the email.
     assert conv.labels["omnigent.host.owner"] == body["session_id"]
 
 

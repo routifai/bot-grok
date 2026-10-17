@@ -52,7 +52,7 @@ from tests.server.helpers import (
     HostStartInvocation,
     build_agent_bundle,
     create_test_agent,
-    install_fake_computer_launcher,
+    install_fake_host_launcher,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -283,7 +283,7 @@ async def managed_session_env(
     """Full app wired for managed-host sessions (no real sandbox).
 
     Builds the production ``create_app`` with host + managed-host
-    stores and a computer ``sandbox:`` config, so a
+    stores and a host ``sandbox:`` config, so a
     ``host_type="managed"`` create exercises the real route, tunnel,
     and store paths end to end. Only the sandbox itself is fake.
 
@@ -306,9 +306,9 @@ async def managed_session_env(
         ),
         comment_store=SqlAlchemyCommentStore(db_uri),
         host_store=host_store,
-        # The production YAML parse path: its computer factory resolves
+        # The production YAML parse path: its host factory resolves
         # DockerHostLauncher at call time, which the test substitutes
-        # via install_fake_computer_launcher.
+        # via install_fake_host_launcher.
         sandbox_config=parse_host_section(
             {
                 "provider": "docker",
@@ -479,7 +479,7 @@ async def test_managed_session_create_end_to_end(
         host_futures.append(asyncio.wrap_future(future, loop=loop))
 
     fake = FakeSandboxLauncher(on_host_start=_start_fake_sandbox_host)
-    install_fake_computer_launcher(monkeypatch, fake)
+    install_fake_host_launcher(monkeypatch, fake)
 
     agent = await create_test_agent(env.client, name="managed-host-agent")
     resp = await env.client.post(
@@ -565,7 +565,7 @@ async def test_managed_session_create_with_repo_workspace_binds_cloned_dir(
         host_futures.append(asyncio.wrap_future(future, loop=loop))
 
     fake = FakeSandboxLauncher(on_host_start=_start_fake_sandbox_host)
-    install_fake_computer_launcher(monkeypatch, fake)
+    install_fake_host_launcher(monkeypatch, fake)
 
     agent = await create_test_agent(env.client, name="managed-repo-agent")
     resp = await env.client.post(
@@ -629,7 +629,7 @@ async def test_managed_multipart_bundle_create_end_to_end(
         host_futures.append(asyncio.wrap_future(future, loop=loop))
 
     fake = FakeSandboxLauncher(on_host_start=_start_fake_sandbox_host)
-    install_fake_computer_launcher(monkeypatch, fake)
+    install_fake_host_launcher(monkeypatch, fake)
 
     bundle = build_agent_bundle(name="managed-multipart-e2e-agent")
     resp = await env.client.post(
@@ -788,7 +788,7 @@ async def test_managed_create_returns_during_provision_and_message_rendezvouses(
     env = managed_session_env
     gate = threading.Event()
     fake = FakeSandboxLauncher(provision_gate=gate, fail_on_host_start=True)
-    install_fake_computer_launcher(monkeypatch, fake)
+    install_fake_host_launcher(monkeypatch, fake)
 
     agent = await create_test_agent(env.client, name="managed-rendezvous-agent")
     resp = await env.client.post(
@@ -913,7 +913,7 @@ async def test_managed_launch_progress_surfaces_on_snapshot_and_stream(
         host_futures.append(asyncio.wrap_future(future, loop=loop))
 
     fake = FakeSandboxLauncher(provision_gate=gate, on_host_start=_start_fake_sandbox_host)
-    install_fake_computer_launcher(monkeypatch, fake)
+    install_fake_host_launcher(monkeypatch, fake)
 
     agent = await create_test_agent(env.client, name="managed-progress-agent")
     resp = await env.client.post(
@@ -1020,7 +1020,7 @@ async def test_subagent_session_reuses_managed_sandbox_runner(
         host_futures.append(asyncio.wrap_future(future, loop=loop))
 
     fake = FakeSandboxLauncher(on_host_start=_start_fake_sandbox_host)
-    install_fake_computer_launcher(monkeypatch, fake)
+    install_fake_host_launcher(monkeypatch, fake)
 
     agent = await create_test_agent(env.client, name="managed-subagent-parent")
     resp = await env.client.post(
@@ -1102,7 +1102,7 @@ async def test_message_relaunches_dead_managed_sandbox(
         host_futures.append(asyncio.wrap_future(future, loop=loop))
 
     fake = FakeSandboxLauncher(on_host_start=_start_fake_sandbox_host)
-    install_fake_computer_launcher(monkeypatch, fake)
+    install_fake_host_launcher(monkeypatch, fake)
 
     agent = await create_test_agent(env.client, name="managed-relaunch-agent")
     resp = await env.client.post(
@@ -1663,7 +1663,7 @@ async def test_cancel_managed_launch_tasks_returns_while_provision_parked(
     env = managed_session_env
     gate = threading.Event()
     fake = FakeSandboxLauncher(provision_gate=gate)
-    install_fake_computer_launcher(monkeypatch, fake)
+    install_fake_host_launcher(monkeypatch, fake)
 
     agent = await create_test_agent(env.client, name="managed-shutdown-agent")
     resp = await env.client.post(
@@ -1713,7 +1713,7 @@ async def test_managed_session_deleted_during_provision_terminates_sandbox(
         host_futures.append(asyncio.wrap_future(future, loop=loop))
 
     fake = FakeSandboxLauncher(provision_gate=gate, on_host_start=_start_fake_sandbox_host)
-    install_fake_computer_launcher(monkeypatch, fake)
+    install_fake_host_launcher(monkeypatch, fake)
 
     agent = await create_test_agent(env.client, name="managed-delete-race-agent")
     resp = await env.client.post(

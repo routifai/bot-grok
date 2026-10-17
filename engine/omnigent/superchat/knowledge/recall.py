@@ -2,7 +2,7 @@
 
 ADR 0016, contract C2; ``docs/context.md`` "Recall". The ``recall`` tool (the
 pull) and the hint both call :func:`recall_search`. Each sub-query runs BM25 and vectors over
-the Computer's index (keyword-only when the owner cannot embed); claims about the person come
+the host's index (keyword-only when the owner cannot embed); claims about the person come
 from the engine through the caller's *claims* search. Every ranking of every sub-query is fused
 with the index's reciprocal rank fusion, so a passage that answers two sub-queries rises. A
 conversation hit then loses half its score every 90 days (never all of it), and near-duplicates
@@ -137,7 +137,7 @@ async def recall_search(
     :param chat: Only this chat's turns.
     :param since: Only hits dated on or after this ISO date.
     :param until: Only hits dated on or before this ISO date.
-    :param indexer: The Computer's indexer (default: the runner's service).
+    :param indexer: The host's indexer (default: the runner's service).
     :param claims: How to search claims in the engine; without it ``memory`` finds nothing.
     """
     hits, _ = await recall_with_reason(

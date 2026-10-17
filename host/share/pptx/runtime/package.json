@@ -2,7 +2,7 @@
   "name": "superchat-pptx-runtime",
   "private": true,
   "version": "1.0.0",
-  "description": "Node libraries the Muse's pptx-generator skill requires inside the Computer image (MiniMax-AI/skills pptx-generator, MIT). Installed by install.sh, which Dockerfile and the pipeline test both run.",
+  "description": "Node libraries the Muse's pptx-generator skill requires inside the host image (MiniMax-AI/skills pptx-generator, MIT). Installed by install.sh, which Dockerfile and the pipeline test both run.",
   "license": "Apache-2.0",
   "dependencies": {
     "pptxgenjs": "4.0.1",

@@ -306,7 +306,7 @@ async def test_deleting_the_session_cancels_the_messages_still_waiting() -> None
 
 @pytest.mark.asyncio
 async def test_a_message_attaching_a_file_runs_as_its_own_turn_not_merged() -> None:
-    """A file reference needs its turn-start context (the framed file text the Computer puts in
+    """A file reference needs its turn-start context (the framed file text the host puts in
     front of the turn's own message), so it is never steered and never merged with others."""
     gate = asyncio.Event()
     app, _pm, harness = _build_handshake_app(gate)

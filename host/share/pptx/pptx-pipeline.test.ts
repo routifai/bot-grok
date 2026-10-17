@@ -1,6 +1,6 @@
 // Runs the ported pptx-generator pipeline (skill/pptx-generator/SKILL.md: slide modules exporting
 // createSlide(pres, theme), compiled by compile.js) against the pinned, patched PptxGenJS the
-// Computer image installs (runtime/install.sh), then reads the .pptx back as a zip.
+// host image installs (runtime/install.sh), then reads the .pptx back as a zip.
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";

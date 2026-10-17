@@ -39,7 +39,7 @@ _CREATE_ATTEMPTS = 5
 AUDIENCES = ("owner", "org", "link")
 #: Versions the person made (by hand, or by restoring an earlier one) that the Muse is told about.
 HAND_ORIGINS = ("manual", "restore")
-#: Versions written back to the Computer's workspace file: the hand ones plus a live update's.
+#: Versions written back to the host's workspace file: the hand ones plus a live update's.
 WRITEBACK_ORIGINS = (*HAND_ORIGINS, "update")
 #: A repeat open by the same viewer within this many seconds is not counted again.
 VIEW_DEDUPE_SECONDS = 30
@@ -141,7 +141,7 @@ class Artifact:
     :param updated_at: Epoch seconds of the last change, or ``None``.
     :param origin: ``"ai"``, ``"manual"``, ``"restore"`` or ``"update"`` (a live update).
     :param parent_version_id: Id of the version this one derives from, if any.
-    :param source_path: Computer workspace path the file came from / is written back to.
+    :param source_path: host workspace path the file came from / is written back to.
     :param edit_summary: Short human text of a manual edit.
     :param delivered_at: When a manual version was written back and announced, else ``None``.
     :param turn_item_id: The person's message item of the turn that saved it, if known.

@@ -1,4 +1,4 @@
-"""The Muse's tools and the relay ops, answered from the Computer's index."""
+"""The Muse's tools and the relay ops, answered from the host's index."""
 
 from __future__ import annotations
 
@@ -132,7 +132,7 @@ def test_a_saved_artifact_is_followed_through_on_result(tmp_path: Path, monkeypa
 
 
 def test_relay_ops_pass_the_runners_granted_tool_gate_only_for_a_super_chat() -> None:
-    """The relays reach the Computer through /mcp/execute; this gate once refused them, so every
+    """The relays reach the host through /mcp/execute; this gate once refused them, so every
     citation thumbnail 404ed."""
     from omnigent.context.labels import CONTEXT_MODE_LABEL, SUPERSIDE_CHAT_MODE_VALUE
     from omnigent.runner import tool_dispatch

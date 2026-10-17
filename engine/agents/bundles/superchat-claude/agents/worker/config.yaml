@@ -21,8 +21,8 @@ executor:
   config:
     harness: claude-sdk
 
-# Shell and file tools (sys_os_*) run in the Computer's workspace. The Computer is the
-# sandbox, so no inner sandbox and no approval prompts.
+# Shell and file tools (sys_os_*) run in the host's workspace. The host is the isolation
+# boundary, so no inner sandbox and no approval prompts.
 os_env:
   type: caller_process
   cwd: /home/superchat/workspace

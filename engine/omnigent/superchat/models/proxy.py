@@ -1,15 +1,15 @@
-"""Engine-side model proxy: a Computer's model calls are made with its owner's key.
+"""Engine-side model proxy: a host's model calls are made with its owner's key.
 
-The agent can run shell commands inside its Computer, so any key placed in that Computer's env or
-files is readable by it. Instead the Computer's harness points its model base URL at this route and
-presents a *credential* that is only the Computer's own launch token (``<host_id>:<token>``, the
+The agent can run shell commands inside its host, so any key placed in that host's env or
+files is readable by it. Instead the host's harness points its model base URL at this route and
+presents a *credential* that is only the host's own launch token (``<host_id>:<token>``, the
 same token the host tunnel and :mod:`omnigent.server.routes.host_credentials` use). The route
 resolves token -> host -> owner server-side, looks up the owner's sealed key, strips whatever auth
 the caller sent, injects the owner's key and streams the provider's answer back. The key never
 leaves the engine process.
 
 Route: ``/v1/model/{provider}/{path}``. There is no host id in the path: the base URL is fixed in
-the session snapshot before the Computer exists, so the host id travels inside the credential.
+the session snapshot before the host exists, so the host id travels inside the credential.
 ``provider`` is an upstream from :mod:`omnigent.superchat.models.upstreams` (base URL and auth
 style come from there) and is resolved to the owner's connection for exactly that provider: their
 own key first, else the organization's. Auth headers and
@@ -145,7 +145,7 @@ def create_model_proxy_router(
 
     @router.get("/model/embeddings", response_model=None)
     async def embedding_plan(request: Request) -> JSONResponse:
-        """How the calling Computer's owner embeds (provider, model, size), or why they cannot."""
+        """How the calling host's owner embeds (provider, model, size), or why they cannot."""
         credential = split_credential(request)
         if credential is None:
             raise HTTPException(status_code=401, detail="missing host credential")
@@ -174,7 +174,7 @@ def create_model_proxy_router(
 
     @router.get("/model/rerank", response_model=None)
     async def rerank_plan(request: Request) -> JSONResponse:
-        """Which cheap chat model reorders the calling Computer's search hits, or why none can."""
+        """Which cheap chat model reorders the calling host's search hits, or why none can."""
         credential = split_credential(request)
         if credential is None:
             raise HTTPException(status_code=401, detail="missing host credential")

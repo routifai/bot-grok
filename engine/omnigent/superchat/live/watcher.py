@@ -1,12 +1,12 @@
 """Polls the modified time of the files live pages read, and reports a change to the engine.
 
-A thread of the runner in a managed Computer. Every ``INTERVAL_SECONDS`` it asks the engine which
+A thread of the runner in a managed host. Every ``INTERVAL_SECONDS`` it asks the engine which
 files to watch (``GET /v1/live/watch``: only the sources of live pages, never the whole disk),
 looks at their modified time and size, and posts the ones that changed (``POST /v1/live/changed``).
-With the same call it says how busy the Computer is (free memory share, load per CPU), which sizes
+With the same call it says how busy the host is (free memory share, load per CPU), which sizes
 how many update runs the engine starts at once. The engine debounces and starts the update. The
 first look at a file only records it, so a restart starts nothing; nothing is seen while the
-Computer sleeps (the schedule is the safety net). Files
+host sleeps (the schedule is the safety net). Files
 change here without going through the engine (the AI or a shell writes them), which is why this
 polls the disk instead of listening to uploads. Rules: ``docs/artifacts.md``.
 """
@@ -148,7 +148,7 @@ class SourceWatcher:
 
 
 def start_for_runner(server_url: str | None) -> SourceWatcher | None:
-    """Start the watcher when this runner is a managed Computer (``IS_SANDBOX=1``)."""
+    """Start the watcher when this runner is a managed host (``IS_SANDBOX=1``)."""
     if os.environ.get("IS_SANDBOX") != "1" or not server_url:
         return None
     from omnigent.host.model_credential import read_credential

@@ -15,7 +15,7 @@ cd "$AGENT_HOME"
 
 # This script is PID 1 and only keeps the container alive: the runner and every tool arrive
 # through `docker exec`. Without a handler, PID 1 ignores SIGTERM and `docker stop` waits its
-# full grace period, so every stop, sleep and computer switch took ten seconds. Install the
+# full grace period, so every stop, sleep and host switch took ten seconds. Install the
 # handler before any child starts so a stop during startup is honoured too.
 shutdown() {
   trap - TERM INT

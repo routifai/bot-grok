@@ -1,18 +1,18 @@
-"""``/v1/sessions/{id}/knowledge``: relays to the index in the person's Computer.
+"""``/v1/sessions/{id}/knowledge``: relays to the index in the person's host.
 
-The engine keeps no file, passage or index. Each route asks the Computer's runner (the
+The engine keeps no file, passage or index. Each route asks the host's runner (the
 ``files_*`` handlers, through ``/mcp/execute``) and maps the answer:
 
-* ``status`` and ``thumbnail`` never wake a sleeping Computer: asleep, ``status`` answers the last
+* ``status`` and ``thumbnail`` never wake a sleeping host: asleep, ``status`` answers the last
   state seen (kept in memory, so it is gone after an engine restart) and ``thumbnail`` answers 404
   unless that page was seen before.
-* ``ingest`` and ``search`` are the person acting: it wakes the Computer the way a message does.
+* ``ingest`` and ``search`` are the person acting: it wakes the host the way a message does.
 * ``ingest`` reads one attachment through every pass and answers when it is searchable. It
   writes to the index and can return a file's text, so it needs write access and only reads
   files under :data:`UPLOADS_PREFIX`.
 * Every call here is marked as a relay call (``_omnigent_relay``): the runner lets the relay-only
   ops (:attr:`Feature.relay_ops`) through only when it sees that mark, never from a model.
-* ``reindex`` only runs on a Computer that is already awake.
+* ``reindex`` only runs on a host that is already awake.
 """
 
 from __future__ import annotations
@@ -42,16 +42,16 @@ from omnigent.superchat.feature import RELAY_MARK
 from omnigent.superchat.knowledge.limits import INGEST_TIMEOUT_S
 from omnigent.superchat.knowledge.tools import UPLOADS_PREFIX
 
-#: How long a search waits for the Computer to wake and its runner to connect.
+#: How long a search waits for the host to wake and its runner to connect.
 WAKE_TIMEOUT_S = 120.0
 CALL_TIMEOUT_S = 90.0
 #: What a slow answer says, per op.
 _SLOW = {
-    "files_ingest": "Your Computer is taking too long to read this file",
+    "files_ingest": "Your machine is taking too long to read this file",
     "files_query": "The search is taking too long",
-    "files_find": "Your Computer is taking too long to check this file",
+    "files_find": "Your machine is taking too long to check this file",
 }
-#: Sessions whose last status is remembered, and thumbnails kept for asleep Computers.
+#: Sessions whose last status is remembered, and thumbnails kept for asleep hosts.
 _MAX_SNAPSHOTS = 256
 _MAX_THUMBNAILS = 256
 _ARTIFACT_LIST_LIMIT = 500
@@ -106,7 +106,7 @@ class _Remembered:
 def _result(payload: Any) -> dict[str, Any]:
     """The tool's JSON output from a runner ``/mcp/execute`` answer, or an engine error."""
     if not isinstance(payload, dict):
-        raise OmnigentError("The Computer didn't answer", code=ErrorCode.RUNNER_UNAVAILABLE)
+        raise OmnigentError("Your machine didn't answer", code=ErrorCode.RUNNER_UNAVAILABLE)
     err = payload.get("error")
     if err:
         message = err.get("message") if isinstance(err, dict) else err
@@ -118,7 +118,7 @@ def _result(payload: Any) -> dict[str, Any]:
     except (KeyError, TypeError, ValueError):
         output = None
     if not isinstance(output, dict):
-        raise OmnigentError("The Computer didn't answer", code=ErrorCode.RUNNER_UNAVAILABLE)
+        raise OmnigentError("Your machine didn't answer", code=ErrorCode.RUNNER_UNAVAILABLE)
     if output.get("error"):
         raise OmnigentError(str(output["error"])[:300], code=ErrorCode.INVALID_INPUT)
     return output
@@ -143,15 +143,15 @@ async def _call(
         )
         payload = resp.json()
     except httpx.ReadTimeout as exc:
-        # Connected, then silent: the Computer is awake but slow. (Not being able to connect or to
+        # Connected, then silent: the host is awake but slow. (Not being able to connect or to
         # get a connection is "unavailable" below, never this.)
         raise OmnigentError(
-            _SLOW.get(tool, "Your Computer is taking too long to answer"),
+            _SLOW.get(tool, "Your machine is taking too long to answer"),
             code=ErrorCode.KNOWLEDGE_TIMEOUT,
         ) from exc
     except (httpx.HTTPError, ValueError) as exc:
         raise OmnigentError(
-            "Your Computer didn't answer", code=ErrorCode.RUNNER_UNAVAILABLE
+            "Your machine didn't answer", code=ErrorCode.RUNNER_UNAVAILABLE
         ) from exc
     return _result(payload)
 
@@ -203,12 +203,12 @@ def create_knowledge_router(
         )
 
     async def _woken(request: Request, session_id: str, conv: Any) -> httpx.AsyncClient:
-        """The runner's client, waking the Computer the way a message does."""
+        """The runner's client, waking the host the way a message does."""
         from omnigent.server.routes._sessions.common import get_server_runner_router
         from omnigent.server.routes._sessions.orchestration import ensure_runner_connected
 
         unavailable = OmnigentError(
-            "Your Computer is still starting; try again shortly",
+            "Your machine is still starting; try again shortly",
             code=ErrorCode.RUNNER_UNAVAILABLE,
         )
         try:
@@ -276,7 +276,7 @@ def create_knowledge_router(
 
     @router.post("/sessions/{session_id}/knowledge/search")
     async def search(request: Request, session_id: str, body: SearchBody) -> dict[str, Any]:
-        """Passages from the person's files, best first; wakes the Computer."""
+        """Passages from the person's files, best first; wakes the host."""
         for file_id in body.file_ids or []:
             if not HEX_ID_RE.match(file_id):
                 raise OmnigentError("invalid file id", code=ErrorCode.INVALID_INPUT)
@@ -299,7 +299,7 @@ def create_knowledge_router(
         """Read one file in the workspace through every pass and answer when it is searchable.
 
         The person's composer calls this once per attachment and waits for the answer before it
-        enables Send. It wakes the Computer the way a message does. Idempotent: an unchanged
+        enables Send. It wakes the host the way a message does. Idempotent: an unchanged
         file answers at once.
         """
         if not _is_upload_path(body.path):
@@ -318,10 +318,10 @@ def create_knowledge_router(
 
     @router.post("/sessions/{session_id}/knowledge/find")
     async def find(request: Request, session_id: str, body: FindBody) -> dict[str, Any]:
-        """The searchable upload that already holds exactly these bytes, if the Computer has one.
+        """The searchable upload that already holds exactly these bytes, if the host has one.
 
         The composer asks before it stores a file, so attaching the same file again reuses the
-        stored copy and its index entry. Wakes the Computer (the upload that follows needs it).
+        stored copy and its index entry. Wakes the host (the upload that follows needs it).
         """
         conv = await _conversation(request, session_id, LEVEL_EDIT)
         client = await _woken(request, session_id, conv)
@@ -333,7 +333,7 @@ def create_knowledge_router(
 
     @router.get("/sessions/{session_id}/knowledge/files/{file_id}/pages/{page}/thumbnail")
     async def thumbnail(request: Request, session_id: str, file_id: str, page: int) -> Response:
-        """A page's 256 px WebP; 404 when the Computer is asleep and it wasn't seen before."""
+        """A page's 256 px WebP; 404 when the host is asleep and it wasn't seen before."""
         if not HEX_ID_RE.match(file_id):
             raise OmnigentError("invalid file id", code=ErrorCode.INVALID_INPUT)
         conv = await _conversation(request, session_id, LEVEL_READ)
@@ -363,7 +363,7 @@ def create_knowledge_router(
 
     @router.post("/sessions/{session_id}/knowledge/reindex")
     async def reindex(request: Request, session_id: str) -> dict[str, Any]:
-        """Re-embed files indexed without embeddings; does nothing while the Computer sleeps."""
+        """Re-embed files indexed without embeddings; does nothing while the host sleeps."""
         conv = await _conversation(request, session_id, LEVEL_READ)
         client = await _awake(session_id, conv)
         if client is None:

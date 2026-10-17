@@ -80,7 +80,7 @@ def normalize_inference_harness(harness: str) -> str:
     return canonicalize_harness(harness) or harness
 
 
-#: The credential command a Computer's harness runs to reach the engine's model proxy: a
+#: The credential command a host's harness runs to reach the engine's model proxy: a
 #: provider family authenticated with it is a person's (or organization's) model connection.
 MODEL_PROXY_AUTH_COMMAND = "python3 -m omnigent.host.model_credential token"
 

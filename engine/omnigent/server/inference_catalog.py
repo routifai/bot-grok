@@ -231,7 +231,7 @@ class SandboxInferenceService:
             "providers": copy.deepcopy(raw.get("providers", {})),
             "inference": copy.deepcopy(raw.get("inference", {})),
         }
-        # ``connection: model`` gateways: the owner's saved key stays in the engine; the Computer
+        # ``connection: model`` gateways: the owner's saved key stays in the engine; the host
         # is pointed at the engine's model proxy and authenticates with its own launch token.
         model_names = [
             name

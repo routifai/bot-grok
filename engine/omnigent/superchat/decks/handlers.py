@@ -1,6 +1,6 @@
 """Runner-side handler for ``deck_export``.
 
-Runs where the Computer's Chromium is: fetches the deck from the server, hands it to the
+Runs where the host's Chromium is: fetches the deck from the server, hands it to the
 ``superchat-deck-export`` helper (override with ``SUPERCHAT_DECK_EXPORT_HELPER``) and saves the
 produced ``.pptx`` / ``.pdf`` as a new artifact in the same chat.
 """
@@ -43,7 +43,7 @@ async def run_helper(fmt: str, html: Path, out: Path | None = None) -> dict[str,
             stderr=asyncio.subprocess.PIPE,
         )
     except FileNotFoundError:
-        return "Deck export isn't available on this Computer yet"
+        return "Deck export isn't available on this host yet"
     except OSError as exc:
         return f"Deck export couldn't start: {exc}"
     try:

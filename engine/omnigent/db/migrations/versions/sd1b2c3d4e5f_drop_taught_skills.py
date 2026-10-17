@@ -1,10 +1,10 @@
-"""Drop computer recordings, keyframes and taught skills.
+"""Drop screen recordings, keyframes and taught skills.
 
 Revision ID: sd1b2c3d4e5f
 Revises: sa1b2c3d4e5f
 Create Date: 2026-10-10 00:00:00.000000
 
-The Computer no longer has a live screen or teach-a-task, so the tables that held what a person
+The host no longer has a live screen or teach-a-task, so the tables that held what a person
 did on it (recordings, keyframes) and the skills drafted from it (taught skills, their versions)
 are dropped. The downgrade recreates them empty.
 """

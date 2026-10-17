@@ -238,7 +238,7 @@ def register_muse_routes(
         Claim an existing Super Chat the caller owns as their Super Chat for this tenant.
 
         Labels it with the Muse marker, its key and (when absent) the tenant; every other
-        label, including the ones placing its computer, is left as is. Adopting the same
+        label, including the ones placing its host, is left as is. Adopting the same
         session again is a no-op.
 
         :raises OmnigentError: 404 unless the caller owns the session; 422 ``not_a_super_chat``

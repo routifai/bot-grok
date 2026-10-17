@@ -1736,7 +1736,7 @@ class SqlArtifact(OmnigentBase):
     SQLAlchemy model for the ``artifacts`` table.
 
     One row per *version* of a deliverable file (HTML page, document, sheet, deck...) the Muse
-    saved from its Computer. Versions of one deliverable share ``(user_id, parent_session_id,
+    saved from its host. Versions of one deliverable share ``(user_id, parent_session_id,
     name)``; the bytes live in the artifact store under ``blob_key``.
 
     :param id: UUID primary key of this version (bare 32-char hex string).
@@ -1753,9 +1753,9 @@ class SqlArtifact(OmnigentBase):
     :param published: Reserved for a later "publish" feature.
     :param origin: ``"ai"`` (saved by the Muse), ``"manual"`` (edited by hand) or ``"restore"``.
     :param parent_version_id: The version this one was derived from, if any.
-    :param source_path: Computer workspace path the bytes were read from / are written back to.
+    :param source_path: host workspace path the bytes were read from / are written back to.
     :param edit_summary: Short human text describing a manual edit.
-    :param delivered_at: Epoch seconds when a manual version was written back to the Computer
+    :param delivered_at: Epoch seconds when a manual version was written back to the host
         and announced to the Muse; ``None`` while still pending.
     :param turn_item_id: The person's message item that opened the turn that saved it, if known.
     :param chat_id: The chat (Conversation, Helper or update run) that saved it.
@@ -1902,7 +1902,7 @@ class SqlArtifactLive(OmnigentBase):
     SQLAlchemy model for the ``artifact_live`` table: one row per live page (an artifact group).
 
     The schedule is the scheduled task ``task_id``; ``sources`` is a JSON list of web page URLs
-    or Computer file paths; ``state`` is what the updates remember (``superchat/live/store.py``).
+    or host file paths; ``state`` is what the updates remember (``superchat/live/store.py``).
     """
 
     __tablename__ = "artifact_live"

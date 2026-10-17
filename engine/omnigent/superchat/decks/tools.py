@@ -1,7 +1,7 @@
 """Built-in tool for decks: ``deck_export``.
 
 Schema-only class: the runner dispatches it to :mod:`omnigent.superchat.decks.handlers`, which
-runs in the person's Computer.
+runs in the person's host.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ class DeckExportTool(Tool):
         """:returns: Human-readable description of the tool."""
         return (
             "Export a saved deck (a `.deck.html` file you saved with artifact_save) to an "
-            "editable PowerPoint (.pptx) or a vector PDF in the person's Computer, and save the "
+            "editable PowerPoint (.pptx) or a vector PDF in the person's host, and save the "
             "result as a new file in this chat. The person sees the file card automatically. "
             "Use it when they ask for PowerPoint or PDF; the deck viewer also has Export buttons."
         )
@@ -80,7 +80,7 @@ class DeckNewTool(Tool):
         return (
             "Create a slide deck file. You write only the slides (HTML sections); this assembles "
             "the fixed 1920x1080 deck framework, the template's theme and embedded fonts around "
-            "them, writes the `.deck.html` file, and checks the layout in the Computer. "
+            "them, writes the `.deck.html` file, and checks the layout in the host. "
             f"Templates (themes; call deck_themes for what each is for): {names}. "
             "Returns problems to fix, then save the file with artifact_save."
         )
@@ -138,7 +138,7 @@ class DeckNewTool(Tool):
 
 
 class DeckCheckTool(Tool):
-    """Check a deck file's layout in the Computer; dispatched to the runner."""
+    """Check a deck file's layout in the host; dispatched to the runner."""
 
     @classmethod
     def name(cls) -> str:

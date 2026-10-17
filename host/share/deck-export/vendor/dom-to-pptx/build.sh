@@ -16,7 +16,7 @@ git checkout --quiet "$commit"
 # 1. The native chart hook, the table row heights, the 'Chart' shape name.
 git apply "$here/patches/dom-to-pptx-2.0.1-native-charts.patch"
 pnpm install --frozen-lockfile --ignore-scripts
-# 2. The bundled PptxGenJS 4.0.1 carries the same fixes as the Computer's (#1531, #1537, #1540,
+# 2. The bundled PptxGenJS 4.0.1 carries the same fixes as the host's (#1531, #1537, #1540,
 #    zero values): the very patch install.sh applies there.
 patch -p1 -f -s -d node_modules/pptxgenjs -i "$here/../../../pptx/runtime/patches/pptxgenjs-4.0.1.patch"
 ./node_modules/.bin/rollup -c >/dev/null

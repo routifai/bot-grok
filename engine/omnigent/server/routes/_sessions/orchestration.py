@@ -3321,7 +3321,7 @@ async def _run_managed_launch(
             saved_conversation.inference_snapshot,
         )
     # Forwarded to the launcher's prepare_for_launch — a provider whose sandbox is a
-    # pre-existing per-identity resource (Superchat's per-Muse computer; see
+    # pre-existing per-identity resource (Superchat's per-Muse host; see
     # omnigent.hosts.docker) selects it from the session's OWN labels
     # (e.g. "omnigent.host.owner" / "omnigent.tenant") rather than a launch-chosen name.
     labels = saved_conversation.labels if saved_conversation is not None else {}

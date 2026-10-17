@@ -48,7 +48,7 @@ async def handle_daily_note_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:
 
 
 async def _project(resp: Any) -> None:
-    """Copy the written note into the day file in the Computer. Never fails the tool call."""
+    """Copy the written note into the day file in the host. Never fails the tool call."""
     try:
         from omnigent.runner.memory.sync import record_daily_note
 

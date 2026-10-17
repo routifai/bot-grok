@@ -63,7 +63,7 @@ stores into ``create_app``):
                  api_key_ref: env:LITELLM_API_KEY
                  wire_api: chat
 
-   The computer launcher (Superchat's per-Muse sandbox computer,
+   The host launcher (Superchat's per-Muse sandbox host,
    docs/architecture.md) needs no provider block: it reads
    ``OMNIGENT_SUPERCHAT_SUPERVISOR_URL`` and ``OMNIGENT_SUPERCHAT_SUPERVISOR_TOKEN``
    from the server process environment (12-factor) — see
@@ -832,7 +832,7 @@ def _docker_launcher_factory() -> Callable[[], HostLauncher]:
     """
     Build the launcher factory for the YAML ``provider: docker`` path.
 
-    Needs no ``host.computer:`` block: its supervisor URL and shared secret are read from the
+    Needs no ``host.host:`` block: its supervisor URL and shared secret are read from the
     server PROCESS environment (12-factor) —
     :data:`~omnigent.hosts.docker.SUPERVISOR_URL_ENV_VAR` /
     :data:`~omnigent.hosts.docker.SUPERVISOR_TOKEN_ENV_VAR`.
@@ -842,7 +842,7 @@ def _docker_launcher_factory() -> Callable[[], HostLauncher]:
     """
 
     def _build() -> HostLauncher:
-        """Construct the computer launcher (lazy import inside)."""
+        """Construct the host launcher (lazy import inside)."""
         from omnigent.hosts.docker import DockerHostLauncher
 
         return DockerHostLauncher()

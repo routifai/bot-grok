@@ -1,4 +1,4 @@
-"""What the model reads of the files a message attaches, built in the Computer at turn start.
+"""What the model reads of the files a message attaches, built in the host at turn start.
 
 A message refers to its attachments with one reference line each (``Attached file in your
 workspace: <path> (<mime>, <n> bytes)``). The message is stored exactly so: the person's words and
@@ -26,7 +26,7 @@ _logger = logging.getLogger(__name__)
 REFERENCE_LINE = re.compile(
     r"^Attached file in your workspace: (.+) \(([^(),\s]+), (\d+) bytes\)$", re.MULTILINE
 )
-#: Types the Computer reads: documents into Markdown, tables into a schema manifest.
+#: Types the host reads: documents into Markdown, tables into a schema manifest.
 INGESTABLE_MIME_TYPES = frozenset(
     {
         "application/pdf",
@@ -39,7 +39,7 @@ INGESTABLE_MIME_TYPES = frozenset(
 #: Most characters of file text one message carries across all its files (about 12k tokens).
 INLINE_BUDGET_CHARS = 48_000
 MAX_FILES = 8
-#: Longest the turn waits for the Computer to read the attached files.
+#: Longest the turn waits for the host to read the attached files.
 READ_TIMEOUT_S = 120.0
 
 OPEN, CLOSE = "<attachment_context>", "</attachment_context>"
@@ -106,7 +106,7 @@ def manifest_line(item: dict[str, Any]) -> str:
     if item["tabular"]:
         return (
             f"indexed table: {name} ({_quote(item['path'])}), {item['pages']} sheet{plural}, "
-            f"file_id {item['file_id']}; compute with pandas or duckdb in the Computer"
+            f"file_id {item['file_id']}; compute with pandas or duckdb in the host"
         )
     return (
         f"indexed: {name}, {item['pages']} page{plural}, file_id {item['file_id']}; "
@@ -127,7 +127,7 @@ def _entry(item: dict[str, Any]) -> str:
                 neutralise(text.strip()),
                 "</table_file>",
                 "This is the table's schema and a few sample rows, not its data. Compute with "
-                "pandas or duckdb in the Computer; use the sheets tools (artifacts table "
+                "pandas or duckdb in the host; use the sheets tools (artifacts table "
                 "read/edit) to edit it.",
             ]
         )
@@ -188,7 +188,7 @@ def _unread(path: str) -> dict[str, Any]:
 async def attachment_context_blocks(indexer: Any, texts: Iterable[str]) -> list[str]:
     """The block for the files the message *texts* refer to; ``[]`` when it refers to none.
 
-    Best effort, never silent: a file the Computer cannot read in time stays a path line and
+    Best effort, never silent: a file the host cannot read in time stays a path line and
     gets a "not read yet" line in the block, so the model knows and can use ``files_get``.
     """
     paths = references(texts)

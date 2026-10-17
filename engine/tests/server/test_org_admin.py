@@ -368,7 +368,7 @@ def test_delete_removes_the_person_and_everything_they_own_and_is_idempotent(
         "model_connections_deleted": 2,
         "memory_claims_forgotten": 0,  # no memory service in this world
     }
-    assert world.terminated == ["host-c1"]  # the managed Computer only; no user-owned host left
+    assert world.terminated == ["host-c1"]  # the managed host only; no user-owned host left
     assert world.perms.get_user("alice") is None
     assert world.connections.list("user", "alice") == []
     assert _preference_keys(world, "alice") == set()  # budget, defaults, approvals, flag

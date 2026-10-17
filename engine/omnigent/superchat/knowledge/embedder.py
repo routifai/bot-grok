@@ -1,6 +1,6 @@
-"""Embeddings for the Computer's index, made through the engine's model proxy.
+"""Embeddings for the host's index, made through the engine's model proxy.
 
-The Computer never holds a provider key. It presents its own launch token (the credential
+The host never holds a provider key. It presents its own launch token (the credential
 :mod:`omnigent.host.model_credential` keeps) to two engine routes:
 
 * ``GET /v1/model/embeddings``: whether the owner can embed, with which provider and model, or why
@@ -89,7 +89,7 @@ class Embedder:
 
 
 class NoEmbedder(Embedder):
-    """Keyword-only: used when the Computer cannot reach the model proxy at all."""
+    """Keyword-only: used when the host cannot reach the model proxy at all."""
 
     def __init__(self, reason: str = REASON_NO_CONNECTION) -> None:
         self._reason = reason
@@ -104,9 +104,9 @@ class NoEmbedder(Embedder):
 def proxy_client(
     base: str | None, credential: str | None, transport: httpx.BaseTransport | None = None
 ) -> httpx.Client:
-    """An HTTP client for the engine's model proxy, signed with the Computer's launch token.
+    """An HTTP client for the engine's model proxy, signed with the host's launch token.
 
-    :raises EmbeddingUnavailable: ``no_connection`` outside a managed Computer.
+    :raises EmbeddingUnavailable: ``no_connection`` outside a managed host.
     """
     if not base or not credential:
         raise EmbeddingUnavailable(REASON_NO_CONNECTION, "no model proxy credential")
@@ -119,7 +119,7 @@ def proxy_client(
 
 
 class ProxyEmbedder(Embedder):
-    """Embeds through the engine's model proxy with the Computer's launch token."""
+    """Embeds through the engine's model proxy with the host's launch token."""
 
     def __init__(
         self,
@@ -131,7 +131,7 @@ class ProxyEmbedder(Embedder):
     ) -> None:
         """
         :param server_url: The engine's base URL (``None`` until the runner knows it).
-        :param credential: ``"<host_id>:<token>"``, or ``None`` outside a managed Computer.
+        :param credential: ``"<host_id>:<token>"``, or ``None`` outside a managed host.
         :param transport: Replaces the network (tests).
         """
         self._server_url = server_url

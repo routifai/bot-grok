@@ -1722,7 +1722,7 @@ async def test_fork_managed_rejects_multiple_repos_on_single_repo_provider(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A multi-repo source forked onto a single-repo provider fails the POST with
-    a clear 400 (computer is exec-model → single-repo), rather than a background
+    a clear 400 (host is exec-model → single-repo), rather than a background
     clone failure. The web picker caps this per provider; this guards the API."""
     conv = _make_conversation(
         labels={

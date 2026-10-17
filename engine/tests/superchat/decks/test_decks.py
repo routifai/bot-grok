@@ -172,7 +172,7 @@ async def test_handler_missing_helper(store, server, tmp_path, monkeypatch) -> N
     out = json.loads(
         await handle_deck_tool(_ctx(server), {"artifact_id": deck.id, "format": "pdf"})
     )
-    assert "isn't available on this Computer" in out["error"]
+    assert "isn't available on this host" in out["error"]
 
 
 @pytest.mark.asyncio

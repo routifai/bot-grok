@@ -1,6 +1,6 @@
 #!/bin/sh
 # Installs the Node libraries the pptx-generator skill needs (package.json + package-lock.json)
-# and applies the pinned PptxGenJS fixes in patches/. Run by the Computer image build (Dockerfile
+# and applies the pinned PptxGenJS fixes in patches/. Run by the host image build (Dockerfile
 # stage pptx-runtime-builder) and by the pipeline test, so both use the same bytes.
 #
 #   install.sh [target-dir]      default: this directory (node_modules lands next to it)

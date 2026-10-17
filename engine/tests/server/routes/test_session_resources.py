@@ -6822,7 +6822,7 @@ async def test_filesystem_list_wakes_the_runner_when_runner_and_host_are_offline
     offline_env_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A restarted Computer rebinds on a read: Files works without a chat turn."""
+    """A restarted host rebinds on a read: Files works without a chat turn."""
     from omnigent.server.routes import _host_filesystem
     from omnigent.server.routes.sessions import routes_resources as _routes
 
@@ -6850,7 +6850,7 @@ async def test_filesystem_list_wakes_the_runner_when_runner_and_host_are_offline
 
 
 @pytest.mark.asyncio
-async def test_filesystem_list_is_503_while_the_computer_is_still_starting(
+async def test_filesystem_list_is_503_while_the_host_is_still_starting(
     offline_env_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -6882,7 +6882,7 @@ async def test_read_wake_timeout_leaves_the_launch_running_and_reads_share_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Files polls while the Computer boots: each 503 retry must rejoin one launch.
+    Files polls while the host boots: each 503 retry must rejoin one launch.
 
     Concurrent reads give up at the budget (503) without cancelling the launch they
     share; a later read finds it finished, and the launch ran exactly once.

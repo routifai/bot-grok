@@ -200,7 +200,7 @@ def test_fill_needs_local_browser_and_helper_cannot_request(
             {"name": "acme", "field": "password", "ref": 0},
         )
     )
-    assert "Computer's browser" in out and sc.posts == []
+    assert "host's browser" in out and sc.posts == []
 
     async def helper_get(url: str, **_: Any) -> httpx.Response:
         return httpx.Response(200, json={"kind": "sub_agent", "parent_session_id": "p"})

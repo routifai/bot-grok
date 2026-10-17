@@ -1,4 +1,4 @@
-"""The framed text of attached files is built in the Computer at turn start and never stored."""
+"""The framed text of attached files is built in the host at turn start and never stored."""
 
 from __future__ import annotations
 

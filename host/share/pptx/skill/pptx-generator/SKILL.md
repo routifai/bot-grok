@@ -10,7 +10,7 @@ metadata:
     - https://github.com/microsoft/markitdown
 ---
 
-<!-- Portions from MiniMax-AI/skills skills/pptx-generator/SKILL.md@60aaae5, MIT; changes: Superchat Computer paths and runtime (preinstalled libraries, NODE_PATH), artifact_save delivery, chart and table data rules, QA commands; the pipeline, rules and page-type guidance are unchanged. See NOTICE.md and LICENSE next to this file. -->
+<!-- Portions from MiniMax-AI/skills skills/pptx-generator/SKILL.md@60aaae5, MIT; changes: Superchat host paths and runtime (preinstalled libraries, NODE_PATH), artifact_save delivery, chart and table data rules, QA commands; the pipeline, rules and page-type guidance are unchanged. See NOTICE.md and LICENSE next to this file. -->
 
 # PPTX Generator & Editor
 
@@ -18,15 +18,15 @@ metadata:
 
 This skill handles all PowerPoint tasks: reading/analyzing existing presentations, editing template-based decks via XML manipulation, and creating presentations from scratch using PptxGenJS. It includes a complete design system (color palettes, fonts, style recipes) and detailed guidance for every slide type.
 
-## In Superchat's Computer (read this first)
+## In Superchat's host (read this first)
 
-Everything below is MiniMax's pipeline. These rules adapt it to the Computer and override the
+Everything below is MiniMax's pipeline. These rules adapt it to the host and override the
 upstream text where they differ.
 
 - **Preinstalled, nothing to install.** `require('pptxgenjs')` (4.0.1, patched for the chart
   workbook table ref and the dangling chart axis id), `react`, `react-dom`, `react-icons` and
   `sharp` resolve from any script because `NODE_PATH` is set. `python3 -m markitdown` and
-  `python-pptx` are installed too. The Computer cannot install packages: never run `npm install`
+  `python-pptx` are installed too. The host cannot install packages: never run `npm install`
   or `pip install`, and use only these libraries.
 - **Work area.** Keep the slide modules, `compile.js` and `imgs/` in a scratch folder
   (`/tmp/deck-<slug>/slides/`). Write the final `.pptx` straight into its deliverable folder
@@ -36,7 +36,7 @@ upstream text where they differ.
   person's Library with a file card that opens a preview in Superchat. Reply in one line. Saving the
   same name again adds a version, so revise in place.
 - **Numbers come from the person's data.** Never invent a figure for a chart, table or stat
-  callout. Read the person's files, compute every value with pandas or duckdb in the Computer
+  callout. Read the person's files, compute every value with pandas or duckdb in the host
   (say briefly what you computed), and pass the computed arrays to `addChart` / `addTable`. If
   the data does not exist, leave the chart out or ask for it; a slide without a chart beats a
   made-up one.
@@ -277,5 +277,5 @@ slide.addText("03", {
 
 ## Dependencies
 
-Preinstalled in the Computer image (see the first section): `pptxgenjs`, `react`, `react-dom`,
+Preinstalled in the host image (see the first section): `pptxgenjs`, `react`, `react-dom`,
 `react-icons`, `sharp`, `markitdown[pptx]`. Install nothing.

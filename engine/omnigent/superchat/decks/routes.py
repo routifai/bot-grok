@@ -1,8 +1,8 @@
 """``POST /v1/decks/{artifact_id}/export`` (Export buttons) and ``GET /v1/decks/themes`` (the
 theme dictionary, and each theme's sample deck for its preview).
 
-Wakes the person's Computer the way a message does, then runs the ``deck_export`` tool on its
-runner (``/mcp/execute``) so the Chromium that renders the deck is the one in their Computer.
+Wakes the person's host the way a message does, then runs the ``deck_export`` tool on its
+runner (``/mcp/execute``) so the Chromium that renders the deck is the one in their host.
 The result is a new artifact in the deck's chat, shown as a file the person delivered.
 """
 
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 _TOOL = "deck_export"
 
-#: How long the export waits for the Computer to wake and its runner to connect.
+#: How long the export waits for the host to wake and its runner to connect.
 WAKE_TIMEOUT_S = 120.0
 #: The helper's own limit is 180 s; leave room for the upload.
 EXECUTE_TIMEOUT_S = 220.0
@@ -66,7 +66,7 @@ def create_decks_router(
         if conv is None:
             raise OmnigentError("Conversation not found", code=ErrorCode.NOT_FOUND)
         unavailable = OmnigentError(
-            "Your Computer is still starting; try again shortly",
+            "Your machine is still starting; try again shortly",
             code=ErrorCode.RUNNER_UNAVAILABLE,
         )
         try:
@@ -113,7 +113,7 @@ def create_decks_router(
     async def export_deck(
         request: Request, artifact_id: str, body: DeckExportBody
     ) -> dict[str, Any]:
-        """Export a deck to ``pptx`` / ``pdf`` in the person's Computer as a new artifact."""
+        """Export a deck to ``pptx`` / ``pdf`` in the person's host as a new artifact."""
         item = await load_artifact(store, request_owner(request, auth_provider), artifact_id)
         if not is_deck_name(item.name):
             raise OmnigentError("That file isn't a deck", code=ErrorCode.INVALID_INPUT)
@@ -134,7 +134,7 @@ def create_decks_router(
             payload = resp.json()
         except Exception as exc:
             raise OmnigentError(
-                f"The export couldn't reach your Computer: {exc}",
+                f"The export couldn't reach your machine: {exc}",
                 code=ErrorCode.RUNNER_UNAVAILABLE,
             ) from exc
         failure = _failure(payload)

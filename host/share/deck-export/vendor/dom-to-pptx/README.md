@@ -10,8 +10,8 @@ whitespace and two build-path strings.
 - **Version:** 2.0.1
 - **Fork point:** upstream commit `c0447adc47d3bc734d017050834edf0941adc189` (tag `v2.0.1`)
 - **Global:** exposes `window.domToPptx.exportToPptx(elementOrSelector, options)`
-- **Use:** `host/bin/superchat-deck-export` injects it into a headless Chromium page; the Computer image
-  expands it with `gzip -dc` at build time (`deployment/computer.Dockerfile`), and the helper
+- **Use:** `host/bin/superchat-deck-export` injects it into a headless Chromium page; the host image
+  expands it with `gzip -dc` at build time (`deployment/host.Dockerfile`), and the helper
   also reads the `.gz` directly when the expanded file is absent (tests, a checkout).
 
 It walks a rendered slide's live DOM and emits native PowerPoint shapes, text and images (not a
@@ -36,7 +36,7 @@ puppeteer; only this self-contained browser bundle is used.
    `processSlide` passes them to `addTable` as `rowH` (and the total as `h`), so PowerPoint does
    not collapse rows to their text height.
 
-The bundled PptxGenJS 4.0.1 carries the same four fixes as the Computer's
+The bundled PptxGenJS 4.0.1 carries the same four fixes as the host's
 (`../../../pptx/runtime/patches/pptxgenjs-4.0.1.patch`: gitbrent/PptxGenJS #1531, PR #1537,
 PR #1540, and zero values written as 0 instead of an empty cell). `build.sh` applies that very
 patch to `node_modules/pptxgenjs` before bundling.

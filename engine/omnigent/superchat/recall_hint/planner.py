@@ -1,7 +1,7 @@
 """The hint's planner: one cheap model call that says whether to recall and what to search for.
 
 The model is the cheap chat model the engine's proxy already resolves for the files rerank
-(``GET /v1/model/rerank``), called with the Computer's launch token. When it misses its cap or
+(``GET /v1/model/rerank``), called with the host's launch token. When it misses its cap or
 fails, :func:`derive_queries` writes the sub-queries from the message instead.
 """
 
@@ -79,7 +79,7 @@ class PlannerInput:
 
 
 class PlannerUnavailable(Exception):
-    """No model can plan now (outside a managed Computer, no connection, an error)."""
+    """No model can plan now (outside a managed host, no connection, an error)."""
 
 
 def _clip(text: str, limit: int) -> str:

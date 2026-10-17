@@ -112,7 +112,7 @@ def _fake_helper(tmp_path: Path, issues: list[dict[str, object]] | None) -> Path
     """A helper that answers `--format lint` with `issues` (or fails when `issues` is None)."""
     script = tmp_path / "fake-helper"
     if issues is None:
-        body = 'print(\'{"ok": false, "error": "Chromium is not installed on this computer"}\')'
+        body = 'print(\'{"ok": false, "error": "Chromium is not installed on this host"}\')'
     else:
         body = f"print({json.dumps(json.dumps({'ok': True, 'slides': 8, 'issues': issues}))})"
     script.write_text(f"#!/usr/bin/env python3\n{body}\n")

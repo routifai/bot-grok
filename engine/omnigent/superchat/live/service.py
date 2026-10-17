@@ -35,7 +35,7 @@ MAX_MISSES = 2
 MAX_FAILURES = 3
 #: A source file must stay quiet this long before its page updates (a burst of saves is one run).
 CHANGE_DEBOUNCE_SECONDS = 120.0
-#: A Computer reports its load every ~30 s; older than this, nobody knows its room.
+#: A host reports its load every ~30 s; older than this, nobody knows its room.
 LOAD_FRESH_SECONDS = 120.0
 
 
@@ -58,7 +58,7 @@ def task_prompt(name: str, kind: str = "html") -> str:
     return (
         f'Update the live {what} "{name}" from its sources.\n'
         f'1. Call live_update_context with name "{name}".\n'
-        "2. Read each source in the Computer: open a web page in the browser, read a file with "
+        "2. Read each source in the host: open a web page in the browser, read a file with "
         "code. Work out every number with code, never guess one. If there are no sources, infer "
         f"them from the {what} and this chat and pass them as sources when you save.\n"
         f"3. Call live_update_save once with only the facts that differ from what the {what} "
@@ -99,7 +99,7 @@ class LiveService:
         self.run_now: Callable[[], Any | None] = lambda: None
         self.debounce = CHANGE_DEBOUNCE_SECONDS
         self._timers: dict[tuple[str, str], asyncio.TimerHandle] = {}
-        #: owner -> (room, monotonic time): what their Computer last said it has room for.
+        #: owner -> (room, monotonic time): what their host last said it has room for.
         self._room: dict[tuple[int, str | None], tuple[int, float]] = {}
         self._fires: set[asyncio.Task[None]] = set()
 
@@ -186,18 +186,18 @@ class LiveService:
         return live
 
     def note_load(self, user_id: str | None, mem_free: float | None, load: float | None) -> None:
-        """The owner's Computer reported its free memory share and load per CPU."""
+        """The owner's host reported its free memory share and load per CPU."""
         key = (current_workspace_id(), user_id)
         self._room[key] = (room_for(mem_free, load), time.monotonic())
 
     def room(self, task: Any) -> int | None:
-        """Runs the task owner's Computer has room for, or ``None`` without a fresh report."""
+        """Runs the task owner's host has room for, or ``None`` without a fresh report."""
         owner = None if task.user_id == RESERVED_USER_LOCAL else task.user_id
         room, at = self._room.get((task.workspace_id, owner), (0, 0.0))
         return room if room and time.monotonic() - at < LOAD_FRESH_SECONDS else None
 
     def watched(self, user_id: str | None) -> list[str]:
-        """File paths whose change starts an update (what the Computer polls)."""
+        """File paths whose change starts an update (what the host polls)."""
         lives = self.live.of_user(user_id)
         return sorted(
             {s for v in lives if v.state["on_change"] for s in v.sources if "://" not in s}

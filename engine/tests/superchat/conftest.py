@@ -17,6 +17,6 @@ def conversation_store(db_uri: str) -> SqlAlchemyConversationStore:
 def _isolated_knowledge_workspace(
     monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
 ) -> None:
-    """Point the Computer's workspace (``memory/``) at a temp folder: a hand edit's journal
+    """Point the host's workspace (``memory/``) at a temp folder: a hand edit's journal
     line, like a checkpoint's, must never land in the developer's real home."""
     monkeypatch.setenv("SUPERCHAT_KNOWLEDGE_ROOT", str(tmp_path_factory.mktemp("workspace")))

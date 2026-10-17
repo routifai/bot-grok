@@ -331,7 +331,7 @@ async def reconcile(
 async def rebuild_if_missing(
     server_client: Any, chat_id: str, *, workspace: Path | None = None
 ) -> None:
-    """Run :func:`rebuild` when the Computer has no ``memory/`` folder (new or lost volume)."""
+    """Run :func:`rebuild` when the host has no ``memory/`` folder (new or lost volume)."""
     root = workspace or default_workspace()
     if not files.memory_dir(root).exists():
         await rebuild(server_client, chat_id, workspace=root)
@@ -341,7 +341,7 @@ async def rebuild_if_missing(
 
 
 def _knowledge(server_client: Any, runtime: KnowledgeRuntime | None) -> KnowledgeRuntime | None:
-    """The Computer's index service, or ``None`` outside a managed Computer (nothing to write)."""
+    """The host's index service, or ``None`` outside a managed host (nothing to write)."""
     if runtime is not None:
         return runtime
     if os.environ.get("IS_SANDBOX") != "1":

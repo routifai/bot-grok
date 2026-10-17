@@ -307,7 +307,7 @@ def _parse_host_start(command: str) -> HostStartInvocation:
     )
 
 
-def install_fake_computer_launcher(
+def install_fake_host_launcher(
     monkeypatch: Any,  # pytest.MonkeyPatch — Any avoids importing pytest in a helpers module
     fake: FakeSandboxLauncher,
 ) -> None:
@@ -321,13 +321,13 @@ def install_fake_computer_launcher(
     :param monkeypatch: The test's ``pytest.MonkeyPatch``.
     :param fake: The fake launcher to substitute.
     """
-    import omnigent.hosts.docker as computer_mod
+    import omnigent.hosts.docker as host_mod
 
     def _ctor() -> FakeSandboxLauncher:
         """Stand-in constructor handing back the fake."""
         return fake
 
-    monkeypatch.setattr(computer_mod, "DockerHostLauncher", _ctor)
+    monkeypatch.setattr(host_mod, "DockerHostLauncher", _ctor)
 
 
 async def wait_for_completion(

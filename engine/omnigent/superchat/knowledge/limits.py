@@ -1,4 +1,4 @@
-"""Limits and places the Computer's file index and the engine's relays to it agree on."""
+"""Limits and places the host's file index and the engine's relays to it agree on."""
 
 from __future__ import annotations
 

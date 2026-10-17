@@ -100,7 +100,7 @@ def _max_concurrent(measured: int | None = None) -> int:
     """Queued-kind runs one owner may have at once.
 
     ``OMNIGENT_AUTOMATION_MAX_CONCURRENT`` fixes it when set; else ``measured`` (what the owner's
-    Computer has room for right now), else the default.
+    host has room for right now), else the default.
     """
     try:
         fixed = int(os.environ[_MAX_CONCURRENT_ENV])

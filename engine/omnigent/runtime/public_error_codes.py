@@ -26,7 +26,7 @@ AUTH_FAILED = "auth_failed"  # the provider rejected the credentials (401/403)
 CONTEXT_TOO_LONG = "context_too_long"  # the conversation no longer fits the model's window
 PROVIDER_UNAVAILABLE = "provider_unavailable"  # provider 5xx, unreachable, or dropped connection
 TIMEOUT = "timeout"  # the turn or the provider call took too long
-SANDBOX_UNAVAILABLE = "sandbox_unavailable"  # the computer/sandbox the turn runs in is gone
+SANDBOX_UNAVAILABLE = "sandbox_unavailable"  # the host/sandbox the turn runs in is gone
 # Not a failure (stored at ``level: info``): the sandbox was replaced by a fresh one and files
 # it held that were not saved elsewhere are gone. The chat goes on.
 WORKSPACE_RESET = "workspace_reset"

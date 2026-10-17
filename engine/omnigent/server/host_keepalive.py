@@ -194,7 +194,7 @@ def _keep_alive_for_runner(runner_id: str) -> None:
                         host.sandbox_provider,
                     )
             except HostCapabilityError:
-                # Provider cannot extend a sandbox (e.g. computer): nothing to
+                # Provider cannot extend a sandbox (e.g. host): nothing to
                 # log every 10 minutes.
                 _logger.debug(
                     "keep_alive unsupported by provider %s; skipping sandbox %s",

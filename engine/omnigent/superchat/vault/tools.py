@@ -2,7 +2,7 @@
 
 * ``vault_request_secret`` — ask the person to save a login on a secure form; the value
   never enters the chat. Returns a request id the client renders as a secure-entry card.
-* ``vault_fill`` — type one saved value into a field of the Computer's browser. The result only
+* ``vault_fill`` — type one saved value into a field of the host's browser. The result only
   says "filled"; the model never sees the value.
 """
 
@@ -67,11 +67,11 @@ class VaultRequestSecretTool(_VaultTool):
 
 
 class VaultFillTool(_VaultTool):
-    """Fill a field from the vault; handled in the runner against the Computer's browser."""
+    """Fill a field from the vault; handled in the runner against the host's browser."""
 
     _NAME = "vault_fill"
     _DESC = (
-        "Fill a login field in the Computer's browser from a saved login. Find the field's ref "
+        "Fill a login field in the host's browser from a saved login. Find the field's ref "
         "with browser_snapshot. Works only on the site the login was saved for. Codes (2FA, "
         "CAPTCHA) cannot be filled: tell the person and stop."
     )

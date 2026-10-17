@@ -9,7 +9,7 @@ _FREE_ARTIFACT_TOOLS = frozenset({"artifact_list"})
 def is_work_tool(name: str) -> bool:
     """Whether a tool call counts as work (``mcp__<server>__`` prefixes are ignored).
 
-    Search, browser, shell and files, artifact writes and Computer actions are work;
+    Search, browser, shell and files, artifact writes and host actions are work;
     memory, cards, Goals, scheduling, vault and Helper management are not.
     """
     base = name.rsplit("__", 1)[-1] if name.startswith("mcp__") else name

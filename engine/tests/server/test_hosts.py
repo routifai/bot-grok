@@ -3201,7 +3201,7 @@ async def test_recreated_sandbox_records_and_publishes_workspace_reset_notice(
 async def test_recreated_sandbox_that_keeps_its_files_records_no_reset_notice(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A provider whose workspace survives a recreate (the Computer's home is on durable
+    """A provider whose workspace survives a recreate (the host's home is on durable
     disk) lost nothing, so the session gets no "files are gone" notice."""
     from omnigent.server.routes._sessions import orchestration
 

@@ -409,7 +409,7 @@ def register_resources_routes(
         except OmnigentError as exc:
             if exc.code != ErrorCode.RUNNER_UNAVAILABLE:
                 raise
-            # Same wake as the list/read paths: a restarted Computer rebinds here.
+            # Same wake as the list/read paths: a restarted host rebinds here.
             conversation = await _wake_runner_for_read(request, session_id, conversation, exc)
             runner_client = await _get_runner_client_for_resource_access(
                 session_id,
@@ -542,7 +542,7 @@ def register_resources_routes(
     ) -> Conversation:
         """Bring the session's runner back for a read, like a chat turn would.
 
-        A Computer restarted under a live Conversation leaves it pinned to a
+        A host restarted under a live Conversation leaves it pinned to a
         dead runner until a message relaunches one. Reads use the same wake
         ladder (``ensure_runner_connected``) so the panel recovers without a
         send, but only wait a bounded time: a slow start surfaces as a 503
@@ -579,7 +579,7 @@ def register_resources_routes(
             )
         except asyncio.TimeoutError:
             raise OmnigentError(
-                "The session's computer is still starting; try again shortly",
+                "Your machine is still starting; try again shortly",
                 code=ErrorCode.RUNNER_UNAVAILABLE,
             ) from None
         if runner_client is None:

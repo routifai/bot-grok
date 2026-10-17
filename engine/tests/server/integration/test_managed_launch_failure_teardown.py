@@ -54,7 +54,7 @@ from tests.server.helpers import (
     FakeSandboxLauncher,
     HostStartInvocation,
     create_test_agent,
-    install_fake_computer_launcher,
+    install_fake_host_launcher,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -106,7 +106,7 @@ async def teardown_env(
     """Full app wired for managed-host sessions (no real sandbox).
 
     Builds the production ``create_app`` with host + managed-host
-    stores and a computer ``sandbox:`` config, so a ``host_type="managed"``
+    stores and a host ``sandbox:`` config, so a ``host_type="managed"``
     create exercises the real route, tunnel, and store paths end to
     end. Only the sandbox itself is fake.
 
@@ -314,7 +314,7 @@ async def test_harness_refusal_failure_tears_down_managed_sandbox(
         host_futures.append(asyncio.wrap_future(future, loop=loop))
 
     fake = FakeSandboxLauncher(on_host_start=_start_fake_sandbox_host)
-    install_fake_computer_launcher(monkeypatch, fake)
+    install_fake_host_launcher(monkeypatch, fake)
 
     agent = await create_test_agent(env.client, name="managed-refusal-teardown-agent")
     resp = await env.client.post(
@@ -392,7 +392,7 @@ async def test_runner_connect_timeout_failure_tears_down_managed_sandbox(
         host_futures.append(asyncio.wrap_future(future, loop=loop))
 
     fake = FakeSandboxLauncher(on_host_start=_start_fake_sandbox_host)
-    install_fake_computer_launcher(monkeypatch, fake)
+    install_fake_host_launcher(monkeypatch, fake)
 
     agent = await create_test_agent(env.client, name="managed-connect-timeout-agent")
     resp = await env.client.post(

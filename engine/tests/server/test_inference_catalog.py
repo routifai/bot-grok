@@ -499,7 +499,7 @@ def _byok_state(key_by_owner):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("provider", ["anthropic", "openrouter"])
-async def test_model_connection_points_the_computer_at_the_engine_proxy(provider):
+async def test_model_connection_points_the_host_at_the_engine_proxy(provider):
     state = _byok_state({"alice": (provider, "sk-secret-ALICE")})
     snapshot = await SandboxInferenceService(state).prepare("docker", "claude-sdk", "alice")
     assert snapshot is not None and snapshot["catalog"]["status"] == "ready"

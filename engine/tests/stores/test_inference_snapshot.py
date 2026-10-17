@@ -30,7 +30,7 @@ def store(request: pytest.FixtureRequest) -> SqlAlchemyConversationStore:
 def _snapshot() -> dict[str, Any]:
     return {
         "revision": "synthetic-config-revision",
-        "target_id": "sandbox:computer",
+        "target_id": "sandbox:host",
         "runtime_config": {
             "providers": {
                 "bifrost": {
