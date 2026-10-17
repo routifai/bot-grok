@@ -339,13 +339,11 @@ def create_org_admin_router(
         hosts_stopped = 0
         host_store = getattr(state, "host_store", None)
         if host_store is not None:
-            from omnigent.server.managed_hosts import terminate_managed_host
+            from omnigent.server.hosts import terminate_host
 
             for host in await asyncio.to_thread(host_store.list_hosts, user_id):
                 if host.sandbox_provider is not None:
-                    await terminate_managed_host(
-                        host, host_store, getattr(state, "sandbox_config", None)
-                    )
+                    await terminate_host(host, host_store, getattr(state, "sandbox_config", None))
                     hosts_stopped += 1
 
         keys = 0

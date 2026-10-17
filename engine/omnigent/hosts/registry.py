@@ -2,11 +2,11 @@
 
 Core Omnigent contributes the built-in ``computer`` provider directly.
 Third-party packages contribute additional providers through the
-``omnigent.sandbox_providers`` entry point group.
+``omnigent.host_providers`` entry point group.
 
 The registry mirrors the design of ``omnigent.harness_plugins``:
 contributions are merged into a single plugin state, validation keeps
-community provider code in the ``omnigent.community.sandbox`` namespace, and
+community provider code in the ``omnigent.community.host`` namespace, and
 broken plugins are recorded but never break core startup.
 """
 
@@ -20,25 +20,25 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol, cast
 
-from omnigent.onboarding.sandboxes.base import SandboxHostLauncher
+from omnigent.hosts.launcher import HostLauncher
 
 logger = logging.getLogger(__name__)
 
-COMMUNITY_ENTRY_POINT_GROUP = "omnigent.sandbox_providers"
-COMMUNITY_MODULE_PREFIX = "omnigent.community.sandbox."
+COMMUNITY_ENTRY_POINT_GROUP = "omnigent.host_providers"
+COMMUNITY_MODULE_PREFIX = "omnigent.community.host."
 
 
-class SandboxRegistryError(Exception):
+class HostRegistryError(Exception):
     """A provider registry operation failed."""
 
 
 class _ConfiguredLauncherFactory(Protocol):
-    def __call__(self, *, config: object) -> SandboxHostLauncher:
+    def __call__(self, *, config: object) -> HostLauncher:
         pass
 
 
 @dataclass(frozen=True)
-class SandboxProviderMetadata:
+class HostProviderMetadata:
     """Static metadata for one sandbox provider.
 
     :param name: Provider short name, e.g. ``"computer"``.
@@ -62,7 +62,7 @@ class SandboxProviderMetadata:
 
 
 @dataclass(frozen=True)
-class SandboxProviderContribution:
+class HostProviderContribution:
     """One package's contribution to the sandbox provider registry.
 
     :param name: Package / contributor name, e.g. ``"omnigent-acme"``. Used
@@ -71,27 +71,27 @@ class SandboxProviderContribution:
     """
 
     name: str
-    providers: dict[str, SandboxProviderMetadata] = field(default_factory=dict)
+    providers: dict[str, HostProviderMetadata] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
-class SandboxProviderPluginState:
+class HostProviderPluginState:
     """Merged provider registry plus non-fatal plugin load errors."""
 
-    providers: dict[str, SandboxProviderMetadata]
+    providers: dict[str, HostProviderMetadata]
     load_errors: dict[str, str]
 
     def __contains__(self, name: str) -> bool:
         return name in self.providers
 
-    def get(self, name: str) -> SandboxProviderMetadata | None:
+    def get(self, name: str) -> HostProviderMetadata | None:
         return self.providers.get(name)
 
     def names(self) -> tuple[str, ...]:
         return tuple(self.providers)
 
 
-_state: SandboxProviderPluginState | None = None
+_state: HostProviderPluginState | None = None
 
 
 def _entry_points() -> tuple[importlib.metadata.EntryPoint, ...]:
@@ -125,14 +125,14 @@ def _config_model_module(config_model: type[object]) -> str | None:
     return getattr(config_model, "__module__", None)
 
 
-def _builtin_contribution() -> SandboxProviderContribution:
+def _builtin_contribution() -> HostProviderContribution:
     """The built-in sandbox-provider contribution from core Omnigent."""
-    return SandboxProviderContribution(
+    return HostProviderContribution(
         name="omnigent",
         providers={
-            "computer": SandboxProviderMetadata(
+            "computer": HostProviderMetadata(
                 name="computer",
-                launcher_class="omnigent.onboarding.sandboxes.computer:ComputerSandboxLauncher",
+                launcher_class="omnigent.hosts.docker:DockerHostLauncher",
                 managed_token_ttl_s=7 * 24 * 3600,
                 # The Computer's home is a per-person Docker volume; it outlives the container.
                 workspace_survives_recreate=True,
@@ -148,10 +148,10 @@ def _provider_module_available(import_path: str) -> bool:
 
 
 def _validate_community_contribution(
-    contribution: SandboxProviderContribution,
+    contribution: HostProviderContribution,
     *,
     entry_point_name: str,
-    existing: dict[str, SandboxProviderMetadata],
+    existing: dict[str, HostProviderMetadata],
 ) -> str | None:
     """Validate a community contribution. Returns an error string or ``None``."""
     if not contribution.name:
@@ -189,14 +189,14 @@ def _validate_community_contribution(
     return None
 
 
-def plugin_state() -> SandboxProviderPluginState:
+def plugin_state() -> HostProviderPluginState:
     """Return the merged built-in + community sandbox provider registry."""
     global _state
     if _state is not None:
         return _state
 
     built_in = _builtin_contribution().providers
-    providers: dict[str, SandboxProviderMetadata] = {}
+    providers: dict[str, HostProviderMetadata] = {}
     load_errors: dict[str, str] = {}
 
     for name, meta in built_in.items():
@@ -207,10 +207,10 @@ def plugin_state() -> SandboxProviderPluginState:
         try:
             loaded = entry_point.load()
             contribution = loaded() if callable(loaded) else loaded
-            if not isinstance(contribution, SandboxProviderContribution):
+            if not isinstance(contribution, HostProviderContribution):
                 raise TypeError(
                     f"entry point returned {type(contribution).__name__}, "
-                    "expected SandboxProviderContribution"
+                    "expected HostProviderContribution"
                 )
             error = _validate_community_contribution(
                 contribution,
@@ -229,7 +229,7 @@ def plugin_state() -> SandboxProviderPluginState:
                 exc_info=True,
             )
 
-    _state = SandboxProviderPluginState(providers=providers, load_errors=load_errors)
+    _state = HostProviderPluginState(providers=providers, load_errors=load_errors)
     return _state
 
 
@@ -244,7 +244,7 @@ def available_providers() -> tuple[str, ...]:
     return plugin_state().names()
 
 
-def get_provider_metadata(name: str) -> SandboxProviderMetadata | None:
+def get_provider_metadata(name: str) -> HostProviderMetadata | None:
     """Return metadata for a provider, or ``None`` if it is not registered."""
     return plugin_state().get(name)
 
@@ -253,35 +253,35 @@ def instantiate(
     name: str,
     *,
     config: Mapping[str, object] | None = None,
-) -> SandboxHostLauncher:
+) -> HostLauncher:
     """Import and instantiate a registered provider's launcher class.
 
     :param name: Registered provider name.
     :param config: The provider's ``sandbox.<name>`` block, or ``None``.
         Only used when the provider declares a
-        :attr:`SandboxProviderMetadata.config_model`: the block is
+        :attr:`HostProviderMetadata.config_model`: the block is
         validated through that model and the result is passed to the
         launcher constructor as ``config=``. Providers that declare no
         model — which is every built-in — ignore this entirely, so the
         argument changes nothing for them.
     :returns: A fresh launcher instance.
-    :raises SandboxRegistryError: If the provider is unknown, its class
+    :raises HostRegistryError: If the provider is unknown, its class
         cannot be imported/instantiated, or *config* fails validation
         against the declared model.
     """
     meta = get_provider_metadata(name)
     if meta is None:
-        raise SandboxRegistryError(f"unknown sandbox provider '{name}'")
+        raise HostRegistryError(f"unknown sandbox provider '{name}'")
     try:
         launcher_cls = _load_object(meta.launcher_class)
     except Exception as exc:
-        raise SandboxRegistryError(
+        raise HostRegistryError(
             f"could not load sandbox provider '{name}' from {meta.launcher_class!r}: {exc}"
         ) from exc
-    if not isinstance(launcher_cls, type) or not issubclass(launcher_cls, SandboxHostLauncher):
-        raise SandboxRegistryError(
+    if not isinstance(launcher_cls, type) or not issubclass(launcher_cls, HostLauncher):
+        raise HostRegistryError(
             f"sandbox provider '{name}' resolved to {launcher_cls!r}, "
-            f"which is not a SandboxHostLauncher subclass"
+            f"which is not a HostLauncher subclass"
         )
     if meta.config_model is not None:
         # The docstring on `config_model` already describes it as validating
@@ -291,7 +291,7 @@ def instantiate(
         try:
             validated = meta.config_model(**dict(config or {}))
         except Exception as exc:
-            raise SandboxRegistryError(
+            raise HostRegistryError(
                 f"invalid 'sandbox.{name}' config for provider '{name}': {exc}"
             ) from exc
         return cast(_ConfiguredLauncherFactory, launcher_cls)(config=validated)

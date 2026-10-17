@@ -20,7 +20,7 @@ import logging
 
 import pytest
 
-from omnigent.server.managed_hosts import ManagedSandboxConfig, ManagedSandboxDeployment
+from omnigent.server.hosts import HostDeployment, HostProviderConfig
 
 
 @pytest.fixture
@@ -29,10 +29,10 @@ def entrypoint():
     return importlib.import_module("deployment.entrypoint")
 
 
-def _deployment(*, launch_supported: bool) -> ManagedSandboxDeployment:
-    """A single-provider deployment, as ``parse_sandbox_config`` builds one."""
-    return ManagedSandboxDeployment.single(
-        ManagedSandboxConfig(
+def _deployment(*, launch_supported: bool) -> HostDeployment:
+    """A single-provider deployment, as ``parse_host_section`` builds one."""
+    return HostDeployment.single(
+        HostProviderConfig(
             server_url="http://omnigent.example.svc.cluster.local",
             launcher_factory=lambda: None,  # never called: nothing launches here
             token_ttl_s=600,
@@ -47,7 +47,7 @@ def test_capabilities_logs_the_provider_for_a_launch_capable_deployment(
 ) -> None:
     """The line must not raise, and must name the provider.
 
-    Regression: ``ManagedSandboxDeployment`` wraps one config PER PROVIDER and
+    Regression: ``HostDeployment`` wraps one config PER PROVIDER and
     exposes no ``provider`` of its own, so a bare ``sandbox_config.provider``
     raises ``AttributeError`` and kills the server at boot.
     """

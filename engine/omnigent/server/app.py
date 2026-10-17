@@ -70,14 +70,14 @@ from omnigent.runtime import (
 )
 from omnigent.runtime.agent_cache import AgentCache
 from omnigent.runtime.harnesses.process_manager import HarnessProcessManager
-from omnigent.server import managed_host_keepalive, session_live_state, shutdown_state
+from omnigent.server import host_keepalive, session_live_state, shutdown_state
 from omnigent.server.auth import AuthProvider, SharingMode
 from omnigent.server.background_session_titles import (
     BackgroundSessionTitleCoordinator,
     RunnerBackgroundTitleGenerator,
 )
 from omnigent.server.feature_flags import Feature, FeatureFlags, resolve_feature_flags
-from omnigent.server.managed_hosts import ManagedSandboxDeployment
+from omnigent.server.hosts import HostDeployment
 from omnigent.server.managed_sandbox_reaper import ManagedSandboxReaper
 from omnigent.server.mcp_pool import ServerMcpPool
 from omnigent.server.performance_metrics import (
@@ -989,7 +989,7 @@ def create_app(
     debug_router_modules: list[str] | None = None,
     admins: list[str] | None = None,
     allowed_domains: list[str] | None = None,
-    sandbox_config: ManagedSandboxDeployment | None = None,
+    sandbox_config: HostDeployment | None = None,
     github_config: Any | None = None,  # GitHubAppConfig — GitHub App integration
     github_store: Any | None = None,  # GithubConnectionStore — GitHub App integration
     sharing_mode: SharingMode | Callable[[], SharingMode] | None = None,
@@ -1680,7 +1680,7 @@ def create_app(
     # racing the provision can rendezvous instead of failing with
     # "no runner bound". Always wired — cheap, and post_event probes
     # it regardless of whether managed hosts are configured.
-    from omnigent.server.managed_hosts import ManagedLaunchTracker
+    from omnigent.server.hosts import ManagedLaunchTracker
 
     app.state.managed_launches = ManagedLaunchTracker()
     app.state.server_metrics = server_metrics
@@ -1708,8 +1708,8 @@ def create_app(
     # _publish_status when a fired conversation's turn reaches terminal.
     session_live_state.configure(conversation_store, scheduled_task_store)
     # Extend a managed sandbox while its runner tunnel is live (the managed-path
-    # caller for SandboxHostLauncher.keep_alive); no-op without a sandbox config.
-    managed_host_keepalive.configure(conversation_store, host_store, sandbox_config)
+    # caller for HostLauncher.keep_alive); no-op without a sandbox config.
+    host_keepalive.configure(conversation_store, host_store, sandbox_config)
     pending_elicitations.set_count_persist_hook(session_live_state.persist_pending_count)
 
     @app.middleware("http")

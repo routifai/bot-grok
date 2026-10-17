@@ -20,8 +20,8 @@ from omnigent.harnesses.pi_executor import _build_models_json, _only_configured_
 from omnigent.models import model_catalog
 from omnigent.onboarding.provider_config import load_providers
 from omnigent.runtime.workflow import _apply_provider_to_pi
+from omnigent.server.hosts import parse_host_section
 from omnigent.server.inference_catalog import SandboxInferenceService
-from omnigent.server.managed_hosts import parse_sandbox_config
 from omnigent.superchat.models.proxy import create_model_proxy_router
 from omnigent.superchat.models.store import ModelConnectionStore
 from omnigent.superchat.vault.store import VAULT_KEY_ENV
@@ -54,7 +54,7 @@ def _hosted_state(creds: dict[str, tuple[str, str]]) -> SimpleNamespace:
     raw = yaml.safe_load(
         TEMPLATE.read_text().replace("__ENGINE_PUBLIC_URL__", "https://eng.example")
     )
-    deployment = parse_sandbox_config(raw["sandbox"])
+    deployment = parse_host_section(raw["sandbox"])
     assert deployment is not None
 
     class _Store:

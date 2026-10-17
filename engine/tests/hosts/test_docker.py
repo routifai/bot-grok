@@ -14,15 +14,15 @@ import click
 import httpx
 import pytest
 
-from omnigent.onboarding.sandboxes.base import RemoteCommandResult, supervise_host_command
-from omnigent.onboarding.sandboxes.computer import (
+from omnigent.hosts.docker import (
     DEFAULT_TENANT,
-    ComputerSandboxLauncher,
+    DockerHostLauncher,
     _demux,
     _parse_sandbox_id,
     container_name,
     home_volume_name,
 )
+from omnigent.hosts.launcher import RemoteCommandResult, supervise_host_command
 
 KEY = "bot_abc123"
 TENANT = "space_xyz789"
@@ -101,8 +101,8 @@ class FakeDocker:
         return httpx.Response(500, json={"message": f"unhandled {method} {path}"})
 
 
-def make_launcher(docker: FakeDocker) -> ComputerSandboxLauncher:
-    launcher = ComputerSandboxLauncher(image=IMAGE, client=docker.client())
+def make_launcher(docker: FakeDocker) -> DockerHostLauncher:
+    launcher = DockerHostLauncher(image=IMAGE, client=docker.client())
     launcher.prepare_for_launch(labels={"omnigent.computer.key": KEY, "omnigent.tenant": TENANT})
     return launcher
 
@@ -118,7 +118,7 @@ def test_parse_sandbox_id_rejects_malformed_ids(malformed: str) -> None:
 
 
 def test_identity_comes_from_the_key_label_then_the_owner_label() -> None:
-    launcher = ComputerSandboxLauncher(image=IMAGE, client=FakeDocker().client())
+    launcher = DockerHostLauncher(image=IMAGE, client=FakeDocker().client())
     launcher.prepare_for_launch(
         labels={"omnigent.computer.owner": "owner-1", "omnigent.tenant": "tenant-1"}
     )
@@ -134,33 +134,33 @@ def test_identity_comes_from_the_key_label_then_the_owner_label() -> None:
 
 
 def test_deprecated_labels_still_resolve_identity() -> None:
-    launcher = ComputerSandboxLauncher(image=IMAGE, client=FakeDocker().client())
+    launcher = DockerHostLauncher(image=IMAGE, client=FakeDocker().client())
     launcher.prepare_for_launch(labels={"superchat.bot": KEY, "superchat.space": TENANT})
     assert (launcher._key, launcher._tenant) == (KEY, TENANT)
 
 
 def test_a_session_without_a_tenant_uses_the_default_tenant() -> None:
-    launcher = ComputerSandboxLauncher(image=IMAGE, client=FakeDocker().client())
+    launcher = DockerHostLauncher(image=IMAGE, client=FakeDocker().client())
     launcher.prepare_for_launch(labels={"omnigent.computer.owner": KEY})
     launcher.prepare()
     assert (launcher._key, launcher._tenant) == (KEY, DEFAULT_TENANT)
 
 
 def test_relaunch_recovers_identity_from_the_previous_sandbox_id() -> None:
-    launcher = ComputerSandboxLauncher(image=IMAGE, client=FakeDocker().client())
+    launcher = DockerHostLauncher(image=IMAGE, client=FakeDocker().client())
     launcher.prepare_for_launch(labels=None, previous_sandbox_id=SANDBOX_ID)
     launcher.prepare()
     assert (launcher._key, launcher._tenant) == (KEY, TENANT)
 
 
 def test_prepare_fails_without_identity() -> None:
-    launcher = ComputerSandboxLauncher(image=IMAGE, client=FakeDocker().client())
+    launcher = DockerHostLauncher(image=IMAGE, client=FakeDocker().client())
     with pytest.raises(click.ClickException, match="identity"):
         launcher.prepare()
 
 
 def test_prepare_fails_without_a_docker_socket(tmp_path: Path) -> None:
-    launcher = ComputerSandboxLauncher(image=IMAGE, socket_path=str(tmp_path / "none.sock"))
+    launcher = DockerHostLauncher(image=IMAGE, socket_path=str(tmp_path / "none.sock"))
     launcher.prepare_for_launch(labels={"omnigent.computer.key": KEY, "omnigent.tenant": TENANT})
     with pytest.raises(click.ClickException, match="Docker socket"):
         launcher.prepare()
@@ -302,7 +302,7 @@ def test_demux_splits_stdout_and_stderr_frames() -> None:
     assert _demux(stream) == ("ac", "b")
 
 
-class _LocalShellLauncher(ComputerSandboxLauncher):
+class _LocalShellLauncher(DockerHostLauncher):
     """Runs the exec'd command in a real local ``sh`` with a throwaway ``$HOME``."""
 
     home: str = ""

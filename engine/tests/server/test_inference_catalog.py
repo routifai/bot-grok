@@ -13,12 +13,12 @@ from omnigent.errors import OmnigentError
 from omnigent.models import model_catalog
 from omnigent.models.model_catalog import ModelEntry, ModelListing
 from omnigent.models.model_metadata import ModelMetadata, ModelReasoningMetadata, ModelWireAPI
-from omnigent.server.inference_catalog import SandboxInferenceService
-from omnigent.server.managed_hosts import (
-    ManagedSandboxConfig,
-    ManagedSandboxDeployment,
-    parse_sandbox_config,
+from omnigent.server.hosts import (
+    HostDeployment,
+    HostProviderConfig,
+    parse_host_section,
 )
+from omnigent.server.inference_catalog import SandboxInferenceService
 
 
 @pytest.fixture(autouse=True)
@@ -48,7 +48,7 @@ def _state(*, allowed=("gateway/fast", "gateway/main"), default="gateway/main", 
         },
         "inference": {"harnesses": {harness: binding}},
     }
-    target = ManagedSandboxConfig(
+    target = HostProviderConfig(
         server_url="http://localhost:6767",
         launcher_factory=lambda: None,
         token_ttl_s=100,
@@ -62,7 +62,7 @@ def _state(*, allowed=("gateway/fast", "gateway/main"), default="gateway/main", 
         },
     )
     return SimpleNamespace(
-        sandbox_config=ManagedSandboxDeployment.single(target),
+        sandbox_config=HostDeployment.single(target),
     )
 
 
@@ -86,7 +86,7 @@ async def test_unconfigured_sandboxes_preserve_legacy_credentials(provider, infe
     family = config["providers"]["bifrost"]["openai"]
     family["api_key_ref"] = "legacy-test-key"
     family["base_url"] = "${LEGACY_GATEWAY_URL}"
-    deployment = parse_sandbox_config(
+    deployment = parse_host_section(
         {"provider": provider, "server_url": "https://server.example", "host_config": config}
     )
     service = SandboxInferenceService(SimpleNamespace(sandbox_config=deployment))
@@ -246,7 +246,7 @@ async def test_literal_credentials_rejected_at_startup_and_before_snapshot(locat
             "api_key_ref": reference,
         }
     with pytest.raises(ValueError, match="api_key_ref") as error:
-        parse_sandbox_config(
+        parse_host_section(
             {
                 "provider": "computer",
                 "server_url": "https://server.example",
@@ -273,7 +273,7 @@ async def test_pod_references_are_validated_without_resolution(reference):
     state = _state()
     target = state.sandbox_config.default
     target.host_config["providers"]["bifrost"]["openai"]["api_key_ref"] = reference
-    parsed = parse_sandbox_config(
+    parsed = parse_host_section(
         {
             "provider": "computer",
             "server_url": "https://server.example",
@@ -384,7 +384,7 @@ async def test_metadata_filters_wrong_wire_but_preserves_unknown_private_aliases
 @pytest.mark.asyncio
 async def test_unbound_harness_keeps_its_baseline_when_a_binding_is_added_later():
     from omnigent.inference_config import binding_for_harness
-    from omnigent.server.managed_hosts import deployment_with_inference_snapshot
+    from omnigent.server.hosts import deployment_with_inference_snapshot
 
     state = _state()
     service = SandboxInferenceService(state)
@@ -401,7 +401,7 @@ async def test_unbound_harness_keeps_its_baseline_when_a_binding_is_added_later(
 
 
 def test_legacy_restore_does_not_adopt_new_inference_bindings():
-    from omnigent.server.managed_hosts import deployment_with_inference_snapshot
+    from omnigent.server.hosts import deployment_with_inference_snapshot
 
     state = _state()
     restored = deployment_with_inference_snapshot(state.sandbox_config, None)
@@ -480,7 +480,7 @@ def _byok_state(key_by_owner):
             }
         },
     }
-    target = ManagedSandboxConfig(
+    target = HostProviderConfig(
         server_url="https://engine.example/",
         launcher_factory=lambda: None,
         token_ttl_s=100,
@@ -494,7 +494,7 @@ def _byok_state(key_by_owner):
             return found if found and found[0] in preferred else None
 
     return SimpleNamespace(
-        sandbox_config=ManagedSandboxDeployment.single(target),
+        sandbox_config=HostDeployment.single(target),
         model_connection_store=_Store(),
     )
 

@@ -7035,7 +7035,7 @@
           },
           "host_resumable": {
             "default": false,
-            "description": "Whether this session is bound to a dormant managed host the server can wake in place (its provider sets `SandboxLauncher.can_resume`). The open view reads it only when `host_online` is `False`, to split a confirmed host-down into a recoverable \"asleep\" state (send a message \u2014 the relaunch path resumes the sandbox) versus the terminal `host_offline` dead-end (reconnect from your machine / fork). `False` for non-managed or non-resumable hosts.",
+            "description": "Whether this session is bound to a dormant managed host the server can wake in place (its provider sets `ExecModelHostLauncher.can_resume`). The open view reads it only when `host_online` is `False`, to split a confirmed host-down into a recoverable \"asleep\" state (send a message \u2014 the relaunch path resumes the sandbox) versus the terminal `host_offline` dead-end (reconnect from your machine / fork). `False` for non-managed or non-resumable hosts.",
             "title": "Host Resumable",
             "type": "boolean"
           },

@@ -5,8 +5,8 @@ import shlex
 import click
 import pytest
 
-from omnigent.onboarding.sandboxes.types import GitCloneOptions, RepoWorkspace
-from tests.onboarding.sandboxes.test_base import _RecordingLauncher
+from omnigent.hosts.types import GitCloneOptions, RepoWorkspace
+from tests.hosts.test_launcher import _RecordingLauncher
 
 
 @pytest.mark.parametrize(

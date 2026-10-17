@@ -334,7 +334,7 @@ def register_core_routes(
                 code=ErrorCode.INVALID_INPUT,
             )
         from omnigent.server.auth import RESERVED_USER_LOCAL
-        from omnigent.server.managed_hosts import (
+        from omnigent.server.hosts import (
             managed_repo_labels,
             parse_repo_workspace,
         )
@@ -3121,7 +3121,7 @@ def register_core_routes(
         # Push the forked session to this user's other open tabs.
         _announce_session_added(user_id, new_conv.id)
 
-        from omnigent.server.managed_hosts import read_managed_repo_workspaces
+        from omnigent.server.hosts import read_managed_repo_workspaces
 
         # Managed host: schedule the fork's own BACKGROUND sandbox provision
         # and return immediately, exactly like a managed create. The host is

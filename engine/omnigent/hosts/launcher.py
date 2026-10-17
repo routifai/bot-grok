@@ -6,7 +6,7 @@ A *sandbox launcher* wraps one sandbox provider (e.g. the Docker-backed
 server's managed-host code composes: provision a sandbox, run commands in it,
 ship files into it, stream a PTY-backed process out of it, forward a local port
 into it, and hold a foreground process open. Everything provider-specific
-lives behind a :class:`SandboxLauncher` implementation.
+lives behind a :class:`ExecModelHostLauncher` implementation.
 
 Injected host config uses the loader's ``OMNIGENT_CONFIG_HOME`` resolution,
 atomically replaces its config and ownership-marker files, and removes a
@@ -32,13 +32,13 @@ import click
 
 from omnigent.host import HOST_FATAL_EXIT_CODE, HOST_SIGTERM_EXIT_CODE
 from omnigent.host.identity import HOST_ID_ENV_VAR, HOST_NAME_ENV_VAR, HOST_TOKEN_ENV_VAR
-from omnigent.onboarding.sandboxes import types as _sandbox_types
+from omnigent.hosts import types as _host_types
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping, Sequence
     from pathlib import Path
 
-    from omnigent.onboarding.sandboxes.types import RepoWorkspace
+    from omnigent.hosts.types import RepoWorkspace
 
 
 DEFAULT_HOST_IMAGE: str = "ghcr.io/omnigent-ai/omnigent-host:latest"
@@ -150,7 +150,7 @@ def host_image_wheel_install_command(remote_tgz_path: str) -> str:
 
     :param remote_tgz_path: Sandbox path of the shipped tarball, e.g.
         ``"/tmp/oa-wheels.tgz"``.
-    :returns: Shell command string for :meth:`SandboxLauncher.run`.
+    :returns: Shell command string for :meth:`ExecModelHostLauncher.run`.
     """
     return (
         "cd /tmp && rm -rf oa-wheels && mkdir oa-wheels && "
@@ -173,7 +173,7 @@ _FOREGROUND_RUNDIR_PREFIX: str = "/tmp/oa-foreground-"
 def foreground_pidfile() -> tuple[str, str]:
     """Allocate a private, unpredictably-named pidfile under ``/tmp``.
 
-    Used by :meth:`SandboxLauncher.exec_foreground` implementations whose
+    Used by :meth:`ExecModelHostLauncher.exec_foreground` implementations whose
     SDK cannot kill an exec'd process through its handle. The caller records the remote pid with
     :func:`foreground_record_prefix` and tears it down with
     :func:`foreground_kill_command`, both of which operate on the paths
@@ -338,7 +338,7 @@ def render_host_config_write_command(host_config: dict[str, object]) -> str:
     across the next replacement. An empty *host_config* renders a pure cleanup
     command. A missing or corrupt marker skips removal rather than guessing
     ownership. Shared by both launch seams — the exec-model
-    :meth:`SandboxLauncher.start_host` and entrypoint-as-host launchers — so the
+    :meth:`ExecModelHostLauncher.start_host` and entrypoint-as-host launchers — so the
     behavior cannot drift between providers.
 
     Both config and marker writes use a fully-written, fsynced temporary file
@@ -354,29 +354,29 @@ def render_host_config_write_command(host_config: dict[str, object]) -> str:
     reaches shell or Python quoting.
 
     :param host_config: The validated ``sandbox.host_config`` mapping
-        (see :func:`omnigent.server.managed_hosts.parse_sandbox_config`),
+        (see :func:`omnigent.server.hosts.parse_host_section`),
         or ``{}`` to only remove previously injected entries.
     :returns: A ``python3 -c '<script>'`` shell command, safe to pass to
-        :meth:`SandboxLauncher.run` or embed in a larger shell script.
+        :meth:`ExecModelHostLauncher.run` or embed in a larger shell script.
     """
     payload = base64.b64encode(json.dumps(host_config).encode()).decode()
     script = _HOST_CONFIG_WRITE_SCRIPT.replace("__PAYLOAD__", repr(payload))
     return f"python3 -c {shlex.quote(script)}"
 
 
-class SandboxCapabilityError(click.ClickException, _sandbox_types.SandboxError):
+class HostCapabilityError(click.ClickException, _host_types.HostError):
     """
     Raised when a launcher does not support an optional primitive.
 
     The only optional primitive today is
-    :meth:`SandboxLauncher.forward_local_port` — providers without a
+    :meth:`ExecModelHostLauncher.forward_local_port` — providers without a
     local-to-sandbox forwarding path raise this, and the
     OAuth flow surfaces the message (which should name the ``--no-auth``
     escape hatch) to the user.
     """
 
 
-class SandboxGoneError(click.ClickException, _sandbox_types.SandboxError):
+class HostGoneError(click.ClickException, _host_types.HostError):
     """Raised when a sandbox generation definitively no longer exists.
 
     Resumable providers use this only for a definitive absence, never for a
@@ -389,7 +389,7 @@ class SandboxGoneError(click.ClickException, _sandbox_types.SandboxError):
 class RemoteCommandResult:
     """
     Outcome of a command run inside a sandbox via
-    :meth:`SandboxLauncher.run`.
+    :meth:`ExecModelHostLauncher.run`.
 
     :param returncode: The remote command's exit code, e.g. ``0``.
     :param stdout: Captured standard output. Providers that merge the
@@ -406,7 +406,7 @@ class RemoteCommandResult:
 class RemoteProcess(ABC):
     """
     A streaming remote process spawned by
-    :meth:`SandboxLauncher.stream_exec`.
+    :meth:`ExecModelHostLauncher.stream_exec`.
 
     Callers interleave reads of :attr:`lines` with control calls — the
     OAuth flow reads lines until it finds the verification URL, opens a
@@ -446,14 +446,14 @@ class RemoteProcess(ABC):
         """
 
 
-class SandboxLifecycle(ABC):
+class HostLifecycle(ABC):
     """
     Lifecycle + capability primitives for one sandbox provider.
 
     Every provider — exec-model or entrypoint-as-host — implements this
     base. It carries the provider identity, capability flags, and the
     provisioning / teardown / resume lifecycle. Transport (``run``, ``put``,
-    …) lives on :class:`SandboxExecTransport`; the default host launch lives
+    …) lives on :class:`HostExecTransport`; the default host launch lives
     on :class:`ExecModelHostLauncher`.
     """
 
@@ -475,17 +475,17 @@ class SandboxLifecycle(ABC):
     supports_managed_launch: ClassVar[bool] = True
 
     @property
-    def capabilities(self) -> _sandbox_types.SandboxCapabilities:
+    def capabilities(self) -> _host_types.HostCapabilities:
         """
         Feature flags this provider declares.
 
         The returned object is derived from the provider's class vars and
         from which optional transport methods it has overridden. It is a
         transition shim: providers override this property with an explicit
-        :class:`~omnigent.onboarding.sandboxes.types.SandboxCapabilities`
+        :class:`~omnigent.hosts.types.HostCapabilities`
         object directly.
         """
-        return _sandbox_types.SandboxCapabilities(
+        return _host_types.HostCapabilities(
             cli_bootstrap=self.supports_cli_bootstrap,
             managed_launch=self.supports_managed_launch,
             local_port_forward=self.supports_local_port_forward,
@@ -558,7 +558,7 @@ class SandboxLifecycle(ABC):
 
         :param sandbox_id: The sandbox to attach to, e.g.
             ``"lovable-wattlebird-1530"``.
-        :raises SandboxCapabilityError: When the provider does not
+        :raises HostCapabilityError: When the provider does not
             support attaching.
         :raises click.ClickException: If the sandbox cannot be resolved.
         """
@@ -576,7 +576,7 @@ class SandboxLifecycle(ABC):
 
         Called BOTH once after a CLI bootstrap provision AND periodically
         by the managed path for as long as the sandbox has a live runner
-        (:mod:`omnigent.server.managed_host_keepalive`), so an implementation
+        (:mod:`omnigent.server.host_keepalive`), so an implementation
         must be idempotent and cheap enough to repeat. Either shape
         satisfies it: "configure once to maximize lifetime" (disable idle
         autostop, restate a cap) or "push a deadline forward" (refresh an
@@ -584,12 +584,12 @@ class SandboxLifecycle(ABC):
         sandbox keep the raising default and are skipped.
 
         :param sandbox_id: The sandbox to configure.
-        :raises SandboxCapabilityError: When the provider does not
+        :raises HostCapabilityError: When the provider does not
             support keep-alive configuration.
         """
         raise self._capability_error("configure keep-alive")
 
-    def forward_capability_error(self) -> SandboxCapabilityError:
+    def forward_capability_error(self) -> HostCapabilityError:
         """
         Build the error explaining that this provider cannot forward a
         local port into the sandbox (and therefore cannot run the
@@ -602,7 +602,7 @@ class SandboxLifecycle(ABC):
         :returns: The capability error, naming the ``--no-auth`` escape
             hatch.
         """
-        return SandboxCapabilityError(
+        return HostCapabilityError(
             f"The '{self.provider}' provider cannot forward a local port into the "
             "sandbox, which the in-sandbox Databricks App auth flow requires — "
             "use this provider with servers that don't need App auth."
@@ -615,7 +615,7 @@ class SandboxLifecycle(ABC):
         bound and tearing the forward down on exit.
 
         Optional capability: the default implementation raises
-        :class:`SandboxCapabilityError`. Providers with an inbound
+        :class:`HostCapabilityError`. Providers with an inbound
         forwarding path override it AND set
         :attr:`supports_local_port_forward` to ``True``.
 
@@ -623,7 +623,7 @@ class SandboxLifecycle(ABC):
         :param port: Local + remote loopback port to bridge, e.g.
             ``8022``.
         :returns: Context manager holding the forward open.
-        :raises SandboxCapabilityError: When the provider has no
+        :raises HostCapabilityError: When the provider has no
             local-to-sandbox forwarding path.
         """
         raise self.forward_capability_error()
@@ -633,7 +633,7 @@ class SandboxLifecycle(ABC):
         Terminate a sandbox, releasing its compute.
 
         Optional capability: the default implementation raises
-        :class:`SandboxCapabilityError` — providers whose SDK exposes
+        :class:`HostCapabilityError` — providers whose SDK exposes
         programmatic termination override it. Used by the server's
         managed-host cleanup when a managed session is deleted. Implementations
         must treat an already-absent sandbox as success so cleanup can retry
@@ -641,11 +641,11 @@ class SandboxLifecycle(ABC):
 
         :param sandbox_id: The sandbox to terminate, e.g.
             ``"sb-a1b2c3"``.
-        :raises SandboxCapabilityError: When the provider has no
+        :raises HostCapabilityError: When the provider has no
             programmatic termination path — delete the sandbox with
             the provider's own tooling instead.
         """
-        raise SandboxCapabilityError(
+        raise HostCapabilityError(
             f"The '{self.provider}' provider does not support programmatic "
             "sandbox termination — delete the sandbox with the provider's "
             "own tooling."
@@ -658,7 +658,7 @@ class SandboxLifecycle(ABC):
         sandbox id.
 
         Optional capability: the default implementation raises
-        :class:`SandboxCapabilityError`. Providers whose backend has a
+        :class:`HostCapabilityError`. Providers whose backend has a
         stop/resume lifecycle with a persistent volume override it AND set
         :attr:`can_resume` to ``True``. Used by the server's managed-host
         wake path; the host process itself is restarted separately (resume
@@ -666,9 +666,9 @@ class SandboxLifecycle(ABC):
 
         :param sandbox_id: The stopped sandbox to resume, e.g.
             ``"sb-a1b2c3"``.
-        :raises SandboxCapabilityError: When the provider cannot resume a
+        :raises HostCapabilityError: When the provider cannot resume a
             stopped sandbox (ephemeral sandboxes / no persistent volume).
-        :raises SandboxGoneError: When the sandbox generation definitively no
+        :raises HostGoneError: When the sandbox generation definitively no
             longer exists.
         :raises click.ClickException: If the resume fails.
         """
@@ -698,7 +698,7 @@ class SandboxLifecycle(ABC):
         """
         Return a URL that shows this sandbox's screen.
 
-        Optional capability (:attr:`SandboxCapabilities.screen`).
+        Optional capability (:attr:`HostCapabilities.screen`).
 
         :param sandbox_id: The sandbox to show, e.g. ``"sb-a1b2c3"``.
         :param interactive: ``True`` for a URL that also accepts mouse and keyboard input
@@ -715,7 +715,7 @@ class SandboxLifecycle(ABC):
         """
         Revoke any interactive access granted through :meth:`screen_url`.
 
-        Optional capability (:attr:`SandboxCapabilities.screen`).
+        Optional capability (:attr:`HostCapabilities.screen`).
 
         :param sandbox_id: The sandbox whose interactive access is revoked.
         :raises click.ClickException: If the provider has no screen.
@@ -723,7 +723,7 @@ class SandboxLifecycle(ABC):
         del sandbox_id
         raise self._capability_error("revoke interactive screen access")
 
-    def _capability_error(self, action: str) -> SandboxCapabilityError:
+    def _capability_error(self, action: str) -> HostCapabilityError:
         """
         Build the error for an optional primitive this provider lacks.
 
@@ -731,7 +731,7 @@ class SandboxLifecycle(ABC):
             e.g. ``"ship files into the sandbox"``.
         :returns: The capability error to raise.
         """
-        return SandboxCapabilityError(
+        return HostCapabilityError(
             f"The '{self.provider}' provider does not support the ability to {action}."
         )
 
@@ -752,7 +752,7 @@ def supervised_host_pidfile_path(host_id: str) -> str:
     (``uuid.uuid4().hex``), so no shell metacharacter ever reaches this path.
 
     Shared by :func:`supervise_host_command` (which writes the pid) and
-    :meth:`SandboxExecTransport.is_host_supervisor_running` (which reads it
+    :meth:`HostExecTransport.is_host_supervisor_running` (which reads it
     back) so a repeated :meth:`ExecModelHostLauncher.start_host` call can tell
     whether a previous launch's loop is still alive in the same sandbox.
 
@@ -795,9 +795,9 @@ def supervise_host_command(command: str, *, host_id: str | None = None) -> str:
     :func:`supervised_host_pidfile_path`, written before the first attempt so
     a sandbox whose provider persists across launches (a relaunch onto a
     still-live sandbox, or Superchat's ``computer`` provider, which never
-    terminates — see :mod:`omnigent.onboarding.sandboxes.computer`) can detect
+    terminates — see :mod:`omnigent.hosts.docker`) can detect
     an already-running loop for the same host id and skip starting a second
-    one (see :meth:`SandboxExecTransport.is_host_supervisor_running`).
+    one (see :meth:`HostExecTransport.is_host_supervisor_running`).
 
     :param command: The host launch, e.g. ``"OMNIGENT_HOST_TOKEN=… omnigent
         host --server https://…"``. Env prefixes are re-applied per attempt.
@@ -829,14 +829,14 @@ def supervise_host_command(command: str, *, host_id: str | None = None) -> str:
     )
 
 
-class SandboxExecTransport(SandboxLifecycle):
+class HostExecTransport(HostLifecycle):
     """
     Exec-transport primitives for providers that exec into a running sandbox.
 
     Providers whose sandbox is a bare box the server execs into (e.g.
     ``computer``) inherit this via :class:`ExecModelHostLauncher`.
     Entrypoint-as-host providers (whose sandbox boots running the host) inherit
-    :class:`SandboxHostLauncher` instead and need NOT implement any of these methods.
+    :class:`HostLauncher` instead and need NOT implement any of these methods.
     """
 
     @abstractmethod
@@ -954,7 +954,7 @@ class SandboxExecTransport(SandboxLifecycle):
         :param local_path: Path on the local machine to read from.
         :param remote_path: Destination path on the sandbox, e.g.
             ``"/tmp/oa-wheels.tgz"``.
-        :raises SandboxCapabilityError: When the provider does not
+        :raises HostCapabilityError: When the provider does not
             support file shipping.
         :raises click.ClickException: If the transfer fails.
         """
@@ -974,7 +974,7 @@ class SandboxExecTransport(SandboxLifecycle):
         :param pty: When ``True``, allocate a remote PTY. Required for
             CLIs that suppress output when not attached to a terminal.
         :returns: A handle streaming the process's combined output.
-        :raises SandboxCapabilityError: When the provider does not
+        :raises HostCapabilityError: When the provider does not
             support streaming execs.
         """
         raise self._capability_error("stream a remote process")
@@ -993,7 +993,7 @@ class SandboxExecTransport(SandboxLifecycle):
         :param command: Shell command to execute remotely, e.g.
             ``"omnigent host --server https://… --profile oss"``.
         :returns: The remote command's exit code.
-        :raises SandboxCapabilityError: When the provider does not
+        :raises HostCapabilityError: When the provider does not
             support foreground execs.
         """
         raise self._capability_error("run a foreground process")
@@ -1012,13 +1012,13 @@ class SandboxExecTransport(SandboxLifecycle):
         :param remote_tgz_path: Where the wheel tarball was shipped, e.g.
             ``"/tmp/oa-wheels.tgz"``.
         :returns: A shell command string for :meth:`run`.
-        :raises SandboxCapabilityError: When the provider does not
+        :raises HostCapabilityError: When the provider does not
             support wheel installs.
         """
         raise self._capability_error("install shipped wheels")
 
 
-class SandboxHostLauncher(SandboxLifecycle):
+class HostLauncher(HostLifecycle):
     """
     Lifecycle + host-launch contract for a sandbox provider.
 
@@ -1045,11 +1045,11 @@ class SandboxHostLauncher(SandboxLifecycle):
         :param agent_name: Server-resolved built-in agent name the session runs, as passed by
             every call site today.
         :param labels: The launching session's labels (e.g. Superchat's ``superchat.bot`` /
-            ``superchat.space`` — see :mod:`omnigent.onboarding.sandboxes.computer`), on a first
+            ``superchat.space`` — see :mod:`omnigent.hosts.docker`), on a first
             launch. ``None`` on a relaunch/resume of an existing host, which has no session labels
             handy.
-        :param previous_sandbox_id: The host's previous :meth:`SandboxLifecycle.provision` /
-            :meth:`SandboxHostLauncher.start_host` return value, on a relaunch or resume of an
+        :param previous_sandbox_id: The host's previous :meth:`HostLifecycle.provision` /
+            :meth:`HostLauncher.start_host` return value, on a relaunch or resume of an
             existing host, or ``None`` for a first launch. Lets a provider whose sandbox id
             encodes identity (rather than being an opaque handle) recover that identity when no
             *labels* are available.
@@ -1094,7 +1094,7 @@ class SandboxHostLauncher(SandboxLifecycle):
         """
 
 
-class ExecModelHostLauncher(SandboxHostLauncher, SandboxExecTransport):
+class ExecModelHostLauncher(HostLauncher, HostExecTransport):
     """
     Default exec-model host launcher for providers that exec into a running
     sandbox (e.g. ``computer``).
@@ -1105,7 +1105,7 @@ class ExecModelHostLauncher(SandboxHostLauncher, SandboxExecTransport):
     repository is obtained overrides :meth:`materialize_workspace` alone.
 
     Entrypoint-as-host and provider-native host launchers inherit
-    :class:`SandboxHostLauncher` directly and do NOT need ``run()`` or any
+    :class:`HostLauncher` directly and do NOT need ``run()`` or any
     exec transport.
     """
 
@@ -1138,18 +1138,18 @@ class ExecModelHostLauncher(SandboxHostLauncher, SandboxExecTransport):
 
         Idempotent against piling up hosts: when a supervised ``omnigent
         host`` loop for *host_id* is already running in the sandbox (see
-        :meth:`SandboxExecTransport.is_host_supervisor_running`) — a RELAUNCH
+        :meth:`HostExecTransport.is_host_supervisor_running`) — a RELAUNCH
         onto a sandbox that never actually died, or a repeat launch onto a
         provider whose sandbox outlives any one session (Superchat's ``computer``
         provider never terminates its container — see
-        :mod:`omnigent.onboarding.sandboxes.computer`) — this skips cloning
+        :mod:`omnigent.hosts.docker`) — this skips cloning
         and starting a second loop and returns the already-running host's
         workspace path unchanged, computed the same way without touching
         the live workspace.
 
         :param runner_env: Resolved ``{name: value}`` pairs from the server's
             own process environment (``sandbox.runner_env`` — see
-            :mod:`omnigent.server.managed_hosts`), delivered to the host
+            :mod:`omnigent.server.hosts`), delivered to the host
             process via :meth:`run_background`'s ``env`` (never the command
             string, so values never appear in argv/``ps``/logs), together
             with :data:`~omnigent.host.connect.RUNNER_ENV_PASSTHROUGH_ENV_VAR`
@@ -1157,7 +1157,7 @@ class ExecModelHostLauncher(SandboxHostLauncher, SandboxExecTransport):
             runner the host spawns. ``None``/empty is a no-op.
         :returns: The absolute in-sandbox workspace path.
         """
-        if any(repo.git_clone != _sandbox_types.GitCloneOptions() for repo in repos):
+        if any(repo.git_clone != _host_types.GitCloneOptions() for repo in repos):
             if not self.capabilities.git_clone_options:
                 raise click.ClickException(
                     f"sandbox provider '{self.provider}' does not support "
@@ -1176,7 +1176,7 @@ class ExecModelHostLauncher(SandboxHostLauncher, SandboxExecTransport):
                 # Don't touch the live host's workspace — just resolve the same
                 # deterministic path a fresh clone would have landed in.
                 clone_dirs = [
-                    f"{workspace}/{dirname}" for dirname in _sandbox_types.clone_dir_names(repos)
+                    f"{workspace}/{dirname}" for dirname in _host_types.clone_dir_names(repos)
                 ]
             else:
                 if on_stage is not None:
@@ -1185,12 +1185,10 @@ class ExecModelHostLauncher(SandboxHostLauncher, SandboxExecTransport):
                 # Distinct URLs can derive the same repo_name (e.g. two orgs' "api");
                 # disambiguate so they don't clone into one colliding directory.
                 clone_dirs = []
-                for repo, dirname in zip(
-                    repos, _sandbox_types.clone_dir_names(repos), strict=True
-                ):
+                for repo, dirname in zip(repos, _host_types.clone_dir_names(repos), strict=True):
                     materialize = self.materialize_workspace
                     # Preserve the old override signature when no policy was configured.
-                    if repo.git_clone != _sandbox_types.GitCloneOptions():
+                    if repo.git_clone != _host_types.GitCloneOptions():
                         materialize = partial(materialize, git_clone=repo.git_clone)
                     clone_dirs.append(
                         materialize(
@@ -1242,7 +1240,7 @@ class ExecModelHostLauncher(SandboxHostLauncher, SandboxExecTransport):
         repo_branch: str | None,
         repo_name: str | None,
         on_stage: Callable[[str], None] | None = None,
-        git_clone: _sandbox_types.GitCloneOptions = _sandbox_types.GitCloneOptions(),
+        git_clone: _host_types.GitCloneOptions = _host_types.GitCloneOptions(),
     ) -> str:
         """
         Materialize the requested repository into the sandbox and return the
@@ -1268,9 +1266,3 @@ class ExecModelHostLauncher(SandboxHostLauncher, SandboxExecTransport):
                 f"{f' (branch {repo_branch!r})' if repo_branch else ''}: {exc.message}"
             ) from exc
         return clone_dir
-
-
-# Backward-compat alias: existing providers inherit ``SandboxLauncher``, which
-# is now ``ExecModelHostLauncher``. Entrypoint-as-host
-# providers inherit ``SandboxHostLauncher`` directly.
-SandboxLauncher = ExecModelHostLauncher

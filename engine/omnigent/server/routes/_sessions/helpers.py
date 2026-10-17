@@ -101,12 +101,12 @@ from omnigent.server.auth import (
     RESERVED_USER_PUBLIC,
 )
 from omnigent.server.host_registry import HostConnection, HostRegistry, RunnerExitReports
-from omnigent.server.managed_hosts import (
+from omnigent.server.hosts import (
     MANAGED_SANDBOX_LABEL_NAMESPACE,
-    ManagedHostLaunch,
+    HostDeployment,
+    HostLaunch,
     ManagedLaunch,
     ManagedLaunchTracker,
-    ManagedSandboxDeployment,
     RepoWorkspace,
 )
 from omnigent.server.routes._auth_helpers import (
@@ -4141,20 +4141,20 @@ async def _provision_managed_sandbox(
     *,
     session_id: str,
     owner: str,
-    sandbox_config: ManagedSandboxDeployment,
+    sandbox_config: HostDeployment,
     repos: Sequence[RepoWorkspace],
     tracker: ManagedLaunchTracker,
     host_store: HostStore,
-    relaunch_host: Host | None,
+    host_to_relaunch: Host | None,
     provider: str | None = None,
     agent_name: str | None = None,
     labels: Mapping[str, str] | None = None,
-) -> ManagedHostLaunch | None:
+) -> HostLaunch | None:
     """
     Run the provision phase of a background managed launch.
 
-    Dispatches to :func:`relaunch_managed_host` (existing host row)
-    or :func:`launch_managed_host` (fresh identity) and converts any
+    Dispatches to :func:`relaunch_host` (existing host row)
+    or :func:`launch_host` (fresh identity) and converts any
     failure into a settled tracker entry — the background task has no
     caller to raise to.
 
@@ -4164,7 +4164,7 @@ async def _provision_managed_sandbox(
     :param repos: Repository workspaces to clone (empty for none).
     :param tracker: The app's launch tracker (failed here on error).
     :param host_store: Persistent host registrations.
-    :param relaunch_host: Existing host row for a relaunch, or
+    :param host_to_relaunch: Existing host row for a relaunch, or
         ``None`` for a first launch.
     :param provider: Requested sandbox provider for a first launch, or
         ``None`` for the default. Ignored on a relaunch, which stays on
@@ -4173,11 +4173,11 @@ async def _provision_managed_sandbox(
         runs, passed to providers that classify runners by agent, or
         ``None`` to leave it unstamped.
     :param labels: The session's current labels, forwarded to the launcher's
-        ``prepare_for_launch`` — see :func:`omnigent.server.managed_hosts.launch_managed_host`.
+        ``prepare_for_launch`` — see :func:`omnigent.server.hosts.launch_host`.
     :returns: The launch result, or ``None`` when the launch failed
         (the tracker entry is already settled with the reason).
     """
-    from omnigent.server.managed_hosts import launch_managed_host, relaunch_managed_host
+    from omnigent.server.hosts import launch_host, relaunch_host
 
     def _on_stage(stage: str) -> None:
         """
@@ -4192,17 +4192,17 @@ async def _provision_managed_sandbox(
         _publish_sandbox_status(session_id, stage)
 
     try:
-        if relaunch_host is not None:
-            return await relaunch_managed_host(
+        if host_to_relaunch is not None:
+            return await relaunch_host(
                 config=sandbox_config,
-                host=relaunch_host,
+                host=host_to_relaunch,
                 host_store=host_store,
                 repos=repos,
                 agent_name=agent_name,
                 labels=labels,
                 on_stage=_on_stage,
             )
-        return await launch_managed_host(
+        return await launch_host(
             config=sandbox_config,
             owner=owner,
             host_store=host_store,
@@ -4293,7 +4293,7 @@ async def _await_settled_managed_launch(launch: ManagedLaunch) -> None:
     :raises OmnigentError: 503 when the launch failed or is still
         running at the timeout.
     """
-    from omnigent.server.managed_hosts import MANAGED_LAUNCH_RENDEZVOUS_TIMEOUT_S
+    from omnigent.server.hosts import MANAGED_LAUNCH_RENDEZVOUS_TIMEOUT_S
 
     try:
         await asyncio.wait_for(

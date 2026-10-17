@@ -5,9 +5,9 @@ A person's Computer is a long-lived container started from the runner image (Omn
 image plus the deployment's additions), with the person's home on a named Docker volume. The
 engine talks to the Docker Engine API over its socket directly; nothing sits in between.
 
-Implements :class:`~omnigent.onboarding.sandboxes.base.SandboxHostLauncher` (via
-:class:`~omnigent.onboarding.sandboxes.base.ExecModelHostLauncher`, whose default
-:meth:`~omnigent.onboarding.sandboxes.base.ExecModelHostLauncher.start_host` composes ``run`` /
+Implements :class:`~omnigent.hosts.launcher.HostLauncher` (via
+:class:`~omnigent.hosts.launcher.ExecModelHostLauncher`, whose default
+:meth:`~omnigent.hosts.launcher.ExecModelHostLauncher.start_host` composes ``run`` /
 ``run_background`` into the full host launch) — ``managed_launch`` only.
 
 Identity: the Computer is keyed by the session's person, not by the launch-chosen ``name``. The
@@ -38,12 +38,12 @@ from urllib.parse import quote
 import click
 import httpx
 
-from omnigent.onboarding.sandboxes.base import (
+from omnigent.hosts.launcher import (
     ExecModelHostLauncher,
     RemoteCommandResult,
     supervised_host_pidfile_path,
 )
-from omnigent.onboarding.sandboxes.types import SandboxCapabilities, SandboxError
+from omnigent.hosts.types import HostCapabilities, HostError
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -112,7 +112,7 @@ _EXEC_TIMEOUT_S: float = 300.0
 _MAX_ERROR_BODY_CHARS: int = 500
 
 
-class ComputerSandboxError(SandboxError):
+class DockerHostError(HostError):
     """A call to the Docker Engine for a Computer failed."""
 
 
@@ -125,7 +125,7 @@ def _parse_sandbox_id(sandbox_id: str) -> tuple[str, str, str]:
     """
     Split a launcher-issued sandbox id into ``(key, tenant, container_id)``.
 
-    :param sandbox_id: A value :meth:`ComputerSandboxLauncher.provision` returned.
+    :param sandbox_id: A value :meth:`DockerHostLauncher.provision` returned.
     :returns: The three segments, in order.
     :raises click.ClickException: When *sandbox_id* is not three non-empty colon-joined segments.
     """
@@ -186,7 +186,7 @@ def _demux(stream: bytes) -> tuple[str, str]:
     )
 
 
-class ComputerSandboxLauncher(ExecModelHostLauncher):
+class DockerHostLauncher(ExecModelHostLauncher):
     """
     Sandbox launcher that runs Omnigent hosts in a person's Computer container.
 
@@ -224,8 +224,8 @@ class ComputerSandboxLauncher(ExecModelHostLauncher):
         self._tenant: str | None = None
 
     @property
-    def capabilities(self) -> SandboxCapabilities:
-        return SandboxCapabilities(managed_launch=True, screen=False)
+    def capabilities(self) -> HostCapabilities:
+        return HostCapabilities(managed_launch=True, screen=False)
 
     def prepare_for_launch(
         self,

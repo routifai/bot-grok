@@ -905,6 +905,9 @@ class HostStore:
                 .values(computer_control_token=token)
             )
 
+    # "managed" stays in the next three names: this store also holds external hosts (a machine
+    # that ran ``omnigent host`` itself, with no provider), and these touch only the hosts the
+    # engine started through a host provider.
     def register_managed_host(
         self,
         *,

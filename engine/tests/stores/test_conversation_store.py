@@ -73,7 +73,7 @@ def test_fork_drops_sandbox_repo_label(
     asked for an empty sandbox would get the source's repo re-cloned into it
     on the first relaunch. The fork's own launch re-stamps whatever it
     resolves."""
-    from omnigent.server.managed_hosts import MANAGED_REPO_LABEL_KEY
+    from omnigent.server.hosts import MANAGED_REPO_LABEL_KEY
 
     source = conversation_store.create_conversation()
     conversation_store.set_labels(
@@ -94,7 +94,7 @@ def test_fork_drops_per_repo_sandbox_labels(
     prefix on a fork, for the same reason as the legacy single label: the fork's
     own launch re-stamps whatever it resolves, so inheriting the source's would
     re-clone them even into a fork that asked for an empty sandbox."""
-    from omnigent.server.managed_hosts import MANAGED_REPO_LABEL_KEY
+    from omnigent.server.hosts import MANAGED_REPO_LABEL_KEY
 
     source = conversation_store.create_conversation()
     conversation_store.set_labels(

@@ -1759,12 +1759,8 @@ async def test_keepalive_loop_fires_faster_than_the_ping_interval(
     from omnigent.server.routes import runner_tunnel
 
     calls: list[str] = []
-    monkeypatch.setattr(
-        runner_tunnel.managed_host_keepalive, "touch", lambda rid: calls.append(rid)
-    )
-    monkeypatch.setattr(
-        runner_tunnel.managed_host_keepalive, "keepalive_interval_s", lambda _rid: 0.01
-    )
+    monkeypatch.setattr(runner_tunnel.host_keepalive, "touch", lambda rid: calls.append(rid))
+    monkeypatch.setattr(runner_tunnel.host_keepalive, "keepalive_interval_s", lambda _rid: 0.01)
     task = asyncio.create_task(runner_tunnel._keepalive_loop("r1"))
     await asyncio.sleep(0.05)
     task.cancel()

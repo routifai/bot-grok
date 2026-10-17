@@ -1658,7 +1658,7 @@ class _SessionCreateRequestBase(BaseModel):
         # Lazy import: schemas is imported by nearly every module, so
         # pulling the (FastAPI/click-importing) managed-hosts module in
         # at module scope would risk import cycles.
-        from omnigent.server.managed_hosts import is_repo_workspace, parse_repo_workspace
+        from omnigent.server.hosts import is_repo_workspace, parse_repo_workspace
 
         if self.host_type == "managed":
             if self.host_id is not None:
@@ -1835,7 +1835,7 @@ class SessionCreateMetadata(BaseModel):
         # Lazy import: schemas is imported nearly everywhere, so pulling
         # the FastAPI/click-importing managed-hosts module in at module
         # scope would risk import cycles.
-        from omnigent.server.managed_hosts import is_repo_workspace, parse_repo_workspace
+        from omnigent.server.hosts import is_repo_workspace, parse_repo_workspace
 
         if self.host_type == "managed":
             if self.host_id is not None:
@@ -2101,7 +2101,7 @@ class SessionResponse(BaseModel):
         fork". Never participates in the reachability decision.
     :param host_resumable: Whether this session is bound to a dormant
         managed host the server can wake in place (its provider sets
-        :attr:`SandboxLauncher.can_resume`). The open view reads it only
+        :attr:`ExecModelHostLauncher.can_resume`). The open view reads it only
         when ``host_online`` is ``False``, to split a confirmed host-down
         into a recoverable "asleep" state (send a message — the relaunch
         path resumes the sandbox) versus the terminal ``host_offline``
@@ -2593,7 +2593,7 @@ class SessionForkRequest(BaseModel):
         # Lazy import: schemas is imported by nearly every module, so
         # pulling the (FastAPI/click-importing) managed-hosts module in
         # at module scope would risk import cycles.
-        from omnigent.server.managed_hosts import parse_repo_workspace
+        from omnigent.server.hosts import parse_repo_workspace
 
         if self.host_type == "managed":
             if self.workspace is not None:

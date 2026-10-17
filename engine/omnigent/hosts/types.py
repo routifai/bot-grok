@@ -1,9 +1,9 @@
 """Public types for the sandbox launcher surface.
 
 These dataclasses and exceptions are the vocabulary used by both the
-existing :class:`~omnigent.onboarding.sandboxes.base.SandboxLauncher`
+existing :class:`~omnigent.hosts.launcher.ExecModelHostLauncher`
 interface and the newer pluggable surface in
-:mod:`omnigent.onboarding.sandboxes.registry`.
+:mod:`omnigent.hosts.registry`.
 """
 
 from __future__ import annotations
@@ -16,19 +16,19 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
 
-class SandboxError(Exception):
+class HostError(Exception):
     """Base for all sandbox-provider errors."""
 
 
-class SandboxConfigError(SandboxError):
+class HostConfigError(HostError):
     """Sandbox provider configuration is malformed or unavailable."""
 
 
-class SandboxAuthError(SandboxError):
+class HostAuthError(HostError):
     """Provider credentials or local tooling are missing/invalid."""
 
 
-class SandboxCommandError(SandboxError):
+class HostCommandError(HostError):
     """A command executed inside a sandbox failed.
 
     :param message: Human-readable reason.
@@ -55,7 +55,7 @@ class SandboxCommandError(SandboxError):
 
 
 @dataclass(frozen=True)
-class SandboxCapabilities:
+class HostCapabilities:
     """Feature flags declared by a sandbox provider.
 
     Providers advertise which primitives they support so callers can fail
@@ -94,8 +94,8 @@ class SandboxCapabilities:
     :param git_clone_options: Provider honors ``RepoWorkspace.git_clone``
         when creating checkouts. Custom materializers must opt in.
     :param screen: Provider can serve a viewable (and, on request, interactive) screen of the
-        sandbox — :meth:`~omnigent.onboarding.sandboxes.base.SandboxLifecycle.screen_url` and
-        :meth:`~omnigent.onboarding.sandboxes.base.SandboxLifecycle.release_control`.
+        sandbox — :meth:`~omnigent.hosts.launcher.HostLifecycle.screen_url` and
+        :meth:`~omnigent.hosts.launcher.HostLifecycle.release_control`.
     """
 
     cli_bootstrap: bool = False
@@ -116,7 +116,7 @@ class SandboxCapabilities:
 
 
 @dataclass(frozen=True)
-class SandboxSpec:
+class HostSpec:
     """Provider-agnostic description of a sandbox to provision."""
 
     name: str
@@ -129,7 +129,7 @@ class SandboxSpec:
 
 
 @dataclass(frozen=True)
-class SandboxInfo:
+class HostInfo:
     """Result of a successful provision or attach."""
 
     sandbox_id: str

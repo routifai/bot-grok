@@ -7,16 +7,16 @@ sandbox: the runner exits itself once idle (``runner.idle_timeout_s``), so the
 signal disappears on its own when the session goes quiet.
 
 This module turns that existing signal into a provider
-:meth:`~omnigent.onboarding.sandboxes.base.SandboxHostLauncher.keep_alive` call,
+:meth:`~omnigent.hosts.launcher.HostLauncher.keep_alive` call,
 so a sandbox whose platform reaps on inactivity, or one that expects the
 operator to push an absolute deadline forward, stays up while work is happening
 and is reclaimed once it is not.
 
-Providers that cannot extend a sandbox raise :class:`SandboxCapabilityError`
+Providers that cannot extend a sandbox raise :class:`HostCapabilityError`
 and are skipped.
 
 Rate-limited per runner
-(:func:`~omnigent.onboarding.sandboxes.base.resolve_managed_keepalive_interval_s`):
+(:func:`~omnigent.hosts.launcher.resolve_managed_keepalive_interval_s`):
 ``keep_alive`` is a provider API call, so it stays on a cheap cadence.
 """
 
@@ -29,13 +29,13 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING
 
-from omnigent.onboarding.sandboxes.base import (
-    SandboxCapabilityError,
+from omnigent.hosts.launcher import (
+    HostCapabilityError,
     resolve_managed_keepalive_interval_s,
 )
 
 if TYPE_CHECKING:
-    from omnigent.server.managed_hosts import ManagedSandboxDeployment
+    from omnigent.server.hosts import HostDeployment
     from omnigent.stores.conversation_store import ConversationStore
     from omnigent.stores.host_store import HostStore
 
@@ -49,7 +49,7 @@ _THROTTLE_MAX_ENTRIES = 4096
 
 _conversation_store: ConversationStore | None = None
 _host_store: HostStore | None = None
-_sandbox_config: ManagedSandboxDeployment | None = None
+_sandbox_config: HostDeployment | None = None
 _executor: ThreadPoolExecutor | None = None
 
 # runner_id -> monotonic seconds of its last keep_alive attempt.
@@ -67,7 +67,7 @@ _inflight_lock = threading.Lock()
 def configure(
     conversation_store: ConversationStore,
     host_store: HostStore | None,
-    sandbox_config: ManagedSandboxDeployment | None,
+    sandbox_config: HostDeployment | None,
 ) -> None:
     """Wire the stores and provider set the keepalive needs.
 
@@ -193,7 +193,7 @@ def _keep_alive_for_runner(runner_id: str) -> None:
                         host.sandbox_id,
                         host.sandbox_provider,
                     )
-            except SandboxCapabilityError:
+            except HostCapabilityError:
                 # Provider cannot extend a sandbox (e.g. computer): nothing to
                 # log every 10 minutes.
                 _logger.debug(

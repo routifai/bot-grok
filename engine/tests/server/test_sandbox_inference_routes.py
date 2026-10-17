@@ -20,7 +20,7 @@ from httpx import ASGITransport, AsyncClient, Request, Response
 from omnigent.db.utils import generate_agent_id
 from omnigent.runtime.agent_cache import AgentCache
 from omnigent.server.app import create_app
-from omnigent.server.managed_hosts import ManagedSandboxConfig, ManagedSandboxDeployment
+from omnigent.server.hosts import HostDeployment, HostProviderConfig
 from omnigent.server.routes import sessions as sessions_module
 from omnigent.server.routes.sessions import routes_core, routes_events
 from omnigent.stores.agent_store.sqlalchemy_store import SqlAlchemyAgentStore
@@ -123,7 +123,7 @@ async def env(
     artifact_dir = tmp_path / "artifacts"
     artifact_store = LocalArtifactStore(str(artifact_dir))
     catalog = _Catalog()
-    config = ManagedSandboxConfig(
+    config = HostProviderConfig(
         provider="computer",
         server_url="http://test",
         launcher_factory=lambda: None,
@@ -139,7 +139,7 @@ async def env(
         agent_cache=AgentCache(artifact_store=artifact_store, cache_dir=tmp_path / "cache"),
         comment_store=SqlAlchemyCommentStore(db_uri),
         host_store=HostStore(db_uri),
-        sandbox_config=ManagedSandboxDeployment.single(config),
+        sandbox_config=HostDeployment.single(config),
     )
     app.state.inference_catalog = catalog
     launch = AsyncMock()

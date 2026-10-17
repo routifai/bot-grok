@@ -11,7 +11,7 @@ handle the server terminates on session delete. All four are NULL for
 external (user-connected) hosts; they are set while a host is backed
 by a server-provisioned sandbox, and overwritten as a unit when the
 sandbox is relaunched (the host row is durable; the token/sandbox
-generation is not). See ``omnigent/server/managed_hosts.py``.
+generation is not). See ``omnigent/server/hosts.py``.
 """
 
 from __future__ import annotations

@@ -1,19 +1,19 @@
-"""Tests for :mod:`omnigent.onboarding.sandboxes.types`."""
+"""Tests for :mod:`omnigent.hosts.types`."""
 
 from __future__ import annotations
 
 import click
 import pytest
 
-from omnigent.onboarding.sandboxes.types import (
+from omnigent.hosts.types import (
+    HostCapabilities,
+    HostCommandError,
+    HostConfigError,
     HostContext,
+    HostError,
+    HostInfo,
+    HostSpec,
     RepoWorkspace,
-    SandboxCapabilities,
-    SandboxCommandError,
-    SandboxConfigError,
-    SandboxError,
-    SandboxInfo,
-    SandboxSpec,
     clone_dir_names,
 )
 
@@ -48,7 +48,7 @@ def test_clone_dir_names_suffixes_residual_collisions() -> None:
 
 def test_capabilities_defaults() -> None:
     """The default capability set has every feature disabled."""
-    caps = SandboxCapabilities()
+    caps = HostCapabilities()
     assert caps.cli_bootstrap is False
     assert caps.managed_launch is False
     assert caps.local_port_forward is False
@@ -65,15 +65,15 @@ def test_capabilities_defaults() -> None:
 
 def test_capabilities_custom() -> None:
     """Capabilities can be enabled field-by-field."""
-    caps = SandboxCapabilities(cli_bootstrap=True, foreground_exec=True)
+    caps = HostCapabilities(cli_bootstrap=True, foreground_exec=True)
     assert caps.cli_bootstrap is True
     assert caps.foreground_exec is True
     assert caps.managed_launch is False
 
 
 def test_sandbox_spec_defaults() -> None:
-    """SandboxSpec has sensible defaults for optional fields."""
-    spec = SandboxSpec(name="test")
+    """HostSpec has sensible defaults for optional fields."""
+    spec = HostSpec(name="test")
     assert spec.name == "test"
     assert spec.image is None
     assert spec.cpu is None
@@ -84,8 +84,8 @@ def test_sandbox_spec_defaults() -> None:
 
 
 def test_sandbox_info_defaults() -> None:
-    """SandboxInfo carries an id and optional workspace/metadata."""
-    info = SandboxInfo(sandbox_id="sb_123")
+    """HostInfo carries an id and optional workspace/metadata."""
+    info = HostInfo(sandbox_id="sb_123")
     assert info.sandbox_id == "sb_123"
     assert info.workspace_path is None
     assert info.metadata == {}
@@ -104,14 +104,14 @@ def test_host_context_defaults() -> None:
 
 
 def test_errors_inherit_from_sandbox_error() -> None:
-    """All sandbox error types are catchable as SandboxError."""
-    with pytest.raises(SandboxError):
-        raise SandboxConfigError("bad config")
+    """All sandbox error types are catchable as HostError."""
+    with pytest.raises(HostError):
+        raise HostConfigError("bad config")
 
 
 def test_sandbox_command_error_carries_fields() -> None:
-    """SandboxCommandError exposes command, returncode, and streams."""
-    exc = SandboxCommandError(
+    """HostCommandError exposes command, returncode, and streams."""
+    exc = HostCommandError(
         "failed",
         command="echo hi",
         returncode=1,
@@ -126,8 +126,8 @@ def test_sandbox_command_error_carries_fields() -> None:
 
 
 def test_sandbox_capability_error_is_click_exception() -> None:
-    """SandboxCapabilityError is catchable as click.ClickException (transition)."""
-    from omnigent.onboarding.sandboxes import SandboxCapabilityError
+    """HostCapabilityError is catchable as click.ClickException (transition)."""
+    from omnigent.hosts import HostCapabilityError
 
     with pytest.raises(click.ClickException):
-        raise SandboxCapabilityError("not supported")
+        raise HostCapabilityError("not supported")

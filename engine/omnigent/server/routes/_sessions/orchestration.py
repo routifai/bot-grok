@@ -119,11 +119,11 @@ from omnigent.server.background_session_titles import (
 from omnigent.server.bundles import bundle_location, validate_agent_bundle
 from omnigent.server.creation_logging import creation_metadata, creation_stage, session_created
 from omnigent.server.host_registry import HostConnection, HostRegistry, RunnerExitReports
-from omnigent.server.managed_hosts import (
+from omnigent.server.hosts import (
     MANAGED_REPO_LABEL_KEY,
-    ManagedHostLaunch,
+    HostDeployment,
+    HostLaunch,
     ManagedLaunchTracker,
-    ManagedSandboxDeployment,
     RepoWorkspace,
     host_resume_supported,
     host_sandbox_is_running,
@@ -3233,14 +3233,14 @@ async def _run_managed_launch(
     *,
     session_id: str,
     owner: str,
-    sandbox_config: ManagedSandboxDeployment,
+    sandbox_config: HostDeployment,
     repos: Sequence[RepoWorkspace],
     tracker: ManagedLaunchTracker,
     conversation_store: ConversationStore,
     host_store: HostStore,
     host_registry: HostRegistry | None,
     tunnel_registry: TunnelRegistry | None,
-    relaunch_host: Host | None = None,
+    host_to_relaunch: Host | None = None,
     provider: str | None = None,
     agent_store: AgentStore | None = None,
     agent_id: str | None = None,
@@ -3250,15 +3250,15 @@ async def _run_managed_launch(
 
     The ``host_type="managed"`` create returns before the sandbox
     exists; this task carries the rest of the pipeline: provision the
-    sandbox + start the host (:func:`launch_managed_host`), bind the
+    sandbox + start the host (:func:`launch_host`), bind the
     host + workspace to the session row, launch a runner on the host,
     and wait for that runner's tunnel so a message POST rendezvousing
     on *tracker* can forward immediately once the launch settles.
 
-    The same pipeline serves a sandbox RELAUNCH (*relaunch_host* set):
+    The same pipeline serves a sandbox RELAUNCH (*host_to_relaunch* set):
     a message arriving for a session whose managed sandbox died kicks
     this task with the existing host row, and
-    :func:`relaunch_managed_host` provisions a new sandbox generation
+    :func:`relaunch_host` provisions a new sandbox generation
     under the same host identity instead of minting a new one.
 
     Every exit path settles the tracker entry — success via
@@ -3289,7 +3289,7 @@ async def _run_managed_launch(
     :param tunnel_registry: Runner-tunnel registry used to await the
         launched runner's connection. ``None`` in minimal test
         wirings (the rendezvous then settles at frame-send).
-    :param relaunch_host: Existing managed host row to relaunch a new
+    :param host_to_relaunch: Existing managed host row to relaunch a new
         sandbox generation for, or ``None`` for a first launch (a
         fresh host identity is minted).
     The runner's agent classifier is resolved here rather than by the
@@ -3309,7 +3309,7 @@ async def _run_managed_launch(
         built-in gate into the runner Pod's ``omnigent.ai/agent``
         classifier, or ``None`` to leave it unstamped.
     """
-    from omnigent.server.managed_hosts import (
+    from omnigent.server.hosts import (
         deployment_with_inference_snapshot,
         resolve_managed_agent_label,
     )
@@ -3322,7 +3322,7 @@ async def _run_managed_launch(
         )
     # Forwarded to the launcher's prepare_for_launch — a provider whose sandbox is a
     # pre-existing per-identity resource (Superchat's per-Muse computer; see
-    # omnigent.onboarding.sandboxes.computer) selects it from the session's OWN labels
+    # omnigent.hosts.docker) selects it from the session's OWN labels
     # (e.g. "superchat.bot" / "superchat.space") rather than a launch-chosen name.
     labels = saved_conversation.labels if saved_conversation is not None else {}
 
@@ -3342,7 +3342,7 @@ async def _run_managed_launch(
             repos=repos,
             tracker=tracker,
             host_store=host_store,
-            relaunch_host=relaunch_host,
+            host_to_relaunch=host_to_relaunch,
             provider=provider,
             agent_name=agent_name,
             labels=labels,
@@ -3358,21 +3358,21 @@ async def _run_managed_launch(
             host_store=host_store,
             host_registry=host_registry,
             tunnel_registry=tunnel_registry,
-            relaunch_host=relaunch_host,
+            host_to_relaunch=host_to_relaunch,
         )
 
 
 async def _bind_and_launch_managed_runner(
     *,
     session_id: str,
-    managed: ManagedHostLaunch,
-    sandbox_config: ManagedSandboxDeployment,
+    managed: HostLaunch,
+    sandbox_config: HostDeployment,
     tracker: ManagedLaunchTracker,
     conversation_store: ConversationStore,
     host_store: HostStore,
     host_registry: HostRegistry | None,
     tunnel_registry: TunnelRegistry | None,
-    relaunch_host: Host | None = None,
+    host_to_relaunch: Host | None = None,
 ) -> None:
     """
     Bind a provisioned managed host to its session and launch a runner.
@@ -3384,7 +3384,7 @@ async def _bind_and_launch_managed_runner(
     the tracker on every path.
 
     A launch failure after the host is online also tears the sandbox
-    down — UNLESS *relaunch_host* is set: that means ``managed.host_id``
+    down — UNLESS *host_to_relaunch* is set: that means ``managed.host_id``
     is an existing, persistent host identity getting a new sandbox
     generation, not a fresh one minted for this launch, so a failed
     generation is left alone (same reasoning as a failed wake: the
@@ -3402,11 +3402,11 @@ async def _bind_and_launch_managed_runner(
     :param tunnel_registry: Runner-tunnel registry used to await the
         launched runner's connection. ``None`` in minimal test
         wirings (the rendezvous then settles at frame-send).
-    :param relaunch_host: Existing managed host row being relaunched, or
+    :param host_to_relaunch: Existing managed host row being relaunched, or
         ``None`` for a first launch (a fresh host identity was just
         minted for ``managed.host_id``).
     """
-    from omnigent.server.managed_hosts import terminate_managed_host
+    from omnigent.server.hosts import terminate_host
 
     try:
         conv = await asyncio.to_thread(
@@ -3429,14 +3429,14 @@ async def _bind_and_launch_managed_runner(
         )
         host = await asyncio.to_thread(host_store.get_host, managed.host_id)
         if host is not None:
-            await terminate_managed_host(host, host_store, sandbox_config)
+            await terminate_host(host, host_store, sandbox_config)
         tracker.fail(session_id, "session was deleted while its sandbox was provisioning")
         _publish_sandbox_status(
             session_id, "failed", "session was deleted while its sandbox was provisioning"
         )
         return
-    if relaunch_host is not None and not _workspace_survives_recreate(
-        relaunch_host.sandbox_provider
+    if host_to_relaunch is not None and not _workspace_survives_recreate(
+        host_to_relaunch.sandbox_provider
     ):
         await _note_workspace_reset_on_recreate(session_id, conversation_store)
     # Host bound; what remains is launching the runner and waiting
@@ -3462,10 +3462,10 @@ async def _bind_and_launch_managed_runner(
                 # a relaunch generation on an existing host leaves the
                 # identity alone, same as a failed wake.
                 reason = launch_attempt.error or "harness not configured on the sandbox host"
-                if relaunch_host is None:
+                if host_to_relaunch is None:
                     host = await asyncio.to_thread(host_store.get_host, managed.host_id)
                     if host is not None:
-                        await terminate_managed_host(host, host_store, sandbox_config)
+                        await terminate_host(host, host_store, sandbox_config)
                 tracker.fail(session_id, reason)
                 _publish_sandbox_status(session_id, "failed", reason)
                 return
@@ -3481,10 +3481,10 @@ async def _bind_and_launch_managed_runner(
             # The runner never connected its tunnel; _wait_for_managed_runner_tunnel
             # already settled the tracker and published the failure. Same
             # first-launch-vs-relaunch reasoning as the branch above.
-            if relaunch_host is None:
+            if host_to_relaunch is None:
                 host = await asyncio.to_thread(host_store.get_host, managed.host_id)
                 if host is not None:
-                    await terminate_managed_host(host, host_store, sandbox_config)
+                    await terminate_host(host, host_store, sandbox_config)
             return
     tracker.finish(session_id)
     _publish_sandbox_status(session_id, "ready")
@@ -3946,7 +3946,7 @@ def _workspace_survives_recreate(provider: str | None) -> bool:
 
     :param provider: The provider recorded on the host being relaunched, e.g. ``"computer"``.
     """
-    from omnigent.onboarding.sandboxes.registry import get_provider_metadata
+    from omnigent.hosts.registry import get_provider_metadata
 
     metadata = get_provider_metadata(provider) if provider else None
     return metadata is not None and metadata.workspace_survives_recreate
@@ -4008,7 +4008,7 @@ def _kick_managed_first_launch(
     conv: Conversation,
     provider: str,
     owner: str,
-    sandbox_config: ManagedSandboxDeployment,
+    sandbox_config: HostDeployment,
     tracker: ManagedLaunchTracker,
     conversation_store: ConversationStore,
     host_store: HostStore,
@@ -4068,7 +4068,7 @@ def _kick_managed_relaunch(
     session_id: str,
     conv: Conversation,
     host: Host,
-    sandbox_config: ManagedSandboxDeployment,
+    sandbox_config: HostDeployment,
     tracker: ManagedLaunchTracker,
     conversation_store: ConversationStore,
     host_store: HostStore,
@@ -4131,7 +4131,7 @@ def _kick_managed_relaunch(
             host_store=host_store,
             host_registry=getattr(app_state, "host_registry", None),
             tunnel_registry=getattr(app_state, "tunnel_registry", None),
-            relaunch_host=host,
+            host_to_relaunch=host,
             agent_store=agent_store,
             agent_id=conv.agent_id,
         )
@@ -4144,7 +4144,7 @@ def _kick_managed_wake(
     *,
     session_id: str,
     conv: Conversation,
-    sandbox_config: ManagedSandboxDeployment,
+    sandbox_config: HostDeployment,
     tracker: ManagedLaunchTracker,
     conversation_store: ConversationStore,
     host_store: HostStore,
@@ -4173,7 +4173,7 @@ def _kick_managed_wake_impl(
     *,
     session_id: str,
     conv: Conversation,
-    sandbox_config: ManagedSandboxDeployment,
+    sandbox_config: HostDeployment,
     tracker: ManagedLaunchTracker,
     conversation_store: ConversationStore,
     host_store: HostStore,
@@ -4237,7 +4237,7 @@ async def _run_managed_wake(
     *,
     session_id: str,
     conv: Conversation,
-    sandbox_config: ManagedSandboxDeployment,
+    sandbox_config: HostDeployment,
     tracker: ManagedLaunchTracker,
     conversation_store: ConversationStore,
     host_store: HostStore,
@@ -4250,7 +4250,7 @@ async def _run_managed_wake(
     Wake a dormant resumable managed host in the background, settling the
     tracker so a parked message POST forwards once the host is back.
 
-    Resumes the stopped sandbox in place (:func:`resume_managed_host`: resume +
+    Resumes the stopped sandbox in place (:func:`resume_host`: resume +
     re-arm token + re-exec host, preserving the workspace volume — no re-bind),
     then launches a runner on the woken host and waits for its tunnel so a
     rendezvoused message resolves on the first try. The parked send runs the
@@ -4279,11 +4279,11 @@ async def _run_managed_wake(
         built-in gate into the woken runner Pod's ``omnigent.ai/agent``
         classifier, or ``None`` to leave it unstamped.
     """
-    from omnigent.onboarding.sandboxes.base import SandboxGoneError
-    from omnigent.server.managed_hosts import (
+    from omnigent.hosts.launcher import HostGoneError
+    from omnigent.server.hosts import (
         deployment_with_inference_snapshot,
         resolve_managed_agent_label,
-        resume_managed_host,
+        resume_host,
     )
     from omnigent.server.routes import sessions as _facade
 
@@ -4300,14 +4300,14 @@ async def _run_managed_wake(
 
         Without it the wake shows the single ``"provisioning"`` band that
         ``_kick_managed_wake`` seeded for its whole duration, even while the host
-        is already re-execing. resume_managed_host may invoke this from the
+        is already re-execing. resume_host may invoke this from the
         worker thread its ``start_host`` runs on; ``_publish_sandbox_status`` is
         thread-safe.
         """
         _publish_sandbox_status(session_id, stage)
 
     try:
-        # Wake the same sandbox in place; resume_managed_host is single-flight
+        # Wake the same sandbox in place; resume_host is single-flight
         # per host and a no-op if it's already online.
         # Re-derived here rather than by the caller, matching the launch path:
         # the read runs on the task that already owns the single-flight claim,
@@ -4327,7 +4327,7 @@ async def _run_managed_wake(
             invalid_label_fallback="waking without a repository",
         )
         try:
-            await resume_managed_host(
+            await resume_host(
                 host_id,
                 host_store,
                 sandbox_config,
@@ -4335,7 +4335,7 @@ async def _run_managed_wake(
                 on_stage=_on_stage,
                 agent_name=agent_name,
             )
-        except SandboxGoneError:
+        except HostGoneError:
             _logger.info(
                 "Managed host %s (session %s) sandbox is gone; recreating a fresh generation",
                 host_id,
@@ -4358,7 +4358,7 @@ async def _run_managed_wake(
                 host_store=host_store,
                 host_registry=host_registry,
                 tunnel_registry=tunnel_registry,
-                relaunch_host=host,
+                host_to_relaunch=host,
                 agent_store=agent_store,
                 agent_id=agent_id,
             )
@@ -4371,7 +4371,7 @@ async def _run_managed_wake(
         runner_id: str | None = None
         host_conn = host_registry.get(host_id) if host_registry is not None else None
         if host_registry is not None and host_conn is None:
-            # resume_managed_host waits on cross-replica host-store liveness, not
+            # resume_host waits on cross-replica host-store liveness, not
             # this replica's in-memory tunnel registry — the woken host's tunnel
             # can lag here (or land on another replica). Poll briefly so the runner
             # launches once it reconnects, instead of settling "ready" with no
@@ -9200,7 +9200,7 @@ async def _get_session_snapshot(
     runner_exit_reports: RunnerExitReports | None = None,
     refresh_state: bool = False,
     host_store: HostStore | None = None,
-    sandbox_config: ManagedSandboxDeployment | None = None,
+    sandbox_config: HostDeployment | None = None,
     viewer_id: str | None = None,
     request: Request | None = None,
     include_usage: bool = True,

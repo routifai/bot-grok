@@ -1,4 +1,4 @@
-"""Provider-agnostic tests for the :class:`SandboxLauncher` base behavior.
+"""Provider-agnostic tests for the :class:`ExecModelHostLauncher` base behavior.
 
 The exec-model defaults (``run_background`` / ``start_host``) are shared by
 every provider whose sandbox is a bare box the server execs into (Modal,
@@ -20,13 +20,13 @@ import pytest
 import yaml
 
 from omnigent.host import HOST_FATAL_EXIT_CODE
-from omnigent.onboarding.sandboxes.base import (
+from omnigent.hosts.launcher import (
+    ExecModelHostLauncher,
     RemoteCommandResult,
-    SandboxLauncher,
     render_host_config_write_command,
     supervise_host_command,
 )
-from omnigent.onboarding.sandboxes.types import RepoWorkspace
+from omnigent.hosts.types import RepoWorkspace
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 _HOST_LAUNCH = "FOO=bar omnigent host --server https://srv"
 
 
-class _RecordingLauncher(SandboxLauncher):
+class _RecordingLauncher(ExecModelHostLauncher):
     """Minimal exec-model launcher that records every ``run`` command."""
 
     provider: ClassVar[str] = "recording"

@@ -26,11 +26,11 @@ from omnigent.entities import (
 )
 from omnigent.errors import OmnigentError
 from omnigent.server.auth import AuthProvider, UnifiedAuthProvider
-from omnigent.server.managed_hosts import (
+from omnigent.server.hosts import (
     MANAGED_REPO_LABEL_KEY,
+    HostDeployment,
     ManagedLaunchTracker,
-    ManagedSandboxDeployment,
-    parse_sandbox_config,
+    parse_host_section,
     resolve_managed_agent_label,
 )
 from omnigent.server.routes import _session_create_validation as create_validation
@@ -1297,13 +1297,13 @@ def _arm_managed_app(
         provider; ``True`` swaps in a launcher declaring ``multi_repo``.
     :returns: The list the recorder appends each launch's kwargs to.
     """
-    deployment = parse_sandbox_config(
+    deployment = parse_host_section(
         {"provider": "computer", "server_url": "https://managed-test.example.com"}
     )
     assert deployment is not None
     if multi_repo:
         launcher = _MultiRepoLauncher()
-        deployment = ManagedSandboxDeployment.single(
+        deployment = HostDeployment.single(
             replace(deployment.default, launcher_factory=lambda: launcher)
         )
     app.state.sandbox_config = deployment

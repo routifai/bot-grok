@@ -118,7 +118,7 @@ def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
         terminated.append(host.host_id)
         hosts.hosts[host.user_id] = [h for h in hosts.hosts[host.user_id] if h is not host]
 
-    monkeypatch.setattr("omnigent.server.managed_hosts.terminate_managed_host", terminate)
+    monkeypatch.setattr("omnigent.server.hosts.terminate_host", terminate)
 
     state = _hosted_state({})
 

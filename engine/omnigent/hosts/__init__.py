@@ -2,7 +2,7 @@
 
 The server's managed-host code launches hosts through these. Core Omnigent
 contributes the built-in ``computer`` provider directly; third-party packages
-can contribute providers through the ``omnigent.sandbox_providers`` entry
+can contribute providers through the ``omnigent.host_providers`` entry
 point group.
 """
 
@@ -10,59 +10,59 @@ from __future__ import annotations
 
 import click
 
-from omnigent.onboarding.sandboxes.base import (
+from omnigent.hosts.launcher import (
+    ExecModelHostLauncher,
+    HostCapabilityError,
+    HostGoneError,
+    HostLauncher,
     RemoteCommandResult,
     RemoteProcess,
-    SandboxCapabilityError,
-    SandboxGoneError,
-    SandboxHostLauncher,
-    SandboxLauncher,
 )
-from omnigent.onboarding.sandboxes.registry import (
+from omnigent.hosts.registry import (
     COMMUNITY_MODULE_PREFIX,
-    SandboxProviderContribution,
-    SandboxProviderMetadata,
-    SandboxProviderPluginState,
-    SandboxRegistryError,
+    HostProviderContribution,
+    HostProviderMetadata,
+    HostProviderPluginState,
+    HostRegistryError,
     available_providers,
     get_provider_metadata,
     instantiate,
     plugin_state,
     reset_plugin_state_for_tests,
 )
-from omnigent.onboarding.sandboxes.types import (
+from omnigent.hosts.types import (
     GitCloneOptions,
+    HostCapabilities,
+    HostCommandError,
+    HostConfigError,
     HostContext,
+    HostError,
+    HostInfo,
+    HostSpec,
     RepoWorkspace,
-    SandboxCapabilities,
-    SandboxCommandError,
-    SandboxConfigError,
-    SandboxError,
-    SandboxInfo,
-    SandboxSpec,
 )
 
 __all__ = [
     "COMMUNITY_MODULE_PREFIX",
+    "ExecModelHostLauncher",
     "GitCloneOptions",
+    "HostCapabilities",
+    "HostCapabilityError",
+    "HostCommandError",
+    "HostConfigError",
     "HostContext",
+    "HostError",
+    "HostGoneError",
+    "HostInfo",
+    "HostLauncher",
+    "HostProviderContribution",
+    "HostProviderMetadata",
+    "HostProviderPluginState",
+    "HostRegistryError",
+    "HostSpec",
     "RemoteCommandResult",
     "RemoteProcess",
     "RepoWorkspace",
-    "SandboxCapabilities",
-    "SandboxCapabilityError",
-    "SandboxCommandError",
-    "SandboxConfigError",
-    "SandboxError",
-    "SandboxGoneError",
-    "SandboxHostLauncher",
-    "SandboxInfo",
-    "SandboxLauncher",
-    "SandboxProviderContribution",
-    "SandboxProviderMetadata",
-    "SandboxProviderPluginState",
-    "SandboxRegistryError",
-    "SandboxSpec",
     "available_providers",
     "get_launcher",
     "get_provider_metadata",
@@ -71,7 +71,7 @@ __all__ = [
 ]
 
 
-def get_launcher(provider: str) -> SandboxHostLauncher:
+def get_launcher(provider: str) -> HostLauncher:
     """
     Resolve a provider name to a launcher instance.
 
@@ -87,5 +87,5 @@ def get_launcher(provider: str) -> SandboxHostLauncher:
         )
     try:
         return instantiate(provider)
-    except SandboxRegistryError as exc:
+    except HostRegistryError as exc:
         raise click.ClickException(str(exc)) from exc

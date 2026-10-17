@@ -1,4 +1,4 @@
-"""Tests for :mod:`omnigent.onboarding.sandboxes.registry`."""
+"""Tests for :mod:`omnigent.hosts.registry`."""
 
 from __future__ import annotations
 
@@ -8,13 +8,13 @@ from typing import Any
 import click
 import pytest
 
-from omnigent.onboarding.sandboxes import get_launcher
-from omnigent.onboarding.sandboxes.registry import (
+from omnigent.hosts import get_launcher
+from omnigent.hosts.registry import (
     COMMUNITY_MODULE_PREFIX,
-    SandboxProviderContribution,
-    SandboxProviderMetadata,
-    SandboxProviderPluginState,
-    SandboxRegistryError,
+    HostProviderContribution,
+    HostProviderMetadata,
+    HostProviderPluginState,
+    HostRegistryError,
     available_providers,
     get_provider_metadata,
     instantiate,
@@ -56,7 +56,7 @@ def _set_entry_points(
 ) -> None:
     """Patch the registry's internal entrypoint discovery."""
     monkeypatch.setattr(
-        "omnigent.onboarding.sandboxes.registry._entry_points",
+        "omnigent.hosts.registry._entry_points",
         lambda: eps,
     )
 
@@ -65,7 +65,7 @@ def test_plugin_state_loads_builtins() -> None:
     """The cached plugin state includes core Omnigent built-in providers."""
     reset_plugin_state_for_tests()
     state = plugin_state()
-    assert isinstance(state, SandboxProviderPluginState)
+    assert isinstance(state, HostProviderPluginState)
     assert state.names() == ("computer",)
 
 
@@ -99,7 +99,7 @@ def test_get_provider_metadata_known_provider() -> None:
     meta = get_provider_metadata("computer")
     assert meta is not None
     assert meta.name == "computer"
-    assert "omnigent.onboarding.sandboxes.computer:ComputerSandboxLauncher" in meta.launcher_class
+    assert "omnigent.hosts.docker:DockerHostLauncher" in meta.launcher_class
 
 
 def test_get_provider_metadata_unknown_returns_none() -> None:
@@ -116,17 +116,17 @@ def test_instantiate_loads_built_in_provider() -> None:
 
 
 def test_instantiate_unknown_raises() -> None:
-    """Instantiating an unknown provider raises SandboxRegistryError."""
+    """Instantiating an unknown provider raises HostRegistryError."""
     reset_plugin_state_for_tests()
-    with pytest.raises(SandboxRegistryError, match="unknown sandbox provider"):
+    with pytest.raises(HostRegistryError, match="unknown sandbox provider"):
         instantiate("not-a-provider")
 
 
-def _acme_contribution() -> SandboxProviderContribution:
-    return SandboxProviderContribution(
+def _acme_contribution() -> HostProviderContribution:
+    return HostProviderContribution(
         name="omnigent-acme",
         providers={
-            "acme": SandboxProviderMetadata(
+            "acme": HostProviderMetadata(
                 name="acme",
                 launcher_class=f"{COMMUNITY_MODULE_PREFIX}acme:AcmeSandboxLauncher",
             )
@@ -157,7 +157,7 @@ def test_broken_entrypoint_is_recorded_not_raised(
     """A broken community plugin is captured in load_errors."""
     reset_plugin_state_for_tests()
 
-    def _broken() -> SandboxProviderContribution:
+    def _broken() -> HostProviderContribution:
         raise TypeError("bad")
 
     _set_entry_points(
@@ -183,7 +183,7 @@ def test_entrypoint_must_return_contribution(
 
     assert "wrong" not in state.providers
     assert "wrong" in state.load_errors
-    assert "expected SandboxProviderContribution" in state.load_errors["wrong"]
+    assert "expected HostProviderContribution" in state.load_errors["wrong"]
 
 
 def test_validation_rejects_community_module_outside_namespace(
@@ -191,10 +191,10 @@ def test_validation_rejects_community_module_outside_namespace(
 ) -> None:
     """Community providers must live under the community namespace."""
     reset_plugin_state_for_tests()
-    contribution = SandboxProviderContribution(
+    contribution = HostProviderContribution(
         name="omnigent-external",
         providers={
-            "external": SandboxProviderMetadata(
+            "external": HostProviderMetadata(
                 name="external",
                 launcher_class="external_provider.sandbox:ExternalLauncher",
             )
@@ -216,12 +216,12 @@ def test_validation_rejects_name_collision(
 ) -> None:
     """A community plugin cannot override an existing provider name."""
     reset_plugin_state_for_tests()
-    contribution = SandboxProviderContribution(
+    contribution = HostProviderContribution(
         name="computer-duplicate",
         providers={
-            "computer": SandboxProviderMetadata(
+            "computer": HostProviderMetadata(
                 name="computer",
-                launcher_class=f"{COMMUNITY_MODULE_PREFIX}computer:ComputerSandboxLauncher",
+                launcher_class=f"{COMMUNITY_MODULE_PREFIX}computer:DockerHostLauncher",
             )
         },
     )
@@ -241,10 +241,10 @@ def test_validation_rejects_name_mismatch(
 ) -> None:
     """A provider's metadata name must match its provider-key."""
     reset_plugin_state_for_tests()
-    contribution = SandboxProviderContribution(
+    contribution = HostProviderContribution(
         name="mismatch",
         providers={
-            "foo": SandboxProviderMetadata(
+            "foo": HostProviderMetadata(
                 name="bar",
                 launcher_class=f"{COMMUNITY_MODULE_PREFIX}foo:FooLauncher",
             )
@@ -283,10 +283,10 @@ def test_instantiate_rejects_non_launcher_class(
 ) -> None:
     """A contribution without the host-launch contract is rejected."""
     reset_plugin_state_for_tests()
-    contribution = SandboxProviderContribution(
+    contribution = HostProviderContribution(
         name="not-a-launcher",
         providers={
-            "not-a-launcher": SandboxProviderMetadata(
+            "not-a-launcher": HostProviderMetadata(
                 name="not-a-launcher",
                 launcher_class=f"{COMMUNITY_MODULE_PREFIX}fake:FakeLauncher",
             )
@@ -301,9 +301,9 @@ def test_instantiate_rejects_non_launcher_class(
         pass
 
     monkeypatch.setattr(
-        "omnigent.onboarding.sandboxes.registry._load_object",
+        "omnigent.hosts.registry._load_object",
         lambda _: _NotALauncher,
     )
 
-    with pytest.raises(SandboxRegistryError, match="not a SandboxHostLauncher subclass"):
+    with pytest.raises(HostRegistryError, match="not a HostLauncher subclass"):
         instantiate("not-a-launcher")

@@ -44,7 +44,7 @@ from omnigent.runner.transports.ws_tunnel.frames import (
     encode_frame,
 )
 from omnigent.runner.transports.ws_tunnel.registry import RunnerSession, TunnelRegistry
-from omnigent.server import managed_host_keepalive, session_live_state, shutdown_state
+from omnigent.server import host_keepalive, session_live_state, shutdown_state
 from omnigent.server.auth import RESERVED_USER_LOCAL, AuthProvider
 from omnigent.server.host_registry import RunnerExitReports
 from omnigent.server.routes._auth_helpers import require_user
@@ -886,8 +886,8 @@ async def _keepalive_loop(runner_id: str) -> None:
     what lets the sandbox's shutdown window be short) or slower to save calls.
     Fires once immediately so a freshly connected (or reconnected) runner
     extends its sandbox right away, then every
-    :func:`managed_host_keepalive.keepalive_interval_s`. Best-effort:
-    :func:`managed_host_keepalive.touch` swallows its own errors and no-ops when
+    :func:`host_keepalive.keepalive_interval_s`. Best-effort:
+    :func:`host_keepalive.touch` swallows its own errors and no-ops when
     the host has no extendable sandbox, so this loop only ever ends when it is
     cancelled at tunnel teardown.
 
@@ -896,12 +896,12 @@ async def _keepalive_loop(runner_id: str) -> None:
     """
     while True:
         try:
-            managed_host_keepalive.touch(runner_id)
+            host_keepalive.touch(runner_id)
         except Exception:
             # touch is already fail-safe, but a bug here must not silently stop
             # refreshes for the tunnel's remaining life.
             _logger.exception("managed keepalive touch failed for runner %s", runner_id)
-        await asyncio.sleep(managed_host_keepalive.keepalive_interval_s())
+        await asyncio.sleep(host_keepalive.keepalive_interval_s())
 
 
 async def _ping_loop(

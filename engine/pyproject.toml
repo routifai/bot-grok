@@ -397,6 +397,7 @@ source_modules = [
     "omnigent.harness_startup_config",
     "omnigent.harnesses",
     "omnigent.host",
+    "omnigent.hosts",
     "omnigent.inference_config",
     "omnigent.llms",
     "omnigent.memory",
@@ -539,6 +540,9 @@ known-first-party = ["omnigent"]
     "ARG001", "ARG002", "BLE001", "B008", "RUF012",
 ]
 "omnigent/onboarding/**/*.py" = [
+    "ARG001", "ARG002", "BLE001", "B008", "RUF012",
+]
+"omnigent/hosts/*.py" = [
     "ARG001", "ARG002", "BLE001", "B008", "RUF012",
 ]
 "omnigent/runtime/**/*.py" = [

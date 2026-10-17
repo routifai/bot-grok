@@ -23,11 +23,11 @@ the managed-token branch in
 credentials never enter the sandbox.
 
 How a deployment supplies the sandbox backend (two paths, one seam —
-:class:`ManagedSandboxConfig` carries a launcher FACTORY, so embedding
+:class:`HostProviderConfig` carries a launcher FACTORY, so embedding
 deployments inject custom launchers the same way they inject custom
 stores into ``create_app``):
 
-1. **Server YAML** (OSS / self-hosted): :func:`parse_sandbox_config`
+1. **Server YAML** (OSS / self-hosted): :func:`parse_host_section`
    builds the config from the ``sandbox:`` section
    (``omnigent server -c`` / ``OMNIGENT_CONFIG`` /
    ``<data_dir>/config.yaml``)::
@@ -37,7 +37,7 @@ stores into ``create_app``):
          server_url: https://omnigent.example.com
          # For SEVERAL providers, replace `provider:` with a `providers:`
          # list (mutually exclusive); a create picks one by name via
-         # `sandbox_provider`, else the first. See parse_sandbox_config.
+         # `sandbox_provider`, else the first. See parse_host_section.
          keep_warm_s: 1800        # optional; idle seconds before the runner suspends
          reaper:                  # optional; deployment-wide, not per-provider
            enabled: true          # default: false
@@ -67,16 +67,16 @@ stores into ``create_app``):
    docs/architecture.md) needs no provider block: it reads
    ``OMNIGENT_SUPERCHAT_SUPERVISOR_URL`` and ``OMNIGENT_SUPERCHAT_SUPERVISOR_TOKEN``
    from the server process environment (12-factor) — see
-   :mod:`omnigent.onboarding.sandboxes.computer`. Providers contributed
-   through the ``omnigent.sandbox_providers`` entry point group take an
+   :mod:`omnigent.hosts.docker`. Providers contributed
+   through the ``omnigent.host_providers`` entry point group take an
    optional ``sandbox.<provider>`` block validated by their declared config model.
 
 2. **Direct construction** (embedding deployments): build
-   :class:`ManagedSandboxConfig` with a custom
-   :class:`~omnigent.onboarding.sandboxes.base.SandboxLauncher`
+   :class:`HostProviderConfig` with a custom
+   :class:`~omnigent.hosts.launcher.ExecModelHostLauncher`
    factory and pass it to ``create_app(sandbox_config=…)``::
 
-       ManagedSandboxConfig(
+       HostProviderConfig(
            server_url=public_url,
            launcher_factory=lambda: MySandboxLauncher(...),
            token_ttl_s=7 * 24 * 3600,
@@ -107,16 +107,16 @@ from fastapi import HTTPException
 
 from omnigent.db.db_models import LABEL_VALUE_MAX_LEN
 from omnigent.db.utils import builtin_agent_id, now_epoch
-from omnigent.onboarding.sandboxes.base import SandboxGoneError
+from omnigent.hosts.launcher import HostGoneError
 
 # RepoWorkspace lives in the launcher's own package so a launcher can accept it
 # without importing omnigent.server; re-exported here (its parser is here) so
-# existing `from omnigent.server.managed_hosts import RepoWorkspace` keeps working.
-from omnigent.onboarding.sandboxes.types import GitCloneOptions, RepoWorkspace
+# existing `from omnigent.server.hosts import RepoWorkspace` keeps working.
+from omnigent.hosts.types import GitCloneOptions, RepoWorkspace
 from omnigent.stores.host_store import Host, HostStore
 
 if TYPE_CHECKING:
-    from omnigent.onboarding.sandboxes import SandboxHostLauncher
+    from omnigent.hosts import HostLauncher
     from omnigent.stores.agent_store import AgentStore
 
 _logger = logging.getLogger(__name__)
@@ -125,7 +125,7 @@ _logger = logging.getLogger(__name__)
 # known providers so a deployment can stage config ahead of support
 # landing, but only PROVIDERS_WITH_MANAGED_LAUNCH can actually serve a
 # managed session today. (Deployments that construct
-# ManagedSandboxConfig directly are not constrained by either set —
+# HostProviderConfig directly are not constrained by either set —
 # their launcher factory IS the support.)
 SUPPORTED_SANDBOX_PROVIDERS: frozenset[str] = frozenset({"computer"})
 PROVIDERS_WITH_MANAGED_LAUNCH: frozenset[str] = frozenset({"computer"})
@@ -406,11 +406,11 @@ class ManagedLaunchTracker:
 
 
 @dataclass
-class ManagedSandboxConfig:
+class HostProviderConfig:
     """
     Everything the managed-host flow needs from a deployment.
 
-    Built by :func:`parse_sandbox_config` from the server YAML, or
+    Built by :func:`parse_host_section` from the server YAML, or
     constructed directly by embedding deployments to inject a custom
     launcher (see the module docstring).
 
@@ -419,9 +419,9 @@ class ManagedSandboxConfig:
         (no trailing slash). Explicit — the server cannot reliably
         infer its own public URL behind proxies.
     :param launcher_factory: Zero-argument factory producing the
-        :class:`~omnigent.onboarding.sandboxes.base.SandboxLauncher`
+        :class:`~omnigent.hosts.launcher.ExecModelHostLauncher`
         each launch uses, e.g.
-        ``lambda: ComputerSandboxLauncher()``. Called per launch
+        ``lambda: DockerHostLauncher()``. Called per launch
         (launchers may cache provider handles internally). May raise
         ``HTTPException`` to report an unusable backend — the YAML
         path uses this for providers without managed support.
@@ -453,7 +453,7 @@ class ManagedSandboxConfig:
         injected entries are replaced or removed on each launch/resume so
         the sandbox always reflects the current block. Provider-agnostic:
         forwarded to every launcher's ``start_host`` — see
-        :func:`omnigent.onboarding.sandboxes.base.render_host_config_write_command`.
+        :func:`omnigent.hosts.launcher.render_host_config_write_command`.
         Non-secret by design: credentials stay behind
         ``api_key_ref: env:VAR`` indirection, resolved inside the
         sandbox against its own environment. Saved session inference settings
@@ -469,13 +469,13 @@ class ManagedSandboxConfig:
         it spawns (:data:`omnigent.host.connect.RUNNER_ENV_PASSTHROUGH_ENV_VAR`).
         Provider-neutral in config; delivered today only by launchers whose
         ``start_host`` accepts a ``runner_env`` argument (the exec-model
-        default — see :meth:`~omnigent.onboarding.sandboxes.base.
+        default — see :meth:`~omnigent.hosts.launcher.
         ExecModelHostLauncher.start_host`). Names only, never values: this
         field is safe to log, and nothing here is a secret by itself.
     """
 
     server_url: str
-    launcher_factory: Callable[[], SandboxHostLauncher]
+    launcher_factory: Callable[[], HostLauncher]
     token_ttl_s: int
     managed_launch_supported: bool = True
     provider: str | None = None
@@ -486,7 +486,7 @@ class ManagedSandboxConfig:
 
 
 @dataclass(frozen=True)
-class ManagedSandboxReaperConfig:
+class HostReaperConfig:
     """Deployment-wide managed sandbox reaper settings.
 
     :param enabled: Whether the server lifespan starts the reaper loop.
@@ -503,19 +503,19 @@ class ManagedSandboxReaperConfig:
 
 
 @dataclass
-class ManagedSandboxDeployment:
+class HostDeployment:
     """
     The set of sandbox providers a server offers, as a single unit.
 
-    Wraps one :class:`ManagedSandboxConfig` per provider. A
+    Wraps one :class:`HostProviderConfig` per provider. A
     single-provider deployment holds exactly one; a ``sandbox.providers``
     list holds several. Callers thread this — not a bare
-    :class:`ManagedSandboxConfig` — through the managed-host lifecycle
+    :class:`HostProviderConfig` — through the managed-host lifecycle
     and resolve the per-provider config through :meth:`for_provider` /
     :meth:`recorded`, so they never branch on which config shape the
     deployment was built from.
 
-    Built by :func:`parse_sandbox_config` from the server YAML, or by
+    Built by :func:`parse_host_section` from the server YAML, or by
     :meth:`single` around a directly-constructed embedding config.
 
     :param configs: One single-provider config per offered provider, in
@@ -525,10 +525,8 @@ class ManagedSandboxDeployment:
         configured provider.
     """
 
-    configs: tuple[ManagedSandboxConfig, ...]
-    reaper: ManagedSandboxReaperConfig = dataclass_field(
-        default_factory=ManagedSandboxReaperConfig
-    )
+    configs: tuple[HostProviderConfig, ...]
+    reaper: HostReaperConfig = dataclass_field(default_factory=HostReaperConfig)
 
     def __post_init__(self) -> None:
         # Enforce the "never empty" invariant the accessors rely on
@@ -536,15 +534,15 @@ class ManagedSandboxDeployment:
         # rejects an empty ``providers`` list, so a breach means a
         # direct constructor passed ``configs=()``.
         if not self.configs:
-            raise ValueError("ManagedSandboxDeployment requires at least one provider config")
+            raise ValueError("HostDeployment requires at least one provider config")
 
     @classmethod
     def single(
         cls,
-        config: ManagedSandboxConfig,
+        config: HostProviderConfig,
         *,
-        reaper: ManagedSandboxReaperConfig | None = None,
-    ) -> ManagedSandboxDeployment:
+        reaper: HostReaperConfig | None = None,
+    ) -> HostDeployment:
         """
         Wrap one provider config as a one-provider deployment.
 
@@ -556,10 +554,10 @@ class ManagedSandboxDeployment:
         :param reaper: Optional deployment-wide reaper policy.
         :returns: A deployment offering exactly *config*.
         """
-        return cls(configs=(config,), reaper=reaper or ManagedSandboxReaperConfig())
+        return cls(configs=(config,), reaper=reaper or HostReaperConfig())
 
     @property
-    def default(self) -> ManagedSandboxConfig:
+    def default(self) -> HostProviderConfig:
         """
         The provider a request that names none launches on.
 
@@ -581,11 +579,11 @@ class ManagedSandboxDeployment:
         """Whether ANY offered provider can serve a managed launch."""
         return any(config.managed_launch_supported for config in self.configs)
 
-    def offered(self) -> tuple[ManagedSandboxConfig, ...]:
+    def offered(self) -> tuple[HostProviderConfig, ...]:
         """Every provider config this deployment offers, in configured order."""
         return self.configs
 
-    def for_provider(self, provider: str | None) -> ManagedSandboxConfig | None:
+    def for_provider(self, provider: str | None) -> HostProviderConfig | None:
         """
         Resolve the config backing one provider name.
 
@@ -602,7 +600,7 @@ class ManagedSandboxDeployment:
                 return config
         return None
 
-    def recorded(self, provider: str | None) -> ManagedSandboxConfig:
+    def recorded(self, provider: str | None) -> HostProviderConfig:
         """
         Resolve the config to act on a host launched with *provider*.
 
@@ -637,7 +635,7 @@ class ManagedSandboxDeployment:
         UI-relevant capability flags per launchable provider, for ``/v1/info``.
 
         Only the flags the web branches on are exposed (not the full internal
-        :class:`SandboxCapabilities`), so the wire contract stays small — add an
+        :class:`HostCapabilities`), so the wire contract stays small — add an
         inner key here to surface another flag. Instantiates each launchable
         provider's launcher to read its declared capabilities.
 
@@ -659,7 +657,7 @@ class ManagedSandboxDeployment:
 
 
 @dataclass
-class ManagedHostLaunch:
+class HostLaunch:
     """
     Result of a successful managed host launch.
 
@@ -830,24 +828,24 @@ def parse_repo_workspace(workspace: str) -> RepoWorkspace:
     return RepoWorkspace(url=url, branch=branch, repo_name=_derive_repo_name(url))
 
 
-def _computer_launcher_factory() -> Callable[[], SandboxHostLauncher]:
+def _computer_launcher_factory() -> Callable[[], HostLauncher]:
     """
     Build the launcher factory for the YAML ``provider: computer`` path.
 
     Needs no ``sandbox.computer:`` block: its supervisor URL and shared secret are read from the
     server PROCESS environment (12-factor) —
-    :data:`~omnigent.onboarding.sandboxes.computer.SUPERVISOR_URL_ENV_VAR` /
-    :data:`~omnigent.onboarding.sandboxes.computer.SUPERVISOR_TOKEN_ENV_VAR`.
+    :data:`~omnigent.hosts.docker.SUPERVISOR_URL_ENV_VAR` /
+    :data:`~omnigent.hosts.docker.SUPERVISOR_TOKEN_ENV_VAR`.
 
-    :returns: A factory producing :class:`~omnigent.onboarding.sandboxes.computer.
-        ComputerSandboxLauncher` instances.
+    :returns: A factory producing :class:`~omnigent.hosts.docker.
+        DockerHostLauncher` instances.
     """
 
-    def _build() -> SandboxHostLauncher:
+    def _build() -> HostLauncher:
         """Construct the computer launcher (lazy import inside)."""
-        from omnigent.onboarding.sandboxes.computer import ComputerSandboxLauncher
+        from omnigent.hosts.docker import DockerHostLauncher
 
-        return ComputerSandboxLauncher()
+        return DockerHostLauncher()
 
     return _build
 
@@ -867,7 +865,7 @@ def _community_sandbox_providers() -> frozenset[str]:
 
     :returns: Contributed provider names, empty when none are installed.
     """
-    from omnigent.onboarding.sandboxes import registry as sandbox_registry
+    from omnigent.hosts import registry as sandbox_registry
 
     return frozenset(sandbox_registry.available_providers()) - SUPPORTED_SANDBOX_PROVIDERS
 
@@ -879,7 +877,7 @@ def _registry_token_ttl_s(provider: str) -> int:
     :returns: Its ``managed_token_ttl_s``, falling back to
         :data:`DEFAULT_MANAGED_TOKEN_TTL_S` when it declares none.
     """
-    from omnigent.onboarding.sandboxes import registry as sandbox_registry
+    from omnigent.hosts import registry as sandbox_registry
 
     meta = sandbox_registry.get_provider_metadata(provider)
     ttl = meta.managed_token_ttl_s if meta is not None else None
@@ -899,7 +897,7 @@ def _parse_registry_config(provider: str, section: dict[str, object] | None) -> 
     :raises ValueError: When the block fails validation against the
         provider's declared ``config_model``.
     """
-    from omnigent.onboarding.sandboxes import registry as sandbox_registry
+    from omnigent.hosts import registry as sandbox_registry
 
     meta = sandbox_registry.get_provider_metadata(provider)
     if meta is None or meta.config_model is None:
@@ -914,7 +912,7 @@ def _parse_registry_config(provider: str, section: dict[str, object] | None) -> 
 
 def _registry_launcher_factory(
     provider: str, config: dict[str, object] | None
-) -> Callable[[], SandboxHostLauncher]:
+) -> Callable[[], HostLauncher]:
     """Build the launcher factory for a contributed provider.
 
     Construction is deferred into the returned callable for the same reason
@@ -930,16 +928,16 @@ def _registry_launcher_factory(
     :returns: A factory producing that provider's launcher.
     """
 
-    def _build() -> SandboxHostLauncher:
+    def _build() -> HostLauncher:
         """Construct the contributed launcher (lazy import inside)."""
-        from omnigent.onboarding.sandboxes import registry as sandbox_registry
+        from omnigent.hosts import registry as sandbox_registry
 
         return sandbox_registry.instantiate(provider, config=config)
 
     return _build
 
 
-def _unsupported_launcher_factory(provider: str) -> Callable[[], SandboxHostLauncher]:
+def _unsupported_launcher_factory(provider: str) -> Callable[[], HostLauncher]:
     """
     Build a factory that rejects launch for a not-yet-supported provider.
 
@@ -951,7 +949,7 @@ def _unsupported_launcher_factory(provider: str) -> Callable[[], SandboxHostLaun
     :returns: A factory that raises ``HTTPException`` 400 when called.
     """
 
-    def _reject() -> SandboxHostLauncher:
+    def _reject() -> HostLauncher:
         """Reject the launch with the provider named."""
         raise HTTPException(
             status_code=400,
@@ -1021,8 +1019,8 @@ def _apply_keep_warm(
 
 
 def deployment_with_inference_snapshot(
-    deployment: ManagedSandboxDeployment, snapshot: dict[str, Any] | None
-) -> ManagedSandboxDeployment:
+    deployment: HostDeployment, snapshot: dict[str, Any] | None
+) -> HostDeployment:
     """Restore saved inference settings while retaining current sandbox lifecycle settings."""
     from omnigent.inference_config import snapshot_runtime_config
 
@@ -1045,7 +1043,7 @@ def _parse_host_config(raw: dict[str, object]) -> dict[str, object] | None:
     Extract and validate the top-level ``sandbox.host_config`` block.
 
     Verbatim in-sandbox ``~/.omnigent/config.yaml`` content forwarded at
-    managed launch (see :class:`ManagedSandboxConfig`). When a
+    managed launch (see :class:`HostProviderConfig`). When a
     ``providers`` key is present, its SHAPE is validated through the same
     parser ``omnigent`` itself uses — structurally only: secret
     references (``api_key_ref: env:VAR``) name variables in the
@@ -1133,7 +1131,7 @@ def _parse_host_config(raw: dict[str, object]) -> dict[str, object] | None:
     return host_config
 
 
-def parse_sandbox_config(raw: object) -> ManagedSandboxDeployment | None:
+def parse_host_section(raw: object) -> HostDeployment | None:
     """
     Parse and validate the server config's ``sandbox:`` section.
 
@@ -1162,7 +1160,7 @@ def parse_sandbox_config(raw: object) -> ManagedSandboxDeployment | None:
     reaper = _parse_managed_sandbox_reaper_config(raw)
     if "providers" in raw:
         return _parse_multi_provider_sandbox_config(raw, reaper=reaper)
-    return ManagedSandboxDeployment.single(
+    return HostDeployment.single(
         _parse_single_provider_sandbox_config(raw),
         reaper=reaper,
     )
@@ -1170,11 +1168,11 @@ def parse_sandbox_config(raw: object) -> ManagedSandboxDeployment | None:
 
 def _parse_managed_sandbox_reaper_config(
     raw: dict[str, object],
-) -> ManagedSandboxReaperConfig:
+) -> HostReaperConfig:
     """Parse the deployment-wide ``sandbox.reaper`` block."""
     reaper_raw = raw.get("reaper")
     if reaper_raw is None:
-        return ManagedSandboxReaperConfig()
+        return HostReaperConfig()
     if not isinstance(reaper_raw, dict):
         raise ValueError("server config 'sandbox.reaper' must be a mapping")
     _reject_unknown_keys(
@@ -1204,7 +1202,7 @@ def _parse_managed_sandbox_reaper_config(
         raise ValueError(
             "server config 'sandbox.reaper.sweep_interval_s' must be a positive integer"
         )
-    return ManagedSandboxReaperConfig(
+    return HostReaperConfig(
         enabled=enabled,
         terminate_after_offline_days=terminate_after_offline_days,
         sweep_interval_s=sweep_interval_s,
@@ -1214,8 +1212,8 @@ def _parse_managed_sandbox_reaper_config(
 def _parse_multi_provider_sandbox_config(
     raw: dict[str, object],
     *,
-    reaper: ManagedSandboxReaperConfig,
-) -> ManagedSandboxDeployment:
+    reaper: HostReaperConfig,
+) -> HostDeployment:
     """
     Parse the ``sandbox.providers`` list shape into a deployment.
 
@@ -1243,7 +1241,7 @@ def _parse_multi_provider_sandbox_config(
     shared = {
         key: value for key, value in raw.items() if key not in {"providers", "provider", "reaper"}
     }
-    parsed: list[ManagedSandboxConfig] = []
+    parsed: list[HostProviderConfig] = []
     seen: set[str] = set()
     for index, entry in enumerate(entries):
         if not isinstance(entry, dict):
@@ -1267,7 +1265,7 @@ def _parse_multi_provider_sandbox_config(
             raise ValueError(f"server config 'sandbox.providers' lists {name!r} more than once")
         seen.add(name)
         parsed.append(config)
-    return ManagedSandboxDeployment(configs=tuple(parsed), reaper=reaper)
+    return HostDeployment(configs=tuple(parsed), reaper=reaper)
 
 
 def _parse_git_clone_options(raw: object) -> GitCloneOptions:
@@ -1324,7 +1322,7 @@ def _resolve_runner_env(names: Sequence[str]) -> dict[str, str]:
     Only names that are actually set are forwarded — an operator may list a variable that's
     optional in some deployments (e.g. ``OPENROUTER_API_KEY`` when OpenRouter isn't configured),
     and silently skipping an absent one is the right behavior, not an error. Never logs
-    values: the names are already non-secret (see :attr:`ManagedSandboxConfig.runner_env`),
+    values: the names are already non-secret (see :attr:`HostProviderConfig.runner_env`),
     and nothing here ever formats the resolved value into a message.
 
     :param names: Validated variable names from :func:`_parse_runner_env`.
@@ -1333,7 +1331,7 @@ def _resolve_runner_env(names: Sequence[str]) -> dict[str, str]:
     return {name: value for name in names if (value := os.environ.get(name)) is not None}
 
 
-def _parse_single_provider_sandbox_config(raw: dict[str, object]) -> ManagedSandboxConfig:
+def _parse_single_provider_sandbox_config(raw: dict[str, object]) -> HostProviderConfig:
     """
     Parse one provider's ``sandbox`` mapping (the scalar ``provider:`` shape).
 
@@ -1384,9 +1382,9 @@ def _parse_single_provider_sandbox_config(raw: dict[str, object]) -> ManagedSand
         launcher_factory = _computer_launcher_factory()
         token_ttl_s = COMPUTER_MANAGED_TOKEN_TTL_S
     elif provider in community:
-        # A provider contributed through the `omnigent.sandbox_providers`
+        # A provider contributed through the `omnigent.host_providers`
         # entry point group. The registry has validated it (name not shadowing
-        # a built-in, launcher class under `omnigent.community.sandbox.*`) at
+        # a built-in, launcher class under `omnigent.community.host.*`) at
         # import time, so this only has to validate the config block and build
         # the factory.
         #
@@ -1402,7 +1400,7 @@ def _parse_single_provider_sandbox_config(raw: dict[str, object]) -> ManagedSand
         # Never consulted (the factory rejects before any token is
         # minted); the default TTL keeps the field total.
         token_ttl_s = DEFAULT_MANAGED_TOKEN_TTL_S
-    return ManagedSandboxConfig(
+    return HostProviderConfig(
         server_url=server_url.strip().rstrip("/"),
         launcher_factory=launcher_factory,
         token_ttl_s=token_ttl_s,
@@ -1449,9 +1447,9 @@ def _parse_provider_section(raw: dict[str, object], provider: str) -> dict[str, 
 
 
 def _select_provider_config(
-    deployment: ManagedSandboxDeployment,
+    deployment: HostDeployment,
     provider: str | None,
-) -> ManagedSandboxConfig:
+) -> HostProviderConfig:
     """
     Narrow a deployment to the one provider config a launch runs on.
 
@@ -1474,9 +1472,9 @@ def _select_provider_config(
     return selected
 
 
-async def launch_managed_host(
+async def launch_host(
     *,
-    config: ManagedSandboxDeployment,
+    config: HostDeployment,
     owner: str,
     host_store: HostStore,
     repos: Sequence[RepoWorkspace] = (),
@@ -1484,7 +1482,7 @@ async def launch_managed_host(
     agent_name: str | None = None,
     labels: Mapping[str, str] | None = None,
     on_stage: Callable[[str], None] | None = None,
-) -> ManagedHostLaunch:
+) -> HostLaunch:
     """
     Provision a sandbox, start a host in it, and wait until it registers.
 
@@ -1519,9 +1517,9 @@ async def launch_managed_host(
         ``classifies_runner_by_agent``,
         or ``None`` to leave it unstamped.
     :param labels: The launching session's labels, forwarded to
-        :meth:`~omnigent.onboarding.sandboxes.base.SandboxHostLauncher.prepare_for_launch` —
+        :meth:`~omnigent.hosts.launcher.HostLauncher.prepare_for_launch` —
         e.g. Superchat's ``superchat.bot`` / ``superchat.space`` (see
-        :mod:`omnigent.onboarding.sandboxes.computer`), which a provider whose sandbox is a
+        :mod:`omnigent.hosts.docker`), which a provider whose sandbox is a
         pre-existing per-identity resource (rather than one it creates fresh) needs to select
         it. ``None``/empty for providers that don't need it.
     :param on_stage: Progress observer invoked as the launch pipeline
@@ -1565,19 +1563,19 @@ async def launch_managed_host(
         agent_name=agent_name,
         on_stage=on_stage,
     )
-    return ManagedHostLaunch(host_id=host_id, workspace=workspace)
+    return HostLaunch(host_id=host_id, workspace=workspace)
 
 
-async def relaunch_managed_host(
+async def relaunch_host(
     *,
-    config: ManagedSandboxDeployment,
+    config: HostDeployment,
     host: Host,
     host_store: HostStore,
     repos: Sequence[RepoWorkspace] = (),
     agent_name: str | None = None,
     labels: Mapping[str, str] | None = None,
     on_stage: Callable[[str], None] | None = None,
-) -> ManagedHostLaunch:
+) -> HostLaunch:
     """
     Provision a NEW sandbox generation for an existing managed host.
 
@@ -1609,11 +1607,11 @@ async def relaunch_managed_host(
     :param labels: The bound session's current labels, forwarded to
         ``prepare_for_launch`` alongside ``host.sandbox_id`` as
         ``previous_sandbox_id`` — a provider whose sandbox id encodes identity
-        (see :mod:`omnigent.onboarding.sandboxes.computer`) can recover from
+        (see :mod:`omnigent.hosts.docker`) can recover from
         either; *labels*, when available, reflects the current session row
         rather than whatever an earlier launch encoded.
     :param on_stage: Progress observer forwarded to
-        :func:`_register_and_start_host`; see :func:`launch_managed_host`.
+        :func:`_register_and_start_host`; see :func:`launch_host`.
         ``None`` disables progress reporting.
     :returns: The (unchanged) host id + fresh in-sandbox workspace.
     :raises HTTPException: 400 when the host's recorded provider no
@@ -1676,11 +1674,11 @@ async def relaunch_managed_host(
             status_code=409,
             detail=f"managed sandbox relaunch conflicted with host lifecycle: {exc}",
         ) from exc
-    return ManagedHostLaunch(host_id=host.host_id, workspace=workspace)
+    return HostLaunch(host_id=host.host_id, workspace=workspace)
 
 
 def _apply_git_clone_options(
-    launcher: SandboxHostLauncher,
+    launcher: HostLauncher,
     repos: Sequence[RepoWorkspace],
     options: GitCloneOptions,
 ) -> Sequence[RepoWorkspace]:
@@ -1699,7 +1697,7 @@ def _apply_git_clone_options(
 
 
 async def _start_sandbox_host(
-    launcher: SandboxHostLauncher,
+    launcher: HostLauncher,
     sandbox_id: str,
     *,
     token: str,
@@ -1760,8 +1758,8 @@ async def _start_sandbox_host(
 
 async def _register_and_start_host(
     *,
-    launcher: SandboxHostLauncher,
-    config: ManagedSandboxConfig,
+    launcher: HostLauncher,
+    config: HostProviderConfig,
     host_store: HostStore,
     host_id: str,
     host_name: str,
@@ -1801,7 +1799,7 @@ async def _register_and_start_host(
         forwarded to ``start_host`` only for launchers that declare
         ``classifies_runner_by_agent``. ``None`` leaves it unstamped.
     :param on_stage: Progress observer forwarded to the launcher's
-        ``start_host``; see :func:`launch_managed_host`. ``None``
+        ``start_host``; see :func:`launch_host`. ``None``
         disables progress reporting.
     :param keep_host_on_failure: ``True`` on a relaunch — failure
         cleanup terminates the new sandbox and revokes the token but
@@ -1889,9 +1887,7 @@ async def _register_and_start_host(
         else:
             # The row was just armed with THIS single-provider config, so a
             # one-provider deployment tears it back down with the same launcher.
-            await terminate_managed_host(
-                record, host_store, ManagedSandboxDeployment.single(config)
-            )
+            await terminate_host(record, host_store, HostDeployment.single(config))
         if isinstance(exc, HTTPException):
             raise
         message = exc.message if isinstance(exc, click.ClickException) else str(exc)
@@ -1928,8 +1924,8 @@ async def _wait_for_host_online(host_store: HostStore, host_id: str) -> None:
 
 def _launcher_for_teardown(
     host: Host,
-    config: ManagedSandboxDeployment | None,
-) -> SandboxHostLauncher | None:
+    config: HostDeployment | None,
+) -> HostLauncher | None:
     """
     Resolve the launcher that can terminate a managed host's sandbox.
 
@@ -1964,15 +1960,15 @@ def _launcher_for_teardown(
 
 def screen_target_for_host(
     host: Host,
-    config: ManagedSandboxDeployment | None,
-) -> tuple[SandboxHostLauncher, str] | None:
+    config: HostDeployment | None,
+) -> tuple[HostLauncher, str] | None:
     """
     Resolve the launcher and sandbox id that can show a managed host's screen.
 
     :param host: The managed host a session is bound to.
     :param config: The deployment's current sandbox config, or ``None``.
     :returns: ``(launcher, sandbox_id)`` when the host's provider still matches the
-        deployment and declares :attr:`SandboxCapabilities.screen`; otherwise ``None``.
+        deployment and declares :attr:`HostCapabilities.screen`; otherwise ``None``.
     """
     if host.sandbox_id is None:
         return None
@@ -1984,15 +1980,15 @@ def screen_target_for_host(
 
 def host_resume_supported(
     host: Host,
-    config: ManagedSandboxDeployment | None,
+    config: HostDeployment | None,
 ) -> bool:
     """
-    Whether :func:`resume_managed_host` could wake this host in place.
+    Whether :func:`resume_host` could wake this host in place.
 
     ``True`` iff the host is bound to a sandbox whose provider has a
     stop/resume lifecycle with a persistent volume
-    (:attr:`SandboxLauncher.can_resume`) and still matches the deployment's
-    current launcher. This is the SAME gate :func:`resume_managed_host`
+    (:attr:`ExecModelHostLauncher.can_resume`) and still matches the deployment's
+    current launcher. This is the SAME gate :func:`resume_host`
     applies before a wake, exposed so the open-session snapshot
     (``SessionResponse.host_resumable``) can render a dormant such host as a
     wakeable "asleep" state instead of the terminal ``host_offline``
@@ -2015,7 +2011,7 @@ def host_resume_supported(
 
 def host_sandbox_is_running(
     host: Host,
-    config: ManagedSandboxDeployment | None,
+    config: HostDeployment | None,
 ) -> bool | None:
     """
     Ask the matched provider whether this managed host's sandbox is running.
@@ -2040,10 +2036,10 @@ def host_sandbox_is_running(
 _resume_locks: dict[str, asyncio.Lock] = {}
 
 
-async def resume_managed_host(
+async def resume_host(
     host_id: str,
     host_store: HostStore,
-    config: ManagedSandboxDeployment | None,
+    config: HostDeployment | None,
     *,
     force: bool = False,
     on_stage: Callable[[str], None] | None = None,
@@ -2055,7 +2051,7 @@ async def resume_managed_host(
     The send-message relaunch path calls this when a host-bound session has no
     live runner. If the host is a *resumable* managed host — a provider whose
     sandbox idle-stops but retains its identity
-    (:attr:`SandboxLauncher.can_resume`) — and is currently offline, this
+    (:attr:`ExecModelHostLauncher.can_resume`) — and is currently offline, this
     resumes the sandbox under the SAME sandbox id, re-arms its launch token,
     re-execs ``omnigent host``, and waits for it to re-register. The caller's
     existing relaunch then spawns a fresh runner.
@@ -2087,7 +2083,7 @@ async def resume_managed_host(
         runner, or ``None`` to leave it unstamped. A wake rebuilds the runner
         from scratch, so the classifier is not carried over by the resume: the
         caller re-derives it through the same built-in gate a launch uses.
-    :raises SandboxGoneError: When the sandbox generation definitively no
+    :raises HostGoneError: When the sandbox generation definitively no
         longer exists, allowing the caller to create a fresh one.
     :raises HTTPException: 502 when the resume or host restart otherwise fails.
     """
@@ -2172,7 +2168,7 @@ async def resume_managed_host(
                 runner_env=_resolve_runner_env(entry.runner_env),
             )
             await _wait_for_host_online(host_store, host.host_id)
-        except SandboxGoneError:
+        except HostGoneError:
             raise
         except Exception as exc:
             # An ordinary failed wake must NOT tear the sandbox down (the volume
@@ -2185,10 +2181,10 @@ async def resume_managed_host(
             ) from exc
 
 
-async def terminate_managed_host(
+async def terminate_host(
     host: Host,
     host_store: HostStore,
-    config: ManagedSandboxDeployment | None,
+    config: HostDeployment | None,
 ) -> None:
     """
     Terminate a managed host's sandbox and delete its host row.
@@ -2228,7 +2224,7 @@ async def terminate_managed_host(
 
 
 async def _terminate_sandbox_best_effort(
-    launcher: SandboxHostLauncher | None,
+    launcher: HostLauncher | None,
     sandbox_id: str,
     *,
     host_id: str,

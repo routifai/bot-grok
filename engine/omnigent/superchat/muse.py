@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 from omnigent.context.labels import CONTEXT_MODE_LABEL, SUPERSIDE_CHAT_MODE_VALUE
 from omnigent.entities import Conversation
 from omnigent.errors import ErrorCode, OmnigentError
-from omnigent.onboarding.sandboxes.computer import (
+from omnigent.hosts.docker import (
     LABEL_COMPUTER_OWNER,
     LABEL_TENANT,
     tenant_from_labels,

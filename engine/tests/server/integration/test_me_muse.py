@@ -20,7 +20,7 @@ import pytest_asyncio
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import FastAPI
 
-from omnigent.onboarding.sandboxes.computer import ComputerSandboxLauncher
+from omnigent.hosts.docker import DockerHostLauncher
 from omnigent.runner.identity import RUNNER_TUNNEL_TOKEN_HEADER, token_bound_runner_id
 from omnigent.runtime.agent_cache import AgentCache
 from omnigent.server.app import create_app
@@ -420,7 +420,7 @@ async def test_adopt_makes_an_existing_super_chat_the_one_get_returns(
     assert conv.labels["omnigent.tenant"] == "space-1"
     assert conv.labels["superchat.computer"] == "computer-key-1"
     # The computer launcher still resolves the same machine from the kept labels.
-    launcher = ComputerSandboxLauncher()
+    launcher = DockerHostLauncher()
     launcher.prepare_for_launch(labels=conv.labels)
     assert (launcher._key, launcher._tenant) == ("computer-key-1", "space-1")
 
