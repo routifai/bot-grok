@@ -20,6 +20,7 @@ import pytest_asyncio
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import FastAPI
 
+from omnigent.entities import MessageData, NewConversationItem
 from omnigent.hosts.docker import DockerHostLauncher
 from omnigent.runner.identity import RUNNER_TUNNEL_TOKEN_HEADER, token_bound_runner_id
 from omnigent.runtime.agent_cache import AgentCache
@@ -206,6 +207,40 @@ async def test_put_switches_the_agent_and_is_idempotent(client: httpx.AsyncClien
     assert same.status_code == 200 and same.json()["agent"] == "muse-pro"
     unknown = await client.put("/v1/me/muse", json={"agent": "nope"}, headers=ALICE)
     assert unknown.status_code == 404
+
+
+async def test_a_harness_switch_drops_the_pinned_model_and_keeps_the_conversation(
+    client: httpx.AsyncClient, stores: dict[str, Any]
+) -> None:
+    # A model id belongs to its harness's catalog: a Claude id pinned on a Claude Super Chat
+    # must not follow it onto pi, while the conversation itself (same session) carries over.
+    claude = {"type": "omnigent", "config": {"harness": "claude-sdk"}}
+    pi = {"type": "omnigent", "config": {"harness": "pi"}}
+    for agent_id, name, executor in (("c" * 32, "muse-claude", claude), ("d" * 32, "muse-pi", pi)):
+        bundle = build_agent_bundle(name, executor=executor)
+        key = f"{agent_id}/{hashlib.sha256(bundle).hexdigest()}"
+        stores["artifact"].put(key, bundle)
+        stores["agent"].create(agent_id, name, key)
+    created = (
+        await client.put("/v1/me/muse", json={"agent": "muse-claude"}, headers=ALICE)
+    ).json()
+    session_id = created["session_id"]
+    pinned = await client.patch(
+        f"/v1/sessions/{session_id}", json={"model_override": "claude-opus-4"}, headers=ALICE
+    )
+    assert pinned.status_code == 200, pinned.text
+    assert stores["conversation"].get_conversation(session_id).model_override == "claude-opus-4"
+    said = MessageData(role="user", content=[{"type": "input_text", "text": "hello"}])
+    (asked,) = stores["conversation"].append(
+        session_id, [NewConversationItem(type="message", response_id="resp_1", data=said)]
+    )
+
+    switched = await client.put("/v1/me/muse", json={"agent": "muse-pi"}, headers=ALICE)
+    assert switched.status_code == 200, switched.text
+    assert switched.json()["session_id"] == session_id
+    assert stores["conversation"].get_conversation(session_id).model_override is None
+    items = stores["conversation"].list_items(session_id, limit=100).data
+    assert asked.id in [item.id for item in items]
 
 
 async def test_put_creates_on_the_requested_agent_when_missing(
