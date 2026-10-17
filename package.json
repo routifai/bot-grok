@@ -9,9 +9,10 @@
     "node": "^22.22.2 || ^24.0.0 || >=26.0.0"
   },
   "scripts": {
-    "dev": "cross-env COREPACK_ENABLE_DOWNLOAD_PROMPT=0 turbo dev --filter=@superchat/web",
-    "build": "turbo build",
-    "check": "turbo check",
+    "dev": "cross-env COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm --filter @superchat/web dev",
+    "generate": "pnpm --filter @superchat/ui-tokens generate",
+    "build": "pnpm generate && pnpm -r build",
+    "check": "pnpm generate && pnpm -r check",
     "lint": "biome check .",
     "format": "biome check --write .",
     "sandbox:build": "docker compose --env-file .env -f deployment/compose.yaml build computer",
@@ -24,7 +25,6 @@
     "@types/node": "24.13.3",
     "cross-env": "10.1.0",
     "tsx": "4.23.13",
-    "turbo": "2.10.12",
     "typescript": "7.0.2",
     "vitest": "4.1.11"
   },

@@ -1,11 +1,11 @@
 // Regenerates legend-colors.pptx: a pie, a doughnut and a varyColors bar chart written by the same
-// patched PptxGenJS 4.0.1 the Computer image carries (infra/sandboxes/computer/pptx/runtime).
+// patched PptxGenJS 4.0.1 the Computer image carries (deployment/computer/pptx/runtime).
 //   node make-legend-fixture.cjs
 const path = require("node:path");
 const PptxGenJS = require(
   path.resolve(
     __dirname,
-    "../../../../../../infra/sandboxes/computer/pptx/runtime/node_modules/pptxgenjs",
+    "../../../../../../deployment/computer/pptx/runtime/node_modules/pptxgenjs",
   ),
 );
 

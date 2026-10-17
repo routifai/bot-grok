@@ -12,13 +12,9 @@
       "!**/dist",
       "!**/build",
       "!**/coverage",
-      "!**/design",
-      "!**/playwright-report",
       "!**/test-results",
       "!**/test-report",
-      "!**/verify-report",
       "!**/data",
-      "!**/*.astro",
       "!engine/omnigent",
       "!deployment/computer/deck-export/fixtures"
     ]
