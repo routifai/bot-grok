@@ -21,6 +21,7 @@ import {
   ReplyCardThreadProvider,
 } from "../../../components/cards/context";
 import { hiddenFollowUpMessageIds } from "../../../components/cards/thread";
+import { AnsweredWhileWorking, useAnsweredWhileWorking } from "../../../features/activity";
 import type { ArtifactTarget } from "../../../lib/artifact-open";
 import { quoteDraftForSelection } from "../../../lib/quote-selection";
 import { transcriptIsNearEnd, transcriptMovedDown } from "../../../lib/transcript-scroll";
@@ -129,6 +130,8 @@ const TranscriptView = memo(function Transcript({
     () => new Map(messages.map((message) => [message.id, message])),
     [messages],
   );
+  // A reply given while earlier Helpers still work says so, quietly (ADR 0022).
+  const answeredWhileWorking = useAnsweredWhileWorking(artifactTarget.botId, messages);
   // Muse: failed replies in a row read as one "3 failed attempts" line (failureNotes.ts).
   const transcriptRows = useMemo<TranscriptRow[]>(() => foldFailureRuns(messages), [messages]);
   const [quoteDraft, setQuoteDraft] = useState<{
@@ -445,6 +448,7 @@ const TranscriptView = memo(function Transcript({
                   {message.role === "user" && !message.id.startsWith("progress:") ? (
                     <UserMessageMeta message={message} />
                   ) : null}
+                  {answeredWhileWorking.has(message.id) ? <AnsweredWhileWorking /> : null}
                 </div>
               </div>
             </div>

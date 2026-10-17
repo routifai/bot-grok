@@ -101,6 +101,8 @@ The rules the assistant bundle carries ([ADR 0022](adr/0022-the-orchestrator-nar
 
 Engine contract for this, additive: a `progress` and a `flag` notice kind beside the completion notice (`superchat/helpers`), a throttle of one progress notice per helper step, and the parent's wake handling narrating the notice in its running reply. Web: a work strip under the reply (label, elapsed time, Show details, the artifact strip when a draft exists) and helper cards attached to the message that started them. The activity panel is unchanged.
 
+The web reads the strip from what already exists: the `helper` blocks of the reply (the web now keeps their `status` as the fallback for a Helper the activity feed does not list), and the Helper's Activity steps, where `report_progress` is the latest status line and `raise_flag` (`Flagged: <text>`) a flag shown at once. A draft is the newest version of a recent artifact whose `chat_id` is one of the reply's Helpers and whose origin is `ai` or `update`; it is looked up again on each `artifact_save` step. "Answered while the work continues" marks the first reply to a person's message sent while an earlier reply's Helper ran; the transcript item has no time to first token, so it carries no number.
+
 ## What is gone
 
 Side chats, forks, the Chats popover, "Chat with this folder", the fork action on a message, the auto-archive setting, the `side_chat_open` tool, seeds and fork summaries. The removal and its commits are in the [trim log](engine-trim.md).

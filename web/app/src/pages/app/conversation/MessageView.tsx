@@ -9,12 +9,12 @@ import {
 } from "@superchat/core";
 import { cn } from "@superchat/ui-web";
 import { Folder } from "lucide-react";
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { CloudAgentCard } from "../../../components/CloudAgentCard";
 import { ComposerAttachmentChip } from "../../../components/ComposerAttachmentChip";
 import { ReplyCardBlockView } from "../../../components/cards/ReplyCard";
 import { WorkspaceAttachmentChip } from "../../../components/WorkspaceAttachmentChip";
-import { HelperTracker } from "../../../features/activity/HelperTracker";
+import { WorkStrip } from "../../../features/activity";
 import { AskCard } from "../../../features/approvals";
 import { ArtifactFileCard } from "../../../features/artifacts";
 import type { ArtifactTarget } from "../../../lib/artifact-open";
@@ -68,6 +68,11 @@ export const MessageView = memo(function MessageView({
   const errorNote = useFailureNoteText();
   const errorAction = useFailureNoteAction();
   const infoNote = useInfoNoteText();
+  const helpers = useMemo(
+    () => message.blocks.flatMap((block) => (block.kind === "helper" ? [block] : [])),
+    [message.blocks],
+  );
+  const firstHelperBlock = message.blocks.findIndex((block) => block.kind === "helper");
   const isNarration =
     message.role === "bot" &&
     message.blocks.length > 0 &&
@@ -360,15 +365,11 @@ export const MessageView = memo(function MessageView({
           return <ReplyCardBlockView key={i} block={block} messageId={message.id} index={i} />;
         }
         if (block.kind === "cloud_agent") return <CloudAgentCard key={i} block={block} />;
+        // The Helpers this reply started share one work strip, where the first of them sits.
         if (block.kind === "helper") {
-          return (
-            <HelperTracker
-              key={i}
-              botId={artifactTarget.botId}
-              helperId={block.helperId}
-              title={block.title}
-            />
-          );
+          return i === firstHelperBlock ? (
+            <WorkStrip key={i} botId={artifactTarget.botId} helpers={helpers} />
+          ) : null;
         }
         return null;
       })}

@@ -4,6 +4,7 @@
 export { ActivityPanel, GROUP_LABEL } from "./ActivityPanel";
 export { ActivityRunById } from "./ActivityRunById";
 export type { ActivityWire } from "./ActivityRunDialog";
+export { AnsweredWhileWorking, useAnsweredWhileWorking } from "./AnsweredWhileWorking";
 export { focusActivity, useActivityFocus } from "./activityFocus";
 export { type ActivitiesState, LIVE_ACTIVITY_WIRE, useActivities } from "./useActivities";
 export { useSuperchatWork } from "./useSuperchatWork";

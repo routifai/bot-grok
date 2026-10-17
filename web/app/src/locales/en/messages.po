@@ -98,9 +98,6 @@ msgstr "{slides, plural, one {# slide} other {# slides}}"
 msgid "{spent} of {0}"
 msgstr "{spent} of {0}"
 
-msgid "{steps, plural, one {# step} other {# steps}}"
-msgstr "{steps, plural, one {# step} other {# steps}}"
-
 msgid "••••{hint} · Checked {checked}"
 msgstr "••••{hint} · Checked {checked}"
 
@@ -178,6 +175,9 @@ msgstr "Answer"
 
 msgid "Answered"
 msgstr "Answered"
+
+msgid "Answered while the work continues"
+msgstr "Answered while the work continues"
 
 #. placeholder {0}: selectedAskActionLabel(answer, actions)
 msgid "Answered: {0}"
@@ -1592,6 +1592,9 @@ msgstr "Show all ({count} characters)"
 msgid "Show changes"
 msgstr "Show changes"
 
+msgid "Show details"
+msgstr "Show details"
+
 msgid "Show earlier messages"
 msgstr "Show earlier messages"
 
@@ -1912,6 +1915,9 @@ msgstr "Updates weekly"
 
 msgid "Updates when file changes"
 msgstr "Updates when file changes"
+
+msgid "Updating"
+msgstr "Updating"
 
 msgid "Upload"
 msgstr "Upload"

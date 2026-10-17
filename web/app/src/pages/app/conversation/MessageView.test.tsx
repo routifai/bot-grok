@@ -34,7 +34,11 @@ vi.mock("./message-cards", () => ({
   ArtifactImage: () => null,
 }));
 vi.mock("../intro", () => ({ FirstRunHint: () => null }));
-vi.mock("../../../features/activity/HelperTracker", () => ({ HelperTracker: () => null }));
+vi.mock("../../../features/activity", () => ({
+  WorkStrip: ({ helpers }: { helpers: Array<{ helperId: string }> }) => (
+    <div data-testid="work-strip" data-helpers={helpers.map((h) => h.helperId).join(",")} />
+  ),
+}));
 vi.mock("@superchat/ui-web", () => ({
   Button: () => null,
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
@@ -303,4 +307,25 @@ it("folds a very long message to its first part until Show all is pressed", asyn
 it("shows a message under the fold whole, with no toggle", async () => {
   const host = await mount(userMessage("short and sweet"));
   expect(host.querySelector('[data-testid="message-fold-toggle"]')).toBeNull();
+});
+
+it("attaches one work strip for the Helpers a reply started, after its text", async () => {
+  const host = await mount({
+    id: "b1",
+    threadId: "s1",
+    seq: 2,
+    role: "bot",
+    blocks: [
+      { kind: "text", text: "I'll read the files, then write the deck." },
+      { kind: "helper", helperId: "h1", title: "Read the files", status: "in_progress" },
+      { kind: "helper", helperId: "h2", title: "Write the deck", status: "in_progress" },
+    ],
+    createdAt: "2026-10-01T10:00:00.000Z",
+  });
+  const strips = host.querySelectorAll('[data-testid="work-strip"]');
+  expect(strips).toHaveLength(1);
+  expect(strips[0]?.getAttribute("data-helpers")).toBe("h1,h2");
+  expect(
+    strips[0]?.previousElementSibling?.querySelector('[data-testid="message-bot-bubble"]'),
+  ).not.toBeNull();
 });
