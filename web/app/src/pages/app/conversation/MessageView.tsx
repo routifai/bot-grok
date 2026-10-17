@@ -14,7 +14,7 @@ import { CloudAgentCard } from "../../../components/CloudAgentCard";
 import { ComposerAttachmentChip } from "../../../components/ComposerAttachmentChip";
 import { ReplyCardBlockView } from "../../../components/cards/ReplyCard";
 import { WorkspaceAttachmentChip } from "../../../components/WorkspaceAttachmentChip";
-import { WorkStrip } from "../../../features/activity";
+import { useDrawnByStrip, useTurnStrip, WorkStrip } from "../../../features/activity";
 import { AskCard } from "../../../features/approvals";
 import { ArtifactFileCard } from "../../../features/artifacts";
 import type { ArtifactTarget } from "../../../lib/artifact-open";
@@ -73,6 +73,14 @@ export const MessageView = memo(function MessageView({
     [message.blocks],
   );
   const firstHelperBlock = message.blocks.findIndex((block) => block.kind === "helper");
+  // The reply's work strip (ADR 0023): its plan and running state come from the transcript.
+  const strip = useTurnStrip(message.id);
+  const drawnByStrip = useDrawnByStrip();
+  // A reply whose strip has no Helper to sit beside carries it after its words.
+  const trailingStrip =
+    strip && firstHelperBlock < 0 ? (
+      <WorkStrip botId={artifactTarget.botId} helpers={strip.helpers} turn={strip.turn} />
+    ) : null;
   const isNarration =
     message.role === "bot" &&
     message.blocks.length > 0 &&
@@ -84,33 +92,36 @@ export const MessageView = memo(function MessageView({
   if (isNarration) {
     if (message.blocks.length === 0) return null;
     return (
-      <div className="flex w-fit max-w-full justify-start">
-        <div
-          data-testid="message-bot-bubble"
-          className={cn(
-            "max-w-full space-y-2.5",
-            "muse-reply text-[15px] leading-[1.47] tracking-[-0.24px] text-foreground",
-          )}
-          dir="auto"
-        >
-          {message.blocks.map((block, i) => {
-            if (block.kind === "text" || (block.kind === "progress" && !block.activity)) {
-              return (
-                <div
-                  key={i}
-                  data-quote-message-id={block.kind === "text" ? quoteMessageId : undefined}
-                >
-                  <ChatMarkdown streaming={block.kind === "progress"}>{block.text}</ChatMarkdown>
-                </div>
-              );
-            }
-            if (isToolActivityBlock(block)) {
-              return <ToolActivityStep key={i} block={block} />;
-            }
-            return null;
-          })}
+      <>
+        <div className="flex w-fit max-w-full justify-start">
+          <div
+            data-testid="message-bot-bubble"
+            className={cn(
+              "max-w-full space-y-2.5",
+              "muse-reply text-[15px] leading-[1.47] tracking-[-0.24px] text-foreground",
+            )}
+            dir="auto"
+          >
+            {message.blocks.map((block, i) => {
+              if (block.kind === "text" || (block.kind === "progress" && !block.activity)) {
+                return (
+                  <div
+                    key={i}
+                    data-quote-message-id={block.kind === "text" ? quoteMessageId : undefined}
+                  >
+                    <ChatMarkdown streaming={block.kind === "progress"}>{block.text}</ChatMarkdown>
+                  </div>
+                );
+              }
+              if (isToolActivityBlock(block)) {
+                return <ToolActivityStep key={i} block={block} />;
+              }
+              return null;
+            })}
+          </div>
         </div>
-      </div>
+        {trailingStrip}
+      </>
     );
   }
   return (
@@ -362,17 +373,20 @@ export const MessageView = memo(function MessageView({
           );
         }
         if (block.kind === "reply_card") {
+          // The reply's living plan is drawn inside its work strip instead.
+          if (drawnByStrip(message.id, i)) return null;
           return <ReplyCardBlockView key={i} block={block} messageId={message.id} index={i} />;
         }
         if (block.kind === "cloud_agent") return <CloudAgentCard key={i} block={block} />;
         // The Helpers this reply started share one work strip, where the first of them sits.
         if (block.kind === "helper") {
           return i === firstHelperBlock ? (
-            <WorkStrip key={i} botId={artifactTarget.botId} helpers={helpers} />
+            <WorkStrip key={i} botId={artifactTarget.botId} helpers={helpers} turn={strip?.turn} />
           ) : null;
         }
         return null;
       })}
+      {trailingStrip}
     </>
   );
 });

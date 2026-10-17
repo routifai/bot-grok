@@ -29,15 +29,36 @@ vi.mock("@superchat/chat-ui/web", () => ({ ChatMarkdown: () => null }));
 vi.mock("../../../features/artifacts/ArtifactFileCard", () => ({ ArtifactFileCard: () => null }));
 vi.mock("../../../features/approvals/AskCard", () => ({ AskCard: () => null }));
 vi.mock("../../../components/CloudAgentCard", () => ({ CloudAgentCard: () => null }));
-vi.mock("../../../components/cards/ReplyCard", () => ({ ReplyCardBlockView: () => null }));
+vi.mock("../../../components/cards/ReplyCard", () => ({
+  ReplyCardBlockView: ({ block }: { block: { card: string } }) => (
+    <div data-testid="reply-card" data-card={block.card} />
+  ),
+}));
 vi.mock("./message-cards", () => ({
   ArtifactImage: () => null,
 }));
 vi.mock("../intro", () => ({ FirstRunHint: () => null }));
+const turnWork = vi.hoisted(() => ({
+  strips: new Map<string, unknown>(),
+  drawn: new Set<string>(),
+}));
 vi.mock("../../../features/activity", () => ({
-  WorkStrip: ({ helpers }: { helpers: Array<{ helperId: string }> }) => (
-    <div data-testid="work-strip" data-helpers={helpers.map((h) => h.helperId).join(",")} />
+  WorkStrip: ({
+    helpers,
+    turn,
+  }: {
+    helpers: Array<{ helperId: string }>;
+    turn?: { plan: unknown[] | null };
+  }) => (
+    <div
+      data-testid="work-strip"
+      data-helpers={helpers.map((h) => h.helperId).join(",")}
+      data-plan-steps={turn?.plan?.length ?? 0}
+    />
   ),
+  useTurnStrip: (messageId: string) => turnWork.strips.get(messageId) ?? null,
+  useDrawnByStrip: () => (messageId: string, index: number) =>
+    turnWork.drawn.has(`${messageId}:${index}`),
 }));
 vi.mock("@superchat/ui-web", () => ({
   Button: () => null,
@@ -328,4 +349,54 @@ it("attaches one work strip for the Helpers a reply started, after its text", as
   expect(
     strips[0]?.previousElementSibling?.querySelector('[data-testid="message-bot-bubble"]'),
   ).not.toBeNull();
+});
+
+it("draws the reply's plan in its work strip, never as a card of its own", async () => {
+  turnWork.strips.set("b2", {
+    helpers: [],
+    turn: {
+      plan: [
+        { text: "Split the rows", status: "done", added: false },
+        { text: "Compare each region", status: "doing", added: false },
+      ],
+      live: true,
+      startedAt: null,
+      endedAt: null,
+    },
+  });
+  turnWork.drawn.add("b2:1");
+  try {
+    const host = await mount({
+      id: "b2",
+      threadId: "s1",
+      seq: 3,
+      role: "bot",
+      blocks: [
+        { kind: "text", text: "I'll split the rows by quarter and compare each region." },
+        {
+          kind: "reply_card",
+          card: "plan",
+          id: "plan-1",
+          data: { items: [{ text: "Split the rows", status: "doing" }] },
+          fallback: "Split the rows",
+        },
+        {
+          kind: "reply_card",
+          card: "sources",
+          data: { items: [{ title: "Q3", url: "https://example.com" }] },
+          fallback: "Q3",
+        },
+      ],
+      createdAt: "2026-10-01T10:00:00.000Z",
+    });
+    const cards = host.querySelectorAll('[data-testid="reply-card"]');
+    expect([...cards].map((card) => card.getAttribute("data-card"))).toEqual(["sources"]);
+    const strips = host.querySelectorAll('[data-testid="work-strip"]');
+    expect(strips).toHaveLength(1);
+    expect(strips[0]?.getAttribute("data-plan-steps")).toBe("2");
+    expect(strips[0]?.getAttribute("data-helpers")).toBe("");
+  } finally {
+    turnWork.strips.clear();
+    turnWork.drawn.clear();
+  }
 });

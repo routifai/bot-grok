@@ -1,6 +1,7 @@
 import type { Activity, MessageBlock, ThreadMessage } from "@superchat/contracts";
 import { isRunning } from "./activityGrouping";
 import { buildActivityForest, findHelperNode, isNodeRunning } from "./activityTree";
+import type { PlanStep } from "./workPlan";
 
 // The work strip under a reply (docs/conversation.md "The assistant narrates while helpers
 // work"): pure readings of the Activity feed for the Helpers a message started, so the strip,
@@ -33,6 +34,8 @@ export type WorkStripState =
       outcome: "done" | "failed" | "cancelled";
       /** First start to last finish; null when the feed has none of them. */
       ms: number | null;
+      /** The last finish (ms); null when the feed has none of them. */
+      endedAt: number | null;
       focusId: string | null;
     };
 
@@ -136,11 +139,81 @@ export function deriveWorkStrip(
   const listed = read.flatMap((entry) => (entry.activity ? [entry.activity] : []));
   const starts = listed.map((activity) => Date.parse(activity.startedAt));
   const ends = listed.map((activity) => Date.parse(activity.finishedAt ?? ""));
-  const ms =
-    listed.length > 0 && [...starts, ...ends].every((value) => !Number.isNaN(value))
-      ? Math.max(0, Math.max(...ends) - Math.min(...starts))
-      : null;
-  return { kind: "settled", outcome, ms, focusId };
+  const known = listed.length > 0 && [...starts, ...ends].every((value) => !Number.isNaN(value));
+  const ms = known ? Math.max(0, Math.max(...ends) - Math.min(...starts)) : null;
+  const endedAt = known ? Math.max(...ends) : null;
+  return { kind: "settled", outcome, ms, endedAt, focusId };
+}
+
+/** What the strip knows of the reply itself (workPlan.ts), beside its Helpers. */
+export interface StripTurn {
+  /** The newest render of the reply's plan, or null without one. */
+  plan: PlanStep[] | null;
+  /** The reply is being written right now. */
+  live: boolean;
+  /** When the person asked (ms), or null when unknown. */
+  startedAt: number | null;
+  /** The reply's newest message (ms), or null when unknown. */
+  endedAt: number | null;
+  /** What the running turn is doing now ("Reading files…"), when it has no Helper to say so. */
+  liveLabel?: string;
+}
+
+/** Everything the strip draws, from its Helpers and its reply. */
+export interface StripView {
+  /** The turn or one of its Helpers runs: the strip is lit. */
+  live: boolean;
+  outcome: "done" | "failed" | "cancelled";
+  /** Live: time since the work began. Settled: the whole span. Null when unknown. */
+  clockMs: number | null;
+  /** The running Helpers' lines (drawn as lines when there is no plan). */
+  lines: WorkLine[];
+  /** Everything the Helpers flagged, oldest first. */
+  flags: string[];
+  /** The latest progress sentence of the running work, for the current step. */
+  progress: string | null;
+  /** The plan, with the step running when the work finished counted done. */
+  plan: PlanStep[] | null;
+  focusId: string | null;
+}
+
+/** The strip from its Helpers' state (`deriveWorkStrip`), what they flagged and the reply. */
+export function composeStrip(
+  state: WorkStripState,
+  flags: string[],
+  turn: StripTurn | undefined,
+  now: number,
+): StripView {
+  const lines = state.kind === "working" ? state.lines : [];
+  const live = state.kind === "working" || Boolean(turn?.live);
+  const outcome = state.kind === "settled" ? state.outcome : "done";
+  const start = turn?.startedAt ?? null;
+  let clockMs: number | null;
+  if (live) {
+    const helperSpan = lines.reduce<number | null>(
+      (most, line) => (line.elapsedMs === null ? most : Math.max(most ?? 0, line.elapsedMs)),
+      null,
+    );
+    clockMs = start !== null ? Math.max(0, now - start) : helperSpan;
+  } else if (
+    start !== null &&
+    (turn?.endedAt != null || (state.kind === "settled" && state.endedAt !== null))
+  ) {
+    const end = Math.max(turn?.endedAt ?? 0, state.kind === "settled" ? (state.endedAt ?? 0) : 0);
+    clockMs = Math.max(0, end - start);
+  } else {
+    clockMs = state.kind === "settled" ? state.ms : null;
+  }
+  const progress =
+    lines.find((line) => line.progress)?.progress ?? (turn?.live ? (turn.liveLabel ?? null) : null);
+  // Settled: nothing is new any more, and the step running when the work finished is done.
+  const finished = (step: PlanStep): PlanStep => ({
+    ...step,
+    added: false,
+    status: step.status === "doing" && outcome === "done" ? "done" : step.status,
+  });
+  const plan = turn?.plan ? (live ? turn.plan : turn.plan.map(finished)) : null;
+  return { live, outcome, clockMs, lines, flags, progress, plan, focusId: state.focusId };
 }
 
 function helperBlocks(message: ThreadMessage): StripHelper[] {

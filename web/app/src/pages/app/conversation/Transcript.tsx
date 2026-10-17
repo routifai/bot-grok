@@ -21,7 +21,13 @@ import {
   ReplyCardThreadProvider,
 } from "../../../components/cards/context";
 import { hiddenFollowUpMessageIds } from "../../../components/cards/thread";
-import { AnsweredWhileWorking, useAnsweredWhileWorking } from "../../../features/activity";
+import {
+  AnsweredWhileWorking,
+  drawnOnlyMessageIds,
+  TurnWorkProvider,
+  transcriptWork,
+  useAnsweredWhileWorking,
+} from "../../../features/activity";
 import type { ArtifactTarget } from "../../../lib/artifact-open";
 import { quoteDraftForSelection } from "../../../lib/quote-selection";
 import { transcriptIsNearEnd, transcriptMovedDown } from "../../../lib/transcript-scroll";
@@ -132,8 +138,20 @@ const TranscriptView = memo(function Transcript({
   );
   // A reply given while earlier Helpers still work says so, quietly (ADR 0022).
   const answeredWhileWorking = useAnsweredWhileWorking(artifactTarget.botId, messages);
+  // Each reply's work strip finds its plan here (ADR 0023); a message holding only the plan
+  // card a strip draws leaves no row behind.
+  const work = useMemo(() => transcriptWork(messages), [messages]);
+  const lastTurnHasStrip = useMemo(
+    () => [...work.turns.values()].some((turn) => turn.last),
+    [work],
+  );
   // Muse: failed replies in a row read as one "3 failed attempts" line (failureNotes.ts).
-  const transcriptRows = useMemo<TranscriptRow[]>(() => foldFailureRuns(messages), [messages]);
+  const transcriptRows = useMemo<TranscriptRow[]>(() => {
+    const drawnOnly = drawnOnlyMessageIds(messages, work);
+    return foldFailureRuns(
+      drawnOnly.size === 0 ? messages : messages.filter((message) => !drawnOnly.has(message.id)),
+    );
+  }, [messages, work]);
   const [quoteDraft, setQuoteDraft] = useState<{
     message: ThreadMessage;
     text: string;
@@ -407,54 +425,58 @@ const TranscriptView = memo(function Transcript({
             {loadingOlder ? t`Loading…` : t`Load earlier messages`}
           </button>
         ) : null}
-        {transcriptRows.map((row) => {
-          if (row.kind === "failures") {
-            const last = row.messages.at(-1) as ThreadMessage;
+        <TurnWorkProvider work={work} running={running} liveLabel={museLiveLabel}>
+          {transcriptRows.map((row) => {
+            if (row.kind === "failures") {
+              const last = row.messages.at(-1) as ThreadMessage;
+              return (
+                <div key={row.messages[0]?.id} data-message-id={last.id}>
+                  <FailureRun messages={row.messages} />
+                </div>
+              );
+            }
+            const { message } = row;
             return (
-              <div key={row.messages[0]?.id} data-message-id={last.id}>
-                <FailureRun messages={row.messages} />
-              </div>
-            );
-          }
-          const { message } = row;
-          return (
-            <div
-              key={message.id}
-              data-message-id={message.id}
-              className="group/message relative hover:z-20"
-            >
               <div
-                className={`relative flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                key={message.id}
+                data-message-id={message.id}
+                className="group/message relative hover:z-20"
               >
                 <div
-                  data-testid="message-bubble-frame"
-                  className={`relative w-fit min-w-0 ${
-                    message.role === "user" ? "max-w-[80%]" : "max-w-full"
-                  }`}
+                  className={`relative flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                 >
-                  <MessageHoverActions
-                    message={message}
-                    side={message.role === "user" ? "start" : "end"}
-                    onReply={onReply}
-                    above
-                  />
-                  <MessageView
-                    botDisplayName={botDisplayName}
-                    artifactTarget={artifactTarget}
-                    message={message}
-                    canAnswer={hasOpenMuseAsk(message)}
-                    onAnswer={onAnswer}
-                  />
-                  {message.role === "user" && !message.id.startsWith("progress:") ? (
-                    <UserMessageMeta message={message} />
-                  ) : null}
-                  {answeredWhileWorking.has(message.id) ? <AnsweredWhileWorking /> : null}
+                  <div
+                    data-testid="message-bubble-frame"
+                    className={`relative w-fit min-w-0 ${
+                      message.role === "user" ? "max-w-[80%]" : "max-w-full"
+                    }`}
+                  >
+                    <MessageHoverActions
+                      message={message}
+                      side={message.role === "user" ? "start" : "end"}
+                      onReply={onReply}
+                      above
+                    />
+                    <MessageView
+                      botDisplayName={botDisplayName}
+                      artifactTarget={artifactTarget}
+                      message={message}
+                      canAnswer={hasOpenMuseAsk(message)}
+                      onAnswer={onAnswer}
+                    />
+                    {message.role === "user" && !message.id.startsWith("progress:") ? (
+                      <UserMessageMeta message={message} />
+                    ) : null}
+                    {answeredWhileWorking.has(message.id) ? <AnsweredWhileWorking /> : null}
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </TurnWorkProvider>
         {running &&
+        // The newest reply's strip is lit and says what runs: no second working row.
+        !lastTurnHasStrip &&
         !messages.some(
           (message) =>
             message.id.startsWith("progress:") &&
