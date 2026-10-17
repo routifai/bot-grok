@@ -29,7 +29,12 @@ from omnigent.superchat.artifact_kinds import (
     is_deck_name,
     kind_for_name,
 )
-from omnigent.superchat.artifacts.links import conversation_item
+from omnigent.superchat.artifacts.hint import MAX_ARTIFACTS, artifact_hint
+from omnigent.superchat.artifacts.links import (
+    conversation_item,
+    link_saved_version,
+    open_artifact,
+)
 from omnigent.superchat.artifacts.patches import name_elements
 from omnigent.superchat.artifacts.store import (
     WRITEBACK_ORIGINS,
@@ -271,6 +276,10 @@ def create_artifacts_router(
             chat_id=saver,
             item_id=item_id,
         )
+        try:
+            await asyncio.to_thread(link_saved_version, store, item)
+        except Exception:  # the chip is a label, never a reason to fail a save
+            _logger.warning("artifacts: could not link %s to its message", item.id, exc_info=True)
         return artifact_to_response(item, versions=item.version)
 
     @router.get("/artifacts")
@@ -330,6 +339,28 @@ def create_artifacts_router(
                 }
             )
         return {"edits": edits}
+
+    @router.get("/artifacts/hint")
+    async def artifacts_hint(request: Request, session_id: str = Query()) -> dict[str, Any]:
+        """The runtime hint for the start of a turn in the Conversation (``None``: none).
+
+        The runner calls this when a turn starts: this Conversation's artifacts, newest first,
+        with the one the person's latest message was sent with open marked. A Helper has none.
+        """
+        owner = _owner(request)
+        check_id(session_id, "session_id")
+        await require_access(
+            _caller(request), session_id, LEVEL_OWNER, permission_store, conversation_store
+        )
+        conversation = await asyncio.to_thread(conversation_store.get_conversation, session_id)
+        if conversation is None or conversation.parent_conversation_id is not None:
+            return {"hint": None}
+        rows = await asyncio.to_thread(
+            store.list_latest, user_id=owner, parent_session_id=session_id, limit=MAX_ARTIFACTS
+        )
+        _, asked = await asyncio.to_thread(producing_turn, conversation_store, session_id, None)
+        opened = await asyncio.to_thread(open_artifact, store, session_id, asked)
+        return {"hint": artifact_hint([a for a, _n in rows], opened)}
 
     @router.post("/artifacts/{artifact_id}/delivered")
     async def mark_delivered(request: Request, artifact_id: str) -> dict[str, Any]:

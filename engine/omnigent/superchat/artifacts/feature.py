@@ -7,12 +7,14 @@ from typing import TYPE_CHECKING, Any
 
 from omnigent.context.labels import is_superside_chat
 from omnigent.superchat.artifacts.handlers import handle_artifact_tool
+from omnigent.superchat.artifacts.hint import fetch_artifact_hint
 from omnigent.superchat.artifacts.tools import ARTIFACT_TOOL_NAMES
 from omnigent.superchat.artifacts.writeback import deliver_manual_edits
 from omnigent.superchat.feature import Feature, InstallDeps, ToolManagerCtx
 from omnigent.superchat.risk import Risk, register_classifier, register_target_namer
 
 if TYPE_CHECKING:
+    import httpx
     from fastapi import FastAPI
 
     from omnigent.tools.base import Tool
@@ -41,6 +43,12 @@ def _tools(labels: Mapping[str, str] | None, _ctx: ToolManagerCtx) -> list[Tool]
     if not is_superside_chat(labels):
         return []
     return [ArtifactSaveTool(), ArtifactListTool(), ArtifactDeleteTool()]
+
+
+async def _turn_prefix(server_client: httpx.AsyncClient | None, conversation_id: str) -> list[str]:
+    """Hand edits written back (one note each), then the hint naming this chat's artifacts."""
+    notes = await deliver_manual_edits(server_client, conversation_id)
+    return [*notes, *await fetch_artifact_hint(server_client, conversation_id)]
 
 
 def _install(app: FastAPI, deps: InstallDeps) -> None:
@@ -88,6 +96,6 @@ ARTIFACTS_FEATURE = Feature(
     name="artifacts",
     tools=_tools,
     handlers=dict.fromkeys(ARTIFACT_TOOL_NAMES, handle_artifact_tool),
-    turn_prefix=deliver_manual_edits,
+    turn_prefix=_turn_prefix,
     install=_install,
 )

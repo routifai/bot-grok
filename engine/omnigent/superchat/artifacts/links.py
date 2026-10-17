@@ -19,10 +19,13 @@ from omnigent.entities import MessageData
 from omnigent.entities.conversation import is_system_notice
 from omnigent.stores import ConversationStore
 from omnigent.superchat.artifacts.store import (
+    LINK_EDITED,
     LINK_OPEN,
+    Artifact,
     MessageLink,
     SqlAlchemyArtifactStore,
 )
+from omnigent.superchat.family.signals import notify_item_updated
 
 _logger = logging.getLogger(__name__)
 
@@ -69,6 +72,24 @@ def is_person_message(item: Any) -> bool:
     )
 
 
+def next_link(current: MessageLink | None, saved: Artifact) -> MessageLink | None:
+    """The message's link once *saved* was saved during its turn, or ``None`` to keep it.
+
+    No link yet, or an ``open`` link to another artifact: the save names the artifact
+    (``edited``). A link to the same artifact (``open``, ``edited`` or ``chosen``) gains the
+    version the message produced. A link to another artifact that the save did not come from
+    (an earlier ``edited`` one, or one the person ``chosen``) is kept, and so is "none".
+    """
+    if current is None or (current.how == LINK_OPEN and current.name != saved.name):
+        return MessageLink(saved.id, saved.name, saved.version, LINK_EDITED)
+    if current.artifact_id is None or current.name != saved.name:
+        return None
+    if current.version == saved.version:
+        return None
+    artifact_id = saved.id if current.how == LINK_EDITED else current.artifact_id
+    return MessageLink(artifact_id, current.name, saved.version, current.how)
+
+
 def record_open_artifact(
     store: SqlAlchemyArtifactStore, session_id: str, item_id: str, context: Mapping[str, Any]
 ) -> MessageLink | None:
@@ -87,6 +108,22 @@ def record_open_artifact(
     return link
 
 
+def link_saved_version(store: SqlAlchemyArtifactStore, saved: Artifact) -> MessageLink | None:
+    """Fill the link of the message *saved* came from, and tell the family stream.
+
+    :returns: The new link, or ``None`` when the version has no message or the link is kept.
+    """
+    if saved.item_id is None:
+        return None
+    session_id = saved.parent_session_id
+    link = next_link(store.message_link(session_id, saved.item_id), saved)
+    if link is None:
+        return None
+    store.set_message_link(session_id, saved.item_id, link)
+    notify_item_updated(session_id, saved.item_id)
+    return link
+
+
 def attach_links(
     store: SqlAlchemyArtifactStore, session_id: str, messages: list[dict[str, Any]]
 ) -> None:
@@ -100,6 +137,19 @@ def attach_links(
         link = links.get(message.get("id"))  # type: ignore[arg-type]
         if link is not None and message.get("role") == "user":
             message["artifact"] = link.to_wire()
+
+
+def open_artifact(
+    store: SqlAlchemyArtifactStore, session_id: str, item_id: str | None
+) -> Artifact | None:
+    """The newest version of the artifact the message *item_id* was sent with open, if any."""
+    if item_id is None:
+        return None
+    link = store.message_link(session_id, item_id)
+    if link is None or link.how != LINK_OPEN or link.artifact_id is None:
+        return None
+    opened = store.get_in_session(link.artifact_id, session_id)
+    return store.newest(opened) if opened is not None else None
 
 
 def conversation_item(

@@ -17,6 +17,7 @@ from pathlib import Path
 import httpx
 
 from omnigent.memory.service import PROFILE_BLOCK_FOOTER, PROFILE_BLOCK_HEADER
+from omnigent.superchat.artifacts.hint import HEADER as ARTIFACT_HINT_HEADER
 from omnigent.superchat.artifacts.writeback import NOTE_LINE as EDIT_NOTE_LINE
 from omnigent.superchat.knowledge.attachment_context import OPEN as ATTACHMENT_OPEN
 from omnigent.superchat.knowledge.attachment_context import REMINDER as ATTACHMENT_REMINDER
@@ -235,6 +236,8 @@ _FENCED_BLOCKS = (
     (HINT_HEADER, "\n" + HINT_FOOTER),
     (ATTACHMENT_OPEN, ATTACHMENT_REMINDER),
     (PROJECTS_OPEN, "]\n\n"),
+    # The artifact hint's lines run to the blank line before the next block.
+    (ARTIFACT_HINT_HEADER, "\n\n"),
 )
 _MOVED_OPEN, _MOVED_CLOSE = MOVED_NOTE.split("{}")
 
