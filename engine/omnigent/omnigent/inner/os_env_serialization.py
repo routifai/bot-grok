@@ -11,7 +11,7 @@ def decode_sandbox_spec(value: object) -> OSEnvSandboxSpec:
     """Restore a sandbox serialized with ``dataclasses.asdict``.
 
     This is the normalized runtime representation, not the agent YAML schema.
-    Decode nested credential entries, sources, and Databricks profiles so
+    Decode nested credential entries and sources so
     sandbox startup can resolve credentials using their typed attributes.
     Fields are validated during decoding, before sandbox initialization.
     """

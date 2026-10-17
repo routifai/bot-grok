@@ -289,16 +289,18 @@ def _build_routing(
 ) -> tuple[Any, Any]:  # type: ignore[explicit-any]  # (RoutingClient | None, RoutingSettings)
     """Build the routing client and settings from the ``routing:`` block.
 
-    Reuses the CLI's parser and builder so a Docker deployment honours the
-    same ``routing.*`` keys (router name, selection model, model prefixes) a
-    local server does.
+    The parser and builder live in :mod:`omnigent.server.routing_settings`
+    (router name, selection model, model prefixes).
 
     :param cfg: The parsed server config mapping.
     :param server_llm: The parsed server-level ``LLMConfig``, used for the
         built-in judge when no external router is configured.
     :returns: ``(routing_client, routing_settings)`` for ``RuntimeCaps``.
     """
-    from omnigent.cli import _build_external_routing_client, parse_routing_settings
+    from omnigent.server.routing_settings import (
+        _build_external_routing_client,
+        parse_routing_settings,
+    )
 
     routing_cfg = cfg.get("routing")
     settings = parse_routing_settings(routing_cfg)

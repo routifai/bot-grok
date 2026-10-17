@@ -25,7 +25,6 @@ if TYPE_CHECKING:
     # import annotations`` is in effect).
     from omnigent.inner.datamodel import OSEnvSpec
 
-from omnigent.cli_invocation import cli_invocation
 from omnigent.entities import (
     NON_CONTENT_ITEM_TYPES,
     CompactionData,
@@ -42,15 +41,11 @@ from omnigent.llms import Client as LLMClient
 from omnigent.models.model_catalog import resolve_catalog_model
 from omnigent.models.model_resolver import ModelResolutionError
 from omnigent.onboarding.detected import (
-    codex_config_provider_dismissed,
     effective_config_with_detected,
 )
 from omnigent.onboarding.provider_config import (
     ANTHROPIC_FAMILY,
     BEDROCK_KIND,
-    CHAT_WIRE_API,
-    CLI_CONFIG_KIND,
-    KEY_KIND,
     OPENAI_FAMILY,
     RESPONSES_WIRE_API,
     SUBSCRIPTION_KIND,
@@ -146,7 +141,7 @@ _logger = logging.getLogger(__name__)
 # (hyphen), e.g. ``"claude_sdk"`` → ``"claude-sdk"`` used by ``_HARNESS_MODULES``.
 
 
-AgentHarnessType = Literal["claude-sdk", "codex", "pi"]
+AgentHarnessType = Literal["claude-sdk", "pi"]
 
 
 @dataclass(frozen=True)
@@ -171,12 +166,6 @@ _GATEWAY_ENV_KEYS: dict[AgentHarnessType, _GatewayEnvKeys] = {
         base_url_key="HARNESS_CLAUDE_SDK_GATEWAY_BASE_URL",
         host_key="HARNESS_CLAUDE_SDK_GATEWAY_HOST",
         auth_key="HARNESS_CLAUDE_SDK_GATEWAY_AUTH_COMMAND",
-    ),
-    "codex": _GatewayEnvKeys(
-        model_key="HARNESS_CODEX_MODEL",
-        base_url_key="HARNESS_CODEX_GATEWAY_BASE_URL",
-        host_key="HARNESS_CODEX_GATEWAY_HOST",
-        auth_key="HARNESS_CODEX_GATEWAY_AUTH_COMMAND",
     ),
 }
 
@@ -233,7 +222,6 @@ def _get_runner_client_for_compaction(
 # (``omnigent/onboarding/provider_config.py`` ``_HARNESS_FAMILY``).
 _PROVIDER_HARNESS_FAMILY: dict[AgentHarnessType, str] = {
     "claude-sdk": ANTHROPIC_FAMILY,
-    "codex": OPENAI_FAMILY,
 }
 
 # Maps harnesses that gate the vendor-neutral gateway transport on a
@@ -242,7 +230,6 @@ _PROVIDER_HARNESS_FAMILY: dict[AgentHarnessType, str] = {
 # of which provider fed it.
 _HARNESS_GATEWAY_FLAG: dict[AgentHarnessType, str] = {
     "claude-sdk": "HARNESS_CLAUDE_SDK_GATEWAY",
-    "codex": "HARNESS_CODEX_GATEWAY",
     "pi": "HARNESS_PI_GATEWAY",
 }
 
@@ -317,14 +304,8 @@ def configure_agent_harness_with_provider(
     - ``key`` / ``gateway`` / ``local`` — resolve the harness's family and
       emit the ``HARNESS_*_GATEWAY_*`` env vars (see
       :func:`_apply_provider_family`).
-    - ``subscription`` — the native/CLI harness carries its own login; no
-      gateway vars. For codex, pin the built-in ``openai`` provider
-      (``HARNESS_CODEX_MODEL_PROVIDER``) so a custom default in the user's
-      ``~/.codex/config.toml`` cannot shadow the subscription.
-    - ``cli-config`` — pin the entry's ``model_provider``
-      (``HARNESS_CODEX_MODEL_PROVIDER``); the provider table + credential
-      come from the user's ``~/.codex/config.toml``, which the executor
-      bridges into the per-session ``CODEX_HOME``. Codex harness only.
+    - ``subscription`` — the CLI harness carries its own login; no gateway
+      vars.
     - ``bedrock`` — rejected (raises): AWS Bedrock mode is wired only into
       the native ``omnigent claude`` launch, not the in-process / gateway
       harnesses.
@@ -348,39 +329,9 @@ def configure_agent_harness_with_provider(
             code=ErrorCode.INVALID_INPUT,
         )
     if entry.kind == SUBSCRIPTION_KIND:
-        # A logged-in CLI (claude / codex) carries its own auth; the
-        # native/CLI harness reads its own login. Emitting inline-family
-        # gateway vars here would point the harness at a non-existent
-        # endpoint. (Chunk 1b routes only the inline-family kinds;
-        # subscription routing — toggling the CLI's logged-in model
-        # — is a later chunk.)
-        if harness_type == "codex":
-            # The codex executor symlinks the user's ~/.codex/config.toml
-            # into the per-session CODEX_HOME, so a custom default
-            # ``model_provider`` there (e.g. a company AI gateway)
-            # would silently hijack a Subscription selection. Pin codex's
-            # built-in ``openai`` provider so "Subscription" always means
-            # the ChatGPT login — a no-op when the user's config sets no
-            # custom default.
-            env["HARNESS_CODEX_MODEL_PROVIDER"] = "openai"
-        return
-
-    if entry.kind == CLI_CONFIG_KIND:
-        # A custom model provider defined (and authenticated) by the codex
-        # CLI's own config.toml: pin it by name; the executor's bridged
-        # config.toml carries the provider table + credential. Only the
-        # codex harness reads that file — claude-sdk cannot consume a codex
-        # provider table, so fail loud rather than launch it credential-less.
-        if harness_type != "codex":
-            raise OmnigentError(
-                f"provider {entry.name!r} (kind 'cli-config') pins a provider in "
-                f"~/.codex/config.toml and can only drive the 'codex' harness, "
-                f"not {harness_type!r}. Configure a key/gateway provider for this "
-                "harness in ~/.omnigent/config.yaml.",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        # entry.model_provider is required by the cli-config parse branch.
-        env["HARNESS_CODEX_MODEL_PROVIDER"] = str(entry.model_provider)
+        # A logged-in CLI carries its own auth; the harness reads its own
+        # login. Emitting inline-family gateway vars here would point the
+        # harness at a non-existent endpoint.
         return
 
     # Inline-family kinds: key / gateway / local.
@@ -468,27 +419,18 @@ def _apply_provider_family(
     harness_type: AgentHarnessType,
     family: FamilyConfig,
 ) -> None:
-    """Apply a provider family to a gateway-style harness (claude-sdk / codex).
+    """Apply a provider family to the claude-sdk harness's gateway path.
 
     Emits the vendor-neutral ``HARNESS_*_GATEWAY_*`` env vars the
     executor's gateway path reads. The model default is only applied when the spec did
     not already set the model env var.
 
     :param env: Mutable spawn-env dict, modified in place.
-    :param harness_type: ``"claude-sdk"`` or ``"codex"``.
+    :param harness_type: ``"claude-sdk"``.
     :param family: The resolved provider family for this harness.
     :raises OmnigentError: If no model is resolvable (neither the spec nor
-        the family declares one), or if a Codex provider is configured for
-        the unsupported Chat Completions wire API.
+        the family declares one).
     """
-    if harness_type == "codex" and family.wire_api == CHAT_WIRE_API:
-        raise OmnigentError(
-            "The 'codex' harness requires an OpenAI Responses API endpoint, but "
-            f"provider endpoint {family.base_url!r} is configured with "
-            "'wire_api: chat'. Choose a Responses-capable endpoint and set "
-            "'wire_api: responses', or use a harness that supports Chat Completions.",
-            code=ErrorCode.INVALID_INPUT,
-        )
 
     cfg = _GATEWAY_ENV_KEYS[harness_type]
     env[_HARNESS_GATEWAY_FLAG[harness_type]] = "true"
@@ -501,10 +443,6 @@ def _apply_provider_family(
         env[cfg.model_key] = family.default_model
     if cfg.model_key not in env:
         env[cfg.model_key] = _catalog_default_model(_PROVIDER_HARNESS_FAMILY[harness_type])
-    if harness_type == "codex":
-        # Codex defaults to the Responses wire API; OpenRouter-style
-        # chat-only gateways set wire_api: chat.
-        env["HARNESS_CODEX_WIRE_API"] = family.wire_api or RESPONSES_WIRE_API
 
 
 def _optional_provider_family(
@@ -606,27 +544,6 @@ def _apply_provider_to_pi(env: dict[str, str], entry: ProviderEntry) -> None:
         env["HARNESS_PI_MODEL"] = _catalog_default_model(auth_family)
 
 
-def _synthesize_codex_api_key_provider(auth: ApiKeyAuth) -> ProviderEntry:
-    """Route a resolved inline key through Codex's provider transport.
-
-    :param auth: Spec or global API-key authentication, including its endpoint.
-    :returns: An in-memory OpenAI-compatible provider; never persisted.
-    """
-    return ProviderEntry(
-        name="api_key",
-        kind=KEY_KIND,
-        families={
-            OPENAI_FAMILY: FamilyConfig(
-                base_url=auth.base_url or "https://api.openai.com/v1",
-                # ApiKeyAuth is already resolved; family lookup must not
-                # expand literal dollar signs in the secret a second time.
-                auth_command=f"printf %s {shlex.quote(auth.api_key)}",
-                wire_api=RESPONSES_WIRE_API,
-            )
-        },
-    )
-
-
 def _resolve_provider_for_build(
     spec: AgentSpec,
     *,
@@ -642,9 +559,8 @@ def _resolve_provider_for_build(
 
     1. ``spec.executor.auth`` is a :class:`ProviderAuth` → that named provider
        (fails loud when undeclared).
-    2. An :class:`ApiKeyAuth` (spec or global) → a synthesized key provider
-       for a Codex launch; otherwise ``None`` (the claude-sdk builder threads
-       the key itself).
+    2. An :class:`ApiKeyAuth` (spec or global) → ``None`` (the claude-sdk
+       builder threads the key itself).
     3. The per-family global default (``providers: … default: true``), then an
        ambient-detected default.
     4. (``for_launch`` only) the first credential that can serve the family even
@@ -653,7 +569,7 @@ def _resolve_provider_for_build(
        paths so they never show a provider the user did not choose.
 
     :param spec: The agent spec.
-    :param harness_type: Canonical workflow harness type, e.g. ``"codex"``.
+    :param harness_type: Canonical workflow harness type, e.g. ``"claude-sdk"``.
     :param for_launch: ``True`` for the spawn-env builders (permissive: fall
         back to the first available credential). ``False`` (readout / cost /
         native) keeps strict, config-only resolution with no fallback.
@@ -680,14 +596,11 @@ def _resolve_provider_for_build(
         if entry is None:
             raise OmnigentError(
                 f"executor.auth references provider {auth.name!r}, but no such provider is "
-                "configured under 'providers:' in ~/.omnigent/config.yaml. "
-                f"Run `{cli_invocation()} setup` to configure one.",
+                "configured under 'providers:' in ~/.omnigent/config.yaml.",
                 code=ErrorCode.INVALID_INPUT,
             )
         return entry
     if auth is not None:
-        if isinstance(auth, ApiKeyAuth) and for_launch and harness_type == "codex":
-            return _synthesize_codex_api_key_provider(auth)
         # ApiKeyAuth — threaded by the claude-sdk builder.
         return None
 
@@ -697,8 +610,6 @@ def _resolve_provider_for_build(
         return explicit_default
     global_auth = _load_global_auth()
     if global_auth is not None:
-        if isinstance(global_auth, ApiKeyAuth) and for_launch and harness_type == "codex":
-            return _synthesize_codex_api_key_provider(global_auth)
         # Global ApiKeyAuth — threaded by the builder's global-auth branch.
         return None
     effective = effective_config_with_detected(explicit_config)
@@ -894,13 +805,13 @@ def _apply_harness_path_override(
     The harness wraps read ``OMNIGENT_<NAME>_PATH`` to locate their vendor
     CLI (the headless CLI-subprocess family historically read ``HARNESS_*_PATH``;
     both are honored, ``OMNIGENT_*`` canonical). A user can set that path via
-    config (``harness.codex.command: /usr/local/bin/codex``); this threads it
+    config (``harness.pi.command: /usr/local/bin/pi``); this threads it
     into the spawn env when the ambient env var isn't already set (ambient
     wins, per the shared ``env > config > default`` precedence). A no-op when
     config has no ``command`` for *harness* or the ambient env var is set.
 
     :param env: The spawn-env dict being built (mutated in place).
-    :param harness: A harness id (canonical or alias), e.g. ``"codex"``.
+    :param harness: A harness id (canonical or alias), e.g. ``"pi"``.
     """
     from omnigent.harness_aliases import canonicalize_harness
     from omnigent.harness_startup_config import (
@@ -911,84 +822,6 @@ def _apply_harness_path_override(
     path = config_harness_path_override(harness, load_config())
     if path is not None:
         env[_harness_path_env_var(canonicalize_harness(harness) or harness)] = path
-
-
-def _build_codex_spawn_env(
-    spec: AgentSpec,
-    *,
-    cwd: Path | None = None,
-    workdir: Path | None = None,
-) -> dict[str, str]:
-    """
-    Build the env-var dict the codex harness wrap reads.
-
-    Maps spec.executor fields → the ``HARNESS_CODEX_*`` env vars
-    read by the codex executor. Mirrors
-    :func:`_build_claude_sdk_spawn_env` — same per-spawn env-var
-    pattern from §Step 5a. The codex-specific env vars
-    (``HARNESS_CODEX_PATH``, ``HARNESS_CODEX_ENABLE_WEB_SEARCH``,
-    ``HARNESS_CODEX_DISABLE_NATIVE_TOOLS``) are not threaded
-    through here in v1: the legacy
-    :func:`omnigent.inner.executor_factory.create_executor`
-    path doesn't surface them either, so AP-side parity is
-    preserved by leaving them at the inner executor's defaults.
-    Operators who want non-default values set those env vars
-    on the Omnigent server directly (they propagate to the subprocess
-    through normal env inheritance — the wrap's per-spawn
-    overrides only override, they don't filter).
-
-    :param spec: The agent spec.
-    :param workdir: The bundle's on-disk path (extracted by the
-        agent cache). Threaded through as
-        ``HARNESS_CODEX_BUNDLE_DIR`` so the harness wrap's executor
-        can also source bundled skills from
-        ``<bundle>/skills/<dir>/``.
-    :returns: A dict of env-var overrides for
-        :meth:`HarnessProcessManager.get_client(env=...)`.
-    """
-    env: dict[str, str] = {}
-    model = _resolve_bound_launch_model(spec, "codex")
-    if model is not None:
-        env["HARNESS_CODEX_MODEL"] = model
-
-    # Generic-provider branch: a ProviderAuth on the spec, or — when the spec
-    # declares no auth — the per-family global default. See
-    # :func:`_resolve_provider_for_build`.
-    provider = _resolve_provider_for_build(spec, harness_type="codex", for_launch=True)
-    if provider is not None:
-        configure_agent_harness_with_provider(env, provider, harness_type="codex")
-    elif codex_config_provider_dismissed(load_config()):
-        # No credential resolved. If the user Removed codex's custom
-        # ~/.codex/config.toml provider (dismissed), pin the built-in ``openai``
-        # provider so the dismissal holds at run time — the executor's bridged
-        # config.toml would otherwise still route this launch through that removed
-        # default model_provider. (Gateway mode never reaches here: it resolves a
-        # provider above, and the executor rejects a double pin.)
-        env["HARNESS_CODEX_MODEL_PROVIDER"] = "openai"
-    # Skills bridge — same shape as the claude-sdk variant. Always
-    # set so the harness wrap doesn't fall back to its ``"all"``
-    # default and override an explicit ``skills: none`` spec.
-    env["HARNESS_CODEX_SKILLS_FILTER"] = json.dumps(spec.skills_filter)
-    if spec.name:
-        env["HARNESS_CODEX_AGENT_NAME"] = spec.name
-    # Session workspace (the selected working folder), not the bundle workdir.
-    # Without this the codex subprocess inherits the runner's launch cwd — see
-    # ``HARNESS_CODEX_CWD``.
-    if cwd is not None:
-        env["HARNESS_CODEX_CWD"] = str(cwd)
-    if workdir is not None:
-        env["HARNESS_CODEX_BUNDLE_DIR"] = str(workdir)
-    os_env_payload = _serialize_os_env(spec.os_env)
-    if os_env_payload is not None:
-        env["HARNESS_CODEX_OS_ENV"] = os_env_payload
-    # Phase 1f: thread the spec's RetryPolicy through to the
-    # codex subprocess. See :func:`_build_claude_sdk_spawn_env`
-    # for the rationale.
-    retry_payload = _serialize_retry_policy(_resolve_retry_policy(spec))
-    if retry_payload is not None:
-        env["HARNESS_CODEX_RETRY_POLICY"] = retry_payload
-    _apply_harness_path_override(env, "codex")
-    return env
 
 
 def _build_pi_spawn_env(
@@ -1002,8 +835,7 @@ def _build_pi_spawn_env(
 
     Maps spec.executor fields → the ``HARNESS_PI_*`` env vars
     defined in ``omnigent/inner/pi_harness.py``. Mirrors
-    :func:`_build_claude_sdk_spawn_env` /
-    :func:`_build_codex_spawn_env` — same per-spawn env-var
+    :func:`_build_claude_sdk_spawn_env` — same per-spawn env-var
     pattern from §Step 5a.
 
     :param spec: The agent spec.
@@ -1033,7 +865,7 @@ def _build_pi_spawn_env(
         configure_agent_harness_with_provider(env, provider, harness_type="pi")
         if "HARNESS_PI_PRESERVE_MODEL_IDS" in env and provider.family(OPENAI_FAMILY) is not None:
             env.setdefault("HARNESS_PI_GATEWAY_OPENAI_WIRE_API", RESPONSES_WIRE_API)
-    # Skills bridge — same shape as the claude-sdk + codex variants.
+    # Skills bridge — same shape as the claude-sdk variant.
     # Always set so the harness wrap doesn't fall back to ``"all"``
     # and override an explicit ``skills: none`` from the spec.
     env["HARNESS_PI_SKILLS_FILTER"] = json.dumps(spec.skills_filter)
@@ -1684,7 +1516,7 @@ def _route_bare_model_for_compaction(llm_config: LLMConfig) -> LLMConfig:
     Prefix bare model ids so compaction's generic client picks the right provider.
 
     Normal harness execution infers the provider from the harness (e.g.
-    ``claude-sdk`` → Anthropic, ``codex`` → OpenAI).
+    ``claude-sdk`` → Anthropic, ``pi`` → its configured family).
     Explicit ``/compact`` instead uses the generic runtime LLM client,
     whose :func:`~omnigent.llms.routing.parse_model_string` defaults any
     prefix-less id to OpenAI — so a bare Anthropic ``claude-*`` id gets sent

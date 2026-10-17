@@ -96,7 +96,7 @@ def test_runner_reads_real_desktop_keyring(desktop_keyring: Path, tmp_path: Path
     from omnigent.host.connect import _build_runner_env
 
     env = _build_runner_env(
-        _build_host_daemon_env(server_url=None),
+        _build_host_daemon_env(),
         server_url="http://localhost:6767",
         runner_id="test-keyring",
         binding_token="test-binding-token",

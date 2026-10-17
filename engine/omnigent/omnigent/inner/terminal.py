@@ -28,7 +28,6 @@ from pathlib import Path
 from typing import Any, TypeAlias, cast
 
 from omnigent._platform import IS_WINDOWS
-from omnigent.cli_invocation import cli_invocation
 from omnigent.debug_logging import debug_event
 from omnigent.inner import terminal_owner_claim as owner_claim
 from omnigent.process_logging import redact_log_text
@@ -50,7 +49,6 @@ from .sandbox import (
     create_exec_launcher,
     create_private_tmpdir,
     resolve_sandbox,
-    with_additional_read_roots,
     with_additional_write_roots,
     with_denied_unix_sockets,
 )
@@ -961,8 +959,6 @@ def build_terminal_os_env_spec(
                 "enforcement while egress_rules remain as inert "
                 "decoration on the policy."
             )
-        if any(p.copy_on_write for p in sandbox.write_path_specs):
-            raise ValueError("sandbox_override is not allowed with copy_on_write paths")
         sandbox.type = sandbox_override
         effective_os_env_spec.sandbox = sandbox
 
@@ -1544,13 +1540,7 @@ class TerminalInstance:
             if self.egress_rules:
                 sandbox_for_launcher = self._bootstrap_egress_proxy(sandbox_for_launcher, env)
             cli_path = shutil.which(self.command) or self.command
-            if sandbox_for_launcher.copy_on_write_namespace:
-                host_cwd = "/"
-                launcher_path = create_exec_launcher(
-                    cli_path, sandbox_for_launcher, cwd=effective_cwd
-                )
-            else:
-                launcher_path = create_exec_launcher(cli_path, sandbox_for_launcher)
+            launcher_path = create_exec_launcher(cli_path, sandbox_for_launcher)
             inner_cmd = [launcher_path, *self.args]
         else:
             inner_cmd = [self.command, *self.args]
@@ -2588,7 +2578,6 @@ def create_terminal_instance(
     spec: TerminalEnvSpec,
     *,
     parent_os_env_spec: OSEnvSpec | None = None,
-    parent_environment: OSEnvironment | None = None,
     cwd_override: str | None = None,
     sandbox_override: str | None = None,
     conversation_link: str | None = None,
@@ -2623,8 +2612,7 @@ def create_terminal_instance(
     if IS_WINDOWS:
         raise RuntimeError(
             "Native terminal harnesses (tmux/PTY) are not supported on Windows. "
-            f"Run an SDK-based harness via `{cli_invocation()} run <agent.yaml>` (e.g. the "
-            "claude-sdk or pi harness) or use the web UI."
+            "Run an SDK-based harness (claude-sdk or pi) instead."
         )
     _require_supported_tmux()
 
@@ -2665,19 +2653,7 @@ def create_terminal_instance(
         os_env = create_os_environment(forked_spec)
     else:
         cwd = Path(effective_os_env_spec.cwd or os.getcwd()).resolve()
-        inherited_policy = None
-        if parent_environment is not None and (spec.os_env is None or spec.os_env == "inherit"):
-            inherited_policy = getattr(parent_environment, "sandbox", None)
-            parent_cwd = getattr(parent_environment, "cwd", None)
-            if inherited_policy is not None and parent_cwd is not None:
-                inherited_policy = with_additional_read_roots(inherited_policy, [parent_cwd])
-        os_env = create_os_environment(
-            effective_os_env_spec,
-            sandbox_policy=inherited_policy,
-            copy_on_write_environment=(
-                parent_environment.copy_on_write_environment if parent_environment else None
-            ),
-        )
+        os_env = create_os_environment(effective_os_env_spec)
 
     # Resolve sandbox policy for the terminal process.
     sandbox: SandboxPolicy | None = None
@@ -2690,8 +2666,6 @@ def create_terminal_instance(
                 effective_os_env_spec, cwd
             )
             if sandbox.active:
-                if os_env is not None:
-                    os_env.prepare_sandbox(sandbox)
                 # Add the private dir to write roots so a forked working
                 # tree (``private_dir/root``) and the instance dir stay
                 # writable inside the pane.

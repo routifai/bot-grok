@@ -69,7 +69,7 @@ def test_pinned_keyring_secret_resolves_in_runner(
 
     monkeypatch.setattr(os, "environ", env)
     runner_env = _build_runner_env(
-        _build_host_daemon_env(server_url=server_url),
+        _build_host_daemon_env(),
         server_url=server_url or "http://localhost:6767",
         runner_id="test-keyring",
         binding_token="test-binding-token",

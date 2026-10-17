@@ -128,7 +128,6 @@ def test_sdk_and_unknown_harnesses_are_never_gated(
 @pytest.mark.parametrize(
     "harness",
     [
-        "codex",
         "pi",
     ],
 )

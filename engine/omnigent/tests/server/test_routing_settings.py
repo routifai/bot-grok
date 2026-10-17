@@ -1,21 +1,19 @@
-"""Tests for the server's routing-client builders.
+"""Tests for :mod:`omnigent.server.routing_settings`.
 
 Covers :func:`_build_external_routing_client` (the external
-``routes:select`` provider) and :func:`_build_local_llm_routing_client`
-(the built-in judge), including config validation that degrades to
+``routes:select`` provider), including config validation that degrades to
 ``None`` (routing disabled) rather than raising.
 """
 
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock, patch
 
 import click
 import pytest
 
-from omnigent.cli import _build_external_routing_client, _build_local_llm_routing_client
-from omnigent.server.smart_routing import ExternalRoutingClient, LLMRoutingClient
+from omnigent.server.routing_settings import _build_external_routing_client
+from omnigent.server.smart_routing import ExternalRoutingClient
 
 
 def test_external_builds_client() -> None:
@@ -73,7 +71,6 @@ def test_external_ignores_a_profile_key() -> None:
     client = _build_external_routing_client(cfg)
     assert isinstance(client, ExternalRoutingClient)
     assert client._auth is None
-    assert client._databricks_profile is None
 
 
 def test_external_api_key_expands_env(monkeypatch: Any) -> None:
@@ -113,23 +110,3 @@ def test_external_rejects_non_string_config_value() -> None:
                 "router_name": "task_v0",
             }
         )
-
-
-def test_llm_without_server_llm_disables() -> None:
-    assert _build_local_llm_routing_client(None) is None
-
-
-def test_llm_builds_client() -> None:
-    server_llm = object()
-    with (
-        patch(
-            "omnigent.runtime.policies.builder._resolve_server_llm_connection",
-            return_value={"base_url": "b", "api_key": "k"},
-        ),
-        patch(
-            "omnigent.runtime.policies.builder._build_policy_llm_client",
-            return_value=MagicMock(),
-        ),
-    ):
-        client = _build_local_llm_routing_client(server_llm)
-    assert isinstance(client, LLMRoutingClient)

@@ -107,11 +107,8 @@ class TestLoadFromDict(unittest.TestCase):
             )
 
     def test_tools_function(self):
-        a = load_agent_def(
-            {"name": "t", "tools": {"f": {"type": "function", "catalog_path": "a.b.c"}}}
-        )
+        a = load_agent_def({"name": "t", "tools": {"f": {"type": "function"}}})
         self.assertIsInstance(a.tools["f"], FunctionTool)
-        self.assertEqual(a.tools["f"].catalog_path, "a.b.c")
 
     def test_tools_cancellable_function(self):
         a = load_agent_def(

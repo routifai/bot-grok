@@ -3,13 +3,10 @@ Provider-agnostic interface for running Omnigent hosts in remote sandboxes.
 
 A *sandbox launcher* wraps one sandbox provider (e.g. the Docker-backed
 ``computer``) behind the small set of transport / lifecycle primitives that the
-generic bootstrap flow in :mod:`omnigent.onboarding.sandboxes.bootstrap`
-composes: provision a sandbox, run commands in it, ship files into it, stream
-a PTY-backed process out of it, forward a local port into it, and hold a
-foreground process open. Everything provider-specific (CLI bootstrap, SSH
-quirks, image contents, pip flags) lives behind a :class:`SandboxLauncher`
-implementation; everything provider-agnostic (wheel builds, the in-sandbox
-App OAuth dance, host registration) lives in ``bootstrap``.
+server's managed-host code composes: provision a sandbox, run commands in it,
+ship files into it, stream a PTY-backed process out of it, forward a local port
+into it, and hold a foreground process open. Everything provider-specific
+lives behind a :class:`SandboxLauncher` implementation.
 
 Injected host config uses the loader's ``OMNIGENT_CONFIG_HOME`` resolution,
 atomically replaces its config and ownership-marker files, and removes a
@@ -1012,8 +1009,7 @@ class SandboxExecTransport(SandboxLifecycle):
         CLI-bootstrap capability — managed-only launchers run from
         pre-baked images and need not override the raising default.
 
-        :param remote_tgz_path: Where :func:`~omnigent.onboarding.
-            sandboxes.bootstrap.ship_wheels` placed the tarball, e.g.
+        :param remote_tgz_path: Where the wheel tarball was shipped, e.g.
             ``"/tmp/oa-wheels.tgz"``.
         :returns: A shell command string for :meth:`run`.
         :raises SandboxCapabilityError: When the provider does not

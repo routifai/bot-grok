@@ -11,7 +11,6 @@ credentials are inline test keys.
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,7 +20,6 @@ import pytest
 from cachetools import TTLCache
 
 import omnigent.models.model_catalog as model_catalog
-from omnigent.models.codex_model_vocabulary import codex_spawn_model
 from omnigent.models.model_catalog import (
     ModelEntry,
     ModelListing,
@@ -35,7 +33,7 @@ from omnigent.models.model_catalog import (
     resolve_model_provider,
     spec_harness,
 )
-from omnigent.models.model_fallbacks import _SMART_ROUTING_FALLBACKS, CODEX_DEFAULT_MODEL
+from omnigent.models.model_fallbacks import _SMART_ROUTING_FALLBACKS
 from omnigent.models.model_metadata import (
     ModelCapability,
     ModelCostTier,
@@ -152,11 +150,6 @@ def _worker_spec(harness: str, **executor_kwargs: object) -> AgentSpec:
                 "host": "bedrock-runtime.us-west-2.amazonaws.com",
             },
             id="bedrock",
-        ),
-        pytest.param(
-            ResolvedModelProvider(kind="cli-config", cli="codex", detail="config.toml"),
-            {"kind": "cli-config", "label": "CLI config", "name": "config.toml"},
-            id="cli-config",
         ),
         pytest.param(
             ResolvedModelProvider(
@@ -292,32 +285,6 @@ def test_resolve_provider_subscription_default(
     provider = resolve_model_provider(_worker_spec("claude-native"), "claude-native")
     assert provider.kind == "subscription"
     assert provider.cli == "claude"
-
-
-def test_resolve_provider_cli_config_default(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """A cli-config default resolves as usable, never "no credentials".
-
-    The entry's credential lives in the codex CLI's own ``config.toml``
-    (an auth command / env key codex runs at launch), so the catalog has
-    nothing to resolve statically — falling into the inline-family loop
-    used to misreport the worker as having no resolvable credentials.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :param tmp_path: Per-test temp dir.
-    """
-    _isolate_config(
-        monkeypatch,
-        tmp_path,
-        "providers:\n  codex-gateway:\n    kind: cli-config\n    cli: codex\n"
-        "    model_provider: Databricks\n    default: true\n",
-    )
-    provider = resolve_model_provider(_worker_spec("codex-native"), "codex-native")
-    assert provider.kind == "cli-config"
-    assert provider.cli == "codex"
-    assert "codex-gateway" in provider.detail
-    assert "Databricks" in provider.detail
 
 
 def test_resolve_provider_spec_api_key_auth(
@@ -645,30 +612,6 @@ def test_subscription_listing_is_static_and_unverified(
     assert "static_fallback" not in payload
 
 
-def test_cli_config_listing_is_static_and_unverified(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """A cli-config provider yields an empty static listing, not a dead row.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :param tmp_path: Per-test temp dir.
-    """
-    _isolate_config(
-        monkeypatch,
-        tmp_path,
-        "providers:\n  codex-gateway:\n    kind: cli-config\n    cli: codex\n"
-        "    model_provider: Databricks\n    default: true\n",
-    )
-    listing = list_models_for_worker(_worker_spec("codex-native"), "codex-native")
-    assert listing.source == "static"
-    assert listing.verified is False
-    assert listing.models == ()
-    # The note must keep this a working worker, not a credentials preflight
-    # failure — the CLI enumerates and authenticates from its own config.
-    assert "the CLI's own config" in listing.note
-    assert "cannot run here" not in listing.note
-
-
 @pytest.mark.parametrize("table_key", sorted(_SMART_ROUTING_FALLBACKS))
 def test_static_model_fallbacks_document_ownership(table_key: str) -> None:
     """Every remaining static model table explains who owns it and why.
@@ -683,20 +626,6 @@ def test_static_model_fallbacks_document_ownership(table_key: str) -> None:
     assert fallback.owner
     assert fallback.provenance
     assert fallback.discovery_gap
-
-
-def test_codex_default_model_names_a_concrete_variant() -> None:
-    """The codex launch default is codex's own spelling of a tiered model.
-
-    The bundled OpenAI catalog's newest row is ``gpt-5.6``, which codex
-    rejects as a family name, and codex's backend 400s the hyphenated
-    Databricks serving spelling — the default must be a dotted concrete
-    variant codex serves.
-    """
-    assert not CODEX_DEFAULT_MODEL.startswith("databricks-")
-    assert codex_spawn_model(CODEX_DEFAULT_MODEL) == CODEX_DEFAULT_MODEL
-    # A bare family alias has no tier segment after the dotted version.
-    assert re.fullmatch(r"gpt-\d+\.\d+", CODEX_DEFAULT_MODEL) is None
 
 
 def test_none_listing_explains_dead_worker(

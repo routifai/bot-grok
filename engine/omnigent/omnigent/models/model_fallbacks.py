@@ -22,24 +22,6 @@ class StaticModelFallback:
     discovery_gap: str
 
 
-#: Codex's launch default when nothing else names a model. The bundled
-#: OpenAI catalog's newest row is a bare family alias (``gpt-5.6``) that
-#: codex rejects, so a codex launch defaults to a concrete variant from
-#: codex's own catalog — dotted spelling, which codex's own backend accepts.
-_CODEX_LAUNCH_DEFAULT = StaticModelFallback(
-    model_ids=("gpt-5.6-sol",),
-    owner="Codex native launch",
-    provenance="codex's catalog slug for Omnigent's preferred launch arm",
-    discovery_gap=(
-        "the launch default is resolved before any app-server probe can "
-        "answer, and codex rejects the bundled catalog's newest row (a bare "
-        "family alias)"
-    ),
-)
-
-CODEX_DEFAULT_MODEL = _CODEX_LAUNCH_DEFAULT.model_ids[0]
-
-
 # ── Smart Routing ───────────────────────────────────────────────────────────
 #
 # The router's static tables. A live per-session catalog wins wherever one is

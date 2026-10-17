@@ -1,9 +1,9 @@
 """Sandbox launchers: run Omnigent hosts in remote sandboxes.
 
-Public API for the ``omnigent sandbox`` CLI and anything else that
-bootstraps a sandbox-backed host. Core Omnigent contributes the built-in
-``computer`` provider directly; third-party packages can contribute providers through
-the ``omnigent.sandbox_providers`` entry point group.
+The server's managed-host code launches hosts through these. Core Omnigent
+contributes the built-in ``computer`` provider directly; third-party packages
+can contribute providers through the ``omnigent.sandbox_providers`` entry
+point group.
 """
 
 from __future__ import annotations
@@ -17,17 +17,6 @@ from omnigent.onboarding.sandboxes.base import (
     SandboxGoneError,
     SandboxHostLauncher,
     SandboxLauncher,
-)
-from omnigent.onboarding.sandboxes.bootstrap import (
-    DEFAULT_SANDBOX_NAME,
-    DerivedWorkspace,
-    bootstrap_sandbox_host,
-    build_wheels,
-    connect_sandbox_host,
-    derive_workspace,
-    login_app_oauth_in_sandbox,
-    set_sandbox_host_name,
-    ship_wheels,
 )
 from omnigent.onboarding.sandboxes.registry import (
     COMMUNITY_MODULE_PREFIX,
@@ -55,8 +44,6 @@ from omnigent.onboarding.sandboxes.types import (
 
 __all__ = [
     "COMMUNITY_MODULE_PREFIX",
-    "DEFAULT_SANDBOX_NAME",
-    "DerivedWorkspace",
     "GitCloneOptions",
     "HostContext",
     "RemoteCommandResult",
@@ -77,17 +64,10 @@ __all__ = [
     "SandboxRegistryError",
     "SandboxSpec",
     "available_providers",
-    "bootstrap_sandbox_host",
-    "build_wheels",
-    "connect_sandbox_host",
-    "derive_workspace",
     "get_launcher",
     "get_provider_metadata",
-    "login_app_oauth_in_sandbox",
     "plugin_state",
     "reset_plugin_state_for_tests",
-    "set_sandbox_host_name",
-    "ship_wheels",
 ]
 
 

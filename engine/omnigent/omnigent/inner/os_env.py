@@ -25,7 +25,6 @@ from omnigent.runner.identity import (
     OMNIGENT_SESSION_ENV_VAR,
     strip_runner_auth_secrets,
 )
-from omnigent.sandbox.copy_on_write import SHARED_ENVIRONMENT_VAR, CopyOnWriteEnvironment
 from omnigent.util.json_types import JsonValue
 
 from .agent_env import strip_desktop_session_env
@@ -33,7 +32,6 @@ from .async_utils import run_sync_on_thread
 from .credential_proxy import (
     CredentialProxyRuntime,
     CredentialRewriteRule,
-    MaterializedFile,
     prepare_credential_proxy_runtime,
 )
 from .datamodel import CredentialProxySpec, OSEnvSpec
@@ -229,9 +227,7 @@ def build_helper_env(
         # Opted out of sandboxing (incl. env filtering): mirror parent
         # env, but still drop the runner-auth secret — opting out of the
         # sandbox must not also hand the agent the binding token.
-        env = strip_runner_auth_secrets(parent_env)
-        env.pop(SHARED_ENVIRONMENT_VAR, None)
-        return env
+        return strip_runner_auth_secrets(parent_env)
 
     allowed = set(_DEFAULT_ENV_PASSTHROUGH)
     if sandbox.env_passthrough is not None:
@@ -245,7 +241,6 @@ def build_helper_env(
     # The default allowlist already excludes the runner-auth secrets,
     # but strip again so a spec author can't re-admit one by naming it
     # in ``sandbox.env_passthrough``.
-    env.pop(SHARED_ENVIRONMENT_VAR, None)
     return strip_runner_auth_secrets(env)
 
 
@@ -279,33 +274,6 @@ def _build_credential_proxy_parent_env(
             if value is not None:
                 resolved[entry.source.env] = value
     return resolved
-
-
-def _write_credential_proxy_files(
-    env: dict[str, str],
-    files: Sequence[MaterializedFile],
-    tmpdir: Path,
-) -> None:
-    """
-    Write placeholder-only credential-proxy files into the sandbox scratch dir.
-
-    Each file carries only synthetic ``oa_cred_*`` placeholders (never a
-    real secret), so writing it into the sandbox-visible scratch dir is
-    safe. When a file declares an ``env_var``, that variable is pointed at
-    the written file's absolute path so the tool discovers it (e.g.
-    ``DATABRICKS_CONFIG_FILE``).
-
-    :param env: The helper spawn env; pointer vars are set in place.
-    :param files: The files to materialize.
-    :param tmpdir: The sandbox scratch directory (a write root bound into
-        the sandbox).
-    """
-    for spec in files:
-        path = tmpdir / spec.name
-        path.write_text(spec.content, encoding="utf-8")
-        os.chmod(path, spec.mode)
-        if spec.env_var is not None:
-            env[spec.env_var] = str(path)
 
 
 @dataclass
@@ -350,15 +318,6 @@ class OSEnvironment(ABC):
     ) -> OpResult:
         raise NotImplementedError
 
-    def prepare_sandbox(self, policy: SandboxPolicy) -> None:
-        """Attach environment-owned resources before launching a consumer."""
-        if policy.copy_on_write_roots:
-            raise RuntimeError("This environment cannot own copy-on-write mounts")
-
-    @property
-    def copy_on_write_environment(self) -> CopyOnWriteEnvironment | None:
-        return None
-
     def close(self) -> None:  # noqa: B027 — optional override hook; default is a no-op
         """Release any process or file resources held by the environment.
 
@@ -380,9 +339,7 @@ class _HelperProcessClient:
         start_in_scratch: bool = False,
         egress_rules: list[str] | None = None,
         egress_allow_private_destinations: bool = False,
-        copy_on_write_environment: CopyOnWriteEnvironment | None = None,
     ) -> None:
-        self._copy_on_write_environment = copy_on_write_environment
         self.cwd = cwd
         self.shell_path = shell_path
         self.sandbox = sandbox
@@ -468,8 +425,6 @@ class _HelperProcessClient:
 
     def _start_locked(self) -> None:
         sandbox = self.sandbox
-        if self._copy_on_write_environment is not None:
-            self._copy_on_write_environment.prepare(sandbox)
         env = build_helper_env(os.environ, sandbox)
         project_root = str(_project_root())
         existing_pythonpath = env.get("PYTHONPATH")
@@ -507,11 +462,6 @@ class _HelperProcessClient:
                     cwd=self.cwd,
                 )
                 env.update(credential_runtime.helper_env_updates)
-                # Materialize placeholder-only config files (e.g. a
-                # ``.databrickscfg`` listing proxied profiles with
-                # ``oa_cred_*`` tokens) into the scratch dir and point the
-                # tool at them. No real secret is written to the sandbox.
-                _write_credential_proxy_files(env, credential_runtime.sandbox_files, self._tmpdir)
 
         # Start L7 egress proxy if rules are configured. The proxy
         # listens on a Unix socket in the scratch tmpdir; the helper
@@ -625,7 +575,7 @@ class _HelperProcessClient:
                 stderr=subprocess.PIPE,
                 text=True,
                 bufsize=1,
-                cwd="/" if sandbox.copy_on_write_namespace else str(self.cwd),
+                cwd=str(self.cwd),
                 env=env,
                 **popen_kwargs,
             )
@@ -860,33 +810,7 @@ class CallerProcessOSEnvironment(OSEnvironment):
     _egress_rules: list[str] | None = None
     _egress_allow_private_destinations: bool = False
 
-    _copy_on_write_environment: CopyOnWriteEnvironment | None = None
-    _owns_copy_on_write: bool = False
-
-    @property
-    def copy_on_write_environment(self) -> CopyOnWriteEnvironment | None:
-        return self._copy_on_write_environment
-
-    def prepare_sandbox(self, policy: SandboxPolicy) -> None:
-        if self._copy_on_write_environment is not None:
-            self._copy_on_write_environment.prepare(policy)
-        elif policy.copy_on_write_roots:
-            if policy.copy_on_write_roots != self.sandbox.copy_on_write_roots:
-                raise ValueError("Inherited copy-on-write paths must match their environment")
-            policy.copy_on_write_namespace = self.sandbox.copy_on_write_namespace
-            if policy.copy_on_write_namespace is None:
-                raise RuntimeError("Missing copy-on-write environment")
-
     def __post_init__(self) -> None:
-        if (
-            self.sandbox.copy_on_write_roots
-            and self._copy_on_write_environment is None
-            and self.sandbox.copy_on_write_namespace is None
-        ):
-            self._copy_on_write_environment = CopyOnWriteEnvironment(
-                self.sandbox.copy_on_write_roots
-            )
-            self._owns_copy_on_write = True
         self._helper = _HelperProcessClient(
             cwd=self.cwd,
             shell_path=self.shell_path,
@@ -894,7 +818,6 @@ class CallerProcessOSEnvironment(OSEnvironment):
             start_in_scratch=self._start_in_scratch,
             egress_rules=self._egress_rules,
             egress_allow_private_destinations=self._egress_allow_private_destinations,
-            copy_on_write_environment=self._copy_on_write_environment,
         )
 
     async def read(
@@ -970,8 +893,6 @@ class CallerProcessOSEnvironment(OSEnvironment):
 
     def close(self) -> None:
         self._helper.close()
-        if self._owns_copy_on_write and self._copy_on_write_environment is not None:
-            self._copy_on_write_environment.close()
         if self._fork_dir is not None:
             shutil.rmtree(self._fork_dir, ignore_errors=True)
             self._fork_dir = None
@@ -983,7 +904,6 @@ class CallerProcessOSEnvironment(OSEnvironment):
 def create_os_environment(
     spec: OSEnvSpec | None,
     *,
-    copy_on_write_environment: CopyOnWriteEnvironment | None = None,
     sandbox_policy: SandboxPolicy | None = None,
     additional_read_roots: Sequence[Path] = (),
 ) -> OSEnvironment | None:
@@ -1022,7 +942,6 @@ def create_os_environment(
         cwd=cwd,
         sandbox=sandbox,
         shell_path=shell_path,
-        _copy_on_write_environment=copy_on_write_environment,
         _fork_dir=fork_dir,
         _start_in_scratch=spec.start_in_scratch,
         _egress_rules=egress_rules,

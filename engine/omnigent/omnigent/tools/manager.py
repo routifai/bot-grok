@@ -98,10 +98,6 @@ class _SchemaOnlyTool(Tool):
         return self._schema
 
 
-class _UCFunctionSchemaTool(_SchemaOnlyTool):
-    """UC function metadata; execution uses the runner's SQL Statement Execution API."""
-
-
 class ToolManager:
     """Registry-based tool manager for a single workflow execution.
 
@@ -711,15 +707,8 @@ class ToolManager:
         # ``parameters`` block from the spec — schema visible to the
         # LLM, dispatch short-circuited to ``action_required`` via
         # :meth:`is_client_side_tool`.
-        server_local_tools = [
-            t
-            for t in self._spec.local_tools
-            if t.runtime not in (ToolRuntime.CLIENT, ToolRuntime.UC_FUNCTION)
-        ]
+        server_local_tools = [t for t in self._spec.local_tools if t.runtime != ToolRuntime.CLIENT]
         client_local_tools = [t for t in self._spec.local_tools if t.runtime == ToolRuntime.CLIENT]
-        uc_function_tools = [
-            t for t in self._spec.local_tools if t.runtime == ToolRuntime.UC_FUNCTION
-        ]
         for client_info in client_local_tools:
             if not is_valid_tool_name(client_info.name):
                 _logger.warning(
@@ -757,38 +746,6 @@ class ToolManager:
             }
             self._tools[client_info.name] = ClientSideTool(
                 ClientSideToolSpec(name=client_info.name, schema=schema),
-            )
-        # UC function tools — dispatched by the runner via the SQL
-        # Statement Execution API. The tool manager only needs to
-        # expose the schema to the LLM; actual execution goes
-        # through ``_execute_uc_function_tool`` in tool_dispatch.
-        for uc_info in uc_function_tools:
-            if not is_valid_tool_name(uc_info.name):
-                _logger.warning(
-                    "UC function tool %r has invalid name — skipping",
-                    uc_info.name,
-                )
-                continue
-            if uc_info.name in self._tools:
-                raise ValueError(
-                    f"UC function tool {uc_info.name!r} collides with an already-registered tool"
-                )
-            uc_schema: dict[str, Any] = {
-                "type": "function",
-                "function": {
-                    "name": uc_info.name,
-                    "parameters": uc_info.parameters
-                    or {
-                        "type": "object",
-                        "properties": {},
-                    },
-                },
-            }
-            if uc_info.description:
-                uc_schema["function"]["description"] = uc_info.description
-            self._tools[uc_info.name] = _UCFunctionSchemaTool(
-                tool_name=uc_info.name,
-                schema=uc_schema,
             )
         # Native Omnigent local tools (``language == "python"``) need a
         # workdir on disk so the subprocess loader can locate the

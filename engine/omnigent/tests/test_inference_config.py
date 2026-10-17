@@ -21,7 +21,7 @@ from omnigent.inference_config import (
     resolve_bound_provider,
     snapshot_runtime_config,
 )
-from omnigent.spec.types import ApiKeyAuth, DatabricksAuth, ProviderAuth
+from omnigent.spec.types import ApiKeyAuth, ProviderAuth
 
 
 @pytest.fixture(autouse=True)
@@ -222,19 +222,11 @@ def test_rejects_nonmapping_providers() -> None:
         parse_inference_config(config)
 
 
-def test_unavailable_bound_provider_does_not_fall_back() -> None:
-    config = _config(pi={"provider": "future-cli"})
-    config["providers"]["future-cli"] = {"kind": "cli-config", "cli": "future"}
-    with pytest.raises(OmnigentError, match="unavailable"):
-        resolve_bound_provider(config, "pi")
-
-
 @pytest.mark.parametrize(
     "auth",
     [
         ProviderAuth(name="unity"),
         ApiKeyAuth(api_key="synthetic-test-token", base_url="https://other.example/v1"),
-        DatabricksAuth(profile="synthetic-profile"),
         {"type": "provider", "name": "bifrost"},
     ],
 )

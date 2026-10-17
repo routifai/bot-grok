@@ -1046,109 +1046,6 @@ async def _execute_spec_callable_tool(
     return str(result) if result is not None else ""
 
 
-# ── Unity Catalog function dispatch ───────────────────────────
-#
-# UC function tools are declared with ``catalog_path:`` in the YAML
-# and executed via the Databricks SQL Statement Execution API.
-
-
-def _is_uc_function_tool(
-    tool_name: str,
-    agent_spec: AgentSpec | None,
-) -> bool:
-    """
-    Check whether *tool_name* is a UC function tool in the spec.
-
-    :param tool_name: Tool name from the LLM, e.g.
-        ``"classify_text"``.
-    :param agent_spec: The session's :class:`AgentSpec`. ``None``
-        when no spec is available.
-    :returns: ``True`` if the tool is a
-        :attr:`ToolRuntime.UC_FUNCTION` tool.
-    """
-    if agent_spec is None:
-        return False
-    local_tools = agent_spec.local_tools
-    from omnigent.spec.types import ToolRuntime
-
-    return any(
-        lt.name == tool_name and lt.runtime == ToolRuntime.UC_FUNCTION for lt in local_tools
-    )
-
-
-def _resolve_uc_profile(agent_spec: AgentSpec) -> str | None:
-    """
-    Extract the Databricks profile from the agent spec's executor
-    auth configuration.
-
-    Checks ``executor.auth`` (preferred) then falls back to
-    ``executor.profile`` (deprecated) and finally
-    ``executor.config["profile"]`` (compat bridge).
-
-    :param agent_spec: The session's :class:`AgentSpec`.
-    :returns: The profile name, e.g. ``"oss"``, or ``None`` for
-        SDK default resolution.
-    """
-    executor = agent_spec.executor
-    # Preferred: executor.auth.profile (DatabricksAuth).
-    auth = executor.auth
-    auth_profile = getattr(auth, "profile", None)
-    if isinstance(auth_profile, str) and auth_profile:
-        return auth_profile
-    # Deprecated: executor.profile.
-    if executor.profile:
-        return executor.profile
-    # Compat bridge: executor.config["profile"].
-    config = _string_object_dict(getattr(executor, "config", None))
-    if config is None:
-        return None
-    profile = config.get("profile")
-    return profile if isinstance(profile, str) and profile else None
-
-
-async def _execute_uc_function_tool(
-    tool_name: str,
-    args: _JsonObject,
-    *,
-    agent_spec: AgentSpec | None = None,
-) -> str:
-    """
-    Execute a Unity Catalog function tool and return the output
-    string.
-
-    Resolves the ``catalog_path`` from the spec's ``local_tools``,
-    extracts the Databricks profile and warehouse ID from the
-    executor config, then delegates to
-    :func:`omnigent.runner.uc_function.execute_uc_function`.
-
-    :param tool_name: Tool name from the LLM, e.g.
-        ``"classify_text"``.
-    :param args: Parsed argument dict from the LLM.
-    :param agent_spec: The session's :class:`AgentSpec`. Must not
-        be ``None`` (caller checks via :func:`_is_uc_function_tool`
-        first).
-    :returns: Tool output as a string, or an error message.
-    """
-    from omnigent.runner.uc_function import execute_uc_function
-
-    if agent_spec is None:
-        return f"Error: {tool_name} is not a UC function tool"
-    local_tools = agent_spec.local_tools
-    tool_info = next((lt for lt in local_tools if lt.name == tool_name), None)
-    if tool_info is None or tool_info.catalog_path is None:
-        return f"Error: {tool_name} is not a UC function tool"
-
-    profile = _resolve_uc_profile(agent_spec)
-    warehouse_id = getattr(tool_info, "warehouse_id", None)
-
-    return await execute_uc_function(
-        catalog_path=tool_info.catalog_path,
-        args=args,
-        profile=profile,
-        warehouse_id=warehouse_id,
-    )
-
-
 @dataclass(frozen=True)
 class _SubagentLabel:
     """
@@ -6667,24 +6564,6 @@ async def execute_tool(
         )
         if refusal is not None:
             return json.dumps({"error": refusal})
-    from omnigent.sandbox.copy_on_write import has_copy_on_write
-
-    disposable = has_copy_on_write(getattr(agent_spec, "os_env", None)) or bool(
-        resource_registry is not None
-        and conversation_id is not None
-        and resource_registry.uses_copy_on_write(conversation_id)
-    )
-    if disposable and (
-        tool_name in _SKILL_TOOLS
-        or tool_name in {UploadFileTool.name(), "sys_agent_download", "sys_agent_list"}
-        or (tool_name == "sys_session_create" and args.get("config_path"))
-    ):
-        return json.dumps(
-            {
-                "error": f"{tool_name} does not yet support copy_on_write environments; "
-                "use sys_os_* tools and an inherited terminal for filesystem operations"
-            }
-        )
     try:
         if mcp_manager is not None:
             # All MCP tool calls are routed through the AP server's
@@ -6698,7 +6577,6 @@ async def execute_tool(
             output = await _execute_os_env_tool(
                 tool_name,
                 args,
-                resource_registry=resource_registry,
                 agent_spec=agent_spec,
                 conversation_id=conversation_id,
                 runner_workspace=runner_workspace,
@@ -6893,8 +6771,6 @@ async def execute_tool(
                     else cast(Path | None, local_tool_workdir)
                 ),
             )
-        elif _is_uc_function_tool(tool_name, agent_spec):
-            output = await _execute_uc_function_tool(tool_name, args, agent_spec=agent_spec)
         else:
             output = await _execute_spec_callable_tool(tool_name, args, agent_spec=agent_spec)
     except Exception as exc:
@@ -7245,7 +7121,6 @@ async def _execute_os_env_tool(
     conversation_id: str | None = None,
     runner_workspace: Path | None = None,
     filesystem_registry: FilesystemRegistry | None = None,
-    resource_registry: SessionResourceRegistry | None = None,
 ) -> str:
     """
     Execute sys_os_* through a runner-local OSEnvironment.
@@ -7269,25 +7144,11 @@ async def _execute_os_env_tool(
     from omnigent.inner.os_env import _DEFAULT_READ_LIMIT, create_os_environment
 
     os_env = None
-    owns_environment = True
     try:
         effective_spec = _effective_runner_os_env_spec(
             agent_spec, conversation_id, runner_workspace
         )
-        needs_shared_environment = effective_spec.sandbox is not None and any(
-            p.copy_on_write for p in effective_spec.sandbox.write_path_specs
-        )
-        if needs_shared_environment:
-            if resource_registry is None or conversation_id is None:
-                raise ValueError("copy_on_write tools require a session resource registry")
-            from omnigent.entities import DEFAULT_ENVIRONMENT_ID
-
-            os_env = resource_registry.resolve_environment(
-                conversation_id, DEFAULT_ENVIRONMENT_ID, agent_spec
-            )
-            owns_environment = False
-        else:
-            os_env = create_os_environment(effective_spec)
+        os_env = create_os_environment(effective_spec)
         if os_env is None:
             return "Error: unable to create OSEnvironment"
 
@@ -7346,7 +7207,7 @@ async def _execute_os_env_tool(
         )
         return json.dumps({"error": str(exc)})
     finally:
-        if os_env is not None and owns_environment:
+        if os_env is not None:
             os_env.close()
 
     return json.dumps(result)

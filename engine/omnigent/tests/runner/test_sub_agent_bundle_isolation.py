@@ -9,7 +9,7 @@ tools it has no claim to.
 These tests cover the harness-facing surfaces that carry a bundle dir:
 
 * the SDK / subprocess harnesses, via ``HARNESS_*_BUNDLE_DIR`` in the
-  spawn-env (claude-sdk, codex, pi);
+  spawn-env (claude-sdk, pi);
 * the native TUI harness, via the launch inputs of the auto-create
   path (claude-native's ``--plugin-dir``);
 * the turn-dispatch spec cache, which must keep the resolved entry
@@ -44,7 +44,6 @@ from tests.runner.helpers import NullServerClient
 # The env var each wrapped harness uses to advertise its bundle dir.
 _BUNDLE_DIR_ENV = {
     "claude-sdk": "HARNESS_CLAUDE_SDK_BUNDLE_DIR",
-    "codex": "HARNESS_CODEX_BUNDLE_DIR",
     "pi": "HARNESS_PI_BUNDLE_DIR",
 }
 
@@ -174,7 +173,7 @@ async def test_child_harness_still_wins_over_the_parents(tmp_path: Path) -> None
     the bundle-dir fix rides the same resolution and must preserve that.
     """
     root = _write_agent(tmp_path / "root", "root", harness="claude-sdk")
-    _write_agent(root / "agents" / "worker", "worker", harness="codex")
+    _write_agent(root / "agents" / "worker", "worker", harness="pi")
 
     async def _resolver(agent_id: str, session_id: str | None) -> Any:
         return ResolvedSpec(spec=parse(root), workdir=root)
@@ -186,9 +185,9 @@ async def test_child_harness_still_wins_over_the_parents(tmp_path: Path) -> None
         sub_agent_name="worker",
     )
 
-    assert harness == "codex"
+    assert harness == "pi"
     assert spawn_env is not None
-    assert spawn_env["HARNESS_CODEX_BUNDLE_DIR"] == str(root / "agents" / "worker")
+    assert spawn_env["HARNESS_PI_BUNDLE_DIR"] == str(root / "agents" / "worker")
 
 
 # ── Native harnesses: launch-time bundle root ─────────────────

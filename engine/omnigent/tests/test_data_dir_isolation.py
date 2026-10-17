@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 
 from omnigent import cli
-from omnigent.host import local_server
 
 
 def test_pytest_uses_an_isolated_omnigent_data_dir() -> None:
@@ -15,6 +14,5 @@ def test_pytest_uses_an_isolated_omnigent_data_dir() -> None:
     real_data_dir = (Path.home() / ".omnigent").resolve()
 
     assert test_data_dir != real_data_dir
-    assert local_server._LOCAL_SERVER_PID_PATH.resolve().is_relative_to(test_data_dir)
     assert cli._HOST_PID_PATH.resolve().is_relative_to(test_data_dir)
     assert cli._daemon_registry_dir().resolve().is_relative_to(test_data_dir)

@@ -8,7 +8,6 @@ by the pty-driver tests in this directory).
 
 from __future__ import annotations
 
-import logging
 import re
 import sys
 from collections.abc import Iterable
@@ -31,84 +30,6 @@ def _formatted_text_plain(fragments: Iterable[tuple[str, str]]) -> str:
     :returns: Concatenated text payload without style names.
     """
     return "".join(text for _style, text in fragments)
-
-
-@pytest.mark.asyncio
-async def test_aenter_logs_stderr_redirect_failures(
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """
-    Stderr redirect setup failures must be logged, not silently swallowed.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :param caplog: Pytest log capture fixture.
-    :returns: ``None``.
-    """
-
-    def _raise_redirect_failure() -> None:
-        """
-        Stand in for a failed diagnostics stderr redirect.
-
-        :returns: ``None``.
-        :raises RuntimeError: Always, to exercise host logging.
-        """
-        raise RuntimeError("redirect failed")
-
-    monkeypatch.setattr(
-        "omnigent.cli_diagnostics.redirect_stderr_to_log",
-        _raise_redirect_failure,
-    )
-    host = TerminalHost(model_name="test")
-
-    with caplog.at_level(logging.ERROR, logger="omnigent_ui_sdk.terminal._host"):
-        async with host:
-            pass
-
-    expected = "Failed to redirect stderr to the CLI diagnostics log: redirect failed"
-    assert expected in caplog.text, (
-        f"TerminalHost.__aenter__ swallowed stderr redirect failures instead "
-        f"of logging them: {caplog.text!r}"
-    )
-
-
-@pytest.mark.asyncio
-async def test_aexit_logs_stderr_restore_failures(
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """
-    Stderr restore failures must be logged, not silently swallowed.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :param caplog: Pytest log capture fixture.
-    :returns: ``None``.
-    """
-
-    def _raise_restore_failure() -> None:
-        """
-        Stand in for a failed diagnostics stderr restore.
-
-        :returns: ``None``.
-        :raises RuntimeError: Always, to exercise host logging.
-        """
-        raise RuntimeError("restore failed")
-
-    monkeypatch.setattr(
-        "omnigent.cli_diagnostics.restore_stderr",
-        _raise_restore_failure,
-    )
-    host = TerminalHost(model_name="test")
-
-    with caplog.at_level(logging.ERROR, logger="omnigent_ui_sdk.terminal._host"):
-        async with host:
-            pass
-
-    expected = "Failed to restore stderr from the CLI diagnostics log: restore failed"
-    assert expected in caplog.text, (
-        f"TerminalHost.__aexit__ swallowed stderr restore failures instead "
-        f"of logging them: {caplog.text!r}"
-    )
 
 
 def test_clear_streamed_text_drops_unflushed_partial_buffer(

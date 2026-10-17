@@ -56,10 +56,9 @@ def get_installation_id() -> str | None:
 
 def _telemetry_file_path() -> Path:
     """Return the path to the telemetry JSON file."""
-    # Late import to avoid a circular import at module load time.
-    from omnigent.host.local_server import _local_data_dir
+    from omnigent.process_logging import data_dir
 
-    return _local_data_dir() / "telemetry.json"
+    return data_dir() / "telemetry.json"
 
 
 def _load_from_disk() -> str | None:

@@ -25,8 +25,6 @@ from omnigent.inner.datamodel import (
     CredentialProxyEntry,
     CredentialProxySpec,
     CredentialSourceSpec,
-    DatabricksProfileBinding,
-    DatabricksProxySpec,
     OSEnvSandboxSpec,
     OSEnvSpec,
     TerminalEnvSpec,
@@ -39,7 +37,6 @@ from omnigent.spec.types import (
     ApiKeyAuth,
     BuiltinToolConfig,
     CompactionConfig,
-    DatabricksAuth,
     ExecutorSpec,
     FunctionPolicySpec,
     FunctionRef,
@@ -277,9 +274,6 @@ def parse(root: Path, *, expand_env: bool = True) -> AgentSpec:
     compaction = _parse_compaction(raw.get("compaction"))
     guardrails = _parse_guardrails(raw.get("guardrails"), expand_env=expand_env)
     os_env = _parse_os_env(raw.get("os_env"))
-    from omnigent.sandbox.copy_on_write import validate_copy_on_write_harness
-
-    validate_copy_on_write_harness(os_env, executor.harness_kind)
     terminals = _parse_terminals(raw.get("terminals"))
     params = raw.get("params", {})
     # Top-level ``async:`` flag gates the LLM-callable async-dispatch
@@ -760,7 +754,7 @@ def _parse_executor_auth(
     raw: dict[str, object],
     *,
     expand_env: bool = True,
-) -> ApiKeyAuth | DatabricksAuth | ProviderAuth | None:
+) -> ApiKeyAuth | ProviderAuth | None:
     """
     Parse the ``executor.auth:`` block into a typed auth dataclass.
 
@@ -772,7 +766,6 @@ def _parse_executor_auth(
     - ``type: api_key`` — requires ``api_key``.  Env-var references
       (e.g. ``$OPENAI_API_KEY``) are expanded when *expand_env* is
       ``True``.
-    - ``type: databricks`` — requires ``profile``.
     - ``type: provider`` — requires ``name`` (a provider declared in
       the ``providers:`` block of ``~/.omnigent/config.yaml``).
 
@@ -782,8 +775,8 @@ def _parse_executor_auth(
     :param expand_env: Whether to expand ``${VAR}`` / ``$VAR`` references
         in the ``api_key`` value. ``True`` for runtime; ``False`` for
         scaffolding / validation where env vars may not be set yet.
-    :returns: A populated :class:`ApiKeyAuth`, :class:`DatabricksAuth`,
-        or :class:`ProviderAuth`, or ``None`` when ``auth:`` is absent.
+    :returns: A populated :class:`ApiKeyAuth` or :class:`ProviderAuth`,
+        or ``None`` when ``auth:`` is absent.
     :raises OmnigentError: If the ``auth:`` block is present but
         malformed (unknown type, missing required field).
     """
@@ -792,7 +785,7 @@ def _parse_executor_auth(
         return None
     if not isinstance(raw_auth, dict):
         raise OmnigentError(
-            "executor.auth must be a mapping, e.g. {type: databricks, profile: oss}",
+            "executor.auth must be a mapping, e.g. {type: provider, name: litellm}",
             code=ErrorCode.INVALID_INPUT,
         )
     auth_type = str(raw_auth.get("type", ""))
@@ -814,14 +807,6 @@ def _parse_executor_auth(
                 else raw_base_url_str
             )
         return ApiKeyAuth(api_key=api_key, base_url=base_url)
-    if auth_type == "databricks":
-        profile_val = str(raw_auth.get("profile") or "")
-        if not profile_val:
-            raise OmnigentError(
-                "executor.auth.profile is required when type is 'databricks'",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        return DatabricksAuth(profile=profile_val)
     if auth_type == "provider":
         name_val = str(raw_auth.get("name") or "")
         if not name_val:
@@ -831,7 +816,7 @@ def _parse_executor_auth(
             )
         return ProviderAuth(name=name_val)
     raise OmnigentError(
-        f"executor.auth.type must be 'api_key', 'databricks', or 'provider', got {auth_type!r}",
+        f"executor.auth.type must be 'api_key' or 'provider', got {auth_type!r}",
         code=ErrorCode.INVALID_INPUT,
     )
 
@@ -1033,12 +1018,6 @@ def _parse_os_env_sandbox(
         parsed_write_paths = parse_write_paths(write_paths_raw)
     except ValueError as exc:
         raise OmnigentError(str(exc), code=ErrorCode.INVALID_INPUT) from exc
-    if sandbox_type != "linux_bwrap" and any(
-        not isinstance(p, str) and p.copy_on_write for p in parsed_write_paths or []
-    ):
-        raise OmnigentError(
-            "copy_on_write requires sandbox.type=linux_bwrap", code=ErrorCode.INVALID_INPUT
-        )
     if egress_rules and sandbox_type not in ("linux_bwrap", "darwin_seatbelt"):
         raise OmnigentError(
             "os_env.sandbox.egress_rules requires sandbox.type=linux_bwrap "
@@ -1530,14 +1509,12 @@ class _CredentialProxyItemModel(BaseModel):  # type: ignore[explicit-any]
 
     model_config = ConfigDict(extra="forbid")
 
-    type: Literal["https_bearer", "https_basic", "git_https", "gh_basic", "databricks_cli"]
+    type: Literal["https_bearer", "https_basic", "git_https", "gh_basic"]
     source: _CredentialSourceModel | None = None
     target: str | None = None
     targets: list[str] | None = None
     env: str | None = None
     username: str | None = None
-    profiles: list[str] | None = None
-    default: str | None = None
 
     @field_validator("env")
     @classmethod
@@ -1576,23 +1553,14 @@ class _CredentialProxyItemModel(BaseModel):  # type: ignore[explicit-any]
         ``targets``; ``gh_basic`` allows neither (it defaults to the
         GitHub git + API hosts) but not both. The ``env`` shim is only
         meaningful for the ``https_*`` primitives, and ``username`` only
-        applies to the Basic schemes. ``databricks_cli`` is profile-keyed:
-        it takes ``profiles`` (+ optional ``default``) and none of the
-        host-keyed fields (``source`` is implicit — the profile).
+        applies to the Basic schemes.
 
         :returns: ``self`` once validated.
         :raises ValueError: On a cardinality violation or a per-type
             option that does not apply.
         """
-        if self.type == "databricks_cli":
-            return self._check_databricks_cli()
-        # The host-keyed types resolve their secret from an explicit source.
         if self.source is None:
             raise ValueError("source is required")
-        if self.profiles is not None:
-            raise ValueError(f"{self.type} does not accept 'profiles'")
-        if self.default is not None:
-            raise ValueError(f"{self.type} does not accept 'default'")
         has_target = self.target is not None
         has_targets = self.targets is not None
         if has_targets and not self.targets:
@@ -1606,44 +1574,6 @@ class _CredentialProxyItemModel(BaseModel):  # type: ignore[explicit-any]
             raise ValueError(f"{self.type} does not accept an 'env' injection shim")
         if self.username is not None and self.type == "https_bearer":
             raise ValueError("https_bearer does not accept a 'username'")
-        return self
-
-    def _check_databricks_cli(self) -> _CredentialProxyItemModel:
-        """
-        Validate a ``databricks_cli`` entry.
-
-        The Databricks CLI is profile-keyed: it takes a non-empty
-        ``profiles`` list and an optional ``default`` (which must be one of
-        the listed profiles). The host-keyed fields (``source`` — resolved
-        from the profile — ``target``/``targets``, ``env``, ``username``)
-        do not apply and are rejected so typos fail loud.
-
-        :returns: ``self`` once validated.
-        :raises ValueError: On a missing/empty/duplicate profile, a
-            ``default`` outside ``profiles``, or a host-keyed field set.
-        """
-        for name, value in (
-            ("source", self.source),
-            ("target", self.target),
-            ("targets", self.targets),
-            ("env", self.env),
-            ("username", self.username),
-        ):
-            if value is not None:
-                raise ValueError(f"databricks_cli does not accept {name!r}")
-        if not self.profiles:
-            raise ValueError("databricks_cli requires a non-empty 'profiles' list")
-        seen: set[str] = set()
-        for profile in self.profiles:
-            if not profile or not profile.strip():
-                raise ValueError("databricks_cli 'profiles' entries must be non-empty strings")
-            if profile in seen:
-                raise ValueError(f"databricks_cli lists profile {profile!r} more than once")
-            seen.add(profile)
-        if self.default is not None and self.default not in self.profiles:
-            raise ValueError(
-                f"databricks_cli 'default' {self.default!r} must be one of 'profiles'"
-            )
         return self
 
 
@@ -1717,9 +1647,6 @@ def _parse_credential_proxy(raw: object) -> CredentialProxySpec | None:
     if not raw:
         return None
     entries: list[CredentialProxyEntry] = []
-    databricks_profiles: list[DatabricksProfileBinding] = []
-    databricks_default: str | None = None
-    databricks_seen: set[str] = set()
     for i, item in enumerate(raw):
         try:
             model = _CredentialProxyItemModel.model_validate(item)
@@ -1729,15 +1656,6 @@ def _parse_credential_proxy(raw: object) -> CredentialProxySpec | None:
                 f"{_format_validation_error(exc)}",
                 code=ErrorCode.INVALID_INPUT,
             ) from exc
-        if model.type == "databricks_cli":
-            databricks_default = _merge_databricks_cli(
-                model,
-                profiles=databricks_profiles,
-                seen=databricks_seen,
-                current_default=databricks_default,
-                index=i,
-            )
-            continue
         assert model.source is not None  # guaranteed by the model validator
         source = model.source.to_spec()
         if model.type == "gh_basic":
@@ -1751,8 +1669,7 @@ def _parse_credential_proxy(raw: object) -> CredentialProxySpec | None:
     # Fail loud on conflicting host bindings. The egress proxy keys its
     # rewrite table by host, so two entries binding the same host would
     # silently last-win (one credential dropped). Reject it at parse time
-    # rather than picking a binding nondeterministically. (Databricks
-    # hosts are resolved at runtime, so their collision guard lives there.)
+    # rather than picking a binding nondeterministically.
     seen_hosts: dict[str, str] = {}
     for entry in entries:
         host_key = entry.host.lower()
@@ -1765,65 +1682,9 @@ def _parse_credential_proxy(raw: object) -> CredentialProxySpec | None:
                 code=ErrorCode.INVALID_INPUT,
             )
         seen_hosts[host_key] = entry.host
-    databricks = (
-        DatabricksProxySpec(profiles=databricks_profiles, default=databricks_default)
-        if databricks_profiles
-        else None
-    )
-    if not entries and databricks is None:
+    if not entries:
         return None
-    return CredentialProxySpec(entries=entries, databricks=databricks)
-
-
-def _merge_databricks_cli(
-    model: _CredentialProxyItemModel,
-    *,
-    profiles: list[DatabricksProfileBinding],
-    seen: set[str],
-    current_default: str | None,
-    index: int,
-) -> str | None:
-    """
-    Merge one validated ``databricks_cli`` entry into the shared profile list.
-
-    Multiple ``databricks_cli`` entries are allowed and coalesced into a
-    single :class:`DatabricksProxySpec`. Profile names must be unique
-    across every entry (each profile maps to one materialized cfg section
-    and one workspace-host binding), and at most one ``default`` may be
-    declared in total.
-
-    :param model: The validated entry; ``profiles`` is non-empty and
-        ``default`` (if set) is one of them.
-    :param profiles: Accumulator of bindings, mutated in place.
-    :param seen: Accumulator of profile names already claimed.
-    :param current_default: The default declared by a prior entry, or
-        ``None``.
-    :param index: Entry index for error messages.
-    :returns: The (possibly updated) default profile name.
-    :raises OmnigentError: On a duplicate profile across entries or a
-        second conflicting ``default``.
-    """
-    assert model.profiles is not None  # guaranteed by the model validator
-    for profile in model.profiles:
-        if profile in seen:
-            raise OmnigentError(
-                f"os_env.sandbox.credential_proxy[{index}] lists Databricks "
-                f"profile {profile!r} which is already proxied by another "
-                "databricks_cli entry; each profile may appear once.",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        seen.add(profile)
-        profiles.append(DatabricksProfileBinding(profile=profile))
-    if model.default is not None:
-        if current_default is not None and current_default != model.default:
-            raise OmnigentError(
-                "os_env.sandbox.credential_proxy declares conflicting "
-                f"databricks_cli defaults ({current_default!r} and "
-                f"{model.default!r}); declare at most one default profile.",
-                code=ErrorCode.INVALID_INPUT,
-            )
-        return model.default
-    return current_default
+    return CredentialProxySpec(entries=entries)
 
 
 def _credential_proxy_macos_unsupported_reason(
@@ -1849,30 +1710,16 @@ def _credential_proxy_macos_unsupported_reason(
     the original ``type`` keeps this check independent of how the presets
     normalize into bindings.
 
-    ``databricks_cli`` fails on macOS for the same reason — the ``databricks``
-    CLI is also a Go binary — so it is rejected here too.
-
     :param credential_proxy: Parsed credential-proxy spec, or ``None`` when the
         ``credential_proxy:`` field is absent.
     :param sandbox_type: Resolved sandbox backend, e.g. ``"darwin_seatbelt"``
         (macOS) or ``"linux_bwrap"`` (Linux).
     :returns: A human-readable rejection message when a ``gh_basic`` (i.e. a
-        ``token``-scheme) binding or a ``databricks_cli`` policy is configured
-        on ``darwin_seatbelt``, else ``None``.
+        ``token``-scheme) binding is configured on ``darwin_seatbelt``, else
+        ``None``.
     """
     if credential_proxy is None or sandbox_type != "darwin_seatbelt":
         return None
-    if credential_proxy.databricks is not None:
-        return (
-            "os_env.sandbox.credential_proxy type 'databricks_cli' does not work "
-            "on macOS (sandbox.type=darwin_seatbelt). The 'databricks' CLI is a Go "
-            "binary, and Go on macOS verifies TLS against the system keychain "
-            "(Security.framework) and ignores SSL_CERT_FILE -- the environment "
-            "variable the egress MITM proxy uses to publish its CA to sandboxed "
-            "tools. Every 'databricks' call would fail with 'certificate is not "
-            "trusted'. Use sandbox.type=linux_bwrap (Go honors SSL_CERT_FILE on "
-            "Linux)."
-        )
     if not any(entry.scheme == "token" for entry in credential_proxy.entries):
         return None
     return (
@@ -2722,8 +2569,8 @@ def _parse_inline_mcp_servers(
 
     Transport is inferred: ``command`` present → ``"stdio"``,
     ``url`` present → ``"http"``. Entries where neither is present
-    (e.g. ``databricks_server``-only Databricks MCPs) are skipped —
-    they don't have a local spawn or SSE endpoint to display.
+    are skipped — they don't have a local spawn or SSE endpoint to
+    display.
 
     :param raw_tools: The raw value of the top-level ``tools:`` key
         in config.yaml. ``None`` or a non-dict value returns an empty
@@ -2752,8 +2599,7 @@ def _parse_inline_mcp_servers(
         elif url is not None:
             transport = "http"
         else:
-            # Databricks-managed server or unknown shape — no local
-            # endpoint to display; skip.
+            # Unknown shape — no local endpoint to display; skip.
             continue
         raw_args = val.get("args", [])
         args = [str(a) for a in raw_args] if isinstance(raw_args, list) else []
@@ -2773,19 +2619,6 @@ def _parse_inline_mcp_servers(
                 code=ErrorCode.INVALID_INPUT,
             )
         env = expand_env_vars(raw_env) if expand_env and raw_env else raw_env
-        # Optional Databricks auth — resolves a bearer token at
-        # connection time from ~/.databrickscfg.
-        raw_auth = val.get("auth")
-        databricks_profile: str | None = None
-        if isinstance(raw_auth, dict) and str(raw_auth.get("type", "")) == "databricks":
-            raw_profile = raw_auth.get("profile")
-            if raw_profile is None:
-                raise OmnigentError(
-                    f"Inline MCP server {name!r} auth type 'databricks' "
-                    f"requires a 'profile' field",
-                    code=ErrorCode.INVALID_INPUT,
-                )
-            databricks_profile = str(raw_profile)
         servers.append(
             MCPServerConfig(
                 name=name,
@@ -2799,7 +2632,6 @@ def _parse_inline_mcp_servers(
                 args=args,
                 headers=headers,
                 env=env,
-                databricks_profile=databricks_profile,
                 tools=_parse_mcp_tool_allowlist(name, val, "inline MCP server"),
             )
         )

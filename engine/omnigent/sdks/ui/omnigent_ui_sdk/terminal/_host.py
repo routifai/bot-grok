@@ -1530,16 +1530,6 @@ class TerminalHost:
 
     async def __aenter__(self) -> TerminalHost:
         self._try_set_window_title()
-        # Redirect stderr to the CLI log file so stray logging,
-        # warnings, or third-party print(..., file=sys.stderr)
-        # calls don't paint into the prompt-toolkit screen.
-        # Restored in __aexit__.
-        try:
-            from omnigent.cli_diagnostics import redirect_stderr_to_log
-
-            redirect_stderr_to_log()
-        except Exception as err:
-            _log.exception("Failed to redirect stderr to the CLI diagnostics log: %s", err)
         return self
 
     async def _drain_pending_handlers(self) -> None:
@@ -1576,15 +1566,6 @@ class TerminalHost:
             pass
 
     async def __aexit__(self, *exc: object) -> None:
-        # Restore stderr first — everything below (drain, cancel)
-        # may log or raise, and those should go to the real terminal
-        # now that the TUI is tearing down.
-        try:
-            from omnigent.cli_diagnostics import restore_stderr
-
-            restore_stderr()
-        except Exception as err:
-            _log.exception("Failed to restore stderr from the CLI diagnostics log: %s", err)
         # Clear the title before the drain so it reverts even if a
         # handler blocks for the full 30s budget below.
         self._try_clear_window_title()

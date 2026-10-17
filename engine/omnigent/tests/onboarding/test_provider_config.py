@@ -153,47 +153,6 @@ def _write_codex_toml(home: Path, body: str) -> None:
     (codex_dir / "config.toml").write_text(body, encoding="utf-8")
 
 
-def test_default_provider_for_pi_skips_cli_config_default(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """A cli-config default is skipped for pi, while codex still takes it.
-
-    A cli-config entry pins a provider table in ~/.codex/config.toml that pi
-    cannot consume, so pi resolves no default (the REPL header / setup must
-    show pi credential-less).
-    """
-    _write_codex_toml(
-        tmp_path,
-        """
-model_provider = "Databricks"
-
-[model_providers.Databricks]
-name = "Some Other Proxy"
-base_url = "https://proxy.example.com/v1"
-
-[model_providers.Databricks.auth]
-command = "printf"
-args = ["%s", "sk-static"]
-""",
-    )
-    monkeypatch.setenv("HOME", str(tmp_path))
-
-    config = {
-        "providers": {
-            "codex-databricks": {
-                "kind": "cli-config",
-                "default": True,
-                "cli": "codex",
-                "model_provider": "Databricks",
-            },
-        }
-    }
-    # A cli-config is not pi-consumable → pi falls back to None.
-    assert default_provider_for_harness(config, "pi") is None
-    # The codex harness still takes the cli-config default.
-    assert default_provider_for_harness(config, "codex").name == "codex-databricks"
-
-
 # ── the pi default scope ──────────────────────────────────────────────
 
 
@@ -428,98 +387,6 @@ def test_surface_default_model_prefers_anthropic_for_pi() -> None:
 # ── cli-config kind: parsing, families, readout ─────────────────────────────
 
 
-def test_parse_cli_config_entry() -> None:
-    """A cli-config entry parses with its pin fields and openai family.
-
-    Failure means adoption-written entries stop loading (every configure
-    open would crash) or the entry loses its harness surface.
-    """
-    from omnigent.onboarding.provider_config import load_providers, provider_families
-
-    entry = load_providers(
-        {
-            "providers": {
-                "codex-databricks": {
-                    "kind": "cli-config",
-                    "cli": "codex",
-                    "model_provider": "Databricks",
-                    "display_name": "Databricks AI Gateway",
-                    "default": True,
-                }
-            }
-        }
-    )["codex-databricks"]
-    assert entry.kind == "cli-config"
-    assert entry.cli == "codex"
-    assert entry.model_provider == "Databricks"
-    assert entry.display_name == "Databricks AI Gateway"
-    # A codex cli-config serves the openai surface only: it never claims the
-    # pi scope.
-    assert provider_families(entry) == frozenset({OPENAI_FAMILY})
-    assert entry.default_families == frozenset({OPENAI_FAMILY})
-
-
-@pytest.mark.parametrize(
-    "body,message_fragment",
-    [
-        # A `cli: codex` cli-config is recognized, so a missing model_provider
-        # (its whole point) is a real error and must fail loud. (An unrecognized
-        # cli like `claude` is instead SKIPPED by load_providers for forward
-        # compatibility — see
-        # test_load_providers_skips_unrecognized_cli_config_cli_without_raising —
-        # so it is intentionally NOT in this "fails loud" list.)
-        ({"kind": "cli-config", "cli": "codex"}, "'model_provider'"),
-    ],
-)
-def test_parse_cli_config_entry_invalid(body: dict[str, object], message_fragment: str) -> None:
-    """Malformed cli-config entries fail loud with a pointed message.
-
-    Failure means a broken entry would parse into a launch that pins
-    nothing (or the wrong CLI) at run time.
-    """
-    from omnigent.errors import OmnigentError
-    from omnigent.onboarding.provider_config import load_providers
-
-    with pytest.raises(OmnigentError, match=r"cli-config|model_provider|cli"):
-        load_providers({"providers": {"bad": body}})
-    try:
-        load_providers({"providers": {"bad": body}})
-    except OmnigentError as exc:
-        # The message names the missing/wrong field so the user can fix
-        # config.yaml without reading source.
-        assert message_fragment in str(exc)
-
-
-def test_describe_active_credential_cli_config() -> None:
-    """The /model readout describes a cli-config default truthfully.
-
-    Failure means the readout would crash on (or misname) an adopted
-    isaac-style provider.
-    """
-    from omnigent.onboarding.provider_config import describe_active_credential
-
-    config = {
-        "providers": {
-            "codex-databricks": {
-                "kind": "cli-config",
-                "cli": "codex",
-                "model_provider": "Databricks",
-                "default": True,
-            }
-        }
-    }
-    cred = describe_active_credential(config, "codex")
-    assert cred is not None
-    assert cred.kind == "cli-config"
-    assert cred.provider_name == "codex-databricks"
-    # The source names the file and the pinned provider — the two facts a
-    # user needs to find/edit the underlying credential.
-    assert cred.source == "~/.codex/config.toml provider: Databricks"
-    # No inline endpoint/model: both live in the CLI's own config.
-    assert cred.base_url is None
-    assert cred.model is None
-
-
 def test_bedrock_kind_rejected_for_non_native_harnesses() -> None:
     """`kind: bedrock` is native-`omnigent claude` only; in-process harnesses fail loud.
 
@@ -681,57 +548,6 @@ def test_provider_credential_env_vars_empty_for_keychain_and_auth_command() -> N
     assert provider_credential_env_vars(config) == frozenset()
 
 
-def test_load_providers_skips_unrecognized_cli_config_cli_without_raising() -> None:
-    """A `cli-config` entry naming an unknown CLI is skipped, not fatal.
-
-    This is the version-skew guard: the first attempt persisted a
-    `cli: claude` cli-config entry that OLDER runners' parser rejected, and
-    because `load_providers` had no per-entry isolation, that single entry
-    raised and crashed turn setup for EVERY harness. Now such an entry is
-    dropped with a warning and the rest of the config still loads.
-    """
-    from omnigent.onboarding.provider_config import load_providers
-
-    config = {
-        "providers": {
-            # The poison pill a newer build might write / that the reverted
-            # build left in the field.
-            "claude-databricks": {
-                "kind": "cli-config",
-                "cli": "claude",
-                "display_name": "Databricks AI Gateway",
-                "default": True,
-            },
-            "openai": {
-                "kind": "key",
-                "openai": {"api_key": "sk-x", "base_url": "https://api.openai.com/v1"},
-            },
-        }
-    }
-    parsed = load_providers(config)  # must NOT raise
-    assert set(parsed) == {"openai"}
-    assert "claude-databricks" not in parsed
-
-
-def test_load_providers_still_accepts_codex_cli_config() -> None:
-    """The recognized `cli: codex` cli-config still parses (no over-broad skip)."""
-    from omnigent.onboarding.provider_config import load_providers
-
-    parsed = load_providers(
-        {
-            "providers": {
-                "codex-databricks": {
-                    "kind": "cli-config",
-                    "cli": "codex",
-                    "model_provider": "Databricks",
-                }
-            }
-        }
-    )
-    assert parsed["codex-databricks"].cli == "codex"
-    assert parsed["codex-databricks"].model_provider == "Databricks"
-
-
 def test_load_providers_still_raises_on_malformed_known_shape() -> None:
     """Resilience is targeted: a malformed KNOWN shape still fails loud.
 
@@ -744,31 +560,6 @@ def test_load_providers_still_raises_on_malformed_known_shape() -> None:
 
     with pytest.raises(OmnigentError):
         load_providers({"providers": {"bad": {"kind": "key"}}})
-
-
-def test_claude_sdk_resolution_survives_stray_cli_config_claude_entry() -> None:
-    """The EXACT reverted failure: claude-sdk resolution over a poisoned config.
-
-    The revert stack was `_build_claude_sdk_spawn_env` →
-    `_resolve_provider_for_build` → `default_provider_for_harness("claude-sdk")`
-    → `load_providers` → raise. With resilience the stray entry is skipped, so
-    resolution returns the next usable anthropic default (or None) instead of
-    crashing every claude-sdk turn.
-    """
-    from omnigent.onboarding.provider_config import default_provider_for_harness
-
-    config = {
-        "providers": {
-            "claude-databricks": {"kind": "cli-config", "cli": "claude", "default": True},
-            "vendor-anthropic": {
-                "kind": "key",
-                "default": "anthropic",
-                "anthropic": {"api_key": "sk-x", "base_url": "https://api.anthropic.com"},
-            },
-        }
-    }
-    entry = default_provider_for_harness(config, "claude-sdk")  # must NOT raise
-    assert entry is not None and entry.name == "vendor-anthropic"
 
 
 def test_resolve_model_tier_follows_alias_chain() -> None:

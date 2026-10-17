@@ -21,8 +21,6 @@ def _capture_runs(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
         return subprocess.CompletedProcess(args, returncode, "", "")
 
     monkeypatch.setattr(service.subprocess, "run", _run)
-    monkeypatch.setattr(service, "_record_service", lambda installed: None)
-    monkeypatch.setattr(service, "_forget_service", lambda installed: None)
     return calls
 
 
@@ -107,7 +105,6 @@ def test_disable_launchd_tolerates_stale_print_during_async_unload(
         return subprocess.CompletedProcess(args, returncode, "", "")
 
     monkeypatch.setattr(service.subprocess, "run", _run)
-    monkeypatch.setattr(service, "_forget_service", lambda installed: None)
 
     removed = service.disable_user_host_service()
 
@@ -136,19 +133,16 @@ def test_disable_launchd_removes_plist_even_when_job_never_unloads(
     path = tmp_path / "Library/LaunchAgents/ai.omnigent.host.plist"
     path.parent.mkdir(parents=True)
     path.write_text("old")
-    forgotten: list[service.HostService] = []
 
     def _run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(args, 0, "", "")
 
     monkeypatch.setattr(service.subprocess, "run", _run)
-    monkeypatch.setattr(service, "_forget_service", forgotten.append)
 
     with pytest.raises(service.HostServiceError, match="still running"):
         service.disable_user_host_service()
 
     assert not path.exists()
-    assert forgotten, "the uninstall ledger entry must still be cleared"
 
 
 def test_enable_systemd_user_service(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -159,7 +153,7 @@ def test_enable_systemd_user_service(tmp_path: Path, monkeypatch: pytest.MonkeyP
     calls = _capture_runs(monkeypatch)
 
     installed = service.enable_user_host_service(
-        None,
+        "https://engine.example.com",
         environment={"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"},
     )
 
@@ -167,7 +161,8 @@ def test_enable_systemd_user_service(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert installed.path == tmp_path / "xdg/systemd/user/omnigent-host.service"
     assert 'Environment="HOME=' in unit
     assert (
-        'ExecStart="/opt/omnigent/bin/python" "-m" "omnigent.host.service_entry" "--local"'
+        'ExecStart="/opt/omnigent/bin/python" "-m" "omnigent.host.service_entry" '
+        '"--server" "https://engine.example.com"'
     ) in unit
     assert "Restart=on-failure" in unit
     assert "RestartPreventExitStatus=78 143" in unit
@@ -212,14 +207,14 @@ def test_host_service_rejects_unsupported_platform(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(service.platform, "system", lambda: "Windows")
 
     with pytest.raises(service.HostServiceError, match="macOS and Linux"):
-        service.enable_user_host_service(None, environment={})
+        service.enable_user_host_service("https://engine.example.com", environment={})
 
 
 def test_service_entry_maps_fatal_host_exit(monkeypatch: pytest.MonkeyPatch) -> None:
     from omnigent.cli import cli
     from omnigent.host import HOST_FATAL_EXIT_CODE, service_entry
 
-    monkeypatch.setattr(sys, "argv", ["service-entry", "--local"])
+    monkeypatch.setattr(sys, "argv", ["service-entry", "--server", "https://engine.example.com"])
 
     def _fatal(**kwargs: object) -> None:
         raise SystemExit(HOST_FATAL_EXIT_CODE)

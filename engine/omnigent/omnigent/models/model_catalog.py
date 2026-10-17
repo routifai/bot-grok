@@ -19,9 +19,6 @@ Enumeration is deterministic per provider kind:
   ``"openai-compatible"``).
 - ``subscription`` → curated static aliases for CLIs without a listing API
   (source ``"static"``, ``verified: false``).
-- ``cli-config`` → the codex curated static list (source ``"static"``,
-  ``verified: false`` — the credential lives in the CLI's own config
-  file and is resolved by the CLI at launch).
 - anything unresolvable → source ``"none"`` with an explanatory note,
   which doubles as a dead-worker preflight signal.
 """
@@ -61,7 +58,6 @@ from omnigent.models.model_resolver import (
 from omnigent.onboarding.provider_config import (
     ANTHROPIC_FAMILY,
     BEDROCK_KIND,
-    CLI_CONFIG_KIND,
     KEY_KIND,
     OPENAI_FAMILY,
     SUBSCRIPTION_KIND,
@@ -163,7 +159,7 @@ class ResolvedModelProvider:
     """The model provider a worker's spawn/launch path would route through.
 
     :param kind: Provider kind — ``"key"`` / ``"gateway"`` / ``"local"``
-        / ``"subscription"`` / ``"cli-config"`` from
+        / ``"subscription"`` from
         the provider config layer, or ``"none"`` when no usable provider
         resolved.
     :param family: ``"anthropic"`` / ``"openai"`` for inline-family
@@ -174,8 +170,7 @@ class ResolvedModelProvider:
         Never serialized into tool output.
     :param auth_command: Shell command printing a bearer token, for
         providers configured with a dynamic credential.
-    :param cli: ``"claude"`` / ``"codex"`` / ``"pi"`` for
-        ``kind="subscription"``; ``"codex"`` for ``kind="cli-config"``.
+    :param cli: ``"claude"`` / ``"pi"`` for ``kind="subscription"``.
     :param detail: Non-secret descriptor of how the provider resolved,
         e.g. ``"provider 'openrouter'"`` — used in listing notes.
     """
@@ -226,8 +221,6 @@ def model_configuration_source(
         name = provider.detail.removeprefix("provider '").removesuffix("'")
         if name:
             source["name"] = name
-    elif provider.kind == CLI_CONFIG_KIND:
-        source.update(label="CLI config", name=provider.detail or provider.cli or "Codex")
     elif provider.kind == BEDROCK_KIND:
         source["label"] = "Bedrock"
         name = provider.detail.removeprefix("provider '").removesuffix("'")
@@ -247,7 +240,7 @@ def is_direct_openai_provider(provider: ResolvedModelProvider) -> bool:
     """Return whether *provider* targets OpenAI's canonical models API."""
     if provider.family != OPENAI_FAMILY or not provider.base_url:
         return False
-    from omnigent.onboarding.configure_models import default_base_url_for_family
+    from omnigent.onboarding.provider_config import default_base_url_for_family
 
     canonical = default_base_url_for_family(OPENAI_FAMILY)
     return _models_url(provider.base_url).lower() == _models_url(canonical).lower()
@@ -600,7 +593,7 @@ def _legacy_claude_sdk_provider(spec: AgentSpec) -> ResolvedModelProvider:
     :param spec: The worker's (sub-)agent spec.
     :returns: A :class:`ResolvedModelProvider`.
     """
-    from omnigent.onboarding.configure_models import default_base_url_for_family
+    from omnigent.onboarding.provider_config import default_base_url_for_family
     from omnigent.runtime.workflow import _load_global_auth
     from omnigent.spec.types import ApiKeyAuth
 
@@ -631,20 +624,6 @@ def _provider_from_entry(entry: ProviderEntry, harness_type: str) -> ResolvedMod
     if entry.kind == SUBSCRIPTION_KIND:
         return ResolvedModelProvider(
             kind=SUBSCRIPTION_KIND, cli=entry.cli, detail=f"provider {entry.name!r}"
-        )
-    if entry.kind == CLI_CONFIG_KIND:
-        # The provider table (base_url + credential) lives in the CLI's own
-        # config file and the CLI resolves it at launch — there is nothing
-        # to resolve statically here, so the entry is usable as-is. Falling
-        # through to the inline-family loop would misreport it as "no
-        # resolvable credentials" (cli-config entries carry no families).
-        return ResolvedModelProvider(
-            kind=CLI_CONFIG_KIND,
-            cli=entry.cli,
-            detail=(
-                f"provider {entry.name!r} (codex config.toml model provider "
-                f"{entry.model_provider!r})"
-            ),
         )
     # Inline-family kinds: single-family harnesses get exactly their family;
     # pi takes the first whose credential resolves, anthropic preferred.
@@ -885,8 +864,6 @@ def _listing_for_provider(
         )
     if provider.kind == SUBSCRIPTION_KIND:
         return _static_subscription_listing(provider)
-    if provider.kind == CLI_CONFIG_KIND:
-        return _static_cli_config_listing(provider)
 
     cache_key = _listing_cache_key(provider)
     with _listing_cache_lock:
@@ -940,29 +917,6 @@ def _static_subscription_listing(provider: ResolvedModelProvider) -> ModelListin
         note=(
             f"the {provider.cli or 'unknown'} CLI login exposes no model-listing "
             "API before launch; the live listing comes from probing the harness"
-        ),
-    )
-
-
-def _static_cli_config_listing(provider: ResolvedModelProvider) -> ModelListing:
-    """Build the curated static listing for a ``cli-config`` provider.
-
-    A ``cli-config`` provider pins a custom ``[model_providers.X]`` table in
-    the codex CLI's own ``config.toml``; its credential (an auth command /
-    env key in that file) is resolved by codex at launch, so the listing is
-    the codex curated ids with a note saying the credential is the CLI's to
-    resolve — not a "no credentials" preflight failure.
-
-    :param provider: A ``kind="cli-config"`` provider descriptor.
-    :returns: A ``source="static"`` listing with no models.
-    """
-    return ModelListing(
-        source="static",
-        verified=False,
-        models=(),
-        note=(
-            f"{provider.detail} enumerates its models only from the CLI's own "
-            "config at launch; the live listing comes from probing the harness"
         ),
     )
 

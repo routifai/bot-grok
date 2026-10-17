@@ -26,7 +26,6 @@ from fastapi import (
 from fastapi.responses import Response
 from pydantic import ValidationError
 
-from omnigent.cli_invocation import cli_invocation
 from omnigent.db.utils import generate_agent_id, generate_task_id
 from omnigent.db.workspace_cache import WorkspaceScopedCache
 from omnigent.debug_logging import debug_event, runner_log_scope
@@ -260,7 +259,6 @@ from omnigent.server.routes._sessions.helpers import (
     _relay_persist,
     _relay_persist_error_once,
     _remove_session_worktree_best_effort,
-    _repl_terminal_ui_labels,
     _require_declared_subagent,
     _require_external_status_forward,
     _resolve_harness,
@@ -4732,8 +4730,7 @@ async def _persist_host_launch_failure_turn(
     }:
         raise ValueError(f"unsafe host launch error code: {host_error_code!r}")
     fallback_message = (
-        "the agent's harness is not configured on the selected host — "
-        f"run `{cli_invocation()} setup`"
+        "the agent's harness is not configured on the selected host"
         if host_error_code == _HARNESS_NOT_CONFIGURED_ERROR_CODE
         else "The session workspace no longer exists on the selected host."
     )
@@ -8287,15 +8284,6 @@ async def _create_session_from_existing_agent(
         )
 
         initial_labels[WORKTREE_ROOT_LABEL_KEY] = worktree_root_fingerprint(created_worktree_path)
-    if body.sub_agent_name is None and body.host_id is not None:
-        repl_labels = _repl_terminal_ui_labels(
-            agent=agent,
-            agent_cache=agent_cache,
-            harness_override=harness_override,
-        )
-        if repl_labels:
-            initial_labels.update(repl_labels)
-
     if harness_override == "auto":
         from omnigent.runner.subagent_routing import AUTO_HARNESS_LABEL_KEY
 

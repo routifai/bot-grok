@@ -1,10 +1,9 @@
 """Detect AI credentials already present on the machine.
 
-For the ``omnigent setup`` first-run experience, this module
-discovers credentials a user already has — vendor API keys in the
-environment, a logged-in ``claude`` / ``codex`` CLI, or a local Ollama
-server — so the setup flow can offer them as one-tap choices instead of
-asking the user to paste keys they already have.
+This module discovers credentials a host already has — vendor API keys in
+the environment, a logged-in ``claude`` CLI, or a local Ollama server — so
+the runtime can fold them into the provider config without asking the user
+to paste keys they already have.
 
 Detection is almost entirely pure standard library (``os``, ``socket``,
 ``pathlib``) and performs no network I/O beyond a single non-blocking
@@ -26,7 +25,6 @@ from __future__ import annotations
 import concurrent.futures
 import json
 import os
-import shlex
 import socket
 import sys
 import threading
@@ -36,23 +34,17 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from omnigent.onboarding import codex_auth_readiness
 from omnigent.onboarding.provider_config import ANTHROPIC_FAMILY, OPENAI_FAMILY
 from omnigent.onboarding.providers import PROVIDER_ENV_VARS
 from omnigent.util.env_credentials import getenv_nonempty_with_omnigent_prefix
 
-DetectedKind = Literal["key", "subscription", "local", "cli-config"]
+DetectedKind = Literal["key", "subscription", "local"]
 
 # The detection kinds. ``key`` is a vendor API key from the environment;
-# ``subscription`` is a logged-in CLI; ``local`` is a self-hosted endpoint;
-# ``cli-config`` is a custom model provider a harness CLI's own config file
-# defines (today: a ``[model_providers.X]`` table in ``~/.codex/config.toml``
-# that carries its own auth, e.g. the Databricks AI Gateway written by
-# ``isaac configure codex``).
+# ``subscription`` is a logged-in CLI; ``local`` is a self-hosted endpoint.
 KEY_KIND: DetectedKind = "key"
 SUBSCRIPTION_KIND: DetectedKind = "subscription"
 LOCAL_KIND: DetectedKind = "local"
-CLI_CONFIG_KIND: DetectedKind = "cli-config"
 
 # Ollama's default OpenAI-compatible endpoint.
 _OLLAMA_HOST = "localhost"
@@ -94,8 +86,7 @@ class DetectedProvider:
     """A credential found on the machine during ambient detection.
 
     :param name: The provider/source name, e.g. ``"anthropic"``,
-        ``"openai"``, ``"openrouter"``, ``"claude"``,
-        ``"codex"``, or ``"ollama"``.
+        ``"openai"``, ``"openrouter"``, ``"claude"``, or ``"ollama"``.
     :param kind: How the credential authenticates — ``"key"`` (an API key
         in the environment), ``"subscription"`` (a logged-in CLI), or
         ``"local"`` (a self-hosted endpoint).
@@ -105,22 +96,12 @@ class DetectedProvider:
     :param source: A human-readable descriptor of where the credential
         comes from, e.g. ``"$ANTHROPIC_API_KEY"``, ``"claude CLI login"``,
         or ``"http://localhost:11434"``.
-    :param model_provider: For ``kind="cli-config"`` only: the custom
-        provider id the CLI's config file selects, e.g. ``"Databricks"``
-        (the ``model_provider`` key in ``~/.codex/config.toml``). ``None``
-        for other kinds.
-    :param display_name: For ``kind="cli-config"`` only: the provider's
-        human display name from its config table (``name = "Databricks AI
-        Gateway"``), falling back to :attr:`model_provider` when the table
-        names none. ``None`` for other kinds.
     """
 
     name: str
     kind: DetectedKind
     family: str | None
     source: str
-    model_provider: str | None = None
-    display_name: str | None = None
 
 
 def _claude_credentials_path() -> Path:
@@ -134,310 +115,10 @@ def _claude_credentials_path() -> Path:
     return Path(os.path.expanduser("~")) / ".claude" / ".credentials.json"
 
 
-def _codex_auth_path() -> Path:
-    """Return the path to the Codex CLI's stored login credentials.
-
-    Honors ``$HOME`` so the check can be redirected in tests.
-
-    :returns: Path to ``~/.codex/auth.json``.
-    """
-    return Path(os.path.expanduser("~")) / ".codex" / "auth.json"
-
-
-def codex_auth_has_credential(auth_path: Path) -> bool:
-    """Return whether a Codex ``auth.json`` carries a usable stored credential.
-
-    The Codex CLI persists login state in ``auth.json`` as an ``AuthDotJson``
-    object whose fields are *all* optional, so an empty ``{}`` — or a file left
-    behind after a logout — parses cleanly while representing **no** usable
-    login. Treating mere file existence as "logged in" let such a stale file
-    masquerade as a subscription provider, which then shadowed a real
-    configured credential and dropped Codex to its own login screen at run time
-    (the bug this guards against).
-
-    A file counts as a real login when it parses as a JSON object and carries
-    at least one credential the Codex CLI can authenticate with, mirroring
-    Codex's own ``AuthDotJson`` shape (``openai/codex``,
-    ``codex-rs/login/src/{auth/storage,token_data}.rs``):
-
-    - ``OPENAI_API_KEY`` — a non-empty string (``auth_mode: "apikey"``);
-    - ``tokens.access_token`` or ``tokens.refresh_token`` — a non-empty string
-      (``auth_mode: "chatgpt"``; a refresh token alone suffices because the
-      CLI mints a fresh access token from it);
-    - ``personal_access_token`` — a non-empty string (enterprise / external
-      token integrations).
-
-    The check is purely local (no network), so it cannot detect a
-    *present-but-expired* OAuth access token — but the Codex CLI refreshes
-    those itself from the refresh token. Its job is to reject the empty /
-    logged-out / malformed cases.
-
-    :param auth_path: Path to the Codex ``auth.json`` to inspect, e.g.
-        ``Path("~/.codex/auth.json").expanduser()``.
-    :returns: ``True`` when the file carries a usable credential; ``False``
-        when it is missing, unreadable, not valid JSON, not a JSON object, or
-        carries no credential field.
-    """
-    # Delegate so the credential set can never drift from the mode resolver.
-    return codex_auth_effective_mode(auth_path) is not None
-
-
-def codex_auth_effective_mode(auth_path: Path) -> str | None:
-    """Return the auth mode a Codex ``auth.json``'s credential effectively uses.
-
-    Mirrors the Codex CLI's own resolution (``openai/codex``,
-    ``codex-rs/login``): ChatGPT OAuth tokens win when present, else a baked-in
-    API key, else an enterprise personal access token. This is what ``codex``
-    itself reports as ``auth_mode`` — surfacing it keeps omnigent's listing
-    from calling an API-key-backed login a bare "subscription", which points a
-    quota diagnosis at the wrong credential.
-
-    :param auth_path: Path to the Codex ``auth.json`` to inspect, e.g.
-        ``Path("~/.codex/auth.json").expanduser()``.
-    :returns: ``"chatgpt"``, ``"apikey"``, or ``"pat"``; ``None`` when the file
-        is missing, malformed, or carries no usable credential (the same cases
-        :func:`codex_auth_has_credential` rejects).
-    """
-    try:
-        data = json.loads(auth_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    if not isinstance(data, dict):
-        return None
-    tokens = data.get("tokens")
-    if isinstance(tokens, dict):
-        for field in ("access_token", "refresh_token"):
-            value = tokens.get(field)
-            if isinstance(value, str) and value.strip():
-                return "chatgpt"
-    api_key = data.get("OPENAI_API_KEY")
-    if isinstance(api_key, str) and api_key.strip():
-        return "apikey"
-    personal_access_token = data.get("personal_access_token")
-    if isinstance(personal_access_token, str) and personal_access_token.strip():
-        return "pat"
-    return None
-
-
-def codex_cli_effective_auth_mode() -> str | None:
-    """Return the effective auth mode of the Codex CLI's own login, if any.
-
-    Reads the default ``~/.codex/auth.json`` (honoring ``$HOME``) through
-    :func:`codex_auth_effective_mode`.
-
-    :returns: ``"chatgpt"``, ``"apikey"``, or ``"pat"``; ``None`` when there is
-        no usable login.
-    """
-    return codex_auth_effective_mode(_codex_auth_path())
-
-
-def _codex_config_path() -> Path:
-    """Return the path to the Codex CLI's user config file.
-
-    Honors ``$HOME`` so the check can be redirected in tests.
-
-    :returns: Path to ``~/.codex/config.toml``.
-    """
-    return Path(os.path.expanduser("~")) / ".codex" / "config.toml"
-
-
-@dataclass(frozen=True)
-class CodexConfigProvider:
-    """A custom, auth-carrying model provider found in ``~/.codex/config.toml``.
-
-    :param provider_id: The ``model_provider`` id the config selects, i.e.
-        the key under ``[model_providers.<id>]``, e.g. ``"Databricks"``.
-    :param display_name: The provider table's ``name`` field, e.g.
-        ``"Databricks AI Gateway"``; falls back to :attr:`provider_id` when
-        the table names none.
-    """
-
-    provider_id: str
-    display_name: str
-
-
-def codex_config_custom_provider(config_path: Path) -> CodexConfigProvider | None:
-    """Detect a custom, auth-carrying default model provider in a Codex config.
-
-    ``isaac configure codex`` (and similar enterprise tooling) configures
-    Codex by writing ``~/.codex/config.toml`` only: a custom
-    ``[model_providers.X]`` table whose ``[X.auth]`` command prints a
-    bearer token, selected via a top-level ``model_provider = "X"``. No
-    ``auth.json`` is ever written, so the subscription detection sees
-    nothing — this is the detection for that state.
-
-    A config counts when its **effective default provider** is a custom
-    (non-built-in) ``[model_providers.X]`` table with self-contained auth
-    (see :func:`codex_auth_readiness.provider_table_has_self_contained_auth`).
-    The effective
-    provider mirrors Codex's own resolution (``openai/codex``,
-    ``codex-rs/core/src/config``): the active profile's ``model_provider``
-    (top-level ``profile = "name"`` selecting ``[profiles.name]``) wins
-    over the top-level ``model_provider``; absent both, Codex defaults to
-    the built-in ``openai`` provider and there is nothing to detect.
-
-    Purely local and structural: parses one TOML file, runs nothing, and
-    never validates that the auth command actually yields a live token —
-    like the ``auth.json`` check, its job is to reject "not configured,"
-    not to prove the credential will authenticate.
-
-    :param config_path: Path to the Codex ``config.toml`` to inspect, e.g.
-        ``Path("~/.codex/config.toml").expanduser()``.
-    :returns: The detected provider, or ``None`` when the file is missing /
-        malformed, the effective provider is built-in or unset, its table
-        is absent, or the table carries no self-contained auth.
-    """
-    config = codex_auth_readiness.load_codex_config(config_path)
-    if config is None:
-        # Missing, unreadable, or malformed — treat as not configured.
-        return None
-
-    provider_id = codex_auth_readiness.effective_codex_model_provider(config)
-    if provider_id is None or provider_id in codex_auth_readiness.CODEX_BUILTIN_PROVIDERS:
-        return None
-
-    providers = config.get("model_providers")
-    if not isinstance(providers, dict):
-        return None
-    table = providers.get(provider_id)
-    if not isinstance(table, dict):
-        # The config selects a provider it never defines — codex itself
-        # would fail; nothing usable to adopt.
-        return None
-    if table.get("requires_openai_auth") is True:
-        # Rides the ChatGPT login — the auth.json subscription detection's
-        # territory, not a config-defined credential.
-        return None
-    if not codex_auth_readiness.provider_table_has_self_contained_auth(table):
-        return None
-
-    name = table.get("name")
-    display_name = name if isinstance(name, str) and name.strip() else provider_id
-    return CodexConfigProvider(provider_id=provider_id, display_name=display_name)
-
-
-@dataclass(frozen=True)
-class CodexConfigTransport:
-    """The base URL + auth command from a Codex ``[model_providers.X]`` table.
-
-    The runtime-routing counterpart of :class:`CodexConfigProvider` (which
-    only carries the id / display name for the setup menu). This reads the
-    fields a harness needs to actually talk to the provider — the ones
-    ``isaac configure codex`` writes for the Databricks AI Gateway.
-
-    :param base_url: The provider table's ``base_url``, e.g.
-        ``"https://<workspace>.ai-gateway.cloud.databricks.com/codex/v1"``.
-    :param auth_command: A single shell command string that prints a bearer
-        token to stdout, reconstructed from the table's ``[X.auth]``
-        ``command`` + ``args`` (e.g. ``"jq -r .access_token /path/token.json"``).
-        ``None`` when the table carries no ``[X.auth]`` token command (e.g. it
-        authenticates via a static header or AWS SigV4 instead).
-    """
-
-    base_url: str
-    auth_command: str | None
-
-
-def codex_config_provider_transport(
-    config_path: Path, provider_id: str
-) -> CodexConfigTransport | None:
-    """Read the base URL + auth command for one Codex ``[model_providers.X]``.
-
-    A harness that pinned a ``cli-config`` provider (e.g. pi-native routing the
-    user's Databricks AI Gateway) needs the *transport* — where to send
-    requests and how to authenticate — not just the id. This parses the named
-    ``[model_providers.<provider_id>]`` table out of ``config.toml`` and returns
-    its ``base_url`` plus a shell command (rebuilt from ``[X.auth]``
-    ``command`` + ``args``) that prints a bearer token.
-
-    Purely local and structural (parses one TOML file, runs nothing). Returns
-    ``None`` — rather than raising — for every "can't resolve" case so a caller
-    can fall back gracefully without crashing a launch.
-
-    :param config_path: Path to the Codex ``config.toml`` to inspect, e.g.
-        ``Path("~/.codex/config.toml").expanduser()``.
-    :param provider_id: The ``[model_providers.X]`` id to read, e.g.
-        ``"Databricks"``.
-    :returns: The :class:`CodexConfigTransport`, or ``None`` when the file is
-        missing / malformed, the table is absent, or it declares no
-        ``base_url``.
-    """
-    config = codex_auth_readiness.load_codex_config(config_path)
-    if config is None:
-        return None
-
-    providers = config.get("model_providers")
-    if not isinstance(providers, dict):
-        return None
-    table = providers.get(provider_id)
-    if not isinstance(table, dict):
-        return None
-    base_url = table.get("base_url")
-    if not isinstance(base_url, str) or not base_url.strip():
-        return None
-
-    auth_command: str | None = None
-    auth = table.get("auth")
-    if isinstance(auth, dict):
-        command = auth.get("command")
-        args = auth.get("args")
-        if isinstance(command, str) and command.strip():
-            parts = [command]
-            if isinstance(args, list):
-                parts.extend(str(arg) for arg in args)
-            # shlex.join produces a single shell-safe string Pi can run as a
-            # "!command" apiKey (it shell-quotes the token file path etc.).
-            auth_command = shlex.join(parts)
-    return CodexConfigTransport(base_url=base_url.strip(), auth_command=auth_command)
-
-
-def codex_config_detection() -> DetectedProvider | None:
-    """Return the ``cli-config`` detection for ``~/.codex/config.toml``, if any.
-
-    The single constructor for this detection — used by
-    :func:`detect_providers` and by callers that need to identify the
-    detection on its own (e.g. the launch path checking whether the host
-    config's custom default provider was dismissed by a Remove).
-
-    :returns: A ``kind="cli-config"`` :class:`DetectedProvider` (stable name
-        ``codex-<slug>``, e.g. ``"codex-databricks"``), or ``None`` when the
-        config carries no custom, self-contained-auth default provider (see
-        :func:`codex_config_custom_provider`).
-    """
-    codex_config = codex_config_custom_provider(_codex_config_path())
-    if codex_config is None:
-        return None
-    return DetectedProvider(
-        name=f"codex-{_slug(codex_config.provider_id)}",
-        kind=CLI_CONFIG_KIND,
-        family=OPENAI_FAMILY,
-        source=f"~/.codex/config.toml provider {codex_config.provider_id!r}",
-        model_provider=codex_config.provider_id,
-        display_name=codex_config.display_name,
-    )
-
-
-def _slug(value: str) -> str:
-    """Slugify a provider id into a config-friendly provider entry name part.
-
-    :param value: A Codex provider id, e.g. ``"Databricks"`` or
-        ``"My Proxy"``.
-    :returns: A lowercase, hyphenated slug, e.g. ``"databricks"`` or
-        ``"my-proxy"``; ``"provider"`` when nothing alphanumeric survives.
-    """
-    slug = "".join(ch if ch.isalnum() else "-" for ch in value.lower()).strip("-")
-    while "--" in slug:
-        slug = slug.replace("--", "-")
-    # A provider id with no alphanumerics at all would otherwise produce an
-    # empty entry name; "provider" keeps the synthesized name well-formed.
-    return slug or "provider"
-
-
 def claude_auth_has_credential(creds_path: Path) -> bool:
     """Return whether a Claude ``.credentials.json`` carries a usable login.
 
-    The mirror of :func:`codex_auth_has_credential` for Claude Code, which
-    stores its subscription OAuth credentials under a ``claudeAiOauth`` object
+    Claude Code stores its subscription OAuth credentials under a ``claudeAiOauth`` object
     (verified against a live file: ``accessToken``, ``refreshToken``,
     ``expiresAt`` as epoch **milliseconds**, ``scopes``, ``subscriptionType``).
 
@@ -447,10 +128,10 @@ def claude_auth_has_credential(creds_path: Path) -> bool:
     rolls over. A login therefore counts as usable when it parses and has a
     non-empty ``accessToken`` that is **either renewable** (a non-empty
     ``refreshToken``) **or** not yet expired (``expiresAt`` in the future). This
-    rejects the empty / logged-out / malformed cases (matching the codex helper)
-    without false-flagging a stale-but-refreshable token.
+    rejects the empty / logged-out / malformed cases without false-flagging a
+    stale-but-refreshable token.
 
-    Like the codex helper this is purely local (no network): it cannot detect a
+    This is purely local (no network): it cannot detect a
     server-side *revocation* — only the harness's own login attempt can. Its job
     is to reject "no usable login," not to prove the token will authenticate.
 
@@ -696,14 +377,7 @@ def detect_providers() -> list[DetectedProvider]:
        usable login (see :func:`claude_auth_has_credential`), or, on macOS,
        the credential lives in the Keychain and ``claude auth status`` reports
        a login (see :func:`_claude_login_detected`).
-    3. A custom, auth-carrying model provider in ``~/.codex/config.toml``
-       (see :func:`codex_config_custom_provider`) — e.g. the Databricks AI
-       Gateway provider that ``isaac configure codex`` writes. Ordered
-       before the codex login check so the auto-default matches Codex's own
-       resolution (config.toml's default provider beats auth.json).
-    4. A logged-in Codex CLI (``~/.codex/auth.json`` exists *and* carries a
-       usable credential — see :func:`codex_auth_has_credential`).
-    5. A reachable local Ollama (``localhost:11434`` TCP-connectable).
+    3. A reachable local Ollama (``localhost:11434`` TCP-connectable).
 
     No network I/O is performed except the single Ollama probe (see
     :func:`_ollama_reachable`). On macOS, a ``claude auth status`` subprocess
@@ -775,10 +449,8 @@ def _detect_providers_now() -> list[DetectedProvider]:
     #    reads the Keychain via ``claude auth status``). Either way it is
     #    surfaced as a ``subscription``: the credential lives in Claude Code's
     #    own files and Claude Code applies it itself, so omnigent must NOT adopt
-    #    a gateway/cli-config provider shape for it — native routing defers to
-    #    Claude Code's settings (a subscription resolves to "no override"), and
-    #    the in-process SDK falls back to its own auth. Persisting a new shape
-    #    here is exactly what a released/stale runner's parser rejects.
+    #    a gateway provider shape for it — the in-process SDK falls back to its
+    #    own auth.
     if claude_managed_gateway()[1]:
         detected.append(
             DetectedProvider(
@@ -798,33 +470,7 @@ def _detect_providers_now() -> list[DetectedProvider]:
             )
         )
 
-    # 3. A custom model provider in ~/.codex/config.toml (e.g. the
-    #    Databricks AI Gateway written by ``isaac configure codex``, which
-    #    writes config.toml only — never auth.json — so the login check
-    #    below cannot see it). Ordered BEFORE the codex login check so that
-    #    on a machine with both, the auto-default matches what a plain
-    #    ``codex`` invocation does: config.toml's default model_provider
-    #    wins over auth.json.
-    codex_config_det = codex_config_detection()
-    if codex_config_det is not None:
-        detected.append(codex_config_det)
-
-    # 4. Codex CLI login. Existence alone is not enough — an empty or
-    #    logged-out ``auth.json`` carries no usable credential, and adopting it
-    #    as a subscription would plant a phantom default that shadows a real
-    #    configured credential and strands Codex at its own login screen. See
-    #    ``codex_auth_has_credential``.
-    if codex_auth_has_credential(_codex_auth_path()):
-        detected.append(
-            DetectedProvider(
-                name="codex",
-                kind=SUBSCRIPTION_KIND,
-                family=OPENAI_FAMILY,
-                source="codex CLI login",
-            )
-        )
-
-    # 5. Local Ollama.
+    # 3. Local Ollama.
     if _ollama_reachable():
         detected.append(
             DetectedProvider(

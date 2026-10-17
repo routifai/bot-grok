@@ -26,14 +26,12 @@ import os
 from collections.abc import Callable
 from typing import Literal, NamedTuple, Protocol
 
-from omnigent.onboarding.configure_models import (
-    build_gateway_provider_entry,
-    build_key_provider_entry,
-    default_base_url_for_family,
-)
 from omnigent.onboarding.provider_config import (
     ANTHROPIC_FAMILY,
     OPENAI_FAMILY,
+    build_gateway_provider_entry,
+    build_key_provider_entry,
+    default_base_url_for_family,
     load_config,
     provider_entry_settings,
 )

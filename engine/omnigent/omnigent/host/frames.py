@@ -157,7 +157,7 @@ class HostHelloFrame:
         Enables state reconciliation on reconnect — the server
         diffs this against sessions in the DB.
     :param configured_harnesses: Per-harness readiness on this
-        machine, e.g. ``{"claude-sdk": True, "codex": False}``
+        machine, e.g. ``{"claude-sdk": True, "pi": False}``
         (see ``omnigent.onboarding.harness_readiness``). Keys
         cover every accepted harness spelling. ``None`` means
         unknown (an older host, or a startup probe that failed) — never
@@ -166,7 +166,7 @@ class HostHelloFrame:
         authoritative.
     :param gateway_inference: Per-harness flag for whether that family's
         launch on this host resolves AI-Gateway-backed inference, e.g.
-        ``{"claude-native": True, "codex": False}`` (see
+        ``{"claude-sdk": True, "pi": False}`` (see
         ``omnigent.gateway_inference``). A family that could not be evaluated
         is omitted. ``None`` means unknown (an older host, or a startup probe
         that failed) — never treat it as "nothing is gateway-backed".
@@ -213,7 +213,7 @@ class HostHarnessReadinessFrame:
         accepted harness spelling. Sent only when the map changes.
     :param gateway_inference: Per-harness flag for whether that family's
         launch on this host resolves AI-Gateway-backed inference, e.g.
-        ``{"claude-native": True, "codex": False}`` (see
+        ``{"claude-sdk": True, "pi": False}`` (see
         ``omnigent.gateway_inference``). A family that could not be evaluated
         is omitted. ``None`` means unknown (an older host that doesn't report
         it) — never treat it as "nothing is gateway-backed".
@@ -720,7 +720,7 @@ class HostInstallHarnessFrame:
 
     :param request_id: Correlates the result, e.g. ``"req_install_1"``.
     :param harness: Harness identifier to install, e.g. ``"claude"`` or
-        ``"codex"``. The host maps it to its install-spec key.
+        ``"pi"``. The host maps it to its install-spec key.
     """
 
     request_id: str
@@ -742,12 +742,12 @@ class HostInstallHarnessResultFrame:
         on ``PATH``, ``"failed"`` otherwise. A ``"failed"`` status pairs
         with a human-readable ``error`` (e.g. ``"npm not found"``).
     :param configured_harnesses: The host's readiness map recomputed
-        after the install attempt, e.g. ``{"claude-native": True,
-        "codex-native": "needs-auth"}``. ``None`` when the install could
+        after the install attempt, e.g. ``{"claude-sdk": True,
+        "pi": "needs-auth"}``. ``None`` when the install could
         not run (the server keeps its prior readiness view).
     :param gateway_inference: Per-harness flag for whether that family's
         launch on this host resolves AI-Gateway-backed inference, e.g.
-        ``{"claude-native": True, "codex": False}`` (see
+        ``{"claude-sdk": True, "pi": False}`` (see
         ``omnigent.gateway_inference``). A family that could not be evaluated
         is omitted. ``None`` means unknown (an older host that doesn't report
         it) — never treat it as "nothing is gateway-backed".
@@ -767,10 +767,9 @@ class HostStoreSecretFrame:
     """Server → host: write a harness provider credential on the host.
 
     Backs ``POST /v1/hosts/{id}/harnesses/{harness}/credential``, used by the
-    Web UI's setup dialog so a user can configure a Claude / Codex / Pi
-    credential on a connected host without a terminal. The host writes it with
-    the same non-interactive core (:func:`store_harness_credential`) the
-    ``omnigent setup`` wizard's "add a key / gateway" path uses: the secret goes
+    Web UI's setup dialog so a user can configure a Claude / Pi credential on a
+    connected host without a terminal. The host writes it with the
+    non-interactive core (:func:`store_harness_credential`): the secret goes
     to the OS keychain (else ``~/.omnigent/secrets.json``), and ``config.yaml``
     gets a ``providers:`` entry referencing it by ``keychain:<name>`` — never
     the raw secret.
@@ -783,7 +782,7 @@ class HostStoreSecretFrame:
 
     :param request_id: Correlates the result, e.g. ``"req_cred_1"``.
     :param harness: Harness identifier being configured, e.g. ``"claude"`` /
-        ``"codex"`` / ``"pi"``. The host maps it to its provider family.
+        ``"pi"``. The host maps it to its provider family.
     :param kind: ``"key"`` (a vendor API key) or ``"gateway"`` (a compatible
         proxy at ``base_url``) or ``"adopt"`` (reference an existing host env
         var by name — carries ``env_var``, not ``secret_value``).
@@ -819,10 +818,10 @@ class HostStoreSecretResultFrame:
     :param status: ``"ok"`` when the credential was written, ``"failed"``
         otherwise (paired with a non-secret ``error``).
     :param configured_harnesses: Readiness recomputed after the write, e.g.
-        ``{"claude-native": True}``. ``None`` when the write could not run.
+        ``{"claude-sdk": True}``. ``None`` when the write could not run.
     :param gateway_inference: Per-harness flag for whether that family's
         launch on this host resolves AI-Gateway-backed inference, e.g.
-        ``{"claude-native": True, "codex": False}`` (see
+        ``{"claude-sdk": True, "pi": False}`` (see
         ``omnigent.gateway_inference``). A family that could not be evaluated
         is omitted. ``None`` means unknown (an older host that doesn't report
         it) — never treat it as "nothing is gateway-backed".
@@ -2308,7 +2307,7 @@ def _optional_str_availability_map(
 
     :param msg: Decoded frame object.
     :param key: Field name, e.g. ``"configured_harnesses"``.
-    :returns: The mapping, e.g. ``{"claude-sdk": True, "codex": "needs-auth"}``, or ``None``
+    :returns: The mapping, e.g. ``{"claude-sdk": True, "pi": "needs-auth"}``, or ``None``
         when absent / null / not a JSON object.
     """
     val = msg.get(key)
@@ -2331,7 +2330,7 @@ def optional_str_bool_map(msg: _JsonObject, key: str) -> dict[str, bool] | None:
 
     :param msg: Decoded frame object.
     :param key: Field name, e.g. ``"gateway_inference"``.
-    :returns: The mapping, e.g. ``{"claude-native": True}``, or ``None`` when
+    :returns: The mapping, e.g. ``{"claude-sdk": True}``, or ``None`` when
         absent / null / not a JSON object.
     """
     val = msg.get(key)

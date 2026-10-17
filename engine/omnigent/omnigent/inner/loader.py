@@ -286,12 +286,6 @@ def _parse_agent_def(
     if executor_data:
         agent.executor = _parse_executor_spec(executor_data)
 
-    from omnigent.sandbox.copy_on_write import validate_copy_on_write_harness
-
-    validate_copy_on_write_harness(
-        agent.os_env, agent.executor.harness if agent.executor else None
-    )
-
     # Params
     for pname, pdata in data.get("params", {}).items():
         if isinstance(pdata, dict):
@@ -419,11 +413,9 @@ def _parse_tool(name: str, data: str | YamlData, *, allow_dynamic_tools: bool) -
         tool = FunctionTool(
             name=name,
             description=data.get("description"),
-            catalog_path=data.get("catalog_path"),
             input_schema=data.get("parameters") or data.get("input_schema"),
             cancellable=bool(data.get("cancellable", False)),
             runtime=runtime_raw,
-            warehouse_id=data.get("warehouse_id"),
         )
         callable_path = data.get("callable")
         if callable_path and isinstance(callable_path, str):
@@ -451,15 +443,6 @@ def _parse_tool(name: str, data: str | YamlData, *, allow_dynamic_tools: bool) -
         )
 
     if tool_type == "mcp":
-        # ``profile`` can be declared directly (``profile: myprof``)
-        # or inside an ``auth:`` block (``auth: {type: databricks,
-        # profile: myprof}``). The ``auth:`` block is the preferred
-        # form — it matches the executor auth shape.
-        mcp_profile = data.get("profile")
-        raw_auth = data.get("auth")
-        if mcp_profile is None and isinstance(raw_auth, dict):
-            if str(raw_auth.get("type", "")) == "databricks":
-                mcp_profile = raw_auth.get("profile")
         return MCPTool(
             name=name,
             description=data.get("description"),
@@ -469,8 +452,6 @@ def _parse_tool(name: str, data: str | YamlData, *, allow_dynamic_tools: bool) -
             env=data.get("env"),
             tools=data.get("tools"),
             tool_name=data.get("tool_name"),
-            profile=mcp_profile,
-            databricks_server=data.get("databricks_server"),
             headers=data.get("headers"),
         )
 
@@ -814,10 +795,6 @@ def _parse_os_env_sandbox_spec(data: YamlData | str | bool | None) -> OSEnvSandb
             raise TypeError("os_env.sandbox.type must be a string or null")
         sandbox_type = _resolve_sandbox_type(raw_type)
     parsed_write_paths = parse_write_paths(data.get("write_paths"))
-    if sandbox_type != "linux_bwrap" and any(
-        not isinstance(p, str) and p.copy_on_write for p in parsed_write_paths or []
-    ):
-        raise ValueError("copy_on_write requires sandbox.type=linux_bwrap")
     egress_rules = data.get("egress_rules")
     # Mirror the Omnigent parser's hard reject of ``egress_rules`` paired with
     # a backend that cannot enforce them at spawn time. Without this

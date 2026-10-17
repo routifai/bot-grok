@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from omnigent.llms.client import Client as LLMClient
     from omnigent.runner.mcp_manager import RunnerMcpManager
     from omnigent.runner.policy import PolicyVerdict
-    from omnigent.terminals.registry import TerminalListEntry, TerminalRegistry
+    from omnigent.terminals.registry import TerminalRegistry
 
 import httpcore
 import httpx
@@ -97,14 +97,7 @@ from omnigent.runner.mcp_execution_registry import (
     McpExecutionResult,
 )
 from omnigent.runner.proxy_mcp_manager import ProxyMcpManager
-from omnigent.runner.repl_terminal import (
-    REPL_TERMINAL_NAME,
-    REPL_TERMINAL_SESSION_KEY,
-    auto_create_repl_terminal,
-    publish_terminal_pending,
-)
 from omnigent.runner.resource_registry import (
-    OMNIGENT_REPL_TERMINAL_ROLE,
     SessionResourceRegistry,
     TerminalExitEvent,
     trim_terminal_output,
@@ -2904,7 +2897,6 @@ def create_runner_app(
         """True only when the captured generation still matches — fill may write."""
         return _session_cache_generations.get(session_id, 0) == generation
 
-    _repl_terminal_ensure_locks: dict[str, asyncio.Lock] = {}
     _active_turns: dict[str, asyncio.Task[None] | None] = {}
     app.state.active_turns = _active_turns
     # Conversations whose claude-sdk `/compact` published an up-front
@@ -3576,7 +3568,6 @@ def create_runner_app(
         resolver_cwd = await _session_runtime_cwd(conversation_id)
         try:
             effective_harness, spawn_env = await _resolve_harness_config(
-                resource_registry=resource_registry,
                 agent_id=resolver_agent_id,
                 spec_resolver=spec_resolver,
                 session_id=conversation_id,
@@ -3591,7 +3582,6 @@ def create_runner_app(
             resolver_harness = generator_spec.resolver_harness or effective_harness
             if resolver_harness != effective_harness:
                 resolved_harness, spawn_env = await _resolve_harness_config(
-                    resource_registry=resource_registry,
                     agent_id=resolver_agent_id,
                     spec_resolver=spec_resolver,
                     session_id=conversation_id,
@@ -3862,7 +3852,6 @@ def create_runner_app(
                     cwd=await _session_runtime_cwd(session_id),
                     session_id=session_id,
                     model_override=_model_override,
-                    resource_registry=resource_registry,
                 )
             except OmnigentError as exc:
                 # The relay also needs the failure when init precedes the first turn.
@@ -3970,35 +3959,6 @@ def create_runner_app(
         _sa_name = cast(str | None, raw_sub_agent_name)
         if _sa_name:
             _session_sub_agent_names[session_id] = _sa_name
-
-        if spec is not None and not _sa_name and resource_registry.terminal_registry is not None:
-            _repl_lock = _repl_terminal_ensure_locks.setdefault(session_id, asyncio.Lock())
-            async with _repl_lock:
-                _tr = resource_registry.terminal_registry
-                _has_repl_terminal = (
-                    _tr.get(session_id, REPL_TERMINAL_NAME, REPL_TERMINAL_SESSION_KEY) is not None
-                )
-                if not _has_repl_terminal:
-                    publish_terminal_pending(_publish_event, session_id, True)
-                    try:
-                        repl_agent_spec = await _resolve_session_agent_spec(session_id)
-                    except OmnigentError:
-                        repl_agent_spec = None
-                    try:
-                        await auto_create_repl_terminal(
-                            session_id,
-                            resource_registry,
-                            _publish_event,
-                            server_client=server_client,
-                            agent_spec=repl_agent_spec,
-                        )
-                    except Exception:
-                        _logger.exception(
-                            "Failed to auto-create omnigent REPL terminal for %s",
-                            session_id,
-                        )
-                    finally:
-                        publish_terminal_pending(_publish_event, session_id, False)
 
         # Preserve the initialization contract: undrained child results are
         # recovered before POST /sessions returns. The scan no longer delays
@@ -4397,7 +4357,6 @@ def create_runner_app(
         _ingest_next_seq.pop(session_id, None)
         _ingest_now_serving.pop(session_id, None)
         _ingest_cond.pop(session_id, None)
-        _repl_terminal_ensure_locks.pop(session_id, None)
         _interrupted_sessions.discard(session_id)
 
         if process_manager is not None:
@@ -6860,7 +6819,6 @@ def create_runner_app(
                 cwd=await _session_runtime_cwd(conv),
                 model_override=cast(str | None, msg_body.get("model_override")),
                 session_id=conv,
-                resource_registry=resource_registry,
             )
             _authored_bg = raw_author_instructions(cached_spec) is not None
             # Cache hit in steady state (see _rollover_labels_for_session):
@@ -7203,7 +7161,6 @@ def create_runner_app(
             _sub_agent_name = await _recover_sub_agent_name(conv_id)
             try:
                 harness_name, spawn_env = await _resolve_harness_config(
-                    resource_registry=resource_registry,
                     agent_id=_agent_id,
                     spec_resolver=spec_resolver,
                     session_id=conv_id,
@@ -7226,47 +7183,6 @@ def create_runner_app(
                         "detail": _client_safe_error_detail(exc, context="spec resolve"),
                     },
                 )
-        from omnigent.sandbox.copy_on_write import (
-            SHARED_ENVIRONMENT_VAR,
-            export_shared_environment,
-            has_copy_on_write,
-            validate_copy_on_write_harness,
-        )
-
-        stream_spec = _unwrap_resolved_spec(_session_spec_cache.get(conv_id))
-        if stream_spec is None and _ds_agent_id and spec_resolver is not None:
-            try:
-                stream_spec = _unwrap_resolved_spec(await spec_resolver(_ds_agent_id, conv_id))
-            except (OmnigentError, httpx.HTTPError, RuntimeError):
-                stream_spec = None
-        if has_copy_on_write(
-            getattr(stream_spec, "os_env", None)
-        ) or resource_registry.uses_copy_on_write(conv_id):
-            if stream_spec is None:
-                return JSONResponse(
-                    status_code=503, content={"error": "copy_on_write session spec unavailable"}
-                )
-            try:
-                validate_copy_on_write_harness(stream_spec.os_env, harness_name)
-                environment = resource_registry.resolve_environment(
-                    conv_id, DEFAULT_ENVIRONMENT_ID, stream_spec
-                )
-                policy = getattr(environment, "sandbox", None)
-                if policy is None:
-                    raise ValueError("copy_on_write requires a local sandbox environment")
-                environment.prepare_sandbox(policy)
-                spawn_env = dict(spawn_env or {})
-                spawn_env[SHARED_ENVIRONMENT_VAR] = export_shared_environment(policy)
-            except ValueError as exc:
-                _logger.warning("copy_on_write setup failed for %s", conv_id, exc_info=True)
-                return JSONResponse(
-                    status_code=400,
-                    content={
-                        "error": "copy_on_write_setup_failed",
-                        "detail": _client_safe_error_detail(exc, context="copy_on_write setup"),
-                    },
-                )
-
         agent_version = (
             dispatch.agent_version if dispatch else cast(int | None, body.get("agent_version"))
         )
@@ -8637,37 +8553,6 @@ def create_runner_app(
             },
         )
 
-    async def _recreate_repl_terminal(
-        session_id: str, terminal_id: str
-    ) -> TerminalListEntry | None:
-        if resource_registry is None or resource_registry.terminal_registry is None:
-            return None
-        registry = resource_registry.terminal_registry
-        lock = _repl_terminal_ensure_locks.setdefault(session_id, asyncio.Lock())
-        async with lock:
-            existing = registry.get(session_id, REPL_TERMINAL_NAME, REPL_TERMINAL_SESSION_KEY)
-            if existing is None or not existing.running or not await existing.is_alive():
-                await registry.close(session_id, REPL_TERMINAL_NAME, REPL_TERMINAL_SESSION_KEY)
-                try:
-                    repl_agent_spec = await _resolve_session_agent_spec(session_id)
-                except OmnigentError:
-                    repl_agent_spec = None
-                try:
-                    await auto_create_repl_terminal(
-                        session_id,
-                        resource_registry,
-                        _publish_event,
-                        server_client=server_client,
-                        agent_spec=repl_agent_spec,
-                    )
-                except Exception:
-                    _logger.exception(
-                        "Failed to recreate omnigent REPL terminal for %s",
-                        session_id,
-                    )
-                    return None
-        return resolve_terminal_entry_by_resource_id(session_id, terminal_id, registry)
-
     @app.websocket("/v1/sessions/{session_id}/resources/terminals/{terminal_id}/attach")
     async def terminal_resource_attach_ws(
         websocket: WebSocket,
@@ -8681,23 +8566,12 @@ def create_runner_app(
             terminal_id,
             terminal_registry,
         )
-        terminal_role = (
-            resource_registry.terminal_resource_role(session_id, terminal_id)
-            if resource_registry is not None
-            else None
-        )
         if entry is None or not entry.instance.running or not await entry.instance.is_alive():
-            entry = (
-                await _recreate_repl_terminal(session_id, terminal_id)
-                if terminal_role == OMNIGENT_REPL_TERMINAL_ROLE
-                else None
+            await websocket.close(
+                code=WS_CLOSE_TERMINAL_NOT_FOUND,
+                reason="terminal resource not found or not running",
             )
-            if entry is None:
-                await websocket.close(
-                    code=WS_CLOSE_TERMINAL_NOT_FOUND,
-                    reason="terminal resource not found or not running",
-                )
-                return
+            return
         await bridge_tmux_control_to_websocket(
             websocket,
             socket_path=str(entry.instance.socket_path),
@@ -9776,7 +9650,6 @@ def create_runner_app(
     async def cleanup_session_resources(
         session_id: str,
     ) -> JSONResponse:
-        _repl_terminal_ensure_locks.pop(session_id, None)
         if process_manager is not None:
             await process_manager.release(session_id)
         await resource_registry.cleanup_session(session_id)
@@ -9791,7 +9664,6 @@ def create_runner_app(
 
     @app.post("/v1/sessions/{session_id}/reset-state")
     async def reset_session_state(session_id: str) -> JSONResponse:
-        _repl_terminal_ensure_locks.pop(session_id, None)
         await _teardown_session_terminals(session_id)
         if process_manager is not None:
             await process_manager.release(session_id)
@@ -10572,7 +10444,6 @@ async def _resolve_harness_config(
     harness_override: str | None = None,
     sub_agent_name: str | None = None,
     cwd: Path | None = None,
-    resource_registry: SessionResourceRegistry | None = None,
 ) -> tuple[str, dict[str, str] | None]:
     """Resolve harness type + spawn-env from the agent spec.
 
@@ -10630,7 +10501,6 @@ async def _resolve_harness_config(
                 workdir=workdir,
                 model_override=model_override,
                 session_id=session_id,
-                resource_registry=resource_registry,
             )
             return harness, spawn_env
 
@@ -10717,7 +10587,6 @@ def _build_spawn_env_from_spec(
     workdir: Path | None = None,
     model_override: str | None = None,
     session_id: str | None = None,
-    resource_registry: SessionResourceRegistry | None = None,
 ) -> dict[str, str] | None:
     """Build spawn-env from spec — mirrors workflow.py's helpers.
 
@@ -10742,9 +10611,6 @@ def _build_spawn_env_from_spec(
     configured_model = model_override or getattr(getattr(spec, "executor", None), "model", None)
     if configured_model:
         check_unresolved_env_vars("executor.model", configured_model)
-    from omnigent.sandbox.copy_on_write import validate_copy_on_write_harness
-
-    validate_copy_on_write_harness(getattr(spec, "os_env", None), harness)
     effective_spec = spec
     from omnigent.inference_config import load_runtime_inference_config, parse_inference_config
 
@@ -10800,28 +10666,6 @@ def _build_spawn_env_from_spec(
 
         env = strip_desktop_session_env(env)
         env.update(desktop_session_passthrough(effective_spec.os_env))
-
-    if (
-        env is not None
-        and spec.os_env is not None
-        and spec.os_env.sandbox is not None
-        and any(p.copy_on_write for p in spec.os_env.sandbox.write_path_specs)
-    ):
-        if resource_registry is None or session_id is None:
-            raise ValueError("copy_on_write harnesses require a session resource registry")
-        from omnigent.sandbox.copy_on_write import (
-            SHARED_ENVIRONMENT_VAR,
-            export_shared_environment,
-        )
-
-        environment = resource_registry.resolve_environment(
-            session_id, DEFAULT_ENVIRONMENT_ID, spec
-        )
-        policy = getattr(environment, "sandbox", None)
-        if policy is None:
-            raise ValueError("copy_on_write requires a local sandbox environment")
-        environment.prepare_sandbox(policy)
-        env[SHARED_ENVIRONMENT_VAR] = export_shared_environment(policy)
 
     # Point the harness process at this session's subagent-routing endpoint
     # when one is running (started at session init). Scoped to *harness* so

@@ -20,7 +20,6 @@ from omnigent.onboarding.detected import (
 from omnigent.onboarding.provider_config import (
     ANTHROPIC_FAMILY,
     OPENAI_FAMILY,
-    default_provider_for_harness,
     get_default_provider,
     load_providers,
 )
@@ -195,25 +194,6 @@ def test_synthesize_local_ollama() -> None:
     assert entries["ollama"]["openai"]["base_url"] == "http://localhost:11434/v1"
 
 
-def test_effective_merges_and_auto_defaults_per_family() -> None:
-    """Empty config + ambient creds → both merged and each its family default.
-
-    The first-run case: nothing configured, only ambient anthropic key +
-    codex login. The merged view must contain both AND make each the
-    default for its surface so routing resolves (and /model can name them).
-    Failure means a fresh machine would have no resolvable default.
-    """
-    merged = effective_config_with_detected({}, [_anthropic_key(), _codex_login()])
-    providers = load_providers(merged)
-    assert set(providers) == {"anthropic", "codex"}
-    # Each detected provider is the default for its own family.
-    assert get_default_provider(merged, ANTHROPIC_FAMILY).name == "anthropic"
-    assert get_default_provider(merged, OPENAI_FAMILY).name == "codex"
-    # And resolves through the harness path the runtime uses.
-    assert default_provider_for_harness(merged, "claude-sdk").name == "anthropic"
-    assert default_provider_for_harness(merged, "codex").name == "codex"
-
-
 def test_effective_explicit_wins_on_name() -> None:
     """An explicit provider overrides a detected one of the same name.
 
@@ -331,113 +311,6 @@ def test_effective_config_skips_duplicate_subscription_for_configured_cli() -> N
 
 
 # ── cli-config (codex config.toml custom provider) bridging ────────────────
-
-
-def _codex_config_det() -> DetectedProvider:
-    """An ambient codex config.toml custom-provider detection."""
-    return DetectedProvider(
-        name="codex-databricks",
-        kind="cli-config",
-        family=OPENAI_FAMILY,
-        source="~/.codex/config.toml provider 'Databricks'",
-        model_provider="Databricks",
-        display_name="Databricks AI Gateway",
-    )
-
-
-def test_synthesize_cli_config_entry() -> None:
-    """A cli-config detection synthesizes a pin-by-name provider entry.
-
-    Asserted by full equality: a missing/extra field would either fail
-    config parsing on adoption or drop the display name from every label.
-    """
-    entries = synthesize_detected_entries([_codex_config_det()])
-    assert entries == {
-        "codex-databricks": {
-            "kind": "cli-config",
-            "cli": "codex",
-            "model_provider": "Databricks",
-            "display_name": "Databricks AI Gateway",
-        }
-    }
-
-
-def test_cli_config_detection_wins_codex_default_over_login() -> None:
-    """With both codex detections, the config.toml provider auto-defaults.
-
-    Detection priority (config provider first) mirrors codex's own
-    resolution — config.toml's default provider beats auth.json. Failure
-    means an isaac-configured machine with a stray auth.json would default
-    omnigents to the ChatGPT login while plain ``codex`` uses the gateway.
-    """
-    merged = effective_config_with_detected({}, [_codex_config_det(), _codex_login()])
-    default = default_provider_for_harness(merged, "codex")
-    assert default is not None
-    # The config.toml provider wins the openai default; the login is still
-    # present as a non-default entry the user can switch to.
-    assert default.name == "codex-databricks"
-    providers = load_providers(merged)
-    assert providers["codex"].kind == "subscription"
-    assert providers["codex-databricks"].model_provider == "Databricks"
-
-
-def test_explicit_entry_overrides_cli_config_detection() -> None:
-    """An explicit entry with the detection's name is authoritative.
-
-    Failure means a re-detection would clobber a user-edited entry on the
-    read-time merge.
-    """
-    explicit = {
-        "providers": {
-            "codex-databricks": {
-                "kind": "cli-config",
-                "cli": "codex",
-                "model_provider": "OtherProvider",
-            }
-        }
-    }
-    merged = effective_config_with_detected(explicit, [_codex_config_det()])
-    # The explicit pin (OtherProvider) survives; the detected Databricks
-    # value must not overwrite it.
-    assert load_providers(merged)["codex-databricks"].model_provider == "OtherProvider"
-
-
-def test_providers_to_adopt_skips_configured_cli_config() -> None:
-    """An already-adopted cli-config entry is not re-proposed for adoption.
-
-    Failure means every configure-harnesses open would re-write (and
-    potentially clobber) the persisted entry.
-    """
-    explicit = {
-        "providers": {
-            "codex-databricks": {
-                "kind": "cli-config",
-                "cli": "codex",
-                "model_provider": "Databricks",
-            }
-        }
-    }
-    assert providers_to_adopt(explicit, [_codex_config_det()]) == {}
-
-
-def test_dismissed_detection_skipped_by_both_merge_surfaces() -> None:
-    """A dismissed detection is excluded from adoption AND the read-time merge.
-
-    Skipping only adoption would make Remove look done while the runtime
-    kept routing through the dismissed credential via the merged view;
-    skipping only the merge would re-adopt it on the next configure open.
-    Both must honor the dismissal.
-    """
-    cfg = {"dismissed_detections": ["codex-databricks"]}
-    detected = [_codex_config_det(), _codex_login()]
-
-    assert providers_to_adopt(cfg, detected) == {"codex": {"kind": "subscription", "cli": "codex"}}
-    merged = effective_config_with_detected(cfg, detected)
-    assert "codex-databricks" not in merged["providers"]
-    # With the config provider dismissed, the next detection in priority
-    # order (the codex login) takes the openai default instead.
-    default = default_provider_for_harness(merged, "codex")
-    assert default is not None and default.name == "codex"
 
 
 def test_malformed_dismissed_detections_treated_as_empty() -> None:

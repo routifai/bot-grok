@@ -20,7 +20,7 @@ from omnigent.spec.parser import (
     discover_host_skills,
     parse,
 )
-from omnigent.spec.types import ApiKeyAuth, DatabricksAuth, ProviderAuth, SharePolicy
+from omnigent.spec.types import ApiKeyAuth, ProviderAuth, SharePolicy
 
 
 @pytest.fixture(autouse=True)
@@ -3855,31 +3855,6 @@ def test_omnigent_and_default_executor_minimal_configs_still_parse(tmp_path: Pat
 # ---------------------------------------------------------------------------
 
 
-def test_parse_executor_auth_databricks(tmp_path: Path) -> None:
-    """
-    ``executor.auth: {type: databricks, profile: oss}`` parses into
-    :class:`DatabricksAuth`.
-
-    Failure means Databricks profile auth from the spec is silently
-    dropped and the harness falls back to env-var auth, which makes
-    the spec non-self-contained.
-    """
-    config = {
-        "spec_version": 1,
-        "executor": {
-            "harness": "pi",
-            "model": "databricks-gpt-5-4-mini",
-            "auth": {"type": "databricks", "profile": "oss"},
-        },
-    }
-    (tmp_path / "config.yaml").write_text(yaml.dump(config))
-    spec = parse(tmp_path)
-
-    # auth field must be populated with a DatabricksAuth instance.
-    assert isinstance(spec.executor.auth, DatabricksAuth)
-    assert spec.executor.auth.profile == "oss"
-
-
 def test_parse_executor_auth_api_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """
     ``executor.auth: {type: api_key, api_key: $MY_KEY}`` expands the
@@ -3963,7 +3938,7 @@ def test_parse_executor_auth_unknown_type_raises(tmp_path: Path) -> None:
         "executor": {"auth": {"type": "magic_token", "token": "abc"}},
     }
     (tmp_path / "config.yaml").write_text(yaml.dump(config))
-    with pytest.raises(OmnigentError, match=r"must be 'api_key', 'databricks', or 'provider'"):
+    with pytest.raises(OmnigentError, match=r"must be 'api_key' or 'provider'"):
         parse(tmp_path)
 
 
@@ -3978,20 +3953,6 @@ def test_parse_executor_auth_api_key_missing_key_raises(tmp_path: Path) -> None:
     }
     (tmp_path / "config.yaml").write_text(yaml.dump(config))
     with pytest.raises(OmnigentError, match=r"api_key is required"):
-        parse(tmp_path)
-
-
-def test_parse_executor_auth_databricks_missing_profile_raises(tmp_path: Path) -> None:
-    """
-    ``type: databricks`` without a ``profile`` field raises
-    :class:`OmnigentError` rather than silently using an empty profile.
-    """
-    config = {
-        "spec_version": 1,
-        "executor": {"auth": {"type": "databricks"}},
-    }
-    (tmp_path / "config.yaml").write_text(yaml.dump(config))
-    with pytest.raises(OmnigentError, match=r"profile is required"):
         parse(tmp_path)
 
 
@@ -4186,96 +4147,6 @@ def test_parse_credential_proxy_https_env_optional(tmp_path: Path) -> None:
     assert entry.host == "corp.example.com"
     assert entry.scheme == "bearer"
     assert entry.inject_env == []
-
-
-def test_parse_credential_proxy_databricks_cli(tmp_path: Path) -> None:
-    """A ``databricks_cli`` entry parses into a profile-keyed policy.
-
-    Unlike the host-keyed types it lands on ``credential_proxy.databricks``
-    (not ``entries``), preserving the profile list and default. If this
-    broke, the runtime would never materialize the ``.databrickscfg`` or
-    resolve the profiles.
-    """
-    config = _credential_proxy_config(
-        [
-            {
-                "type": "databricks_cli",
-                "profiles": ["dbc-adb7b1a3-9097", "oss"],
-                "default": "dbc-adb7b1a3-9097",
-            }
-        ]
-    )
-    (tmp_path / "config.yaml").write_text(yaml.dump(config))
-    spec = parse(tmp_path)
-    proxy = spec.os_env.sandbox.credential_proxy
-    assert proxy is not None
-    assert proxy.entries == []
-    assert proxy.databricks is not None
-    assert [b.profile for b in proxy.databricks.profiles] == ["dbc-adb7b1a3-9097", "oss"]
-    assert proxy.databricks.default == "dbc-adb7b1a3-9097"
-
-
-@pytest.mark.parametrize(
-    "entry,match",
-    [
-        # ``default`` must name one of the listed profiles.
-        (
-            {"type": "databricks_cli", "profiles": ["a"], "default": "b"},
-            r"'default' 'b' must be one of 'profiles'",
-        ),
-        # Empty ``profiles`` list.
-        ({"type": "databricks_cli", "profiles": []}, r"non-empty 'profiles' list"),
-        # A host-keyed field doesn't apply.
-        (
-            {"type": "databricks_cli", "profiles": ["a"], "target": "h.example.com"},
-            r"databricks_cli does not accept 'target'",
-        ),
-        # ``source`` doesn't apply (resolved from the profile).
-        (
-            {"type": "databricks_cli", "profiles": ["a"], "source": {"env": "X"}},
-            r"databricks_cli does not accept 'source'",
-        ),
-        # Duplicate profile within one entry.
-        (
-            {"type": "databricks_cli", "profiles": ["a", "a"]},
-            r"more than once",
-        ),
-    ],
-)
-def test_parse_credential_proxy_databricks_cli_fail_loud(
-    tmp_path: Path, entry: dict[str, object], match: str
-) -> None:
-    """Malformed ``databricks_cli`` entries fail loudly at parse time."""
-    config = _credential_proxy_config([entry])
-    (tmp_path / "config.yaml").write_text(yaml.dump(config))
-    with pytest.raises(OmnigentError, match=match):
-        parse(tmp_path)
-
-
-def test_parse_credential_proxy_databricks_cli_rejected_on_macos(tmp_path: Path) -> None:
-    """``databricks_cli`` is rejected on macOS (``darwin_seatbelt``).
-
-    The ``databricks`` CLI is a Go binary and Go on macOS ignores
-    ``SSL_CERT_FILE`` (the var the egress MITM proxy uses to publish its
-    CA), so every call would fail with an opaque TLS error. Fail loud at
-    parse time instead.
-    """
-    config = {
-        "spec_version": 1,
-        "name": "cred-proxy-dbx-macos",
-        "os_env": {
-            "type": "caller_process",
-            "cwd": ".",
-            "sandbox": {
-                "type": "darwin_seatbelt",
-                "egress_rules": ["* corp.example.com/**"],
-                "credential_proxy": [{"type": "databricks_cli", "profiles": ["a"]}],
-            },
-        },
-    }
-    (tmp_path / "config.yaml").write_text(yaml.dump(config))
-    with pytest.raises(OmnigentError, match=r"databricks_cli' does not work\s+on macOS"):
-        parse(tmp_path)
 
 
 @pytest.mark.parametrize(

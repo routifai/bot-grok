@@ -225,29 +225,6 @@ def mcp_http_tool_yaml(tmp_path: Path) -> Path:
 
 
 @pytest.fixture()
-def mcp_databricks_server_yaml(tmp_path: Path) -> Path:
-    """
-    Omnigent YAML with the ``databricks_server`` MCP shape —
-    omnigent has no resolver for it, so the adapter rejects.
-    """
-    config = {
-        "name": "mcp_db_example",
-        "prompt": "I use a named Databricks MCP.",
-        "executor": {"harness": "claude-sdk"},
-        "tools": {
-            "uc": {
-                "type": "mcp",
-                "databricks_server": "unity-catalog",
-                "profile": "test-profile",
-            },
-        },
-    }
-    path = tmp_path / "mcp_db.yaml"
-    path.write_text(yaml.dump(config))
-    return path
-
-
-@pytest.fixture()
 def cancellable_tool_yaml(tmp_path: Path) -> Path:
     """
     Omnigent YAML declaring a legacy ``cancellable_function``
@@ -440,56 +417,6 @@ def test_agent_def_to_agent_spec_function_tool(
     # from an omnigent YAML and must be re-resolved via
     # importlib.import_module rather than read off disk.
     assert tool.language == OMNIGENT_TOOL_LANGUAGE
-
-
-def test_agent_def_to_agent_spec_translates_catalog_path_tool(tmp_path: Path) -> None:
-    """
-    ``catalog_path`` Unity Catalog tools translate into
-    ``LocalToolInfo`` with ``runtime=UC_FUNCTION``.
-
-    Failure meaning: UC tools are silently dropped or rejected
-    instead of being carried through to the runner for execution
-    via the SQL Statement Execution API.
-
-    :param tmp_path: Pytest temporary directory for the YAML fixture.
-    """
-    from omnigent.inner.loader import load_agent_def
-    from omnigent.spec.types import ToolRuntime
-
-    yaml_path = tmp_path / "uc.yaml"
-    yaml_path.write_text(
-        yaml.dump(
-            {
-                "name": "uc_agent",
-                "prompt": "Use UC functions.",
-                "executor": {"model": "databricks-claude-sonnet-4"},
-                "tools": {
-                    "classify": {
-                        "type": "function",
-                        "catalog_path": "main.default.classify",
-                        "warehouse_id": "wh-abc",
-                    },
-                },
-            },
-        ),
-    )
-
-    agent_def = load_agent_def(yaml_path)
-    spec = agent_def_to_agent_spec(agent_def)
-
-    # UC tool translated into a LocalToolInfo with UC_FUNCTION runtime.
-    uc_tools = [t for t in spec.local_tools if t.catalog_path is not None]
-    assert len(uc_tools) == 1, (
-        f"Expected exactly 1 UC tool, got {len(uc_tools)}. "
-        f"If 0, the UC tool was silently dropped during translation."
-    )
-    tool = uc_tools[0]
-    assert tool.name == "classify"
-    assert tool.catalog_path == "main.default.classify"
-    assert tool.warehouse_id == "wh-abc"
-    assert tool.runtime == ToolRuntime.UC_FUNCTION
-    # path is None for UC tools (no server-side callable).
-    assert tool.path is None
 
 
 def test_function_tool_parameters_derived_from_callable_signature(
@@ -779,23 +706,6 @@ def test_mcp_stdio_yaml_reverse_trip_recovers_mcp_tool(mcp_tool_yaml: Path) -> N
     # originally-declared subprocess, not some lossy approximation.
     assert tool.command == ".venv/bin/python"
     assert tool.args == ["-m", "omnigent.inner.databricks_mcps.glean"]
-
-
-def test_load_mcp_databricks_server_yaml_raises(mcp_databricks_server_yaml: Path) -> None:
-    """
-    Omnigent MCP tools using the ``databricks_server=<name>``
-    shape fail loud — Omnigent' MCPServerConfig doesn't
-    resolve named Databricks servers. The translator needs a
-    concrete ``url`` or ``command`` to emit a functional config.
-
-    What breaks if this fails: specs with
-    ``databricks_server: unity-catalog`` would silently translate
-    to an MCPServerConfig with neither url nor command — the
-    validator would then reject the spec at load, but with a
-    less-helpful message than the pinpoint fail here.
-    """
-    with pytest.raises(OmnigentError, match="databricks_server"):
-        load(mcp_databricks_server_yaml)
 
 
 def test_load_cancellable_function_yaml_rejected_post_step_c(
@@ -2422,7 +2332,7 @@ def test_compat_yaml_executor_auth_is_not_dropped(tmp_path: Path) -> None:
 
     Regression target: ``_translate_executor_from_def`` previously never
     called ``_parse_executor_auth``, so a YAML with
-    ``executor.auth: {type: databricks, profile: oss}`` produced a spec
+    ``executor.auth: {type: provider, name: litellm}`` produced a spec
     with ``executor.auth = None``, causing it to fall through to the
     global config default (wrong credentials silently).
 
@@ -2433,18 +2343,18 @@ def test_compat_yaml_executor_auth_is_not_dropped(tmp_path: Path) -> None:
     :param tmp_path: Temporary directory for the test YAML.
     """
     from omnigent.spec._omnigent_compat import load_omnigent_yaml
-    from omnigent.spec.types import DatabricksAuth
+    from omnigent.spec.types import ProviderAuth
 
     yaml_path = tmp_path / "agent_with_auth.yaml"
     yaml_path.write_text(
         yaml.dump(
             {
-                "name": "databricks_agent",
+                "name": "provider_agent",
                 "prompt": "You are a coding assistant.",
                 "executor": {
-                    "model": "databricks-claude-sonnet-4-6",
+                    "model": "claude-sonnet-4-6",
                     "harness": "claude-sdk",
-                    "auth": {"type": "databricks", "profile": "oss"},
+                    "auth": {"type": "provider", "name": "litellm"},
                 },
             }
         )
@@ -2453,11 +2363,11 @@ def test_compat_yaml_executor_auth_is_not_dropped(tmp_path: Path) -> None:
     spec = load_omnigent_yaml(yaml_path)
 
     # auth must survive the compat translation — not silently dropped.
-    assert isinstance(spec.executor.auth, DatabricksAuth), (
+    assert isinstance(spec.executor.auth, ProviderAuth), (
         "executor.auth was not parsed from the compat YAML; "
         "the agent would silently fall through to global config credentials."
     )
-    assert spec.executor.auth.profile == "oss"
+    assert spec.executor.auth.name == "litellm"
 
 
 def test_compat_yaml_executor_api_key_auth_is_not_dropped(tmp_path: Path) -> None:

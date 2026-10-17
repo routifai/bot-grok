@@ -39,12 +39,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
-from collections.abc import Callable
 from dataclasses import dataclass
 from urllib.parse import quote
 
 from omnigent.inner.datamodel import OSEnvSpec, TerminalEnvSpec
-from omnigent.inner.os_env import OSEnvironment
 from omnigent.inner.terminal import TerminalInstance, create_terminal_instance
 
 logger = logging.getLogger(__name__)
@@ -74,16 +72,10 @@ def conversation_link_for_id(
     :returns: Web UI link, e.g. ``"/c/conv_abc123"`` or
         ``"http://127.0.0.1:6767/c/conv_abc123"``.
     """
+    path = f"/c/{quote(conversation_id, safe='')}"
     if base_url is None or not base_url.strip():
-        return f"/c/{quote(conversation_id, safe='')}"
-    # Delegate to the shared builder so workspace-hosted servers get the
-    # API→UI mount swap (``/api/2.0/omnigent`` → ``/omnigent``) and the
-    # ``?o=<org>`` selector — keeping the terminal status-bar link in
-    # lockstep with the CLI's ``Web UI:`` link instead of pointing at the
-    # JSON API mount.
-    from omnigent.conversation_browser import conversation_url
-
-    return conversation_url(base_url.strip(), conversation_id)
+        return path
+    return f"{base_url.strip().rstrip('/')}{path}"
 
 
 @dataclass(frozen=True)
@@ -154,7 +146,6 @@ class TerminalRegistry:
         # Threading lock — see module docstring for the rationale.
         # Protects both ``_by_conversation`` and ``_instance_locks``.
         self._lock = threading.Lock()
-        self.environment_resolver: Callable[[str, OSEnvSpec], OSEnvironment] | None = None
 
     def conversation_link_for_id(self, conversation_id: str) -> str:
         """
@@ -231,27 +222,11 @@ class TerminalRegistry:
         # registry lock across them would serialize all conversations'
         # terminal spawns globally. Instead we re-check after the
         # spawn completes.
-        parent_environment = None
-        environment_spec = spec.os_env if isinstance(spec.os_env, OSEnvSpec) else parent_os_env
-        if (
-            environment_spec is not None
-            and environment_spec.sandbox is not None
-            and any(p.copy_on_write for p in environment_spec.sandbox.write_path_specs)
-        ):
-            if self.environment_resolver is None:
-                raise RuntimeError("copy_on_write terminals require a session resource registry")
-            parent_environment = self.environment_resolver(
-                conversation_id, parent_os_env or environment_spec
-            )
-        shared_environment_args = (
-            {"parent_environment": parent_environment} if parent_environment else {}
-        )
         created = create_terminal_instance(
             terminal_name,
             session_key,
             spec,
             parent_os_env_spec=parent_os_env,
-            **shared_environment_args,
             cwd_override=cwd_override,
             sandbox_override=sandbox_override,
             conversation_link=self.conversation_link_for_id(conversation_id),

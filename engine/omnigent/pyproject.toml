@@ -12,7 +12,7 @@ requires-python = ">=3.12"
 authors = [
     { name = "Databricks, Inc." },
 ]
-keywords = ["agents", "llm", "ai", "databricks", "cli"]
+keywords = ["agents", "llm", "ai", "cli"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -109,10 +109,8 @@ dependencies = [
     "openai-agents>=0.0.17",
     "PyJWT[crypto]>=2.8,<3",
     "argon2-cffi>=23.1,<24",
-    # PEP 440 version comparison for the update check / `omni upgrade`
-    # (omnigent/update_check.py, omnigent/cli.py): compares the installed
-    # version against the latest PyPI release. Previously only a
-    # transitive dep; pinned here now that we import it directly.
+    # PEP 440 version parsing (runner, extensions, telemetry); imported
+    # directly, so pinned here rather than left transitive.
     "packaging>=23,<26",
     # CA root bundle for client TLS verification (omnigent/tls.py,
     # omnigent/inner/egress/ca.py). Required as a real fallback on uv /
@@ -150,7 +148,6 @@ claude-sdk = []
 # `all` carries dependencies moved out of the default install that internal
 # CI / dev workflows still exercise.
 all = [
-    "databricks-sdk>=0.56.0,<1",
     "opentelemetry-sdk>=1.20,<2",
     "opentelemetry-exporter-otlp-proto-grpc>=1.20,<2",
     "opentelemetry-exporter-otlp-proto-http>=1.20,<2",
@@ -264,14 +261,8 @@ dev = [
 ]
 
 [project.scripts]
-# Unified entry point. `omnigent` is the click-based CLI that absorbs
-# the legacy argparse commands from `omnigent/inner/cli.py` plus the
-# omnigent `ap` subcommands. See designs/UNIFICATION.md § CLI
-# absorption. `omni` is installed as a short alias — both resolve to
-# the same entry point. (No former-name aliases: only `omnigent` and
-# `omni` ship, internal and OSS alike.)
+# `omnigent host --server <url>` runs in every host container.
 omnigent = "omnigent.cli:main"
-omni = "omnigent.cli:main"
 
 [tool.uv]
 default-groups = []
@@ -336,7 +327,7 @@ pythonpath = [".", "sdks/python-client", "sdks/ui"]
 markers = [
     "live: end-to-end tests requiring real LLM API key (run with --llm-api-key)",
     "live_app: end-to-end tests requiring a deployed Databricks App server",
-    "databricks: requires the `databricks` extra (psycopg / databricks-sdk). Deselected on the standard lanes via -m 'not databricks'; runs only in the Pytest (databricks) lane, which installs the extra. Use for tests that build a postgresql+psycopg engine or call the Databricks SDK.",
+    "databricks: requires psycopg. Deselected on the standard lanes via -m 'not databricks'. Use for tests that build a postgresql+psycopg engine.",
     "model(name, ...): one arg pins this test to that model overriding the suite-wide --model CLI default; multiple args fan the test out across all listed models via indirect parametrize.",
     "model_pinned: opt out of tests/_model_pools.py spreading and retry rotation; literal model strings are used as written.",
     "flaky(reruns=2, reruns_delay=0): rerun a nondeterministic test on failure (pytest-rerunfailures). Use for tests flaky due to timing/scheduling races (e.g. PTY drain timing), NOT real-LLM nondeterminism — those use llm_flaky, which rotates models per attempt.",
@@ -389,11 +380,9 @@ line-length = 99
 # migration that belongs in its own cleanup PR.
 target-version = "py310"
 # Vendored upstream code — not ours to restyle.
-#  - ``omnigent/inner/databricks_mcps/google``: Google MCP server source.
 #  - ``assistant-ui/``: assistant-ui.com React/Python suite imported as a
 #    vendored snapshot; tracked upstream, no in-tree edits.
 extend-exclude = [
-    "omnigent/inner/databricks_mcps/google",
     "assistant-ui",
     # Protobuf-generated code (DO NOT EDIT); not ours to restyle.
     "omnigent/api/**/*_pb2.py",

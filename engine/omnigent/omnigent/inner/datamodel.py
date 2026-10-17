@@ -360,7 +360,7 @@ class ExecutorSpec:
     model: str | None = None
     harness: str | None = None
     profile: str | None = None
-    auth: object | None = None  # ApiKeyAuth | DatabricksAuth | None
+    auth: object | None = None  # ApiKeyAuth | ProviderAuth | None
     context_files: bool | None = None
     system_prompt_mode: str | None = None
 
@@ -456,73 +456,26 @@ class CredentialProxyEntry:
 
 
 @dataclass
-class DatabricksProfileBinding:
-    """One Databricks ``~/.databrickscfg`` profile to proxy.
-
-    The host and OAuth/PAT token behind a profile are resolved in the
-    parent at runtime (via the ``databricks`` SDK) — never at parse time
-    and never inside the sandbox. The sandbox only ever sees a synthetic
-    ``oa_cred_*`` placeholder written into a materialized ``.databrickscfg``.
-
-    :param profile: The profile (section) name in ``~/.databrickscfg``,
-        e.g. ``"dbc-adb7b1a3-9097"``. Selected in the sandbox with
-        ``databricks --profile <name>`` (or as the default profile).
-    """
-
-    profile: str
-
-
-@dataclass
-class DatabricksProxySpec:
-    """Secretless proxy policy for the Databricks CLI.
-
-    Unlike the four host-keyed credential types, Databricks profiles bind
-    to a workspace host that is only known once the parent resolves the
-    profile at runtime, so they are carried here rather than in
-    :attr:`CredentialProxySpec.entries`.
-
-    :param profiles: The profiles to proxy. Only these profiles are
-        materialized into the sandbox ``.databrickscfg`` and swapped by
-        the egress proxy; every other profile is invisible to the sandbox.
-    :param default: Optional profile used when the CLI is invoked without
-        ``--profile`` (exported as ``DATABRICKS_CONFIG_PROFILE``). Must be
-        one of :attr:`profiles`.
-    :param config_env: Environment variable pointed at the materialized
-        config file (the Databricks CLI honors ``DATABRICKS_CONFIG_FILE``).
-    """
-
-    profiles: list[DatabricksProfileBinding]
-    default: str | None = None
-    config_env: str = "DATABRICKS_CONFIG_FILE"
-
-
-@dataclass
 class CredentialProxySpec:
     """Secretless credential-proxy policy for a sandbox.
 
     :param entries: Normalized per-host credential bindings. The real
         secrets stay in the parent; the sandbox only ever sees synthetic
         placeholders that the egress proxy rewrites.
-    :param databricks: Optional Databricks-CLI proxy policy (a list of
-        profiles). Resolved to per-workspace-host bindings at runtime.
     """
 
     entries: list[CredentialProxyEntry]
-    databricks: DatabricksProxySpec | None = None
 
 
 @dataclass(frozen=True)
 class WritePathSpec:
-    """A directory write grant, optionally backed by a disposable overlay."""
+    """A directory write grant."""
 
     path: str
-    copy_on_write: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.path, str) or not self.path:
             raise ValueError("write_paths.path must be a non-empty string")
-        if not isinstance(self.copy_on_write, bool):
-            raise ValueError("write_paths.copy_on_write must be a boolean")
 
 
 def parse_write_paths(raw: object) -> list[str | WritePathSpec] | None:
@@ -539,13 +492,12 @@ def parse_write_paths(raw: object) -> list[str | WritePathSpec] | None:
         elif isinstance(entry, WritePathSpec):
             result.append(entry)
         elif isinstance(entry, dict):
-            if set(entry) - {"path", "copy_on_write"}:
-                raise ValueError("write_paths entries only accept path and copy_on_write")
+            if set(entry) - {"path"}:
+                raise ValueError("write_paths entries only accept path")
             path = entry.get("path")
-            copy_on_write = entry.get("copy_on_write", False)
-            if not isinstance(path, str) or not isinstance(copy_on_write, bool):
-                raise ValueError("write_paths requires a string path and boolean copy_on_write")
-            result.append(WritePathSpec(path, copy_on_write))
+            if not isinstance(path, str):
+                raise ValueError("write_paths requires a string path")
+            result.append(WritePathSpec(path))
         else:
             raise ValueError("write_paths entries must be path strings or mappings")
     return result
@@ -811,14 +763,6 @@ class OSEnvSpec:
     sandbox: OSEnvSandboxSpec | None = None
     fork: bool = False
     start_in_scratch: bool = False
-
-    def __post_init__(self) -> None:
-        if (
-            self.fork
-            and self.sandbox is not None
-            and any(p.copy_on_write for p in self.sandbox.write_path_specs)
-        ):
-            raise ValueError("os_env.fork cannot be combined with copy_on_write paths")
 
 
 @dataclass
