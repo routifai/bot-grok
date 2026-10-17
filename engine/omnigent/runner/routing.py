@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 import httpx
 
@@ -25,9 +25,18 @@ from omnigent.spec import AgentSpec
 if TYPE_CHECKING:
     from omnigent.entities import Conversation
     from omnigent.runner.transports.ws_tunnel.registry import RunnerSession, TunnelRegistry
-    from omnigent.server.host_registry import HostRegistry
     from omnigent.stores import ConversationStore
     from omnigent.stores.host_store import HostStore
+
+
+class HostPresence(Protocol):
+    """What the router asks of the server's host registry: is this host connected here.
+
+    ``omnigent.server.host_registry.HostRegistry`` satisfies it; the router only needs this
+    one lookup, and HOST code never imports ``omnigent.server`` (ADR 0019).
+    """
+
+    def get(self, host_id: str) -> object | None: ...
 
 
 _EXECUTOR_TYPE_TO_HARNESS: dict[str, str] = {"claude_sdk": "claude-sdk"}
@@ -131,7 +140,7 @@ class RunnerRouter:
         *,
         registry: TunnelRegistry,
         conversation_store: ConversationStore,
-        host_registry: HostRegistry | None = None,
+        host_registry: HostPresence | None = None,
         host_store: HostStore | None = None,
     ) -> None:
         self._registry = registry

@@ -692,11 +692,11 @@ def register_hooks_routes(
             SubagentRouteDecision,
             SubagentRouteRequest,
             auto_harness_session,
-            resolve_subagent_route,
             store_persister,
             subagent_routing_enabled,
         )
         from omnigent.server.smart_routing import AUTO_NATIVE_ROUTING_HARNESSES
+        from omnigent.server.subagent_route_policy import resolve_subagent_route
 
         user_id = _get_user_id(request, auth_provider)
         # LEVEL_EDIT, like POST /events: a routed verdict mutates the session

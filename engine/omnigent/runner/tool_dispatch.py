@@ -79,6 +79,7 @@ from omnigent.models.model_override import (
 )
 from omnigent.runtime import pending_elicitations
 from omnigent.runtime.mcp_tool_result import encode_mcp_image_result, native_image_payload
+from omnigent.runtime.runner_wire import SessionCreatedEvent
 from omnigent.tools import ToolManager
 from omnigent.tools.base import Tool, ToolContext
 from omnigent.tools.browser_backend import (
@@ -3044,7 +3045,6 @@ async def _execute_subagent_tool(
     # the conversation_store row written by the server above.
     if not parent_agent_id:
         return f"Error: missing parent agent_id for child session {child_session_id}"
-    from omnigent.server.schemas import SessionCreatedEvent
 
     if created_child:
         _evt = SessionCreatedEvent(
@@ -3457,7 +3457,6 @@ def _finalize_created_session(
         agent_name, title, status}``.
     """
     from omnigent.runner import app as _runner_app
-    from omnigent.server.schemas import SessionCreatedEvent
 
     child_id = data.get("id")
     if not isinstance(child_id, str) or not child_id:

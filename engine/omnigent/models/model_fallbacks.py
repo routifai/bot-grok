@@ -147,6 +147,17 @@ SMART_ROUTING_FAMILY_FALLBACKS = _SMART_ROUTING_FALLBACKS["family_fallbacks"].mo
 #: Models pi's own gateway rejects, so the router may not pick them under pi.
 SMART_ROUTING_PI_EXCLUDED = _SMART_ROUTING_FALLBACKS["pi_excluded"].model_ids
 
+#: The model family each routable harness serves (``"claude"``, ``"gpt"``, ``"pi"``). Read by
+#: smart routing (``omnigent.server.smart_routing``) and by the runner's subagent relay
+#: (``omnigent.runner.subagent_routing.harness_family``), so both agree on "in-family".
+ROUTING_HARNESS_FAMILY: dict[str, str] = {
+    "claude-sdk": "claude",
+    "claude_sdk": "claude",
+    "claude-native": "claude",
+    "pi": "pi",
+    "codex-native": "gpt",
+}
+
 #: Cheapest current arm per CLI family for background session titles. Title
 #: calls are tiny (<=64 output tokens, no tools, low effort), so they always
 #: run on the family's cheapest arm regardless of the session's model.

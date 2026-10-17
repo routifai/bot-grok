@@ -129,7 +129,7 @@ from omnigent.runtime.prompt import (
     build_instructions_nullable,
     raw_author_instructions,
 )
-from omnigent.server.schemas import (
+from omnigent.runtime.runner_wire import (
     BackgroundSessionTitleRequest,
     BackgroundSessionTitleResponse,
 )

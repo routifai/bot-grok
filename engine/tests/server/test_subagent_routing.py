@@ -21,8 +21,6 @@ from omnigent.runner.subagent_routing import (
     SessionRoutingClass,
     SubagentRouteDecision,
     SubagentRouteRequest,
-    candidate_models,
-    decision_record,
     ensure_session_router,
     ensure_session_router_quietly,
     forget_session_routing_class,
@@ -30,7 +28,6 @@ from omnigent.runner.subagent_routing import (
     persist_subagent_decision,
     relayed_decisions,
     remember_session_routing_class,
-    resolve_subagent_route,
     routed_models,
     router_dir_for_session,
     session_router_env,
@@ -40,6 +37,11 @@ from omnigent.runner.subagent_routing import (
     write_advertisement,
 )
 from omnigent.server.smart_routing import RoutingResult, RoutingSettings
+from omnigent.server.subagent_route_policy import (
+    candidate_models,
+    decision_record,
+    resolve_subagent_route,
+)
 from tests.server.helpers import FakeCaps, FakeRoutingClient
 
 CLAUDE_MODEL = "databricks-claude-opus-4-8"
