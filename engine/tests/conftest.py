@@ -122,22 +122,20 @@ def pytest_configure(config: pytest.Config) -> None:
         worker = os.environ.get("PYTEST_XDIST_WORKER", "main")
         _PROGRESS_LOG_PATH = os.path.join(log_dir, f"progress-{worker}.log")
 
-    _run_test_environment_guardrails(config)
+    _run_test_environment_guardrails()
 
 
-def _run_test_environment_guardrails(config: pytest.Config) -> None:
+def _run_test_environment_guardrails() -> None:
     """Enforce test-environment guardrails at session start.
 
     Hard-fail: :func:`check_test_environment` raises on anything that
-    looks like a real (non-test) DB or a base URL aimed at a dev/prod host
-    or port. Set ``OMNIGENT_DISABLE_TEST_GUARDRAILS=1`` to temporarily
+    looks like a real (non-test) DB. Set ``OMNIGENT_DISABLE_TEST_GUARDRAILS=1`` to temporarily
     downgrade violations to warn-only for deliberate integration runs.
     """
     from tests._helpers.guardrails import check_test_environment
 
     db_uri = os.environ.get("OMNIGENT_DATABASE_URI", "")
-    base_url = config.getoption("--omnigent-server-url", default=None)
-    check_test_environment(db_uri=db_uri, base_url=base_url, warn_only=False)
+    check_test_environment(db_uri=db_uri, warn_only=False)
 
 
 def pytest_unconfigure(config: pytest.Config) -> None:
@@ -277,21 +275,6 @@ def pytest_addoption(parser):
         help=(
             "LLM API key for tests/frontends/ integration tests "
             "(those skip gracefully when the key is absent)."
-        ),
-    )
-    parser.addoption(
-        "--omnigent-server-url",
-        action="store",
-        default=None,
-        help=(
-            "Base URL of an externally-managed `omnigent.cli server` to run "
-            "e2e tests against, e.g. `http://localhost:8080`. When set, "
-            "server-fixtures skip the spawn step and yield this URL. Useful "
-            "for iterating on tests against a long-running dev server "
-            "(server logs stay visible, breakpoints stick across runs). When "
-            "unset, fixtures spawn a fresh subprocess as before. The fixture "
-            "consumer is responsible for ensuring the external server is "
-            "configured with the credentials/profile the test needs."
         ),
     )
 
