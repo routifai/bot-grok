@@ -10,16 +10,18 @@ from typing import Any
 
 from omnigent.context.labels import is_superside_chat
 from omnigent.entities import Conversation
+
+# Re-exported: the open Project is plain data over the row, shared below ``superchat``.
+from omnigent.entities.session_project import (
+    PROJECT_NAME_LABEL_KEY as PROJECT_NAME_LABEL_KEY,
+)
+from omnigent.entities.session_project import open_project as open_project
 from omnigent.stores import ConversationStore
 from omnigent.superchat.feature import is_helper, is_super_chat
-from omnigent.superchat.projects.card import project_slug_from_workspace, workspace_folder
+from omnigent.superchat.projects.card import workspace_folder
 from omnigent.superchat.projects.choice import chosen_by_person
 
 _MAX_HELPER_HOPS = 8
-
-#: Session label holding the open Project's card name, stamped when ``open_project`` moves the
-#: working directory (the card itself lives on the session's host, not the server).
-PROJECT_NAME_LABEL_KEY = "omnigent.project.name"
 
 
 def _helper_root(conv_store: ConversationStore, conversation: Conversation) -> Conversation | None:
@@ -74,18 +76,6 @@ def is_super_chat_helper(conv_store: ConversationStore, conversation: Conversati
         return False
     root = _helper_root(conv_store, conversation)
     return root is not None and is_superside_chat(root.labels)
-
-
-def open_project(conversation: Conversation) -> dict[str, str] | None:
-    """The Project the session has open (``{"slug", "name"}``), read from its working directory.
-
-    The name is the card name ``open_project`` recorded, else the slug.
-    """
-    slug = project_slug_from_workspace(conversation.workspace)
-    if slug is None:
-        return None
-    name = conversation.labels.get(PROJECT_NAME_LABEL_KEY) or slug
-    return {"slug": slug, "name": name}
 
 
 def session_superchat(

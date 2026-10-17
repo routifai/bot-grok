@@ -29,7 +29,10 @@ from fnmatch import fnmatchcase
 from typing import Any
 from urllib.parse import urlparse
 
+from omnigent.context.labels import is_superside_chat
+from omnigent.entities import Conversation
 from omnigent.policies.schema import PolicyEvent, PolicyResponse
+from omnigent.spec.types import FunctionPolicySpec, FunctionRef
 from omnigent.superchat.risk import (  # noqa: F401  (re-exported: the classifier registry's old home)
     Classifier,
     Risk,
@@ -524,6 +527,37 @@ def configure_store(store: Any | None) -> None:
 def get_store() -> Any | None:
     """The bound approval store, or ``None``."""
     return _store
+
+
+def applies(conversation: Conversation | None, tree: list[Conversation] | None) -> bool:
+    """Whether the approvals policy covers a session: a store is bound and it is a Super Chat's.
+
+    The Super Chat's tree is the Conversation and its Helpers. With no *tree* (the cheap
+    pre-check) a child may still belong to one, so it counts; the engine build decides.
+    """
+    if _store is None:
+        return False
+    if conversation is None:
+        return True
+    if tree is None:
+        return (
+            is_superside_chat(conversation.labels)
+            or conversation.parent_conversation_id is not None
+        )
+    return any(is_superside_chat(row.labels) for row in [conversation, *tree])
+
+
+#: Asks before a Super Chat session sends, posts, deletes, spends, uploads or shares; installed
+#: through the policy builder's hooks (``omnigent.superchat.features``) on the sessions
+#: :func:`applies` covers.
+POLICY_SPEC = FunctionPolicySpec(
+    name=POLICY_NAME,
+    on=None,
+    function=FunctionRef(
+        path="omnigent.superchat.approvals.policy.muse_approvals", arguments=None
+    ),
+    ask_timeout=ASK_TIMEOUT_SECONDS,
+)
 
 
 def _today() -> str:

@@ -9,7 +9,7 @@ from __future__ import annotations
 import fnmatch
 import logging
 import shutil
-from collections.abc import Mapping
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -59,6 +59,19 @@ from omnigent.tools.local import load_local_python_tools
 # MCP lifecycle moved to runner; see designs/RUNNER_MCP.md.
 
 _logger = logging.getLogger(__name__)
+
+#: ``source(labels, spec)``: the label-gated tools a product adds to one session.
+ToolSource = Callable[[Mapping[str, str] | None, AgentSpec], Iterable[Tool]]
+
+#: Product tool sources by name, filled by the product's composition root
+#: (``omnigent.superchat.features``) when it is imported. The tool manager is SHARED and never
+#: imports the product (ADR 0019).
+_TOOL_SOURCES: dict[str, ToolSource] = {}
+
+
+def register_tool_source(name: str, source: ToolSource) -> None:
+    """Add *source*'s tools to every session's ToolManager (re-registering a name replaces)."""
+    _TOOL_SOURCES[name] = source
 
 
 class _SchemaOnlyTool(Tool):
@@ -208,7 +221,7 @@ class ToolManager:
         # Scheduled-task tools are always auto-registered so agents can
         # manage recurring runs at runtime without the spec opting in.
         self._register_scheduled_task_tools()
-        self._register_feature_tools()
+        self._register_product_tools()
         # Embedded-browser tools are always auto-registered so any agent
         # can drive the desktop app's browser without the spec opting in
         # (framework-owned).
@@ -267,13 +280,11 @@ class ToolManager:
         ):
             self._tools[tool.name()] = tool
 
-    def _register_feature_tools(self) -> None:
-        """Register every Super Chat feature's label-gated tools (``omnigent.superchat``)."""
-        from omnigent.superchat.feature import ToolManagerCtx
-        from omnigent.superchat.features import feature_tools
-
-        for tool in feature_tools(self._labels, ToolManagerCtx(spec=self._spec)):
-            self._tools.setdefault(tool.name(), tool)
+    def _register_product_tools(self) -> None:
+        """Register the registered products' label-gated tools (:func:`register_tool_source`)."""
+        for source in _TOOL_SOURCES.values():
+            for tool in source(self._labels, self._spec):
+                self._tools.setdefault(tool.name(), tool)
 
     def _register_async_inbox_tools(self) -> None:
         """

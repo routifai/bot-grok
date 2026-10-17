@@ -18,12 +18,14 @@ import re
 import time
 from typing import Any
 
+from omnigent.entities import Conversation
 from omnigent.policies.schema import (
     PolicyEvent,
     PolicyResponse,
     request_is_system_notice,
     request_user_text,
 )
+from omnigent.spec.types import FunctionPolicySpec, FunctionRef
 from omnigent.superchat.feature import is_super_chat
 from omnigent.superchat.work_tools import is_work_tool
 
@@ -31,6 +33,23 @@ POLICY_NAME = "__muse_step_limit"
 STATE_KEY = "muse_step_limit"
 LIMIT_ENV = "OMNIGENT_SUPERCHAT_STEP_LIMIT"
 DEFAULT_LIMIT = 3
+
+#: Caps the work tool calls of a Conversation turn; installed through the policy builder's hooks
+#: (``omnigent.superchat.features``) on Super Chat sessions. The policy itself ignores Helpers.
+POLICY_SPEC = FunctionPolicySpec(
+    name=POLICY_NAME,
+    on=None,
+    function=FunctionRef(
+        path="omnigent.superchat.step_limit.policy.muse_step_limit", arguments=None
+    ),
+)
+
+
+def applies(conversation: Conversation | None, tree: list[Conversation] | None) -> bool:
+    """Whether a session gets the step limit: it is a Super Chat (the tree does not matter)."""
+    del tree
+    return conversation is not None and is_super_chat(conversation.labels)
+
 
 # A turn that never saw its REQUEST reset (the gate was skipped) must not lock the chat for
 # good: a quiet gap this long counts as a new turn.

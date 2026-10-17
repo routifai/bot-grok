@@ -41,6 +41,8 @@ import httpx
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
+# The product composition root: importing it fills the tool manager and policy hooks (ADR 0019).
+import omnigent.superchat.features  # noqa: F401
 from omnigent.context.labels import (
     CONTEXT_MODE_LABEL,
     SCHEDULED_HELPER_LABEL_KEY,

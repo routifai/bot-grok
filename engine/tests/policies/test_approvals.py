@@ -228,18 +228,17 @@ def test_policy_is_installed_only_for_super_chat_trees(store: SqlAlchemyApproval
     from types import SimpleNamespace
 
     from omnigent.context.labels import CONTEXT_MODE_LABEL, SUPERSIDE_CHAT_MODE_VALUE
-    from omnigent.runtime.policies.builder import _approvals_apply
 
     muse = SimpleNamespace(
         labels={CONTEXT_MODE_LABEL: SUPERSIDE_CHAT_MODE_VALUE}, parent_conversation_id=None
     )
     plain = SimpleNamespace(labels={}, parent_conversation_id=None)
     helper = SimpleNamespace(labels={}, parent_conversation_id="root")
-    assert _approvals_apply(muse, [muse])  # type: ignore[arg-type]
-    assert _approvals_apply(helper, [muse, helper])  # type: ignore[arg-type]
-    assert not _approvals_apply(plain, [plain])  # type: ignore[arg-type]
+    assert approvals.applies(muse, [muse])  # type: ignore[arg-type]
+    assert approvals.applies(helper, [muse, helper])  # type: ignore[arg-type]
+    assert not approvals.applies(plain, [plain])  # type: ignore[arg-type]
     approvals.configure_store(None)
-    assert not _approvals_apply(muse, [muse])  # type: ignore[arg-type]
+    assert not approvals.applies(muse, [muse])  # type: ignore[arg-type]
 
 
 # ── every policy ASK on a tool call is a visible ask ──────────────────────────
@@ -299,7 +298,6 @@ async def test_engine_composed_muse_approval_reaches_the_inbox(
     """The engine prefixes reasons with the policy name; the prompt must still be listed."""
     from omnigent.policies.function import resolve_function_policy
     from omnigent.policies.types import EvaluationContext
-    from omnigent.runtime.policies.builder import _APPROVALS_POLICY_SPEC
     from omnigent.runtime.policies.engine import PolicyEngine
     from omnigent.spec.types import Phase
     from omnigent.stores.conversation_store.sqlalchemy_store import (
@@ -310,7 +308,7 @@ async def test_engine_composed_muse_approval_reaches_the_inbox(
     conversations = SqlAlchemyConversationStore(db_uri)
     conv = conversations.create_conversation()
     engine = PolicyEngine(
-        policies=[resolve_function_policy(_APPROVALS_POLICY_SPEC)],
+        policies=[resolve_function_policy(approvals.POLICY_SPEC)],
         label_defs={},
         ask_timeout=60,
         conversation_id=conv.id,

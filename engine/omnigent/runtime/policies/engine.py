@@ -19,6 +19,7 @@ from typing import Any
 from omnigent.llms.context_window import ModelPricing, compute_llm_cost
 from omnigent.policies.base import Policy
 from omnigent.policies.types import EvaluationContext, PolicyResult
+from omnigent.runtime.policies.hooks import owner_budgets
 from omnigent.spec.types import (
     DEFAULT_ASK_TIMEOUT,
     LabelDef,
@@ -649,13 +650,11 @@ class PolicyEngine:
         Persist the check-in level the owner approved for one monthly model budget scope.
 
         *value* is ``{"scope": "user"|"org", "level": float}``. It is kept per owner and scope
-        (see :meth:`omnigent.superchat.models.budget.ModelBudgetStore.set_approval`) and lapses
-        when the month turns. A no-op without an owner grant, a bound budget store or a
-        well-formed *value*.
+        (:meth:`omnigent.runtime.policies.hooks.OwnerBudgets.record_approval`) and lapses when
+        the month turns. A no-op without an owner grant, bound owner budgets or a well-formed
+        *value*.
         """
-        from omnigent.superchat.models.budget import get_budgets, month_start
-
-        budgets = get_budgets()
+        budgets = owner_budgets()
         owner = self._store.get_session_owner_authority(self._conversation_id)
         scope = value.get("scope") if isinstance(value, dict) else None
         try:
@@ -664,7 +663,7 @@ class PolicyEngine:
             return
         if budgets is None or owner is None or scope not in ("user", "org"):
             return
-        budgets.store.set_approval(owner.user_id, month_start()[:7], scope, level)
+        budgets.record_approval(owner.user_id, scope, level)
         if self._user_daily_cost is not None:
             self._user_daily_cost[f"{scope}_ask_level"] = level
 

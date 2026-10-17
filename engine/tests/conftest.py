@@ -61,6 +61,9 @@ os.environ.setdefault("OMNIGENT_AUTH_PROVIDER", "header")
 # monkeypatch.delenv-ing this var.
 os.environ.setdefault("OMNIGENT_LOCAL_SINGLE_USER", "1")
 
+# The product composition root, imported as the engine and the runner import it: it fills the
+# tool manager's and the policy builder's product hooks (ADR 0019).
+import omnigent.superchat.features  # noqa: E402, F401
 from omnigent.db.utils import _engine_cache, _engine_lock, get_or_create_engine  # noqa: E402
 from omnigent.onboarding import ambient, harness_install  # noqa: E402
 from omnigent.onboarding.providers import PROVIDER_ENV_VARS  # noqa: E402
