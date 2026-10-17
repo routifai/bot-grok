@@ -82,8 +82,6 @@ def test_find_daemon_record_reuses_legacy_url_spelling(
     assert found == legacy_record
 
 
-
-
 def test_record_path_uses_digest(tmp_path: Path) -> None:
     record = daemon_record_path("local", base_dir=tmp_path)
     assert record.parent == tmp_path / "daemons"
@@ -178,10 +176,6 @@ def test_record_flock_is_held_states(tmp_path: Path) -> None:
     assert record_flock_is_held(record) is True
     lock.release()
     assert record_flock_is_held(record) is False
-
-
-
-
 
 
 def _record(target: str, pid: int) -> HostDaemonRecord:

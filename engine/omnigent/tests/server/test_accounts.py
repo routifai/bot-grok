@@ -1818,12 +1818,6 @@ def test_purge_expired_tokens_drops_only_expired(
 # ── CLI: omnigent login accounts flow ───────────────────────────
 
 
-
-
-
-
-
-
 # ── First-run web setup: POST /auth/setup (first-admin claim) ─────
 
 

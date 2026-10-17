@@ -118,8 +118,6 @@ def test_from_api_base_falls_back_to_login_record(tmp_path, monkeypatch) -> None
     assert resolved.display == "https://ws.databricks.com/omnigent?o=999"
 
 
-
-
 @pytest.mark.parametrize(
     "url,expected",
     [

@@ -100,8 +100,6 @@ def test_host_command_registered() -> None:
     assert "server" in result.output.lower(), "Help text should mention the --server option"
 
 
-
-
 def test_host_reads_server_from_global_config(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -192,8 +190,6 @@ def test_host_accepts_option_after_positional_server(
         f"Expected success, got {result.exit_code}. Output: {result.output}"
     )
     assert runs == [_HostRun(server_url="https://from-arg.example.com")]
-
-
 
 
 def test_host_status_subcommand_still_dispatches(
@@ -359,16 +355,6 @@ def test_host_rejects_positional_and_server_option_together(
     assert runs == [], "run_host_process must not run when the args are rejected"
 
 
-
-
-
-
-
-
-
-
-
-
 def test_host_stop_treats_zombie_daemon_as_dead(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -531,8 +517,6 @@ def test_add_daemon_host_status_skips_http_for_dead_process() -> None:
     assert http_calls == [], "No HTTP calls expected for a dead process"
 
 
-
-
 # ── host --background ─────────────────────────────────────────────
 
 
@@ -589,14 +573,6 @@ def _patch_background_host_spawn(
     monkeypatch.setattr("omnigent.cli._spawn_host_daemon_process", _fake_spawn)
     monkeypatch.setattr("omnigent.cli._wait_for_daemon_claim", _persist_fake_daemon_claim)
     return spawned_args, log_path
-
-
-
-
-
-
-
-
 
 
 def test_recycled_pid_record_is_pruned_and_host_claims(
@@ -832,16 +808,4 @@ def test_host_status_reports_recycled_pid_daemon_offline(
     assert _base_daemon_status_payload(record)["process"] == "offline"
 
 
-
-
 # ── omnigent start ────────────────────────────────────────────────
-
-
-
-
-
-
-
-
-
-

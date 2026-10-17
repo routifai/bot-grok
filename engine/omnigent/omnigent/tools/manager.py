@@ -707,11 +707,7 @@ class ToolManager:
         # ``parameters`` block from the spec — schema visible to the
         # LLM, dispatch short-circuited to ``action_required`` via
         # :meth:`is_client_side_tool`.
-        server_local_tools = [
-            t
-            for t in self._spec.local_tools
-            if t.runtime != ToolRuntime.CLIENT
-        ]
+        server_local_tools = [t for t in self._spec.local_tools if t.runtime != ToolRuntime.CLIENT]
         client_local_tools = [t for t in self._spec.local_tools if t.runtime == ToolRuntime.CLIENT]
         for client_info in client_local_tools:
             if not is_valid_tool_name(client_info.name):

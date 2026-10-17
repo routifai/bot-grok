@@ -2478,8 +2478,6 @@ def test_dispatch_trace_context_reaches_runner_but_not_daemon(
         assert DISPATCH_TRACESTATE_ENV_VAR not in daemon_env
 
 
-
-
 @pytest.mark.parametrize("server_url", [None, "https://example.databricksapps.com"])
 @pytest.mark.parametrize("setting", [None, "1", "0"])
 async def test_harness_stderr_opt_in_survives_daemon_and_runner_hops(
@@ -2515,8 +2513,6 @@ async def test_harness_stderr_opt_in_survives_daemon_and_runner_hops(
         else:
             assert env[flag_name] == setting
     assert sibling_name not in runner_env
-
-
 
 
 def test_build_runner_env_propagates_data_dir_paths_not_db_uri() -> None:
@@ -2955,9 +2951,7 @@ def test_handle_install_harness_failure_surfaces_reason(
     )
 
     host = _make_host_process()
-    result = host._handle_install_harness(
-        HostInstallHarnessFrame(request_id="i2", harness="pi")
-    )
+    result = host._handle_install_harness(HostInstallHarnessFrame(request_id="i2", harness="pi"))
 
     assert result.status == "failed"
     assert result.error == "npm is not available on the host"
@@ -3504,7 +3498,9 @@ async def test_run_retries_on_login_redirect(
     # the single remediation message naming the server's credentials.
     assert any("login page" in r.message for r in caplog.records)
     assert any(
-        "Check the credentials this host presents to https://app.example.databricks.com" in r.message for r in caplog.records
+        "Check the credentials this host presents to https://app.example.databricks.com"
+        in r.message
+        for r in caplog.records
     )
 
 
@@ -3564,7 +3560,9 @@ async def test_fresh_host_fails_loud_after_persistent_login_redirects(
     message = str(excinfo.value)
     # The fatal message identifies the auth cause and the exact remedy.
     assert "login page" in message
-    assert "Check the credentials this host presents to https://app.example.databricks.com" in message
+    assert (
+        "Check the credentials this host presents to https://app.example.databricks.com" in message
+    )
     # 3 = _LOGIN_REDIRECT_FATAL_ATTEMPTS: enough retries to absorb a
     # one-off proxy blip, then fail. 1 would mean the blip
     # tolerance regressed; more (or no raise at all) would mean the

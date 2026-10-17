@@ -216,5 +216,3 @@ async def test_the_judge_may_move_a_session_to_another_harness() -> None:
 
 
 # ── the deployment, assembled from config ───────────────────────────────────
-
-

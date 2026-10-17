@@ -340,13 +340,3 @@ def test_skipped_missing_old_user(db_uri: str) -> None:
 
 
 # ── CLI wrapper ───────────────────────────────────────────────────
-
-
-
-
-
-
-
-
-
-
