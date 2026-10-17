@@ -4166,7 +4166,7 @@ async def _provision_managed_sandbox(
     :param host_store: Persistent host registrations.
     :param host_to_relaunch: Existing host row for a relaunch, or
         ``None`` for a first launch.
-    :param provider: Requested sandbox provider for a first launch, or
+    :param provider: Requested host provider for a first launch, or
         ``None`` for the default. Ignored on a relaunch, which stays on
         the host row's recorded provider.
     :param agent_name: Server-resolved built-in agent name the session

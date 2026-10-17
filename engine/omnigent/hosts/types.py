@@ -17,11 +17,11 @@ if TYPE_CHECKING:
 
 
 class HostError(Exception):
-    """Base for all sandbox-provider errors."""
+    """Base for all host-provider errors."""
 
 
 class HostConfigError(HostError):
-    """Sandbox provider configuration is malformed or unavailable."""
+    """Host provider configuration is malformed or unavailable."""
 
 
 class HostAuthError(HostError):
@@ -56,7 +56,7 @@ class HostCommandError(HostError):
 
 @dataclass(frozen=True)
 class HostCapabilities:
-    """Feature flags declared by a sandbox provider.
+    """Feature flags declared by a host provider.
 
     Providers advertise which primitives they support so callers can fail
     fast and surface actionable messages.
@@ -148,13 +148,13 @@ class GitCloneOptions:
 
     def __post_init__(self) -> None:
         if self.depth is not None and (type(self.depth) is not int or self.depth <= 0):
-            raise ValueError("sandbox.git_clone.depth must be null or a positive integer")
+            raise ValueError("host.git_clone.depth must be null or a positive integer")
         if self.single_branch is not None and type(self.single_branch) is not bool:
-            raise ValueError("sandbox.git_clone.single_branch must be null or a boolean")
+            raise ValueError("host.git_clone.single_branch must be null or a boolean")
         if self.filter is not None and self.filter != "blob:none":
-            raise ValueError("sandbox.git_clone.filter must be null or 'blob:none'")
+            raise ValueError("host.git_clone.filter must be null or 'blob:none'")
         if type(self.tags) is not bool:
-            raise ValueError("sandbox.git_clone.tags must be a boolean")
+            raise ValueError("host.git_clone.tags must be a boolean")
 
     def clone_args(self, branch: str | None) -> list[str]:
         """Return only allowlisted options; callers quote URL and destination."""

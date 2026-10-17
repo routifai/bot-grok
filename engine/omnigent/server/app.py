@@ -172,7 +172,7 @@ class ServerInfoResponse(BaseModel):
     sandbox_provider: str | None
     sandbox_providers: list[str]
     # UI-relevant capability flags per launchable provider, e.g.
-    # ``{"computer": {"multi_repo": true}}``. The web branches on these
+    # ``{"docker": {"multi_repo": true}}``. The web branches on these
     # (multi-repo picker vs single). Providers absent from the map default off.
     sandbox_provider_capabilities: dict[str, dict[str, bool]] = {}
     enabled_connections: list[str]
@@ -1082,7 +1082,7 @@ def create_app(
         config's ``allowed_domains:`` key (OIDC), e.g. ``["example.com"]``.
         Union'd with ``OMNIGENT_OIDC_ALLOWED_DOMAINS`` and the
         runtime-editable domains file.
-    :param sandbox_config: Parsed ``sandbox:`` section of the server
+    :param sandbox_config: Parsed ``host:`` section of the server
         config — which provider to provision managed hosts
         (``host_type="managed"`` sessions) from and the URL they dial
         back to. ``None`` disables managed hosts (a
@@ -2545,7 +2545,7 @@ def create_app(
         source, the login URL, whether first-run admin setup is
         still pending (``needs_setup``), coarse capability
         booleans (``managed_sandboxes_enabled``, ``dictation_available``,
-        ``single_user``), the short sandbox provider name
+        ``single_user``), the short host provider name
         (``sandbox_provider``) the web UI labels the new-session
         sandbox option with, and the installed
         ``server_version`` (already public via ``/api/version``).
@@ -2574,11 +2574,11 @@ def create_app(
         if accounts_enabled and account_store is not None:
             needs_setup = not any(u.has_password for u in account_store.list_users())
         # managed_sandboxes_enabled gates the web UI's sandbox
-        # option on the new-session screen: true only when a `sandbox:`
+        # option on the new-session screen: true only when a `host:`
         # config is wired AND its provider can actually serve a managed
         # launch (staged providers parse but reject at launch — they
         # must not advertise the option).
-        # sandbox_provider names the backing provider (e.g. "computer")
+        # sandbox_provider names the backing provider (e.g. "docker")
         # so the web UI can label the option per provider instead of the
         # generic "New Sandbox". Only surfaced when the option is
         # actually offered; None when no provider is named (embedding

@@ -1355,7 +1355,7 @@ async def test_managed_fires_use_regular_launch_with_unchanged_server_config(
             server_url="https://server.example.com",
             launcher_factory=lambda: pytest.fail("managed launch is stubbed"),
             token_ttl_s=90000,
-            provider="computer",
+            provider="docker",
             host_config={"runner": {"idle_timeout_s": 7200}},
         )
     )
@@ -1369,7 +1369,7 @@ async def test_managed_fires_use_regular_launch_with_unchanged_server_config(
         hosts.hosts[host_id] = _FakeHost(
             host_id,
             RESERVED_USER_LOCAL,
-            sandbox_provider="computer",
+            sandbox_provider="docker",
             sandbox_id=f"sandbox_{session_id}",
         )
         bound[session_id] = _FakeConversation(
@@ -1435,7 +1435,7 @@ async def test_legacy_pinned_sandbox_fails_before_host_rpc(
     host = _FakeHost(
         "host_1",
         "alice@example.com",
-        sandbox_provider="computer",
+        sandbox_provider="docker",
         sandbox_id=sandbox_id,
     )
     store = FakeScheduledTaskStore(
@@ -1468,7 +1468,7 @@ async def test_resolve_owner_host_skips_sandbox_hosts() -> None:
     # is a real connected host. The resolver must skip the sandbox and pick the
     # connected host rather than reusing the sandbox.
     hosts = {
-        "sandbox_1": _FakeHost("sandbox_1", "alice@example.com", sandbox_provider="computer"),
+        "sandbox_1": _FakeHost("sandbox_1", "alice@example.com", sandbox_provider="docker"),
         "host_2": _FakeHost("host_2", "alice@example.com"),
     }
     deps = _deps(

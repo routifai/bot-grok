@@ -204,7 +204,7 @@ def _seed_people(world: World) -> None:
     world.connections.put("user", "alice", "anthropic", "sk-ant-secret-1234")
     world.budgets.store.set("alice", Budget(25.0, "stop"))
     world.suspensions.suspend("bob", "root")
-    world.hosts.hosts["alice"] = [_host("c1", "computer"), _host("laptop", None, "offline")]
+    world.hosts.hosts["alice"] = [_host("c1", "docker"), _host("laptop", None, "offline")]
     conv = world.ledger.create_conversation()
     world.perms.grant("alice", conv.id, LEVEL_OWNER)
     child = world.ledger.create_conversation(parent_conversation_id=conv.id)
@@ -225,7 +225,7 @@ def test_users_list_every_person_with_stats(world: World) -> None:
         {"provider": "anthropic", "hint": "1234", "status": "valid"}
     ]
     assert "sk-ant-secret" not in str(users)
-    assert alice["computer"]["provider"] == "computer" and alice["computer"]["managed"] is True
+    assert alice["computer"]["provider"] == "docker" and alice["computer"]["managed"] is True
     assert alice["computer"]["state"] in ("online", "offline")
     bob = users["bob"]
     assert bob["status"] == "suspended" and bob["suspended_at"] == NOW
@@ -346,7 +346,7 @@ def test_delete_removes_the_person_and_everything_they_own_and_is_idempotent(
     from omnigent.superchat.models.selection import ModelPreferenceStore
 
     _seed_people(world)
-    world.hosts.hosts["alice"] = [_host("c1", "computer"), _host("laptop", None)]
+    world.hosts.hosts["alice"] = [_host("c1", "docker"), _host("laptop", None)]
     world.connections.put("user", "alice", "openrouter", "sk-or-secret-5678")
     ModelPreferenceStore(world.uri).set("alice", {"claude-sdk": "claude-haiku-4-5"})
     world.budgets.store.set_approval("alice", "2026-10", "user", 1.25)

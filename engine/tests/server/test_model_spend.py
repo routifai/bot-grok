@@ -239,7 +239,7 @@ async def test_a_proxied_turn_is_counted_by_the_proxy_only(
 
     proxied = await SandboxInferenceService(
         _hosted_state({"alice": ("anthropic", "sk-ant-x")})
-    ).prepare("computer", "claude-sdk", "alice")
+    ).prepare("docker", "claude-sdk", "alice")
     assert snapshot_uses_model_proxy(proxied)
     assert not snapshot_uses_model_proxy(None)
     other = json.loads(json.dumps(proxied))

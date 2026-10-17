@@ -21,7 +21,7 @@ from tests.server.helpers import FakeSandboxLauncher, HostStartInvocation
 @pytest.mark.parametrize("block", [None, {}, {"depth": None, "single_branch": None}])
 def test_default_clone_policy(block: object) -> None:
     config = parse_host_section(
-        {"provider": "computer", "server_url": "https://example.test", "git_clone": block}
+        {"provider": "docker", "server_url": "https://example.test", "git_clone": block}
     )
     assert config is not None
     assert config.for_provider(None).git_clone == GitCloneOptions()
@@ -49,9 +49,9 @@ def test_default_clone_policy(block: object) -> None:
     ],
 )
 def test_invalid_clone_policy(block: object) -> None:
-    with pytest.raises(ValueError, match=r"sandbox\.git_clone"):
+    with pytest.raises(ValueError, match=r"host\.git_clone"):
         parse_host_section(
-            {"provider": "computer", "server_url": "https://example.test", "git_clone": block}
+            {"provider": "docker", "server_url": "https://example.test", "git_clone": block}
         )
 
 
@@ -65,13 +65,11 @@ def test_shared_policy_applies_to_provider_entries() -> None:
                 "filter": "blob:none",
                 "tags": False,
             },
-            "providers": [{"provider": "computer"}],
+            "providers": [{"provider": "docker"}],
         }
     )
     assert config is not None
-    assert config.for_provider("computer").git_clone == GitCloneOptions(
-        50, True, "blob:none", False
-    )
+    assert config.for_provider("docker").git_clone == GitCloneOptions(50, True, "blob:none", False)
 
 
 def test_provider_entry_overrides_shared_policy() -> None:
@@ -79,11 +77,11 @@ def test_provider_entry_overrides_shared_policy() -> None:
         {
             "server_url": "https://example.test",
             "git_clone": {"depth": 50},
-            "providers": [{"provider": "computer", "git_clone": {}}],
+            "providers": [{"provider": "docker", "git_clone": {}}],
         }
     )
     assert config is not None
-    assert config.for_provider("computer").git_clone == GitCloneOptions()
+    assert config.for_provider("docker").git_clone == GitCloneOptions()
 
 
 @pytest.mark.asyncio
@@ -141,7 +139,7 @@ async def test_unsupported_policy_rejected_before_lifecycle_changes(
     assert host is not None
     fake.provisioned_names.clear()
     config = HostDeployment.single(replace(initial, git_clone=GitCloneOptions(depth=50)))
-    with pytest.raises(HTTPException, match=r"does not support sandbox\.git_clone") as exc:
+    with pytest.raises(HTTPException, match=r"does not support host\.git_clone") as exc:
         if operation == "launch":
             await launch_host(config=config, owner="alice", host_store=store)
         else:

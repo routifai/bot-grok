@@ -1,6 +1,6 @@
-"""Sandbox provider registry.
+"""Host provider registry.
 
-Core Omnigent contributes the built-in ``computer`` provider directly.
+Core Omnigent contributes the built-in ``docker`` provider directly.
 Third-party packages contribute additional providers through the
 ``omnigent.host_providers`` entry point group.
 
@@ -39,13 +39,13 @@ class _ConfiguredLauncherFactory(Protocol):
 
 @dataclass(frozen=True)
 class HostProviderMetadata:
-    """Static metadata for one sandbox provider.
+    """Static metadata for one host provider.
 
-    :param name: Provider short name, e.g. ``"computer"``.
+    :param name: Provider short name, e.g. ``"docker"``.
     :param launcher_class: Fully-qualified launcher class as
         ``"module.path:ClassName"`` or ``"module.path.ClassName"``.
     :param config_model: Optional Pydantic model that validates the
-        provider-specific ``sandbox.<name>`` config block.
+        provider-specific ``host.<name>`` config block.
     :param managed_token_ttl_s: Optional default managed launch-token
         lifetime in seconds.
     :param workspace_survives_recreate: Whether a sandbox recreated for the
@@ -63,7 +63,7 @@ class HostProviderMetadata:
 
 @dataclass(frozen=True)
 class HostProviderContribution:
-    """One package's contribution to the sandbox provider registry.
+    """One package's contribution to the host provider registry.
 
     :param name: Package / contributor name, e.g. ``"omnigent-acme"``. Used
         only for error messages.
@@ -95,7 +95,7 @@ _state: HostProviderPluginState | None = None
 
 
 def _entry_points() -> tuple[importlib.metadata.EntryPoint, ...]:
-    """Return community sandbox-provider entrypoints, tolerating old stdlib."""
+    """Return community host-provider entrypoints, tolerating old stdlib."""
     discovered = importlib.metadata.entry_points()
     if hasattr(discovered, "select"):
         return tuple(discovered.select(group=COMMUNITY_ENTRY_POINT_GROUP))
@@ -126,15 +126,15 @@ def _config_model_module(config_model: type[object]) -> str | None:
 
 
 def _builtin_contribution() -> HostProviderContribution:
-    """The built-in sandbox-provider contribution from core Omnigent."""
+    """The built-in host-provider contribution from core Omnigent."""
     return HostProviderContribution(
         name="omnigent",
         providers={
-            "computer": HostProviderMetadata(
-                name="computer",
+            "docker": HostProviderMetadata(
+                name="docker",
                 launcher_class="omnigent.hosts.docker:DockerHostLauncher",
                 managed_token_ttl_s=7 * 24 * 3600,
-                # The Computer's home is a per-person Docker volume; it outlives the container.
+                # The host's home is a per-person Docker volume; it outlives the container.
                 workspace_survives_recreate=True,
             ),
         },
@@ -155,7 +155,7 @@ def _validate_community_contribution(
 ) -> str | None:
     """Validate a community contribution. Returns an error string or ``None``."""
     if not contribution.name:
-        return "sandbox provider plugin must set name"
+        return "host provider plugin must set name"
 
     for name, meta in contribution.providers.items():
         if not meta.name:
@@ -166,14 +166,14 @@ def _validate_community_contribution(
             return f"provider {name!r} must set launcher_class"
         if name in existing:
             return (
-                f"sandbox provider plugin {entry_point_name!r} attempts to "
+                f"host provider plugin {entry_point_name!r} attempts to "
                 f"override existing provider {name!r}"
             )
 
         module = _launcher_module(meta.launcher_class)
         if not module.startswith(COMMUNITY_MODULE_PREFIX):
             return (
-                f"sandbox provider plugin {entry_point_name!r} provider "
+                f"host provider plugin {entry_point_name!r} provider "
                 f"{name!r} uses module {module!r}; expected "
                 f"{COMMUNITY_MODULE_PREFIX}*"
             )
@@ -182,7 +182,7 @@ def _validate_community_contribution(
             cfg_module = _config_model_module(meta.config_model)
             if cfg_module is None or not cfg_module.startswith(COMMUNITY_MODULE_PREFIX):
                 return (
-                    f"sandbox provider plugin {entry_point_name!r} config model "
+                    f"host provider plugin {entry_point_name!r} config model "
                     f"for provider {name!r} must live under "
                     f"{COMMUNITY_MODULE_PREFIX}*"
                 )
@@ -190,7 +190,7 @@ def _validate_community_contribution(
 
 
 def plugin_state() -> HostProviderPluginState:
-    """Return the merged built-in + community sandbox provider registry."""
+    """Return the merged built-in + community host provider registry."""
     global _state
     if _state is not None:
         return _state
@@ -223,7 +223,7 @@ def plugin_state() -> HostProviderPluginState:
         except Exception as exc:
             load_errors[entry_point.name] = str(exc)
             logger.warning(
-                "could not load sandbox provider entry point %s (%s)",
+                "could not load host provider entry point %s (%s)",
                 entry_point.name,
                 exc,
                 exc_info=True,
@@ -240,7 +240,7 @@ def reset_plugin_state_for_tests() -> None:
 
 
 def available_providers() -> tuple[str, ...]:
-    """All sandbox providers whose launcher modules are available."""
+    """All host providers whose launcher modules are available."""
     return plugin_state().names()
 
 
@@ -257,7 +257,7 @@ def instantiate(
     """Import and instantiate a registered provider's launcher class.
 
     :param name: Registered provider name.
-    :param config: The provider's ``sandbox.<name>`` block, or ``None``.
+    :param config: The provider's ``host.<name>`` block, or ``None``.
         Only used when the provider declares a
         :attr:`HostProviderMetadata.config_model`: the block is
         validated through that model and the result is passed to the
@@ -271,28 +271,28 @@ def instantiate(
     """
     meta = get_provider_metadata(name)
     if meta is None:
-        raise HostRegistryError(f"unknown sandbox provider '{name}'")
+        raise HostRegistryError(f"unknown host provider '{name}'")
     try:
         launcher_cls = _load_object(meta.launcher_class)
     except Exception as exc:
         raise HostRegistryError(
-            f"could not load sandbox provider '{name}' from {meta.launcher_class!r}: {exc}"
+            f"could not load host provider '{name}' from {meta.launcher_class!r}: {exc}"
         ) from exc
     if not isinstance(launcher_cls, type) or not issubclass(launcher_cls, HostLauncher):
         raise HostRegistryError(
-            f"sandbox provider '{name}' resolved to {launcher_cls!r}, "
+            f"host provider '{name}' resolved to {launcher_cls!r}, "
             f"which is not a HostLauncher subclass"
         )
     if meta.config_model is not None:
         # The docstring on `config_model` already describes it as validating
-        # "the provider-specific `sandbox.<name>` config block"; this is the
+        # "the provider-specific `host.<name>` config block"; this is the
         # call that makes that true. Kept inside the `is not None` branch so a
         # provider that declares no model keeps a zero-argument constructor.
         try:
             validated = meta.config_model(**dict(config or {}))
         except Exception as exc:
             raise HostRegistryError(
-                f"invalid 'sandbox.{name}' config for provider '{name}': {exc}"
+                f"invalid 'host.{name}' config for provider '{name}': {exc}"
             ) from exc
         return cast(_ConfiguredLauncherFactory, launcher_cls)(config=validated)
     return launcher_cls()

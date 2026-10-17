@@ -4,8 +4,8 @@
 # No model is named here. The model pickers list what the Anthropic key serves, and an admin
 # picks the default, fast and strong models in Settings > Models (the engine stores them).
 # Background work (memory upkeep, summaries) runs on the fast model through this same provider.
-sandbox:
-  provider: computer
+host:
+  provider: docker
   # Where the runner inside each Computer dials back: this service's PUBLIC https URL.
   server_url: __ENGINE_PUBLIC_URL__
   # NAMES only. Resolved from this service's environment and handed to each Computer's runner.

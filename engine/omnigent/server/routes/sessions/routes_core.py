@@ -344,7 +344,7 @@ def register_core_routes(
         if sandbox_provider is not None and sandbox_config.for_provider(sandbox_provider) is None:
             offered = ", ".join(sandbox_config.launchable_providers()) or "none"
             raise OmnigentError(
-                f"sandbox provider '{sandbox_provider}' is not configured "
+                f"host provider '{sandbox_provider}' is not configured "
                 f"on this server — available: {offered}",
                 code=ErrorCode.INVALID_INPUT,
             )
@@ -356,7 +356,7 @@ def register_core_routes(
             caps = sandbox_config.provider_ui_capabilities().get(resolved or "", {})
             if not caps.get("multi_repo", False):
                 raise OmnigentError(
-                    f"sandbox provider '{resolved}' clones only one repository; "
+                    f"host provider '{resolved}' clones only one repository; "
                     "select a single repository or choose a provider that supports several",
                     code=ErrorCode.INVALID_INPUT,
                 )

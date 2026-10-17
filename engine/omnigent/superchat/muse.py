@@ -11,7 +11,7 @@ user-to-session map. There is one per ``(user, tenant)``, found in this order:
    concurrent first calls to one row.
 
 The agent a new one starts on is server config (``OMNIGENT_SUPERCHAT_DEFAULT_AGENT``), and
-``OMNIGENT_SUPERCHAT_SANDBOX_PROVIDER`` optionally launches it on a managed sandbox.
+``OMNIGENT_HOST_PROVIDER`` optionally launches it on a host (``docker``).
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from omnigent.context.labels import CONTEXT_MODE_LABEL, SUPERSIDE_CHAT_MODE_VALU
 from omnigent.entities import Conversation
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.hosts.docker import (
-    LABEL_COMPUTER_OWNER,
+    LABEL_HOST_OWNER,
     LABEL_TENANT,
     tenant_from_labels,
 )
@@ -44,7 +44,7 @@ from omnigent.stores.conversation_store import (
 from omnigent.superchat.feature import is_super_chat
 
 DEFAULT_AGENT_ENV = "OMNIGENT_SUPERCHAT_DEFAULT_AGENT"
-SANDBOX_PROVIDER_ENV = "OMNIGENT_SUPERCHAT_SANDBOX_PROVIDER"
+HOST_PROVIDER_ENV = "OMNIGENT_HOST_PROVIDER"
 
 #: Marks a caller's Super Chat (made or adopted here).
 MUSE_LABEL_KEY = "omnigent.superchat.muse"
@@ -160,12 +160,12 @@ def register_muse_routes(
             CONTEXT_MODE_LABEL: SUPERSIDE_CHAT_MODE_VALUE,
             MUSE_LABEL_KEY: "true",
             MUSE_KEY_LABEL_KEY: key,
-            # The computer is keyed by this opaque key, not the person's email.
-            LABEL_COMPUTER_OWNER: key,
+            # The host is keyed by this opaque key, not the person's email.
+            LABEL_HOST_OWNER: key,
         }
         if tenant:
             labels[LABEL_TENANT] = tenant
-        provider = os.environ.get(SANDBOX_PROVIDER_ENV, "").strip() or None
+        provider = os.environ.get(HOST_PROVIDER_ENV, "").strip() or None
         body = SessionCreateRequest(
             agent_id=agent_id,
             labels=labels,

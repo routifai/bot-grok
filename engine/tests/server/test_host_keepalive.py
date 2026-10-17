@@ -55,7 +55,7 @@ def test_extends_the_hosts_sandbox(monkeypatch: pytest.MonkeyPatch) -> None:
     _wire(
         monkeypatch,
         launcher=launcher,
-        host=SimpleNamespace(sandbox_id="sbx1", sandbox_provider="computer"),
+        host=SimpleNamespace(sandbox_id="sbx1", sandbox_provider="docker"),
     )
     host_keepalive._keep_alive_for_runner("r1")
     assert launcher.calls == ["sbx1"]
@@ -67,7 +67,7 @@ def test_provider_without_keep_alive_is_skipped(monkeypatch: pytest.MonkeyPatch)
     _wire(
         monkeypatch,
         launcher=launcher,
-        host=SimpleNamespace(sandbox_id="sbx1", sandbox_provider="computer"),
+        host=SimpleNamespace(sandbox_id="sbx1", sandbox_provider="docker"),
     )
     host_keepalive._keep_alive_for_runner("r1")
     assert launcher.calls == ["sbx1"]  # attempted, error swallowed
@@ -178,7 +178,7 @@ def test_a_host_on_an_unoffered_provider_is_skipped(
         list_conversations_by_runner_id=lambda _rid: [SimpleNamespace(host_id="host1")]
     )
     hosts = SimpleNamespace(
-        get_host=lambda _hid: SimpleNamespace(sandbox_id="sbx1", sandbox_provider="computer")
+        get_host=lambda _hid: SimpleNamespace(sandbox_id="sbx1", sandbox_provider="docker")
     )
     # Deployment no longer offers the host's provider. A default-returning resolver would
     # hand back some other provider's config; for_provider says None.
@@ -226,7 +226,7 @@ def test_inflight_is_released_even_when_the_provider_raises(
     _wire(
         monkeypatch,
         launcher=launcher,
-        host=SimpleNamespace(sandbox_id="sbx1", sandbox_provider="computer"),
+        host=SimpleNamespace(sandbox_id="sbx1", sandbox_provider="docker"),
     )
     monkeypatch.setattr(host_keepalive, "_inflight", {"r1"})
     host_keepalive._keep_alive_for_runner("r1")
@@ -259,7 +259,7 @@ def test_successful_keepalive_logs_at_info_on_the_server_logger(
     _wire(
         monkeypatch,
         launcher=launcher,
-        host=SimpleNamespace(sandbox_id="sbx1", sandbox_provider="computer"),
+        host=SimpleNamespace(sandbox_id="sbx1", sandbox_provider="docker"),
     )
     with caplog.at_level(logging.INFO, logger="omnigent.server.host_keepalive"):
         host_keepalive._keep_alive_for_runner("r1")
@@ -278,7 +278,7 @@ def test_soft_failed_keepalive_suppresses_the_success_info(
     _wire(
         monkeypatch,
         launcher=launcher,
-        host=SimpleNamespace(sandbox_id="sbx1", sandbox_provider="computer"),
+        host=SimpleNamespace(sandbox_id="sbx1", sandbox_provider="docker"),
     )
     with caplog.at_level(logging.INFO, logger="omnigent.server.host_keepalive"):
         host_keepalive._keep_alive_for_runner("r1")

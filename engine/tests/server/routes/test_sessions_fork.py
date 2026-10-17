@@ -1293,12 +1293,12 @@ def _arm_managed_app(
 
     :param app: The app under test.
     :param monkeypatch: Fixture used to swap the background launch.
-    :param multi_repo: ``False`` (default) configures the single-repo ``computer``
+    :param multi_repo: ``False`` (default) configures the single-repo ``docker``
         provider; ``True`` swaps in a launcher declaring ``multi_repo``.
     :returns: The list the recorder appends each launch's kwargs to.
     """
     deployment = parse_host_section(
-        {"provider": "computer", "server_url": "https://managed-test.example.com"}
+        {"provider": "docker", "server_url": "https://managed-test.example.com"}
     )
     assert deployment is not None
     if multi_repo:
@@ -1349,7 +1349,7 @@ async def test_fork_managed_schedules_sandbox_launch(
 
     resp = client.post(
         "/v1/sessions/e9f8f58523cec9a57d3bdf93be543e8c/fork",
-        json={"host_type": "managed", "sandbox_provider": "computer"},
+        json={"host_type": "managed", "sandbox_provider": "docker"},
     )
 
     assert resp.status_code == 201, f"got {resp.status_code}: {resp.text}"
@@ -1357,7 +1357,7 @@ async def test_fork_managed_schedules_sandbox_launch(
     assert len(launches) == 1, "a managed fork must schedule exactly one sandbox launch"
     launch = launches[0]
     assert launch["session_id"] == body["id"]
-    assert launch["provider"] == "computer"
+    assert launch["provider"] == "docker"
     # No repository on either side, so the clone gets an empty sandbox.
     assert launch["repos"] == []
     assert _repo_label_writes(conv_store) == []
@@ -1732,7 +1732,7 @@ async def test_fork_managed_rejects_multiple_repos_on_single_repo_provider(
     )
     conv_store = _ConversationStore(conversations={"e9f8f58523cec9a57d3bdf93be543e8c": conv})
     app = _build_app(conv_store)
-    launches = _arm_managed_app(app, monkeypatch)  # provider "computer" (single-repo)
+    launches = _arm_managed_app(app, monkeypatch)  # provider "docker" (single-repo)
     client = TestClient(app)
 
     resp = client.post(

@@ -69,8 +69,8 @@ class Host:
         a status change (connect/disconnect) or a tunnel heartbeat.
         Used as the host's last-seen for the liveness freshness gate
         (see :data:`HOST_LIVENESS_TTL_S`).
-    :param sandbox_provider: Sandbox provider backing a SERVER-MANAGED
-        host (``host_type="managed"`` sessions), e.g. ``"computer"``.
+    :param sandbox_provider: Host provider backing a SERVER-MANAGED
+        host (``host_type="managed"`` sessions), e.g. ``"docker"``.
         ``None`` for external (user-connected) hosts — non-``None``
         marks the host as server-managed.
     :param sandbox_id: Provider-assigned id of the sandbox generation
@@ -938,7 +938,7 @@ class HostStore:
             ``"alice@example.com"``.
         :param token: The RAW launch token (hashed here, never stored),
             e.g. the value of ``secrets.token_urlsafe(32)``.
-        :param provider: Sandbox provider name, e.g. ``"computer"``.
+        :param provider: Host provider name, e.g. ``"docker"``.
         :param sandbox_id: Provider-assigned sandbox id, e.g.
             ``"sb-a1b2c3"``.
         :param token_expires_at: Unix epoch seconds after which the
@@ -1007,9 +1007,7 @@ class HostStore:
                 existing.terminating_sandbox_id is not None
                 and existing.sandbox_provider != provider
             ):
-                raise ValueError(
-                    "cannot change managed sandbox provider while termination is pending"
-                )
+                raise ValueError("cannot change host provider while termination is pending")
             if existing.terminating_sandbox_id == sandbox_id:
                 raise ValueError(
                     f"sandbox {sandbox_id!r} is still pending termination; refusing to re-arm it"

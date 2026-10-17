@@ -9,7 +9,7 @@
 #   computer   ubuntu:24.04 + Python data stack + Chromium + pptx runtime + the two CLIs + Superchat helpers
 #
 # Build from the repo root (deployment/build.sh does this with the right tags):
-#   docker build -f deployment/computer.Dockerfile -t superchat/computer:local .
+#   docker build -f deployment/computer.Dockerfile -t superchat/host:local .
 
 ARG UBUNTU_IMAGE=ubuntu:24.04@sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55
 ARG NODE_IMAGE=node:22-slim

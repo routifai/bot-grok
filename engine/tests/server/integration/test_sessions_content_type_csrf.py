@@ -321,7 +321,7 @@ async def test_multipart_managed_create_reaches_managed_launch(
     bundle = build_agent_bundle(name="managed-multipart-agent")
     resp = await client.post(
         "/v1/sessions",
-        data={"metadata": json.dumps({"host_type": "managed", "sandbox_provider": "computer"})},
+        data={"metadata": json.dumps({"host_type": "managed", "sandbox_provider": "docker"})},
         files={"bundle": ("agent.tar.gz", bundle, "application/gzip")},
     )
     # Reached the managed branch → the not-configured guard fires.

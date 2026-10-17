@@ -3300,7 +3300,7 @@ async def _run_managed_launch(
     re-derived on every launch through the built-in gate, so there is no
     stored classifier to keep in sync — or to forge.
 
-    :param provider: Sandbox provider the create chose, or ``None`` for
+    :param provider: Host provider the create chose, or ``None`` for
         the default. Ignored on a relaunch.
     :param agent_store: Store the classifier is resolved from, or
         ``None`` (a stripped test wiring) to leave the runner
@@ -3323,7 +3323,7 @@ async def _run_managed_launch(
     # Forwarded to the launcher's prepare_for_launch — a provider whose sandbox is a
     # pre-existing per-identity resource (Superchat's per-Muse computer; see
     # omnigent.hosts.docker) selects it from the session's OWN labels
-    # (e.g. "superchat.bot" / "superchat.space") rather than a launch-chosen name.
+    # (e.g. "omnigent.host.owner" / "omnigent.tenant") rather than a launch-chosen name.
     labels = saved_conversation.labels if saved_conversation is not None else {}
 
     agent_name: str | None = None
@@ -3944,7 +3944,7 @@ _WORKSPACE_RESET_NOTICE = (
 def _workspace_survives_recreate(provider: str | None) -> bool:
     """Whether sandboxes of *provider* keep a session's files across a recreate.
 
-    :param provider: The provider recorded on the host being relaunched, e.g. ``"computer"``.
+    :param provider: The provider recorded on the host being relaunched, e.g. ``"docker"``.
     """
     from omnigent.hosts.registry import get_provider_metadata
 
@@ -3995,7 +3995,7 @@ def managed_first_launch_labels(provider: str | None, owner: str) -> dict[str, s
     """
     The labels that mark a session as launched on a managed sandbox.
 
-    :param provider: The sandbox provider the create launched on (``None``: the default).
+    :param provider: The host provider the create launched on (``None``: the default).
     :param owner: The user the sandbox host registers under.
     :returns: Labels for :meth:`ConversationStore.set_labels`.
     """

@@ -65,11 +65,11 @@ services:
       OMNIGENT_AUTH_HEADER_SECRET: ${OMNIGENT_PROXY_SECRET:?Set OMNIGENT_PROXY_SECRET in .env}
       OMNIGENT_VAULT_KEY: ${OMNIGENT_VAULT_KEY:?Set OMNIGENT_VAULT_KEY in .env}
       # Each person's Computer: a container from the image below, home on its own volume.
-      OMNIGENT_SUPERCHAT_SANDBOX_PROVIDER: computer
-      OMNIGENT_COMPUTER_IMAGE: ${IMAGE_REGISTRY:-superchat}/computer:${IMAGE_TAG:-local}
-      OMNIGENT_COMPUTER_MEMORY: ${COMPUTER_MEMORY:-2g}
-      OMNIGENT_COMPUTER_CPUS: ${COMPUTER_CPUS:-2}
-      OMNIGENT_COMPUTER_PIDS_LIMIT: ${COMPUTER_PIDS_LIMIT:-2048}
+      OMNIGENT_HOST_PROVIDER: docker
+      OMNIGENT_HOST_IMAGE: ${IMAGE_REGISTRY:-superchat}/computer:${IMAGE_TAG:-local}
+      OMNIGENT_HOST_MEMORY: ${COMPUTER_MEMORY:-2g}
+      OMNIGENT_HOST_CPUS: ${COMPUTER_CPUS:-2}
+      OMNIGENT_HOST_PIDS_LIMIT: ${COMPUTER_PIDS_LIMIT:-2048}
       # Model access: a key, or both LiteLLM values to route every model call through a proxy.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}

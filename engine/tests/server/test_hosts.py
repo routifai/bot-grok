@@ -36,7 +36,7 @@ from omnigent.hosts.registry import (
 from omnigent.runtime.agent_cache import AgentCache
 from omnigent.server.app import create_app
 from omnigent.server.hosts import (
-    COMPUTER_MANAGED_TOKEN_TTL_S,
+    HOST_TOKEN_TTL_S,
     MANAGED_REPO_LABEL_KEY,
     HostDeployment,
     HostLaunch,
@@ -140,13 +140,13 @@ class _StubAgentStore:
 
 
 def test_parse_absent_section_disables_managed_hosts() -> None:
-    """No ``sandbox:`` section → managed hosts simply not configured."""
+    """No ``host:`` section → managed hosts simply not configured."""
     assert parse_host_section(None) is None
 
 
 def test_parse_reaper_defaults_disabled_with_thirty_day_cutoff() -> None:
     """Managed sandbox cleanup is opt-in and defaults to a 30-day age."""
-    config = parse_host_section({"provider": "computer", "server_url": "https://s.example.com"})
+    config = parse_host_section({"provider": "docker", "server_url": "https://s.example.com"})
     assert config is not None
     assert config.reaper.enabled is False
     assert config.reaper.terminate_after_offline_days == 30
@@ -166,7 +166,7 @@ def test_parse_reaper_is_one_deployment_wide_policy_for_multiple_providers(
                 "sweep_interval_s": 1234,
             },
             "providers": [
-                {"provider": "computer"},
+                {"provider": "docker"},
                 {"provider": "acme"},
             ],
         }
@@ -175,7 +175,7 @@ def test_parse_reaper_is_one_deployment_wide_policy_for_multiple_providers(
     assert config.reaper.enabled is True
     assert config.reaper.terminate_after_offline_days == 7
     assert config.reaper.sweep_interval_s == 1234
-    assert [entry.provider for entry in config.offered()] == ["computer", "acme"]
+    assert [entry.provider for entry in config.offered()] == ["docker", "acme"]
 
 
 @pytest.mark.parametrize(
@@ -200,7 +200,7 @@ def test_parse_reaper_rejects_malformed_config(
     with pytest.raises(ValueError, match=expected_fragment):
         parse_host_section(
             {
-                "provider": "computer",
+                "provider": "docker",
                 "server_url": "https://s.example.com",
                 "reaper": reaper,
             }
@@ -214,7 +214,7 @@ def test_parse_reaper_rejects_per_provider_override(contributed_acme_provider: N
             {
                 "server_url": "https://s.example.com",
                 "providers": [
-                    {"provider": "computer", "reaper": {"enabled": True}},
+                    {"provider": "docker", "reaper": {"enabled": True}},
                     {"provider": "acme"},
                 ],
             }
@@ -247,7 +247,7 @@ def test_parse_host_config_threads_verbatim_without_resolving_secrets(
     }
 
     cfg = parse_host_section(
-        {"provider": "computer", "server_url": "https://s.example.com", "host_config": host_config}
+        {"provider": "docker", "server_url": "https://s.example.com", "host_config": host_config}
     )
 
     assert cfg is not None
@@ -257,7 +257,7 @@ def test_parse_host_config_threads_verbatim_without_resolving_secrets(
 
 def test_parse_absent_host_config_is_none() -> None:
     """No host_config key → nothing forwarded, existing configs unchanged."""
-    cfg = parse_host_section({"provider": "computer", "server_url": "https://s.example.com"})
+    cfg = parse_host_section({"provider": "docker", "server_url": "https://s.example.com"})
     assert cfg is not None
     cfg = cfg.default
     assert cfg.host_config is None
@@ -266,7 +266,7 @@ def test_parse_absent_host_config_is_none() -> None:
 def test_parse_runner_env_accepts_valid_names() -> None:
     cfg = parse_host_section(
         {
-            "provider": "computer",
+            "provider": "docker",
             "server_url": "https://s.example.com",
             "runner_env": ["ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "SUPERCHAT_CLAUDE_MODEL"],
         }
@@ -277,7 +277,7 @@ def test_parse_runner_env_accepts_valid_names() -> None:
 
 
 def test_parse_absent_runner_env_is_empty() -> None:
-    cfg = parse_host_section({"provider": "computer", "server_url": "https://s.example.com"})
+    cfg = parse_host_section({"provider": "docker", "server_url": "https://s.example.com"})
     assert cfg is not None
     assert cfg.default.runner_env == ()
 
@@ -285,7 +285,7 @@ def test_parse_absent_runner_env_is_empty() -> None:
 def test_parse_runner_env_deduplicates_preserving_first_occurrence() -> None:
     cfg = parse_host_section(
         {
-            "provider": "computer",
+            "provider": "docker",
             "server_url": "https://s.example.com",
             "runner_env": ["ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "ANTHROPIC_API_KEY"],
         }
@@ -308,10 +308,10 @@ def test_parse_runner_env_deduplicates_preserving_first_occurrence() -> None:
     ],
 )
 def test_parse_runner_env_rejects_malformed_entries(runner_env: object) -> None:
-    with pytest.raises(ValueError, match=r"sandbox\.runner_env"):
+    with pytest.raises(ValueError, match=r"host\.runner_env"):
         parse_host_section(
             {
-                "provider": "computer",
+                "provider": "docker",
                 "server_url": "https://s.example.com",
                 "runner_env": runner_env,
             }
@@ -327,7 +327,7 @@ def test_parse_runner_env_is_shared_across_multiple_providers(
         {
             "server_url": "https://s.example.com",
             "runner_env": ["ANTHROPIC_API_KEY"],
-            "providers": [{"provider": "computer"}, {"provider": "acme"}],
+            "providers": [{"provider": "docker"}, {"provider": "acme"}],
         }
     )
     assert cfg is not None
@@ -341,10 +341,10 @@ def test_parse_host_config_null_providers_fails_loud() -> None:
     harness would silently fall back to its own login — the exact
     degradation this parse exists to stop.
     """
-    with pytest.raises(ValueError, match=r"sandbox\.host_config\.providers"):
+    with pytest.raises(ValueError, match=r"host\.host_config\.providers"):
         parse_host_section(
             {
-                "provider": "computer",
+                "provider": "docker",
                 "server_url": "https://s.example.com",
                 "host_config": {"providers": None},
             }
@@ -364,11 +364,11 @@ def test_parse_host_config_duplicate_default_fails_loud() -> None:
 
     with pytest.raises(
         ValueError,
-        match=r"sandbox\.host_config\.providers.*multiple providers.*'pi' family",
+        match=r"host\.host_config\.providers.*multiple providers.*'pi' family",
     ):
         parse_host_section(
             {
-                "provider": "computer",
+                "provider": "docker",
                 "server_url": "https://s.example.com",
                 "host_config": {
                     "providers": {
@@ -385,7 +385,7 @@ def test_parse_host_config_inline_api_key_fails_loud() -> None:
     with pytest.raises(ValueError, match=r"api_key_ref: env:VAR"):
         parse_host_section(
             {
-                "provider": "computer",
+                "provider": "docker",
                 "server_url": "https://s.example.com",
                 "host_config": {
                     "providers": {
@@ -407,7 +407,7 @@ def test_parse_host_config_lossy_json_key_collision_fails_loud() -> None:
     with pytest.raises(ValueError, match=r"JSON-serializable"):
         parse_host_section(
             {
-                "provider": "computer",
+                "provider": "docker",
                 "server_url": "https://s.example.com",
                 "host_config": {"metadata": {1: "integer", "1": "string"}},
             }
@@ -418,38 +418,38 @@ def test_parse_host_config_lossy_json_key_collision_fails_loud() -> None:
     ("raw", "expected_fragment"),
     [
         # Non-mapping section.
-        ("computer", "must be a mapping"),
+        ("docker", "must be a mapping"),
         # Unknown / missing provider.
-        ({"provider": "bogus", "server_url": "https://s"}, "sandbox.provider"),
-        ({"server_url": "https://s"}, "sandbox.provider"),
+        ({"provider": "bogus", "server_url": "https://s"}, "host.provider"),
+        ({"server_url": "https://s"}, "host.provider"),
         # Missing / empty server_url.
-        ({"provider": "computer"}, "server_url"),
-        ({"provider": "computer", "server_url": "  "}, "server_url"),
+        ({"provider": "docker"}, "server_url"),
+        ({"provider": "docker", "server_url": "  "}, "server_url"),
         # host_config present but malformed (provider-agnostic top-level key).
         (
-            {"provider": "computer", "server_url": "https://s", "host_config": "providers: {}"},
-            "sandbox.host_config",
+            {"provider": "docker", "server_url": "https://s", "host_config": "providers: {}"},
+            "host.host_config",
         ),
         (
-            {"provider": "computer", "server_url": "https://s", "host_config": {"providers": "x"}},
-            "sandbox.host_config.providers",
+            {"provider": "docker", "server_url": "https://s", "host_config": {"providers": "x"}},
+            "host.host_config.providers",
         ),
         # An invalid provider entry (bad kind) is caught by the same parser
         # omnigent itself uses — inside the sandbox this would degrade
         # silently, so parse time is the only loud failure point.
         (
             {
-                "provider": "computer",
+                "provider": "docker",
                 "server_url": "https://s",
                 "host_config": {"providers": {"litellm": {"kind": "bogus"}}},
             },
-            "sandbox.host_config.providers",
+            "host.host_config.providers",
         ),
         # yaml.safe_load turns an unquoted date into datetime.date, which the
         # per-launch json.dumps cannot take — must fail startup, not launches.
         (
             {
-                "provider": "computer",
+                "provider": "docker",
                 "server_url": "https://s",
                 "host_config": {"last_rotated": datetime.date(2024, 1, 1)},
             },
@@ -688,7 +688,7 @@ async def test_lifespan_gates_one_deployment_wide_managed_sandbox_reaper(
         {
             "server_url": "https://s.example.com",
             "reaper": {"enabled": enabled},
-            "providers": [{"provider": "computer"}, {"provider": "acme"}],
+            "providers": [{"provider": "docker"}, {"provider": "acme"}],
         }
     )
     assert config is not None
@@ -718,8 +718,8 @@ async def test_lifespan_gates_one_deployment_wide_managed_sandbox_reaper(
     [
         # Launch-capable provider configured → the web UI may offer the
         # sandbox option, labeled with the provider name.
-        ({"provider": "computer", "server_url": "https://s.example.com"}, True, "computer"),
-        # No `sandbox:` section → a managed create would 400; the option
+        ({"provider": "docker", "server_url": "https://s.example.com"}, True, "docker"),
+        # No `host:` section → a managed create would 400; the option
         # must not be advertised and no provider is named.
         (None, False, None),
     ],
@@ -825,7 +825,7 @@ async def test_launch_success_registers_host_and_returns_workspace(db_uri: str) 
     assert host.user_id == _OWNER
     assert host.name == start.host_name
     assert host.status == "online"
-    assert host.sandbox_provider == "computer"
+    assert host.sandbox_provider == "docker"
     assert host.sandbox_id == "sb-fake-1"
     # The token injected into the sandbox is the one whose digest was
     # stored: resolving it (the tunnel's auth path) yields this host,
@@ -1162,7 +1162,7 @@ async def test_launch_online_timeout_terminates_and_deletes_host(
     # Shrink the polling budget so the timeout path runs in
     # milliseconds; production values are module constants read at
     # call time.
-    monkeypatch.setattr("omnigent.server.hosts.MANAGED_HOST_ONLINE_TIMEOUT_S", 0.05)
+    monkeypatch.setattr("omnigent.server.hosts.HOST_ONLINE_TIMEOUT_S", 0.05)
     monkeypatch.setattr("omnigent.server.hosts._ONLINE_POLL_INTERVAL_S", 0.01)
     host_store = HostStore(db_uri)
 
@@ -1534,7 +1534,7 @@ async def test_relaunch_does_not_recreate_deleted_host(db_uri: str) -> None:
         name="managed-deleted-relaunch",
         user_id=_OWNER,
         token="deleted-relaunch-token",
-        provider="computer",
+        provider="docker",
         sandbox_id="sb-deleted-old",
         token_expires_at=now_epoch() + 3600,
     )
@@ -1556,7 +1556,7 @@ async def test_relaunch_does_not_recreate_deleted_host(db_uri: str) -> None:
 
 async def test_relaunch_rejects_unconfigured_provider(db_uri: str) -> None:
     """
-    A provider mismatch (the ``sandbox:`` config changed since launch)
+    A provider mismatch (the ``host:`` config changed since launch)
     fails the relaunch with a clear 400 instead of aiming another
     provider's terminate/provision at the recorded sandbox id.
     """
@@ -1571,7 +1571,7 @@ async def test_relaunch_rejects_unconfigured_provider(db_uri: str) -> None:
         token_expires_at=now_epoch() + 3600,
     )
 
-    fake = FakeSandboxLauncher()  # provider "computer" != row's "retired"
+    fake = FakeSandboxLauncher()  # provider "docker" != row's "retired"
     with pytest.raises(HTTPException) as exc:
         await relaunch_host(config=_injected_config(fake), host=host, host_store=host_store)
 
@@ -1610,7 +1610,7 @@ async def test_host_resume_supported_requires_resumable_matching_launcher(db_uri
     non_resumable = _ResumableFakeLauncher(can_resume=False)
     assert host_resume_supported(host, _injected_config(non_resumable)) is False
 
-    mismatched = FakeSandboxLauncher(can_resume=True)  # provider "computer"
+    mismatched = FakeSandboxLauncher(can_resume=True)  # provider "docker"
     assert host_resume_supported(host, _injected_config(mismatched)) is False
 
     no_sandbox = host_store.register_managed_host(
@@ -1838,7 +1838,7 @@ async def test_resume_managed_host_noops_for_non_resumable_provider(db_uri: str)
         name="managed-resume-noop",
         user_id=_OWNER,
         token="tok-resume-noop",
-        provider="computer",
+        provider="docker",
         sandbox_id="sb-resume-noop",
         token_expires_at=now_epoch() + 3600,
     )
@@ -2024,7 +2024,7 @@ async def test_terminate_managed_host_terminates_and_deletes_row(db_uri: str) ->
         name="managed-term1",
         user_id=_OWNER,
         token="tok-term-1",
-        provider="computer",
+        provider="docker",
         sandbox_id="sb-term-1",
         token_expires_at=now_epoch() + 3600,
     )
@@ -2048,7 +2048,7 @@ async def test_terminate_managed_host_cleans_active_and_pending_generations(db_u
         name="managed-term-both",
         user_id=_OWNER,
         token="tok-term-old",
-        provider="computer",
+        provider="docker",
         sandbox_id="sb-term-old",
         token_expires_at=now_epoch() + 3600,
     )
@@ -2061,7 +2061,7 @@ async def test_terminate_managed_host_cleans_active_and_pending_generations(db_u
         host_id=host_id,
         user_id=_OWNER,
         token="tok-term-new",
-        provider="computer",
+        provider="docker",
         sandbox_id="sb-term-new",
         token_expires_at=now_epoch() + 3600,
     )
@@ -2084,7 +2084,7 @@ async def test_terminate_managed_host_targets_latest_registered_generation(db_ur
         name="managed-term-current",
         user_id=_OWNER,
         token="tok-term-old",
-        provider="computer",
+        provider="docker",
         sandbox_id="sb-term-old",
         token_expires_at=now_epoch() + 3600,
     )
@@ -2092,7 +2092,7 @@ async def test_terminate_managed_host_targets_latest_registered_generation(db_ur
         host_id=stale.host_id,
         user_id=stale.user_id,
         token="tok-term-new",
-        provider="computer",
+        provider="docker",
         sandbox_id="sb-term-new",
         token_expires_at=now_epoch() + 3600,
     )
@@ -2116,7 +2116,7 @@ async def test_terminate_managed_host_deletes_row_before_provider_call(
         name="managed-delete-first",
         user_id=_OWNER,
         token="tok-delete-first",
-        provider="computer",
+        provider="docker",
         sandbox_id="sb-delete-first",
         token_expires_at=now_epoch() + 3600,
     )
@@ -2153,7 +2153,7 @@ async def test_terminate_managed_host_retries_tombstone_after_terminate_fails(
         name="managed-term2",
         user_id=_OWNER,
         token="tok-term-2",
-        provider="computer",
+        provider="docker",
         sandbox_id="sb-term-2",
         token_expires_at=now_epoch() + 3600,
     )
@@ -2198,7 +2198,7 @@ async def test_terminate_managed_host_retains_only_failed_generation(
         name="managed-term-partial",
         user_id=_OWNER,
         token="tok-term-old-partial",
-        provider="computer",
+        provider="docker",
         sandbox_id="sb-term-old-partial",
         token_expires_at=now_epoch() + 3600,
     )
@@ -2211,7 +2211,7 @@ async def test_terminate_managed_host_retains_only_failed_generation(
         host_id=host_id,
         user_id=_OWNER,
         token="tok-term-new-partial",
-        provider="computer",
+        provider="docker",
         sandbox_id="sb-term-new-partial",
         token_expires_at=now_epoch() + 3600,
     )
@@ -2256,7 +2256,7 @@ async def test_terminate_managed_host_skips_mismatched_provider(db_uri: str) -> 
     terminate at a stale sandbox id. The host becomes invisible and its cleanup
     tombstone remains available if that provider is configured again later.
     """
-    fake = FakeSandboxLauncher()  # provider "computer"
+    fake = FakeSandboxLauncher()  # provider "docker"
     host_store = HostStore(db_uri)
     host = host_store.register_managed_host(
         host_id="487212fd2b157b6ab6a6d6d3ef06ce5b",
@@ -2283,7 +2283,7 @@ async def test_terminate_managed_host_skips_mismatched_provider(db_uri: str) -> 
         name="managed-term4",
         user_id=_OWNER,
         token="tok-term-4",
-        provider="computer",
+        provider="docker",
         sandbox_id="sb-term-4",
         token_expires_at=now_epoch() + 3600,
     )
@@ -2302,16 +2302,16 @@ def test_parse_multi_provider_offers_every_provider(contributed_acme_provider: N
     config = parse_host_section(
         {
             "server_url": "https://s.example.com",
-            "providers": [{"provider": "computer"}, {"provider": "acme"}],
+            "providers": [{"provider": "docker"}, {"provider": "acme"}],
         }
     )
     assert config is not None
-    assert config.default.provider == "computer"
-    assert config.default.token_ttl_s == COMPUTER_MANAGED_TOKEN_TTL_S
+    assert config.default.provider == "docker"
+    assert config.default.token_ttl_s == HOST_TOKEN_TTL_S
     assert config.managed_launch_supported is True
-    assert config.launchable_providers() == ("computer", "acme")
+    assert config.launchable_providers() == ("docker", "acme")
     # Each entry carries its own provider name and TTL, not the first's.
-    assert [entry.provider for entry in config.offered()] == ["computer", "acme"]
+    assert [entry.provider for entry in config.offered()] == ["docker", "acme"]
     assert config.offered()[1].token_ttl_s == 1234
 
 
@@ -2320,13 +2320,13 @@ def test_parse_single_provider_still_offers_itself() -> None:
     The scalar shape wraps into a one-provider deployment that reads
     through the plural accessors.
     """
-    config = parse_host_section({"provider": "computer", "server_url": "https://s.example.com"})
+    config = parse_host_section({"provider": "docker", "server_url": "https://s.example.com"})
     assert config is not None
     entry = config.default
     assert config.offered() == (entry,)
-    assert config.launchable_providers() == ("computer",)
+    assert config.launchable_providers() == ("docker",)
     assert config.for_provider(None) is entry
-    assert config.for_provider("computer") is entry
+    assert config.for_provider("docker") is entry
     assert config.for_provider("acme") is None
 
 
@@ -2350,7 +2350,7 @@ def test_parse_multi_provider_shares_top_level_keys(contributed_acme_provider: N
         {
             "server_url": "https://s.example.com",
             "host_config": host_config,
-            "providers": [{"provider": "computer"}, {"provider": "acme"}],
+            "providers": [{"provider": "docker"}, {"provider": "acme"}],
         }
     )
     assert config is not None
@@ -2366,11 +2366,11 @@ def test_parse_multi_provider_validates_provider_blocks(
     A per-provider block inside an entry validates as it does in the
     scalar shape: a malformed value fails startup, not a launch.
     """
-    with pytest.raises(ValueError, match=re.escape("sandbox.acme")):
+    with pytest.raises(ValueError, match=re.escape("host.acme")):
         parse_host_section(
             {
                 "server_url": "https://s.example.com",
-                "providers": [{"provider": "computer"}, {"provider": "acme", "acme": "oops"}],
+                "providers": [{"provider": "docker"}, {"provider": "acme", "acme": "oops"}],
             }
         )
 
@@ -2381,18 +2381,18 @@ def test_parse_multi_provider_validates_provider_blocks(
         (
             {
                 "server_url": "https://s.example.com",
-                "provider": "computer",
+                "provider": "docker",
                 "providers": [{"provider": "acme"}],
             },
             "not both",
         ),
         ({"server_url": "https://s.example.com", "providers": []}, "non-empty list"),
-        ({"server_url": "https://s.example.com", "providers": "computer"}, "non-empty list"),
-        ({"server_url": "https://s.example.com", "providers": ["computer"]}, "must be a mapping"),
+        ({"server_url": "https://s.example.com", "providers": "docker"}, "non-empty list"),
+        ({"server_url": "https://s.example.com", "providers": ["docker"]}, "must be a mapping"),
         (
             {
                 "server_url": "https://s.example.com",
-                "providers": [{"provider": "computer"}, {"provider": "computer"}],
+                "providers": [{"provider": "docker"}, {"provider": "docker"}],
             },
             "more than once",
         ),
@@ -2511,7 +2511,7 @@ async def test_launch_unknown_provider_rejects_before_provisioning(
     config = parse_host_section(
         {
             "server_url": "https://s.example.com",
-            "providers": [{"provider": "computer"}, {"provider": "acme"}],
+            "providers": [{"provider": "docker"}, {"provider": "acme"}],
         }
     )
     assert config is not None
@@ -2519,7 +2519,7 @@ async def test_launch_unknown_provider_rejects_before_provisioning(
         await launch_host(config=config, owner=_OWNER, host_store=host_store, provider="nope")
     assert exc.value.status_code == 400
     assert "nope" in exc.value.detail
-    assert "computer, acme" in exc.value.detail
+    assert "docker, acme" in exc.value.detail
     assert host_store.list_hosts(_OWNER) == []
 
 
@@ -2583,7 +2583,7 @@ async def test_info_lists_every_offered_provider(
     config = parse_host_section(
         {
             "server_url": "https://s.example.com",
-            "providers": [{"provider": "computer"}, {"provider": "acme"}],
+            "providers": [{"provider": "docker"}, {"provider": "acme"}],
         }
     )
     app = _capability_probe_app(db_uri, tmp_path, config)
@@ -2592,8 +2592,8 @@ async def test_info_lists_every_offered_provider(
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["managed_sandboxes_enabled"] is True
-    assert body["sandbox_provider"] == "computer"
-    assert body["sandbox_providers"] == ["computer", "acme"]
+    assert body["sandbox_provider"] == "docker"
+    assert body["sandbox_providers"] == ["docker", "acme"]
 
 
 async def test_info_lists_single_provider(db_uri: str, tmp_path: Path) -> None:
@@ -2601,14 +2601,14 @@ async def test_info_lists_single_provider(db_uri: str, tmp_path: Path) -> None:
     A single-provider server reports its one provider in the list too, so
     the picker can render from the list alone.
     """
-    config = parse_host_section({"provider": "computer", "server_url": "https://s.example.com"})
+    config = parse_host_section({"provider": "docker", "server_url": "https://s.example.com"})
     app = _capability_probe_app(db_uri, tmp_path, config)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.get("/v1/info")
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["sandbox_provider"] == "computer"
-    assert body["sandbox_providers"] == ["computer"]
+    assert body["sandbox_provider"] == "docker"
+    assert body["sandbox_providers"] == ["docker"]
 
 
 # ── resolve_managed_agent_label (built-in gate) ─────────────
@@ -3233,7 +3233,7 @@ async def test_recreated_sandbox_that_keeps_its_files_records_no_reset_notice(
         host_store=SimpleNamespace(),
         host_registry=None,
         tunnel_registry=None,
-        host_to_relaunch=SimpleNamespace(host_id="host_1", sandbox_provider="computer"),
+        host_to_relaunch=SimpleNamespace(host_id="host_1", sandbox_provider="docker"),
     )
 
     assert appended == []
@@ -3305,7 +3305,7 @@ async def test_concurrent_relaunch_messages_kick_a_single_launch(
         session_id=None,
     )
     dead_host = SimpleNamespace(
-        sandbox_provider="computer", user_id=_OWNER, status="offline", updated_at=0
+        sandbox_provider="docker", user_id=_OWNER, status="offline", updated_at=0
     )
     app_state = SimpleNamespace(
         host_store=SimpleNamespace(get_host=lambda _hid: dead_host, is_online=lambda _hid: False),
@@ -3335,7 +3335,7 @@ async def test_concurrent_relaunch_messages_kick_a_single_launch(
     assert calls[0]["agent_id"] == builtin.id
 
 
-# ── contributed sandbox providers ───────────────────────────
+# ── contributed host providers ───────────────────────────
 
 
 class _AcmeConfig(BaseModel):
@@ -3431,7 +3431,7 @@ def test_parse_contributed_provider_builds_registry_backed_factory(
 
     launcher = cfg.launcher_factory()
     assert isinstance(launcher, _AcmeLauncher)
-    # The `sandbox.acme` block reached the launcher through the config_model
+    # The `host.acme` block reached the launcher through the config_model
     # the registry documents, rather than being silently dropped.
     assert launcher.config.namespace == "sandboxes"
 
@@ -3453,8 +3453,8 @@ def test_contributed_provider_config_is_validated(
 def test_contributed_provider_non_mapping_block_is_rejected(
     contributed_acme_provider: None,
 ) -> None:
-    """A non-mapping ``sandbox.<provider>`` block is rejected at parse time."""
-    with pytest.raises(ValueError, match=r"sandbox\.acme"):
+    """A non-mapping ``host.<provider>`` block is rejected at parse time."""
+    with pytest.raises(ValueError, match=r"host\.acme"):
         parse_host_section(
             {
                 "provider": "acme",
@@ -3466,7 +3466,7 @@ def test_contributed_provider_non_mapping_block_is_rejected(
 
 def test_unknown_provider_is_still_rejected(contributed_acme_provider: None) -> None:
     """Consulting the registry does not make every name acceptable."""
-    with pytest.raises(ValueError, match=r"sandbox\.provider"):
+    with pytest.raises(ValueError, match=r"host\.provider"):
         parse_host_section({"provider": "nope", "server_url": "https://s.example.com"})
 
 

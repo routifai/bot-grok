@@ -140,7 +140,7 @@ def test_run_background_without_a_host_id_records_no_pidfile() -> None:
 
 def test_run_background_forwards_env_to_run_only_when_non_empty() -> None:
     """``env`` must reach ``run`` so a provider can carry it through its own exec transport
-    (never the command string — see the ``computer`` provider), but a caller that never
+    (never the command string — see the ``docker`` provider), but a caller that never
     sets it (the overwhelming majority of launches) must see the exact same ``run`` call as
     before this parameter existed."""
     launcher = _RecordingLauncher()
@@ -164,7 +164,7 @@ def test_is_host_supervisor_running_reflects_the_liveness_check() -> None:
 def test_start_host_skips_relaunch_when_the_host_is_already_running() -> None:
     """A repeated ``start_host`` for a host id whose supervised loop is still alive (a
     relaunch onto a sandbox that never died, or a provider whose sandbox outlives any one
-    session — e.g. Superchat's ``computer`` provider) must not clone again or start a second
+    session — e.g. Superchat's ``docker`` provider) must not clone again or start a second
     loop; it returns the same workspace the live host is already using."""
     launcher = _RecordingLauncher(host_already_running=True)
 
@@ -657,7 +657,7 @@ def test_render_host_config_write_command_replaces_previously_injected_entries(
     tmp_path: Path,
 ) -> None:
     """
-    Renaming a gateway in ``sandbox.host_config`` must not leave the old
+    Renaming a gateway in ``host.host_config`` must not leave the old
     entry behind: two providers claiming the same ``default`` scope is a
     load error inside the sandbox. Previously injected providers and
     top-level keys are removed before the current payload merges in;

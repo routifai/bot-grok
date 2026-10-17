@@ -1,28 +1,27 @@
 """
-"Computer" sandbox launcher: one Omnigent runner container per person, on plain Docker.
+The ``docker`` host provider: one Omnigent host container per person, on plain Docker.
 
-A person's Computer is a long-lived container started from the runner image (Omnigent's host
-image plus the deployment's additions), with the person's home on a named Docker volume. The
-engine talks to the Docker Engine API over its socket directly; nothing sits in between.
+A person's host is a long-lived container started from the host image (Omnigent's host image
+plus the deployment's additions), with the person's home on a named Docker volume. The engine
+talks to the Docker Engine API over its socket directly; nothing sits in between.
 
 Implements :class:`~omnigent.hosts.launcher.HostLauncher` (via
 :class:`~omnigent.hosts.launcher.ExecModelHostLauncher`, whose default
 :meth:`~omnigent.hosts.launcher.ExecModelHostLauncher.start_host` composes ``run`` /
 ``run_background`` into the full host launch) — ``managed_launch`` only.
 
-Identity: the Computer is keyed by the session's person, not by the launch-chosen ``name``. The
-gateway stamps every session with ``omnigent.computer.key`` / ``omnigent.computer.owner`` /
-``omnigent.tenant`` labels (a session with no tenant uses :data:`DEFAULT_TENANT`; the older
-``superchat.*`` labels are still read, deprecated, removal in 0.19); :meth:`prepare_for_launch`
-reads them, or on a relaunch recovers them from the previous sandbox id
+Identity: the host is keyed by the session's person, not by the launch-chosen ``name``. The
+gateway stamps every session with ``omnigent.host.key`` / ``omnigent.host.owner`` /
+``omnigent.tenant`` labels (a session with no tenant uses :data:`DEFAULT_TENANT`);
+:meth:`prepare_for_launch` reads them, or on a relaunch recovers them from the previous sandbox id
 ``"<key>:<tenant>:<container_id>"``.
 
 Idempotent: :meth:`provision` reuses the person's container (starting it if stopped) and only
-recreates it when the runner image changed; the home volume survives a recreate. ``start_host``
+recreates it when the host image changed; the home volume survives a recreate. ``start_host``
 wraps the host process in the shared restart-on-crash loop, so a crashed host self-heals inside
 the same container.
 
-Deliberately does NOT implement ``terminate`` / ``keep_alive``: the Computer outlives any one
+Deliberately does NOT implement ``terminate`` / ``keep_alive``: the host outlives any one
 session, and Omnigent's best-effort sandbox cleanup must never destroy it.
 """
 
@@ -50,58 +49,53 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
-IMAGE_ENV_VAR: str = "OMNIGENT_COMPUTER_IMAGE"
-"""Runner image each Computer starts from. Defaults to ``superchat/computer:local``."""
+IMAGE_ENV_VAR: str = "OMNIGENT_HOST_IMAGE"
+"""Image each host starts from. Defaults to ``superchat/host:local``."""
 
-DOCKER_SOCKET_ENV_VAR: str = "OMNIGENT_COMPUTER_DOCKER_SOCKET"
+DOCKER_SOCKET_ENV_VAR: str = "OMNIGENT_HOST_DOCKER_SOCKET"
 """Path of the Docker Engine socket. Defaults to ``/var/run/docker.sock``."""
 
-NETWORK_ENV_VAR: str = "OMNIGENT_COMPUTER_NETWORK"
-"""Docker network a Computer joins. Defaults to ``bridge``."""
+NETWORK_ENV_VAR: str = "OMNIGENT_HOST_NETWORK"
+"""Docker network a host joins. Defaults to ``bridge``."""
 
-MEMORY_ENV_VAR: str = "OMNIGENT_COMPUTER_MEMORY"
+MEMORY_ENV_VAR: str = "OMNIGENT_HOST_MEMORY"
 """Memory limit, e.g. ``2g``. Defaults to ``2g``."""
 
-CPUS_ENV_VAR: str = "OMNIGENT_COMPUTER_CPUS"
+CPUS_ENV_VAR: str = "OMNIGENT_HOST_CPUS"
 """CPU limit, e.g. ``2`` or ``1.5``. Defaults to ``2``."""
 
-PIDS_LIMIT_ENV_VAR: str = "OMNIGENT_COMPUTER_PIDS_LIMIT"
+PIDS_LIMIT_ENV_VAR: str = "OMNIGENT_HOST_PIDS_LIMIT"
 """Process limit. Defaults to ``2048``."""
 
-LABEL_COMPUTER_KEY: str = "omnigent.computer.key"
-"""Session label naming the computer to run in (shared by every session with the same key)."""
+LABEL_HOST_KEY: str = "omnigent.host.key"
+"""Session label naming the host to run in (shared by every session with the same key)."""
 
-LABEL_COMPUTER_OWNER: str = "omnigent.computer.owner"
-"""Session label naming the computer's owner; used as the key when no key label is set."""
+LABEL_HOST_OWNER: str = "omnigent.host.owner"
+"""Session label naming the host's owner; used as the key when no key label is set."""
 
 LABEL_TENANT: str = "omnigent.tenant"
-"""Session label naming the tenant (space) the computer belongs to."""
-
-# Deprecated in 0.17: remove in 0.19 once clients send the ``omnigent.*`` labels.
-_DEPRECATED_LABEL_COMPUTER_KEY: str = "superchat.computer"
-_DEPRECATED_LABEL_COMPUTER_OWNER: str = "superchat.bot"
-_DEPRECATED_LABEL_TENANT: str = "superchat.space"
+"""Session label naming the tenant (space) the host belongs to."""
 
 #: The tenant of a session with none: an engine without tenants (one organization, or the
-#: single local person) still places each person's computer.
+#: single local person) still places each person's host.
 DEFAULT_TENANT: str = "default"
 
-_DEFAULT_IMAGE: str = "superchat/computer:local"
+_DEFAULT_IMAGE: str = "superchat/host:local"
 _DEFAULT_SOCKET: str = "/var/run/docker.sock"
 
-#: The runner image's user and home; the home volume is mounted there.
-_COMPUTER_USER: str = "1000:1000"
-_COMPUTER_HOME: str = "/home/superchat"
+#: The host image's user and home; the home volume is mounted there.
+_HOST_USER: str = "1000:1000"
+_HOST_HOME: str = "/home/superchat"
 #: The Muse's shell: the system Python (with the data stack) first, the person's own installs
 #: under ~/.local before that. Omnigent's /opt/venv stays off it.
-_COMPUTER_ENV: tuple[str, ...] = (
-    f"HOME={_COMPUTER_HOME}",
-    f"PATH={_COMPUTER_HOME}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-    f"NPM_CONFIG_PREFIX={_COMPUTER_HOME}/.local",
+_HOST_ENV: tuple[str, ...] = (
+    f"HOME={_HOST_HOME}",
+    f"PATH={_HOST_HOME}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    f"NPM_CONFIG_PREFIX={_HOST_HOME}/.local",
     "PIP_USER=1",
 )
 _SHM_SIZE_BYTES: int = 256 * 1024 * 1024
-_MANAGED_LABEL: str = "omnigent.computer"
+_MANAGED_LABEL: str = "omnigent.host"
 
 _REQUEST_TIMEOUT_S: float = 30.0
 _PROVISION_TIMEOUT_S: float = 120.0
@@ -113,12 +107,12 @@ _MAX_ERROR_BODY_CHARS: int = 500
 
 
 class DockerHostError(HostError):
-    """A call to the Docker Engine for a Computer failed."""
+    """A call to the Docker Engine for a host failed."""
 
 
 def tenant_from_labels(labels: Mapping[str, str]) -> str | None:
-    """The tenant a session's labels place its computer in (deprecated label as fallback)."""
-    return labels.get(LABEL_TENANT) or labels.get(_DEPRECATED_LABEL_TENANT) or None
+    """The tenant a session's labels place its host in."""
+    return labels.get(LABEL_TENANT) or None
 
 
 def _parse_sandbox_id(sandbox_id: str) -> tuple[str, str, str]:
@@ -132,7 +126,7 @@ def _parse_sandbox_id(sandbox_id: str) -> tuple[str, str, str]:
     parts = sandbox_id.split(":", 2)
     if len(parts) != 3 or not all(parts):
         raise click.ClickException(
-            f"malformed 'computer' sandbox id {sandbox_id!r} — expected "
+            f"malformed 'docker' sandbox id {sandbox_id!r} — expected "
             "'<key>:<tenant>:<container_id>'"
         )
     key, tenant, container_id = parts
@@ -143,17 +137,17 @@ def _safe_name(key: str) -> str:
     """A Docker-safe name fragment for *key* (letters, digits, ``_.-``; at most 40 chars)."""
     safe = re.sub(r"[^a-zA-Z0-9_.-]", "", key)[:40]
     if not safe:
-        raise click.ClickException(f"computer key {key!r} has no usable characters")
+        raise click.ClickException(f"host key {key!r} has no usable characters")
     return safe
 
 
 def container_name(key: str) -> str:
-    """Name of the Computer container for *key*."""
-    return f"superchat-computer-{_safe_name(key)}"
+    """Name of the host container for *key*."""
+    return f"superchat-host-{_safe_name(key)}"
 
 
 def home_volume_name(key: str) -> str:
-    """Name of the Docker volume holding the Computer's home for *key*."""
+    """Name of the Docker volume holding the host's home for *key*."""
     return f"superchat-home-{_safe_name(key)}"
 
 
@@ -188,13 +182,13 @@ def _demux(stream: bytes) -> tuple[str, str]:
 
 class DockerHostLauncher(ExecModelHostLauncher):
     """
-    Sandbox launcher that runs Omnigent hosts in a person's Computer container.
+    Host launcher that runs Omnigent hosts in a person's host container.
 
-    Registered as the ``"computer"`` provider; select it with ``sandbox.provider: computer``.
+    Registered as the ``"docker"`` provider; select it with ``host.provider: docker``.
     Configured only through the environment variables above.
     """
 
-    provider: ClassVar[str] = "computer"
+    provider: ClassVar[str] = "docker"
     supports_cli_bootstrap: ClassVar[bool] = False
     supports_managed_launch: ClassVar[bool] = True
 
@@ -243,12 +237,7 @@ class DockerHostLauncher(ExecModelHostLauncher):
         """
         del agent_name
         found = labels or {}
-        key = (
-            found.get(LABEL_COMPUTER_KEY)
-            or found.get(LABEL_COMPUTER_OWNER)
-            or found.get(_DEPRECATED_LABEL_COMPUTER_KEY)
-            or found.get(_DEPRECATED_LABEL_COMPUTER_OWNER)
-        )
+        key = found.get(LABEL_HOST_KEY) or found.get(LABEL_HOST_OWNER)
         tenant = tenant_from_labels(found) or DEFAULT_TENANT
         if key:
             self._key, self._tenant = key, tenant
@@ -259,14 +248,14 @@ class DockerHostLauncher(ExecModelHostLauncher):
     def prepare(self) -> None:
         if not os.path.exists(self._socket_path) and self._injected_client is None:
             raise click.ClickException(
-                f"no Docker socket at {self._socket_path} — the 'computer' provider starts each "
-                f"person's runner with Docker (set {DOCKER_SOCKET_ENV_VAR})"
+                f"no Docker socket at {self._socket_path} — the 'docker' provider starts each "
+                f"person's host with Docker (set {DOCKER_SOCKET_ENV_VAR})"
             )
         if not self._key or not self._tenant:
             raise click.ClickException(
-                "the 'computer' sandbox provider could not resolve this computer's identity — the "
-                f"launching session must carry a '{LABEL_COMPUTER_KEY}' "
-                f"(or '{LABEL_COMPUTER_OWNER}') label"
+                "the 'docker' host provider could not resolve this host's identity — the "
+                f"launching session must carry a '{LABEL_HOST_KEY}' "
+                f"(or '{LABEL_HOST_OWNER}') label"
             )
 
     def _client(self) -> httpx.Client:
@@ -298,22 +287,22 @@ class DockerHostLauncher(ExecModelHostLauncher):
         response = self._docker("GET", f"/images/{quote(self._image, safe='')}/json")
         if response.status_code == 404:
             raise click.ClickException(
-                f"runner image {self._image} is not on this Docker host — build it first "
+                f"host image {self._image} is not on this Docker host — build it first "
                 f"(see the README's Run with Docker) or set {IMAGE_ENV_VAR}"
             )
         if response.status_code >= 400:
-            raise self._fail("could not inspect the runner image", response)
+            raise self._fail("could not inspect the host image", response)
         return str(response.json().get("Id", ""))
 
     def _create_body(self, key: str, tenant: str) -> dict[str, Any]:
         return {
             "Image": self._image,
-            "User": _COMPUTER_USER,
-            "Env": list(_COMPUTER_ENV),
-            "WorkingDir": _COMPUTER_HOME,
+            "User": _HOST_USER,
+            "Env": list(_HOST_ENV),
+            "WorkingDir": _HOST_HOME,
             "Labels": {
                 _MANAGED_LABEL: "true",
-                LABEL_COMPUTER_KEY: key,
+                LABEL_HOST_KEY: key,
                 LABEL_TENANT: tenant,
             },
             "HostConfig": {
@@ -321,7 +310,7 @@ class DockerHostLauncher(ExecModelHostLauncher):
                     {
                         "Type": "volume",
                         "Source": home_volume_name(key),
-                        "Target": _COMPUTER_HOME,
+                        "Target": _HOST_HOME,
                     }
                 ],
                 "ShmSize": _SHM_SIZE_BYTES,
@@ -338,7 +327,7 @@ class DockerHostLauncher(ExecModelHostLauncher):
         }
 
     def _ensure_container_id(self, key: str, tenant: str) -> str:
-        """Return the id of *key*'s running Computer, creating or recreating it as needed."""
+        """Return the id of *key*'s running host, creating or recreating it as needed."""
         name = container_name(key)
         image_id = self._image_id()
         response = self._docker("GET", f"/containers/{name}/json")
@@ -348,12 +337,12 @@ class DockerHostLauncher(ExecModelHostLauncher):
                 if not (info.get("State") or {}).get("Running"):
                     self._start(str(info["Id"]))
                 return str(info["Id"])
-            # A new runner image: replace the container; the home volume stays.
+            # A new host image: replace the container; the home volume stays.
             removed = self._docker("DELETE", f"/containers/{info['Id']}", params={"force": "true"})
             if removed.status_code >= 400 and removed.status_code != 404:
-                raise self._fail("could not replace the Computer", removed)
+                raise self._fail("could not replace the host", removed)
         elif response.status_code != 404:
-            raise self._fail("could not inspect the Computer", response)
+            raise self._fail("could not inspect the host", response)
         created = self._docker(
             "POST",
             "/containers/create",
@@ -365,10 +354,10 @@ class DockerHostLauncher(ExecModelHostLauncher):
             # Another launch created it first; use that one.
             again = self._docker("GET", f"/containers/{name}/json")
             if again.status_code >= 400:
-                raise self._fail("could not inspect the Computer", again)
+                raise self._fail("could not inspect the host", again)
             container_id = str(again.json()["Id"])
         elif created.status_code >= 400:
-            raise self._fail("could not create the Computer", created)
+            raise self._fail("could not create the host", created)
         else:
             container_id = str(created.json()["Id"])
         self._start(container_id)
@@ -377,18 +366,18 @@ class DockerHostLauncher(ExecModelHostLauncher):
     def _start(self, container_id: str) -> None:
         response = self._docker("POST", f"/containers/{container_id}/start")
         if response.status_code not in (204, 304):
-            raise self._fail("could not start the Computer", response)
+            raise self._fail("could not start the host", response)
 
     def provision(self, name: str) -> str:
         """
-        Ensure this person's Computer is running and return its encoded sandbox id.
+        Ensure this person's host is running and return its encoded sandbox id.
 
-        :param name: Unused — Computers are keyed by person, not by the launch label.
+        :param name: Unused — hosts are keyed by person, not by the launch label.
         """
         del name
         if not self._key or not self._tenant:
             # prepare() already enforces this; guards type narrowing below.
-            raise click.ClickException("the 'computer' sandbox provider has no identity")
+            raise click.ClickException("the 'docker' host provider has no identity")
         container_id = self._ensure_container_id(self._key, self._tenant)
         return f"{self._key}:{self._tenant}:{container_id}"
 
@@ -413,7 +402,7 @@ class DockerHostLauncher(ExecModelHostLauncher):
             "Cmd": ["sh", "-c", command],
             "AttachStdout": True,
             "AttachStderr": True,
-            "WorkingDir": _COMPUTER_HOME,
+            "WorkingDir": _HOST_HOME,
         }
         if env:
             # Passed as exec environment, never in `command`: values stay out of argv and ps.
@@ -441,7 +430,7 @@ class DockerHostLauncher(ExecModelHostLauncher):
             )
         if check and result.returncode != 0:
             raise click.ClickException(
-                f"command failed in the Computer (exit {result.returncode}): "
+                f"command failed in the host (exit {result.returncode}): "
                 f"{(result.stderr or result.stdout).strip()}"
             )
         return result
@@ -461,13 +450,13 @@ class DockerHostLauncher(ExecModelHostLauncher):
 
     def is_host_supervisor_running(self, sandbox_id: str, host_id: str) -> bool:
         """
-        Whether the supervised host loop for *host_id* is alive in the Computer.
+        Whether the supervised host loop for *host_id* is alive in the host container.
 
         Stricter than the base check: the home volume keeps the pidfile across a container
         recreate while pids restart, so a pid counts only when it answers ``kill -0`` AND its
         ``/proc/<pid>/cmdline`` carries this host's pidfile path.
 
-        :param sandbox_id: Target Computer.
+        :param sandbox_id: Target host.
         :param host_id: Host id of a prior launch; server-generated, validated here anyway.
         :returns: ``True`` iff the recorded pid is alive and is this host's supervise loop.
         """

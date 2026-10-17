@@ -1495,8 +1495,8 @@ class _SessionCreateRequestBase(BaseModel):
         host launch flow (generate binding token, write runner_id,
         send launch frame). ``None`` for CLI-initiated sessions.
         Must be ``None`` when ``host_type`` is ``"managed"``.
-    :param sandbox_provider: Which configured sandbox provider to
-        provision on, e.g. ``"computer"`` — one of the names ``GET /v1/info``
+    :param sandbox_provider: Which configured host provider to
+        provision on, e.g. ``"docker"`` — one of the names ``GET /v1/info``
         reports in ``sandbox_providers``. Only valid with
         ``host_type: "managed"``; ``None`` takes the server's first.
     :param workspace: Where the session works. For external hosts:
@@ -1791,7 +1791,7 @@ class SessionCreateMetadata(BaseModel):
         sandbox host). The uploaded bundle's session-scoped agent runs
         on the provisioned sandbox; its spec is fetched by the managed
         runner over its tunnel, same as any session-scoped agent.
-    :param sandbox_provider: Which configured sandbox provider to
+    :param sandbox_provider: Which configured host provider to
         provision on ``host_type: "managed"`` (one of the server's
         ``sandbox_providers``); ``None`` takes the server's first. Only
         valid with ``host_type: "managed"``.
@@ -2546,7 +2546,7 @@ class SessionForkRequest(BaseModel):
         ``PATCH /v1/sessions/{id}`` from the REPL) or ``"managed"`` (the
         server provisions a sandbox host for the fork, the same
         background launch a ``host_type: "managed"`` create schedules).
-    :param sandbox_provider: Which configured sandbox provider to
+    :param sandbox_provider: Which configured host provider to
         provision on ``host_type: "managed"`` (one of the server's
         ``sandbox_providers``); ``None`` takes the server's first. Only
         valid with ``host_type: "managed"``.

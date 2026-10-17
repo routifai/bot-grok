@@ -130,7 +130,7 @@ async def test_catalog_lists_the_endpoint_models_for_pi(monkeypatch, litellm_url
     seen: list[httpx.Request] = []
     state = _litellm_state(monkeypatch, harness="pi")
     service = SandboxInferenceService(state, transport=_listing(["gpt-team", "claude-team"], seen))
-    snapshot = await service.prepare("computer", "pi", "alice")
+    snapshot = await service.prepare("docker", "pi", "alice")
     assert snapshot is not None and snapshot["catalog"]["status"] == "ready"
     assert [row["id"] for row in snapshot["catalog"]["models"]] == ["gpt-team", "claude-team"]
     assert str(seen[0].url) == f"{litellm_url}/v1/models"
@@ -174,7 +174,7 @@ async def test_catalog_offers_claude_sdk_every_chat_model_whatever_its_name(
     ]
     transport = _listing_with_info(["gpt-team", "claude-team", "embed-team", "no-tools"], info)
     snapshot = await SandboxInferenceService(state, transport=transport).prepare(
-        "computer", "claude-sdk", "alice"
+        "docker", "claude-sdk", "alice"
     )
     assert snapshot is not None and snapshot["catalog"]["status"] == "ready"
     # Fit is the proxy's wire (LiteLLM serves /v1/messages for any model) and what it reports
@@ -211,7 +211,7 @@ async def test_the_prices_litellm_reports_choose_the_light_model(
     ]
     transport = _listing_with_info(["team-big", "team-small"], info)
     snapshot = await SandboxInferenceService(state, transport=transport).prepare(
-        "computer", "pi", "alice"
+        "docker", "pi", "alice"
     )
     assert snapshot is not None
     rows = {row["id"]: row for row in snapshot["catalog"]["models"]}
@@ -232,7 +232,7 @@ async def test_the_operator_key_serves_people_without_one_and_stays_in_the_engin
     state = _litellm_state(monkeypatch, harness="pi")
     seen: list[httpx.Request] = []
     snapshot = await SandboxInferenceService(state, transport=_listing(["team"], seen)).prepare(
-        "computer", "pi", "nobody"
+        "docker", "pi", "nobody"
     )
     assert snapshot is not None and snapshot["catalog"]["status"] == "ready"
     assert seen[0].headers["authorization"] == f"Bearer {LITELLM_KEY}"
@@ -254,7 +254,7 @@ async def test_catalog_reports_an_unreachable_endpoint(monkeypatch, litellm_url:
     state = _litellm_state(monkeypatch, harness="pi")
     down = httpx.MockTransport(lambda request: httpx.Response(401, json={}))
     snapshot = await SandboxInferenceService(state, transport=down).prepare(
-        "computer", "pi", "alice"
+        "docker", "pi", "alice"
     )
     assert snapshot is not None and snapshot["catalog"]["status"] == "unavailable"
     assert "LiteLLM" in snapshot["catalog"]["error"]

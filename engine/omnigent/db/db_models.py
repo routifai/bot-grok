@@ -1360,8 +1360,8 @@ class SqlHost(OmnigentBase):
         expiry is set past the provider's maximum sandbox lifetime so a
         live sandbox can always reconnect while a token leaked from a
         dead one cannot. ``NULL`` for external hosts.
-    :param sandbox_provider: Sandbox provider backing a managed host,
-        e.g. ``"computer"``. ``NULL`` for external hosts — non-NULL is the
+    :param sandbox_provider: Host provider backing a managed host,
+        e.g. ``"docker"``. ``NULL`` for external hosts — non-NULL is the
         "this host is server-managed" discriminator.
     :param sandbox_id: Provider-assigned id of the sandbox currently
         backing the host, e.g. ``"sb-a1b2c3"`` — what termination is

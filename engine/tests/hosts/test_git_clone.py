@@ -90,7 +90,7 @@ def test_legacy_materializer_gets_no_new_keywords_and_rejects_opt_in() -> None:
     )
     assert not launcher.capabilities.git_clone_options
     launcher.commands.clear()
-    with pytest.raises(click.ClickException, match=r"does not support sandbox\.git_clone"):
+    with pytest.raises(click.ClickException, match=r"does not support host\.git_clone"):
         launcher.start_host(
             "sb",
             repos=[

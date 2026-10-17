@@ -66,7 +66,7 @@ def test_plugin_state_loads_builtins() -> None:
     reset_plugin_state_for_tests()
     state = plugin_state()
     assert isinstance(state, HostProviderPluginState)
-    assert state.names() == ("computer",)
+    assert state.names() == ("docker",)
 
 
 def test_plugin_state_is_cached() -> None:
@@ -90,15 +90,15 @@ def test_available_providers_returns_builtins() -> None:
     """available_providers exposes built-in provider names."""
     reset_plugin_state_for_tests()
     names = available_providers()
-    assert "computer" in names
+    assert "docker" in names
 
 
 def test_get_provider_metadata_known_provider() -> None:
     """Metadata for a registered provider is available."""
     reset_plugin_state_for_tests()
-    meta = get_provider_metadata("computer")
+    meta = get_provider_metadata("docker")
     assert meta is not None
-    assert meta.name == "computer"
+    assert meta.name == "docker"
     assert "omnigent.hosts.docker:DockerHostLauncher" in meta.launcher_class
 
 
@@ -111,14 +111,14 @@ def test_get_provider_metadata_unknown_returns_none() -> None:
 def test_instantiate_loads_built_in_provider() -> None:
     """instantiate imports and constructs a built-in launcher."""
     reset_plugin_state_for_tests()
-    launcher = instantiate("computer")
-    assert launcher.provider == "computer"
+    launcher = instantiate("docker")
+    assert launcher.provider == "docker"
 
 
 def test_instantiate_unknown_raises() -> None:
     """Instantiating an unknown provider raises HostRegistryError."""
     reset_plugin_state_for_tests()
-    with pytest.raises(HostRegistryError, match="unknown sandbox provider"):
+    with pytest.raises(HostRegistryError, match="unknown host provider"):
         instantiate("not-a-provider")
 
 
@@ -219,8 +219,8 @@ def test_validation_rejects_name_collision(
     contribution = HostProviderContribution(
         name="computer-duplicate",
         providers={
-            "computer": HostProviderMetadata(
-                name="computer",
+            "docker": HostProviderMetadata(
+                name="docker",
                 launcher_class=f"{COMMUNITY_MODULE_PREFIX}computer:DockerHostLauncher",
             )
         },
@@ -231,7 +231,7 @@ def test_validation_rejects_name_collision(
     )
     state = plugin_state()
 
-    assert "computer" in state.providers  # original built-in still present
+    assert "docker" in state.providers  # original built-in still present
     assert "computer-duplicate" in state.load_errors
     assert "override existing provider" in state.load_errors["computer-duplicate"]
 
@@ -264,8 +264,8 @@ def test_validation_rejects_name_mismatch(
 def test_get_launcher_uses_registry() -> None:
     """The public get_launcher resolves providers through the merged state."""
     reset_plugin_state_for_tests()
-    launcher = get_launcher("computer")
-    assert launcher.provider == "computer"
+    launcher = get_launcher("docker")
+    assert launcher.provider == "docker"
 
 
 def test_get_launcher_unknown_raises_click_exception() -> None:
@@ -273,7 +273,7 @@ def test_get_launcher_unknown_raises_click_exception() -> None:
     reset_plugin_state_for_tests()
     with pytest.raises(
         click.ClickException,
-        match="Unknown or unavailable sandbox provider",
+        match="Unknown or unavailable host provider",
     ):
         get_launcher("definitely-not-real")
 

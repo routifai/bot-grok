@@ -270,7 +270,7 @@ async def test_prepare_falls_back_to_the_org_connection(uri: str) -> None:
     state = _byok_state({})
     state.model_connection_store = ModelConnectionStore(uri)
     state.model_connection_store.put("org", "", "anthropic", ORG_KEY)
-    snapshot = await SandboxInferenceService(state).prepare("computer", "claude-sdk", "alice")
+    snapshot = await SandboxInferenceService(state).prepare("docker", "claude-sdk", "alice")
     assert snapshot is not None and snapshot["catalog"]["status"] == "ready"
     family = snapshot["runtime_config"]["providers"]["byok"]["anthropic"]
     assert family["base_url"] == "https://engine.example/v1/model/anthropic"

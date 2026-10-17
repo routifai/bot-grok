@@ -163,7 +163,7 @@ class FakeSandboxLauncher(ExecModelHostLauncher):
         provisions immediately.
     """
 
-    provider: ClassVar[str] = "computer"
+    provider: ClassVar[str] = "docker"
 
     def __init__(
         self,
@@ -314,7 +314,7 @@ def install_fake_computer_launcher(
     """
     Substitute the fake for ``DockerHostLauncher`` at its public seam.
 
-    The YAML ``provider: computer`` path constructs ``DockerHostLauncher()``
+    The YAML ``provider: docker`` path constructs ``DockerHostLauncher()``
     (lazily, through its launcher factory); the shim hands the fake back, so
     production code runs unmodified against it.
 

@@ -131,7 +131,7 @@ async def teardown_env(
         host_store=host_store,
         sandbox_config=parse_host_section(
             {
-                "provider": "computer",
+                "provider": "docker",
                 "server_url": "https://managed-test.example.com",
             }
         ),
@@ -293,7 +293,7 @@ async def test_harness_refusal_failure_tears_down_managed_sandbox(
     env = teardown_env
     # A healthy fake host registers in well under a second; shrink the
     # online-poll budget so a registration regression fails in seconds.
-    monkeypatch.setattr("omnigent.server.hosts.MANAGED_HOST_ONLINE_TIMEOUT_S", 10)
+    monkeypatch.setattr("omnigent.server.hosts.HOST_ONLINE_TIMEOUT_S", 10)
     loop = asyncio.get_running_loop()
     host_futures: list[asyncio.Future[ApplicationCommunicator]] = []
     launched_host_ids: list[str] = []
@@ -366,7 +366,7 @@ async def test_runner_connect_timeout_failure_tears_down_managed_sandbox(
     left to ever delete it.
     """
     env = teardown_env
-    monkeypatch.setattr("omnigent.server.hosts.MANAGED_HOST_ONLINE_TIMEOUT_S", 10)
+    monkeypatch.setattr("omnigent.server.hosts.HOST_ONLINE_TIMEOUT_S", 10)
     # No runner ever connects in this test by design; shrink the
     # connect grace so the launch settles in milliseconds, not 30s.
     monkeypatch.setattr(

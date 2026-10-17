@@ -1,8 +1,8 @@
 """
 Provider-agnostic interface for running Omnigent hosts in remote sandboxes.
 
-A *sandbox launcher* wraps one sandbox provider (e.g. the Docker-backed
-``computer``) behind the small set of transport / lifecycle primitives that the
+A *host launcher* wraps one host provider (e.g. the Docker-backed
+``docker``) behind the small set of transport / lifecycle primitives that the
 server's managed-host code composes: provision a sandbox, run commands in it,
 ship files into it, stream a PTY-backed process out of it, forward a local port
 into it, and hold a foreground process open. Everything provider-specific
@@ -353,7 +353,7 @@ def render_host_config_write_command(host_config: dict[str, object]) -> str:
     operator-supplied YAML content (quotes, ``$``, newlines) never
     reaches shell or Python quoting.
 
-    :param host_config: The validated ``sandbox.host_config`` mapping
+    :param host_config: The validated ``host.host_config`` mapping
         (see :func:`omnigent.server.hosts.parse_host_section`),
         or ``{}`` to only remove previously injected entries.
     :returns: A ``python3 -c '<script>'`` shell command, safe to pass to
@@ -448,7 +448,7 @@ class RemoteProcess(ABC):
 
 class HostLifecycle(ABC):
     """
-    Lifecycle + capability primitives for one sandbox provider.
+    Lifecycle + capability primitives for one host provider.
 
     Every provider — exec-model or entrypoint-as-host — implements this
     base. It carries the provider identity, capability flags, and the
@@ -458,7 +458,7 @@ class HostLifecycle(ABC):
     """
 
     # Short provider name used in CLI ``--provider`` choices and error
-    # messages, e.g. ``"computer"``.
+    # messages, e.g. ``"docker"``.
     provider: ClassVar[str]
 
     # Package index URL exported as ``UV_INDEX_URL`` for the local wheel
@@ -794,7 +794,7 @@ def supervise_host_command(command: str, *, host_id: str | None = None) -> str:
     restart attempts — it is the supervising shell, not the host process) at
     :func:`supervised_host_pidfile_path`, written before the first attempt so
     a sandbox whose provider persists across launches (a relaunch onto a
-    still-live sandbox, or Superchat's ``computer`` provider, which never
+    still-live sandbox, or Superchat's ``docker`` provider, which never
     terminates — see :mod:`omnigent.hosts.docker`) can detect
     an already-running loop for the same host id and skip starting a second
     one (see :meth:`HostExecTransport.is_host_supervisor_running`).
@@ -834,7 +834,7 @@ class HostExecTransport(HostLifecycle):
     Exec-transport primitives for providers that exec into a running sandbox.
 
     Providers whose sandbox is a bare box the server execs into (e.g.
-    ``computer``) inherit this via :class:`ExecModelHostLauncher`.
+    ``docker``) inherit this via :class:`ExecModelHostLauncher`.
     Entrypoint-as-host providers (whose sandbox boots running the host) inherit
     :class:`HostLauncher` instead and need NOT implement any of these methods.
     """
@@ -862,8 +862,8 @@ class HostExecTransport(HostLifecycle):
             appear in argv/``ps``/logs). Optional capability: a provider
             whose exec transport cannot carry a separate env mapping may
             omit this parameter from its override — callers only pass a
-            non-``None`` value when they need it (today: `sandbox.runner_env`
-            delivery to the ``computer`` provider's ``run_background``), so
+            non-``None`` value when they need it (today: `host.runner_env`
+            delivery to the ``docker`` provider's ``run_background``), so
             providers without the need are unaffected.
         :returns: The completed command's exit code and output.
         :raises click.ClickException: If *check* is ``True`` and the
@@ -904,7 +904,7 @@ class HostExecTransport(HostLifecycle):
             to skip that bookkeeping.
         :param env: Extra environment for the backgrounded process, forwarded
             to :meth:`run` only when non-empty — callers whose provider
-            doesn't need it (the common case: no `sandbox.runner_env`
+            doesn't need it (the common case: no `host.runner_env`
             configured) see the exact same call as before this parameter
             existed.
         :returns: A synthetic result with ``stdout="launched\\n"`` on success.
@@ -1020,7 +1020,7 @@ class HostExecTransport(HostLifecycle):
 
 class HostLauncher(HostLifecycle):
     """
-    Lifecycle + host-launch contract for a sandbox provider.
+    Lifecycle + host-launch contract for a host provider.
 
     Every managed-host provider — exec-model or entrypoint-as-host — implements
     this. :meth:`start_host` is abstract here; the exec-model default lives on
@@ -1044,8 +1044,8 @@ class HostLauncher(HostLifecycle):
 
         :param agent_name: Server-resolved built-in agent name the session runs, as passed by
             every call site today.
-        :param labels: The launching session's labels (e.g. Superchat's ``superchat.bot`` /
-            ``superchat.space`` — see :mod:`omnigent.hosts.docker`), on a first
+        :param labels: The launching session's labels (e.g. Superchat's ``omnigent.host.owner`` /
+            ``omnigent.tenant`` — see :mod:`omnigent.hosts.docker`), on a first
             launch. ``None`` on a relaunch/resume of an existing host, which has no session labels
             handy.
         :param previous_sandbox_id: The host's previous :meth:`HostLifecycle.provision` /
@@ -1097,7 +1097,7 @@ class HostLauncher(HostLifecycle):
 class ExecModelHostLauncher(HostLauncher, HostExecTransport):
     """
     Default exec-model host launcher for providers that exec into a running
-    sandbox (e.g. ``computer``).
+    sandbox (e.g. ``docker``).
 
     Provides the default :meth:`start_host`, :meth:`run_background`, and
     :meth:`materialize_workspace` that compose :meth:`run` into the full
@@ -1140,7 +1140,7 @@ class ExecModelHostLauncher(HostLauncher, HostExecTransport):
         host`` loop for *host_id* is already running in the sandbox (see
         :meth:`HostExecTransport.is_host_supervisor_running`) — a RELAUNCH
         onto a sandbox that never actually died, or a repeat launch onto a
-        provider whose sandbox outlives any one session (Superchat's ``computer``
+        provider whose sandbox outlives any one session (Superchat's ``docker``
         provider never terminates its container — see
         :mod:`omnigent.hosts.docker`) — this skips cloning
         and starting a second loop and returns the already-running host's
@@ -1148,7 +1148,7 @@ class ExecModelHostLauncher(HostLauncher, HostExecTransport):
         the live workspace.
 
         :param runner_env: Resolved ``{name: value}`` pairs from the server's
-            own process environment (``sandbox.runner_env`` — see
+            own process environment (``host.runner_env`` — see
             :mod:`omnigent.server.hosts`), delivered to the host
             process via :meth:`run_background`'s ``env`` (never the command
             string, so values never appear in argv/``ps``/logs), together
@@ -1160,8 +1160,7 @@ class ExecModelHostLauncher(HostLauncher, HostExecTransport):
         if any(repo.git_clone != _host_types.GitCloneOptions() for repo in repos):
             if not self.capabilities.git_clone_options:
                 raise click.ClickException(
-                    f"sandbox provider '{self.provider}' does not support "
-                    "sandbox.git_clone options"
+                    f"host provider '{self.provider}' does not support host.git_clone options"
                 )
         home = self.run(sandbox_id, 'printf %s "$HOME"').stdout.strip()
         if not home:

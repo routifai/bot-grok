@@ -1,4 +1,4 @@
-"""Tests for the "computer" sandbox launcher: a person's runner container on plain Docker.
+"""Tests for the "docker" host provider: a person's host container on plain Docker.
 
 Fully offline: every Docker Engine call goes through ``httpx.MockTransport`` against a fake.
 """
@@ -103,7 +103,7 @@ class FakeDocker:
 
 def make_launcher(docker: FakeDocker) -> DockerHostLauncher:
     launcher = DockerHostLauncher(image=IMAGE, client=docker.client())
-    launcher.prepare_for_launch(labels={"omnigent.computer.key": KEY, "omnigent.tenant": TENANT})
+    launcher.prepare_for_launch(labels={"omnigent.host.key": KEY, "omnigent.tenant": TENANT})
     return launcher
 
 
@@ -120,28 +120,28 @@ def test_parse_sandbox_id_rejects_malformed_ids(malformed: str) -> None:
 def test_identity_comes_from_the_key_label_then_the_owner_label() -> None:
     launcher = DockerHostLauncher(image=IMAGE, client=FakeDocker().client())
     launcher.prepare_for_launch(
-        labels={"omnigent.computer.owner": "owner-1", "omnigent.tenant": "tenant-1"}
+        labels={"omnigent.host.owner": "owner-1", "omnigent.tenant": "tenant-1"}
     )
     assert (launcher._key, launcher._tenant) == ("owner-1", "tenant-1")
     launcher.prepare_for_launch(
         labels={
-            "omnigent.computer.key": "team-1",
-            "omnigent.computer.owner": "owner-1",
+            "omnigent.host.key": "team-1",
+            "omnigent.host.owner": "owner-1",
             "omnigent.tenant": "tenant-1",
         }
     )
     assert (launcher._key, launcher._tenant) == ("team-1", "tenant-1")
 
 
-def test_deprecated_labels_still_resolve_identity() -> None:
+def test_old_superchat_labels_are_not_read() -> None:
     launcher = DockerHostLauncher(image=IMAGE, client=FakeDocker().client())
     launcher.prepare_for_launch(labels={"superchat.bot": KEY, "superchat.space": TENANT})
-    assert (launcher._key, launcher._tenant) == (KEY, TENANT)
+    assert (launcher._key, launcher._tenant) == (None, None)
 
 
 def test_a_session_without_a_tenant_uses_the_default_tenant() -> None:
     launcher = DockerHostLauncher(image=IMAGE, client=FakeDocker().client())
-    launcher.prepare_for_launch(labels={"omnigent.computer.owner": KEY})
+    launcher.prepare_for_launch(labels={"omnigent.host.owner": KEY})
     launcher.prepare()
     assert (launcher._key, launcher._tenant) == (KEY, DEFAULT_TENANT)
 
@@ -161,7 +161,7 @@ def test_prepare_fails_without_identity() -> None:
 
 def test_prepare_fails_without_a_docker_socket(tmp_path: Path) -> None:
     launcher = DockerHostLauncher(image=IMAGE, socket_path=str(tmp_path / "none.sock"))
-    launcher.prepare_for_launch(labels={"omnigent.computer.key": KEY, "omnigent.tenant": TENANT})
+    launcher.prepare_for_launch(labels={"omnigent.host.key": KEY, "omnigent.tenant": TENANT})
     with pytest.raises(click.ClickException, match="Docker socket"):
         launcher.prepare()
 
@@ -216,9 +216,9 @@ def test_provision_explains_a_missing_runner_image() -> None:
 
 
 def test_resource_limits_come_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OMNIGENT_COMPUTER_MEMORY", "512m")
-    monkeypatch.setenv("OMNIGENT_COMPUTER_CPUS", "1.5")
-    monkeypatch.setenv("OMNIGENT_COMPUTER_PIDS_LIMIT", "100")
+    monkeypatch.setenv("OMNIGENT_HOST_MEMORY", "512m")
+    monkeypatch.setenv("OMNIGENT_HOST_CPUS", "1.5")
+    monkeypatch.setenv("OMNIGENT_HOST_PIDS_LIMIT", "100")
     docker = FakeDocker()
     make_launcher(docker).provision("a")
     body = docker.containers["c1"]["Body"]

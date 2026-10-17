@@ -1,7 +1,7 @@
 """Sandbox launchers: run Omnigent hosts in remote sandboxes.
 
 The server's managed-host code launches hosts through these. Core Omnigent
-contributes the built-in ``computer`` provider directly; third-party packages
+contributes the built-in ``docker`` provider directly; third-party packages
 can contribute providers through the ``omnigent.host_providers`` entry
 point group.
 """
@@ -75,7 +75,7 @@ def get_launcher(provider: str) -> HostLauncher:
     """
     Resolve a provider name to a launcher instance.
 
-    :param provider: Provider name, e.g. ``"computer"``.
+    :param provider: Provider name, e.g. ``"docker"``.
     :returns: A fresh launcher for the provider.
     :raises click.ClickException: If the provider is unknown or its
         launcher module is not present in this build.
@@ -83,7 +83,7 @@ def get_launcher(provider: str) -> HostLauncher:
     if provider not in plugin_state():
         offered = ", ".join(available_providers()) or "(none in this build)"
         raise click.ClickException(
-            f"Unknown or unavailable sandbox provider '{provider}'. Available: {offered}."
+            f"Unknown or unavailable host provider '{provider}'. Available: {offered}."
         )
     try:
         return instantiate(provider)

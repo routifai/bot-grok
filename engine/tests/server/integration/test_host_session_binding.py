@@ -311,7 +311,7 @@ async def managed_session_env(
         # via install_fake_computer_launcher.
         sandbox_config=parse_host_section(
             {
-                "provider": "computer",
+                "provider": "docker",
                 "server_url": "https://managed-test.example.com",
             }
         ),
@@ -451,7 +451,7 @@ async def test_managed_session_create_end_to_end(
     # A healthy fake host registers in well under a second; shrink the
     # online-poll budget so a registration regression fails the test in
     # seconds instead of hanging into the pytest timeout.
-    monkeypatch.setattr("omnigent.server.hosts.MANAGED_HOST_ONLINE_TIMEOUT_S", 10)
+    monkeypatch.setattr("omnigent.server.hosts.HOST_ONLINE_TIMEOUT_S", 10)
     # No real runner ever connects in this harness; shrink the
     # background task's runner-tunnel wait so it settles (and the
     # task finishes) within the test instead of lingering 30s.
@@ -511,7 +511,7 @@ async def test_managed_session_create_end_to_end(
     assert host is not None
     assert host.user_id == RESERVED_USER_LOCAL
     assert host.status == "online"
-    assert host.sandbox_provider == "computer"
+    assert host.sandbox_provider == "docker"
     assert host.sandbox_id == "sb-fake-1"
 
     # Deleting the managed session tears the sandbox down: the
@@ -546,7 +546,7 @@ async def test_managed_session_create_with_repo_workspace_binds_cloned_dir(
     env = managed_session_env
     # Same shrunken online-poll budget as the e2e golden path: a
     # registration regression should fail in seconds.
-    monkeypatch.setattr("omnigent.server.hosts.MANAGED_HOST_ONLINE_TIMEOUT_S", 10)
+    monkeypatch.setattr("omnigent.server.hosts.HOST_ONLINE_TIMEOUT_S", 10)
     # No real runner connects; settle the background task quickly.
     monkeypatch.setattr(
         "omnigent.server.routes.sessions._HOST_RELAUNCH_RUNNER_CONNECT_TIMEOUT_S", 0.2
@@ -611,7 +611,7 @@ async def test_managed_multipart_bundle_create_end_to_end(
     is scheduled, so a launch failure can't orphan an unowned row).
     """
     env = managed_session_env
-    monkeypatch.setattr("omnigent.server.hosts.MANAGED_HOST_ONLINE_TIMEOUT_S", 10)
+    monkeypatch.setattr("omnigent.server.hosts.HOST_ONLINE_TIMEOUT_S", 10)
     monkeypatch.setattr(
         "omnigent.server.routes.sessions._HOST_RELAUNCH_RUNNER_CONNECT_TIMEOUT_S", 0.2
     )
@@ -655,7 +655,7 @@ async def test_managed_multipart_bundle_create_end_to_end(
     assert host is not None
     assert host.user_id == RESERVED_USER_LOCAL
     assert host.status == "online"
-    assert host.sandbox_provider == "computer"
+    assert host.sandbox_provider == "docker"
     assert host.sandbox_id == "sb-fake-1"
     del tunnels
 
@@ -713,7 +713,7 @@ async def test_managed_session_create_rejects_unconfigured_provider(
     A create naming a provider the server doesn't offer is a synchronous
     400 (validated at POST, before the background launch), and the error
     names what IS available so the user can correct it. This env offers
-    only computer, so 'nope' is rejected with computer listed.
+    only docker, so 'nope' is rejected with docker listed.
     """
     agent = await create_test_agent(managed_session_env.client, name="managed-bad-provider-agent")
     resp = await managed_session_env.client.post(
@@ -722,7 +722,7 @@ async def test_managed_session_create_rejects_unconfigured_provider(
     )
     assert resp.status_code == 400, resp.text
     assert "nope" in resp.text
-    assert "computer" in resp.text
+    assert "docker" in resp.text
 
 
 async def test_managed_session_create_without_config_fails_clearly(
@@ -889,7 +889,7 @@ async def test_managed_launch_progress_surfaces_on_snapshot_and_stream(
     from omnigent.runtime import session_stream
 
     env = managed_session_env
-    monkeypatch.setattr("omnigent.server.hosts.MANAGED_HOST_ONLINE_TIMEOUT_S", 10)
+    monkeypatch.setattr("omnigent.server.hosts.HOST_ONLINE_TIMEOUT_S", 10)
     # This test asserts the happy-path "ready" progress edge; fake the
     # runner tunnel connect so settlement is driven by progress ordering,
     # not by the runner WebSocket harness.
@@ -1002,7 +1002,7 @@ async def test_subagent_session_reuses_managed_sandbox_runner(
     the sub-agent runs nowhere.
     """
     env = managed_session_env
-    monkeypatch.setattr("omnigent.server.hosts.MANAGED_HOST_ONLINE_TIMEOUT_S", 10)
+    monkeypatch.setattr("omnigent.server.hosts.HOST_ONLINE_TIMEOUT_S", 10)
     monkeypatch.setattr(
         "omnigent.server.routes.sessions._HOST_RELAUNCH_RUNNER_CONNECT_TIMEOUT_S", 0.2
     )
@@ -1075,7 +1075,7 @@ async def test_message_relaunches_dead_managed_sandbox(
     503s and none of the generation-2 effects below happen.
     """
     env = managed_session_env
-    monkeypatch.setattr("omnigent.server.hosts.MANAGED_HOST_ONLINE_TIMEOUT_S", 10)
+    monkeypatch.setattr("omnigent.server.hosts.HOST_ONLINE_TIMEOUT_S", 10)
     # Let the initial create settle successfully; after that this test switches
     # the relaunch generation back to a runner-connect timeout.
     monkeypatch.setattr(
@@ -1653,7 +1653,7 @@ async def test_cancel_managed_launch_tasks_returns_while_provision_parked(
     stop background launches; with a provision parked on the fake's
     gate (a slow provider call), the cancel must settle the task and
     return promptly rather than waiting the provision out — a rolling
-    deploy must not block on the sandbox provider. Without the cancellation hook,
+    deploy must not block on the host provider. Without the cancellation hook,
     this test fails at the ``wait_for`` (nothing settles the task).
     """
     import threading
@@ -1697,7 +1697,7 @@ async def test_managed_session_deleted_during_provision_terminates_sandbox(
     import threading
 
     env = managed_session_env
-    monkeypatch.setattr("omnigent.server.hosts.MANAGED_HOST_ONLINE_TIMEOUT_S", 10)
+    monkeypatch.setattr("omnigent.server.hosts.HOST_ONLINE_TIMEOUT_S", 10)
     loop = asyncio.get_running_loop()
     gate = threading.Event()
     host_futures: list[asyncio.Future[ApplicationCommunicator]] = []
@@ -1759,7 +1759,7 @@ async def test_delete_reaped_managed_session_removes_durable_host(
         name="managed-reaped-delete",
         user_id=RESERVED_USER_LOCAL,
         token="managed-reaped-delete-token",
-        provider="computer",
+        provider="docker",
         sandbox_id="sb-reaped-delete",
         token_expires_at=int(time.time()) + 3600,
     )

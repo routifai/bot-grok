@@ -96,7 +96,7 @@ def muse_app(
     monkeypatch: pytest.MonkeyPatch,
 ) -> FastAPI:
     monkeypatch.delenv("OMNIGENT_AUTH_HEADER_SECRET", raising=False)
-    monkeypatch.delenv("OMNIGENT_SUPERCHAT_SANDBOX_PROVIDER", raising=False)
+    monkeypatch.delenv("OMNIGENT_HOST_PROVIDER", raising=False)
     monkeypatch.setenv("OMNIGENT_SUPERCHAT_DEFAULT_AGENT", "muse")
     _register_builtin(stores, "a" * 32, "muse")
     _register_builtin(stores, "b" * 32, "muse-pro")
@@ -157,7 +157,7 @@ async def test_get_creates_the_super_chat_once_then_finds_it(
     assert conv.labels[MUSE_LABEL_KEY] == "true"
     assert conv.labels["omnigent.superchat.muse.key"] == body["session_id"]
     # The computer is keyed by the opaque Muse key, never the email.
-    assert conv.labels["omnigent.computer.owner"] == body["session_id"]
+    assert conv.labels["omnigent.host.owner"] == body["session_id"]
 
 
 async def test_parallel_first_calls_create_one_super_chat(
@@ -390,7 +390,7 @@ async def _existing_super_chat(
         "/v1/sessions",
         json={
             "agent_id": "a" * 32,
-            "labels": {**_MODE, "superchat.computer": "computer-key-1", "superchat.space": space},
+            "labels": {**_MODE, "omnigent.host.key": "host-key-1", "omnigent.tenant": space},
         },
         headers=headers,
     )
@@ -418,11 +418,11 @@ async def test_adopt_makes_an_existing_super_chat_the_one_get_returns(
     assert conv is not None
     assert conv.labels[MUSE_LABEL_KEY] == "true"
     assert conv.labels["omnigent.tenant"] == "space-1"
-    assert conv.labels["superchat.computer"] == "computer-key-1"
-    # The computer launcher still resolves the same machine from the kept labels.
+    assert conv.labels["omnigent.host.key"] == "host-key-1"
+    # The host launcher still resolves the same host from the kept labels.
     launcher = DockerHostLauncher()
     launcher.prepare_for_launch(labels=conv.labels)
-    assert (launcher._key, launcher._tenant) == ("computer-key-1", "space-1")
+    assert (launcher._key, launcher._tenant) == ("host-key-1", "space-1")
 
 
 async def test_adopt_someone_elses_session_is_not_found(client: httpx.AsyncClient) -> None:

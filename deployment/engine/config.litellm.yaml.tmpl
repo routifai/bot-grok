@@ -8,8 +8,8 @@
 # organization's saved LiteLLM key wins over it). No model is named here: the pickers list the
 # proxy's chat models, and an admin picks the default, fast and strong models in
 # Settings > Models.
-sandbox:
-  provider: computer
+host:
+  provider: docker
   # Where the runner inside each Computer dials back.
   server_url: __ENGINE_PUBLIC_URL__
   # NAMES only. Resolved from this service's environment and handed to each Computer's runner.

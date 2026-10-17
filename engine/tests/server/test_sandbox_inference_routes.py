@@ -124,7 +124,7 @@ async def env(
     artifact_store = LocalArtifactStore(str(artifact_dir))
     catalog = _Catalog()
     config = HostProviderConfig(
-        provider="computer",
+        provider="docker",
         server_url="http://test",
         launcher_factory=lambda: None,
         token_ttl_s=100,
@@ -159,7 +159,7 @@ async def _json_create(env: _Env, **overrides: Any):
         json={
             "agent_id": agent["id"],
             "host_type": "managed",
-            "sandbox_provider": "computer",
+            "sandbox_provider": "docker",
             "inference_configuration_revision": "revision-1",
             **overrides,
         },
@@ -190,7 +190,7 @@ async def test_literal_credentials_rejected_before_session_or_artifact_writes(en
         json={
             "agent_id": agent["id"],
             "host_type": "managed",
-            "sandbox_provider": "computer",
+            "sandbox_provider": "docker",
         },
     )
     assert response.status_code == 400, response.text
@@ -207,7 +207,7 @@ async def _multipart_create(env: _Env, **metadata: Any):
             "metadata": json.dumps(
                 {
                     "host_type": "managed",
-                    "sandbox_provider": "computer",
+                    "sandbox_provider": "docker",
                     "inference_configuration_revision": "revision-1",
                     **metadata,
                 }
@@ -299,7 +299,7 @@ async def test_stale_revision_rejects_before_rows_artifacts_or_provisioning(env:
             json={
                 "agent_id": agent["id"],
                 "host_type": "managed",
-                "sandbox_provider": "computer",
+                "sandbox_provider": "docker",
                 "inference_configuration_revision": "revision-1",
             },
         )

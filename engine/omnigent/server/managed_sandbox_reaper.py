@@ -195,8 +195,7 @@ class ManagedSandboxReaper:
             launcher = _launcher_for_teardown(candidates[0], self._sandbox_config)
             if launcher is None:
                 _logger.warning(
-                    "No launcher available for managed sandbox provider %s; "
-                    "skipping %s candidate(s)",
+                    "No launcher available for host provider %s; skipping %s candidate(s)",
                     provider,
                     len(candidates),
                 )

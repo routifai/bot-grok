@@ -28,12 +28,12 @@ deployments inject custom launchers the same way they inject custom
 stores into ``create_app``):
 
 1. **Server YAML** (OSS / self-hosted): :func:`parse_host_section`
-   builds the config from the ``sandbox:`` section
+   builds the config from the ``host:`` section
    (``omnigent server -c`` / ``OMNIGENT_CONFIG`` /
    ``<data_dir>/config.yaml``)::
 
-       sandbox:
-         provider: computer
+       host:
+         provider: docker
          server_url: https://omnigent.example.com
          # For SEVERAL providers, replace `provider:` with a `providers:`
          # list (mutually exclusive); a create picks one by name via
@@ -69,7 +69,7 @@ stores into ``create_app``):
    from the server process environment (12-factor) — see
    :mod:`omnigent.hosts.docker`. Providers contributed
    through the ``omnigent.host_providers`` entry point group take an
-   optional ``sandbox.<provider>`` block validated by their declared config model.
+   optional ``host.<provider>`` block validated by their declared config model.
 
 2. **Direct construction** (embedding deployments): build
    :class:`HostProviderConfig` with a custom
@@ -121,28 +121,28 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
-# Providers the YAML `sandbox:` section accepts. Parsing accepts all
+# Providers the YAML `host:` section accepts. Parsing accepts all
 # known providers so a deployment can stage config ahead of support
 # landing, but only PROVIDERS_WITH_MANAGED_LAUNCH can actually serve a
 # managed session today. (Deployments that construct
 # HostProviderConfig directly are not constrained by either set —
 # their launcher factory IS the support.)
-SUPPORTED_SANDBOX_PROVIDERS: frozenset[str] = frozenset({"computer"})
-PROVIDERS_WITH_MANAGED_LAUNCH: frozenset[str] = frozenset({"computer"})
+SUPPORTED_HOST_PROVIDERS: frozenset[str] = frozenset({"docker"})
+PROVIDERS_WITH_MANAGED_LAUNCH: frozenset[str] = frozenset({"docker"})
 
 # How long a managed launch waits for the sandboxed host to register
 # before declaring failure. The image is pre-baked (no pip install at
 # boot), so a healthy launch registers in seconds; the budget covers a
 # cold registry pull of the image on first use.
-MANAGED_HOST_ONLINE_TIMEOUT_S = 120
+HOST_ONLINE_TIMEOUT_S = 120
 _ONLINE_POLL_INTERVAL_S = 1.0
 
-# Launch-token lifetime for the "computer" provider (Superchat's per-Muse sandbox computer,
-# docs/architecture.md). The computer itself has no lifetime cap — it is a persistent,
+# Launch-token lifetime for the "docker" provider (Superchat's per-person host,
+# docs/architecture.md). The host itself has no lifetime cap — it is a persistent,
 # Superchat-managed resource that outlives any one launch — so the bound here is policy: seven
 # days keeps a long-lived host re-authenticating across tunnel reconnects while still expiring
 # tokens nobody renewed. A relaunch mints a fresh token.
-COMPUTER_MANAGED_TOKEN_TTL_S = 7 * 24 * 3600
+HOST_TOKEN_TTL_S = 7 * 24 * 3600
 
 # Launch-token lifetime for a contributed provider that declares none, and the
 # placeholder for staged providers whose factory rejects before minting.
@@ -155,7 +155,7 @@ _HOST_LOG_PATH = "/tmp/omnigent-host.log"
 # How long a message POST waits for an in-flight managed launch to
 # settle before giving up (see ManagedLaunchTracker). Covers the full
 # launch/wake pipeline ON TOP OF the host-registration wait
-# (MANAGED_HOST_ONLINE_TIMEOUT_S): the provider's provision/resume call
+# (HOST_ONLINE_TIMEOUT_S): the provider's provision/resume call
 # (StartSandbox has no fixed upper bound), the host-tunnel reconnect on
 # this replica, and the runner spawn/connect. The 120s slack must cover
 # all of those so a slow cold launch/wake doesn't time the parked message
@@ -163,7 +163,7 @@ _HOST_LOG_PATH = "/tmp/omnigent-host.log"
 # post-dormancy turn is lost even though the wake later succeeds. The wait
 # resolves as soon as the launch settles, so this bound only bites a
 # genuinely slow launch.
-MANAGED_LAUNCH_RENDEZVOUS_TIMEOUT_S = MANAGED_HOST_ONLINE_TIMEOUT_S + 120
+MANAGED_LAUNCH_RENDEZVOUS_TIMEOUT_S = HOST_ONLINE_TIMEOUT_S + 120
 
 # Server-internal sandbox lifecycle labels — currently the repository a relaunch
 # re-clones. A client seed would forge that reconstruction, so session
@@ -426,7 +426,7 @@ class HostProviderConfig:
         ``HTTPException`` to report an unusable backend — the YAML
         path uses this for providers without managed support.
     :param token_ttl_s: Launch-token lifetime in seconds, e.g.
-        ``604800`` (7 days) for ``computer``. Must comfortably exceed the
+        ``604800`` (7 days) for ``docker``. Must comfortably exceed the
         provider's maximum sandbox lifetime so a live sandbox can
         always re-authenticate its tunnel across reconnects.
     :param managed_launch_supported: Whether ``launcher_factory`` can
@@ -440,8 +440,8 @@ class HostProviderConfig:
         ``GET /v1/info``, which gates the web UI's sandbox option.
     :param provider: Short provider name surfaced to the web UI so the
         new-session sandbox option can be labeled per provider (e.g.
-        ``"computer"``). The YAML path sets it from the parsed
-        ``sandbox.provider``. ``None`` for directly-constructed
+        ``"docker"``). The YAML path sets it from the parsed
+        ``host.provider``. ``None`` for directly-constructed
         embedding configs that don't name a provider — the UI then
         falls back to the generic "New Sandbox" label. Exposed (when
         managed launch is supported) on the unauthenticated
@@ -505,10 +505,10 @@ class HostReaperConfig:
 @dataclass
 class HostDeployment:
     """
-    The set of sandbox providers a server offers, as a single unit.
+    The set of host providers a server offers, as a single unit.
 
     Wraps one :class:`HostProviderConfig` per provider. A
-    single-provider deployment holds exactly one; a ``sandbox.providers``
+    single-provider deployment holds exactly one; a ``host.providers``
     list holds several. Callers thread this — not a bare
     :class:`HostProviderConfig` — through the managed-host lifecycle
     and resolve the per-provider config through :meth:`for_provider` /
@@ -587,7 +587,7 @@ class HostDeployment:
         """
         Resolve the config backing one provider name.
 
-        :param provider: Provider short name, e.g. ``"computer"``. ``None``
+        :param provider: Provider short name, e.g. ``"docker"``. ``None``
             selects the deployment :attr:`default`, which is what a
             request that names no provider gets.
         :returns: The matching single-provider config, or ``None`` when
@@ -828,11 +828,11 @@ def parse_repo_workspace(workspace: str) -> RepoWorkspace:
     return RepoWorkspace(url=url, branch=branch, repo_name=_derive_repo_name(url))
 
 
-def _computer_launcher_factory() -> Callable[[], HostLauncher]:
+def _docker_launcher_factory() -> Callable[[], HostLauncher]:
     """
-    Build the launcher factory for the YAML ``provider: computer`` path.
+    Build the launcher factory for the YAML ``provider: docker`` path.
 
-    Needs no ``sandbox.computer:`` block: its supervisor URL and shared secret are read from the
+    Needs no ``host.computer:`` block: its supervisor URL and shared secret are read from the
     server PROCESS environment (12-factor) —
     :data:`~omnigent.hosts.docker.SUPERVISOR_URL_ENV_VAR` /
     :data:`~omnigent.hosts.docker.SUPERVISOR_TOKEN_ENV_VAR`.
@@ -854,7 +854,7 @@ def _community_sandbox_providers() -> frozenset[str]:
     """Provider names contributed by packages, excluding every built-in.
 
     The registry merges built-ins and entry-point contributions into one map,
-    so the difference against :data:`SUPPORTED_SANDBOX_PROVIDERS` is what
+    so the difference against :data:`SUPPORTED_HOST_PROVIDERS` is what
     isolates the contributed ones. Taking the difference rather than reaching
     for the registry's private built-in contribution keeps this to the
     registry's public API.
@@ -867,7 +867,7 @@ def _community_sandbox_providers() -> frozenset[str]:
     """
     from omnigent.hosts import registry as sandbox_registry
 
-    return frozenset(sandbox_registry.available_providers()) - SUPPORTED_SANDBOX_PROVIDERS
+    return frozenset(sandbox_registry.available_providers()) - SUPPORTED_HOST_PROVIDERS
 
 
 def _registry_token_ttl_s(provider: str) -> int:
@@ -887,12 +887,12 @@ def _registry_token_ttl_s(provider: str) -> int:
 def _parse_registry_config(provider: str, section: dict[str, object] | None) -> None:
     """Validate a community provider's config block at parse time.
 
-    Mirrors the built-ins: operator typos in ``sandbox.<provider>`` stop
+    Mirrors the built-ins: operator typos in ``host.<provider>`` stop
     server startup rather than surfacing as a runtime error on the first
     managed session.
 
     :param provider: A contributed provider name.
-    :param section: The ``sandbox.<provider>`` mapping, or ``None`` when
+    :param section: The ``host.<provider>`` mapping, or ``None`` when
         the block is absent (accepted when no ``config_model`` is declared).
     :raises ValueError: When the block fails validation against the
         provider's declared ``config_model``.
@@ -906,7 +906,7 @@ def _parse_registry_config(provider: str, section: dict[str, object] | None) -> 
         meta.config_model(**dict(section or {}))
     except Exception as exc:
         raise ValueError(
-            f"server config 'sandbox.{provider}' is invalid for provider '{provider}': {exc}"
+            f"server config 'host.{provider}' is invalid for provider '{provider}': {exc}"
         ) from exc
 
 
@@ -922,7 +922,7 @@ def _registry_launcher_factory(
     surfaces on the launch that needs it, naming the provider.
 
     :param provider: A contributed provider name.
-    :param config: The provider's ``sandbox.<provider>`` block (already
+    :param config: The provider's ``host.<provider>`` block (already
         validated against ``config_model`` at parse time), or ``None`` when
         the block is absent.
     :returns: A factory producing that provider's launcher.
@@ -941,11 +941,11 @@ def _unsupported_launcher_factory(provider: str) -> Callable[[], HostLauncher]:
     """
     Build a factory that rejects launch for a not-yet-supported provider.
 
-    Lets a deployment stage ``sandbox:`` config for a provider before
+    Lets a deployment stage ``host:`` config for a provider before
     managed-launch support lands: parsing succeeds, and the clear 400
     only surfaces if a managed session is actually requested.
 
-    :param provider: The configured provider name, e.g. ``"computer"``.
+    :param provider: The configured provider name, e.g. ``"docker"``.
     :returns: A factory that raises ``HTTPException`` 400 when called.
     """
 
@@ -955,7 +955,7 @@ def _unsupported_launcher_factory(provider: str) -> Callable[[], HostLauncher]:
             status_code=400,
             detail=(
                 f"managed hosts are not yet supported for the "
-                f"'{provider}' sandbox provider — only "
+                f"'{provider}' host provider — only "
                 f"{', '.join(sorted(PROVIDERS_WITH_MANAGED_LAUNCH))} is implemented"
             ),
         )
@@ -967,7 +967,7 @@ _MAX_KEEP_WARM_S = 30 * 24 * 3600  # 30 days; a finite, sane ceiling on runner.i
 
 
 def _parse_keep_warm_s(raw: dict[str, object]) -> int | None:
-    """Parse the top-level ``sandbox.keep_warm_s`` knob (positive seconds), or None.
+    """Parse the top-level ``host.keep_warm_s`` knob (positive seconds), or None.
 
     The single sandbox timing knob: how long an idle sandbox stays warm
     (its runner alive) after the last turn before it suspends.
@@ -983,7 +983,7 @@ def _parse_keep_warm_s(raw: dict[str, object]) -> int | None:
     # first); a float must be finite and integral (2.9 would silently truncate);
     # the range check runs on the int/float directly so a huge int never reaches
     # a float conversion here.
-    _bad = "sandbox.keep_warm_s must be a whole number of seconds, 1 to 2592000 (30 days)"
+    _bad = "host.keep_warm_s must be a whole number of seconds, 1 to 2592000 (30 days)"
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(_bad)
     if isinstance(value, float) and (not math.isfinite(value) or not value.is_integer()):
@@ -1009,7 +1009,7 @@ def _apply_keep_warm(
     runner = dict(existing) if isinstance(existing, dict) else {}
     if runner.get("idle_timeout_s") not in (None, keep_warm_s):
         _logger.info(
-            "sandbox.keep_warm_s=%s overrides host_config.runner.idle_timeout_s=%s",
+            "host.keep_warm_s=%s overrides host_config.runner.idle_timeout_s=%s",
             keep_warm_s,
             runner.get("idle_timeout_s"),
         )
@@ -1040,7 +1040,7 @@ def deployment_with_inference_snapshot(
 
 def _parse_host_config(raw: dict[str, object]) -> dict[str, object] | None:
     """
-    Extract and validate the top-level ``sandbox.host_config`` block.
+    Extract and validate the top-level ``host.host_config`` block.
 
     Verbatim in-sandbox ``~/.omnigent/config.yaml`` content forwarded at
     managed launch (see :class:`HostProviderConfig`). When a
@@ -1053,7 +1053,7 @@ def _parse_host_config(raw: dict[str, object]) -> dict[str, object] | None:
     degrades silently (the harness falls back to its own login), so
     server startup is the only place a typo can fail loud.
 
-    :param raw: The raw ``sandbox`` mapping.
+    :param raw: The raw ``host`` mapping.
     :returns: The validated ``host_config`` mapping, or ``None`` when
         the key is absent.
     :raises ValueError: When present but not a mapping, or when its
@@ -1064,7 +1064,7 @@ def _parse_host_config(raw: dict[str, object]) -> dict[str, object] | None:
         return None
     if not isinstance(host_config, dict):
         raise ValueError(
-            "server config 'sandbox.host_config' must be a mapping — verbatim "
+            "server config 'host.host_config' must be a mapping — verbatim "
             "in-sandbox ~/.omnigent/config.yaml content merged in before "
             "'omnigent host' starts"
         )
@@ -1081,7 +1081,7 @@ def _parse_host_config(raw: dict[str, object]) -> dict[str, object] | None:
         # load_providers silently ignores a non-mapping providers value, so
         # the mapping check must happen here to fail loud.
         if not isinstance(providers, dict):
-            raise ValueError("server config 'sandbox.host_config.providers' must be a mapping")
+            raise ValueError("server config 'host.host_config.providers' must be a mapping")
         # Lazy imports, matching the provider branches below: the parse path
         # must not pull the onboarding layer in at module import time.
         from omnigent.errors import OmnigentError
@@ -1098,14 +1098,14 @@ def _parse_host_config(raw: dict[str, object]) -> dict[str, object] | None:
                 get_default_provider(host_config, scope)
         except OmnigentError as exc:
             raise ValueError(
-                f"server config 'sandbox.host_config.providers' is invalid: {exc}"
+                f"server config 'host.host_config.providers' is invalid: {exc}"
             ) from exc
         for provider in parsed_providers.values():
             for family_name, family in provider.families.items():
                 if family.api_key is not None:
                     raise ValueError(
                         "server config "
-                        f"'sandbox.host_config.providers.{provider.name}."
+                        f"'host.host_config.providers.{provider.name}."
                         f"{family_name}.api_key' must not contain an inline API key — "
                         "use api_key_ref: env:VAR instead"
                     )
@@ -1120,12 +1120,12 @@ def _parse_host_config(raw: dict[str, object]) -> dict[str, object] | None:
         round_tripped = json.loads(serialized)
     except (TypeError, ValueError) as exc:
         raise ValueError(
-            f"server config 'sandbox.host_config' must be JSON-serializable "
+            f"server config 'host.host_config' must be JSON-serializable "
             f"(quote YAML scalars like dates): {exc}"
         ) from exc
     if round_tripped != host_config:
         raise ValueError(
-            "server config 'sandbox.host_config' must be JSON-serializable without loss "
+            "server config 'host.host_config' must be JSON-serializable without loss "
             "(mapping keys must be strings and values must preserve their JSON types)"
         )
     return host_config
@@ -1133,7 +1133,7 @@ def _parse_host_config(raw: dict[str, object]) -> dict[str, object] | None:
 
 def parse_host_section(raw: object) -> HostDeployment | None:
     """
-    Parse and validate the server config's ``sandbox:`` section.
+    Parse and validate the server config's ``host:`` section.
 
     Fails loud on malformed config (an operator typo should stop server
     startup, not surface as a runtime 502 on the first managed session).
@@ -1142,12 +1142,12 @@ def parse_host_section(raw: object) -> HostDeployment | None:
     list (several, offered side by side), never both. ``server_url`` /
     ``host_config`` stay top-level and apply to every entry::
 
-        sandbox:
+        host:
           server_url: https://omnigent.example.com
           providers:
-            - provider: computer
+            - provider: docker
 
-    :param raw: The raw ``sandbox`` value from the server config YAML.
+    :param raw: The raw ``host`` value from the server config YAML.
         ``None`` when the section is absent.
     :returns: The parsed deployment, or ``None`` when *raw* is ``None``
         (managed hosts not configured).
@@ -1156,7 +1156,7 @@ def parse_host_section(raw: object) -> HostDeployment | None:
     if raw is None:
         return None
     if not isinstance(raw, dict):
-        raise ValueError("server config 'sandbox' must be a mapping")
+        raise ValueError("server config 'host' must be a mapping")
     reaper = _parse_managed_sandbox_reaper_config(raw)
     if "providers" in raw:
         return _parse_multi_provider_sandbox_config(raw, reaper=reaper)
@@ -1169,20 +1169,20 @@ def parse_host_section(raw: object) -> HostDeployment | None:
 def _parse_managed_sandbox_reaper_config(
     raw: dict[str, object],
 ) -> HostReaperConfig:
-    """Parse the deployment-wide ``sandbox.reaper`` block."""
+    """Parse the deployment-wide ``host.reaper`` block."""
     reaper_raw = raw.get("reaper")
     if reaper_raw is None:
         return HostReaperConfig()
     if not isinstance(reaper_raw, dict):
-        raise ValueError("server config 'sandbox.reaper' must be a mapping")
+        raise ValueError("server config 'host.reaper' must be a mapping")
     _reject_unknown_keys(
         reaper_raw,
         {"enabled", "terminate_after_offline_days", "sweep_interval_s"},
-        "sandbox.reaper",
+        "host.reaper",
     )
     enabled = reaper_raw.get("enabled", False)
     if not isinstance(enabled, bool):
-        raise ValueError("server config 'sandbox.reaper.enabled' must be a boolean")
+        raise ValueError("server config 'host.reaper.enabled' must be a boolean")
     terminate_after_offline_days = reaper_raw.get("terminate_after_offline_days", 30)
     if (
         not isinstance(terminate_after_offline_days, int)
@@ -1190,8 +1190,7 @@ def _parse_managed_sandbox_reaper_config(
         or terminate_after_offline_days <= 0
     ):
         raise ValueError(
-            "server config 'sandbox.reaper.terminate_after_offline_days' "
-            "must be a positive integer"
+            "server config 'host.reaper.terminate_after_offline_days' must be a positive integer"
         )
     sweep_interval_s = reaper_raw.get("sweep_interval_s", 24 * 60 * 60)
     if (
@@ -1199,9 +1198,7 @@ def _parse_managed_sandbox_reaper_config(
         or isinstance(sweep_interval_s, bool)
         or sweep_interval_s <= 0
     ):
-        raise ValueError(
-            "server config 'sandbox.reaper.sweep_interval_s' must be a positive integer"
-        )
+        raise ValueError("server config 'host.reaper.sweep_interval_s' must be a positive integer")
     return HostReaperConfig(
         enabled=enabled,
         terminate_after_offline_days=terminate_after_offline_days,
@@ -1215,26 +1212,26 @@ def _parse_multi_provider_sandbox_config(
     reaper: HostReaperConfig,
 ) -> HostDeployment:
     """
-    Parse the ``sandbox.providers`` list shape into a deployment.
+    Parse the ``host.providers`` list shape into a deployment.
 
     Entries go through the single-provider parser with the shared
     top-level keys folded in, so a provider block validates identically
     in either shape.
 
-    :param raw: The raw ``sandbox`` mapping, containing ``providers``.
+    :param raw: The raw ``host`` mapping, containing ``providers``.
     :returns: A deployment holding one config per listed provider.
     :raises ValueError: When the list or any entry is malformed.
     """
     if "provider" in raw:
         raise ValueError(
-            "server config 'sandbox' must set either 'provider' (one provider) "
+            "server config 'host' must set either 'provider' (one provider) "
             "or 'providers' (several), not both"
         )
     entries = raw.get("providers")
     if not isinstance(entries, list) or not entries:
         raise ValueError(
-            "server config 'sandbox.providers' must be a non-empty list of "
-            "provider mappings, e.g. [{provider: computer}]"
+            "server config 'host.providers' must be a non-empty list of "
+            "provider mappings, e.g. [{provider: docker}]"
         )
     # Shared keys describe THIS server, so they ride into every entry
     # instead of being repeated per entry.
@@ -1246,23 +1243,21 @@ def _parse_multi_provider_sandbox_config(
     for index, entry in enumerate(entries):
         if not isinstance(entry, dict):
             raise ValueError(
-                f"server config 'sandbox.providers[{index}]' must be a mapping "
-                "naming a provider, e.g. {provider: computer}"
+                f"server config 'host.providers[{index}]' must be a mapping "
+                "naming a provider, e.g. {provider: docker}"
             )
         if "providers" in entry:
-            raise ValueError(
-                f"server config 'sandbox.providers[{index}]' must not nest 'providers'"
-            )
+            raise ValueError(f"server config 'host.providers[{index}]' must not nest 'providers'")
         if "reaper" in entry:
             raise ValueError(
-                "server config 'sandbox.reaper' is deployment-wide and must be set "
+                "server config 'host.reaper' is deployment-wide and must be set "
                 "next to 'providers', not inside a provider entry"
             )
         config = _parse_single_provider_sandbox_config({**shared, **entry})
         # Always a str: the single-provider parser rejects anything else.
         name = str(config.provider)
         if name in seen:
-            raise ValueError(f"server config 'sandbox.providers' lists {name!r} more than once")
+            raise ValueError(f"server config 'host.providers' lists {name!r} more than once")
         seen.add(name)
         parsed.append(config)
     return HostDeployment(configs=tuple(parsed), reaper=reaper)
@@ -1272,9 +1267,9 @@ def _parse_git_clone_options(raw: object) -> GitCloneOptions:
     if raw is None:
         return GitCloneOptions()
     if not isinstance(raw, dict):
-        raise ValueError("server config 'sandbox.git_clone' must be a mapping")
+        raise ValueError("server config 'host.git_clone' must be a mapping")
     if raw.keys() - {"depth", "single_branch", "filter", "tags"}:
-        raise ValueError("sandbox.git_clone only accepts depth, single_branch, filter, and tags")
+        raise ValueError("host.git_clone only accepts depth, single_branch, filter, and tags")
     return GitCloneOptions(**raw)
 
 
@@ -1285,13 +1280,13 @@ _RUNNER_ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 
 def _parse_runner_env(raw: dict[str, object]) -> tuple[str, ...]:
     """
-    Parse the top-level ``sandbox.runner_env`` list of variable NAMES.
+    Parse the top-level ``host.runner_env`` list of variable NAMES.
 
     Names only — this never touches values, so there is nothing here that could leak a
     secret into a log line. Values are resolved from this server process's own environment
     at launch time (see :func:`_resolve_runner_env`), never from this parsed config.
 
-    :param raw: The raw ``sandbox`` mapping.
+    :param raw: The raw ``host`` mapping.
     :returns: The validated names, in the order given (duplicates removed, first occurrence
         kept), or ``()`` when the key is absent.
     :raises ValueError: When present but not a list of upper-snake-case strings.
@@ -1301,14 +1296,14 @@ def _parse_runner_env(raw: dict[str, object]) -> tuple[str, ...]:
         return ()
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise ValueError(
-            "server config 'sandbox.runner_env' must be a list of environment variable "
+            "server config 'host.runner_env' must be a list of environment variable "
             "names, e.g. [ANTHROPIC_API_KEY, OPENROUTER_API_KEY]"
         )
     seen: dict[str, None] = {}
     for name in value:
         if not _RUNNER_ENV_NAME_RE.match(name):
             raise ValueError(
-                f"server config 'sandbox.runner_env' entry {name!r} is not a valid "
+                f"server config 'host.runner_env' entry {name!r} is not a valid "
                 "environment variable name (expected UPPER_SNAKE_CASE)"
             )
         seen[name] = None
@@ -1317,7 +1312,7 @@ def _parse_runner_env(raw: dict[str, object]) -> tuple[str, ...]:
 
 def _resolve_runner_env(names: Sequence[str]) -> dict[str, str]:
     """
-    Resolve ``sandbox.runner_env`` names against THIS SERVER PROCESS's own environment.
+    Resolve ``host.runner_env`` names against THIS SERVER PROCESS's own environment.
 
     Only names that are actually set are forwarded — an operator may list a variable that's
     optional in some deployments (e.g. ``OPENROUTER_API_KEY`` when OpenRouter isn't configured),
@@ -1333,27 +1328,27 @@ def _resolve_runner_env(names: Sequence[str]) -> dict[str, str]:
 
 def _parse_single_provider_sandbox_config(raw: dict[str, object]) -> HostProviderConfig:
     """
-    Parse one provider's ``sandbox`` mapping (the scalar ``provider:`` shape).
+    Parse one provider's ``host`` mapping (the scalar ``provider:`` shape).
 
-    :param raw: The raw ``sandbox`` mapping, with a scalar ``provider``.
+    :param raw: The raw ``host`` mapping, with a scalar ``provider``.
     :returns: The parsed single-provider config.
     :raises ValueError: When the mapping is malformed.
     """
     provider = raw.get("provider")
     community = _community_sandbox_providers()
     if not isinstance(provider, str) or (
-        provider not in SUPPORTED_SANDBOX_PROVIDERS and provider not in community
+        provider not in SUPPORTED_HOST_PROVIDERS and provider not in community
     ):
-        supported = ", ".join(sorted(SUPPORTED_SANDBOX_PROVIDERS | community))
+        supported = ", ".join(sorted(SUPPORTED_HOST_PROVIDERS | community))
         raise ValueError(
-            f"server config 'sandbox.provider' must be one of: {supported} (got {provider!r})"
+            f"server config 'host.provider' must be one of: {supported} (got {provider!r})"
         )
     git_clone = _parse_git_clone_options(raw.get("git_clone"))
     runner_env = _parse_runner_env(raw)
     server_url = raw.get("server_url")
     if not isinstance(server_url, str) or not server_url.strip():
         raise ValueError(
-            "server config 'sandbox.server_url' is required — the public URL "
+            "server config 'host.server_url' is required — the public URL "
             "of this server that sandboxed hosts connect back to"
         )
     # Validated regardless of provider (like server_url): a malformed
@@ -1361,7 +1356,7 @@ def _parse_single_provider_sandbox_config(raw: dict[str, object]) -> HostProvide
     host_config = _parse_host_config(raw)
     model_discovery = raw.get("model_discovery", {})
     if not isinstance(model_discovery, dict):
-        raise ValueError("sandbox.model_discovery must be a mapping")
+        raise ValueError("host.model_discovery must be a mapping")
     for name, discovery in model_discovery.items():
         if not isinstance(discovery, dict) or set(discovery) - {
             "base_url",
@@ -1369,18 +1364,18 @@ def _parse_single_provider_sandbox_config(raw: dict[str, object]) -> HostProvide
             "auth_command",
             "family",
         }:
-            raise ValueError(f"Invalid sandbox.model_discovery entry {name!r}")
+            raise ValueError(f"Invalid host.model_discovery entry {name!r}")
         if not isinstance(discovery.get("base_url"), str):
-            raise ValueError(f"sandbox.model_discovery.{name} requires base_url")
+            raise ValueError(f"host.model_discovery.{name} requires base_url")
         if not (discovery.get("api_key_ref") or discovery.get("auth_command")):
-            raise ValueError(f"sandbox.model_discovery.{name} requires a credential reference")
+            raise ValueError(f"host.model_discovery.{name} requires a credential reference")
     from omnigent.inference_config import validate_inference_credentials
 
     validate_inference_credentials({}, model_discovery)
     host_config = _apply_keep_warm(host_config, _parse_keep_warm_s(raw))
-    if provider == "computer":
-        launcher_factory = _computer_launcher_factory()
-        token_ttl_s = COMPUTER_MANAGED_TOKEN_TTL_S
+    if provider == "docker":
+        launcher_factory = _docker_launcher_factory()
+        token_ttl_s = HOST_TOKEN_TTL_S
     elif provider in community:
         # A provider contributed through the `omnigent.host_providers`
         # entry point group. The registry has validated it (name not shadowing
@@ -1389,7 +1384,7 @@ def _parse_single_provider_sandbox_config(raw: dict[str, object]) -> HostProvide
         # the factory.
         #
         # Gated on `community`, which excludes anything in
-        # SUPPORTED_SANDBOX_PROVIDERS, so a contributed provider never shadows
+        # SUPPORTED_HOST_PROVIDERS, so a contributed provider never shadows
         # a built-in.
         section = _parse_provider_section(raw, provider)
         _parse_registry_config(provider, section)
@@ -1433,8 +1428,8 @@ def _parse_provider_section(raw: dict[str, object], provider: str) -> dict[str, 
     """
     Extract a provider-specific optional config block.
 
-    :param raw: The raw ``sandbox`` mapping.
-    :param provider: Provider block name, e.g. ``"computer"``.
+    :param raw: The raw ``host`` mapping.
+    :param provider: Provider block name, e.g. ``"docker"``.
     :returns: The provider mapping, or ``None`` when omitted.
     :raises ValueError: When the block is present but not a mapping.
     """
@@ -1442,7 +1437,7 @@ def _parse_provider_section(raw: dict[str, object], provider: str) -> dict[str, 
     if section is None:
         return None
     if not isinstance(section, dict):
-        raise ValueError(f"server config 'sandbox.{provider}' must be a mapping")
+        raise ValueError(f"server config 'host.{provider}' must be a mapping")
     return section
 
 
@@ -1465,7 +1460,7 @@ def _select_provider_config(
         raise HTTPException(
             status_code=400,
             detail=(
-                f"sandbox provider '{provider}' is not configured on this "
+                f"host provider '{provider}' is not configured on this "
                 f"server — available: {offered}"
             ),
         )
@@ -1508,9 +1503,9 @@ async def launch_host(
         the working directory is the parent that holds them. Private
         repositories authenticate via the host image's git credential
         helper when the sandbox env carries ``GIT_TOKEN`` (forwarded via
-        ``sandbox.runner_env``).
+        ``host.runner_env``).
     :param provider: Which configured provider to launch on, e.g.
-        ``"computer"``. ``None`` takes the deployment's default (first)
+        ``"docker"``. ``None`` takes the deployment's default (first)
         provider — what a request that names none gets.
     :param agent_name: Server-resolved built-in agent name the session runs,
         stamped on the runner by providers that declare
@@ -1518,7 +1513,7 @@ async def launch_host(
         or ``None`` to leave it unstamped.
     :param labels: The launching session's labels, forwarded to
         :meth:`~omnigent.hosts.launcher.HostLauncher.prepare_for_launch` —
-        e.g. Superchat's ``superchat.bot`` / ``superchat.space`` (see
+        e.g. Superchat's ``omnigent.host.owner`` / ``omnigent.tenant`` (see
         :mod:`omnigent.hosts.docker`), which a provider whose sandbox is a
         pre-existing per-identity resource (rather than one it creates fresh) needs to select
         it. ``None``/empty for providers that don't need it.
@@ -1623,7 +1618,7 @@ async def relaunch_host(
         raise HTTPException(
             status_code=400,
             detail=(
-                f"the '{host.sandbox_provider}' sandbox provider this host "
+                f"the '{host.sandbox_provider}' host provider this host "
                 "was launched with is no longer configured on this server"
             ),
         )
@@ -1689,7 +1684,7 @@ def _apply_git_clone_options(
         raise HTTPException(
             status_code=400,
             detail=(
-                f"sandbox provider '{launcher.provider}' does not support sandbox.git_clone "
+                f"host provider '{launcher.provider}' does not support host.git_clone "
                 "options; remove the block or use a provider that supports them"
             ),
         )
@@ -1905,9 +1900,9 @@ async def _wait_for_host_online(host_store: HostStore, host_id: str) -> None:
     :param host_store: Persistent host registrations.
     :param host_id: The launched host's identifier.
     :raises HTTPException: 502 when the host does not come online
-        within :data:`MANAGED_HOST_ONLINE_TIMEOUT_S`.
+        within :data:`HOST_ONLINE_TIMEOUT_S`.
     """
-    deadline = time.monotonic() + MANAGED_HOST_ONLINE_TIMEOUT_S
+    deadline = time.monotonic() + HOST_ONLINE_TIMEOUT_S
     while time.monotonic() < deadline:
         if await asyncio.to_thread(host_store.is_online, host_id):
             return
@@ -1916,7 +1911,7 @@ async def _wait_for_host_online(host_store: HostStore, host_id: str) -> None:
         status_code=502,
         detail=(
             f"managed host did not come online within "
-            f"{MANAGED_HOST_ONLINE_TIMEOUT_S}s — check {_HOST_LOG_PATH} "
+            f"{HOST_ONLINE_TIMEOUT_S}s — check {_HOST_LOG_PATH} "
             "inside the sandbox"
         ),
     )
@@ -1940,7 +1935,7 @@ def _launcher_for_teardown(
 
     :param host: The managed host being torn down.
     :param config: The deployment's current sandbox config, or ``None``
-        when the ``sandbox:`` section has been removed since launch.
+        when the ``host:`` section has been removed since launch.
     :returns: A launcher whose provider matches the row, or ``None``
         when no matching launcher is available.
     """
@@ -1996,7 +1991,7 @@ def host_resume_supported(
 
     :param host: The session's bound managed host.
     :param config: The deployment's current sandbox config, or ``None``
-        when the ``sandbox:`` section has been removed since launch.
+        when the ``host:`` section has been removed since launch.
     :returns: ``True`` when a wake would be attempted; ``False`` for a
         non-managed / non-resumable provider, a dropped config, or a
         host with no recorded ``sandbox_id``.
@@ -2070,7 +2065,7 @@ async def resume_host(
     :param host_id: The session's bound host id, e.g. ``"host_a1b2c3d4..."``.
     :param host_store: Persistent host registrations (cross-replica liveness).
     :param config: The deployment's managed-sandbox config, or ``None`` when
-        the ``sandbox:`` section has been removed since launch.
+        the ``host:`` section has been removed since launch.
     :param force: Skip the DB-liveness no-op gate when the caller has local
         evidence that the tunnel is gone.
     :param on_stage: Progress observer forwarded to the launcher's
@@ -2233,7 +2228,7 @@ async def _terminate_sandbox_best_effort(
     """Terminate one provider sandbox id without touching its host row."""
     if launcher is None:
         _logger.warning(
-            "No launcher available for managed sandbox provider %s; "
+            "No launcher available for host provider %s; "
             "sandbox %s must be deleted with the provider's own tooling",
             provider,
             sandbox_id,

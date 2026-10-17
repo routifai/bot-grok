@@ -649,7 +649,7 @@ def create_hosts_router(
                     "owner": host.user_id,
                     "status": "online" if host_is_live(host, now=now) else "offline",
                     # Non-None marks a server-managed sandbox host (e.g.
-                    # "computer"). Clients use it to hide sandbox-backed
+                    # "docker"). Clients use it to hide sandbox-backed
                     # hosts from manual host pickers — they are launch
                     # targets the server creates on demand, not
                     # user-connectable machines.
@@ -697,7 +697,7 @@ def create_hosts_router(
             "owner": host.user_id,
             "status": "online" if host_is_live(host) else "offline",
             # Same semantics as list_hosts: non-None marks a
-            # server-managed sandbox host (e.g. "computer").
+            # server-managed sandbox host (e.g. "docker").
             "sandbox_provider": host.sandbox_provider,
             "configured_harnesses": host.configured_harnesses,
             # Same semantics as list_hosts: reported on connect and held in

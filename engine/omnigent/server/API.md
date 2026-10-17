@@ -1180,7 +1180,7 @@ Request body matches `SessionForkRequest`:
     credentials, never the source session owner's.
 
   sandbox_provider (string | null, optional)
-    Which configured sandbox provider to provision (one of the
+    Which configured host provider to provision (one of the
     server's `sandbox_providers`); null takes the server's first.
     Only valid with `host_type: "managed"` (422 otherwise).
 

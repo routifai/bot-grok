@@ -1,6 +1,6 @@
 """Tests for the session computer status route (ready, launch stage).
 
-Offline: no sandbox provider, supervisor or Docker.
+Offline: no host provider, supervisor or Docker.
 """
 
 from __future__ import annotations
