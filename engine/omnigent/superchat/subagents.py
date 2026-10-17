@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 from collections.abc import Iterable, Mapping
 
+from omnigent.context.labels import is_artifact_chat
 from omnigent.util.session_lifecycle import is_session_closed
 
 # ── Default concurrency cap (across all Sub-agent Types, per tree) ────────
@@ -75,11 +76,15 @@ def count_live_children(
     :param rows: ``child_sessions`` rows for one parent.
     :param agent_type: When given, count only children whose ``tool``
         (Sub-agent Type) matches; ``None`` counts every type.
-    :returns: Number of matching live rows.
+    :returns: Number of matching live rows. A file's studio (ADR 0024) is never counted: it
+        is outside the helper caps.
     """
     count = 0
     for row in rows:
         if agent_type is not None and row.get("tool") != agent_type:
+            continue
+        labels = row.get("labels")
+        if is_artifact_chat(labels if isinstance(labels, dict) else None):
             continue
         if is_live_child_row(row):
             count += 1

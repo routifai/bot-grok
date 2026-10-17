@@ -49,6 +49,17 @@ LAUNCHING_LABEL_KEY = "omnigent.subagent.launching"
 #: its parent, but like a scheduled Helper it may read the parent chat (``session_history``).
 ADHOC_HELPER_LABEL_KEY = "omnigent.subagent.adhoc"
 
+#: Stamped on a file's studio session (ADR 0024, a ``sub_agent`` of helper type ``editor``); its
+#: value is the artifact group id. The studio is outside the Conversation's Helpers, activity,
+#: listings, caps and step limit; its turns get the file's own prefix.
+ARTIFACT_CHAT_LABEL_KEY = "superchat.artifact_chat"
+
+
+def is_artifact_chat(labels: Mapping[str, str] | None) -> bool:
+    """Whether a session is a file's studio chat (it carries :data:`ARTIFACT_CHAT_LABEL_KEY`)."""
+    return bool(labels) and ARTIFACT_CHAT_LABEL_KEY in labels  # type: ignore[operator]
+
+
 #: Stamped on a standalone session a scheduled fire created (not parent-bound);
 #: its value is the scheduled task id. Its first user message is the task's
 #: system-authored prompt, so memory upkeep never treats it as the person's words.

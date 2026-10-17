@@ -13,6 +13,7 @@ from fastapi import (
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
+from omnigent.context.labels import is_artifact_chat
 from omnigent.entities import CompactionData
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.runtime.policies.approval import _ELICITATION_MODE
@@ -473,7 +474,8 @@ def register_items_routes(
             title=title_filter,
         )
         data = await _child_session_summaries_from_conversations(
-            page.data,
+            # A file's studio (ADR 0024) is not one of the chat's Helpers.
+            [child for child in page.data if not is_artifact_chat(child.labels)],
             session_id,
             conversation_store,
         )

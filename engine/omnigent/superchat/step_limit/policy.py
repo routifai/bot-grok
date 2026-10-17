@@ -18,6 +18,7 @@ import re
 import time
 from typing import Any
 
+from omnigent.context.labels import is_artifact_chat
 from omnigent.entities import Conversation
 from omnigent.policies.schema import (
     PolicyEvent,
@@ -46,9 +47,17 @@ POLICY_SPEC = FunctionPolicySpec(
 
 
 def applies(conversation: Conversation | None, tree: list[Conversation] | None) -> bool:
-    """Whether a session gets the step limit: it is a Super Chat (the tree does not matter)."""
+    """Whether a session gets the step limit: it is a Super Chat (the tree does not matter).
+
+    A file's studio (ADR 0024) never does: its stored labels carry the Conversation's mode but
+    no Helper marker, so it is named here by its own label.
+    """
     del tree
-    return conversation is not None and is_super_chat(conversation.labels)
+    return (
+        conversation is not None
+        and is_super_chat(conversation.labels)
+        and not is_artifact_chat(conversation.labels)
+    )
 
 
 # A turn that never saw its REQUEST reset (the gate was skipped) must not lock the chat for
@@ -105,7 +114,8 @@ def muse_step_limit(event: PolicyEvent) -> PolicyResponse | None:
     """
     context = event.get("context") or {}
     labels = context.get("labels") if isinstance(context, dict) else None
-    if not is_super_chat(labels if isinstance(labels, dict) else None):
+    labels = labels if isinstance(labels, dict) else None
+    if not is_super_chat(labels) or is_artifact_chat(labels):
         return None
     now = time.time()
     kind = event.get("type")

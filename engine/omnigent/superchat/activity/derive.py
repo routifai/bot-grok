@@ -23,6 +23,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from omnigent.context.labels import (
     ADHOC_HELPER_LABEL_KEY,
     SCHEDULED_HELPER_LABEL_KEY,
+    is_artifact_chat,
 )
 from omnigent.entities import Conversation, ConversationItem, MessageData
 from omnigent.entities.conversation import is_system_notice
@@ -701,7 +702,12 @@ def list_activities(
     super_chat_id = resolve_super_chat_id(conv_store, session_id)
     if super_chat_id is None:
         return []
-    chats = list_chat_family(conv_store, super_chat_id)
+    # A file's studio (ADR 0024) is never a row, a Helper or work in the strip.
+    chats = [
+        chat
+        for chat in list_chat_family(conv_store, super_chat_id)
+        if not is_artifact_chat(chat.labels)
+    ]
     activities: list[Activity] = []
     for conversation in chats:
         activities.extend(
@@ -806,7 +812,7 @@ def get_activity(
         return None
     family = {chat.id: chat for chat in list_chat_family(conv_store, super_chat_id)}
     conversation = family.get(chat_id)
-    if conversation is None:
+    if conversation is None or is_artifact_chat(conversation.labels):
         return None
     for activity in _activities_for_conversation(
         conv_store, conversation, include_step_detail=True

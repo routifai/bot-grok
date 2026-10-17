@@ -28,7 +28,7 @@ from fastapi.responses import Response
 from pydantic import ValidationError
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
-from omnigent.context.labels import uses_omnigent_context
+from omnigent.context.labels import is_artifact_chat, uses_omnigent_context
 from omnigent.db.utils import generate_agent_id, generate_file_id
 from omnigent.debug_logging import add_audit_attrs, debug_event, set_current_runner_id
 from omnigent.entities import (
@@ -1419,9 +1419,11 @@ def register_core_routes(
             # Pins are per-user: filter to the caller's own pin key.
             pinned_owner=user_id,
         )
+        # A file's studio (ADR 0024) is part of its file, never a listed session.
+        listed = [conv for conv in page.data if not is_artifact_chat(conv.labels)]
         # list_conversations may return rows with agent_id=None for
         # legacy conversations; skip them before building the batch IDs.
-        conv_ids = [conv.id for conv in page.data if conv.agent_id is not None]
+        conv_ids = [conv.id for conv in listed if conv.agent_id is not None]
         if not conv_ids:
             return PaginatedList(
                 data=[],
@@ -1432,7 +1434,7 @@ def register_core_routes(
         # Batch-fetch permissions and agent names concurrently.
         # The tasks table has been removed — status comes exclusively from
         # the relay-fed ``_session_status_cache``.
-        unique_agent_ids = list({c.agent_id for c in page.data if c.agent_id is not None})
+        unique_agent_ids = list({c.agent_id for c in listed if c.agent_id is not None})
         perms_by_conv: dict[str, list[SessionPermission]]
         if permission_store is not None:
             perms_by_conv, agent_names_by_id, child_ids_by_parent = await asyncio.gather(
@@ -1486,7 +1488,7 @@ def register_core_routes(
         if liveness_lookup is not None:
             orphan_suspects = [
                 conv
-                for conv in page.data
+                for conv in listed
                 if conv.agent_id is not None
                 and conv.runner_id is not None
                 and conv.live_status in ("running", "waiting")
@@ -1533,7 +1535,7 @@ def register_core_routes(
                 child_session_ids=child_ids_by_parent[conv.id],
                 comments_fingerprint=comments_fingerprints.get(conv.id),
             )
-            for conv in page.data
+            for conv in listed
             if conv.agent_id is not None
         ]
         # Apart from the bounded orphan-suspect probe above, the list does not
