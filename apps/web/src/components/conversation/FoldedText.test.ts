@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { copyableMessageText } from "../../../lib/message-text";
+import { copyableMessageText } from "../../lib/message-text";
 import { FOLD_AT, foldedHead } from "./FoldedText";
 
 describe("foldedHead", () => {

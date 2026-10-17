@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useUserId } from "../../../lib/use-user-id";
+import { useUserId } from "../../lib/use-user-id";
 import { isFirstRunSeen, markFirstRunSeen } from "./firstRunStorage";
 
 export type UseFirstRunResult = {

@@ -6,9 +6,9 @@ import {
   type SideChatView,
   type SideChatWire,
 } from "../../features/side-chats/SideChatSession";
-import { sideChatView } from "../../features/side-chats/sideChatView";
 import type { ChatListState } from "../../features/side-chats/useChatList";
 import { MuseSidebar } from "../muse/chrome/MuseSidebar";
+import { sideChatView } from "../muse/conversation/sideChatView";
 import {
   DEV_BOT_ID,
   DEV_PERSON_NAME,

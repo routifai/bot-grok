@@ -3,9 +3,9 @@ import type { EngineModelCatalog, EngineModelRow } from "@superchat/contracts";
 import { NativeSelect, NativeSelectOption } from "@superchat/ui-web";
 import { Cpu, Feather } from "lucide-react";
 import { useEffect, useState } from "react";
+import { SettingsGroup, SettingsRow } from "../../components/settings/kit";
 import { errorText } from "../../lib/error-text";
 import { rpc } from "../../lib/rpc";
-import { SettingsGroup, SettingsRow } from "../../pages/muse/settings/kit";
 
 /** A model as the person reads it: its name, and its family when the name does not say it. */
 export function modelOptionLabel(model: Pick<EngineModelRow, "label" | "family">): string {

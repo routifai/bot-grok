@@ -3,9 +3,9 @@ import type { EngineModelConnection } from "@superchat/contracts";
 import { Button } from "@superchat/ui-web";
 import { KeyRound } from "lucide-react";
 import { useCallback, useEffect, useId, useState } from "react";
+import { SettingsGroup, SettingsRow } from "../../components/settings/kit";
 import { errorText } from "../../lib/error-text";
 import { rpc } from "../../lib/rpc";
-import { SettingsGroup, SettingsRow } from "../../pages/muse/settings/kit";
 import { formatEngineDate, useModelProviders } from "./engine-models";
 
 const FIELD =

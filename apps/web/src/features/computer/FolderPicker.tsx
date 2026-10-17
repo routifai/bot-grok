@@ -1,7 +1,7 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@superchat/ui-web";
 import { useState } from "react";
-import { PRIMARY_BUTTON, QUIET_BUTTON } from "../../pages/muse/ui";
+import { PRIMARY_BUTTON, QUIET_BUTTON } from "../../components/ui";
 import { FilesTab } from "./FilesTab";
 
 /**

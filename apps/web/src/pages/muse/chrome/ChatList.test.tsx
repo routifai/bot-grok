@@ -1,14 +1,16 @@
 // @vitest-environment jsdom
 
-import type { ChatSummary, FamilyEvent } from "@superchat/contracts";
 import { ORPCError } from "@orpc/client";
+import type { ChatSummary, FamilyEvent } from "@superchat/contracts";
 import type { ComponentProps, ReactNode } from "react";
 import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 vi.mock("react-dom/client", async (orig) =>
-  (await import("../../test/i18n")).withI18nRoot(await orig<typeof import("react-dom/client")>()),
+  (await import("../../../test/i18n")).withI18nRoot(
+    await orig<typeof import("react-dom/client")>(),
+  ),
 );
 
 const api = vi.hoisted(() => ({
@@ -21,7 +23,7 @@ const api = vi.hoisted(() => ({
     send: vi.fn(),
   },
 }));
-vi.mock("../../lib/rpc", () => ({ rpc: api }));
+vi.mock("../../../lib/rpc", () => ({ rpc: api }));
 vi.mock("@lingui/core/macro", () => ({
   t: (parts: TemplateStringsArray, ...values: unknown[]) =>
     parts.reduce((acc, part, i) => `${acc}${part}${values[i] ?? ""}`, ""),
@@ -79,8 +81,12 @@ vi.mock("@superchat/ui-web", () => ({
   Textarea: (props: ComponentProps<"textarea">) => <textarea {...props} />,
 }));
 
-import { ChatTree } from "../../pages/muse/chrome/MuseSidebar";
-import { SideChatSession, type SideChatView, type SideChatWire } from "./SideChatSession";
+import {
+  SideChatSession,
+  type SideChatView,
+  type SideChatWire,
+} from "../../../features/side-chats/SideChatSession";
+import { ChatTree } from "./MuseSidebar";
 
 /** Stands in for the Conversation's Transcript/Composer (Shell.tsx), which the session
  * receives as `view`. */
@@ -115,7 +121,7 @@ const fakeView: SideChatView = {
   },
 };
 
-import { useChatList } from "./useChatList";
+import { useChatList } from "../../../features/side-chats/useChatList";
 
 function chat(overrides: Partial<ChatSummary>): ChatSummary {
   return {

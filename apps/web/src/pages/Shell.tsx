@@ -47,13 +47,13 @@ import {
   type SideChatView,
   type SideChatWire,
 } from "../features/side-chats/SideChatSession";
-import { sideChatView } from "../features/side-chats/sideChatView";
 import { useChatList } from "../features/side-chats/useChatList";
 import { forkChatSummary, useForkView } from "../features/side-chats/useForkView";
 import type { ArtifactTarget } from "../lib/artifact-open";
 import { watchFamily } from "../lib/family-stream";
 import { markAfterPaint, markOnce } from "../lib/performance";
 import { rpc } from "../lib/rpc";
+import { type MuseLiveRun, useTurnRuns } from "../lib/useMuseLiveState";
 import { ChatsPopover } from "./muse/chrome/ChatsPopover";
 import { ContourGround } from "./muse/chrome/ContourGround";
 import { ConversationActivity } from "./muse/chrome/ConversationActivity";
@@ -70,10 +70,10 @@ import type { Panel } from "./muse/chrome/panel";
 import { SidePanelHeader } from "./muse/chrome/SidePanelHeader";
 import { useBotRoster } from "./muse/chrome/useBotRoster";
 import { useBrowserNotifications } from "./muse/chrome/useBrowserNotifications";
-import { type MuseLiveRun, useTurnRuns } from "./muse/chrome/useMuseLiveState";
 import { useReplyAlerts } from "./muse/chrome/useReplyAlerts";
 import { ClearConversationHost } from "./muse/conversation/ClearConversationHost";
 import { Composer } from "./muse/conversation/Composer";
+import { sideChatView } from "./muse/conversation/sideChatView";
 import { Transcript } from "./muse/conversation/Transcript";
 import { useComposerSend } from "./muse/conversation/useComposerSend";
 import { useDockTransition } from "./muse/conversation/useDockTransition";

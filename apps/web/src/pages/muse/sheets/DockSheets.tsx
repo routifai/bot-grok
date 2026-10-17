@@ -1,6 +1,8 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { MessageSquare, Plus, Upload } from "lucide-react";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { DockSheet, DockSheetHeader } from "../../../components/chrome/DockSheet";
+import { QUIET_BUTTON } from "../../../components/ui";
 import { WaitingSheet } from "../../../features/approvals";
 import { LibraryScreen } from "../../../features/artifacts/LibraryScreen";
 import { LibraryArtifactView } from "../../../features/artifacts/library/LibraryArtifactView";
@@ -8,9 +10,7 @@ import { AutomationsSheet } from "../../../features/automations";
 import { FilesTab } from "../../../features/computer/FilesTab";
 import { rpc } from "../../../lib/rpc";
 import type { DockKey } from "../chrome/Dock";
-import { DockSheet, DockSheetHeader } from "../chrome/DockSheet";
 import { readFileAsBase64 } from "../conversation/shared";
-import { QUIET_BUTTON } from "../ui";
 
 export function LibrarySheet({
   botId,

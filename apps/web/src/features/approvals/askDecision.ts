@@ -1,5 +1,5 @@
 import type { Ask } from "@superchat/contracts";
-import type { TileTone } from "../../pages/muse/chrome/SuperchatTile";
+import type { TileTone } from "../../components/chrome/SuperchatTile";
 
 type Choice = Ask["choices"][number];
 

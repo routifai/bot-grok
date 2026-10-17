@@ -2,8 +2,8 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { Button } from "@superchat/ui-web";
 import { useEffect, useState } from "react";
 import { hostOf } from "../../components/cards/links";
+import { MUSE_INSET_GROUP } from "../../components/ui";
 import { rpc } from "../../lib/rpc";
-import { MUSE_INSET_GROUP } from "../../pages/muse/ui";
 
 type VaultEntry = Awaited<ReturnType<typeof rpc.vault.list>>["entries"][number];
 

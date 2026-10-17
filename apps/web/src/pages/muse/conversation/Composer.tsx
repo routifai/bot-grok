@@ -34,13 +34,16 @@ import {
 } from "react";
 import { ComposerAttachmentChip } from "../../../components/ComposerAttachmentChip";
 import {
+  useFailureNoteAction,
+  useFailureNoteText,
+} from "../../../components/conversation/FailureNote";
+import {
   clearComposerAttachments,
   setComposerAttachment,
   useComposerAttachments,
   withComposerAttachments,
 } from "../../../lib/composer-attachments";
 import { isFileDrag, isFilePaste } from "../../../lib/pending-attachments";
-import { useFailureNoteAction, useFailureNoteText } from "./FailureNote";
 import { previewMessageText } from "./messageText";
 import {
   ATTACHMENT_ACCEPT,
@@ -111,7 +114,7 @@ export const Composer = memo(function Composer({
   replyTargetName?: string;
   onClearReply?: () => void;
   onSlashAction?: (action: SlashActionId) => void;
-  /** First-run "Try it" chips (muse/intro): fills the draft and focuses it, fill-then-send. */
+  /** First-run "Try it" chips (components/intro): fills the draft and focuses it, fill-then-send. */
   seedText?: string | null;
   onSeedConsumed?: () => void;
 }) {

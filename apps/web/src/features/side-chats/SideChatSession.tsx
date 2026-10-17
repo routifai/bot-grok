@@ -22,9 +22,9 @@ import type { ComponentType, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadingState } from "../../components/ai/primitives";
 import { ReplyCardSendProvider } from "../../components/cards/context";
-import { type ChatProject, ProjectChip } from "../../pages/muse/chrome/ProjectChip";
-import { RestoreButton } from "../../pages/muse/chrome/RestoreButton";
-import { optimisticMessage, userCount } from "../../pages/muse/conversation/museTranscript";
+import { type ChatProject, ProjectChip } from "../../components/chrome/ProjectChip";
+import { RestoreButton } from "../../components/chrome/RestoreButton";
+import { optimisticMessage, userCount } from "../../lib/museTranscript";
 import {
   type FolderEntry,
   type ListFolder,

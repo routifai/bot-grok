@@ -1,7 +1,7 @@
 import { cn } from "@superchat/ui-web";
 import type { LucideIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
-import { type IllustrationKey, illustrationUrl } from "../../../lib/illustrations";
+import { type IllustrationKey, illustrationUrl } from "../../lib/illustrations";
 
 // Shared building blocks for the Muse screens (docs/muse/DESIGN.md). Every Muse screen
 // composes these so spacing, type, and surfaces stay identical across Conversation,

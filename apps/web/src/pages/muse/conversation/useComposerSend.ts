@@ -9,16 +9,16 @@ import {
   promptTextForWorkspaceAttachments,
 } from "@superchat/core";
 import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { markFirstRunSeen } from "../../../components/intro";
 import { notifyAsksChanged } from "../../../features/approvals";
 import { requestBrowserNotificationPermission } from "../../../lib/browser-notifications";
 import { newClientId } from "../../../lib/client-id";
+import { quotedMessageText } from "../../../lib/museTranscript";
 import { revokePendingAttachmentPreviews } from "../../../lib/pending-attachments";
 import { rpc } from "../../../lib/rpc";
 import { userFacingError } from "../../../lib/user-facing-error";
-import { markFirstRunSeen } from "../intro";
 import { followComputerStart, pollingComputerFeed, runWhenComputerReady } from "./computerReady";
 import { latestModelFailure } from "./failureNotes";
-import { quotedMessageText } from "./museTranscript";
 import { attachmentsBlockSend, type PendingAttachment, readFileAsBase64 } from "./shared";
 import type { useMuseTranscript } from "./useMuseTranscript";
 
@@ -78,7 +78,7 @@ export function useComposerSend({
   const [replyQuote, setReplyQuote] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
-  // First-run "Try it" chips (muse/intro/FirstRunWelcome.tsx) fill the composer with the
+  // First-run "Try it" chips (components/intro) fill the composer with the
   // example rather than sending it, so the person sees it before it goes out.
   const [composerSeed, setComposerSeed] = useState<string | null>(null);
   const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
@@ -301,7 +301,7 @@ export function useComposerSend({
       if (attachmentsBlockSend(attachments)) return false;
       const trimmed = text.trim();
       if (!trimmed && attachments.length === 0 && folders.length === 0) return false;
-      // The first real message closes the first-run welcome for good (muse/intro),
+      // The first real message closes the first-run welcome for good (components/intro),
       // wherever it was sent from — the composer directly, or a welcome card's "Try it".
       markFirstRunSeen(userId, "welcome");
       const permissionRequest = requestBrowserNotificationPermission();

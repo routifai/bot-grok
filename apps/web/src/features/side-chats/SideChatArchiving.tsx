@@ -2,8 +2,8 @@ import { useLingui } from "@lingui/react/macro";
 import type { Archiving } from "@superchat/contracts";
 import { SIDE_CHAT_ARCHIVE_DAYS } from "@superchat/contracts";
 import { useEffect, useId, useState } from "react";
+import { MUSE_INSET_GROUP } from "../../components/ui/index";
 import { rpc } from "../../lib/rpc";
-import { MUSE_INSET_GROUP } from "../../pages/muse/ui/index";
 
 type Days = Archiving["sideChatAutoArchiveDays"];
 

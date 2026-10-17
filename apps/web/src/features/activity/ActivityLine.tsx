@@ -3,9 +3,9 @@ import type { Activity, ActivitySource } from "@superchat/contracts";
 import { cn } from "@superchat/ui-web";
 import { CircleAlert, CircleSlash } from "lucide-react";
 import type { ReactNode } from "react";
-import { ChevronGlyph } from "../../pages/muse/chrome/SuperchatGlyphs";
-import { SuperchatTile, type TileTone } from "../../pages/muse/chrome/SuperchatTile";
-import { ACTIVITY_SOURCE_ICON } from "../../pages/muse/chrome/toolIcons";
+import { ChevronGlyph } from "../../components/chrome/SuperchatGlyphs";
+import { SuperchatTile, type TileTone } from "../../components/chrome/SuperchatTile";
+import { ACTIVITY_SOURCE_ICON } from "../../components/chrome/toolIcons";
 
 /** Live work: a small accent dot with a slow opacity pulse (still under reduced motion). The
  * orb itself lives in one place only (components/ai/orb/placement.tsx). */

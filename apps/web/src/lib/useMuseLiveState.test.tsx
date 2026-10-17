@@ -13,15 +13,13 @@ import {
 } from "./useMuseLiveState";
 
 vi.mock("react-dom/client", async (orig) =>
-  (await import("../../../test/i18n")).withI18nRoot(
-    await orig<typeof import("react-dom/client")>(),
-  ),
+  (await import("../test/i18n")).withI18nRoot(await orig<typeof import("react-dom/client")>()),
 );
 
 const api = vi.hoisted(() => ({ computer: { status: vi.fn() } }));
-vi.mock("../../../lib/rpc", () => ({ rpc: api }));
+vi.mock("./rpc", () => ({ rpc: api }));
 const notifyAsksChanged = vi.hoisted(() => vi.fn());
-vi.mock("../../../features/approvals", () => ({
+vi.mock("../features/approvals", () => ({
   useAsks: () => ({ count: 0 }),
   notifyAsksChanged,
 }));

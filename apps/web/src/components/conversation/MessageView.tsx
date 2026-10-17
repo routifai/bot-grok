@@ -10,16 +10,16 @@ import {
 import { cn } from "@superchat/ui-web";
 import { Folder } from "lucide-react";
 import { memo } from "react";
-import { CloudAgentCard } from "../../../components/CloudAgentCard";
-import { ComposerAttachmentChip } from "../../../components/ComposerAttachmentChip";
-import { ReplyCardBlockView } from "../../../components/cards/ReplyCard";
-import { WorkspaceAttachmentChip } from "../../../components/WorkspaceAttachmentChip";
-import { AskCard } from "../../../features/approvals";
-import { ArtifactFileCard } from "../../../features/artifacts";
-import type { ArtifactTarget } from "../../../lib/artifact-open";
-import { splitComposerAttachments } from "../../../lib/composer-attachments";
-import { ArtifactImage } from "../../shell/message-cards";
+import { HelperTracker } from "../../features/activity/HelperTracker";
+import { AskCard } from "../../features/approvals";
+import { ArtifactFileCard } from "../../features/artifacts";
+import type { ArtifactTarget } from "../../lib/artifact-open";
+import { splitComposerAttachments } from "../../lib/composer-attachments";
+import { CloudAgentCard } from "../CloudAgentCard";
+import { ComposerAttachmentChip } from "../ComposerAttachmentChip";
+import { ReplyCardBlockView } from "../cards/ReplyCard";
 import { FirstRunHint } from "../intro";
+import { WorkspaceAttachmentChip } from "../WorkspaceAttachmentChip";
 import {
   FailureNote,
   InfoNote,
@@ -28,7 +28,7 @@ import {
   useInfoNoteText,
 } from "./FailureNote";
 import { FoldedText } from "./FoldedText";
-import { HelperTracker } from "./HelperTracker";
+import { ArtifactImage } from "./message-cards";
 
 /** Muse mode only: one quiet line for a tool-activity block (docs/muse/DESIGN.md "Conversation"). */
 function ToolActivityStep({ block }: { block: ThreadMessage["blocks"][number] }) {

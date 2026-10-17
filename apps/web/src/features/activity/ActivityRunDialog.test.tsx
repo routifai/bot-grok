@@ -20,7 +20,7 @@ vi.mock("@lingui/react/macro", () => {
     Trans: ({ children }: { children: ReactNode }) => children,
   };
 });
-vi.mock("../../pages/muse/conversation/MessageRow", () => ({ MessageRow: () => null }));
+vi.mock("./MessageRow", () => ({ MessageRow: () => null }));
 
 const mounted: Array<() => void> = [];
 afterEach(() => {

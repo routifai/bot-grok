@@ -1,12 +1,12 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { Mail, UserRound } from "lucide-react";
 import { useState } from "react";
+import { SettingsGroup, SettingsRow, SettingsSegmented } from "../../../components/settings/kit";
 import {
   type AppearancePreference,
   getUiAppearancePreference,
   setUiAppearance,
 } from "../../../lib/ui-appearance";
-import { SettingsGroup, SettingsRow, SettingsSegmented } from "./kit";
 
 /** Settings > General: the account, how the app looks. */
 export function GeneralPanel({ name, email }: { name: string; email?: string | null }) {

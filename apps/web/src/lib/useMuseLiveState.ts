@@ -1,8 +1,8 @@
 import { useLingui } from "@lingui/react/macro";
 import type { MuseState, Run, ThreadMessage } from "@superchat/contracts";
 import { useEffect, useMemo } from "react";
-import { notifyAsksChanged, useAsks } from "../../../features/approvals";
-import { useComputerLaunch } from "../../../features/computer/useComputerLaunch";
+import { notifyAsksChanged, useAsks } from "../features/approvals";
+import { useComputerLaunch } from "../features/computer/useComputerLaunch";
 import { currentToolName, deriveMuseState, museActivityLabel } from "./museState";
 
 /** A run as the Muse surfaces see it. `startedAt`/`createdAt` is when it really began, so every

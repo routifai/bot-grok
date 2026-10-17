@@ -1,8 +1,12 @@
 import type { ThreadMessage } from "@superchat/contracts";
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { watchFamily } from "../../../lib/family-stream";
+import {
+  mergeNewestTranscriptPage,
+  optimisticMessage,
+  userCount,
+} from "../../../lib/museTranscript";
 import { rpc } from "../../../lib/rpc";
-import { mergeNewestTranscriptPage, optimisticMessage, userCount } from "./museTranscript";
 
 /** Events arrive in bursts (a reply, a Helper starting): read the page once per burst. */
 const REFRESH_THROTTLE_MS = 150;

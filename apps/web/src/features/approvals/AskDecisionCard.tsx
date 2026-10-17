@@ -3,7 +3,7 @@ import type { Ask } from "@superchat/contracts";
 import { cn } from "@superchat/ui-web";
 import { BookmarkPlus, HelpCircle, ShieldCheck, Sparkles } from "lucide-react";
 import { useState } from "react";
-import { SuperchatTile } from "../../pages/muse/chrome/SuperchatTile";
+import { SuperchatTile } from "../../components/chrome/SuperchatTile";
 import { askDecision } from "./askDecision";
 
 const KIND_ICON = {

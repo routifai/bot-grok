@@ -15,6 +15,13 @@ import { ChevronRight, Plus } from "lucide-react";
 import type { ReactNode } from "react";
 import { Fragment, useState } from "react";
 import { SuperchatOrb, useIsDesktop, useOrbHome } from "../../../components/ai/orb";
+import {
+  ConversationGlyph,
+  ForkGlyph,
+  SettingsGlyph,
+  SidebarGlyph,
+  WaitingGlyph,
+} from "../../../components/chrome/SuperchatGlyphs";
 import { SuperchatMark } from "../../../components/SuperchatLogo";
 import { useSuperchatWork } from "../../../features/activity/useSuperchatWork";
 import {
@@ -24,14 +31,7 @@ import {
 } from "../../../features/side-chats/forkModel";
 import { LiveDot } from "../../../features/side-chats/forkParts";
 import type { ChatListState } from "../../../features/side-chats/useChatList";
-import {
-  ConversationGlyph,
-  ForkGlyph,
-  SettingsGlyph,
-  SidebarGlyph,
-  WaitingGlyph,
-} from "./SuperchatGlyphs";
-import { type MuseLiveRun, useMuseLiveState } from "./useMuseLiveState";
+import { type MuseLiveRun, useMuseLiveState } from "../../../lib/useMuseLiveState";
 
 const COLLAPSED_KEY = "muse:sidebar-collapsed";
 
@@ -109,7 +109,11 @@ function SuperchatIdentity({
       {hasOrb ? (
         <SuperchatOrb size={34} />
       ) : (
-        <span aria-hidden="true" data-testid="superchat-orb-slot" className="size-[34px] shrink-0" />
+        <span
+          aria-hidden="true"
+          data-testid="superchat-orb-slot"
+          className="size-[34px] shrink-0"
+        />
       )}
       <div className={cn("min-w-0 flex-1", FADE)}>
         <p

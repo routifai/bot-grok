@@ -1,15 +1,20 @@
 import { useLingui } from "@lingui/react/macro";
 import { ChatMarkdown } from "@superchat/chat-ui/web";
-import type { Activity, ActivityStep, ThreadMessage, ThreadMessagePage } from "@superchat/contracts";
+import type {
+  Activity,
+  ActivityStep,
+  ThreadMessage,
+  ThreadMessagePage,
+} from "@superchat/contracts";
 import { presentActivityTitle, presentStep } from "@superchat/core";
 import { Button, cn, Dialog, DialogContent } from "@superchat/ui-web";
 import { ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { RunStatusDot } from "../../pages/muse/chrome/RunStatusDot";
-import { ACTIVITY_SOURCE_ICON, TOOL_ICON_COMPONENT } from "../../pages/muse/chrome/toolIcons";
-import { MessageRow } from "../../pages/muse/conversation/MessageRow";
+import { RunStatusDot } from "../../components/chrome/RunStatusDot";
+import { ACTIVITY_SOURCE_ICON, TOOL_ICON_COMPONENT } from "../../components/chrome/toolIcons";
 import { ActivityIconTile } from "./ActivityIconTile";
 import { formatClockTime, formatDayAndTime, isHelperActivity } from "./activityGrouping";
+import { MessageRow } from "./MessageRow";
 
 /** The Activity run page's wire: full detail (Steps) and, for a Helper, its messages —
  * kept explicit (not the `rpc` client) so the dev fixture page can supply fakes. */

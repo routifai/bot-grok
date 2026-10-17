@@ -3,13 +3,10 @@ import { useLingui } from "@lingui/react/macro";
 import type { Activity } from "@superchat/contracts";
 import { presentActivityTitle } from "@superchat/core";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { ActivityBranch, ActivityLine } from "../../../features/activity/ActivityLine";
-import { ActivityRunDialog } from "../../../features/activity/ActivityRunDialog";
-import {
-  activityDurationMs,
-  formatDuration,
-  isRunning,
-} from "../../../features/activity/activityGrouping";
+import { useNow } from "../../components/chrome/useNow";
+import { ActivityBranch, ActivityLine } from "./ActivityLine";
+import { ActivityRunDialog } from "./ActivityRunDialog";
+import { activityDurationMs, formatDuration, isRunning } from "./activityGrouping";
 import {
   type ActivityNode,
   buildActivityForest,
@@ -17,9 +14,8 @@ import {
   isNodeRunning,
   latestStepTitle,
   stepCount,
-} from "../../../features/activity/activityTree";
-import { activityFeedFor, LIVE_ACTIVITY_WIRE } from "../../../features/activity/useActivities";
-import { useNow } from "../chrome/useNow";
+} from "./activityTree";
+import { activityFeedFor, LIVE_ACTIVITY_WIRE } from "./useActivities";
 
 function findActivity(node: ActivityNode, id: string): Activity | undefined {
   if (node.activity.id === id) return node.activity;

@@ -1,7 +1,7 @@
 import { useLingui } from "@lingui/react/macro";
 import { ORPCError } from "@orpc/client";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { PanelRowSkeletonList } from "../../pages/muse/chrome/PanelSkeleton";
+import { PanelRowSkeletonList } from "../../components/chrome/PanelSkeleton";
 import { type ClaimsWire, type MemoryClaim, MemorySections } from "./MemorySections";
 import { addressMemoryItem, type MemoryProfileSection, parseMemoryProfile } from "./memoryProfile";
 

@@ -3,8 +3,8 @@ import { useLingui } from "@lingui/react/macro";
 import type { ArtifactVersion, AutomationRun, LivePage } from "@superchat/contracts";
 import { Check, ChevronRight, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { QUIET_BUTTON } from "../../components/ui";
 import { rpc } from "../../lib/rpc";
-import { QUIET_BUTTON } from "../../pages/muse/ui";
 import {
   liveStatus,
   liveTrigger,

@@ -10,11 +10,11 @@ import {
   AlertDialogTitle,
 } from "@superchat/ui-web";
 import { useEffect, useMemo, useState } from "react";
+import { EmptyState } from "../../components/ui";
 import type { ArtifactKind } from "../../lib/artifact-kind";
 import { artifactKind, KIND_ORDER, kindFacetLabel } from "../../lib/artifact-kind";
 import { decodeArtifactBase64, downloadArtifactBytes } from "../../lib/artifact-open";
 import { rpc } from "../../lib/rpc";
-import { EmptyState } from "../../pages/muse/ui";
 import { LibraryGrid, LibrarySkeletonGrid } from "./library/LibraryGrid";
 import { type FilterChip, FilterChips, LibrarySearchField } from "./library/LibraryToolbar";
 import type { ArtifactSummary } from "./library/types";

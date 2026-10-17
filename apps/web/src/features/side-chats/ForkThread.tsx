@@ -8,11 +8,11 @@ import {
   ReplyCardThreadProvider,
 } from "../../components/cards/context";
 import { hiddenFollowUpMessageIds } from "../../components/cards/thread";
+import { RestoreButton } from "../../components/chrome/RestoreButton";
+import { MessageHoverActions } from "../../components/conversation/MessageHoverActions";
+import { MessageView } from "../../components/conversation/MessageView";
 import type { ArtifactTarget } from "../../lib/artifact-open";
 import { personText } from "../../lib/message-text";
-import { RestoreButton } from "../../pages/muse/chrome/RestoreButton";
-import { MessageHoverActions } from "../../pages/muse/conversation/MessageHoverActions";
-import { MessageView } from "../../pages/muse/conversation/MessageView";
 import { ForkComposer } from "./ForkComposer";
 import { ForkOverlay, type ForkWire, LiftedMessage, OverlayTopBar } from "./ForkOverlay";
 import { ForkUnderMessage } from "./ForkUnderMessage";

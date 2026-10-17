@@ -23,8 +23,8 @@ import {
   UserRound,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { SuperchatTile } from "../../pages/muse/chrome/SuperchatTile";
-import { MemoryEmptyLine, MemorySection } from "../../pages/muse/ui/MemorySection";
+import { SuperchatTile } from "../../components/chrome/SuperchatTile";
+import { MemoryEmptyLine, MemorySection } from "../../components/ui/MemorySection";
 import {
   commitmentLabel,
   isOpenQuestion,

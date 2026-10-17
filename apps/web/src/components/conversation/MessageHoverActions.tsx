@@ -9,9 +9,9 @@ import {
 } from "@superchat/ui-web";
 import { Check, Copy, MoreHorizontal, Reply } from "lucide-react";
 import { useState } from "react";
-import { MessageHoverMetadata } from "../../../components/MessageHoverMetadata";
-import { BranchIcon } from "../../../features/side-chats/forkParts";
-import { copyableMessageText } from "../../../lib/message-text";
+import { BranchIcon } from "../../features/side-chats/forkParts";
+import { copyableMessageText } from "../../lib/message-text";
+import { MessageHoverMetadata } from "../MessageHoverMetadata";
 
 export function MessageHoverActions({
   message,

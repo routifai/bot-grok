@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 
-import type { ChatSummary, MessageFork, ThreadMessage, ThreadMessagePage } from "@superchat/contracts";
+import type {
+  ChatSummary,
+  MessageFork,
+  ThreadMessage,
+  ThreadMessagePage,
+} from "@superchat/contracts";
 import type { ComponentProps, ReactNode } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -45,12 +50,12 @@ vi.mock("../../components/cards/context", () => ({
   ReplyCardThreadProvider: ({ children }: { children: ReactNode }) => children,
   ReplyCardSendProvider: ({ children }: { children: ReactNode }) => children,
 }));
-vi.mock("../../pages/muse/conversation/MessageView", () => ({
+vi.mock("../../components/conversation/MessageView", () => ({
   MessageView: ({ message }: { message: ThreadMessage }) => (
     <p>{message.blocks.map((block) => (block.kind === "text" ? block.text : "")).join("")}</p>
   ),
 }));
-vi.mock("../../pages/muse/conversation/MessageHoverActions", () => ({
+vi.mock("../../components/conversation/MessageHoverActions", () => ({
   MessageHoverActions: () => null,
 }));
 

@@ -155,7 +155,7 @@ vi.mock("../features/projects/WorkIn", () => ({
 }));
 vi.mock("./SettingsOverlay", () => ({ SettingsOverlay: Stub }));
 vi.mock("./shell/dialogs", () => ({ ClearConversationDialog: Stub }));
-vi.mock("./shell/message-cards", () => ({
+vi.mock("../components/conversation/message-cards", () => ({
   ArtifactImage: Stub,
 }));
 

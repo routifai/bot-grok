@@ -535,7 +535,7 @@ bundle (`deployment/engine/agents/superchat-claude/`) or to the engine's always-
 (`ALWAYS_ON_SUPERSIDE_CHAT_TOOLS`), add an entry there with an icon (`ToolIconKey`), a
 `title(args)` derived only from the call's arguments, and a `snippet(output)`, or
 `tool-presentation.completeness.test.ts` fails. Map any new icon key in
-`apps/web/src/pages/muse/chrome/toolIcons.ts`.
+`apps/web/src/components/chrome/toolIcons.ts`.
 
 ### Asks
 

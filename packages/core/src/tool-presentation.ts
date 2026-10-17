@@ -11,7 +11,7 @@ import type { ActivityStep } from "@superchat/contracts";
 // populated only on `activities.get` (packages/contracts/src/rpc/activity.ts).
 
 /** A small, closed set of line icons a tool can present as — never the tool's own name.
- * apps/web/src/pages/muse/chrome/toolIcons.ts maps each to a lucide icon. */
+ * apps/web/src/components/chrome/toolIcons.ts maps each to a lucide icon. */
 export type ToolIconKey =
   | "search"
   | "web"

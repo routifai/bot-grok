@@ -5,9 +5,9 @@ import type { Ask } from "@superchat/contracts";
 import { cn, Input } from "@superchat/ui-web";
 import { BookmarkPlus, ChevronRight, HelpCircle, ShieldCheck, Sparkles } from "lucide-react";
 import { useState } from "react";
+import { SuperchatTile } from "../../components/chrome/SuperchatTile";
+import { DetailRows, PRIMARY_BUTTON, QUIET_BUTTON } from "../../components/ui";
 import { formatRelativeTime } from "../../lib/relative-time";
-import { SuperchatTile } from "../../pages/muse/chrome/SuperchatTile";
-import { DetailRows, PRIMARY_BUTTON, QUIET_BUTTON } from "../../pages/muse/ui";
 import { askDecision } from "./askDecision";
 
 const KIND_ICON = {

@@ -2,10 +2,10 @@ import { useLingui } from "@lingui/react/macro";
 import type { Ask } from "@superchat/contracts";
 import { Check, Minus } from "lucide-react";
 import { useState } from "react";
-import { DockSheet, DockSheetHeader } from "../../pages/muse/chrome/DockSheet";
-import { SuperchatTile } from "../../pages/muse/chrome/SuperchatTile";
-import { EmptyState, MUSE_INSET_GROUP, MUSE_LIST_ROW, SegmentedControl } from "../../pages/muse/ui";
-import { CardSkeletonList } from "../../pages/muse/ui/CardSkeleton";
+import { DockSheet, DockSheetHeader } from "../../components/chrome/DockSheet";
+import { SuperchatTile } from "../../components/chrome/SuperchatTile";
+import { EmptyState, MUSE_INSET_GROUP, MUSE_LIST_ROW, SegmentedControl } from "../../components/ui";
+import { CardSkeletonList } from "../../components/ui/CardSkeleton";
 import { AskList, useAsks } from ".";
 
 /** An Ask answered from this sheet, kept for the "Decided" list while the app is open. */

@@ -21,7 +21,7 @@ vi.mock("@lingui/react/macro", () => {
   };
 });
 
-vi.mock("../../pages/muse/chrome/PanelSkeleton", () => ({ PanelRowSkeletonList: () => null }));
+vi.mock("../../components/chrome/PanelSkeleton", () => ({ PanelRowSkeletonList: () => null }));
 
 const claim = (over: Partial<MemoryClaim>): MemoryClaim => ({
   id: "c1",

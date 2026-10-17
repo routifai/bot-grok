@@ -3,8 +3,8 @@ import type { Activity } from "@superchat/contracts";
 import { presentActivityTitle } from "@superchat/core";
 import { Button } from "@superchat/ui-web";
 import { useEffect, useMemo, useState } from "react";
-import { PanelRowSkeletonList } from "../../pages/muse/chrome/PanelSkeleton";
-import { useNow } from "../../pages/muse/chrome/useNow";
+import { PanelRowSkeletonList } from "../../components/chrome/PanelSkeleton";
+import { useNow } from "../../components/chrome/useNow";
 import { ActivityBranch, ActivityLine } from "./ActivityLine";
 import { ActivityRunDialog, type ActivityWire } from "./ActivityRunDialog";
 import {

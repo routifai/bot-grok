@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
-import type { ChatProject } from "../../pages/muse/chrome/ProjectChip";
+import type { ChatProject } from "../../components/chrome/ProjectChip";
 
 /** Where a chat works (docs/adr/0008): its Project, its folder relative to the workspace
  * (`null`: the whole workspace) and whether the person chose it. */

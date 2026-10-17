@@ -4,11 +4,11 @@ import { cn } from "@superchat/ui-web";
 import { Check, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { SuperchatOrb } from "../../components/ai/orb";
+import { resetFirstRun } from "../../components/intro";
+import { MUSE_INSET_GROUP } from "../../components/ui";
 import { ApprovalsSettings } from "../../features/approvals";
 import { SideChatArchiving } from "../../features/side-chats/SideChatArchiving";
 import { VaultSettings } from "../../features/vault";
-import { resetFirstRun } from "./intro";
-import { MUSE_INSET_GROUP } from "./ui";
 
 /**
  * What the person tunes about their Muse, gathered in one place (docs/muse/DESIGN.md):

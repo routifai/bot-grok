@@ -2,8 +2,8 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import type { ApprovalSpending, ApprovalStandingRule } from "@superchat/contracts";
 import { Button } from "@superchat/ui-web";
 import { useEffect, useId, useState } from "react";
+import { MUSE_INSET_GROUP } from "../../components/ui";
 import { rpc } from "../../lib/rpc";
-import { MUSE_INSET_GROUP } from "../../pages/muse/ui";
 
 const ROW = "flex min-h-[52px] items-center justify-between gap-4 px-4";
 

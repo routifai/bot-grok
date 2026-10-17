@@ -2,9 +2,9 @@ import { useLingui } from "@lingui/react/macro";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
 import { SuperchatOrb, useOrbHome } from "../../../components/ai/orb";
+import { CalendarGlyph, SearchGlyph, SparkGlyph } from "../../../components/chrome/SuperchatGlyphs";
+import { SuperchatTile, type TileTone } from "../../../components/chrome/SuperchatTile";
 import { greetingLead } from "./greeting";
-import { CalendarGlyph, SearchGlyph, SparkGlyph } from "./SuperchatGlyphs";
-import { SuperchatTile, type TileTone } from "./SuperchatTile";
 
 /**
  * The empty Conversation's start page, above the composer (docs/muse/DESIGN.md "First run"):

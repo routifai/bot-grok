@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Shimmer } from "../../../components/ai/primitives";
+import { useNow } from "../../../components/chrome/useNow";
 import { WorkingDot } from "../../../features/activity/ActivityLine";
 import { formatDuration } from "../../../features/activity/activityGrouping";
-import { useNow } from "../chrome/useNow";
 
 /**
  * Superchat working on a reply (docs/muse/DESIGN.md "Working line"): a soft rounded row with a

@@ -58,7 +58,7 @@ vi.mock("@lingui/react/macro", () => {
 vi.mock("../../../lib/browser-notifications", () => ({
   requestBrowserNotificationPermission: () => null,
 }));
-vi.mock("../intro", () => ({ markFirstRunSeen: vi.fn() }));
+vi.mock("../../../components/intro", () => ({ markFirstRunSeen: vi.fn() }));
 vi.stubGlobal(
   "ResizeObserver",
   class {

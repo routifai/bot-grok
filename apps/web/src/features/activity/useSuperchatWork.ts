@@ -1,6 +1,6 @@
 import type { ThreadMessage } from "@superchat/contracts";
 import { useMemo } from "react";
-import { type MuseLiveRun, useMuseLiveState } from "../../pages/muse/chrome/useMuseLiveState";
+import { type MuseLiveRun, useMuseLiveState } from "../../lib/useMuseLiveState";
 import { deriveSuperchatWork, type SuperchatWork } from "./superchatWork";
 import { useActivities } from "./useActivities";
 

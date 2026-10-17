@@ -1,9 +1,9 @@
 import { useMemo, useRef } from "react";
-import type { ArtifactTarget } from "../../lib/artifact-open";
-import { useTurnRuns } from "../../pages/muse/chrome/useMuseLiveState";
-import { Composer } from "../../pages/muse/conversation/Composer";
-import { Transcript } from "../../pages/muse/conversation/Transcript";
-import type { SideChatView } from "./SideChatSession";
+import type { SideChatView } from "../../../features/side-chats/SideChatSession";
+import type { ArtifactTarget } from "../../../lib/artifact-open";
+import { useTurnRuns } from "../../../lib/useMuseLiveState";
+import { Composer } from "./Composer";
+import { Transcript } from "./Transcript";
 
 const noop = () => undefined;
 const noopAsync = async () => undefined;

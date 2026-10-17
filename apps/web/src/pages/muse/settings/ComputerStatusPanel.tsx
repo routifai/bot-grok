@@ -1,8 +1,8 @@
 import { useLingui } from "@lingui/react/macro";
 import type { ComputerStatus } from "@superchat/contracts";
 import { useCallback, useEffect, useState } from "react";
+import { SettingsGroup, SettingsRow } from "../../../components/settings/kit";
 import { rpc } from "../../../lib/rpc";
-import { SettingsGroup, SettingsRow } from "./kit";
 
 type SessionModel = { harness: string; model: string | null; defaultModel: string | null };
 

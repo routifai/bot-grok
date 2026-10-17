@@ -1,6 +1,6 @@
 import { ChatMarkdown } from "@superchat/chat-ui/web";
 import type { ThreadMessage } from "@superchat/contracts";
-import { personText } from "../../../lib/message-text";
+import { personText } from "../../lib/message-text";
 
 /** A plain-text message bubble, matching the Conversation's own bubble tokens
  * (Shell.tsx's `message-user-bubble` / `message-bot-bubble`) since that rendering is

@@ -1,6 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
 import { useCallback, useEffect, useState } from "react";
-import { MemorySection } from "../../pages/muse/ui/MemorySection";
+import { MemorySection } from "../../components/ui/MemorySection";
 
 export type DailyNote = {
   date: string;

@@ -13,11 +13,11 @@ import {
 } from "@superchat/ui-web";
 import { Ellipsis, Play, Plus } from "lucide-react";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
+import { DockSheet, DockSheetHeader } from "../../components/chrome/DockSheet";
+import { EmptyState, PRIMARY_BUTTON, QUIET_BUTTON } from "../../components/ui";
+import { CardSkeletonList } from "../../components/ui/CardSkeleton";
 import { formatRelativeTime } from "../../lib/relative-time";
 import { rpc } from "../../lib/rpc";
-import { DockSheet, DockSheetHeader } from "../../pages/muse/chrome/DockSheet";
-import { EmptyState, PRIMARY_BUTTON, QUIET_BUTTON } from "../../pages/muse/ui";
-import { CardSkeletonList } from "../../pages/muse/ui/CardSkeleton";
 import { ActivityRunById } from "../activity";
 import { LivePageRow } from "./LivePageRow";
 import { describeSchedule, WEEKDAYS } from "./schedule";

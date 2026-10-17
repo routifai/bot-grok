@@ -7,13 +7,11 @@ import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 
 vi.mock("react-dom/client", async (orig) =>
-  (await import("../../../test/i18n")).withI18nRoot(
-    await orig<typeof import("react-dom/client")>(),
-  ),
+  (await import("../../test/i18n")).withI18nRoot(await orig<typeof import("react-dom/client")>()),
 );
 
-import type { ActivitiesState } from "../../../features/activity/activityFeed";
-import { helper, step } from "../../../features/activity/activityTestKit";
+import type { ActivitiesState } from "./activityFeed";
+import { helper, step } from "./activityTestKit";
 import { HelperTracker } from "./HelperTracker";
 
 vi.mock("@lingui/react/macro", () => {
@@ -28,7 +26,7 @@ vi.mock("@lingui/core/macro", () => ({
   plural: (n: number, forms: { one: string; other: string }) =>
     (n === 1 ? forms.one : forms.other).replace("#", String(n)),
 }));
-vi.mock("../../../features/activity/ActivityRunDialog", () => ({
+vi.mock("./ActivityRunDialog", () => ({
   ActivityRunDialog: ({ activity }: { activity: Activity | null }) =>
     activity ? <div data-testid="run-dialog">{activity.title}</div> : null,
 }));
@@ -56,7 +54,7 @@ const fake = vi.hoisted(() => {
     },
   };
 });
-vi.mock("../../../features/activity/useActivities", () => ({
+vi.mock("./useActivities", () => ({
   activityFeedFor: () => fake.feed,
   LIVE_ACTIVITY_WIRE: {},
 }));
