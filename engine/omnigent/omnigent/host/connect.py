@@ -3325,7 +3325,7 @@ class HostProcess:
             # Pi), not an alias of ``pi-native``; both share one configured
             # inventory.
             try:
-                from omnigent.harnesses.pi_native.credentials import pi_native_model_options
+                from omnigent.inner.pi_credentials import pi_native_model_options
 
                 pi_models = await asyncio.to_thread(pi_native_model_options)
             except Exception:

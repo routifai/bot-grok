@@ -1,18 +1,10 @@
-"""Translate the omnigent-configured model provider into native Pi config.
+"""Translate the omnigent-configured model provider into Pi config.
 
-A native Pi session launches the ``pi`` CLI, which authenticates from its own
-config directory (``~/.pi/agent``). Without help, a user who ran ``omnigent
-setup`` would still have to run ``pi`` ``/login`` separately — unlike
-claude-native / codex-native, which route through the provider that ``omnigent
-setup`` configured.
-
-This module closes that gap. It resolves the provider configured for the Pi
-surface (``~/.omnigent/config.yaml``) and writes a per-session ``models.json``
-into a *managed* Pi config dir (selected via ``PI_CODING_AGENT_DIR``), so the
-runner-owned ``pi`` process authenticates exactly like the configured harness.
-
-The managed config dir is per-session (like codex-native's managed
-``CODEX_HOME``), so this never mutates the user's global ``~/.pi/agent``.
+The ``pi`` CLI authenticates from its own config directory (``~/.pi/agent``).
+This module resolves the provider configured for the Pi surface
+(``~/.omnigent/config.yaml``) into a :class:`PiProviderConfig` that renders as
+Pi's ``models.json``, so the runner-owned ``pi`` process authenticates exactly
+like the configured harness. It also serves the Pi model picker options.
 """
 
 from __future__ import annotations
@@ -22,10 +14,10 @@ import json
 import logging
 import os
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple, NotRequired, TypeAlias, TypedDict, TypeGuard
+from typing import TYPE_CHECKING, NotRequired, TypeAlias, TypedDict, TypeGuard
 
 from omnigent.models import model_catalog
 from omnigent.models.model_override import normalize_model_for_provider
@@ -45,13 +37,6 @@ from omnigent.onboarding.provider_config import (
     ProviderEntry,
     default_provider_for_harness,
     load_config,
-)
-from omnigent.util.reasoning_effort import (
-    EFFORT_CLEAR_VALUES,
-    PI_EFFORTS,
-    PI_THINKING_OFF,
-    to_pi_thinking_level,
-    validate_effort,
 )
 
 if TYPE_CHECKING:
@@ -276,28 +261,6 @@ def pi_own_login_model_options(agent_dir: Path | None = None) -> list[dict[str, 
                 "displayName": name if isinstance(name, str) and name else model_id,
             }
     return [options[model_id] for model_id in sorted(options)]
-
-
-def pi_own_login_model_arg(selection: str) -> str | None:
-    """Return the ``--model`` value for a Pi running on its own login.
-
-    A managed ``provider/model`` picker value names a provider that does not
-    exist without omnigent-managed config, so only the model id survives; any
-    other reference (``anthropic/claude-...`` or a bare id) passes through
-    unchanged for Pi's own resolver.
-
-    A managed selection whose model id itself contains a ``/`` (e.g.
-    ``omnigent/moonshotai/kimi-k2.5``) is refused with ``None``: stripping the
-    managed prefix would leave a bare slash-bearing id whose leading segment
-    Pi's ``--model`` parser reads as a *provider*, silently mis-routing the
-    launch to an unrelated built-in provider. Such a pick is unresolvable
-    without the managed provider, so the launch falls back to Pi's own
-    default model instead.
-    """
-    split = _split_pi_native_model_selection(selection)
-    if split is None:
-        return selection
-    return None if "/" in split[1] else split[1]
 
 
 def _default_model_provider_id(provider: PiProviderConfig, rendered: _PiModelsConfig) -> str:
@@ -841,232 +804,3 @@ def resolve_pi_native_provider(
             exc_info=True,
         )
         return None
-
-
-def write_pi_models_config(
-    agent_dir: Path,
-    provider: PiProviderConfig,
-    rendered: _PiModelsConfig | None = None,
-) -> Path:
-    """Write *provider* as ``models.json`` into a managed Pi config dir.
-
-    :param agent_dir: The managed Pi config dir (``PI_CODING_AGENT_DIR``).
-    :param provider: The resolved provider config to render.
-    :param rendered: An already-rendered config to write, so a caller that also
-        inspects it renders (and logs) only once. Defaults to rendering here.
-    :returns: Path to the written ``models.json``.
-    """
-    if rendered is None:
-        rendered = provider.to_models_config()
-    agent_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-    os.chmod(agent_dir, 0o700)
-    models_path = agent_dir / "models.json"
-    # 0o600: the apiKey may be a literal token (key-kind providers).
-    fd = os.open(models_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as handle:
-        json.dump(rendered, handle, indent=2, sort_keys=True)
-        handle.write("\n")
-    return models_path
-
-
-def _enabled_model_refs(rendered: _PiModelsConfig) -> list[str]:
-    """Build provider-qualified ``enabledModels`` refs for a rendered config.
-
-    This is a picker preference; users can toggle back to all models.
-
-    :param rendered: The rendered ``models.json`` mapping.
-    :returns: ``["provider/model", ...]`` refs in rendered order (deterministic,
-        matching the picker's listing order).
-    """
-    refs: list[str] = []
-    providers = rendered.get("providers", {})
-    for provider_id, payload in providers.items():
-        if not isinstance(payload, dict):
-            continue
-        for model in payload.get("models", []):
-            if isinstance(model, dict) and isinstance(model.get("id"), str) and model["id"]:
-                refs.append(f"{provider_id}/{model['id']}")
-    return refs
-
-
-class PiNativeLaunch(NamedTuple):
-    """Env, CLI args and any effort notice for a managed pi-native launch.
-
-    :param env: Env vars to merge into the terminal spec.
-    :param args: ``--provider``/``--model``/``--thinking`` args to append.
-    :param effort_warning: User-facing notice when the requested effort could
-        not be honoured; ``None`` otherwise.
-    :param rollover_threshold_tokens: The window-derived rollover threshold
-        computed here (see ``resolve_rollover_threshold``), when the session
-        is a rollover session with a known model context window; ``None``
-        otherwise. Callers patch this into the already-written pi-native
-        extension config (``bridge.set_rollover_threshold_tokens``) so the
-        JS extension compacts at the same point Pi's own settings do.
-    """
-
-    env: dict[str, str]
-    args: list[str]
-    effort_warning: str | None = None
-    rollover_threshold_tokens: int | None = None
-
-
-def _model_context_window(
-    rendered: _PiModelsConfig, provider_id: str, model_id: str
-) -> int | None:
-    """Look up the ``contextWindow`` Pi's rendered models.json carries for a model.
-
-    :param rendered: The rendered Pi models.json (``provider.to_models_config()``).
-    :param provider_id: The provider id the model is served from.
-    :param model_id: The bare model id within that provider.
-    :returns: The known context window, or ``None`` when unrecorded.
-    """
-    provider_payload = rendered["providers"].get(provider_id)
-    if provider_payload is None:
-        return None
-    for model in provider_payload.get("models", []):
-        if isinstance(model, dict) and model.get("id") == model_id:
-            window = model.get("contextWindow")
-            return window if isinstance(window, int) else None
-    return None
-
-
-def pi_native_provider_launch(
-    agent_dir: Path,
-    provider: PiProviderConfig,
-    reasoning_effort: str | None = None,
-    *,
-    selection: str | None = None,
-    labels: Mapping[str, str] | None = None,
-) -> PiNativeLaunch:
-    """Write the managed config and return the launch env + CLI args for Pi.
-
-    :param agent_dir: The managed Pi config dir for this session.
-    :param provider: The resolved provider config.
-    :param reasoning_effort: Canonical omnigent effort for the session, e.g.
-        ``"high"``. Passed as ``--thinking`` on the primary provider; ignored
-        (with a warning) on a gateway-routed model, whose thinking must stay
-        off for text to surface.
-    :param selection: Optional picker value naming a generated provider and
-        model. When that provider no longer serves the model, the provider that
-        does is used instead.
-    :param labels: The session's labels. For a rollover session (see
-        ``omnigent.context.labels.is_rollover``) with a known model context
-        window, writes ``compaction`` settings so Pi's own auto-compaction
-        trigger matches Omnigent's rollover threshold instead of Pi's
-        defaults. ``None``/non-rollover leaves Pi's compaction settings
-        untouched.
-    :returns: The launch env, CLI args and any effort warning.
-    :raises ValueError: If no generated provider serves the selected model.
-    """
-    # Render once and reuse: rendering logs how an uncataloged model was routed,
-    # and this function both writes the config and reads it back for --provider.
-    rendered = provider.to_models_config()
-    # Resolve which provider the selected model lives in. Non-Claude models
-    # (GLM, GPT, Llama…) are in secondary providers; Claude models are in the
-    # primary provider. Read the rendered config so family fallbacks agree.
-    selected_model = provider.model
-    selection_parts = (
-        None if provider.inference_bound else _split_pi_native_model_selection(selection)
-    )
-    if selection_parts is not None:
-        candidate_provider, candidate_model = selection_parts
-        serving = [
-            provider_id
-            for provider_id, configured in rendered["providers"].items()
-            if any(model.get("id") == candidate_model for model in configured.get("models", []))
-        ]
-        if not serving:
-            raise ValueError(
-                f"Pi model selection {selection!r} is not available in managed configuration"
-            )
-        # A selection names the provider that served the model when it was
-        # picked. The workspace listing may since have routed the model to another
-        # surface, or discovery may have failed and folded it back into the
-        # primary; follow the model, which the rendered config already routed.
-        model_provider_id = candidate_provider if candidate_provider in serving else serving[0]
-        selected_model = candidate_model
-    else:
-        model_provider_id = _default_model_provider_id(provider, rendered)
-    write_pi_models_config(agent_dir, provider, rendered)
-    # Copy the user's global Pi settings but suppress defaultThinkingLevel.
-    # In TUI mode Pi applies the setting from ~/.pi/agent/settings.json; for
-    # non-Claude models via openai-completions, any thinking level causes the
-    # gateway to return 400 (reasoning_effort is sent even when
-    # supportsReasoningEffort is false in the compat block, because TUI mode
-    # applies the session-level thinking before the compat check fires).
-    # Passing None in the overlay makes _deep_merge_settings write null for the
-    # key; Pi's getDefaultThinkingLevel() returns null (falsy) → no thinking.
-    from omnigent.inner.pi_settings import prepare_managed_pi_agent_dir
-
-    overlay: dict[str, object] = {"defaultThinkingLevel": None}
-    # Only configured shortlists override the user's picker preferences.
-    # Qualified refs distinguish managed models from built-in providers.
-    enabled_refs = _enabled_model_refs(rendered)
-    if provider.curated_models and enabled_refs:
-        overlay["enabledModels"] = enabled_refs
-    from omnigent.context.labels import is_rollover
-
-    rollover_threshold_tokens: int | None = None
-    if is_rollover(labels):
-        from omnigent.context.rollover import resolve_keep_tokens, resolve_rollover_threshold
-
-        # The extension compacts at our threshold after each settled turn; Pi
-        # must keep our tail size. With a known window, Pi's own trigger
-        # (contextTokens > window - reserveTokens) is aligned as well.
-        compaction: dict[str, object] = {
-            "enabled": True,
-            "keepRecentTokens": resolve_keep_tokens(labels),
-        }
-        context_window = _model_context_window(rendered, model_provider_id, selected_model)
-        if context_window is not None:
-            rollover_threshold_tokens = resolve_rollover_threshold(
-                labels, model_window=context_window
-            )
-            compaction["reserveTokens"] = max(context_window - rollover_threshold_tokens, 1)
-        overlay["compaction"] = compaction
-    prepare_managed_pi_agent_dir(agent_dir, overlay=overlay)
-    env = {PI_CODING_AGENT_DIR_ENV_VAR: str(agent_dir)}
-    if provider.inference_bound:
-        env["OMNIGENT_PI_INFERENCE_BOUND"] = "1"
-    # When the model id contains a "/" Pi's arg parser splits on the first
-    # slash and treats the left part as a provider name, overriding
-    # --provider. Pass the fully-qualified "provider/model" reference so Pi's
-    # findExactModelReferenceMatch matches the canonical form exactly and
-    # routes to our custom provider, not a builtin with the same model id.
-    model_arg = (
-        f"{model_provider_id}/{selected_model}" if "/" in selected_model else selected_model
-    )
-    args = ["--provider", model_provider_id, "--model", model_arg]
-    thinking: str | None = None
-    effort_warning: str | None = None
-    if reasoning_effort and reasoning_effort not in EFFORT_CLEAR_VALUES:
-        try:
-            effort = validate_effort(reasoning_effort, "pi", PI_EFFORTS)
-        except ValueError as exc:
-            effort = None
-            effort_warning = str(exc)
-            _LOGGER.warning("pi-native: %s", exc)
-        if effort is not None:
-            thinking = to_pi_thinking_level(effort)
-    # For non-Claude models on openai-completions/responses, disable thinking.
-    # Some non-Claude models return reasoning_tokens in their
-    # responses; Pi's TUI mode applies thinking even with defaultThinkingLevel:null
-    # in settings, causing the agent loop to complete without surfacing the text
-    # content to the extension. Explicitly passing --thinking off ensures the
-    # completions handler doesn't activate the thinking path.
-    if model_provider_id != provider.provider_id:
-        args.extend(["--thinking", PI_THINKING_OFF])
-        if thinking is not None and thinking != PI_THINKING_OFF:
-            effort_warning = (
-                f"effort ignored for gateway-routed model {provider.model}: "
-                "thinking disabled to keep text surfacing"
-            )
-            _LOGGER.warning("pi-native: %s", effort_warning)
-    elif thinking is not None:
-        args.extend(["--thinking", thinking])
-    return PiNativeLaunch(
-        env=env,
-        args=args,
-        effort_warning=effort_warning,
-        rollover_threshold_tokens=rollover_threshold_tokens,
-    )

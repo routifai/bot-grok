@@ -5,7 +5,7 @@ bare ``{"id": "<model>"}`` entry in ``models.json``, with no ``contextWindow``,
 ``maxTokens``, ``reasoning``, or cost metadata.  Pi then falls back to its own
 defaults (128k context / 16k output / reasoning disabled / zero cost).
 
-The defect is in ``_inline_family_pi_provider`` (omnigent/pi_native_credentials.py):
+The defect is in ``_inline_family_pi_provider`` (omnigent/inner/pi_credentials.py):
 it constructs a ``PiProviderConfig`` without ``extra_models``, so
 ``to_models_config`` appends only ``{"id": ...}`` instead of a full entry.
 
@@ -24,7 +24,7 @@ Steps to reproduce (adapted from the bug report):
 
 from __future__ import annotations
 
-from omnigent.harnesses.pi_native import credentials as creds
+from omnigent.inner import pi_credentials as creds
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures

@@ -440,7 +440,7 @@ async def test_handle_model_options_uses_host_pi_configuration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Pi's launch picker uses only models configured through Omnigent."""
-    from omnigent.harnesses.pi_native import credentials as pi_native_credentials
+    from omnigent.inner import pi_credentials as pi_native_credentials
 
     monkeypatch.setattr(
         pi_native_credentials,
@@ -476,7 +476,7 @@ async def test_handle_model_options_serves_the_pi_harness(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The headless ``pi`` harness gets the same launch picker as ``pi-native``."""
-    from omnigent.harnesses.pi_native import credentials as pi_native_credentials
+    from omnigent.inner import pi_credentials as pi_native_credentials
     from omnigent.host import connect as host_connect
 
     # The source decoration comes from the host's ambient provider config; pin it.

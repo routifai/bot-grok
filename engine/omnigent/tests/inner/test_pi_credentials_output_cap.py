@@ -5,7 +5,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from omnigent.harnesses.pi_native import credentials as pnc
+from omnigent.inner import pi_credentials as pnc
 from omnigent.models import model_catalog
 
 

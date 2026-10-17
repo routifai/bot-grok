@@ -15,7 +15,7 @@ import yaml
 from omnigent.errors import OmnigentError
 from omnigent.harnesses.claude_native.main import resolve_native_claude_config
 from omnigent.harnesses.codex_native.app_server import resolve_native_codex_launch
-from omnigent.harnesses.pi_native.credentials import (
+from omnigent.inner.pi_credentials import (
     _live_family_model_entries,
     resolve_pi_native_provider,
 )

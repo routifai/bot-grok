@@ -9,7 +9,7 @@ only on its Anthropic surface, and no routing warning is surfaced.
 
 These tests pin the *resolution boundary* the runner calls at launch
 (:func:`resolve_pi_native_provider`), which is where all three reported
-defects live (``omnigent/harnesses/pi_native/credentials.py``). They encode
+defects live (``omnigent/inner/pi_credentials.py``). They encode
 the reported bug's suggested regression tests A/B/C and assert the
 **expected** (correct) behaviour, so they fail on the buggy build and pass
 once the fix lands:
@@ -29,7 +29,7 @@ by the CLI e2e sibling
 
 from __future__ import annotations
 
-from omnigent.harnesses.pi_native import credentials as creds
+from omnigent.inner import pi_credentials as creds
 
 # A Claude-family model id the gateway serves only on its Anthropic surface.
 _CLAUDE_MODEL = "claude-fable-5-1"

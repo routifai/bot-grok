@@ -667,6 +667,55 @@ _STREAM_READ_CHUNK_SIZE = 65536
 # inject a CancelledError that bypasses the SIGKILL path.
 _RPC_SESSION_CLOSE_REAP_TIMEOUT_S = 2.0
 
+def _pi_version(executable: str) -> tuple[int, int, int] | None:
+    """Return the Pi CLI version as ``(major, minor, patch)``, or ``None``.
+
+    Runs ``pi --version`` synchronously with a short timeout. Returns
+    ``None`` on any failure (not installed, hung, unexpected output) so
+    callers treat an unknown version as "feature not supported" and avoid
+    passing flags the installed Pi may not recognise.
+
+    :param executable: Resolved path to the Pi CLI.
+    :returns: Parsed version tuple, e.g. ``(0, 79, 10)``, or ``None``.
+    """
+    try:
+        result = subprocess.run(
+            [executable, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5.0,
+        )
+    except Exception:  # noqa: BLE001
+        return None
+    # Older Pi (mariozechner package) prints the version to stderr via
+    # console.error; newer Pi (earendil-works) prints to stdout via
+    # console.log. Check both so the probe works across all versions.
+    combined = result.stdout + result.stderr
+    match = re.search(r"(\d+)\.(\d+)\.(\d+)", combined)
+    if match is None:
+        return None
+    return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+
+
+def _pi_supports_approve(executable: str) -> bool:
+    """Return ``True`` when the Pi CLI at *executable* supports ``--approve``.
+
+    ``--approve`` (``projectTrustOverride=true``) was added in
+    ``@earendil-works/pi-coding-agent@0.79.0``. Passing it to an older
+    version produces an "Unknown option" error and Pi exits immediately.
+
+    Fails open — returns ``False`` on any version-probe error so an older
+    Pi keeps working without the flag.
+
+    :param executable: Resolved path to the Pi CLI.
+    :returns: ``True`` iff the installed Pi version is >= 0.79.0.
+    """
+    ver = _pi_version(executable)
+    if ver is None:
+        return False
+    return ver >= (0, 79, 0)
+
+
 # Idle budget for one stdout read during a turn. Expiry alone never ends
 # the turn (a long tool call may stay silent past it); only a real stdout
 # EOF does. Module-level so tests can patch it.
@@ -1882,12 +1931,10 @@ class PiExecutor(Executor):
         # The combined effect is: pi's native read/bash/edit/write stay
         # off (they don't route through Omnigent policies / history), and the bridge
         # extension's tools are explicitly allowlisted.
-        from omnigent.harnesses.pi_native.main import pi_supports_approve
-
         self._extra_args: list[str] = ["--no-tools"]
         if not context_files:
             self._extra_args.append("--no-context-files")
-        if pi_supports_approve(self._pi_path):
+        if _pi_supports_approve(self._pi_path):
             # Pre-accept the project-folder trust dialog. Pi 0.79+ shows a
             # blocking TUI prompt on first launch in a directory with .pi/
             # resources. In a runner-driven session there is nobody at the
