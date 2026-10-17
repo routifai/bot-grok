@@ -27,7 +27,7 @@ from fastapi import FastAPI
 
 from omnigent._platform import IS_WINDOWS
 from omnigent.debug_logging import debug_event, runner_primary_session_id
-from omnigent.inner import _proc
+from omnigent.harnesses import _proc
 from omnigent.runner.transports.ws_tunnel.serve import RUNNER_TUNNEL_REJECTION_PREFIX
 from omnigent.util.threaded_auth import ThreadedAuth
 from omnigent.version import VERSION
@@ -1416,7 +1416,7 @@ def create_app(
     host_owns_global_cleanup = _runner_host_owns_global_cleanup_from_env()
 
     # Out-of-process runner owns its own TerminalRegistry.
-    from omnigent.inner.terminal import reap_orphaned_terminals
+    from omnigent.harnesses.terminal import reap_orphaned_terminals
     from omnigent.terminals import TerminalRegistry
 
     _terminal_registry = TerminalRegistry(conversation_link_base_url=server_url)

@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     # TYPE_CHECKING import is only here so static type-checkers + ruff
     # can resolve the names in deferred annotations (``from __future__
     # import annotations`` is in effect).
-    from omnigent.inner.datamodel import OSEnvSpec
+    from omnigent.harnesses.datamodel import OSEnvSpec
 
 from omnigent.entities import (
     NON_CONTENT_ITEM_TYPES,
@@ -694,7 +694,7 @@ def _build_claude_sdk_spawn_env(
     Build the env-var dict the claude-sdk harness wrap reads.
 
     Maps spec.executor fields → the ``HARNESS_CLAUDE_SDK_*`` env
-    vars defined in ``omnigent/inner/claude_sdk_harness.py``.
+    vars defined in ``omnigent/harnesses/claude_sdk_harness.py``.
     Per the v1 spec-config-flow design (see §Step 5b in the
     design doc), per-spawn env overrides are how Omnigent threads
     per-spec config into the subprocess without polluting
@@ -723,7 +723,7 @@ def _build_claude_sdk_spawn_env(
         )
     # Session workspace (the selected working folder), not the bundle workdir.
     # Without this the SDK subprocess inherits the runner's launch cwd — see
-    # ``HARNESS_CLAUDE_SDK_CWD`` in ``omnigent/inner/claude_sdk_harness.py``.
+    # ``HARNESS_CLAUDE_SDK_CWD`` in ``omnigent/harnesses/claude_sdk_harness.py``.
     if cwd is not None:
         env["HARNESS_CLAUDE_SDK_CWD"] = str(cwd)
 
@@ -834,7 +834,7 @@ def _build_pi_spawn_env(
     Build the env-var dict the pi harness wrap reads.
 
     Maps spec.executor fields → the ``HARNESS_PI_*`` env vars
-    defined in ``omnigent/inner/pi_harness.py``. Mirrors
+    defined in ``omnigent/harnesses/pi_harness.py``. Mirrors
     :func:`_build_claude_sdk_spawn_env` — same per-spawn env-var
     pattern from §Step 5a.
 

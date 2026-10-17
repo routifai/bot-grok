@@ -17,9 +17,9 @@ from __future__ import annotations
 import pytest
 
 from omnigent.errors import OmnigentError
-from omnigent.inner.datamodel import AgentDef, OSEnvSpec
-from omnigent.inner.datamodel import ExecutorSpec as OmniExecutorSpec
-from omnigent.inner.tools import AgentTool, FunctionTool
+from omnigent.harnesses.datamodel import AgentDef, OSEnvSpec
+from omnigent.harnesses.datamodel import ExecutorSpec as OmniExecutorSpec
+from omnigent.harnesses.tools import AgentTool, FunctionTool
 from omnigent.spec import (
     AgentSpec,
     ExecutorSpec,

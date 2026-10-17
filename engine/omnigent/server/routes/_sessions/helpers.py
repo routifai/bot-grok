@@ -6143,7 +6143,7 @@ def _filesystem_attachment_in_history(
     :param content: Additional incoming message blocks to check before stored history.
     :returns: A referenced filesystem attachment's name, or ``None``.
     """
-    from omnigent.inner.native_attachments import requires_filesystem
+    from omnigent.harnesses.native_attachments import requires_filesystem
 
     if file_store is None:
         return None
@@ -8433,7 +8433,7 @@ def require_filesystem_attachment_runtime(
     :param runner_router: Router used to distinguish a remote host from an offline one.
     :raises OmnigentError: When the runtime needs an upgrade, connection, or reroute.
     """
-    from omnigent.inner.native_attachments import CAP_FILESYSTEM_ATTACHMENTS
+    from omnigent.harnesses.native_attachments import CAP_FILESYSTEM_ATTACHMENTS
 
     host = host_registry.get(host_id) if host_id and host_registry is not None else None
     runner = tunnel_registry.get(runner_id) if runner_id and tunnel_registry is not None else None
@@ -8488,7 +8488,7 @@ def _enforce_filesystem_attachment_policy(
     :raises HTTPException: 415 when an extension is denied by configuration,
         or 413 when the files would exceed a per-file or per-session quota.
     """
-    from omnigent.inner.native_attachments import requires_filesystem
+    from omnigent.harnesses.native_attachments import requires_filesystem
     from omnigent.server.server_config import (
         filesystem_attachment_denied_extensions,
         filesystem_attachment_file_limit,

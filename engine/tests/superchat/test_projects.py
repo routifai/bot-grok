@@ -399,8 +399,8 @@ def test_bundles_offer_open_project_and_keep_the_whole_workspace_reachable(
 
 
 async def test_file_tools_in_a_project_still_reach_the_workspace(home: Path) -> None:
-    from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec
-    from omnigent.inner.os_env import create_os_environment
+    from omnigent.harnesses.datamodel import OSEnvSandboxSpec, OSEnvSpec
+    from omnigent.harnesses.os_env import create_os_environment
 
     project = _card(home, "q3-deck")
     other = home / "your_files"
@@ -447,8 +447,8 @@ def test_block_tells_the_model_to_match_every_project(home: Path) -> None:
 
 async def test_project_list_reaches_the_prompt_of_claude_sdk_and_pi(home: Path) -> None:
     """The per-turn list is in the text each harness sends the model, in both turn shapes."""
-    from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
-    from omnigent.inner.pi_executor import _build_pi_prompt
+    from omnigent.harnesses.claude_sdk_executor import ClaudeSDKExecutor
+    from omnigent.harnesses.pi_executor import _build_pi_prompt
     from omnigent.runner.app import _prepend_turn_blocks
 
     _card(home, "taxes")

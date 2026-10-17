@@ -11,7 +11,7 @@ from mcp.types import (
     TextContent,
 )
 
-from omnigent.inner.executor import ToolCallStatus, classify_tool_result
+from omnigent.harnesses.executor import ToolCallStatus, classify_tool_result
 from omnigent.runtime.tool_result_replay import tool_result_content_blocks
 from omnigent.tools.mcp import _format_call_result
 from tests._image_fixtures import _TINY_PNG_BASE64

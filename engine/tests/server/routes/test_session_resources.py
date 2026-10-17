@@ -973,7 +973,7 @@ def bash_terminal_spec(monkeypatch: pytest.MonkeyPatch) -> None:
     :param monkeypatch: Pytest monkeypatch fixture.
     :returns: None.
     """
-    from omnigent.inner.datamodel import TerminalEnvSpec
+    from omnigent.harnesses.datamodel import TerminalEnvSpec
     from omnigent.server.routes import sessions as sessions_module
     from omnigent.spec.types import AgentSpec
 
@@ -1865,7 +1865,7 @@ async def test_downscaled_upload_reaches_native_resolver(
 
     from PIL import Image
 
-    from omnigent.inner.native_attachments import framework_notices
+    from omnigent.harnesses.native_attachments import framework_notices
     from omnigent.runner.app import _resolve_forwarded_message_content
     from omnigent.runtime import content_resolver
 
@@ -6191,7 +6191,7 @@ def offline_env_app(
     del runner_globals_reset
     from types import SimpleNamespace
 
-    from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec
+    from omnigent.harnesses.datamodel import OSEnvSandboxSpec, OSEnvSpec
     from omnigent.server.routes.sessions import routes_resources as _routes
 
     conv = Conversation(

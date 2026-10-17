@@ -126,7 +126,7 @@ class HostMaintenanceJanitor:
             await sweep_orphaned_harness_processes(tmp_parent=resolved_harness_tmp_parent)
 
         async def _reap_terminals() -> object:
-            from omnigent.inner.terminal import reap_orphaned_terminals
+            from omnigent.harnesses.terminal import reap_orphaned_terminals
 
             return await _run_sync_stage(reap_orphaned_terminals)
 

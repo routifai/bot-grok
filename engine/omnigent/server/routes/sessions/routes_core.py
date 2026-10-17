@@ -3006,7 +3006,7 @@ def register_core_routes(
                     break
                 files_after = files_page.last_id
 
-            from omnigent.inner.native_attachments import requires_filesystem
+            from omnigent.harnesses.native_attachments import requires_filesystem
 
             filesystem_sources = [
                 stored for stored in fork_source_files if requires_filesystem(stored.filename)

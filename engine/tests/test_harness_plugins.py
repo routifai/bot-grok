@@ -92,7 +92,7 @@ def test_community_harness_rejects_builtin_collision(monkeypatch: pytest.MonkeyP
 
     state = hp.plugin_state()
     assert "evil" in state.load_errors
-    assert hp.harness_modules()["claude-sdk"] == "omnigent.inner.claude_sdk_harness"
+    assert hp.harness_modules()["claude-sdk"] == "omnigent.harnesses.claude_sdk_harness"
 
 
 def test_community_harness_rejects_alias_collision_with_builtin(

@@ -72,7 +72,7 @@ dependencies = [
     # own FTS5. See docs/adr/0014-files-live-in-the-computer.md.
     "sqlite-vec>=0.1.9,<0.2",
     # Round-trip (comment/format-preserving) TOML editing of codex's
-    # config.toml (omnigent/inner/codex_executor.py). stdlib tomllib is read-only.
+    # config.toml (omnigent/harnesses/codex_executor.py). stdlib tomllib is read-only.
     "tomlkit>=0.12,<1",
     # omnigent deps (runtime, spec, server, persistent terminal, etc.).
     "alembic>=1.0,<2",
@@ -112,7 +112,7 @@ dependencies = [
     # directly, so pinned here rather than left transitive.
     "packaging>=23,<26",
     # CA root bundle for client TLS verification (omnigent/tls.py,
-    # omnigent/inner/egress/ca.py). Required as a real fallback on uv /
+    # omnigent/harnesses/egress/ca.py). Required as a real fallback on uv /
     # python-build-standalone interpreters whose OpenSSL has no default cert
     # path; previously only transitive, pinned here now that we import it.
     "certifi>=2023.7",
@@ -231,8 +231,8 @@ test = [
     # and lets the rest of the suite continue. Pinned exactly to a
     # known-good release for consistency with pytest-shard above.
     "pytest-timeout==2.4.0",
-    # Retry LLM-driven inner tests up to 2 extra times on codex; see
-    # ``pytest_collection_modifyitems`` in ``tests/inner/conftest.py``.
+    # Retry LLM-driven harness tests up to 2 extra times on codex; see
+    # ``pytest_collection_modifyitems`` in ``tests/harnesses/conftest.py``.
     # Pinned exactly to a known-stable release for consistency with
     # pytest-shard / pytest-timeout above. 16.2+ is required under
     # pytest 9: 14.0 predates pytest 9 and corrupts fixture-finalizer
@@ -275,7 +275,7 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["."]
-# Discovers the `omnigent` package (including `omnigent.inner.*` and
+# Discovers the `omnigent` package (including `omnigent.harnesses.*` and
 # all omnigent subpackages absorbed during unification).
 include = ["omnigent*"]
 
@@ -302,7 +302,7 @@ testpaths = ["tests"]
 # Disable it until the plugin stops writing to that attribute.
 addopts = "-p no:structlog_config --ignore=tests/e2e_ui --ignore=tests/browser_ui --ignore=tests/e2e_live --ignore=tests/integration"
 # Default per-test wallclock cap. Catches infinite hangs in any
-# suite (unit, inner, integration, e2e) without bothering tests
+# suite (unit, harnesses, integration, e2e) without bothering tests
 # that actually finish. The longest legitimate integration tests
 # are well under 5 min; anything longer than that is almost
 # certainly a hang and should surface a traceback rather than

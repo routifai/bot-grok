@@ -69,7 +69,7 @@ from omnigent.harness_plugins import (
     model_env_keys,
     spawn_env_builders,
 )
-from omnigent.inner.native_attachments import (
+from omnigent.harnesses.native_attachments import (
     framework_notice_block,
     has_unresolved_file_id,
     resolve_file_id_block,
@@ -8255,7 +8255,7 @@ def create_runner_app(
         :param agent_spec: Agent spec for the session, if any.
         :returns: JSON-ready ``{"unconfined": bool, "roots": [...]}``.
         """
-        from omnigent.inner.sandbox import (
+        from omnigent.harnesses.sandbox import (
             ReachableRoot,
             is_unconfined,
             reach_payload,
@@ -8352,7 +8352,7 @@ def create_runner_app(
                 },
             )
 
-        from omnigent.inner.datamodel import OSEnvSpec, TerminalEnvSpec
+        from omnigent.harnesses.datamodel import OSEnvSpec, TerminalEnvSpec
 
         cwd_override = body.get("cwd")
         sandbox_override = body.get("sandbox")
@@ -10629,7 +10629,10 @@ def _build_spawn_env_from_spec(
         return None
 
     if env is not None:
-        from omnigent.inner.agent_env import desktop_session_passthrough, strip_desktop_session_env
+        from omnigent.harnesses.agent_env import (
+            desktop_session_passthrough,
+            strip_desktop_session_env,
+        )
 
         env = strip_desktop_session_env(env)
         env.update(desktop_session_passthrough(effective_spec.os_env))
@@ -10725,7 +10728,7 @@ def _apply_sandbox_override_from_verdict(
     :param verdict_data: The ``PolicyVerdict.data`` payload, expected
         to be a dict with ``arguments.sandbox``.
     """
-    from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec
+    from omnigent.harnesses.datamodel import OSEnvSandboxSpec, OSEnvSpec
 
     if not isinstance(verdict_data, Mapping):
         return

@@ -26,8 +26,8 @@ from pathlib import Path
 
 import pytest
 
-from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec, TerminalEnvSpec
-from omnigent.inner.terminal import TerminalInstance
+from omnigent.harnesses.datamodel import OSEnvSandboxSpec, OSEnvSpec, TerminalEnvSpec
+from omnigent.harnesses.terminal import TerminalInstance
 from omnigent.terminals import TerminalRegistry
 
 pytestmark = pytest.mark.skipif(

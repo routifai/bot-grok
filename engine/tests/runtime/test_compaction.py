@@ -131,7 +131,7 @@ async def test_downscaled_images_preserve_compaction_boundaries(
 ) -> None:
     from types import SimpleNamespace
 
-    from omnigent.inner.native_attachments import FRAMEWORK_NOTICE_BLOCK_TYPE
+    from omnigent.harnesses.native_attachments import FRAMEWORK_NOTICE_BLOCK_TYPE
     from omnigent.runtime import workflow
     from omnigent.runtime.compaction import _CompactionState
     from omnigent.spec import AgentSpec

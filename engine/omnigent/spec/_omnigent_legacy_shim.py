@@ -118,7 +118,7 @@ def build(
         set, the wrapper injects this list into the legacy
         callable's ``context["configured_phases"]`` on every
         evaluation — matching the contract
-        :class:`omnigent.inner.policies.FunctionPolicy`
+        :class:`omnigent.harnesses.policies.FunctionPolicy`
         provides natively (``phase_context = {"configured_phases":
         list(self.on)}``). ``None`` means the wrapper does not
         add the key — used only by tests that build the shim
@@ -425,7 +425,7 @@ def _legacy_content(ctx: EvaluationContext) -> object:
     - ``TOOL_RESULT``: omnigent passes the raw tool output
       string. Legacy omnigent passes the parsed result *dict*
       via
-      :func:`omnigent.inner.mcp_tools._extract_call_result_payload`
+      :func:`omnigent.harnesses.mcp_tools._extract_call_result_payload`
       — when an MCP server emits a single JSON-formatted text
       block (the common shape for the Databricks Google /
       Glean MCP tools and any FastMCP-based server returning a
@@ -484,7 +484,7 @@ def _legacy_context(
     Legacy omnigent passed ``{"labels": {...},
     "configured_phases": [...], "tool_name": "sleep"}`` — but
     ``tool_name`` is *only* added on ``TOOL_RESULT`` (see
-    :meth:`omnigent.inner.session.Session._apply_tool_result_policy`,
+    :meth:`omnigent.harnesses.session.Session._apply_tool_result_policy`,
     which builds ``context = {"tool_name": tool_name}`` for
     that phase). On ``TOOL_CALL``, native omnigent passes no
     extra context — the legacy callable reads the tool name
@@ -495,7 +495,7 @@ def _legacy_context(
     Agent-plane's engine context already carries ``labels``,
     and the per-policy ``configured_phases`` is captured at
     shim build time (matches
-    :class:`omnigent.inner.policies.FunctionPolicy.evaluate`,
+    :class:`omnigent.harnesses.policies.FunctionPolicy.evaluate`,
     which sets ``phase_context = {"configured_phases":
     list(self.on)}``).
 

@@ -22,7 +22,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from omnigent.inner import _proc
+from omnigent.harnesses import _proc
 
 
 def _is_tcp_listening(host: str, port: int) -> bool:

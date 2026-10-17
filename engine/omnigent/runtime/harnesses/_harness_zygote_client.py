@@ -34,7 +34,7 @@ import signal
 import socket
 from typing import Any
 
-from omnigent.inner import _proc
+from omnigent.harnesses import _proc
 from omnigent.runner._zygote import ZYGOTE_HARNESS_FD_ENV_VAR
 
 logger = logging.getLogger(__name__)

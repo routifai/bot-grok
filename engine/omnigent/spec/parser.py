@@ -20,7 +20,7 @@ from pydantic import (
 )
 
 from omnigent.errors import ErrorCode, OmnigentError
-from omnigent.inner.datamodel import (
+from omnigent.harnesses.datamodel import (
     DEFAULT_BASIC_USERNAME,
     CredentialProxyEntry,
     CredentialProxySpec,
@@ -30,7 +30,7 @@ from omnigent.inner.datamodel import (
     TerminalEnvSpec,
     parse_write_paths,
 )
-from omnigent.inner.sandbox import containment_prefix
+from omnigent.harnesses.sandbox import containment_prefix
 from omnigent.spec.types import (
     DEFAULT_ASK_TIMEOUT,
     AgentSpec,
@@ -279,7 +279,7 @@ def parse(root: Path, *, expand_env: bool = True) -> AgentSpec:
     # Top-level ``async:`` flag gates the LLM-callable async-dispatch
     # builtins (``sys_call_async``, ``sys_read_inbox``,
     # ``sys_cancel_async``). Defaults to True to match
-    # ``omnigent/inner/datamodel.py::AgentDef.async_enabled`` — the
+    # ``omnigent/harnesses/datamodel.py::AgentDef.async_enabled`` — the
     # same YAML must produce the same tool surface under Omnigent mode and
     # the legacy inner stack. Agents that want to suppress the surface
     # declare ``async: false`` explicitly. ``bool()`` accepts YAML
@@ -289,7 +289,7 @@ def parse(root: Path, *, expand_env: bool = True) -> AgentSpec:
     # Top-level ``timers:`` flag gates the LLM-callable timer
     # builtins (``sys_timer_set``, ``sys_timer_cancel``).
     # Defaults to False to match
-    # ``omnigent/inner/datamodel.py::AgentDef.timers`` — agents
+    # ``omnigent/harnesses/datamodel.py::AgentDef.timers`` — agents
     # opt into the timer surface explicitly. See step 10 of the
     # harness contract migration.
     timers = bool(raw.get("timers", False))
@@ -322,7 +322,7 @@ def parse(root: Path, *, expand_env: bool = True) -> AgentSpec:
     sub_agents = _discover_sub_agents(root / "agents", expand_env=expand_env)
     # Top-level max_sessions: concurrent-session cap when this agent is
     # exposed as a Sub-agent Type (AgentSpec.max_sessions; distinct from
-    # the legacy inline tools.<name>.max_sessions in inner/loader.py).
+    # the legacy inline tools.<name>.max_sessions in harnesses/loader.py).
     raw_max_sessions = raw.get("max_sessions")
     max_sessions: int | None = None
     if raw_max_sessions is not None:
@@ -832,7 +832,7 @@ def _parse_os_env(
     config surface — a top-level ``os_env:`` mapping with
     ``type``, ``cwd``, ``sandbox: {...}``, ``fork``, and
     ``start_in_scratch`` keys. See
-    :class:`omnigent.inner.datamodel.OSEnvSpec` for the
+    :class:`omnigent.harnesses.datamodel.OSEnvSpec` for the
     semantics of each field.
 
     :param raw: The raw ``os_env:`` value from config.yaml.
@@ -1001,7 +1001,7 @@ def _parse_os_env_sandbox(
     mask_paths = _parse_mask_paths(raw.get("mask_paths"))
     env_passthrough = _parse_env_passthrough(raw.get("env_passthrough"))
     egress_rules = _parse_egress_rules(raw.get("egress_rules"))
-    from omnigent.inner.sandbox import _default_sandbox_for_platform, _resolve_sandbox_type
+    from omnigent.harnesses.sandbox import _default_sandbox_for_platform, _resolve_sandbox_type
 
     if "type" not in raw:
         sandbox_type = _default_sandbox_for_platform().type
@@ -1326,7 +1326,7 @@ def _parse_egress_rules(raw: object) -> list[str] | None:
     ``os_env.sandbox``.
 
     Each entry is validated at parse time via
-    :func:`~omnigent.inner.egress.rules.parse_rule` so syntax
+    :func:`~omnigent.harnesses.egress.rules.parse_rule` so syntax
     errors surface immediately rather than at proxy start time.
 
     :param raw: The raw value from the YAML mapping. ``None``
@@ -1344,7 +1344,7 @@ def _parse_egress_rules(raw: object) -> list[str] | None:
         )
     if not raw:
         return None
-    from omnigent.inner.egress.rules import parse_rule
+    from omnigent.harnesses.egress.rules import parse_rule
 
     validated: list[str] = []
     for i, entry in enumerate(raw):
@@ -1943,7 +1943,7 @@ def _parse_credential_proxy_host(raw: str, *, field_path: str) -> str:
         characters outside the DNS grammar ``[A-Za-z0-9.-]`` (wildcards
         included — credentials bind to an exact host).
     """
-    from omnigent.inner.egress.rules import is_dns_safe_host
+    from omnigent.harnesses.egress.rules import is_dns_safe_host
 
     if not raw.strip():
         raise OmnigentError(

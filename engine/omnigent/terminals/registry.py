@@ -7,7 +7,7 @@ owned ``Shell`` (pexpect-based) instances keyed by ``shell_name``.
 
 Per ``designs/OMNIGENT_TERMINAL_BRIDGE.md`` §4.2, this rewrite swaps to:
 
-- One terminal abstraction (``inner.terminal.TerminalInstance``) for
+- One terminal abstraction (``harnesses.terminal.TerminalInstance``) for
   the whole project — tmux-based.
 - Three-level keying: ``(conversation_id, terminal_name, session_key)``.
   Multiple session keys per terminal name allow independent tmux
@@ -42,8 +42,8 @@ import threading
 from dataclasses import dataclass
 from urllib.parse import quote
 
-from omnigent.inner.datamodel import OSEnvSpec, TerminalEnvSpec
-from omnigent.inner.terminal import TerminalInstance, create_terminal_instance
+from omnigent.harnesses.datamodel import OSEnvSpec, TerminalEnvSpec
+from omnigent.harnesses.terminal import TerminalInstance, create_terminal_instance
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +194,7 @@ class TerminalRegistry:
             calling.
         :param parent_os_env: The agent's primary
             :class:`OSEnvSpec`. Used by
-            :func:`inner.terminal.create_terminal_instance` to
+            :func:`harnesses.terminal.create_terminal_instance` to
             resolve the terminal's effective os_env when the
             terminal spec doesn't declare one of its own.
         :param cwd_override: Optional cwd override, already vetted

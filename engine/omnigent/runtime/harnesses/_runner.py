@@ -57,7 +57,7 @@ import uvicorn
 from fastapi import FastAPI
 
 from omnigent._platform import IS_WINDOWS
-from omnigent.inner import _proc
+from omnigent.harnesses import _proc
 from omnigent.process_logging import env_truthy
 from omnigent.runner._zygote import ZYGOTE_HARNESS_FORKED_ENV_VAR
 
@@ -128,7 +128,7 @@ def _load_harness_app(harness: str, module_path: str, conversation_id: str) -> F
         ``"claude-sdk"``. Stashed on ``app.state.harness`` for
         introspection.
     :param module_path: Fully-qualified Python module to import,
-        e.g. ``"omnigent.inner.claude_sdk_harness"``. Must
+        e.g. ``"omnigent.harnesses.claude_sdk_harness"``. Must
         export ``create_app() -> FastAPI``.
     :param conversation_id: AP-allocated conversation identifier
         for the subprocess to scope its in-memory state by, e.g.
@@ -305,7 +305,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
     :param argv: Argument list (without the program name),
         e.g. ``["--harness", "claude-sdk", "--module",
-        "omnigent.inner.claude_sdk_harness", "--socket",
+        "omnigent.harnesses.claude_sdk_harness", "--socket",
         "/tmp/omnigent/<id>/conv-abc.sock", "--conversation-id",
         "conv_abc123", "--parent-pid", "12345"]``.
     :returns: Parsed namespace with ``harness``, ``module``,

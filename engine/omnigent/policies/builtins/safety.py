@@ -39,7 +39,7 @@ NATIVE_WRITE_TOOLS: frozenset[str] = frozenset({"Write", "Edit", "MultiEdit", "N
 _NATIVE_OS_TOOLS = NATIVE_WRITE_TOOLS | {"Bash", "Read", "Glob", "Grep"}
 
 # Pi native tool names (lowercase), surfaced via the pi ``tool_call``
-# extension hook (see ``omnigent.inner.pi_executor._gate_native_tool``).
+# extension hook (see ``omnigent.harnesses.pi_executor._gate_native_tool``).
 # Pi runs these in-process and routes them through the same TOOL_CALL
 # policy verdict — but under its own names, distinct from the
 # Claude/Codex-cased ``_NATIVE_OS_TOOLS``. Pi uses the same argument keys

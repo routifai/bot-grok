@@ -25,7 +25,7 @@ from omnigent.context.labels import SUPERSIDE_CHAT_MODE_VALUE
 from omnigent.context.tool_digest import digest_tool_items
 from omnigent.debug_logging import phase_scope
 from omnigent.errors import ElicitationDeclinedError, ErrorPhase
-from omnigent.inner.executor import (
+from omnigent.harnesses.executor import (
     CompactionComplete,
     CompactionStarted,
     Executor,
@@ -41,7 +41,7 @@ from omnigent.inner.executor import (
     TurnCancelled,
     TurnComplete,
 )
-from omnigent.inner.tracing import TracingContext, is_tracing_enabled
+from omnigent.harnesses.tracing import TracingContext, is_tracing_enabled
 from omnigent.policies.types import FAIL_CLOSED_PHASES
 from omnigent.runtime.harnesses._scaffold import HarnessApp, PolicyVerdictPayload, TurnContext
 from omnigent.runtime.tool_output import cap_tool_output

@@ -37,9 +37,9 @@ from typing import Any, TypeAlias, cast
 
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.harness_aliases import canonicalize_harness
-from omnigent.inner.datamodel import AgentDef, OSEnvSpec, TerminalEnvSpec
-from omnigent.inner.datamodel import ExecutorSpec as OmniExecutorSpec
-from omnigent.inner.tools import (
+from omnigent.harnesses.datamodel import AgentDef, OSEnvSpec, TerminalEnvSpec
+from omnigent.harnesses.datamodel import ExecutorSpec as OmniExecutorSpec
+from omnigent.harnesses.tools import (
     AgentTool,
     CancellableFunctionTool,
     FunctionTool,
@@ -343,7 +343,7 @@ def _translate_tools_to_omnigent(spec: AgentSpec) -> dict[str, Tool]:
             tools[sub.name] = _sub_spec_to_agent_tool(sub)
     # MCP servers round-trip back to inner :class:`MCPTool` entries
     # so the omnigent harness surfaces them to the LLM via its
-    # own MCP machinery (``omnigent.inner.mcp_tools``). The
+    # own MCP machinery (``omnigent.harnesses.mcp_tools``). The
     # forward direction translated ``MCPTool`` →
     # :class:`MCPServerConfig` (stdio or http); this is the inverse.
     # ``OmnigentExecutor.from_spec`` calls this reverse path when
@@ -928,7 +928,7 @@ def agent_def_to_agent_spec(
     """
     name = _translate_name_from_def(agent_def.name)
     # ``instructions:`` (resolved from a sibling file or inline text by
-    # ``omnigent.inner.loader.load_agent_def``) wins over ``prompt:``
+    # ``omnigent.harnesses.loader.load_agent_def``) wins over ``prompt:``
     # when both are present. Authors who write ``instructions:
     # AGENTS.md`` are deliberately pointing at a file, and the
     # alternative — silently dropping it in favor of an inline
@@ -1128,7 +1128,7 @@ def _translate_skills_filter_from_yaml(
     the omnigent spec parser accepts (``"all"`` / ``"none"`` /
     list of names).
 
-    The omnigent loader (``inner.loader.load_agent_def``) does
+    The omnigent loader (``harnesses.loader.load_agent_def``) does
     NOT read this field — it's omnigent spec config that
     controls the Claude SDK harness's host-skill loading, not an
     omnigent runtime concept. So when the YAML is consumed via
@@ -1304,7 +1304,7 @@ def _agent_tool_to_sub_spec(
     :param raw_executor: The raw ``executor:`` dict for this inline
         AgentTool taken directly from the parent's YAML (before
         omnigent' dataclass parsing dropped unknown keys). When set,
-        fields the omnigent :class:`~omnigent.inner.datamodel.ExecutorSpec`
+        fields the omnigent :class:`~omnigent.harnesses.datamodel.ExecutorSpec`
         datamodel does not expose — ``auth`` and ``use_responses`` —
         are read from this dict and forwarded into the child's
         :class:`ExecutorSpec` via :func:`_translate_executor_from_def`.
@@ -1559,7 +1559,7 @@ def _translate_executor_from_def(
     :param raw_executor: Optional raw YAML ``executor:`` mapping,
         read for the ``auth`` block when the parsed spec carries none.
         The omnigent loader silently drops unknown fields on its own
-        :class:`~omnigent.inner.datamodel.ExecutorSpec`, so we have to
+        :class:`~omnigent.harnesses.datamodel.ExecutorSpec`, so we have to
         recover it from the raw dict here.
     :returns: An :class:`ExecutorSpec` with ``type="omnigent"``
         when a harness is known.

@@ -231,7 +231,7 @@ def init(
     _memory_service = memory_service
     _caps = caps if caps is not None else RuntimeCaps()
     # Tmux terminal registry: server-resident, conversation-scoped
-    # ``inner.terminal.TerminalInstance`` map. See
+    # ``harnesses.terminal.TerminalInstance`` map. See
     # ``designs/OMNIGENT_TERMINAL_BRIDGE.md`` §4.2 for the design.
     # Sandbox enforcement is per-terminal (declared on the spec's
     # ``TerminalEnvSpec.os_env.sandbox``), not a registry-wide

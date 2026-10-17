@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from omnigent.inner.agent_env import (
+from omnigent.harnesses.agent_env import (
     BASE_ALLOW_EXACT,
     BASE_ALLOW_PREFIXES,
     clean_agent_env,
@@ -59,7 +59,7 @@ def hostile_env():
 
 
 def _pi_spawn_env():
-    from omnigent.inner.pi_executor import _clean_pi_env
+    from omnigent.harnesses.pi_executor import _clean_pi_env
 
     return _clean_pi_env()
 

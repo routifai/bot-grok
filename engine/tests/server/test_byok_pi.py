@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 
 from omnigent.db.db_models import OmnigentBase
 from omnigent.db.utils import get_or_create_engine
-from omnigent.inner.pi_executor import _build_models_json, _only_configured_family
+from omnigent.harnesses.pi_executor import _build_models_json, _only_configured_family
 from omnigent.models import model_catalog
 from omnigent.onboarding.provider_config import load_providers
 from omnigent.runtime.workflow import _apply_provider_to_pi

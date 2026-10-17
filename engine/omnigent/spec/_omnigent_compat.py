@@ -269,7 +269,7 @@ def load_omnigent_yaml(
     :param path: Path to an omnigent YAML file. Caller has
         already verified via :func:`is_omnigent_yaml`.
     :param enforce_handler_allowlist: Forwarded to
-        :func:`omnigent.inner.loader.load_agent_def` — when ``True``,
+        :func:`omnigent.harnesses.loader.load_agent_def` — when ``True``,
         unregistered ``type: function`` policy handlers are rejected
         before the loader resolves/calls them (bundle-upload
         guard). See :func:`omnigent.spec.load`.
@@ -287,7 +287,7 @@ def load_omnigent_yaml(
         Python environment.
     """
     try:
-        from omnigent.inner.loader import load_agent_def
+        from omnigent.harnesses.loader import load_agent_def
     except ImportError as exc:
         # Agent-plane can be pip-installed without the omnigent
         # source alongside (the repo layout has them as siblings,
@@ -306,7 +306,7 @@ def load_omnigent_yaml(
 
     import yaml as _yaml
 
-    from omnigent.inner.loader import _OmnigentYamlLoader
+    from omnigent.harnesses.loader import _OmnigentYamlLoader
     from omnigent.spec.omnigent import agent_def_to_agent_spec
     from omnigent.spec.validator import validate
 

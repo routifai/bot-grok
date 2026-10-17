@@ -230,7 +230,7 @@ def test_configure_logging_writes_to_the_parents_log_file(
     _reset_omnigent_log_handlers()
 
     _runner._configure_logging("claude-sdk", "conv_abc")
-    logging.getLogger("omnigent.inner.claude_sdk_executor").warning("claude-sdk boom")
+    logging.getLogger("omnigent.harnesses.claude_sdk_executor").warning("claude-sdk boom")
 
     assert "claude-sdk boom" in parent_log.read_text()
 
@@ -248,7 +248,7 @@ def test_configure_logging_falls_back_to_a_per_conversation_file(
     _reset_omnigent_log_handlers()
 
     _runner._configure_logging("claude-sdk", "conv_xyz")
-    logging.getLogger("omnigent.inner.claude_sdk_executor").warning("claude-sdk boom")
+    logging.getLogger("omnigent.harnesses.claude_sdk_executor").warning("claude-sdk boom")
 
     written = list((tmp_path / "logs" / "harness").glob("claude-sdk-conv_xyz-*.log"))
     assert written, "expected a per-conversation harness log"

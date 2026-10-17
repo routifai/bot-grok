@@ -27,7 +27,7 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from omnigent.entities import Conversation, SessionPermission
-from omnigent.inner.terminal import TerminalInstance
+from omnigent.harnesses.terminal import TerminalInstance
 from omnigent.runtime import (
     _globals,
     set_runner_client,

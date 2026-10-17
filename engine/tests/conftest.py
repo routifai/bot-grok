@@ -655,14 +655,14 @@ def lowered_idle_thresholds(monkeypatch: pytest.MonkeyPatch) -> None:
     Lower the terminal-idle thresholds so watcher tests don't burn
     ten real seconds per assertion.
 
-    Mirrors :class:`tests.inner.test_terminal.TestTerminalIdleNotifications.setUp`
+    Mirrors :class:`tests.harnesses.test_terminal.TestTerminalIdleNotifications.setUp`
     from the legacy class-based suite. Defaults marker substrings
     to empty so tests that don't exercise the marker track see
     pure diff semantics regardless of the production list — tests
     that DO exercise markers can override locally with another
     ``monkeypatch.setattr``.
 
-    Shared between ``tests/inner/test_terminal.py`` (threaded /
+    Shared between ``tests/harnesses/test_terminal.py`` (threaded /
     asyncio watcher mechanics) and
     ``tests/tools/builtins/test_sys_terminal.py`` (AP-side
     ``notify_when_idle`` end-to-end). Promoted to root conftest
@@ -672,7 +672,7 @@ def lowered_idle_thresholds(monkeypatch: pytest.MonkeyPatch) -> None:
     :param monkeypatch: Pytest's monkeypatch fixture; auto-restores
         the original constants at teardown.
     """
-    from omnigent.inner import terminal as terminal_module
+    from omnigent.harnesses import terminal as terminal_module
 
     monkeypatch.setattr(terminal_module, "_IDLE_THRESHOLD_SECONDS", 0.4)
     monkeypatch.setattr(terminal_module, "_IDLE_POLL_INTERVAL_SECONDS", 0.1)

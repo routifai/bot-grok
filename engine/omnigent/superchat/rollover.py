@@ -17,7 +17,7 @@ item (reusing :func:`~omnigent.context.rollover.build_rollover_item`'s
 progressive summarization), POST it as a new ``compaction`` item, then signal
 the caller to drop the warm engine client so the next turn cold-starts from
 it (``ADR 0001``: Omnigent decides when, the engine only runs the model loop).
-Never during a turn — both call sites in ``inner/claude_sdk_executor.py`` and
+Never during a turn — both call sites in ``harnesses/claude_sdk_executor.py`` and
 ``runner/app.py`` trigger only between turns.
 """
 

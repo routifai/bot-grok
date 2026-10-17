@@ -26,7 +26,7 @@ import unicodedata
 from collections.abc import Callable
 from typing import Any
 
-from omnigent.inner.executor import ENDS_TURN_KEY
+from omnigent.harnesses.executor import ENDS_TURN_KEY
 from omnigent.tools.base import Tool, ToolContext
 
 CARD_TOOL_NAME = "render_card"

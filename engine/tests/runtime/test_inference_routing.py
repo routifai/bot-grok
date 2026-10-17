@@ -133,7 +133,7 @@ def test_bound_claude_sdk_preserves_a_literal_anthropic_prefix() -> None:
 async def test_bound_pi_sdk_preserves_literal_suffix_through_executor_factory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from omnigent.inner.pi_harness import _build_pi_executor
+    from omnigent.harnesses.pi_harness import _build_pi_executor
     from omnigent.runtime.workflow import _build_pi_spawn_env
 
     profile = _profile()
@@ -150,8 +150,10 @@ async def test_bound_pi_sdk_preserves_literal_suffix_through_executor_factory(
         env = _build_pi_spawn_env(_spec("pi"))
     for name, value in env.items():
         monkeypatch.setenv(name, value)
-    monkeypatch.setattr("omnigent.inner.pi_harness.resolve_harness_path", lambda _: "/fake/pi")
-    monkeypatch.setattr("omnigent.inner.pi_executor._fetch_shell_command_token", lambda _: "token")
+    monkeypatch.setattr("omnigent.harnesses.pi_harness.resolve_harness_path", lambda _: "/fake/pi")
+    monkeypatch.setattr(
+        "omnigent.harnesses.pi_executor._fetch_shell_command_token", lambda _: "token"
+    )
     executor = _build_pi_executor()
     assert await executor._resolve_model(None) == "private/model[large]"
     assert env["HARNESS_PI_GATEWAY_OPENAI_WIRE_API"] == "responses"

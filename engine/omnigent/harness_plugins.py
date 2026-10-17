@@ -125,8 +125,8 @@ _BUILTIN_CONTRIBUTION = HarnessContribution(
     name="omnigent",
     valid_harnesses=frozenset({"claude-sdk", "pi"}),
     harness_modules={
-        "claude-sdk": "omnigent.inner.claude_sdk_harness",
-        "pi": "omnigent.inner.pi_harness",
+        "claude-sdk": "omnigent.harnesses.claude_sdk_harness",
+        "pi": "omnigent.harnesses.pi_harness",
     },
     aliases={
         "claude": "claude-sdk",

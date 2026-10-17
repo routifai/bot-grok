@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from omnigent.context.labels import SCHEDULED_FIRE_LABEL_KEY
-from omnigent.inner.executor import result_ends_turn
+from omnigent.harnesses.executor import result_ends_turn
 from omnigent.superchat.decks import kit
 from omnigent.superchat.decks.authoring import handle_authoring_tool
 from omnigent.superchat.decks.handlers import HELPER_ENV, handle_deck_tool

@@ -107,8 +107,8 @@ def pi_model_json_entry(model: ModelEntry) -> PiModelEntry:
     """Translate normalized catalog metadata into Pi's ``models.json`` schema.
 
     Shared by every surface that renders a Pi ``models.json`` — the spawned
-    harness in :mod:`omnigent.inner.pi_executor` and the provider translation
-    in :mod:`omnigent.inner.pi_credentials` — so both advertise the same
+    harness in :mod:`omnigent.harnesses.pi_executor` and the provider translation
+    in :mod:`omnigent.harnesses.pi_credentials` — so both advertise the same
     limits for the same model. Pi defaults an entry with no
     ``contextWindow``/``maxTokens`` to 128000/16384, which silently truncates
     the 1M-context gateway models, so limits are carried whenever the catalog

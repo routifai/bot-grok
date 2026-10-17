@@ -23,7 +23,7 @@ from typing import Any
 import pytest
 
 from omnigent.entities.conversation import MessageData
-from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec, TerminalEnvSpec
+from omnigent.harnesses.datamodel import OSEnvSandboxSpec, OSEnvSpec, TerminalEnvSpec
 from omnigent.runtime import _globals
 from omnigent.spec.types import AgentSpec
 from omnigent.stores.conversation_store.sqlalchemy_store import (
@@ -271,8 +271,8 @@ async def test_launch_send_read_close_round_trip(
 
     Sandbox is forced to ``none`` because tmux + bwrap + a
     workspace directory pytest creates fresh per test would need
-    extra setup; the legacy ``tests/inner/test_terminal.py`` covers
-    the sandboxed path against ``inner.terminal.TerminalInstance``
+    extra setup; the legacy ``tests/harnesses/test_terminal.py`` covers
+    the sandboxed path against ``harnesses.terminal.TerminalInstance``
     directly.
     """
     del cleanup_registry  # consumed for its teardown side-effect

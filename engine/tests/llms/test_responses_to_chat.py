@@ -32,7 +32,7 @@ def test_instructions_become_system_message() -> None:
 
 def test_resize_notice_stays_system_context_for_anthropic() -> None:
     from omnigent.entities import ConversationItem, MessageData
-    from omnigent.inner.native_attachments import framework_notice_block, resize_notice
+    from omnigent.harnesses.native_attachments import framework_notice_block, resize_notice
     from omnigent.llms.adapters.anthropic import _chat_to_anthropic
     from omnigent.runtime.prompt import history_to_input_items
 

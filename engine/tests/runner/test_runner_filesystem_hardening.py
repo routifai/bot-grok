@@ -15,9 +15,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec
-from omnigent.inner.os_env import _assert_within_cwd, _handle_helper_request
-from omnigent.inner.sandbox import SandboxPolicy
+from omnigent.harnesses.datamodel import OSEnvSandboxSpec, OSEnvSpec
+from omnigent.harnesses.os_env import _assert_within_cwd, _handle_helper_request
+from omnigent.harnesses.sandbox import SandboxPolicy
 from omnigent.runner.resource_registry import SessionResourceRegistry
 
 # ---------------------------------------------------------------------------

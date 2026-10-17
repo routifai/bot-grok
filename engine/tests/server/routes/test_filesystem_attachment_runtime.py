@@ -5,8 +5,8 @@ from unittest.mock import Mock
 import pytest
 
 from omnigent.errors import ErrorCode, OmnigentError
+from omnigent.harnesses.native_attachments import CAP_FILESYSTEM_ATTACHMENTS
 from omnigent.host.frames import HostHelloFrame, decode_host_frame, encode_host_frame
-from omnigent.inner.native_attachments import CAP_FILESYSTEM_ATTACHMENTS
 from omnigent.runner.transports.ws_tunnel.frames import HelloFrame, decode_frame, encode_frame
 from omnigent.runner.transports.ws_tunnel.registry import TunnelRegistry
 from omnigent.server.host_registry import HostRegistry

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
-from omnigent.inner.executor import ExecutorConfig, ExecutorError
+from omnigent.harnesses.claude_sdk_executor import ClaudeSDKExecutor
+from omnigent.harnesses.executor import ExecutorConfig, ExecutorError
 from omnigent.llms.adapters.anthropic import _effort_to_budget
 from omnigent.llms.errors import PermanentLLMError
 

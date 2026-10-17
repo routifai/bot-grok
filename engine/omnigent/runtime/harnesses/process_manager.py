@@ -41,9 +41,9 @@ import httpx
 from omnigent._platform import IS_WINDOWS
 from omnigent.debug_logging import debug_event
 from omnigent.harness_plugins import missing_install_packages
-from omnigent.inner import _proc
-from omnigent.inner._subprocess_lifecycle import close_subprocess_transport
-from omnigent.inner.agent_env import strip_desktop_session_env
+from omnigent.harnesses import _proc
+from omnigent.harnesses._subprocess_lifecycle import close_subprocess_transport
+from omnigent.harnesses.agent_env import strip_desktop_session_env
 from omnigent.runner.identity import strip_runner_auth_secrets
 from omnigent.runtime.harnesses import _HARNESS_MODULES
 from omnigent.runtime.harnesses._harness_zygote_client import (

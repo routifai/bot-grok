@@ -26,7 +26,7 @@ from os import PathLike
 from typing import Any
 
 from omnigent.harness_availability import HarnessAvailability, is_harness_availability
-from omnigent.inner.native_attachments import CAP_FILESYSTEM_ATTACHMENTS
+from omnigent.harnesses.native_attachments import CAP_FILESYSTEM_ATTACHMENTS
 from omnigent.util.json_types import JsonObject as _JsonObject
 
 # Structured error code carried in ``HostLaunchRunnerResultFrame.error_code``

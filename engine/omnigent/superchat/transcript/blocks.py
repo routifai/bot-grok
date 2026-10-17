@@ -39,7 +39,7 @@ from typing import Any
 
 from omnigent.context.attachments import strip_legacy_attachment_context
 from omnigent.entities.conversation import is_system_notice_text
-from omnigent.inner.executor import ENDS_TURN_TOOLS
+from omnigent.harnesses.executor import ENDS_TURN_TOOLS
 from omnigent.runtime.public_error_codes import public_error_code
 from omnigent.superchat.artifact_kinds import KIND_MIME, is_deck_name
 from omnigent.superchat.cards.tools import (

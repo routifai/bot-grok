@@ -18,7 +18,7 @@ the harness contract migration — srt's default policy blocks
 outbound network, which broke every useful MCP server (Glean,
 Slack, GitHub, UC, etc. all need outbound HTTPS). Stdio MCPs
 now spawn unsandboxed, matching the legacy inner stack at
-``omnigent/inner/mcp_tools.py`` (which has never sandboxed
+``omnigent/harnesses/mcp_tools.py`` (which has never sandboxed
 stdio MCPs). Future per-MCP sandboxing — if reintroduced —
 should flow through the ``omnigent/environments/`` primitive
 with explicit outbound-host allowlists, not srt-defaults.

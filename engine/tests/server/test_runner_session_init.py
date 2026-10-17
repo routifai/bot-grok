@@ -11,7 +11,7 @@ import pytest
 from omnigent.db.utils import generate_agent_id
 from omnigent.entities import Conversation, MessageData, NewConversationItem
 from omnigent.errors import ErrorCode, OmnigentError
-from omnigent.inner.native_attachments import CAP_FILESYSTEM_ATTACHMENTS
+from omnigent.harnesses.native_attachments import CAP_FILESYSTEM_ATTACHMENTS
 from omnigent.runner.transports.ws_tunnel.frames import HelloFrame
 from omnigent.server.runner_session_init import RunnerSessionInitializer
 from omnigent.stores.agent_store.sqlalchemy_store import SqlAlchemyAgentStore

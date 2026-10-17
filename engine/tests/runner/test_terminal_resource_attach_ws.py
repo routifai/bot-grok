@@ -19,7 +19,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from omnigent.inner.terminal import TerminalInstance
+from omnigent.harnesses.terminal import TerminalInstance
 from omnigent.runner import create_runner_app
 from omnigent.runner.direct_attach import (
     allowed_origin_for_server,

@@ -1026,7 +1026,7 @@ def _init_otel_traces(endpoint: str) -> None:
             provider.add_span_processor(BatchSpanProcessor(_create_otlp_span_exporter()))
             trace.set_tracer_provider(provider)
 
-        from omnigent.inner.tracing import enable_tracing
+        from omnigent.harnesses.tracing import enable_tracing
 
         enable_tracing()
     except Exception:

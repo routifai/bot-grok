@@ -34,7 +34,7 @@ from pathlib import Path
 
 import httpx
 
-from omnigent.inner import _proc
+from omnigent.harnesses import _proc
 
 
 def _is_socket_listening(socket_path: str) -> bool:

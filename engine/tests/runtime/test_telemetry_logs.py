@@ -63,7 +63,7 @@ def _opt_in_telemetry(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     try:
         yield
     finally:
-        from omnigent.inner.tracing import disable_tracing
+        from omnigent.harnesses.tracing import disable_tracing
 
         disable_tracing()
         telemetry._initialized = False

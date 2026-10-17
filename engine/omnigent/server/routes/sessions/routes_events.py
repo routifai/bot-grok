@@ -875,7 +875,7 @@ def register_events_routes(
                     code=ErrorCode.INVALID_INPUT,
                 ) from exc
         if body.type in ("message", _SLASH_COMMAND_TYPE):
-            from omnigent.inner.native_attachments import (
+            from omnigent.harnesses.native_attachments import (
                 inline_filesystem_attachment_name,
                 requires_filesystem,
             )

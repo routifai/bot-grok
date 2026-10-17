@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from omnigent.inner.os_env import OSEnvironment
-from omnigent.inner.terminal import TerminalInstance
+from omnigent.harnesses.os_env import OSEnvironment
+from omnigent.harnesses.terminal import TerminalInstance
 
 
 class NullServerClient:

@@ -23,9 +23,9 @@ from omnigent.entities.session_resources import (
     terminal_resource_id,
     terminal_resource_view,
 )
-from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec, TerminalEnvSpec
-from omnigent.inner.os_env import EditEntry, OpResult, OSEnvironment, create_os_environment
-from omnigent.inner.terminal import TerminalInstance
+from omnigent.harnesses.datamodel import OSEnvSandboxSpec, OSEnvSpec, TerminalEnvSpec
+from omnigent.harnesses.os_env import EditEntry, OpResult, OSEnvironment, create_os_environment
+from omnigent.harnesses.terminal import TerminalInstance
 from omnigent.runner import create_runner_app
 from omnigent.runner.resource_registry import (
     SessionResourceRegistry,
@@ -1000,7 +1000,7 @@ async def test_create_terminal_threads_agent_parent_os_env_through(
     ``omnigent claude`` wrapper) could spawn an unsandboxed
     terminal in a session whose YAML declared an egress allow-list.
     """
-    from omnigent.inner.datamodel import AgentDef, OSEnvSandboxSpec, OSEnvSpec
+    from omnigent.harnesses.datamodel import AgentDef, OSEnvSandboxSpec, OSEnvSpec
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -1077,7 +1077,7 @@ async def test_create_terminal_uses_declared_terminal_spec_over_body(
     could spawn the YAML-declared terminal name with a completely
     different command.
     """
-    from omnigent.inner.datamodel import (
+    from omnigent.harnesses.datamodel import (
         AgentDef,
         OSEnvSandboxSpec,
         OSEnvSpec,
@@ -1160,7 +1160,7 @@ async def test_create_terminal_resolves_declared_placeholder_cwd_to_workspace(
     workspace must be baked into the launched spec (never via
     ``cwd_override``, which the stub asserts stays ``None``).
     """
-    from omnigent.inner.datamodel import (
+    from omnigent.harnesses.datamodel import (
         AgentDef,
         OSEnvSandboxSpec,
         OSEnvSpec,

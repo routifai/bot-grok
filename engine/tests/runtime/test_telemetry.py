@@ -61,7 +61,7 @@ def _opt_in_telemetry(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         # init()/enable_tracing() in a telemetry test flips global tracing on
         # and never resets it; clear it so it can't leak "tracing on" into
         # other suites (e.g. the executor-adapter tests).
-        from omnigent.inner.tracing import disable_tracing
+        from omnigent.harnesses.tracing import disable_tracing
 
         disable_tracing()
         telemetry._initialized = False
@@ -811,7 +811,7 @@ def test_tracing_context_stamps_session_id_on_agent_span(
 
     :param in_memory_exporter: In-memory span exporter fixture.
     """
-    from omnigent.inner.tracing import TracingContext
+    from omnigent.harnesses.tracing import TracingContext
 
     tctx = TracingContext(session_id="d1f9214d74c38b9f9a9db17ed8352dc4")
     agent_span = tctx.start_agent_span("my-agent", "hello")

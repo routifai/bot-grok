@@ -16,8 +16,8 @@ import pytest
 from fastapi import FastAPI
 
 from omnigent.errors import ErrorCode, OmnigentError
-from omnigent.inner.loader import load_agent_def
-from omnigent.inner.tools import AgentTool, CancellableFunctionTool, FunctionTool
+from omnigent.harnesses.loader import load_agent_def
+from omnigent.harnesses.tools import AgentTool, CancellableFunctionTool, FunctionTool
 from omnigent.runtime.agent_cache import AgentCache
 from omnigent.server.app import create_app
 from omnigent.server.auth import UnifiedAuthProvider
@@ -77,7 +77,7 @@ def test_untrusted_tools_rejected_before_import(
     # Importing is the external side effect under test: a later validation
     # failure cannot undo module initialization in the shared server process.
     with mock.patch(
-        "omnigent.inner.loader.importlib.import_module",
+        "omnigent.harnesses.loader.importlib.import_module",
         side_effect=AssertionError("untrusted tool attempted an import"),
     ) as import_module:
         if upload:

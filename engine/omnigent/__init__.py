@@ -30,154 +30,154 @@ import importlib  # noqa: E402
 from typing import TYPE_CHECKING, Any  # noqa: E402
 
 if TYPE_CHECKING:
-    from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor as ClaudeSDKExecutor
-    from omnigent.inner.datamodel import (
+    from omnigent.harnesses.claude_sdk_executor import ClaudeSDKExecutor as ClaudeSDKExecutor
+    from omnigent.harnesses.datamodel import (
         AgentDef as AgentDef,
     )
-    from omnigent.inner.datamodel import (
+    from omnigent.harnesses.datamodel import (
         Connection as Connection,
     )
-    from omnigent.inner.datamodel import (
+    from omnigent.harnesses.datamodel import (
         Credentials as Credentials,
     )
-    from omnigent.inner.datamodel import (
+    from omnigent.harnesses.datamodel import (
         History as History,
     )
-    from omnigent.inner.datamodel import (
+    from omnigent.harnesses.datamodel import (
         Memory as Memory,
     )
-    from omnigent.inner.datamodel import (
+    from omnigent.harnesses.datamodel import (
         MemoryConfig as MemoryConfig,
     )
-    from omnigent.inner.datamodel import (
+    from omnigent.harnesses.datamodel import (
         Message as Message,
     )
-    from omnigent.inner.datamodel import (
+    from omnigent.harnesses.datamodel import (
         ParamDef as ParamDef,
     )
-    from omnigent.inner.datamodel import (
+    from omnigent.harnesses.datamodel import (
         SessionState as SessionState,
     )
-    from omnigent.inner.executor import (
+    from omnigent.harnesses.executor import (
         Executor as Executor,
     )
-    from omnigent.inner.executor import (
+    from omnigent.harnesses.executor import (
         ExecutorConfig as ExecutorConfig,
     )
-    from omnigent.inner.executor import (
+    from omnigent.harnesses.executor import (
         ExecutorError as ExecutorError,
     )
-    from omnigent.inner.executor import (
+    from omnigent.harnesses.executor import (
         ExecutorEvent as ExecutorEvent,
     )
-    from omnigent.inner.executor import (
+    from omnigent.harnesses.executor import (
         TextChunk as TextChunk,
     )
-    from omnigent.inner.executor import (
+    from omnigent.harnesses.executor import (
         ToolCallComplete as ToolCallComplete,
     )
-    from omnigent.inner.executor import (
+    from omnigent.harnesses.executor import (
         ToolCallRequest as ToolCallRequest,
     )
-    from omnigent.inner.executor import (
+    from omnigent.harnesses.executor import (
         TurnCancelled as TurnCancelled,
     )
-    from omnigent.inner.executor import (
+    from omnigent.harnesses.executor import (
         TurnComplete as TurnComplete,
     )
-    from omnigent.inner.loader import load_agent_def as load_agent_def
-    from omnigent.inner.policies import (
+    from omnigent.harnesses.loader import load_agent_def as load_agent_def
+    from omnigent.harnesses.policies import (
         FunctionPolicy as FunctionPolicy,
     )
-    from omnigent.inner.policies import (
+    from omnigent.harnesses.policies import (
         Policy as Policy,
     )
-    from omnigent.inner.policies import (
+    from omnigent.harnesses.policies import (
         PolicyAction as PolicyAction,
     )
-    from omnigent.inner.policies import (
+    from omnigent.harnesses.policies import (
         PolicyResult as PolicyResult,
     )
-    from omnigent.inner.policies import (
+    from omnigent.harnesses.policies import (
         PromptPolicy as PromptPolicy,
     )
-    from omnigent.inner.tools import (
+    from omnigent.harnesses.tools import (
         AgentTool as AgentTool,
     )
-    from omnigent.inner.tools import (
+    from omnigent.harnesses.tools import (
         CancellableFunctionTool as CancellableFunctionTool,
     )
-    from omnigent.inner.tools import (
+    from omnigent.harnesses.tools import (
         FunctionTool as FunctionTool,
     )
-    from omnigent.inner.tools import (
+    from omnigent.harnesses.tools import (
         HandoffTool as HandoffTool,
     )
-    from omnigent.inner.tools import (
+    from omnigent.harnesses.tools import (
         InheritedTool as InheritedTool,
     )
-    from omnigent.inner.tools import (
+    from omnigent.harnesses.tools import (
         MCPTool as MCPTool,
     )
-    from omnigent.inner.tools import (
+    from omnigent.harnesses.tools import (
         SkillTool as SkillTool,
     )
-    from omnigent.inner.tools import (
+    from omnigent.harnesses.tools import (
         Tool as Tool,
     )
-    from omnigent.inner.tracing import (
+    from omnigent.harnesses.tracing import (
         disable_tracing as disable_tracing,
     )
-    from omnigent.inner.tracing import (
+    from omnigent.harnesses.tracing import (
         enable_tracing as enable_tracing,
     )
-    from omnigent.inner.tracing import (
+    from omnigent.harnesses.tracing import (
         is_tracing_enabled as is_tracing_enabled,
     )
 
 # Public name → defining module for the always-present re-exports.
 _LAZY_EXPORTS = {
-    "AgentDef": "omnigent.inner.datamodel",
-    "Connection": "omnigent.inner.datamodel",
-    "Credentials": "omnigent.inner.datamodel",
-    "History": "omnigent.inner.datamodel",
-    "Memory": "omnigent.inner.datamodel",
-    "MemoryConfig": "omnigent.inner.datamodel",
-    "Message": "omnigent.inner.datamodel",
-    "ParamDef": "omnigent.inner.datamodel",
-    "SessionState": "omnigent.inner.datamodel",
-    "Executor": "omnigent.inner.executor",
-    "ExecutorConfig": "omnigent.inner.executor",
-    "ExecutorError": "omnigent.inner.executor",
-    "ExecutorEvent": "omnigent.inner.executor",
-    "TextChunk": "omnigent.inner.executor",
-    "ToolCallComplete": "omnigent.inner.executor",
-    "ToolCallRequest": "omnigent.inner.executor",
-    "TurnCancelled": "omnigent.inner.executor",
-    "TurnComplete": "omnigent.inner.executor",
-    "FunctionPolicy": "omnigent.inner.policies",
-    "Policy": "omnigent.inner.policies",
-    "PolicyAction": "omnigent.inner.policies",
-    "PolicyResult": "omnigent.inner.policies",
-    "PromptPolicy": "omnigent.inner.policies",
-    "AgentTool": "omnigent.inner.tools",
-    "CancellableFunctionTool": "omnigent.inner.tools",
-    "FunctionTool": "omnigent.inner.tools",
-    "HandoffTool": "omnigent.inner.tools",
-    "InheritedTool": "omnigent.inner.tools",
-    "MCPTool": "omnigent.inner.tools",
-    "SkillTool": "omnigent.inner.tools",
-    "Tool": "omnigent.inner.tools",
-    "load_agent_def": "omnigent.inner.loader",
-    "disable_tracing": "omnigent.inner.tracing",
-    "enable_tracing": "omnigent.inner.tracing",
-    "is_tracing_enabled": "omnigent.inner.tracing",
+    "AgentDef": "omnigent.harnesses.datamodel",
+    "Connection": "omnigent.harnesses.datamodel",
+    "Credentials": "omnigent.harnesses.datamodel",
+    "History": "omnigent.harnesses.datamodel",
+    "Memory": "omnigent.harnesses.datamodel",
+    "MemoryConfig": "omnigent.harnesses.datamodel",
+    "Message": "omnigent.harnesses.datamodel",
+    "ParamDef": "omnigent.harnesses.datamodel",
+    "SessionState": "omnigent.harnesses.datamodel",
+    "Executor": "omnigent.harnesses.executor",
+    "ExecutorConfig": "omnigent.harnesses.executor",
+    "ExecutorError": "omnigent.harnesses.executor",
+    "ExecutorEvent": "omnigent.harnesses.executor",
+    "TextChunk": "omnigent.harnesses.executor",
+    "ToolCallComplete": "omnigent.harnesses.executor",
+    "ToolCallRequest": "omnigent.harnesses.executor",
+    "TurnCancelled": "omnigent.harnesses.executor",
+    "TurnComplete": "omnigent.harnesses.executor",
+    "FunctionPolicy": "omnigent.harnesses.policies",
+    "Policy": "omnigent.harnesses.policies",
+    "PolicyAction": "omnigent.harnesses.policies",
+    "PolicyResult": "omnigent.harnesses.policies",
+    "PromptPolicy": "omnigent.harnesses.policies",
+    "AgentTool": "omnigent.harnesses.tools",
+    "CancellableFunctionTool": "omnigent.harnesses.tools",
+    "FunctionTool": "omnigent.harnesses.tools",
+    "HandoffTool": "omnigent.harnesses.tools",
+    "InheritedTool": "omnigent.harnesses.tools",
+    "MCPTool": "omnigent.harnesses.tools",
+    "SkillTool": "omnigent.harnesses.tools",
+    "Tool": "omnigent.harnesses.tools",
+    "load_agent_def": "omnigent.harnesses.loader",
+    "disable_tracing": "omnigent.harnesses.tracing",
+    "enable_tracing": "omnigent.harnesses.tracing",
+    "is_tracing_enabled": "omnigent.harnesses.tracing",
 }
 
 # Optional executors resolve to ``None`` when their extra's dependencies are
 # absent, matching the former eager try/except imports.
 _OPTIONAL_EXPORTS = {
-    "ClaudeSDKExecutor": ("omnigent.inner.claude_sdk_executor", (ImportError,)),
+    "ClaudeSDKExecutor": ("omnigent.harnesses.claude_sdk_executor", (ImportError,)),
 }
 
 

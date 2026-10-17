@@ -8,7 +8,7 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
-from omnigent.inner.datamodel import OSEnvSpec, TerminalEnvSpec
+from omnigent.harnesses.datamodel import OSEnvSpec, TerminalEnvSpec
 
 if TYPE_CHECKING:
     # EvaluationContext is a runtime evaluation artifact (see
@@ -897,7 +897,7 @@ class MCPServerConfig:
       ``args`` describe the program to run; ``env`` supplies
       per-process environment variables on top of the parent's
       environment. The subprocess runs unsandboxed — same as the
-      legacy inner stack at ``omnigent/inner/mcp_tools.py``
+      legacy inner stack at ``omnigent/harnesses/mcp_tools.py``
       (which has never sandboxed stdio MCPs). The previous
       AP-only ``sandbox: bool`` field that wrapped the spawn
       with ``srt`` was removed in step 7 of the harness contract
@@ -1429,7 +1429,7 @@ class AgentSpec:  # type: ignore[explicit-any]  # params: dict[str, Any] field (
         ``async:``; the dataclass field avoids the Python
         keyword. **Defaults to ``True``** to match the legacy
         inner-stack default at
-        ``omnigent/inner/datamodel.py::AgentDef.async_enabled``
+        ``omnigent/harnesses/datamodel.py::AgentDef.async_enabled``
         — the same YAML must produce the same tool surface
         whether the user opts into Omnigent mode or runs the legacy
         path. Agents that want to suppress the async surface
@@ -1442,7 +1442,7 @@ class AgentSpec:  # type: ignore[explicit-any]  # params: dict[str, Any] field (
         write_paths=["."], allow_network=False))``. The default
         sandbox on Linux is ``linux_bwrap`` (mount-namespace +
         seccomp hardening; see
-        :mod:`omnigent.inner.bwrap_sandbox`), selected when the
+        :mod:`omnigent.harnesses.bwrap_sandbox`), selected when the
         ``bwrap`` binary is on ``PATH``. ``None`` means the agent declares no
         ``os_env:`` block — the runtime skips registering
         ``sys_os_*`` tools and the ``claude-sdk`` harness wrap
@@ -1468,7 +1468,7 @@ class AgentSpec:  # type: ignore[explicit-any]  # params: dict[str, Any] field (
         (``sys_timer_set``, ``sys_timer_cancel``) are
         registered. YAML key is ``timers:``. **Defaults to
         ``False``** to match the legacy inner-stack default at
-        ``omnigent/inner/datamodel.py::AgentDef.timers`` —
+        ``omnigent/harnesses/datamodel.py::AgentDef.timers`` —
         agents opt into the timer surface explicitly. Step 10
         of the harness contract migration adds the AP-side
         port; firings durable across server restarts via the

@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from omnigent.inner.executor import (
+from omnigent.harnesses.executor import (
     Executor,
     ExecutorConfig,
     ExecutorEvent,

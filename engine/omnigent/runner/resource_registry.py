@@ -38,12 +38,12 @@ from omnigent.entities.session_resources import (
     terminal_resource_id,
     terminal_resource_view,
 )
-from omnigent.inner.sandbox import contained_realpath, containment_prefix
+from omnigent.harnesses.sandbox import contained_realpath, containment_prefix
 
 if TYPE_CHECKING:
-    from omnigent.inner.datamodel import OSEnvSpec, TerminalEnvSpec
-    from omnigent.inner.os_env import OSEnvironment
-    from omnigent.inner.terminal import TerminalInstance
+    from omnigent.harnesses.datamodel import OSEnvSpec, TerminalEnvSpec
+    from omnigent.harnesses.os_env import OSEnvironment
+    from omnigent.harnesses.terminal import TerminalInstance
     from omnigent.spec.types import AgentSpec
     from omnigent.terminals.registry import TerminalRegistry
 
@@ -766,8 +766,8 @@ class SessionResourceRegistry:
             ``os_env`` field is ``None``.  Callers must gate on
             ``os_env`` presence before materialising an environment.
         """
-        from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec
-        from omnigent.inner.os_env import create_os_environment
+        from omnigent.harnesses.datamodel import OSEnvSandboxSpec, OSEnvSpec
+        from omnigent.harnesses.os_env import create_os_environment
 
         # Prefer the CLI launch workspace so that the OS environment
         # cwd matches the filesystem-registry watch path.  Fall back

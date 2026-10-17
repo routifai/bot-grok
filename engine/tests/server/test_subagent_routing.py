@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 
 from omnigent.entities.conversation import RoutingDecisionData
-from omnigent.inner.hook_scripts.subagent_router import read_router_endpoint
+from omnigent.harnesses.hook_scripts.subagent_router import read_router_endpoint
 from omnigent.runner.subagent_routing import (
     ADVERTISEMENT_FILE,
     PLAIN_SESSION,

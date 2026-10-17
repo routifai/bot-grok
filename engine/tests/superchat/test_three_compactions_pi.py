@@ -32,7 +32,7 @@ from omnigent.context import rollover as context_rollover
 from omnigent.context.labels import STATE_CLOSE_LABEL_PREFIX
 from omnigent.context.rollover import CHECKPOINT_MARKER
 from omnigent.context.tool_digest import FRAMING
-from omnigent.inner.pi_executor import _build_pi_prompt
+from omnigent.harnesses.pi_executor import _build_pi_prompt
 from omnigent.llms.types import MessageOutput, OutputText, Response
 from omnigent.runner import create_runner_app
 from omnigent.runner.memory import files

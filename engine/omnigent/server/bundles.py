@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from omnigent.errors import ErrorCode, OmnigentError
-from omnigent.inner.datamodel import OSEnvSpec
+from omnigent.harnesses.datamodel import OSEnvSpec
 from omnigent.spec import AgentSpec, ExtractionError, ToolRuntime, load
 
 

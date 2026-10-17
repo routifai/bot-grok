@@ -855,7 +855,7 @@ async def test_serve_tunnel_once_sends_bearer_header(
         "ping_timeout": serve_module.TUNNEL_KEEPALIVE_PING_TIMEOUT_S,
     }
     assert isinstance(captured["sent"], str)
-    from omnigent.inner.native_attachments import CAP_FILESYSTEM_ATTACHMENTS
+    from omnigent.harnesses.native_attachments import CAP_FILESYSTEM_ATTACHMENTS
     from omnigent.runner.transports.ws_tunnel.frames import HelloFrame, decode_frame
 
     hello = decode_frame(captured["sent"])

@@ -13,9 +13,9 @@ from types import SimpleNamespace
 import pytest
 
 from omnigent.entities import DEFAULT_ENVIRONMENT_ID
-from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec
-from omnigent.inner.os_env import EditEntry, OpResult, OSEnvironment
-from omnigent.inner.terminal import TerminalInstance
+from omnigent.harnesses.datamodel import OSEnvSandboxSpec, OSEnvSpec
+from omnigent.harnesses.os_env import EditEntry, OpResult, OSEnvironment
+from omnigent.harnesses.terminal import TerminalInstance
 from omnigent.runner.resource_registry import (
     _TERMINAL_EXIT_OUTPUT_MAX_CHARS,
     SessionResourceRegistry,
@@ -391,7 +391,7 @@ def test_resolve_environment_default_pins_none_sandbox_when_no_agent_spec(
     :returns: None.
     """
     monkeypatch.setattr(
-        "omnigent.inner.sandbox.shutil.which",
+        "omnigent.harnesses.sandbox.shutil.which",
         lambda name: "/usr/bin/bwrap",
     )
     monkeypatch.setenv("OMNIGENT_RUNNER_OS_ENV_ROOT", str(tmp_path))

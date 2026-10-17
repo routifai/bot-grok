@@ -822,7 +822,7 @@ def _parse_provider(name: str, raw: dict[str, object]) -> ProviderEntry:
     # The (possibly family-scoped) default flag — resolved per-kind below
     # once the served families are known. The repo's YAML loader strips
     # implicit scalar resolvers (the Norway-problem guard in
-    # omnigent/inner/loader.py), so a YAML ``default: true`` arrives as
+    # omnigent/harnesses/loader.py), so a YAML ``default: true`` arrives as
     # the string ``"true"``; the programmatic config-writing path uses a
     # real bool / family-name / list — :func:`_parse_default_families`
     # accepts all forms. The per-family "at most one default per family"

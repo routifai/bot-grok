@@ -1238,7 +1238,7 @@ class McpServerConnection:
         backend), so ``sandbox: true`` consistently produced silent
         hangs on the first ``tool/call``. Inner-stack stdio MCPs
         have always spawned without sandboxing
-        (``omnigent/inner/mcp_tools.py``); Omnigent now matches that
+        (``omnigent/harnesses/mcp_tools.py``); Omnigent now matches that
         baseline. Per-MCP sandboxing — if reintroduced — should
         flow through the ``omnigent/environments/`` primitive
         with explicit outbound-host allowlists, not srt-defaults.

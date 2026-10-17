@@ -23,8 +23,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec, TerminalEnvSpec
-from omnigent.inner.terminal import TerminalCreateResult, TerminalInstance
+from omnigent.harnesses.datamodel import OSEnvSandboxSpec, OSEnvSpec, TerminalEnvSpec
+from omnigent.harnesses.terminal import TerminalCreateResult, TerminalInstance
 from omnigent.terminals import TerminalRegistry
 from omnigent.terminals import registry as registry_mod
 from omnigent.terminals.registry import TerminalListEntry, conversation_link_for_id

@@ -53,6 +53,7 @@ from omnigent.errors import (
 )
 from omnigent.harness_aliases import canonicalize_harness, is_claude_sdk_harness_name
 from omnigent.harness_availability import HARNESS_BINARY_MISSING, HarnessAvailability
+from omnigent.harnesses import _proc
 from omnigent.host import HOST_FATAL_EXIT_CODE
 from omnigent.host.daemon_lifecycle import DaemonLifecycleLock
 from omnigent.host.frames import (
@@ -110,7 +111,6 @@ from omnigent.host.git_worktree import (
 from omnigent.host.identity import HostIdentity, load_or_create_host_identity
 from omnigent.host.maintenance import HostMaintenanceJanitor
 from omnigent.host.runner_zygote import ZygoteManager, ZygoteRunnerProc, ZygoteUnavailable
-from omnigent.inner import _proc
 from omnigent.onboarding.harness_auth import (
     adopt_env_credential,
     detect_adoptable_credentials,
@@ -2972,7 +2972,7 @@ class HostProcess:
         with_source = functools.partial(_with_model_configuration_source, harness=harness)
         if harness == "pi":
             try:
-                from omnigent.inner.pi_credentials import pi_native_model_options
+                from omnigent.harnesses.pi_credentials import pi_native_model_options
 
                 pi_models = await asyncio.to_thread(pi_native_model_options)
             except Exception:

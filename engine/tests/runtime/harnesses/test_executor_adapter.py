@@ -3,7 +3,7 @@ Tests for :class:`omnigent.runtime.harnesses._executor_adapter.ExecutorAdapter`.
 
 End-to-end through real subprocesses spawned via the same
 :class:`HarnessProcessManager` used in production. Uses
-:class:`omnigent.inner.executor.MockExecutor` as the inner
+:class:`omnigent.harnesses.executor.MockExecutor` as the inner
 executor — no real LLM SDK required. The adapter's per-event
 translation contract is what's under test; per-harness
 configuration (Claude SDK CLI discovery, Codex subprocess setup,
@@ -25,7 +25,7 @@ from typing import Any
 import httpx
 import pytest
 
-from omnigent.inner.executor import Executor
+from omnigent.harnesses.executor import Executor
 from omnigent.runtime.harnesses import _HARNESS_MODULES
 from omnigent.runtime.harnesses.process_manager import HarnessProcessManager
 
@@ -418,7 +418,7 @@ async def test_executor_error_preserves_only_explicitly_idle_sessions(
     import asyncio
     from unittest.mock import AsyncMock, Mock
 
-    from omnigent.inner.executor import ExecutorError, MockExecutor, TextChunk
+    from omnigent.harnesses.executor import ExecutorError, MockExecutor, TextChunk
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
     from omnigent.runtime.harnesses._scaffold import TurnContext
     from omnigent.server.schemas import CreateResponseRequest
@@ -567,7 +567,7 @@ async def test_coded_executor_error_is_raised_with_its_code() -> None:
     """
     import asyncio
 
-    from omnigent.inner.executor import ExecutorError, MockExecutor
+    from omnigent.harnesses.executor import ExecutorError, MockExecutor
     from omnigent.runtime.harnesses._executor_adapter import (
         ExecutorAdapter,
         InnerExecutorError,
@@ -1196,7 +1196,7 @@ def test_translate_event_mcp_tool_call_request_emits_observed_with_bare_name() -
     Pinning the bare-name contract here keeps the adapter's
     emission consistent with the rest of the Omnigent wire path.
     """
-    from omnigent.inner.executor import ToolCallRequest
+    from omnigent.harnesses.executor import ToolCallRequest
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
 
     adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
@@ -1247,7 +1247,7 @@ def test_tool_call_complete_suppressed_for_dispatched_executor() -> None:
     """A normal internally-handling executor's ``ToolCallComplete`` is
     suppressed mid-turn (its tools round-trip through dispatch_tool, which
     emits the output) — the existing dedup contract."""
-    from omnigent.inner.executor import ToolCallComplete, ToolCallStatus
+    from omnigent.harnesses.executor import ToolCallComplete, ToolCallStatus
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
 
     adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
@@ -1278,7 +1278,7 @@ def test_observed_tool_call_reemits_a_completed_function_call() -> None:
     function_call (which persists), then the function_call_output. Same call_id →
     the web dedupes the live in_progress render and this one into a single card.
     """
-    from omnigent.inner.executor import ToolCallComplete, ToolCallRequest, ToolCallStatus
+    from omnigent.harnesses.executor import ToolCallComplete, ToolCallRequest, ToolCallStatus
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
 
     adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
@@ -1320,7 +1320,7 @@ def test_uncached_completion_reemits_no_function_call() -> None:
     is what keeps the re-emission from firing for a call whose durable completed
     form some other path already produced (see the observed_call_completed test).
     """
-    from omnigent.inner.executor import ToolCallComplete, ToolCallStatus
+    from omnigent.harnesses.executor import ToolCallComplete, ToolCallStatus
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
 
     adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
@@ -1349,7 +1349,7 @@ def test_observed_call_completed_request_is_not_reemitted_at_completion() -> Non
     completed card. Regression guard: without the cache pop, this observed call
     would render (and persist) two identical completed cards.
     """
-    from omnigent.inner.executor import ToolCallComplete, ToolCallRequest, ToolCallStatus
+    from omnigent.harnesses.executor import ToolCallComplete, ToolCallRequest, ToolCallStatus
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
 
     adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
@@ -1392,7 +1392,7 @@ def test_dispatched_call_does_not_reemit_a_completed_function_call() -> None:
     function_call via dispatch_tool, so the ToolCallComplete short-circuits before
     the re-emission. Re-emitting here would double the card.
     """
-    from omnigent.inner.executor import ToolCallComplete, ToolCallStatus
+    from omnigent.harnesses.executor import ToolCallComplete, ToolCallStatus
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
 
     adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
@@ -1422,7 +1422,7 @@ def test_translate_event_mcp_request_queues_tool_use_id_for_dispatch() -> None:
     observed call_id — and the SDK client can't dedupe, so the
     REPL renders ``⏵ tool_name`` twice.
     """
-    from omnigent.inner.executor import ToolCallRequest
+    from omnigent.harnesses.executor import ToolCallRequest
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
 
     adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
@@ -1474,7 +1474,7 @@ def test_translate_event_non_mcp_request_queues_tool_use_id() -> None:
     Executors that observe a tool already run by the native harness mark
     it ``internally_executed`` and bypass this queue entirely.
     """
-    from omnigent.inner.executor import ToolCallRequest
+    from omnigent.harnesses.executor import ToolCallRequest
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
 
     adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
@@ -1504,7 +1504,7 @@ def test_translate_event_non_mcp_request_queues_tool_use_id() -> None:
 def test_internally_executed_tool_bypasses_dispatch_correlation_queue() -> None:
     """Keep an observed native tool from corrupting a later dispatch identity."""
 
-    from omnigent.inner.executor import ToolCallComplete, ToolCallRequest, ToolCallStatus
+    from omnigent.harnesses.executor import ToolCallComplete, ToolCallRequest, ToolCallStatus
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
 
     adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
@@ -1548,7 +1548,7 @@ def test_translate_event_request_without_tool_use_id_does_not_queue() -> None:
     to correlate, and pushing ``None`` (or any sentinel)
     would mis-pair a later dispatch against a non-existent id.
     """
-    from omnigent.inner.executor import ToolCallRequest
+    from omnigent.harnesses.executor import ToolCallRequest
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
 
     adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
@@ -1714,7 +1714,7 @@ async def test_rejected_call_does_not_steal_next_dispatch_call_id() -> None:
     """A call the harness completes itself (the claude CLI rejecting an
     unknown bare tool name) must leave the dispatch FIFO, so the model's
     retry dispatches under its own id: one card per call, no duplicates."""
-    from omnigent.inner.executor import ToolCallComplete, ToolCallRequest, ToolCallStatus
+    from omnigent.harnesses.executor import ToolCallComplete, ToolCallRequest, ToolCallStatus
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
 
     dispatched: list[str] = []
@@ -1810,7 +1810,7 @@ async def test_observed_and_dispatched_call_ids_match_for_bare_name_tools() -> N
     MCP-prefix gate on the queue push will fail this test
     immediately.
     """
-    from omnigent.inner.executor import ToolCallRequest
+    from omnigent.harnesses.executor import ToolCallRequest
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
 
     adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
@@ -1900,7 +1900,13 @@ async def test_observed_and_dispatched_call_ids_match_for_bare_name_tools() -> N
 @pytest.mark.asyncio
 async def test_executor_adapter_builds_config_from_request() -> None:
     """Forwards request controls but not agent name as executor model."""
-    from omnigent.inner.executor import Executor, ExecutorConfig, Message, ToolSpec, TurnComplete
+    from omnigent.harnesses.executor import (
+        Executor,
+        ExecutorConfig,
+        Message,
+        ToolSpec,
+        TurnComplete,
+    )
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
     from omnigent.runtime.harnesses._scaffold import TurnContext
     from omnigent.server.schemas import CreateResponseRequest
@@ -1942,7 +1948,13 @@ async def test_executor_adapter_forwards_context_mode_to_config() -> None:
     """``request.context_mode`` (the runner's forwarded ``omnigent.context.
     mode`` label) reaches ``ExecutorConfig.extra`` so the claude-sdk
     executor can tell a superside-chat turn apart from a plain one."""
-    from omnigent.inner.executor import Executor, ExecutorConfig, Message, ToolSpec, TurnComplete
+    from omnigent.harnesses.executor import (
+        Executor,
+        ExecutorConfig,
+        Message,
+        ToolSpec,
+        TurnComplete,
+    )
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
     from omnigent.runtime.harnesses._scaffold import TurnContext
     from omnigent.server.schemas import CreateResponseRequest
@@ -1978,7 +1990,13 @@ async def test_executor_adapter_forwards_context_mode_to_config() -> None:
 async def test_executor_adapter_omits_context_mode_when_unset() -> None:
     """No ``context_mode`` on the request (the default) must not add the
     key at all — byte-for-byte the pre-existing ``extra`` shape."""
-    from omnigent.inner.executor import Executor, ExecutorConfig, Message, ToolSpec, TurnComplete
+    from omnigent.harnesses.executor import (
+        Executor,
+        ExecutorConfig,
+        Message,
+        ToolSpec,
+        TurnComplete,
+    )
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
     from omnigent.runtime.harnesses._scaffold import TurnContext
     from omnigent.server.schemas import CreateResponseRequest
@@ -2022,7 +2040,13 @@ async def test_executor_adapter_forwards_model_override_to_config() -> None:
     Without this, every harness-backed agent silently ignores
     ``/model``.
     """
-    from omnigent.inner.executor import Executor, ExecutorConfig, Message, ToolSpec, TurnComplete
+    from omnigent.harnesses.executor import (
+        Executor,
+        ExecutorConfig,
+        Message,
+        ToolSpec,
+        TurnComplete,
+    )
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
     from omnigent.runtime.harnesses._scaffold import TurnContext
     from omnigent.server.schemas import CreateResponseRequest
@@ -2305,7 +2329,7 @@ def test_internal_errored_tool_complete_emits_output_with_real_call_id() -> None
     id and is NEVER ``call_id == ""`` (the pre-fix coercion that orphaned the
     result and left the call a perpetual in-progress card).
     """
-    from omnigent.inner.executor import ToolCallComplete, ToolCallRequest, ToolCallStatus
+    from omnigent.harnesses.executor import ToolCallComplete, ToolCallRequest, ToolCallStatus
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
 
     adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
@@ -2358,7 +2382,7 @@ def test_internal_errored_tool_complete_emits_output_with_real_call_id() -> None
 def test_completed_observed_tool_request_is_durable() -> None:
     """Mark the completed observation durable while retaining the live start."""
 
-    from omnigent.inner.executor import ToolCallRequest
+    from omnigent.harnesses.executor import ToolCallRequest
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
 
     adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
@@ -2408,7 +2432,7 @@ def test_dispatched_id_tool_complete_is_suppressed() -> None:
     stream and produce a ghost "Waiting for output" card in the Web UI. So a
     ``ToolCallComplete`` carrying a dispatched id must produce NO emit.
     """
-    from omnigent.inner.executor import ToolCallComplete, ToolCallStatus
+    from omnigent.harnesses.executor import ToolCallComplete, ToolCallStatus
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
 
     adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
@@ -2445,7 +2469,7 @@ def test_non_dispatched_id_tool_complete_emits_output() -> None:
     ``dispatch_tool`` round-trip) has its completion as the ONLY output source, so
     it must surface a paired ``function_call_output``.
     """
-    from omnigent.inner.executor import ToolCallComplete, ToolCallStatus
+    from omnigent.harnesses.executor import ToolCallComplete, ToolCallStatus
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
 
     adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
@@ -2484,7 +2508,7 @@ def test_idless_tool_complete_is_suppressed() -> None:
     id-scoped suppression must keep doing so (the ``or ""`` coercion alone left
     this path unguarded).
     """
-    from omnigent.inner.executor import ToolCallComplete, ToolCallStatus
+    from omnigent.harnesses.executor import ToolCallComplete, ToolCallStatus
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
 
     adapter = ExecutorAdapter(executor_factory=lambda: _StubExecutor())
@@ -2538,7 +2562,7 @@ def test_interrupt_slice_covers_pi_rpc_session_close_reap_budget() -> None:
     SIGKILL fallback never runs and the Pi subprocess is orphaned. The fix
     raises the slice to 3.0s to give close() room to time out cleanly first.
     """
-    from omnigent.inner.pi_executor import _RPC_SESSION_CLOSE_REAP_TIMEOUT_S
+    from omnigent.harnesses.pi_executor import _RPC_SESSION_CLOSE_REAP_TIMEOUT_S
     from omnigent.runtime.harnesses._executor_adapter import _INTERRUPT_SLICE_S
 
     assert _INTERRUPT_SLICE_S >= _RPC_SESSION_CLOSE_REAP_TIMEOUT_S, (
@@ -2550,7 +2574,7 @@ def test_interrupt_slice_covers_pi_rpc_session_close_reap_budget() -> None:
 
 
 def test_observer_records_raw_output_in_omnigent_session(tmp_path, monkeypatch) -> None:
-    from omnigent.inner.executor import ToolCallComplete, ToolCallRequest, ToolCallStatus
+    from omnigent.harnesses.executor import ToolCallComplete, ToolCallRequest, ToolCallStatus
     from omnigent.runner.session_prs import SessionPrRegistry
     from omnigent.runtime.harnesses._executor_adapter import ExecutorAdapter
 
@@ -2674,7 +2698,7 @@ class _SteeringExecutor(Executor):
         return "pending"
 
     async def run_turn(self, messages, tools, system_prompt, config=None):
-        from omnigent.inner.executor import SteerOutcome, TurnComplete
+        from omnigent.harnesses.executor import SteerOutcome, TurnComplete
 
         await self.offered.wait()
         if self.outcome is not None:
@@ -2730,7 +2754,7 @@ async def test_a_steer_write_cancelled_with_the_turn_is_refused() -> None:
     """The turn ends while the executor is still writing the steer: refused, never lost."""
     import asyncio as _aio
 
-    from omnigent.inner.executor import TurnComplete
+    from omnigent.harnesses.executor import TurnComplete
 
     class _SlowWrite(Executor):
         def __init__(self) -> None:
@@ -2829,7 +2853,7 @@ def test_superside_chat_replay_renders_one_framed_digest_line_per_tool_call() ->
 
 
 def test_superside_chat_replay_digest_survives_the_claude_sdk_prompt() -> None:
-    from omnigent.inner.claude_sdk_executor import ClaudeSDKExecutor
+    from omnigent.harnesses.claude_sdk_executor import ClaudeSDKExecutor
     from omnigent.runtime.harnesses._executor_adapter import _translate_input_to_messages
 
     messages = _translate_input_to_messages(_history_with_tool_call("ok"), tool_digests=True)

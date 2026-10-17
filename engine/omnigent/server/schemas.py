@@ -29,7 +29,7 @@ from omnigent.entities import (
     USER_SESSION_TITLE_MAX_CHARS,
     ConversationItem,
 )
-from omnigent.inner.native_attachments import reject_authored_framework_notices
+from omnigent.harnesses.native_attachments import reject_authored_framework_notices
 
 # ── Shared ──────────────────────────────────────────────────────
 

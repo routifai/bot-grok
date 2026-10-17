@@ -156,7 +156,7 @@ def test_legacy_content_tool_result_json_text_parses_to_dict() -> None:
     TOOL_RESULT: when Omnigent' raw string IS a JSON-encoded
     object, the shim parses it into the corresponding Python
     dict. Mirrors omnigent-native's
-    :func:`omnigent.inner.mcp_tools._extract_call_result_payload`,
+    :func:`omnigent.harnesses.mcp_tools._extract_call_result_payload`,
     which JSON-parses each text content block on the way back.
 
     Why this matters: the Databricks ``google_policy``'s

@@ -28,7 +28,7 @@ fail-open branch can never run. Canonical values, outermost first:
    claude-sdk hook). Strictly larger than hop 2, never equal to it: a hook killed at the
    same instant its request gives up never reaches its fail-open branch.
 2. hook HTTP request — :data:`HOOK_REQUEST_TIMEOUT_S` (8s, defined
-   as ``REQUEST_TIMEOUT_S`` in ``omnigent.inner.hook_scripts.subagent_router``,
+   as ``REQUEST_TIMEOUT_S`` in ``omnigent.harnesses.hook_scripts.subagent_router``,
    which stays stdlib-only and cannot import this module)
 3. runner loopback relay wait — :data:`RELAY_TIMEOUT_S` (7s)
 4. server relay hop — :data:`SERVER_HOP_TIMEOUT_S` (6s), inside which the
@@ -1518,7 +1518,7 @@ def router_env(session_id: str, router_dir: Path, harness: str | None = None) ->
     :returns: Env-var overrides for the harness process; empty for a
         harness with no routing hook.
     """
-    from omnigent.inner.hook_scripts.subagent_router import (
+    from omnigent.harnesses.hook_scripts.subagent_router import (
         ROUTER_DIR_ENV_VAR,
         SESSION_ID_ENV_VAR,
     )

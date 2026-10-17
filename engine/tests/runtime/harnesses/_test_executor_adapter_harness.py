@@ -29,7 +29,7 @@ from collections.abc import AsyncIterator, Callable
 
 from fastapi import FastAPI
 
-from omnigent.inner.executor import (
+from omnigent.harnesses.executor import (
     Executor,
     ExecutorConfig,
     ExecutorError,

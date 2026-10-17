@@ -1209,7 +1209,7 @@ async def _send_hello(
     except Exception:  # noqa: BLE001 — telemetry errors must not abort hello
         pass
 
-    from omnigent.inner.native_attachments import CAP_FILESYSTEM_ATTACHMENTS
+    from omnigent.harnesses.native_attachments import CAP_FILESYSTEM_ATTACHMENTS
 
     await send_text(
         encode_frame(

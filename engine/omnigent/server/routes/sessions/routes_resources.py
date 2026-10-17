@@ -682,7 +682,7 @@ def register_resources_routes(
         :returns: ``(roots, unconfined, workspace)``, or ``None`` when the
             session has no workspace or spec to resolve.
         """
-        from omnigent.inner.sandbox import is_unconfined, reachable_roots, resolve_sandbox
+        from omnigent.harnesses.sandbox import is_unconfined, reachable_roots, resolve_sandbox
 
         if not conversation.workspace:
             return None
@@ -1223,7 +1223,7 @@ def register_resources_routes(
         if host_registry.get(conversation.host_id) is None:
             return None
 
-        from omnigent.inner.sandbox import reach_payload
+        from omnigent.harnesses.sandbox import reach_payload
 
         metadata: dict[str, Any] = {"root": conversation.workspace}
         # Advertise the same reach the runner would. Without it the file
@@ -1706,7 +1706,7 @@ def register_resources_routes(
                 "filename is required",
                 code=ErrorCode.INVALID_INPUT,
             )
-        from omnigent.inner.native_attachments import requires_filesystem
+        from omnigent.harnesses.native_attachments import requires_filesystem
         from omnigent.runtime.content_resolver import (
             _COMPRESSIBLE_IMAGE_MIMES,
             MAX_ATTACHMENT_UPLOAD_BYTES,
@@ -2099,7 +2099,7 @@ def register_resources_routes(
 
         # Files requiring filesystem tools entering a session pass the same checks as an upload,
         # held under the same lock, so a copy can't skip the harness or quotas.
-        from omnigent.inner.native_attachments import requires_filesystem
+        from omnigent.harnesses.native_attachments import requires_filesystem
 
         filesystem_sources = [
             stored

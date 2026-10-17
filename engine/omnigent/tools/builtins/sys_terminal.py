@@ -35,8 +35,8 @@ import threading
 from dataclasses import dataclass
 from typing import Any
 
-from omnigent.inner.datamodel import OSEnvSpec, TerminalEnvSpec
-from omnigent.inner.terminal import TerminalInstance
+from omnigent.harnesses.datamodel import OSEnvSpec, TerminalEnvSpec
+from omnigent.harnesses.terminal import TerminalInstance
 from omnigent.spec.types import AgentSpec
 from omnigent.terminals import TerminalRegistry
 from omnigent.tools.base import Tool, ToolContext
@@ -126,7 +126,7 @@ def _format_launch_envelope(
     Centralizes the success-shape so :meth:`SysTerminalLaunchTool._spawn_and_format`
     stays under the 40-line ceiling. The envelope mirrors the
     legacy inner Session ``terminal_launch`` shape
-    (``omnigent/inner/session.py:3242``).
+    (``omnigent/harnesses/session.py:3242``).
 
     :param validated: Validated launch args used to populate the
         envelope's terminal/session fields.

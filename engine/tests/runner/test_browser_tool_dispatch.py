@@ -350,7 +350,7 @@ async def test_screenshot_history_cap_keeps_metadata_and_explicit_image_omission
 async def test_screenshot_never_overrides_existing_failure_status(
     status: dict[str, object],
 ) -> None:
-    from omnigent.inner.executor import classify_tool_result
+    from omnigent.harnesses.executor import classify_tool_result
     from tests._image_fixtures import _TINY_PNG_BASE64
 
     body = {"ok": True, "data_url": f"data:image/png;base64,{_TINY_PNG_BASE64}", **status}

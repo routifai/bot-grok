@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from omnigent.inner.native_attachments import (
+from omnigent.harnesses.native_attachments import (
     UNRESOLVED_ATTACHMENT_MARKER_PATTERN,
     reject_authored_framework_notices,
 )
@@ -23,8 +23,8 @@ from omnigent.llms.adapters._content import redact_binary_payloads
 # text, so without filtering them a session started with an image is
 # titled by a temp-file path instead of what the user typed. Matched per
 # line by synthesize_conversation_title; keep the Attached variants in
-# sync with attachment_reference_line in omnigent/inner/native_attachments.py
-# and omnigent/inner/codex_native_executor.py.
+# sync with attachment_reference_line in omnigent/harnesses/native_attachments.py
+# and omnigent/harnesses/codex_native_executor.py.
 _ATTACHMENT_MARKER_RE = re.compile(
     rf"^(?:\[Attached(?: file)?: .+\]|{UNRESOLVED_ATTACHMENT_MARKER_PATTERN})$"
 )

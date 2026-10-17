@@ -15,7 +15,7 @@ from omnigent.entities import (
     MessageData,
     NativeToolData,
 )
-from omnigent.inner.native_attachments import expand_framework_notices
+from omnigent.harnesses.native_attachments import expand_framework_notices
 from omnigent.runtime.mcp_tool_result import decode_mcp_image_result
 from omnigent.runtime.tool_result_replay import (
     image_omitted_placeholder,

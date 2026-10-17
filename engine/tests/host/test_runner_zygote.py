@@ -389,7 +389,7 @@ def test_malloc_tuning_is_applied_at_the_zygote_exec(monkeypatch, tmp_path) -> N
     :param monkeypatch: Fixture used to force the Linux tuning branch.
     :param tmp_path: Temp dir for the zygote log path.
     """
-    monkeypatch.setattr("omnigent.inner._proc.IS_LINUX", True)
+    monkeypatch.setattr("omnigent.harnesses._proc.IS_LINUX", True)
     captured: dict[str, str] = {}
 
     class _FakePopen:
@@ -415,7 +415,7 @@ def test_operator_malloc_override_wins_at_the_zygote_exec(monkeypatch, tmp_path)
     :param monkeypatch: Fixture used to force Linux and seed the parent env.
     :param tmp_path: Temp dir for the zygote log path.
     """
-    monkeypatch.setattr("omnigent.inner._proc.IS_LINUX", True)
+    monkeypatch.setattr("omnigent.harnesses._proc.IS_LINUX", True)
     monkeypatch.setenv("MALLOC_ARENA_MAX", "16")
     captured: dict[str, str] = {}
 
@@ -714,7 +714,7 @@ def test_fork_refused_after_in_place_upgrade(monkeypatch, cmd, kind) -> None:
     The child resolves its lazily-imported modules from the NEW on-disk files
     against the OLD pre-imported graph. Both observed failures are this: a
     harness missing ``describe_exception`` from an in-memory
-    ``omnigent.inner.executor`` that predates it, and a runner whose
+    ``omnigent.harnesses.executor`` that predates it, and a runner whose
     ``create_app`` cannot import ``omnigent.cli_auth`` from the swapped-out
     package directory. Refusing makes the caller fall back to a fresh
     interpreter, which runs the new code coherently.

@@ -38,7 +38,7 @@ from omnigent.spec.omnigent import (
 from omnigent.spec.types import AgentSpec
 
 if TYPE_CHECKING:
-    from omnigent.inner.datamodel import AgentDef
+    from omnigent.harnesses.datamodel import AgentDef
 
 # ── Fixtures ─────────────────────────────────────────────────
 
@@ -189,7 +189,7 @@ def mcp_tool_yaml(tmp_path: Path) -> Path:
             "glean": {
                 "type": "mcp",
                 "command": ".venv/bin/python",
-                "args": ["-m", "omnigent.inner.databricks_mcps.glean"],
+                "args": ["-m", "omnigent.harnesses.databricks_mcps.glean"],
             },
         },
     }
@@ -289,7 +289,7 @@ def test_agent_def_to_agent_spec_hello_world(
     ``omnigent chat hello_world.yaml`` can't produce a valid spec
     without this path working.
     """
-    from omnigent.inner.loader import load_agent_def
+    from omnigent.harnesses.loader import load_agent_def
 
     agent_def = load_agent_def(hello_world_yaml)
     spec = agent_def_to_agent_spec(agent_def)
@@ -345,7 +345,7 @@ def test_agent_def_to_agent_spec_executor_block(
     so every non-trivial omnigent YAML routes to the wrong
     harness (or fails).
     """
-    from omnigent.inner.loader import load_agent_def
+    from omnigent.harnesses.loader import load_agent_def
 
     agent_def = load_agent_def(executor_block_yaml)
     spec = agent_def_to_agent_spec(agent_def)
@@ -400,7 +400,7 @@ def test_agent_def_to_agent_spec_function_tool(
     the tool callable on the reverse trip, so the harness starts
     without its tools.
     """
-    from omnigent.inner.loader import load_agent_def
+    from omnigent.harnesses.loader import load_agent_def
 
     agent_def = load_agent_def(function_tools_yaml)
     spec = agent_def_to_agent_spec(agent_def)
@@ -447,7 +447,7 @@ def test_function_tool_parameters_derived_from_callable_signature(
         params, or starts emitting required entries for
         defaulted ones.
     """
-    from omnigent.inner.loader import load_agent_def
+    from omnigent.harnesses.loader import load_agent_def
 
     agent_def = load_agent_def(function_tools_yaml)
     spec = agent_def_to_agent_spec(agent_def)
@@ -601,7 +601,7 @@ def test_load_os_env_yaml_carries_through_top_level_field(
     sub-agents has no concrete parent to resolve against and
     sub-agents boot without filesystem access.
     """
-    from omnigent.inner.datamodel import OSEnvSpec
+    from omnigent.harnesses.datamodel import OSEnvSpec
 
     spec = load(os_env_yaml)
 
@@ -642,7 +642,7 @@ def test_load_mcp_stdio_yaml_translates_to_mcp_server(mcp_tool_yaml: Path) -> No
     # Command + args carry through verbatim so the subprocess
     # spawn matches what legacy omnigent ran.
     assert mcp.command == ".venv/bin/python"
-    assert mcp.args == ["-m", "omnigent.inner.databricks_mcps.glean"]
+    assert mcp.args == ["-m", "omnigent.harnesses.databricks_mcps.glean"]
     # HTTP fields must stay None / empty on the stdio branch.
     assert mcp.url is None
     assert mcp.headers == {}
@@ -691,7 +691,7 @@ def test_mcp_stdio_yaml_reverse_trip_recovers_mcp_tool(mcp_tool_yaml: Path) -> N
     the live E2E test under tests/e2e/omnigent/ guards
     against.
     """
-    from omnigent.inner.tools import MCPTool
+    from omnigent.harnesses.tools import MCPTool
     from omnigent.spec.omnigent import agent_spec_to_agent_def
 
     spec = load(mcp_tool_yaml)
@@ -705,7 +705,7 @@ def test_mcp_stdio_yaml_reverse_trip_recovers_mcp_tool(mcp_tool_yaml: Path) -> N
     # Transport fields round-trip: command + args must match the
     # originally-declared subprocess, not some lossy approximation.
     assert tool.command == ".venv/bin/python"
-    assert tool.args == ["-m", "omnigent.inner.databricks_mcps.glean"]
+    assert tool.args == ["-m", "omnigent.harnesses.databricks_mcps.glean"]
 
 
 def test_load_cancellable_function_yaml_rejected_post_step_c(
@@ -834,9 +834,9 @@ def test_cancellable_function_parameters_forward_trip_preserves_input_schema() -
     catches the regression at translation time with an actionable
     message.
     """
-    from omnigent.inner.datamodel import AgentDef
-    from omnigent.inner.datamodel import ExecutorSpec as OmniExecutorSpec
-    from omnigent.inner.tools import CancellableFunctionTool
+    from omnigent.harnesses.datamodel import AgentDef
+    from omnigent.harnesses.datamodel import ExecutorSpec as OmniExecutorSpec
+    from omnigent.harnesses.tools import CancellableFunctionTool
     from omnigent.spec.omnigent import agent_def_to_agent_spec
 
     seconds_schema = {
@@ -882,9 +882,9 @@ def test_function_tool_parameters_round_trip_preserves_input_schema(
     Pinning the round-trip catches regressions where the
     translator drops ``parameters`` somewhere along the way.
     """
-    from omnigent.inner.datamodel import AgentDef
-    from omnigent.inner.datamodel import ExecutorSpec as OmniExecutorSpec
-    from omnigent.inner.tools import FunctionTool
+    from omnigent.harnesses.datamodel import AgentDef
+    from omnigent.harnesses.datamodel import ExecutorSpec as OmniExecutorSpec
+    from omnigent.harnesses.tools import FunctionTool
     from omnigent.spec import omnigent as spec_omni
     from omnigent.spec.omnigent import agent_def_to_agent_spec
 
@@ -971,12 +971,12 @@ def test_os_env_round_trips_through_translator() -> None:
     without FS access) or crash (hand-rolled dict conversion
     reintroduced and lost a field).
     """
-    from omnigent.inner.datamodel import (
+    from omnigent.harnesses.datamodel import (
         AgentDef,
         OSEnvSandboxSpec,
         OSEnvSpec,
     )
-    from omnigent.inner.datamodel import (
+    from omnigent.harnesses.datamodel import (
         ExecutorSpec as OmniExecutorSpec,
     )
     from omnigent.spec.omnigent import (
@@ -1020,7 +1020,7 @@ def test_inline_agent_tool_preserves_launch_settings_across_translation(
     tmp_path: Path,
 ) -> None:
     """Sub-agent history and session limits survive the real YAML load path."""
-    from omnigent.inner.tools import AgentTool
+    from omnigent.harnesses.tools import AgentTool
     from omnigent.spec.omnigent import agent_spec_to_agent_def
 
     yaml_path = tmp_path / "agent.yaml"
@@ -1073,14 +1073,14 @@ def test_inline_agent_tool_inherit_resolves_to_parent_os_env() -> None:
     the repo. The whole point of ``os_env: inherit`` — matching
     legacy omnigent semantics — silently breaks.
     """
-    from omnigent.inner.datamodel import (
+    from omnigent.harnesses.datamodel import (
         AgentDef,
         OSEnvSpec,
     )
-    from omnigent.inner.datamodel import (
+    from omnigent.harnesses.datamodel import (
         ExecutorSpec as OmniExecutorSpec,
     )
-    from omnigent.inner.tools import AgentTool
+    from omnigent.harnesses.tools import AgentTool
     from omnigent.spec.omnigent import agent_def_to_agent_spec
 
     parent_os_env = OSEnvSpec(type="caller_process", cwd=".")
@@ -1129,14 +1129,14 @@ def test_inline_agent_tool_concrete_os_env_not_overridden_by_parent() -> None:
     only fires when the tool uses the string sentinel. Explicit
     always wins, same as the ``profile`` propagation rule.
     """
-    from omnigent.inner.datamodel import (
+    from omnigent.harnesses.datamodel import (
         AgentDef,
         OSEnvSpec,
     )
-    from omnigent.inner.datamodel import (
+    from omnigent.harnesses.datamodel import (
         ExecutorSpec as OmniExecutorSpec,
     )
-    from omnigent.inner.tools import AgentTool
+    from omnigent.harnesses.tools import AgentTool
     from omnigent.spec.omnigent import agent_def_to_agent_spec
 
     parent_os_env = OSEnvSpec(type="caller_process", cwd=".")
@@ -1178,13 +1178,13 @@ def test_inline_agent_tool_inherit_with_no_parent_os_env_yields_none() -> None:
     commented-out ``coding_supervisor.yaml`` state the user
     experienced before this feature landed).
     """
-    from omnigent.inner.datamodel import (
+    from omnigent.harnesses.datamodel import (
         AgentDef,
     )
-    from omnigent.inner.datamodel import (
+    from omnigent.harnesses.datamodel import (
         ExecutorSpec as OmniExecutorSpec,
     )
-    from omnigent.inner.tools import AgentTool
+    from omnigent.harnesses.tools import AgentTool
     from omnigent.spec.omnigent import agent_def_to_agent_spec
 
     parent = AgentDef(
@@ -1232,7 +1232,7 @@ def test_instructions_field_resolved_path_wins_over_prompt() -> None:
     compat, ends up with the placeholder instead of the real
     instructions.
     """
-    from omnigent.inner.datamodel import AgentDef
+    from omnigent.harnesses.datamodel import AgentDef
     from omnigent.spec.omnigent import agent_def_to_agent_spec
 
     agent_def = AgentDef(
@@ -1250,7 +1250,7 @@ def test_instructions_field_falls_back_to_prompt_when_unset() -> None:
     back to ``prompt:`` — preserves backward compat for every
     omnigent YAML written before the field existed.
     """
-    from omnigent.inner.datamodel import AgentDef
+    from omnigent.harnesses.datamodel import AgentDef
     from omnigent.spec.omnigent import agent_def_to_agent_spec
 
     agent_def = AgentDef(name="prompt-only", prompt="just the prompt")
@@ -1299,13 +1299,13 @@ def test_terminals_thread_through_translator() -> None:
     register ``sys_terminal_*``, and the LLM gets a "tool not
     available" error mid-conversation.
     """
-    from omnigent.inner.datamodel import (
+    from omnigent.harnesses.datamodel import (
         AgentDef,
         OSEnvSandboxSpec,
         OSEnvSpec,
         TerminalEnvSpec,
     )
-    from omnigent.inner.datamodel import (
+    from omnigent.harnesses.datamodel import (
         ExecutorSpec as OmniExecutorSpec,
     )
     from omnigent.spec.omnigent import agent_def_to_agent_spec
@@ -1361,8 +1361,8 @@ def test_terminals_none_when_parent_has_no_terminals() -> None:
     same "no terminals declared" semantics with a confusingly
     different error message.
     """
-    from omnigent.inner.datamodel import AgentDef
-    from omnigent.inner.datamodel import (
+    from omnigent.harnesses.datamodel import AgentDef
+    from omnigent.harnesses.datamodel import (
         ExecutorSpec as OmniExecutorSpec,
     )
     from omnigent.spec.omnigent import agent_def_to_agent_spec
@@ -1415,11 +1415,11 @@ def test_inline_agent_tool_inherits_parent_terminals() -> None:
     no way to launch a terminal even though the parent has one
     configured. The supervisor pattern stops working again.
     """
-    from omnigent.inner.datamodel import AgentDef, TerminalEnvSpec
-    from omnigent.inner.datamodel import (
+    from omnigent.harnesses.datamodel import AgentDef, TerminalEnvSpec
+    from omnigent.harnesses.datamodel import (
         ExecutorSpec as OmniExecutorSpec,
     )
-    from omnigent.inner.tools import AgentTool
+    from omnigent.harnesses.tools import AgentTool
     from omnigent.spec.omnigent import agent_def_to_agent_spec
 
     parent = AgentDef(
@@ -1489,8 +1489,8 @@ def test_harness_auto_picks_from_model_prefix(
     ``executor.config.harness: required`` error at spec-load,
     blocking the entire Omnigent path.
     """
-    from omnigent.inner.datamodel import AgentDef
-    from omnigent.inner.datamodel import ExecutorSpec as OmniExecutorSpec
+    from omnigent.harnesses.datamodel import AgentDef
+    from omnigent.harnesses.datamodel import ExecutorSpec as OmniExecutorSpec
     from omnigent.spec.omnigent import agent_def_to_agent_spec
 
     agent_def = AgentDef(
@@ -1513,8 +1513,8 @@ def test_harness_auto_pick_doesnt_override_explicit_declaration() -> None:
     NOT override it. Explicit always wins — same precedence
     rule as the profile and os_env fallbacks.
     """
-    from omnigent.inner.datamodel import AgentDef
-    from omnigent.inner.datamodel import ExecutorSpec as OmniExecutorSpec
+    from omnigent.harnesses.datamodel import AgentDef
+    from omnigent.harnesses.datamodel import ExecutorSpec as OmniExecutorSpec
     from omnigent.spec.omnigent import agent_def_to_agent_spec
 
     agent_def = AgentDef(
@@ -1543,8 +1543,8 @@ def test_harness_auto_pick_unknown_model_raises() -> None:
         model could not be mapped to a harness.
     """
     from omnigent.errors import OmnigentError
-    from omnigent.inner.datamodel import AgentDef
-    from omnigent.inner.datamodel import ExecutorSpec as OmniExecutorSpec
+    from omnigent.harnesses.datamodel import AgentDef
+    from omnigent.harnesses.datamodel import ExecutorSpec as OmniExecutorSpec
     from omnigent.spec.omnigent import agent_def_to_agent_spec
 
     agent_def = AgentDef(
@@ -1576,9 +1576,9 @@ def test_inline_agent_tool_without_executor_inherits_parent_harness() -> None:
     with ``sub_agents[...].executor.config.harness: required``
     before any LLM request.
     """
-    from omnigent.inner.datamodel import AgentDef
-    from omnigent.inner.datamodel import ExecutorSpec as OmniExecutorSpec
-    from omnigent.inner.tools import AgentTool
+    from omnigent.harnesses.datamodel import AgentDef
+    from omnigent.harnesses.datamodel import ExecutorSpec as OmniExecutorSpec
+    from omnigent.harnesses.tools import AgentTool
     from omnigent.spec.omnigent import agent_def_to_agent_spec
 
     parent = AgentDef(
@@ -1611,9 +1611,9 @@ def test_inline_agent_tool_explicit_harness_wins_over_parent() -> None:
     When the inline AgentTool declares its own harness, parent
     inheritance must NOT override it. Explicit always wins.
     """
-    from omnigent.inner.datamodel import AgentDef
-    from omnigent.inner.datamodel import ExecutorSpec as OmniExecutorSpec
-    from omnigent.inner.tools import AgentTool
+    from omnigent.harnesses.datamodel import AgentDef
+    from omnigent.harnesses.datamodel import ExecutorSpec as OmniExecutorSpec
+    from omnigent.harnesses.tools import AgentTool
     from omnigent.spec.omnigent import agent_def_to_agent_spec
 
     parent = AgentDef(
@@ -1646,9 +1646,9 @@ def test_inline_agent_tool_falls_through_to_model_auto_pick() -> None:
     When neither the child NOR the parent declares a harness,
     the adapter's model-prefix auto-pick still fires.
     """
-    from omnigent.inner.datamodel import AgentDef
-    from omnigent.inner.datamodel import ExecutorSpec as OmniExecutorSpec
-    from omnigent.inner.tools import AgentTool
+    from omnigent.harnesses.datamodel import AgentDef
+    from omnigent.harnesses.datamodel import ExecutorSpec as OmniExecutorSpec
+    from omnigent.harnesses.tools import AgentTool
     from omnigent.spec.omnigent import agent_def_to_agent_spec
 
     parent = AgentDef(
@@ -1735,8 +1735,8 @@ def _build_agent_def_with_raw_yaml(
     :returns: Tuple of (AgentDef with a valid executor, raw
         YAML dict suitable for the ``raw_yaml`` kwarg).
     """
-    from omnigent.inner.datamodel import AgentDef
-    from omnigent.inner.datamodel import ExecutorSpec as OmniExecutorSpec
+    from omnigent.harnesses.datamodel import AgentDef
+    from omnigent.harnesses.datamodel import ExecutorSpec as OmniExecutorSpec
 
     agent_def = AgentDef(
         name="polled",
@@ -1940,8 +1940,8 @@ def test_databricks_slash_model_without_profile_leaves_connection_none() -> None
     (no ``--profile`` flag) suddenly get a spec-load error because the
     translator tries to resolve a profile that was never set.
     """
-    from omnigent.inner.datamodel import AgentDef
-    from omnigent.inner.datamodel import ExecutorSpec as OmniExecutorSpec
+    from omnigent.harnesses.datamodel import AgentDef
+    from omnigent.harnesses.datamodel import ExecutorSpec as OmniExecutorSpec
 
     agent_def = AgentDef(
         name="slash_model_no_profile",
@@ -2106,8 +2106,8 @@ def test_self_clone_string_shorthand_loader_produces_selfagent_tool(
     silently becomes a default-everything AgentTool — the
     cloned-from-parent behavior is lost.
     """
-    from omnigent.inner.loader import load_agent_def
-    from omnigent.inner.tools import SelfAgentTool
+    from omnigent.harnesses.loader import load_agent_def
+    from omnigent.harnesses.tools import SelfAgentTool
 
     yaml_path = tmp_path / "agent.yaml"
     yaml_path.write_text(
@@ -2144,8 +2144,8 @@ def test_self_clone_dict_form_loader_produces_selfagent_tool(
     translator would build a default sub-agent instead of
     cloning the parent.
     """
-    from omnigent.inner.loader import load_agent_def
-    from omnigent.inner.tools import SelfAgentTool
+    from omnigent.harnesses.loader import load_agent_def
+    from omnigent.harnesses.tools import SelfAgentTool
 
     yaml_path = tmp_path / "agent.yaml"
     yaml_path.write_text(
@@ -2188,7 +2188,7 @@ def test_self_clone_dict_form_rejects_conflicting_overrides(
     message names the conflicting field so the author can fix
     the YAML.
     """
-    from omnigent.inner.loader import load_agent_def
+    from omnigent.harnesses.loader import load_agent_def
 
     yaml_path = tmp_path / "agent.yaml"
     yaml_path.write_text(
@@ -2237,7 +2237,7 @@ def test_agent_def_to_agent_spec_self_clone_propagates_parent_config(
     inheriting the parent's harness/model/prompt — both render
     self-clone unusable in practice.
     """
-    from omnigent.inner.loader import load_agent_def
+    from omnigent.harnesses.loader import load_agent_def
 
     yaml_path = tmp_path / "agent.yaml"
     yaml_path.write_text(
@@ -2299,7 +2299,7 @@ def test_agent_def_to_agent_spec_self_clone_recursion_guard(
     workflow ``max_iterations``, not by this guard. This test
     pins the parse-time invariant only.
     """
-    from omnigent.inner.loader import load_agent_def
+    from omnigent.harnesses.loader import load_agent_def
 
     yaml_path = tmp_path / "agent.yaml"
     yaml_path.write_text(

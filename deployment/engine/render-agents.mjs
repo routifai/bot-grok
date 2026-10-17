@@ -22,7 +22,7 @@ const AGENTS_DIR = process.env.SUPERCHAT_RENDER_AGENTS_DIR || join(here, "agents
  * scheduled/background Helper runs all share one harness. Pi's extra keys keep it from fighting Omnigent: no AGENTS.md/CLAUDE.md
  * auto-discovery, our prompt replaces pi's base prompt, no host skills; they are defined once
  * here and rendered into the Muse and every Sub-agent Type alike. (Compaction is switched off
- * engine-side, in inner/pi_executor.py, for superside-chat.)
+ * engine-side, in harnesses/pi_executor.py, for superside-chat.)
  */
 const MUSE_BUNDLES = [
   {

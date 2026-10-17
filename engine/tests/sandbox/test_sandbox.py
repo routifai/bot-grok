@@ -2,17 +2,17 @@
 Tests for the sandbox wrapper package.
 
 The wrapper is pure re-exports of the existing
-``omnigent.inner.sandbox`` surface, so the tests only verify two
+``omnigent.harnesses.sandbox`` surface, so the tests only verify two
 properties: every name the ``__all__`` lists is importable, and the
 wrapped names are the same Python objects as their inner
 counterparts. Behavioral tests for the underlying implementation live
-in ``tests/inner/`` and continue to exercise ``inner.sandbox``
+in ``tests/harnesses/`` and continue to exercise ``harnesses.sandbox``
 directly.
 """
 
 from __future__ import annotations
 
-import omnigent.inner.sandbox as inner_sandbox
+import omnigent.harnesses.sandbox as inner_sandbox
 from omnigent import sandbox
 
 
@@ -32,7 +32,7 @@ def test_sandbox_all_symbols_importable() -> None:
 def test_sandbox_reexports_are_inner_objects() -> None:
     """
     The re-exported symbols are the same Python objects as the originals
-    in ``omnigent.inner.sandbox``.
+    in ``omnigent.harnesses.sandbox``.
 
     Identity (``is``) — not equality — because anything else means the
     wrapper has accidentally introduced a parallel definition. Drift here
@@ -66,18 +66,18 @@ def test_default_sandbox_for_platform_is_bwrap_on_linux_regardless_of_binary() -
     a YAML whose ``sandbox:`` block omits ``type:``. The fail-loud
     "no usable mechanism" check is deferred to the backend's runtime
     ``resolve()`` (covered by
-    ``tests/inner/test_bwrap_sandbox.py::test_resolve_raises_when_bwrap_missing``).
+    ``tests/harnesses/test_bwrap_sandbox.py::test_resolve_raises_when_bwrap_missing``).
     We patch ``shutil.which`` to ``None`` to prove a missing binary
     does not change the selected type.
     """
     import sys
     from unittest.mock import patch
 
-    from omnigent.inner.datamodel import OSEnvSandboxSpec
+    from omnigent.harnesses.datamodel import OSEnvSandboxSpec
 
     with (
         patch.object(sys, "platform", "linux"),
-        patch("omnigent.inner.sandbox.shutil.which", return_value=None),
+        patch("omnigent.harnesses.sandbox.shutil.which", return_value=None),
     ):
         spec = inner_sandbox._default_sandbox_for_platform()
     assert isinstance(spec, OSEnvSandboxSpec)

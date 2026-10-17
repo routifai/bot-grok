@@ -25,8 +25,8 @@ from pathlib import Path
 import pytest
 from fastapi import WebSocketDisconnect
 
-from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec, TerminalEnvSpec
-from omnigent.inner.terminal import create_terminal_instance
+from omnigent.harnesses.datamodel import OSEnvSandboxSpec, OSEnvSpec, TerminalEnvSpec
+from omnigent.harnesses.terminal import create_terminal_instance
 from omnigent.terminals.control_bridge import (
     _SEND_KEYS_HEX_BYTES_PER_CALL,
     _clipboard_buffer_name,

@@ -204,9 +204,9 @@ def filesystem_attachment_upload_limit() -> int:
     """Max byte size of a single filesystem attachment.
 
     Config key ``filesystem_attachment_max_bytes``; defaults to
-    :data:`omnigent.inner.native_attachments.MAX_FILESYSTEM_ATTACHMENT_UPLOAD_BYTES`.
+    :data:`omnigent.harnesses.native_attachments.MAX_FILESYSTEM_ATTACHMENT_UPLOAD_BYTES`.
     """
-    from omnigent.inner.native_attachments import MAX_FILESYSTEM_ATTACHMENT_UPLOAD_BYTES
+    from omnigent.harnesses.native_attachments import MAX_FILESYSTEM_ATTACHMENT_UPLOAD_BYTES
 
     return _config_positive_int(
         "filesystem_attachment_max_bytes", MAX_FILESYSTEM_ATTACHMENT_UPLOAD_BYTES
@@ -217,9 +217,9 @@ def filesystem_attachment_file_limit() -> int:
     """Max number of filesystem attachments one session may hold.
 
     Config key ``filesystem_attachment_max_files``; defaults to
-    :data:`omnigent.inner.native_attachments.MAX_SESSION_FILESYSTEM_ATTACHMENTS`.
+    :data:`omnigent.harnesses.native_attachments.MAX_SESSION_FILESYSTEM_ATTACHMENTS`.
     """
-    from omnigent.inner.native_attachments import MAX_SESSION_FILESYSTEM_ATTACHMENTS
+    from omnigent.harnesses.native_attachments import MAX_SESSION_FILESYSTEM_ATTACHMENTS
 
     return _config_positive_int(
         "filesystem_attachment_max_files", MAX_SESSION_FILESYSTEM_ATTACHMENTS
@@ -230,9 +230,9 @@ def filesystem_attachment_total_bytes_limit() -> int:
     """Max summed bytes of filesystem attachments per session.
 
     Config key ``filesystem_attachment_max_total_bytes``; defaults to
-    :data:`omnigent.inner.native_attachments.MAX_SESSION_FILESYSTEM_ATTACHMENT_BYTES`.
+    :data:`omnigent.harnesses.native_attachments.MAX_SESSION_FILESYSTEM_ATTACHMENT_BYTES`.
     """
-    from omnigent.inner.native_attachments import MAX_SESSION_FILESYSTEM_ATTACHMENT_BYTES
+    from omnigent.harnesses.native_attachments import MAX_SESSION_FILESYSTEM_ATTACHMENT_BYTES
 
     return _config_positive_int(
         "filesystem_attachment_max_total_bytes", MAX_SESSION_FILESYSTEM_ATTACHMENT_BYTES

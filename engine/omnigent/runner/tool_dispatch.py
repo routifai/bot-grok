@@ -58,8 +58,8 @@ from omnigent.superchat.subagents import (
 from omnigent.util.json_types import JsonObject as _JsonObject
 
 if TYPE_CHECKING:
-    from omnigent.inner.datamodel import OSEnvSpec
-    from omnigent.inner.os_env import OSEnvironment
+    from omnigent.harnesses.datamodel import OSEnvSpec
+    from omnigent.harnesses.os_env import OSEnvironment
     from omnigent.runner.mcp_manager import RunnerMcpManager
     from omnigent.runner.resource_registry import SessionResourceRegistry
     from omnigent.runtime.filesystem_registry import FilesystemRegistry
@@ -70,7 +70,7 @@ import httpx
 
 from omnigent.debug_logging import runner_primary_session_id
 from omnigent.harness_aliases import canonicalize_harness
-from omnigent.inner.executor import ToolCallStatus, classify_tool_result
+from omnigent.harnesses.executor import ToolCallStatus, classify_tool_result
 from omnigent.models.model_override import (
     harness_supports_model_override,
     model_family_mismatch,
@@ -6985,7 +6985,7 @@ def _clone_os_env_spec(spec: OSEnvSpec) -> OSEnvSpec:
     other's view — a real hazard when the same parent spec is reused
     across many runner-local sys_os_* dispatches).
 
-    Symmetric with :func:`omnigent.inner.terminal._clone_sandbox_spec`;
+    Symmetric with :func:`omnigent.harnesses.terminal._clone_sandbox_spec`;
     both fixes close the same class of bug where hand-enumerated
     field copies silently drop newly-added security-critical fields
     such as ``egress_rules`` and ``egress_allow_private_destinations``.
@@ -7060,7 +7060,7 @@ def _effective_runner_os_env_spec(
         Overrides the spec's cwd when set.
     :returns: An ``OSEnvSpec`` with a concrete cwd.
     """
-    from omnigent.inner.datamodel import OSEnvSpec
+    from omnigent.harnesses.datamodel import OSEnvSpec
 
     configured = getattr(agent_spec, "os_env", None) if agent_spec is not None else None
     if configured is not None:
@@ -7097,7 +7097,7 @@ async def _seed_os_env_snapshot(
     Silently skips when the file does not yet exist (new-file creates have no
     baseline) or when any other read error occurs.
 
-    :param os_env: The :class:`~omnigent.inner.os_env.OSEnvironment` used for
+    :param os_env: The :class:`~omnigent.harnesses.os_env.OSEnvironment` used for
         the current tool dispatch — reused to avoid opening a second connection.
     :param path: Path argument forwarded from the tool call, e.g. ``"src/foo.py"``.
     :param filesystem_registry: Registry that stores the snapshot.
@@ -7141,7 +7141,7 @@ async def _execute_os_env_tool(
         session.
     :returns: Serialized tool result string.
     """
-    from omnigent.inner.os_env import _DEFAULT_READ_LIMIT, create_os_environment
+    from omnigent.harnesses.os_env import _DEFAULT_READ_LIMIT, create_os_environment
 
     os_env = None
     try:

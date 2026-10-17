@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from omnigent.inner.terminal import TerminalInstance
+from omnigent.harnesses.terminal import TerminalInstance
 from omnigent.terminals import TerminalRegistry
 
 

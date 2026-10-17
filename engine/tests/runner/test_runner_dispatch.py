@@ -56,22 +56,22 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.responses import StreamingResponse as _StreamingResponse
 
 import omnigent.runtime.harnesses._executor_adapter as _adapter_mod_recovery
-from omnigent.inner.executor import (
+from omnigent.harnesses.executor import (
     Executor as _RecoveryExecutor,
 )
-from omnigent.inner.executor import (
+from omnigent.harnesses.executor import (
     ExecutorConfig as _RecoveryExecutorConfig,
 )
-from omnigent.inner.executor import (
+from omnigent.harnesses.executor import (
     ExecutorEvent as _RecoveryExecutorEvent,
 )
-from omnigent.inner.executor import (
+from omnigent.harnesses.executor import (
     Message as _RecoveryMessage,
 )
-from omnigent.inner.executor import (
+from omnigent.harnesses.executor import (
     ToolSpec as _RecoveryToolSpec,
 )
-from omnigent.inner.executor import (
+from omnigent.harnesses.executor import (
     TurnComplete as _RecoveryTurnComplete,
 )
 from omnigent.runner import create_runner_app
@@ -2151,7 +2151,7 @@ _SSE_RESPONSE_COMPLETED = (
 
 @pytest.mark.asyncio
 async def test_runner_os_env_tools_use_agent_spec_cwd() -> None:
-    from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec
+    from omnigent.harnesses.datamodel import OSEnvSandboxSpec, OSEnvSpec
     from omnigent.runner.tool_dispatch import _execute_os_env_tool
     from omnigent.spec.types import AgentSpec
 
@@ -2219,7 +2219,7 @@ async def test_runner_os_env_placeholder_cwd_uses_cli_workspace(
     :param tmp_path: Per-test temp root for workspace and fallback paths.
     :returns: None.
     """
-    from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec
+    from omnigent.harnesses.datamodel import OSEnvSandboxSpec, OSEnvSpec
     from omnigent.runner.tool_dispatch import _execute_os_env_tool
 
     workspace = tmp_path / "project"
@@ -2249,7 +2249,7 @@ async def test_runner_os_env_placeholder_cwd_uses_cli_workspace(
 
 @pytest.mark.asyncio
 async def test_runner_os_env_tools_default_to_conversation_workspace(monkeypatch) -> None:
-    from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec
+    from omnigent.harnesses.datamodel import OSEnvSandboxSpec, OSEnvSpec
     from omnigent.runner.tool_dispatch import _execute_os_env_tool
     from omnigent.spec.types import AgentSpec
 
@@ -2277,7 +2277,7 @@ def test_clone_os_env_spec_preserves_all_sandbox_fields() -> None:
     """Cloning an OSEnvSpec must preserve every sandbox field.
 
     Regression guard for the same class of bug previously fixed in
-    :func:`omnigent.inner.terminal._clone_sandbox_spec`: hand-enumerated
+    :func:`omnigent.harnesses.terminal._clone_sandbox_spec`: hand-enumerated
     field copies silently drop security-critical fields (egress_rules,
     egress_allow_private_destinations, env_passthrough, etc.) when new
     fields are added to :class:`OSEnvSandboxSpec`. This test asserts the
@@ -2288,7 +2288,7 @@ def test_clone_os_env_spec_preserves_all_sandbox_fields() -> None:
     """
     import dataclasses
 
-    from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec
+    from omnigent.harnesses.datamodel import OSEnvSandboxSpec, OSEnvSpec
     from omnigent.runner.tool_dispatch import _clone_os_env_spec
 
     sandbox = OSEnvSandboxSpec(
@@ -2401,7 +2401,7 @@ def test_effective_runner_os_env_runner_workspace_overrides_absolute_spec_cwd(
     declaring ``cwd: ~/universe`` would silently relocate up to
     ``~/universe`` at runtime.
     """
-    from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec
+    from omnigent.harnesses.datamodel import OSEnvSandboxSpec, OSEnvSpec
     from omnigent.runner.tool_dispatch import _effective_runner_os_env_spec
     from omnigent.spec.types import AgentSpec
 
@@ -2440,7 +2440,7 @@ def test_effective_runner_os_env_absolute_spec_cwd_used_without_runner_workspace
     runs that construct an agent spec directly without the env
     var continue to honor whatever the spec declared.
     """
-    from omnigent.inner.datamodel import OSEnvSandboxSpec, OSEnvSpec
+    from omnigent.harnesses.datamodel import OSEnvSandboxSpec, OSEnvSpec
     from omnigent.runner.tool_dispatch import _effective_runner_os_env_spec
     from omnigent.spec.types import AgentSpec
 
@@ -2475,7 +2475,7 @@ async def test_runner_terminal_dispatch_passes_cli_workspace(
     :param tmp_path: Workspace path exported to the runner.
     :returns: None.
     """
-    from omnigent.inner.datamodel import TerminalEnvSpec
+    from omnigent.harnesses.datamodel import TerminalEnvSpec
     from omnigent.runner.tool_dispatch import _execute_terminal_tool
     from omnigent.terminals import TerminalRegistry
     from omnigent.tools.base import ToolContext

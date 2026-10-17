@@ -191,7 +191,7 @@ def resolve_harness_config(
     if isinstance(raw, str):
         return raw, {}
     if not isinstance(raw, dict):
-        from omnigent.inner import ui
+        from omnigent.harnesses import ui
 
         ui.warn(
             f"config `harness:` is a {type(raw).__name__}, expected a string "
@@ -202,7 +202,7 @@ def resolve_harness_config(
     overrides: dict[str, _HarnessOverride] = {}
     for key, value in raw.items():
         if not isinstance(key, str):
-            from omnigent.inner import ui
+            from omnigent.harnesses import ui
 
             ui.warn(
                 f"config `harness:` keys must be strings, got "
@@ -213,7 +213,7 @@ def resolve_harness_config(
             if isinstance(value, str):
                 default = value
             elif value is not None:
-                from omnigent.inner import ui
+                from omnigent.harnesses import ui
 
                 ui.warn(
                     f"config `harness.default` must be a string, got "
@@ -245,7 +245,7 @@ def _parse_override_entry(
     :returns: A validated ``{command?, args?}`` dict, or ``None`` when the
         entry is structurally invalid (already warned).
     """
-    from omnigent.inner import ui
+    from omnigent.harnesses import ui
 
     if value is None:
         return {}
