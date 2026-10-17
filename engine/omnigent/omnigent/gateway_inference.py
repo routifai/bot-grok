@@ -1,19 +1,15 @@
 """Host-side checks for whether a harness family's inference is AI-Gateway-backed.
 
 Smart Routing's apply layer can only rewrite a launch's model when the launch
-resolves through the Databricks AI Gateway — that is where the routable model
-catalog lives. These checks answer that question per harness family from config
-resolution alone: no process launch, no network round-trip, so the host can
-report the answer alongside harness readiness on every registration.
+resolves through an AI Gateway that serves the routable model catalog. The host
+reports the answer per harness family alongside harness readiness on every
+registration.
 """
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Iterable, Mapping
 from typing import Final
-
-_logger = logging.getLogger(__name__)
 
 # Every spelling the Claude family travels under on the wire.
 CLAUDE_GATEWAY_HARNESSES: Final[tuple[str, ...]] = ("claude-native", "native-claude")
@@ -21,102 +17,18 @@ CLAUDE_GATEWAY_HARNESSES: Final[tuple[str, ...]] = ("claude-native", "native-cla
 # Every spelling the Codex family travels under on the wire.
 CODEX_GATEWAY_HARNESSES: Final[tuple[str, ...]] = ("codex", "codex-native", "native-codex")
 
-# The AI Gateway serves Codex/OpenAI-Responses under this path suffix; both
-# gateway URL shapes (dedicated subdomain and workspace-hosted) end with it.
-_CODEX_GATEWAY_PATH_SUFFIX = "/codex/v1"
-
-
-def claude_gateway_inference_backed() -> bool:
-    """Whether a claude-native launch on this host resolves gateway-backed inference.
-
-    A gateway-backed launch pins a Databricks AI Gateway ``ANTHROPIC_BASE_URL``
-    and delivers its bearer token through Claude Code's ``apiKeyHelper``. The
-    base URL must be a genuine Databricks AI Gateway (validated with
-    :func:`is_databricks_ai_gateway_url`, parity with the Codex check), since
-    the external router's picks are Databricks catalog ids only that endpoint
-    serves. The Bedrock path sets ``ANTHROPIC_BEDROCK_BASE_URL`` with no
-    helper — not routable.
-
-    A subscription / CLI login resolves no omnigent config, yet Claude Code
-    still routes all inference through an AI Gateway when an enterprise managed
-    settings file pins it. Managed settings win at the actual launch, so that
-    signal counts too: it flips the answer to ``True`` even when resolution
-    yields nothing.
-
-    :returns: ``True`` iff a claude-native launch resolves AI-Gateway-backed
-        inference, from omnigent config or managed settings.
-    """
-    from omnigent.databricks_ai_gateway import is_databricks_ai_gateway_url
-    from omnigent.harnesses.claude_native.main import (
-        managed_claude_gateway_signal,
-        resolve_native_claude_config,
-    )
-
-    config = resolve_native_claude_config(spec=None, refresh_models=False)
-    if config is not None:
-        base_url = config.env.get("ANTHROPIC_BASE_URL")
-        if base_url and config.api_key_helper and is_databricks_ai_gateway_url(base_url):
-            return True
-
-    managed_base_url, managed_has_credential = managed_claude_gateway_signal()
-    if (
-        managed_base_url is not None
-        and managed_has_credential
-        and is_databricks_ai_gateway_url(managed_base_url)
-    ):
-        return True
-
-    return False
-
-
-def codex_gateway_inference_backed() -> bool:
-    """Whether a codex-native launch on this host resolves gateway-backed inference.
-
-    :returns: ``True`` iff the resolved launch routes through an AI Gateway
-        Codex base URL.
-    """
-    from omnigent.databricks_ai_gateway import is_databricks_ai_gateway_url
-    from omnigent.harnesses.codex_native.app_server import (
-        native_codex_launch_base_url,
-        resolve_native_codex_launch,
-    )
-
-    base_url = native_codex_launch_base_url(resolve_native_codex_launch(model=None))
-    if not base_url:
-        return False
-    if not is_databricks_ai_gateway_url(base_url):
-        return False
-    return base_url.rstrip("/").endswith(_CODEX_GATEWAY_PATH_SUFFIX)
-
 
 def gateway_inference_map() -> dict[str, bool]:
     """Per-harness map of whether this host's inference for that family is gateway-backed.
 
-    Each family is evaluated once and the result fanned out over every spelling
-    that family travels under. A family whose check raises is omitted rather
-    than reported as ``False``, so the server can tell "not gateway-backed"
-    apart from "could not tell".
+    This build ships no routable AI Gateway model catalog, so every family
+    reports ``False``: Smart Routing's apply layer never rewrites a launch's
+    model. The map still fans out over every spelling a family travels under
+    so the server can answer for any of them.
 
-    :returns: Harness spelling → gateway-backed flag, omitting unevaluable
-        families.
+    :returns: Harness spelling → gateway-backed flag.
     """
-    result: dict[str, bool] = {}
-    for family, spellings, check in (
-        ("claude", CLAUDE_GATEWAY_HARNESSES, claude_gateway_inference_backed),
-        ("codex", CODEX_GATEWAY_HARNESSES, codex_gateway_inference_backed),
-    ):
-        try:
-            backed = check()
-        except Exception:  # noqa: BLE001 — an unevaluable family is omitted, not False
-            _logger.warning(
-                "gateway-inference check for the %s family failed; omitting it",
-                family,
-                exc_info=True,
-            )
-            continue
-        for spelling in spellings:
-            result[spelling] = backed
-    return result
+    return dict.fromkeys((*CLAUDE_GATEWAY_HARNESSES, *CODEX_GATEWAY_HARNESSES), False)
 
 
 def gateway_inference_state(

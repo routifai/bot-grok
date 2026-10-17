@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import concurrent.futures
 import contextlib
-import contextvars
 import copy
 import json
 import logging
@@ -188,113 +187,23 @@ def parse_routing_settings(
     )
 
 
-# Databricks workspaces serve the routing API under this path.
-_AIGW_ROUTING_PATH = "/ai-gateway/routing/v1"
-
-
-def _databricks_provider_profile(
-    cfg: Any,  # type: ignore[explicit-any]  # parsed server config
-) -> str | None:
-    """Return the profile of the config's Databricks provider, if any.
-
-    Reads the server ``--config`` first and falls back to the global
-    ``providers:`` block, which is where most deployments declare their
-    workspace. A ``default:``-flagged entry wins so a workspace that also
-    declares a secondary Databricks provider still routes against the primary.
-
-    :param cfg: The parsed server ``--config`` mapping.
-    :returns: The Databricks profile name, or ``None`` when the deployment
-        declares no ``kind: databricks`` provider.
-    """
-    providers = cfg.get("providers") if isinstance(cfg, dict) else None
-    if not isinstance(providers, dict):
-        from omnigent.onboarding.provider_config import load_config as load_provider_config
-
-        providers = load_provider_config().get("providers")
-    if not isinstance(providers, dict):
-        return None
-    matches: list[tuple[bool, str]] = []
-    for entry in providers.values():
-        if not isinstance(entry, dict) or entry.get("kind") != "databricks":
-            continue
-        profile = entry.get("profile")
-        if isinstance(profile, str) and profile.strip():
-            matches.append((bool(entry.get("default")), profile.strip()))
-    if not matches:
-        return None
-    matches.sort(key=lambda m: not m[0])
-    return matches[0][1]
-
-
-def _build_default_databricks_routing_client(
-    cfg: Any,  # type: ignore[explicit-any]  # parsed server config
-    settings: Any,  # type: ignore[explicit-any]  # RoutingSettings
-) -> Any | None:  # type: ignore[explicit-any]  # ExternalRoutingClient | None
-    """Route through the workspace's AI Gateway when no ``routing:`` block exists.
-
-    A Databricks-backed deployment gets smart routing without extra
-    config: the client points at that workspace's routing API and authenticates
-    with the same profile. Returns ``None`` for any other deployment, so the
-    built-in judge stays the fallback.
-
-    :param cfg: The parsed server ``--config`` mapping.
-    :param settings: The parsed routing settings (all defaults here).
-    :returns: A configured client, or ``None`` when there is no Databricks
-        provider or its workspace host can't be resolved.
-    """
-    profile = _databricks_provider_profile(cfg)
-    if profile is None:
-        return None
-    from omnigent.runtime.credentials.databricks import resolve_databricks_workspace
-
-    try:
-        host = resolve_databricks_workspace(profile).host.rstrip("/")
-    except Exception:  # noqa: BLE001 — unresolvable workspace just means no routing
-        logging.getLogger(__name__).info(
-            "routing: could not resolve workspace host for Databricks profile %r; "
-            "leaving smart routing off",
-            profile,
-        )
-        return None
-    if not host:
-        return None
-    from omnigent.server.smart_routing import ExternalRoutingClient
-
-    return ExternalRoutingClient(
-        base_url=host + _AIGW_ROUTING_PATH,
-        router_name=settings.router_name,
-        databricks_profile=profile,
-        model_prefixes=list(settings.model_prefixes),
-        selection_model=settings.selection_model,
-        menus=settings.menus,
-        servable_aliases=settings.servable_aliases,
-    )
-
-
 def _build_external_routing_client(
     routing_cfg: Any,  # type: ignore[explicit-any]  # parsed YAML block
     settings: Any = None,  # type: ignore[explicit-any]  # RoutingSettings | None
-    cfg: Any = None,  # type: ignore[explicit-any]  # parsed server config
 ) -> Any | None:  # type: ignore[explicit-any]  # ExternalRoutingClient | None
     """Build an :class:`ExternalRoutingClient` from the ``routing:`` config.
 
-    Requires ``base_url`` + ``router_name``. Auth mirrors the ``llm:`` block:
-    an explicit, provider-agnostic ``api_key`` (``${ENV}`` expanded) wins,
-    else the Databricks ``profile`` convenience, else the deployment's own
-    ``kind: databricks`` provider profile, else unauthenticated.
+    Requires ``base_url`` + ``router_name``. Auth is an explicit ``api_key``
+    (``${ENV}`` expanded) sent as a static bearer, else unauthenticated.
     Optional ``model_prefix`` (a single prefix or a list of prefixes) is
     stripped from catalog model ids sent to the router (and restored on its
-    answer) — e.g. ``"databricks-"`` when serving-endpoint names carry that
-    prefix but the router keys on bare ids, or ``"system.ai."`` for Unity
-    Catalog foundation-model ids.
+    answer) — e.g. when catalog ids carry a prefix the router does not key on.
 
     :param routing_cfg: The parsed ``routing:`` mapping (a dict with
         ``provider == "external"``, per the caller).
     :param settings: The parsed routing settings, supplying the extraction
         model, scenario menus, and model prefixes. ``None`` parses them from
         *routing_cfg*.
-    :param cfg: The parsed server ``--config`` mapping, read only for the
-        provider profile fallback. ``None`` skips that fallback.
     :returns: A configured client, or ``None`` when required config is
         missing (a warning is logged; routing stays off rather than raising).
     """
@@ -303,7 +212,6 @@ def _build_external_routing_client(
     base_url = _routing_config_text(routing_cfg, "base_url")
     router_name = _routing_config_text(routing_cfg, "router_name")
     api_key = _routing_config_text(routing_cfg, "api_key")
-    profile = _routing_config_text(routing_cfg, "profile")
 
     if not base_url or not router_name:
         click.echo(
@@ -314,26 +222,13 @@ def _build_external_routing_client(
 
     from omnigent.server.smart_routing import _bearer_auth
 
-    # Auth precedence mirrors the ``llm:`` block: an explicit (provider-
-    # agnostic) api_key wins (static bearer), else the Databricks ``profile``
-    # is passed through so the client mints a fresh bearer per call (OAuth
-    # refresh — a token captured once here would 401 after ~1h), else
-    # unauthenticated.
+    # An explicit api_key is sent as a static bearer; otherwise the request
+    # goes out unauthenticated.
     auth = None
-    databricks_profile: str | None = None
     if api_key:
         from omnigent.spec import expand_env_vars
 
         auth = _bearer_auth(expand_env_vars({"api_key": api_key})["api_key"])
-    elif profile:
-        databricks_profile = profile
-    else:
-        # Named nowhere in ``routing:``, but the deployment's own Databricks
-        # provider names one. Take it rather than falling through to the
-        # ambient SDK chain: ambient resolves by host or [DEFAULT], and a
-        # workspace with two profiles on one host then has the router
-        # authenticating as a different identity than the panes it routes.
-        databricks_profile = _databricks_provider_profile(cfg) if cfg is not None else None
 
     from omnigent.server.smart_routing import ExternalRoutingClient
 
@@ -341,7 +236,6 @@ def _build_external_routing_client(
         base_url=base_url,
         router_name=router_name,
         auth=auth,
-        databricks_profile=databricks_profile,
         model_prefixes=list(settings.model_prefixes),
         selection_model=settings.selection_model,
         menus=settings.menus,
@@ -391,9 +285,8 @@ def _build_routing_backends(
     * ``none`` — opt out of routing entirely; neither backend.
     * anything else — no external side, the built-in judge only.
 
-    With no ``routing:`` block at all, a Databricks-backed deployment gets its
-    own workspace AI Gateway as the external side. Managed deployments override
-    ``RuntimeCaps.routing_backends`` themselves.
+    With no ``routing:`` block at all, only the built-in judge runs. Managed
+    deployments override ``RuntimeCaps.routing_backends`` themselves.
 
     :param cfg: The parsed server ``--config`` mapping.
     :param server_llm: The parsed server-level ``LLMConfig``, or ``None``.
@@ -408,9 +301,7 @@ def _build_routing_backends(
         return RoutingBackends()
     external: Any = None  # type: ignore[explicit-any]
     if provider == "external":
-        external = _build_external_routing_client(routing_cfg, settings, cfg)
-    elif not isinstance(routing_cfg, dict):
-        external = _build_default_databricks_routing_client(cfg, settings)
+        external = _build_external_routing_client(routing_cfg, settings)
     return RoutingBackends(external=external, local=_build_local_llm_routing_client(server_llm))
 
 
@@ -1420,25 +1311,11 @@ def _apply_bind_auth_defaults(host: str) -> None:
 
 def _create_artifact_store(location: str) -> Any:  # type: ignore[explicit-any]  # returns ArtifactStore protocol (optional deps)
     """
-    Create an artifact store based on the location URI scheme.
+    Create a :class:`LocalArtifactStore` at *location*.
 
-    ``dbfs:/Volumes/...`` URIs use
-    :class:`DatabricksVolumesArtifactStore` (requires
-    ``databricks-sdk``). All other locations use
-    :class:`LocalArtifactStore`.
-
-    :param location: Artifact storage location, e.g.
-        ``"./artifacts"`` for local or
-        ``"dbfs:/Volumes/cat/schema/vol"`` for UC Volumes.
+    :param location: Artifact storage location, e.g. ``"./artifacts"``.
     :returns: An :class:`ArtifactStore` instance.
     """
-    if location.startswith("dbfs:/Volumes/"):
-        from omnigent.stores.artifact_store.databricks_volumes import (
-            DatabricksVolumesArtifactStore,
-        )
-
-        return DatabricksVolumesArtifactStore(location)
-
     from omnigent.stores.artifact_store.local import LocalArtifactStore
 
     return LocalArtifactStore(location)
@@ -3508,100 +3385,6 @@ def _host_daemon_alive() -> bool:
 _LOCAL_SERVER_DISCOVER_TIMEOUT_S = 120.0
 
 
-def _ensure_databricks_server_auth(server: str, *, non_interactive: bool = False) -> None:
-    """Sign in (or fail with the login hint) for Databricks-fronted servers.
-
-    Probes ``/v1/me`` with whatever credentials the auth chain can mint
-    today. A non-200 answer that carries the Databricks edge signature
-    (302 to the workspace OAuth page, or a DatabricksRealm 401) means
-    the run would otherwise die much later with an opaque "non-JSON
-    response (status=302)" traceback from the session-create call. A
-    rejected bearer can hide that signature behind a bare 401/403, so the
-    probe falls back to the saved workspace or an unauthenticated retry.
-    It then asks the SDK for a fresh workspace token before prompting a
-    TTY or giving headless invocations the exact login command.
-
-    Non-Databricks postures are deliberately left alone: local accounts
-    servers auto-authenticate downstream (magic-link redeem), and
-    header-mode servers answer 200 outright.
-
-    :param server: Remote server base URL without a trailing slash,
-        e.g. ``"https://myapp-123.aws.databricksapps.com"``.
-    :param non_interactive: When ``True``, never run the browser login —
-        emit the same fail-loud hint a headless invocation gets, even on a
-        TTY. Lets callers (e.g. ``omnigent host --non-interactive``) keep
-        their scripted, no-prompt behavior.
-    :raises click.ClickException: When the server is Databricks-fronted,
-        no credentials resolve, and the login flow is suppressed (stdin is
-        not a TTY or ``non_interactive`` is set) — or the login flow itself
-        fails.
-    """
-    import httpx as _httpx
-
-    from omnigent.chat import _remote_headers
-    from omnigent.cli_auth import (
-        load_databricks_org_id,
-        load_databricks_workspace_host,
-        store_databricks_auth,
-    )
-
-    headers = _remote_headers(server_url=server, host_id=None)
-    try:
-        probe = _httpx.get(f"{server}/v1/me", headers=headers, timeout=10.0)
-    except _httpx.HTTPError:
-        # Unreachable / transient: let the connect path raise its own,
-        # already-actionable error rather than failing the pre-flight.
-        return
-    if probe.status_code == 200:
-        return
-    workspace_host = _databricks_workspace_login_target(server, probe)
-    credential_rejected = False
-    if workspace_host is None and probe.status_code in (401, 403):
-        # A rejected bearer can hide the edge signature. Prefer the saved
-        # workspace; otherwise re-probe without credentials.
-        workspace_host = load_databricks_workspace_host(server)
-        if workspace_host is None and "Authorization" in headers:
-            try:
-                unauthed_probe = _httpx.get(f"{server}/v1/me", timeout=10.0)
-            except _httpx.HTTPError:
-                return
-            workspace_host = _databricks_workspace_login_target(server, unauthed_probe)
-        credential_rejected = workspace_host is not None and "Authorization" in headers
-    if workspace_host is None:
-        return
-    org_id = load_databricks_org_id(server)
-    auth_info = _databricks_workspace_auth_info(workspace_host)
-    if auth_info is not None:
-        if org_id is None:
-            org_id = _workspace_hosted_profile_org_id(
-                server, workspace_host, auth_info.profile_name
-            )
-        refreshed_probe = _verify_databricks_server_token(server, auth_info.token, org_id)
-        if refreshed_probe.status_code == 200:
-            store_databricks_auth(server, workspace_host, org_id=org_id)
-            return
-    # User-facing: show the display form (the workspace /omnigent URL, with
-    # ?o= when known), not the internal API mount; it round-trips through
-    # `omnigent login` back to the same API base.
-    display = ServerUrl(api_base=server, org_id=org_id).display
-    login_cmd = f"omnigent login {display}"
-    state = (
-        f"Your Databricks credential for {display} has expired or was revoked"
-        if credential_rejected
-        else f"Not signed in to {display}"
-    )
-    if non_interactive or not sys.stdin.isatty():
-        raise click.ClickException(
-            f"{state} (Databricks-fronted; /v1/me answered "
-            f"HTTP {probe.status_code}). Run `{login_cmd}` and retry."
-        )
-    click.echo(f"{state} — running `{login_cmd}` first.")
-    # Login selector comes from the URL, not the stored org_id used above: on a
-    # single-tenant host a replayed ?o= makes `databricks auth login --host` skip
-    # workspace_id resolution, so the grant isn't workspace-bound (matches `login`).
-    _databricks_login(server, workspace_host, org_id=_org_id_from_url(server))
-
-
 def _ensure_backend(server: str | None) -> str:
     """Ensure the host daemon is running and return the Omnigent server URL.
 
@@ -3630,30 +3413,10 @@ def _ensure_backend(server: str | None) -> str:
         # Remote / explicit-server mode: the server isn't ours to restart, so
         # there's no auth-mode-flip "re-run" to surface (config_changed is
         # always False for a non-local target). Expand a bare workspace URL
-        # to its /api/2.0/omnigent mount, then sign in first when the
-        # server is Databricks-fronted and we hold no usable credentials —
-        # otherwise the session-create call deep in the REPL bring-up
-        # surfaces the edge redirect as an opaque non-JSON-response
-        # traceback.
-        #
-        # The auth probe (GET /v1/me, ~0.65s) and the daemon tunnel start
-        # (~2s) are independent — run them concurrently so the auth check
-        # is hidden under the longer daemon wait.
-        import concurrent.futures
-
+        # to its /api/2.0/omnigent mount, then start the daemon tunnel.
         server = _resolve_server_url(server).api_base
-        with (
-            runner_startup_progress(initial_message=STARTUP_PHASE_CONNECTING_REMOTE),
-            concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool,
-        ):
-            auth_future = pool.submit(_ensure_databricks_server_auth, server)
-            daemon_context = contextvars.copy_context()
-            daemon_future = pool.submit(daemon_context.run, _ensure_host_daemon, server)
-            # Raise auth errors before daemon errors: a login failure is
-            # more actionable than a daemon-connect failure that would
-            # have been caused by the same missing credentials.
-            auth_future.result()
-            daemon_future.result()
+        with runner_startup_progress(initial_message=STARTUP_PHASE_CONNECTING_REMOTE):
+            _ensure_host_daemon(server)
         return server
     # Local mode: the daemon spawns (or reuses) a persistent local Omnigent server.
     # On a cold start this is the longest silent gap between the user pressing
@@ -4423,26 +4186,6 @@ def server(
 
             github_store = GithubConnectionStore(db_uri, cipher)
 
-    # Databricks Connect (per-user OAuth U2M). Shares the credential store's
-    # cipher; inert unless OMNIGENT_DATABRICKS_CLIENT_ID/_SECRET are set.
-    from omnigent.server.databricks_app import DatabricksConfig
-
-    databricks_config = DatabricksConfig.from_env()
-    databricks_store = None
-    if databricks_config is not None:
-        from omnigent.stores.credential_store import build_secret_cipher
-
-        dbx_cipher = build_secret_cipher()
-        if dbx_cipher is None:
-            logging.getLogger(__name__).error(
-                "Databricks Connect is configured but disabled: set the credential "
-                "store's KMS key (OMNIGENT_CREDENTIAL_KMS_KEY_ID) to enable it."
-            )
-        else:
-            from omnigent.connections.databricks import DatabricksConnectionStore
-
-            databricks_store = DatabricksConnectionStore(db_uri, dbx_cipher)
-
     # Accounts mode ergonomics: when accounts mode is selected
     # (OMNIGENT_AUTH_ENABLED=1 without OIDC config, or an explicit
     # OMNIGENT_AUTH_PROVIDER=accounts), supply sensible defaults
@@ -4515,8 +4258,6 @@ def server(
         sandbox_config=sandbox_config,
         github_config=github_config,
         github_store=github_store,
-        databricks_config=databricks_config,
-        databricks_store=databricks_store,
         server_config=title_server_config,
     )
 
@@ -8574,8 +8315,6 @@ def _run_background_host(
         immediately, fails to register, or (local mode) never serves its local
         Omnigent server.
     """
-    if server:
-        _ensure_databricks_server_auth(server, non_interactive=non_interactive)
     target = _normalize_daemon_target(server)
     previous = _find_daemon_record(target)
     _ensure_host_daemon(server or None)
@@ -8750,10 +8489,6 @@ def host(
         server = cfg.get("server")
     if server:
         server = _resolve_server_url(server).api_base
-    # Remote mode is decided here, before the local-mode branch reassigns
-    # ``server`` to the spawned loopback URL — only a remote target needs
-    # the sign-in pre-flight.
-    remote_mode = bool(server)
 
     if background:
         _run_background_host(
@@ -8791,14 +8526,6 @@ def host(
     # prompt over an error.
     stopped_cleanly = False
     try:
-        # Sign in first when the remote server is Databricks-fronted and we
-        # hold no usable credentials — otherwise the tunnel upgrade is
-        # redirected to a login page and the host dies with an opaque
-        # "redirected to a login page" error after several retries. On a TTY
-        # this runs the browser login and continues; ``--non-interactive``
-        # (or a headless invocation) fails loud with the command to run.
-        if remote_mode:
-            _ensure_databricks_server_auth(server, non_interactive=non_interactive)
         _maybe_open_host_web_ui(server, non_interactive=non_interactive, no_open=no_open, cfg=cfg)
         run_host_process(server_url=server, daemon_target=target)
         stopped_cleanly = True
@@ -9799,12 +9526,6 @@ def host_enable(
     resolved_server = _resolve_host_server(server)
     group_obj = ctx.obj if isinstance(ctx.obj, dict) else {}
     non_interactive = non_interactive or bool(group_obj.get("non_interactive"))
-    if resolved_server:
-        _ensure_databricks_server_auth(
-            resolved_server,
-            non_interactive=non_interactive or not _stdin_is_tty(),
-        )
-
     target = _normalize_daemon_target(resolved_server)
     record = _find_daemon_record(target)
     if record is not None:
@@ -11229,25 +10950,6 @@ def _workspace_mount_probe_matches(candidate: str, probe: httpx.Response) -> boo
     )
 
 
-def _cached_workspace_bearer(workspace_host: str) -> str | None:
-    """Best-effort bearer for *workspace_host* from the OAuth cache.
-
-    Unlike :func:`_databricks_workspace_token`, a missing ``databricks``
-    extra is not an error here — probe callers simply fall back to
-    unauthenticated behavior.
-
-    :param workspace_host: The workspace host, e.g.
-        ``"https://example.databricks.com"``.
-    :returns: A bearer token, or ``None`` when the ``databricks`` extra
-        is not installed or no cached grant resolves for the host.
-    """
-    from omnigent.onboarding.databricks_config import databricks_sdk_installed
-
-    if not databricks_sdk_installed():
-        return None
-    return _databricks_workspace_token(workspace_host)
-
-
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
 
@@ -11292,14 +10994,6 @@ def _workspace_api_server_url(server: str) -> str:
     guide-issued web-UI URL (``https://<ws>/omnigent``): its bare root
     is probed so the pasted web URL logs in just like the bare host
     (a root that is not a workspace leaves the URL untouched).
-
-    Some workspace edges (Azure) answer the anonymous mount probe with
-    a plain 404 — not the AWS proxy's 401-with-``DatabricksRealm``
-    challenge — so a mount that works for authenticated callers is
-    invisible to the anonymous probe. When the host-keyed Databricks
-    OAuth cache holds a grant for the workspace (the user ran
-    ``databricks auth login``), the mount probe is retried with that
-    bearer before giving up.
 
     :param server: The user-supplied server URL, e.g.
         ``"https://example.databricks.com"``.
@@ -11363,42 +11057,13 @@ def _workspace_api_server_url(server: str) -> str:
             f"Using {display_server_url(candidate)} (Databricks workspace-hosted omnigent)."
         )
         return candidate
-    # The anonymous probe came back inconclusive (404 on Azure even
-    # when the mount exists). Retry it with a cached workspace bearer;
-    # either way, say what was decided — this branch is only reached
-    # for genuine workspace web hosts, where a silent decline strands
-    # the user on a bare URL that can only 404.
-    token = _cached_workspace_bearer(server)
-    if token is not None:
-        try:
-            authed_probe = _httpx.get(
-                f"{candidate}/v1/me",
-                headers={"Authorization": f"Bearer {token}"},
-                timeout=10.0,
-            )
-        except _httpx.HTTPError:
-            authed_probe = None
-        if authed_probe is not None and _workspace_mount_probe_matches(candidate, authed_probe):
-            click.echo(
-                f"Using {display_server_url(candidate)} (Databricks workspace-hosted omnigent)."
-            )
-            return candidate
-        click.echo(
-            f"Note: {server} answers like a Databricks workspace, but "
-            f"{candidate} did not answer as an omnigent server even with "
-            f"the cached workspace credentials. Connecting to {server} as "
-            "given; if omnigent is hosted on this workspace, refresh the "
-            f"login with `databricks auth login --host {server}` or pass "
-            "the full mount URL."
-        )
-        return server
+    # Say what was decided — this branch is only reached for genuine
+    # workspace web hosts, where a silent decline strands the user on a
+    # bare URL that can only 404.
     click.echo(
         f"Note: {server} answers like a Databricks workspace, but "
         f"{candidate} did not answer the anonymous probe "
-        f"(HTTP {api_probe.status_code}). Some edges hide the mount from "
-        "unauthenticated requests — if omnigent is hosted on this "
-        f"workspace, run `databricks auth login --host {server}` and "
-        "retry, or pass the full mount URL."
+        f"(HTTP {api_probe.status_code}). Pass the full mount URL."
     )
     return server
 
@@ -11622,370 +11287,6 @@ def _databricks_workspace_login_target(server: str, probe: httpx.Response) -> st
     return None
 
 
-def _host_with_org(workspace_host: str, org_id: str | None) -> str:
-    """Append the ``?o=<org>`` workspace selector to *workspace_host*.
-
-    ``databricks auth login --host https://<ws>/?o=<org>`` makes the CLI
-    record ``workspace_id`` in the profile and bind the grant to that
-    workspace; without it the grant is account-scoped and the workspace
-    rejects it (HTTP 403). Returns *workspace_host* unchanged when no org
-    id is known, so single-workspace hosts are untouched.
-
-    :param workspace_host: The workspace host, e.g.
-        ``"https://example.databricks.com"``.
-    :param org_id: The workspace id from :func:`_org_id_from_url`, or
-        ``None``.
-    :returns: ``"https://<ws>/?o=<org>"`` when *org_id* is set, else
-        *workspace_host*.
-    """
-    if not org_id:
-        return workspace_host
-    # Encode (not interpolate) so a value with ``&``/``=`` can't inject extra
-    # query params onto the ``--host`` URL; keep the ``/?o=`` slash the CLI wants.
-    from urllib.parse import urlencode, urlsplit, urlunsplit
-
-    parsed = urlsplit(workspace_host.rstrip("/"))
-    return urlunsplit(
-        (parsed.scheme, parsed.netloc, parsed.path or "/", urlencode({"o": org_id}), "")
-    )
-
-
-def _databricks_default_workspace_id(workspace_host: str) -> str | None:
-    """Return the workspace id the Databricks CLI recorded for *workspace_host*.
-
-    Thin, mockable wrapper over
-    :func:`omnigent.inner.databricks_executor.databrickscfg_workspace_id_for_host`.
-    An account-fronting login carries no ``?o=`` selector, yet the CLI resolves a
-    workspace during login and records its id; the account token routes to it
-    once that id is replayed as ``?o=``. Inheriting it lets the login succeed
-    without the user restating a workspace the CLI already chose.
-
-    :param workspace_host: The workspace host, e.g.
-        ``"https://example.databricks.com"``.
-    :returns: The recorded workspace id, or ``None`` when none is recorded.
-    """
-    from omnigent.inner.databricks_executor import databrickscfg_workspace_id_for_host
-
-    return databrickscfg_workspace_id_for_host(workspace_host)
-
-
-def _workspace_hosted_profile_org_id(
-    server: str,
-    workspace_host: str,
-    profile_name: str | None = None,
-) -> str | None:
-    """Return the CLI-recorded workspace id for workspace-hosted Omnigent."""
-    from omnigent.util.server_url import is_workspace_hosted_url
-
-    if not is_workspace_hosted_url(server):
-        return None
-    if profile_name:
-        from omnigent.inner.databricks_executor import databrickscfg_workspace_id_for_profile
-
-        return databrickscfg_workspace_id_for_profile(profile_name)
-    return _databricks_default_workspace_id(workspace_host)
-
-
-def _databricks_host_needs_org_selector(workspace_host: str) -> bool:
-    """Whether *workspace_host* fronts many workspaces and needs a ``?o=`` selector.
-
-    Reads the host's unauthenticated ``/.well-known/databricks-config`` discovery
-    document. A host acting as an account (many workspaces under one hostname)
-    reports an ``account_id`` but no ``workspace_id``; a single workspace reports
-    its own ``workspace_id``. Such a login carries no ``?o=<workspace-id>``
-    selector, so we gate the inherit-the-CLI-selected-workspace path on this,
-    leaving genuine single-workspace mounts untouched.
-
-    :param workspace_host: The workspace host, e.g.
-        ``"https://example.databricks.com"``.
-    :returns: ``True`` only when the metadata positively identifies an
-        account-acting host. Any fetch/parse failure — or inconclusive
-        metadata (older regional hosts report neither id) — returns ``False``
-        so a discovery outage never changes an otherwise-valid login.
-    """
-    try:
-        from databricks.sdk.oauth import get_host_metadata
-
-        meta = get_host_metadata(workspace_host)
-    except Exception:  # noqa: BLE001 - any discovery failure means "can't tell"; never block login on it
-        return False
-    return not meta.workspace_id and bool(meta.account_id)
-
-
-def _databricks_login(server: str, workspace_host: str, org_id: str | None = None) -> None:
-    """Log in to a Databricks-fronted Omnigent server.
-
-    Covers both Databricks Apps deployments and workspace-hosted
-    omnigent (``https://<workspace>/api/2.0/omnigent``). Reuses an
-    existing host-keyed Databricks CLI OAuth grant when one resolves;
-    otherwise runs ``databricks auth login --host <workspace>``
-    (browser flow). The minted token is verified against the server
-    before anything is stored; a *cached* grant that fails
-    verification (e.g. a stale token-cache entry minted for a
-    different workspace) triggers one fresh browser login and a
-    re-verify before failing loud. On success, a pointer record is
-    stored in ``~/.omnigent/auth_tokens.json`` — no profile name is
-    created or consulted anywhere.
-
-    :param server: The server URL, e.g.
-        ``"https://myapp-123.aws.databricksapps.com"``.
-    :param workspace_host: The Databricks workspace to authenticate
-        against, e.g. ``"https://example.databricks.com"``.
-    :param org_id: The ``?o=`` workspace selector from the login URL
-        (see :func:`_org_id_from_url`). When set, the login binds the
-        grant to this workspace and the verify request routes to it —
-        needed where the bare host is the account, not a workspace.
-    :raises click.ClickException: When the ``databricks`` extra or CLI
-        binary is missing, the workspace login fails, or the server
-        rejects the workspace token.
-    """
-    from omnigent.onboarding.databricks_config import (
-        DATABRICKS_EXTRA_INSTALL_HINT,
-        databricks_sdk_installed,
-    )
-
-    if not databricks_sdk_installed():
-        raise click.ClickException(
-            "Logging in to a Databricks-fronted server (a Databricks App or "
-            "workspace-hosted omnigent) requires the `databricks` extra "
-            f"(databricks-sdk is not installed). Reinstall with:\n  "
-            f"{DATABRICKS_EXTRA_INSTALL_HINT}"
-        )
-
-    from omnigent.cli_auth import is_workspace_hosted_url
-
-    auth_info = _databricks_workspace_auth_info(workspace_host)
-    if org_id is None and auth_info is not None:
-        org_id = _workspace_hosted_profile_org_id(server, workspace_host, auth_info.profile_name)
-
-    # User-facing: the display form (workspace /omnigent URL with ?o= when
-    # known) — the API mount is an implementation detail.
-    display = ServerUrl(api_base=server, org_id=org_id).display
-    click.echo(f"{display} authenticates via the Databricks workspace {workspace_host}.")
-
-    # An account-fronting workspace mount serves many workspaces under one host,
-    # so the login URL carries no ?o= selector — but the Databricks CLI still
-    # resolves a workspace during login. Recognize that shape (from discovery
-    # metadata) so the resolved workspace can be inherited below instead of
-    # failing on the bare account host, which answers 503/403.
-    account_host_without_selector = (
-        org_id is None
-        and is_workspace_hosted_url(server)
-        and _databricks_host_needs_org_selector(workspace_host)
-    )
-
-    token = auth_info.token if auth_info is not None else None
-    fresh_login_done = False
-    if token is None:
-        auth_info = _login_and_mint_workspace_auth_info(workspace_host, org_id)
-        token = auth_info.token
-        fresh_login_done = True
-        if org_id is None:
-            org_id = _workspace_hosted_profile_org_id(
-                server, workspace_host, auth_info.profile_name
-            )
-
-    # Inherit the workspace the CLI selected: the browser login (or a prior one)
-    # auto-selected a workspace and recorded its id in the profile; replaying it
-    # as ?o= routes the account token to that workspace. Without it the login
-    # would fail on an account host it could have completed unattended.
-    if org_id is None and (account_host_without_selector or is_workspace_hosted_url(server)):
-        org_id = _databricks_default_workspace_id(workspace_host)
-        if org_id:
-            click.echo(f"Routing to workspace {org_id}, selected during the Databricks login.")
-            display = ServerUrl(api_base=server, org_id=org_id).display
-
-    # Verify the workspace token actually gets through the edge to THIS
-    # server (the user may lack access to it), and learn our identity
-    # for the success message.
-    verify = _verify_databricks_server_token(server, token, org_id)
-    if verify.status_code != 200 and not fresh_login_done:
-        # A cached grant can be stale or minted for a different
-        # workspace (the CLI token cache is host-keyed but not
-        # validated against the issuer). One fresh browser login
-        # replaces the bad cache entry; then re-verify.
-        click.echo(
-            f"The cached Databricks credentials were rejected by {display} "
-            f"(HTTP {verify.status_code}) — refreshing the workspace login."
-        )
-        auth_info = _login_and_mint_workspace_auth_info(workspace_host, org_id)
-        token = auth_info.token
-        if org_id is None:
-            org_id = _workspace_hosted_profile_org_id(
-                server, workspace_host, auth_info.profile_name
-            )
-            if org_id:
-                display = ServerUrl(api_base=server, org_id=org_id).display
-        verify = _verify_databricks_server_token(server, token, org_id)
-    if verify.status_code != 200:
-        raise click.ClickException(
-            f"{workspace_host} accepted the login, but {display} rejected the token "
-            f"(HTTP {verify.status_code}). Check that your user has access to this app."
-        )
-    user_id: str | None = None
-    with contextlib.suppress(ValueError):
-        raw_user = verify.json().get("user_id")
-        user_id = raw_user if isinstance(raw_user, str) else None
-
-    from omnigent.cli_auth import store_databricks_auth
-
-    store_databricks_auth(
-        server,
-        workspace_host,
-        user_id=user_id,
-        # Recorded so later commands replay it as ``?o=`` to route requests
-        # and browser links append it. The login URL's selector wins; fall
-        # back to the org id the workspace stamps on responses.
-        org_id=org_id or verify.headers.get("x-databricks-org-id"),
-    )
-    who = f" as {user_id}" if user_id else ""
-    click.echo(
-        f"Logged in{who}. Commands targeting {display} now mint workspace tokens automatically."
-    )
-
-
-def _login_and_mint_workspace_token(workspace_host: str, org_id: str | None = None) -> str:
-    """Run the browser login for a workspace and mint a bearer from it.
-
-    :param workspace_host: The workspace host, e.g.
-        ``"https://example.databricks.com"``.
-    :param org_id: The ``?o=`` workspace selector (see
-        :func:`_org_id_from_url`); passed to the browser login so the
-        minted grant is bound to the workspace.
-    :returns: A fresh bearer token for the workspace.
-    :raises click.ClickException: When the Databricks CLI binary is
-        missing, the login exits non-zero, or no token resolves after
-        a successful login.
-    """
-    return _login_and_mint_workspace_auth_info(workspace_host, org_id).token
-
-
-def _login_and_mint_workspace_auth_info(
-    workspace_host: str, org_id: str | None = None
-) -> _DatabricksWorkspaceAuthInfo:
-    """Run the browser login and return the selected workspace auth info."""
-    _run_databricks_browser_login(workspace_host, org_id)
-    auth_info = _databricks_workspace_auth_info(workspace_host)
-    if auth_info is None:
-        raise click.ClickException(
-            f"Workspace login completed but no token resolves for {workspace_host}. "
-            f"Run `databricks auth token --host {workspace_host}` to debug."
-        )
-    return auth_info
-
-
-def _run_databricks_browser_login(workspace_host: str, org_id: str | None = None) -> None:
-    """Run ``databricks auth login --host <workspace>`` (browser flow).
-
-    :param workspace_host: The workspace host, e.g.
-        ``"https://example.databricks.com"``.
-    :param org_id: The ``?o=`` workspace selector (see
-        :func:`_org_id_from_url`). When set, ``?o=<org_id>`` is appended
-        to ``--host`` so the CLI records ``workspace_id`` and binds the
-        grant to that workspace (else the grant is account-scoped and
-        the workspace rejects it).
-    :raises click.ClickException: When the Databricks CLI binary is
-        missing or the login exits non-zero.
-
-    The login writes to a ``.databrickscfg`` profile named after the
-    workspace's first DNS label (e.g. ``acme`` for
-    ``acme.cloud.databricks.com``), keeping distinct workspaces off the
-    shared ``DEFAULT`` profile. The OAuth grant itself stays host-keyed,
-    so :func:`_databricks_workspace_token` still resolves it by host.
-    """
-    databricks_bin = shutil.which("databricks")
-    if databricks_bin is None:
-        raise click.ClickException(
-            "The Databricks CLI is required to log in to a workspace. "
-            "Install it first: https://docs.databricks.com/dev-tools/cli/install.html"
-        )
-    login_host = _host_with_org(workspace_host, org_id)
-    # Pin the grant to a profile named for the workspace's first DNS label so
-    # distinct workspaces don't clobber each other under the CLI's ``DEFAULT``.
-    from urllib.parse import urlsplit
-
-    split = urlsplit(workspace_host.rstrip("/"))
-    host = split.hostname or split.netloc or split.path
-    profile = host.split(".")[0]
-    click.echo(f"Opening browser to log in to {login_host} (profile {profile}) ...")
-    result = subprocess.run(
-        [databricks_bin, "auth", "login", "--host", login_host, "--profile", profile],
-        check=False,
-    )
-    if result.returncode != 0:
-        raise click.ClickException(
-            f"`databricks auth login --host {login_host} --profile {profile}` failed "
-            f"(exit {result.returncode}). If the workspace is unreachable from "
-            "this machine (VPN / IP access lists), resolve that and retry."
-        )
-
-
-def _verify_databricks_server_token(
-    server: str, token: str, org_id: str | None = None
-) -> httpx.Response:
-    """Probe ``GET /v1/me`` on *server* with a workspace bearer.
-
-    :param server: The server URL, e.g.
-        ``"https://myapp-123.aws.databricksapps.com"``.
-    :param token: The workspace bearer token to present.
-    :param org_id: The ``?o=`` workspace selector (see
-        :func:`_org_id_from_url`). When set, the probe carries
-        ``?o=<org_id>`` so the request routes to the workspace rather
-        than defaulting to the account (which answers HTTP 503).
-    :returns: The probe response (200 means the token is accepted and
-        the body carries ``user_id``).
-    :raises click.ClickException: When the server is unreachable.
-    """
-    import httpx as _httpx
-
-    try:
-        return _httpx.get(
-            f"{server}/v1/me",
-            headers={"Authorization": f"Bearer {token}"},
-            params={"o": org_id} if org_id else None,
-            timeout=10.0,
-        )
-    except _httpx.HTTPError as exc:
-        raise click.ClickException(
-            f"Could not reach {server}/v1/me to verify login: {exc}"
-        ) from exc
-
-
-@dataclass(frozen=True)
-class _DatabricksWorkspaceAuthInfo:
-    token: str
-    profile_name: str | None
-
-
-def _databricks_workspace_auth_info(workspace_host: str) -> _DatabricksWorkspaceAuthInfo | None:
-    """Mint a bearer and remember the Databricks profile that supplied it."""
-    from omnigent.inner.databricks_executor import (
-        DatabricksAuthError,
-        _resolve_databricks_auth,
-    )
-
-    try:
-        auth, _host = _resolve_databricks_auth(host=workspace_host)
-        token = auth.current_token()
-    except (DatabricksAuthError, ImportError, ValueError):
-        return None
-    if not token:
-        return None
-    return _DatabricksWorkspaceAuthInfo(token=token, profile_name=auth.profile_name)
-
-
-def _databricks_workspace_token(workspace_host: str) -> str | None:
-    """Mint a bearer for a workspace from the host-keyed OAuth cache.
-
-    :param workspace_host: The workspace host, e.g.
-        ``"https://example.databricks.com"``.
-    :returns: A bearer token, or ``None`` when no cached grant
-        resolves (the caller should run ``databricks auth login``).
-    """
-    info = _databricks_workspace_auth_info(workspace_host)
-    return info.token if info is not None else None
-
-
 def _remember_default_server(server: str) -> None:
     """
     Persist *server* as the user-level default after a successful login.
@@ -12027,12 +11328,6 @@ def login(server_url: str) -> None:
       stores the session JWT when the browser flow completes.
     - header mode: no login needed (proxy injects identity); we
       print a hint and exit successfully.
-    - Databricks-fronted (a Databricks App, or omnigent hosted on
-      a workspace API path): detected from the probe response — we
-      log in to the workspace via ``databricks auth login --host
-      <workspace>`` (browser) and store a pointer record so later
-      commands mint fresh workspace tokens automatically. Requires
-      the ``databricks`` extra.
 
     Subsequent ``omnigent run --server <url>`` commands then
     use the stored token via the runner / host-tunnel auth chain. A
@@ -12044,7 +11339,6 @@ def login(server_url: str) -> None:
     \b
     Example:
       omnigent login http://localhost:6767
-      omnigent login example.cloud.databricks.com/omnigent  # https:// assumed
       omnigent          # connects to the server just logged in to
 
     :param server_url: The remote server URL, e.g.
@@ -12055,31 +11349,19 @@ def login(server_url: str) -> None:
     """
     import httpx as _httpx
 
-    resolved = _resolve_server_url(server_url)
-    server = resolved.api_base
-    # The ``?o=`` selector rides on the resolved value (read off the raw
-    # input; normalization strips the query when expanding to the API mount).
-    org_id = resolved.org_id
+    server = _resolve_server_url(server_url).api_base
 
     # ── Step 0: Probe the server's auth mode. ──────────────────
     # /v1/me returns a JSON ``login_url`` on 401 — "/login" for
     # accounts, "/auth/login" for OIDC, and no login_url at all
-    # for header mode. A 302 to a workspace OAuth page (Databricks
-    # Apps) or a 401 with a DatabricksRealm challenge (workspace-
-    # hosted omnigent) means Databricks fronts the server. This
-    # lets one CLI command handle every posture without a flag.
+    # for header mode. This lets one CLI command handle every posture
+    # without a flag.
     try:
         probe = _httpx.get(f"{server}/v1/me", timeout=10.0, trust_env=_trust_env_for(server))
     except _httpx.HTTPError as exc:
         raise click.ClickException(
             f"Could not reach {server}/v1/me: {exc}\nIs the server running?"
         ) from exc
-
-    databricks_workspace = _databricks_workspace_login_target(server, probe)
-    if databricks_workspace is not None:
-        _databricks_login(server, databricks_workspace, org_id=org_id)
-        _remember_default_server(server)
-        return
 
     detected_login_url: str | None = None
     if probe.status_code == 401:

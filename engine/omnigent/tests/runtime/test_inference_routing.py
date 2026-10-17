@@ -359,40 +359,6 @@ def test_ordinary_host_keeps_legacy_credential_forwarding(monkeypatch) -> None:
     assert env["UNITY_TEST_KEY"] == "legacy-token"
 
 
-def test_host_ucode_configures_only_connected_harness_bindings(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from omnigent.host.connect import _generate_ucode_configs
-
-    profile = _profile()
-    providers = profile["providers"]
-    assert isinstance(providers, dict)
-    providers["unity"] = {"kind": "databricks", "connection": "databricks"}
-    inference = profile["inference"]
-    assert isinstance(inference, dict)
-    harnesses = inference["harnesses"]
-    assert isinstance(harnesses, dict)
-    harnesses["pi"] = {"provider": "bifrost"}
-    monkeypatch.setattr(
-        "omnigent.inner.databricks_executor._read_databrickscfg_host",
-        lambda profile: "https://unity.example",
-    )
-    monkeypatch.setattr(
-        "omnigent.host.databricks_credential.broker_token_command", lambda host: "broker-token"
-    )
-    configure = Mock()
-    monkeypatch.setattr("omnigent.onboarding.ucode_setup.configure_ucode_for_sandbox", configure)
-    with inference_config_scope(profile):
-        _generate_ucode_configs()
-    assert configure.call_args.kwargs["agents"] == ("claude",)
-
-    harnesses["claude-native"] = {"provider": "bifrost"}
-    configure.reset_mock()
-    with inference_config_scope(profile):
-        _generate_ucode_configs()
-    configure.assert_not_called()
-
-
 def test_worker_catalog_intersects_live_inventory_without_rejecting_private_aliases() -> None:
     from omnigent.models import model_catalog
 

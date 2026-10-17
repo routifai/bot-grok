@@ -29,7 +29,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from omnigent.onboarding.ambient import DetectedProvider
-from omnigent.onboarding.databricks_config import databricks_sdk_installed
 from omnigent.onboarding.interactive import ACCENT, console, encodable
 from omnigent.onboarding.provider_config import (
     ANTHROPIC_FAMILY,
@@ -424,10 +423,9 @@ def add_menu_options() -> list[AddOption]:
         each family-scoped subset (:func:`add_menu_options_for_family`,
         which filters while preserving this order): the first-party API
         key(s) and subscription(s) lead, the cross-vendor extras
-        (Gateway, OpenRouter) follow alphabetically, and Databricks sits
-        just above the catch-all "Other provider" at the bottom. Scoped
-        to one family this collapses to: API key → subscription →
-        Gateway [→ OpenRouter] → Databricks [→ Other].
+        (Gateway, OpenRouter) follow alphabetically, then the catch-all
+        "Other provider". Scoped to one family this collapses to: API
+        key → subscription → Gateway [→ OpenRouter] [→ Other].
     """
 
     def _opt(text: str, description: str, kind: str, **kw: object) -> AddOption:
@@ -485,20 +483,6 @@ def add_menu_options() -> list[AddOption]:
             KEY_KIND,
             provider="openrouter",
         ),
-        # Databricks sits just above the catch-all "Other provider". The
-        # option stays visible without the `databricks` extra (so it remains
-        # discoverable), but its description carries the install hint and
-        # selecting it aborts with the same hint (_configure_harness_add).
-        _opt(
-            "Databricks — workspace",
-            "Route harnesses through a Databricks workspace's Unity AI Gateway (via ucode)."
-            if databricks_sdk_installed()
-            # Markup-safe (rendered via Text.from_markup): no literal
-            # brackets, so the extra is named in prose here and the exact
-            # `omnigent[databricks]` command appears on selection.
-            else "Requires the Databricks extra — select for the install command.",
-            DATABRICKS_KIND,
-        ),
         _opt(
             "Other provider — API key",
             "Groq, DeepSeek, xAI, Mistral, Together AI, Fireworks, …",
@@ -523,7 +507,7 @@ def _add_option_families(opt: AddOption) -> frozenset[str]:
     Used to scope the add menu to the harness the user drilled into
     (``configure harness`` → Claude / Codex / Pi → "Add a provider"): a
     Claude add should not offer an OpenAI-only key, and vice versa. Gateways
-    and Databricks serve the anthropic / openai / pi surfaces. An anthropic /
+    serve the anthropic / openai / pi surfaces. An anthropic /
     openai API key can also drive pi (it consumes both model families);
     subscriptions never drive pi (a CLI login is unusable outside its
     own CLI).
@@ -532,7 +516,7 @@ def _add_option_families(opt: AddOption) -> frozenset[str]:
     :returns: The surfaces this option can configure — a subset of
         ``{"anthropic", "openai", "pi"}``.
     """
-    if opt.kind == GATEWAY_KIND or opt.kind == DATABRICKS_KIND:
+    if opt.kind == GATEWAY_KIND:
         return frozenset({ANTHROPIC_FAMILY, OPENAI_FAMILY, PI_SURFACE})
     if opt.kind == BEDROCK_KIND:
         # Bedrock mode drives only the native Claude terminal (anthropic
@@ -560,8 +544,8 @@ def add_menu_options_for_family(family: str) -> list[AddOption]:
 
     Scopes :func:`add_menu_options` to *family* so the ``configure
     harness`` per-harness "Add a provider" flow only offers credentials
-    that can drive that harness (plus gateways / Databricks, which serve
-    every surface). Order is preserved from :func:`add_menu_options`.
+    that can drive that harness (plus gateways, which serve every
+    surface). Order is preserved from :func:`add_menu_options`.
 
     :param family: ``"anthropic"`` (Claude), ``"openai"`` (Codex), or
         ``"pi"`` (Pi).
@@ -959,14 +943,3 @@ def build_gateway_provider_entry(
             block["models"] = {"default": models[family]}
         body[family] = block
     return body
-
-
-def build_databricks_provider_entry(profile: str) -> dict[str, object]:
-    """Build a ``kind: databricks`` provider entry body.
-
-    :param profile: The Databricks profile name from
-        ``~/.databrickscfg``, e.g. ``"oss"``.
-    :returns: A provider entry body, e.g.
-        ``{"kind": "databricks", "profile": "oss"}``.
-    """
-    return {"kind": DATABRICKS_KIND, "profile": profile}

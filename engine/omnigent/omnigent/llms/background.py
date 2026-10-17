@@ -47,14 +47,9 @@ async def resolve_background_llm(owner_id: str | None = None) -> BackgroundLLM |
 
     server_llm = get_caps().llm
     if server_llm is not None:
-        from omnigent.runtime.policies.builder import (
-            _normalize_policy_model,
-            _resolve_server_llm_connection,
-        )
+        from omnigent.runtime.policies.builder import _resolve_server_llm_connection
 
-        return _normalize_policy_model(server_llm.model), _resolve_server_llm_connection(
-            server_llm
-        )
+        return server_llm.model, _resolve_server_llm_connection(server_llm)
     resolver = _resolver
     if resolver is None:
         return None

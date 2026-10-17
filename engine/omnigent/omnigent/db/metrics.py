@@ -47,7 +47,7 @@ class DatabaseMetrics:
         self._transaction_retries = effective_meter.create_counter(
             TRANSACTION_RETRIES_METRIC_NAME,
             unit="{retry}",
-            description="CockroachDB transaction retry outcomes.",
+            description="Database transaction retry outcomes.",
         )
 
     def record_transaction_retry(self, operation: str, outcome: RetryOutcome) -> None:
@@ -55,7 +55,6 @@ class DatabaseMetrics:
         self._transaction_retries.add(
             1,
             attributes={
-                "db.system": "cockroachdb",
                 "db.operation": operation,
                 "retry.outcome": outcome,
             },
@@ -69,7 +68,7 @@ def _default_metrics() -> DatabaseMetrics:
 
 
 def record_transaction_retry(operation: str, outcome: RetryOutcome) -> None:
-    """Best-effort record of a CockroachDB transaction retry outcome."""
+    """Best-effort record of a database transaction retry outcome."""
     if not telemetry_enabled():
         return
     try:

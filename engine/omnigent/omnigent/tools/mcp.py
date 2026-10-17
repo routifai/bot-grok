@@ -1388,16 +1388,14 @@ def _normalize_input_schema(
 
     MCP allows schemas that LLM providers reject. This function
     applies the minimum transformations needed to avoid the most
-    common real-world failures, following the approach used by
-    the OpenAI Agents Python SDK:
+    common real-world failures:
 
     1. **Missing or None schema** → default to
        ``{"type": "object", "properties": {}}``. Many MCP tools
        (especially no-arg tools) omit ``inputSchema`` entirely.
     2. **Missing ``properties`` key** → inject ``"properties": {}``.
        MCP spec allows ``{"type": "object"}`` without
-       ``properties``, but OpenAI rejects it (see
-       openai/openai-agents-python#449).
+       ``properties``, but OpenAI rejects it.
     3. **Problematic keywords** (``$ref``, ``oneOf``, ``allOf``) →
        log a warning. We don't attempt to transform these because
        inlining ``$ref`` and converting ``oneOf`` → ``anyOf`` is

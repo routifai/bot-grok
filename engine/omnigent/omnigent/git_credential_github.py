@@ -228,9 +228,7 @@ def _write_gh_hosts(login: str, token: str) -> bool:
     a GitHub Enterprise entry, a second account). This matters because the host's
     ``GH_CONFIG_DIR`` is not always a throwaway sandbox one: a local ``omnigent
     host`` resolves it to the real ``~/.config/gh``, where truncating would
-    destroy the developer's config on every refresh. Mirrors the Databricks
-    config writer in :mod:`omnigent.onboarding.setup`, which mutates one section
-    of ``~/.databrickscfg`` and writes the rest back rather than truncating.
+    destroy the developer's config on every refresh.
 
     Written via a fresh ``0600`` temp file + :func:`os.replace`, so the token is
     never briefly world-readable and a concurrent ``gh`` read never sees a
@@ -280,9 +278,8 @@ def configure_host_gh(server_url: str, host_id: str) -> bool:
     """Authenticate the sandbox's gh CLI as the session owner.
 
     Companion to :func:`configure_host_git` (which wires git's per-op broker):
-    the gh CLI has no per-op credential hook, so — like the Databricks config
-    writer in :mod:`omnigent.onboarding.setup` materializes ``~/.databrickscfg``
-    — the owner's brokered GitHub token is materialized into ``hosts.yml`` at
+    the gh CLI has no per-op credential hook, so the owner's brokered GitHub
+    token is materialized into ``hosts.yml`` at
     host startup. The token is a short-lived, server-refreshed user token; it is
     re-fetched on each host launch, so a long-lived session should relaunch to
     refresh it.

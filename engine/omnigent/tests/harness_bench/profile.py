@@ -33,8 +33,7 @@ class BenchProfile:
         invent a valid id, so the profile must supply one.
     :param env_prefix: The env-var prefix the harness wrap reads, e.g.
         ``"HARNESS_CLAUDE_SDK_"``. ``{env_prefix}MODEL`` /
-        ``{env_prefix}GATEWAY`` / ``{env_prefix}DATABRICKS_PROFILE`` are
-        derived from it.
+        ``{env_prefix}GATEWAY`` are derived from it.
     :param marker: A unique literal the LLM is asked to echo in the basic
         turn / streaming probes. Per-harness so concurrent runs never
         cross-match.

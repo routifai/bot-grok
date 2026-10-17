@@ -2932,7 +2932,6 @@ def test_run_without_agent_drops_into_configure_when_unconfigured(
     # first-run plan resolves to "nothing configured".
     monkeypatch.setenv("OMNIGENT_CONFIG_HOME", str(tmp_path))
     monkeypatch.setattr("omnigent.cli._load_effective_config", dict)
-    monkeypatch.setattr("omnigent.cli_config._promote_global_auth_to_provider", Mock())
     monkeypatch.setattr("omnigent.cli_config._adopt_detected_providers", Mock(return_value=[]))
     monkeypatch.setattr(
         "omnigent.onboarding.provider_config.default_provider_for_harness",
@@ -4925,18 +4924,15 @@ def test_setup_invalid_provider_is_a_user_error_not_a_crash(
 def test_setup_command_replaces_wizard(monkeypatch: pytest.MonkeyPatch) -> None:
     """``omnigent setup`` is the visible standard setup flow command."""
     configure_flow = Mock()
-    run_onboarding = Mock(return_value=True)
     monkeypatch.setattr(
         "omnigent.cli._run_configure_harnesses_interactive",
         configure_flow,
     )
-    monkeypatch.setattr("omnigent.onboarding.setup.run_onboarding", run_onboarding)
 
     result = CliRunner().invoke(cli, ["setup"])
 
     assert result.exit_code == 0, result.output
     configure_flow.assert_called_once_with()
-    run_onboarding.assert_not_called()
 
     help_result = CliRunner().invoke(cli, ["--help"])
     assert help_result.exit_code == 0
@@ -5269,7 +5265,6 @@ def test_resolve_first_run_plan_does_not_persist_derived_default(
     Claude→polly yet no global ``harness`` / ``default_agent`` was written.
     """
     monkeypatch.setenv("OMNIGENT_CONFIG_HOME", str(tmp_path))
-    monkeypatch.setattr("omnigent.cli_config._promote_global_auth_to_provider", Mock())
     monkeypatch.setattr("omnigent.cli_config._adopt_detected_providers", Mock(return_value=[]))
     monkeypatch.setattr(
         "omnigent.onboarding.provider_config.default_provider_for_harness",
@@ -5300,7 +5295,6 @@ def test_resolve_first_run_plan_re_derives_when_creds_change(
     pick would pin the user to pi and fail the second half.
     """
     monkeypatch.setenv("OMNIGENT_CONFIG_HOME", str(tmp_path))
-    monkeypatch.setattr("omnigent.cli_config._promote_global_auth_to_provider", Mock())
     monkeypatch.setattr("omnigent.cli_config._adopt_detected_providers", Mock(return_value=[]))
 
     # 1) Only Pi configured → pi REPL, no example agent.
@@ -5331,7 +5325,6 @@ def test_resolve_first_run_plan_drops_into_configure_when_empty(
     return of None signals the caller to exit cleanly rather than error.
     """
     monkeypatch.setenv("OMNIGENT_CONFIG_HOME", str(tmp_path))
-    monkeypatch.setattr("omnigent.cli_config._promote_global_auth_to_provider", Mock())
     monkeypatch.setattr("omnigent.cli_config._adopt_detected_providers", Mock(return_value=[]))
     monkeypatch.setattr(
         "omnigent.onboarding.provider_config.default_provider_for_harness",
@@ -5399,14 +5392,13 @@ def test_announce_auto_configured_credentials_empty_is_silent(
 def test_adopt_ambient_credentials_announces_only_what_was_adopted(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The shared adopt step self-heals, adopts, and announces the adopted creds.
+    """The shared adopt step adopts and announces the adopted creds.
 
     Exercises the real announce path through the wrapper: with one credential
-    newly adopted the callout names it; the databricks backfill stays silent.
+    newly adopted the callout names it.
     A regression that stopped calling the callout (or announced credentials
     that were not actually adopted) fails here.
     """
-    monkeypatch.setattr("omnigent.cli_config._promote_global_auth_to_provider", Mock())
     monkeypatch.setattr(
         "omnigent.cli_config._adopt_detected_providers", Mock(return_value=["anthropic"])
     )

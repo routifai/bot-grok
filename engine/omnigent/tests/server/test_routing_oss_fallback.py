@@ -1,9 +1,8 @@
 """The built-in judge answers when the external router cannot.
 
 The deployment under test is the fully-OSS one: a ``llm:`` block for the judge,
-a ``kind: databricks`` provider for inference, and no ``routing:`` block — so
-the bootstrap points an external client at a workspace whose account never had
-the routing API enabled. Every ``routes:select`` there is a 404, and before
+a provider for inference, and an external client pointed at a workspace whose
+account never had the routing API enabled. Every ``routes:select`` there is a 404, and before
 this the whole session declined with "Routing unavailable" while the configured
 judge was never asked.
 
@@ -200,41 +199,34 @@ async def test_polly_smart_routing_gets_a_judge_decision(router: MockRouter) -> 
 
 async def test_the_judge_may_move_a_session_to_another_harness() -> None:
     """Judge-only is still harness + model: it is offered the whole menu."""
-    judge = _judge(model="databricks-gpt-5-5", harness="codex")
+    judge = _judge(model="gpt-5-5", harness="codex-native")
     with _deployment(local=judge):
         harness, model, verdict, error = await route_session_harness(
             TRIVIAL,
             session_id="conv_polly",
-            catalog={"claude-sdk": CLAUDE_CATALOG, "codex": ["databricks-gpt-5-5"]},
+            catalog={"claude-sdk": CLAUDE_CATALOG, "codex-native": ["gpt-5-5"]},
+            harness_candidates=("claude-sdk", "codex-native"),
         )
     assert error is None
-    assert (harness, model) == ("codex", "databricks-gpt-5-5")
+    assert (harness, model) == ("codex-native", "gpt-5-5")
     assert verdict is not None
     assert verdict["router_source"] == "oss-llm"
     # Every candidate harness reached the judge, not just the session's own.
-    assert set(judge.offered[0]) >= {"claude-sdk", "codex"}
+    assert set(judge.offered[0]) >= {"claude-sdk", "codex-native"}
 
 
-# ── the deployment the bug was reported on, assembled from config ───────────
+# ── the deployment, assembled from config ───────────────────────────────────
 
 
-async def test_the_oss_config_routes_with_its_judge(router: MockRouter) -> None:
-    """``llm:`` + a databricks provider + no ``routing:`` block.
+async def test_the_oss_config_routes_with_its_judge() -> None:
+    """``llm:`` and no ``routing:`` block builds the judge alone, and it routes.
 
-    The bootstrap still auto-builds the workspace router — that is the right
-    default for a workspace that HAS the API — and the judge covers the one
-    that does not.
+    With no ``routing:`` block there is no external client to hit a workspace
+    whose account lacks the routing API; the configured judge answers.
     """
     from omnigent.cli import _build_routing_backends
 
-    router.disabled = True
-    host = router.base_url[: -len("/ai-gateway/routing/v1")]
-    cfg = {"providers": {"ws": {"kind": "databricks", "profile": "ws", "default": True}}}
     with (
-        patch(
-            "omnigent.runtime.credentials.databricks.resolve_databricks_workspace",
-            return_value=MagicMock(host=host),
-        ),
         patch(
             "omnigent.runtime.policies.builder._resolve_server_llm_connection",
             return_value=None,
@@ -243,18 +235,17 @@ async def test_the_oss_config_routes_with_its_judge(router: MockRouter) -> None:
             "omnigent.runtime.policies.builder._build_policy_llm_client",
             return_value=MagicMock(),
         ),
-        patch.object(ExternalRoutingClient, "_resolve_credentials", return_value=(None, {})),
     ):
         from omnigent.spec import parse_server_llm
 
         backends = _build_routing_backends(
-            cfg, parse_server_llm({"model": OPUS}), RoutingSettings()
+            {}, parse_server_llm({"model": OPUS}), RoutingSettings()
         )
-        assert isinstance(backends.external, ExternalRoutingClient)
-        judge = _judge()
-        with _deployment(external=backends.external, local=judge):
-            model, verdict = await route_turn("claude-sdk", TRIVIAL, catalog=CLAUDE_CATALOG)
+    assert backends.external is None
+    assert backends.local is not None
+    judge = _judge()
+    with _deployment(local=judge):
+        model, verdict = await route_turn("claude-sdk", TRIVIAL, catalog=CLAUDE_CATALOG)
     assert model == OPUS
     assert verdict is not None
     assert verdict["router_source"] == "oss-llm"
-    assert router.count() == 1

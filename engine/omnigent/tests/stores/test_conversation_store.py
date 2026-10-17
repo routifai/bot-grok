@@ -41,19 +41,20 @@ from omnigent.stores.host_store import HostStore
 # ── CRUD ──────────────────────────────────────────────
 
 
-class _CommitSerializationFailure(Exception):
-    """Synthetic CockroachDB serialization failure."""
+class _CommitDeadlockVictim(Exception):
+    """Synthetic MySQL deadlock victim (error 1213)."""
 
-    sqlstate = "40001"
+    def __init__(self) -> None:
+        super().__init__(1213, "deadlock")
 
 
 class _RetryOnceMaker:
     """Wrap a real maker and inject one failure before its first commit."""
 
     def __init__(self, delegate: Any) -> None:
-        """Create a CockroachDB-shaped maker around a real test session."""
+        """Create a retrying (MySQL-shaped) maker around a real test session."""
         self.engine = MagicMock()
-        self.engine.dialect.name = "cockroachdb"
+        self.engine.dialect.name = "mysql"
         self.query_name_prefix = delegate.query_name_prefix
         self._delegate = delegate
         self.attempts = 0
@@ -65,7 +66,7 @@ class _RetryOnceMaker:
             yield session
             self.attempts += 1
             if self.attempts == 1:
-                raise DBAPIError("commit", {}, _CommitSerializationFailure(), False)
+                raise DBAPIError("commit", {}, _CommitDeadlockVictim(), False)
 
 
 def test_fork_drops_import_provenance_labels(
@@ -749,14 +750,15 @@ def test_append_retry_reuses_prepared_id_and_encoded_payload(
     db_uri: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A serialization replay repeats SQL, not ID generation or encoding."""
+    """A retried transaction repeats SQL, not ID generation or encoding."""
     from contextlib import contextmanager
     from unittest.mock import MagicMock
 
     from sqlalchemy.exc import DBAPIError
 
-    class SerializationFailure(Exception):
-        sqlstate = "40001"
+    class DeadlockVictim(Exception):
+        def __init__(self) -> None:
+            super().__init__(1213, "deadlock")
 
     class RecordingStore(SqlAlchemyConversationStore):
         def __init__(self, uri: str) -> None:
@@ -770,7 +772,7 @@ def test_append_retry_reuses_prepared_id_and_encoded_payload(
     class RetryOnceMaker:
         def __init__(self, delegate: Any) -> None:
             self.engine = MagicMock()
-            self.engine.dialect.name = "cockroachdb"
+            self.engine.dialect.name = "mysql"
             self.query_name_prefix = delegate.query_name_prefix
             self._delegate = delegate
             self.attempts = 0
@@ -781,7 +783,7 @@ def test_append_retry_reuses_prepared_id_and_encoded_payload(
                 yield session
                 self.attempts += 1
                 if self.attempts == 1:
-                    raise DBAPIError("commit", {}, SerializationFailure(), False)
+                    raise DBAPIError("commit", {}, DeadlockVictim(), False)
 
     item_id = "1" * 32
     id_calls = 0

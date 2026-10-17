@@ -746,7 +746,7 @@ def test_launch_runner_preserves_the_full_saved_inference_profile() -> None:
                     "api_key_ref": "env:BIFROST_KEY",
                 },
             },
-            "unity": {"kind": "databricks", "connection": "databricks"},
+            "unity": {"kind": "gateway", "openai": {"base_url": "https://unity.example/v1"}},
         },
         "inference": {
             "harnesses": {

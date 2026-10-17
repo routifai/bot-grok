@@ -590,9 +590,6 @@ def _worker_db_uri() -> Generator[str, None, None]:
                     "CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
                 )
             )
-        elif dialect == "cockroachdb":
-            conn.execute(_sa.text(f'DROP DATABASE IF EXISTS "{db_name}" CASCADE'))
-            conn.execute(_sa.text(f'CREATE DATABASE "{db_name}"'))
         else:
             conn.execute(_sa.text(f'DROP DATABASE IF EXISTS "{db_name}"'))
             conn.execute(_sa.text(f'CREATE DATABASE "{db_name}"'))
@@ -609,8 +606,6 @@ def _worker_db_uri() -> Generator[str, None, None]:
     with root_engine2.connect() as conn:
         if dialect == "mysql":
             conn.execute(_sa.text(f"DROP DATABASE IF EXISTS `{db_name}`"))
-        elif dialect == "cockroachdb":
-            conn.execute(_sa.text(f'DROP DATABASE IF EXISTS "{db_name}" CASCADE'))
         else:
             conn.execute(_sa.text(f'DROP DATABASE IF EXISTS "{db_name}" WITH (FORCE)'))
     root_engine2.dispose()
@@ -631,7 +626,7 @@ def db_uri(
 
     * **SQLite** (default): fresh file per test, optionally copied from
       a suite's migrated template. Engines and data remain fully isolated.
-    * **Postgres / MySQL / CockroachDB** (``OMNIGENT_TEST_DB_URI`` set):
+    * **Postgres / MySQL** (``OMNIGENT_TEST_DB_URI`` set):
       reuses the session-scoped worker database and clears all non-alembic
       tables between tests so each test starts clean without re-migrating.
     """
@@ -655,13 +650,10 @@ def db_uri(
     tables = [t for t in _sa.inspect(engine).get_table_names() if t != "alembic_version"]
     # No FK constraints exist (dropped in p1a2b3c4d5e6) so no need to toggle
     # FOREIGN_KEY_CHECKS — one less round-trip per test on MySQL.
-    operation = "DELETE FROM" if dialect == "cockroachdb" else "TRUNCATE TABLE"
     with engine.begin() as conn:
         for table in tables:
             q = f"`{table}`" if dialect == "mysql" else f'"{table}"'
-            # CockroachDB implements TRUNCATE as a schema change. DELETE keeps
-            # per-test cleanup transactional and avoids seconds of DDL work.
-            conn.execute(_sa.text(f"{operation} {q}"))
+            conn.execute(_sa.text(f"TRUNCATE TABLE {q}"))
     yield _worker_db_uri
 
 

@@ -74,7 +74,6 @@ from omnigent.db.utils import (
     get_or_create_conversation_engine,
     get_or_create_engine,
     insert_fts_bulk,
-    is_postgresql_family,
     make_named_managed_session_maker,
     now_epoch,
     run_write_transaction,
@@ -505,7 +504,7 @@ def _upsert_prepared_labels(
         }
         for key, value in updates.items()
     ]
-    if dialect == "sqlite" or is_postgresql_family(dialect):
+    if dialect == "sqlite" or dialect == "postgresql":
         _dialect_upsert_labels(session, dialect, rows)
         return
     # Generic dialect fallback — SELECT-then-INSERT/UPDATE in
@@ -545,7 +544,7 @@ def _dialect_upsert_labels(
     branch; this one executes it.
 
     :param session: Active SQLAlchemy session.
-    :param dialect: ``"sqlite"``, ``"postgresql"``, or ``"cockroachdb"`` (the
+    :param dialect: ``"sqlite"`` or ``"postgresql"`` (the
         outer function gates all other dialects onto the
         generic fallback path).
     :param rows: Pre-built row dicts to upsert.
@@ -1751,7 +1750,7 @@ class SqlAlchemyConversationStore(ConversationStore):
         def write(session: Session) -> None:
             require_active_account(session, user_id)
             dialect = session.bind.dialect.name if session.bind is not None else ""
-            if dialect == "sqlite" or is_postgresql_family(dialect):
+            if dialect == "sqlite" or dialect == "postgresql":
                 self._upsert_daily_cost_dialect(session, dialect, user_id, day_utc, delta_usd, now)
                 return
             # Generic dialect fallback — SELECT-then-INSERT/UPDATE in one
@@ -1967,7 +1966,7 @@ class SqlAlchemyConversationStore(ConversationStore):
         def write(session: Session) -> None:
             require_active_account(session, user_id)
             dialect = session.bind.dialect.name if session.bind is not None else ""
-            if dialect == "sqlite" or is_postgresql_family(dialect):
+            if dialect == "sqlite" or dialect == "postgresql":
                 # Typed as Any to sidestep the mypy variance between the
                 # two dialect-specific ``Insert`` classes.
                 stmt: Any
@@ -2492,7 +2491,7 @@ class SqlAlchemyConversationStore(ConversationStore):
         workspace_id = current_workspace_id()
         completed_status = encode_item_status("completed")
         # Precompute per-item row values (sans position) BEFORE the write
-        # transaction so a CockroachDB 40001 replay reuses the same generated
+        # transaction so a retried transaction reuses the same generated
         # ids: a retry must be indistinguishable from the first attempt. A
         # stable id doubles as the row id so an idempotent re-post targets the
         # same primary key (see the dedup probe inside ``write``).
@@ -2520,7 +2519,7 @@ class SqlAlchemyConversationStore(ConversationStore):
             prepared_rows.append((item, values, search))
 
         def write(session: Session) -> list[ConversationItem]:
-            # Built fresh on every attempt: a CockroachDB 40001 replay must
+            # Built fresh on every attempt: a retried transaction must
             # re-run the dedup probe against a fresh snapshot and rebuild the
             # result list rather than appending to a previous attempt's.
             persisted: list[ConversationItem] = []
@@ -3004,9 +3003,7 @@ class SqlAlchemyConversationStore(ConversationStore):
             # can't leak to the connection's next pooled use. See
             # _SEARCH_STATEMENT_TIMEOUT_MS. A worker-thread query is not stopped
             # by a client disconnect, so this is the only server-side bound.
-            is_postgres = session.bind is not None and is_postgresql_family(
-                session.bind.dialect.name
-            )
+            is_postgres = session.bind is not None and session.bind.dialect.name == "postgresql"
             if search_query and is_postgres:
                 # Postgres SET does not accept a bind parameter, so the value is
                 # inlined. Safe from injection: it is an int module constant, not
@@ -4269,7 +4266,7 @@ class SqlAlchemyConversationStore(ConversationStore):
         Insert a conversation row and session-scoped agent.
 
         The AP conversation phase commits before the Omnigent agent and
-        metadata phase. Each transaction retries independently on CRDB;
+        metadata phase. Each transaction retries independently;
         the split databases cannot provide one atomic commit across both.
 
         :param agent_id: Pre-generated agent id, e.g.
@@ -4829,7 +4826,7 @@ class SqlAlchemyConversationStore(ConversationStore):
             # batch decode + one batch encode so a store whose encode is a
             # per-call RPC never pays one round-trip per copied item.
             # Preparation happens here, before the insert transaction, so a
-            # CockroachDB 40001 replay repeats SQL only — never ID generation
+            # A retried transaction repeats SQL only — never ID generation
             # or the encode/decode hooks.
             compaction_positions = [
                 pos

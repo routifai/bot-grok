@@ -5,8 +5,7 @@ canonical→local model-id normalization: provider resolution must mirror
 the spawn paths' precedence, and enumeration must hit each provider
 kind's real listing endpoint. HTTP is mocked at the transport boundary
 (``httpx.MockTransport``) with realistic provider payloads; the
-Databricks credential mint is stubbed with the real
-:class:`WorkspaceCreds` type.
+credentials are inline test keys.
 """
 
 from __future__ import annotations
@@ -48,8 +47,7 @@ from omnigent.models.model_metadata import (
 )
 from omnigent.models.model_resolver import ModelResolutionError, ModelResolutionSource
 from omnigent.onboarding.providers import ModelInfo
-from omnigent.runtime.credentials.databricks import WorkspaceCreds
-from omnigent.spec.types import AgentSpec, ApiKeyAuth, DatabricksAuth, ExecutorSpec
+from omnigent.spec.types import AgentSpec, ApiKeyAuth, ExecutorSpec
 
 
 @pytest.fixture(autouse=True)
@@ -85,7 +83,6 @@ def _isolate_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, yaml_text: 
     """
     monkeypatch.setenv("OMNIGENT_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("OMNIGENT_DISABLE_KEYRING", "1")
-    monkeypatch.delenv("DATABRICKS_CONFIG_PROFILE", raising=False)
     (tmp_path / "config.yaml").write_text(yaml_text)
 
 
@@ -94,7 +91,7 @@ def _worker_spec(harness: str, **executor_kwargs: object) -> AgentSpec:
 
     :param harness: The worker harness, e.g. ``"claude-native"``.
     :param executor_kwargs: Extra :class:`ExecutorSpec` fields, e.g.
-        ``auth=DatabricksAuth(profile="p")``.
+        ``auth=ApiKeyAuth(api_key="k")``.
     :returns: An :class:`AgentSpec` shaped like a polly worker.
     """
     return AgentSpec(
@@ -112,11 +109,6 @@ def _worker_spec(harness: str, **executor_kwargs: object) -> AgentSpec:
             ResolvedModelProvider(kind="subscription", cli="claude"),
             {"kind": "subscription", "label": "Subscription", "name": "claude"},
             id="subscription",
-        ),
-        pytest.param(
-            ResolvedModelProvider(kind="databricks", profile="production-west"),
-            {"kind": "databricks", "label": "Workspace", "name": "production-west"},
-            id="databricks",
         ),
         pytest.param(
             ResolvedModelProvider(
@@ -223,68 +215,36 @@ def test_native_claude_legacy_api_key_source_is_its_cli_subscription() -> None:
     }
 
 
-_DATABRICKS_DEFAULT_CONFIG = (
-    "providers:\n  workspace:\n    kind: databricks\n    profile: prof-a\n    default: true\n"
+_GATEWAY_DEFAULT_CONFIG = (
+    "providers:\n"
+    "  gw:\n"
+    "    kind: gateway\n"
+    "    default: true\n"
+    "    openai:\n"
+    "      base_url: https://gw.example.com/v1\n"
+    "      api_key: sk-gw-test\n"
+    "      wire_api: chat\n"
 )
 
-
-# Helper for Unity Catalog model-services fixtures (pi path only).
-def _uc_service(name: str, api_types: list[str]) -> dict:
-    return {"name": f"model-services/{name}", "supported_api_types": api_types}
+_GATEWAY_MODELS_PAGE = {"data": [{"id": "gpt-5.4"}, {"id": "gpt-5.4-mini"}]}
 
 
-# Realistic serving-endpoints page (non-pi harnesses use /api/2.0/serving-endpoints
-# which returns databricks-* ids, not system.ai.* ids).
-_SERVING_ENDPOINTS_PAGE = {
-    "endpoints": [
-        {
-            "name": "databricks-claude-sonnet-4-6",
-            "creator": "system",
-            "task": "llm/v1/chat",
-            "state": {"ready": "READY"},
-        },
-        {
-            "name": "databricks-gpt-5-4",
-            "creator": "system",
-            "task": "llm/v1/chat",
-            "state": {"ready": "READY"},
-        },
-        {
-            "name": "databricks-meta-llama-3-3-70b-instruct",
-            "creator": "system",
-            "task": "llm/v1/chat",
-            "state": {"ready": "READY"},
-        },
-        {
-            "name": "databricks-bge-large-en",
-            "creator": "system",
-            "task": "llm/v1/embeddings",
-            "state": {"ready": "READY"},
-        },
-    ]
-}
+def _gateway_transport(requests_seen: list[httpx.Request]) -> httpx.MockTransport:
+    """Build a transport serving a plain ``/v1/models`` page.
+
+    :param requests_seen: Mutable list capturing each request.
+    :returns: The mock transport.
+    """
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        """Serve the gateway models page."""
+        requests_seen.append(request)
+        return httpx.Response(200, json=_GATEWAY_MODELS_PAGE)
+
+    return httpx.MockTransport(_handler)
 
 
 # ── Provider resolution ────────────────────────────────────
-
-
-def test_resolve_provider_databricks_default(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """A databricks default provider resolves to its profile for every worker.
-
-    If this regressed, the dispatch gate could not localize canonical
-    ids for gateway children and ``sys_list_models`` would report no
-    gateway source.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :param tmp_path: Per-test temp dir.
-    """
-    _isolate_config(monkeypatch, tmp_path, _DATABRICKS_DEFAULT_CONFIG)
-    for harness in ("claude-native", "codex-native", "pi", "pi-native", "native-pi"):
-        provider = resolve_model_provider(_worker_spec(harness), harness)
-        assert provider.kind == "databricks", f"harness {harness}: {provider}"
-        assert provider.profile == "prof-a"
 
 
 def test_resolve_provider_key_kind_resolves_family_credential(
@@ -360,21 +320,6 @@ def test_resolve_provider_cli_config_default(
     assert "Databricks" in provider.detail
 
 
-def test_resolve_provider_spec_databricks_auth_wins(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """An explicit spec ``auth: {type: databricks}`` resolves to that profile.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :param tmp_path: Per-test temp dir.
-    """
-    _isolate_config(monkeypatch, tmp_path, "")
-    spec = _worker_spec("claude-native", auth=DatabricksAuth(profile="spec-prof"))
-    provider = resolve_model_provider(spec, "claude-native")
-    assert provider.kind == "databricks"
-    assert provider.profile == "spec-prof"
-
-
 def test_resolve_provider_spec_api_key_auth(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -393,52 +338,6 @@ def test_resolve_provider_spec_api_key_auth(
     assert provider.family == "anthropic"
     assert provider.base_url == "https://api.anthropic.com"
     assert provider.api_key == "sk-ant-inline"
-
-
-def test_resolve_provider_legacy_profile(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """A legacy ``executor.config["profile"]`` resolves to databricks.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :param tmp_path: Per-test temp dir.
-    """
-    _isolate_config(monkeypatch, tmp_path, "")
-    spec = AgentSpec(
-        spec_version=1,
-        name="worker",
-        executor=ExecutorSpec(
-            type="omnigent", config={"harness": "codex-native", "profile": "legacy-prof"}
-        ),
-    )
-    provider = resolve_model_provider(spec, "codex-native")
-    assert provider.kind == "databricks"
-    assert provider.profile == "legacy-prof"
-
-
-def test_resolve_provider_databricks_model_prefix_uses_env_profile(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """A ``databricks-*`` spec model routes via the runner-env profile.
-
-    Mirrors the spawn builders' model-prefix heuristic plus the native
-    launch paths' ``DATABRICKS_CONFIG_PROFILE`` fallback.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :param tmp_path: Per-test temp dir.
-    """
-    _isolate_config(monkeypatch, tmp_path, "")
-    monkeypatch.setenv("DATABRICKS_CONFIG_PROFILE", "env-prof")
-    spec = AgentSpec(
-        spec_version=1,
-        name="worker",
-        executor=ExecutorSpec(
-            type="omnigent",
-            config={"harness": "pi"},
-            model="databricks-claude-opus-4-8",
-        ),
-    )
-    provider = resolve_model_provider(spec, "pi")
-    assert provider.kind == "databricks"
-    assert provider.profile == "env-prof"
 
 
 @pytest.mark.parametrize(
@@ -487,8 +386,6 @@ def test_resolve_provider_none_cases(
     "executor_kwargs",
     [
         pytest.param({"auth": ApiKeyAuth(api_key="sk-unconsumed")}, id="api-key-auth"),
-        pytest.param({"auth": DatabricksAuth(profile="unconsumed-prof")}, id="databricks-auth"),
-        pytest.param({"profile": "top-level-prof"}, id="top-level-executor-profile"),
     ],
 )
 def test_resolve_provider_codex_pi_ignore_legacy_auth_fields(
@@ -499,9 +396,8 @@ def test_resolve_provider_codex_pi_ignore_legacy_auth_fields(
 ) -> None:
     """codex / pi report ``none`` for legacy auth fields their builders skip.
 
-    ``_build_codex_spawn_env`` / ``_build_pi_spawn_env`` consume ONLY
-    ``config["profile"]`` and the ``databricks-*`` model prefix — never
-    ``auth:`` blocks or top-level ``executor.profile``. If the catalog
+    ``_build_codex_spawn_env`` / ``_build_pi_spawn_env`` never consume
+    ``auth:`` blocks. If the catalog
     resolved these fields anyway, ``sys_list_models`` would advertise
     models the spawned child has no credentials to reach (the resolution
     parity gap).
@@ -518,26 +414,6 @@ def test_resolve_provider_codex_pi_ignore_legacy_auth_fields(
     # actually reads, not just say "unconfigured".
     assert "does not consume legacy auth" in provider.detail
     assert "providers" in provider.detail
-
-
-def test_resolve_provider_claude_sdk_consumes_top_level_executor_profile(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """claude-sdk DOES consume the deprecated top-level ``executor.profile``.
-
-    The contrast case to the codex/pi test above:
-    ``_build_claude_sdk_spawn_env`` reads ``config["profile"] or
-    executor.profile``, so the catalog must resolve it too — reporting
-    ``none`` here would mark a perfectly routable claude worker dead.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :param tmp_path: Per-test temp dir.
-    """
-    _isolate_config(monkeypatch, tmp_path, "")
-    spec = _worker_spec("claude-native", profile="top-level-prof")
-    provider = resolve_model_provider(spec, "claude-native")
-    assert provider.kind == "databricks"
-    assert provider.profile == "top-level-prof"
 
 
 def test_resolve_provider_global_auth_consumed_by_claude_sdk_not_codex(
@@ -565,190 +441,6 @@ def test_resolve_provider_global_auth_consumed_by_claude_sdk_not_codex(
 
 
 # ── Enumeration per provider kind ──────────────────────────
-
-
-def _databricks_transport(
-    requests_seen: list[httpx.Request],
-) -> httpx.MockTransport:
-    """Build a transport serving the realistic serving-endpoints page.
-
-    :param requests_seen: Mutable list capturing each request for
-        header/path assertions.
-    :returns: The mock transport.
-    """
-
-    _UC_PAGE = {
-        "model_services": [
-            _uc_service("system.ai.claude-sonnet-4-6", ["anthropic/v1/messages"]),
-            _uc_service(
-                "system.ai.gpt-5-4", ["mlflow/v1/chat/completions", "openai/v1/responses"]
-            ),
-            _uc_service("system.ai.gpt-responses-only", ["openai/v1/responses"]),
-            _uc_service("system.ai.meta-llama-3-3-70b-instruct", ["mlflow/v1/chat/completions"]),
-            _uc_service("system.ai.qwen3-embedding", ["mlflow/v1/embeddings"]),
-        ]
-    }
-
-    def _handler(request: httpx.Request) -> httpx.Response:
-        """Serve serving-endpoints (non-pi) or UC model-services (pi)."""
-        requests_seen.append(request)
-        if request.url.path == "/api/2.0/serving-endpoints":
-            return httpx.Response(200, json=_SERVING_ENDPOINTS_PAGE)
-        if request.url.path == "/api/2.1/unity-catalog/model-services":
-            return httpx.Response(200, json=_UC_PAGE)
-        return httpx.Response(404, json={"error": str(request.url)})
-
-    return httpx.MockTransport(_handler)
-
-
-def _stub_workspace_creds(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Stub the Databricks credential mint with real ``WorkspaceCreds``.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    """
-    monkeypatch.setattr(
-        model_catalog,
-        "resolve_databricks_workspace",
-        lambda profile: WorkspaceCreds(host="https://workspace.example.com", token="dapi-test"),
-    )
-
-
-def test_databricks_listing_filters_to_llm_wire_surfaces(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """The gateway listing keeps supported LLM wires and tags families.
-
-    The embeddings endpoint must be excluded — including it would let an
-    orchestrator dispatch a worker onto a non-chat endpoint.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :param tmp_path: Per-test temp dir.
-    """
-    _isolate_config(monkeypatch, tmp_path, _DATABRICKS_DEFAULT_CONFIG)
-    _stub_workspace_creds(monkeypatch)
-    requests_seen: list[httpx.Request] = []
-
-    listing = list_models_for_worker(
-        _worker_spec("pi"), "pi", transport=_databricks_transport(requests_seen)
-    )
-
-    assert listing.source == "gateway"
-    assert listing.verified is True
-    # The profile's minted token authenticated the listing call.
-    assert requests_seen[0].headers["authorization"] == "Bearer dapi-test"
-    by_id = {m.id: m for m in listing.models}
-    # Pi uses UC model-services API → system.ai.* ids; embeddings endpoint excluded.
-    assert set(by_id) == {
-        "system.ai.claude-sonnet-4-6",
-        "system.ai.gpt-5-4",
-        "system.ai.gpt-responses-only",
-        "system.ai.meta-llama-3-3-70b-instruct",
-    }
-    assert by_id["system.ai.claude-sonnet-4-6"].family == "claude"
-    assert by_id["system.ai.gpt-5-4"].family == "openai"
-    assert by_id["system.ai.meta-llama-3-3-70b-instruct"].family == "other"
-    assert by_id["system.ai.claude-sonnet-4-6"].metadata.wire_apis == frozenset(
-        {ModelWireAPI.ANTHROPIC_MESSAGES}
-    )
-    assert by_id["system.ai.gpt-5-4"].metadata.wire_apis == frozenset(
-        {ModelWireAPI.OPENAI_CHAT, ModelWireAPI.OPENAI_RESPONSES}
-    )
-    assert by_id["system.ai.gpt-responses-only"].metadata.wire_apis == frozenset(
-        {ModelWireAPI.OPENAI_RESPONSES}
-    )
-
-
-def test_databricks_listing_skips_explicitly_non_ready_endpoints(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Endpoints whose state says not-ready are skipped; absent state stays.
-
-    Listing a provisioning/failed endpoint would let an orchestrator
-    dispatch a worker onto an endpoint that immediately errors. But the
-    serving-endpoints API may omit ``state`` entirely, so dropping
-    absent-state endpoints would hide every model on those workspaces —
-    only an EXPLICIT non-READY value excludes.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :param tmp_path: Per-test temp dir.
-    """
-    _isolate_config(monkeypatch, tmp_path, _DATABRICKS_DEFAULT_CONFIG)
-    _stub_workspace_creds(monkeypatch)
-    # Pi uses the UC model-services API — all listed services are available
-    # (UC has no per-service ready/not-ready flag).
-    page = {
-        "model_services": [
-            _uc_service("system.ai.claude-ready", ["mlflow/v1/chat/completions"]),
-            _uc_service("system.ai.claude-stateless", ["mlflow/v1/chat/completions"]),
-        ]
-    }
-
-    def _handler(request: httpx.Request) -> httpx.Response:
-        """Serve the UC model-services page for pi."""
-        return httpx.Response(200, json=page)
-
-    listing = list_models_for_worker(
-        _worker_spec("pi"), "pi", transport=httpx.MockTransport(_handler)
-    )
-
-    assert {m.id for m in listing.models} == {
-        "system.ai.claude-ready",
-        "system.ai.claude-stateless",
-    }
-
-
-@pytest.mark.parametrize(
-    ("harness", "expected_ids"),
-    [
-        pytest.param("claude-native", {"databricks-claude-sonnet-4-6"}, id="claude-family-only"),
-        pytest.param("codex-native", {"databricks-gpt-5-4"}, id="openai-family-only"),
-        # The executor-type spelling spec_harness() yields when a spec
-        # declares no config harness must filter like its canonical
-        # sibling — an unrecognized spelling silently disables the
-        # filter and lists wrong-family models.
-        pytest.param(
-            "claude_sdk", {"databricks-claude-sonnet-4-6"}, id="claude-sdk-executor-type"
-        ),
-        pytest.param("claude-sdk", {"databricks-claude-sonnet-4-6"}, id="claude-sdk-spelling"),
-        pytest.param("codex", {"databricks-gpt-5-4"}, id="codex-spelling"),
-        pytest.param(
-            "pi",
-            # Pi uses UC model-services API → system.ai.* ids (embeddings excluded).
-            {
-                "system.ai.claude-sonnet-4-6",
-                "system.ai.gpt-5-4",
-                "system.ai.gpt-responses-only",
-                "system.ai.meta-llama-3-3-70b-instruct",
-            },
-            id="pi-everything",
-        ),
-    ],
-)
-def test_family_filter_per_harness(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    harness: str,
-    expected_ids: set[str],
-) -> None:
-    """Each worker's list is filtered to the family its harness can run.
-
-    This reuses the family rule: an id that survives the filter is
-    exactly an id the dispatch gate would accept for that worker.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :param tmp_path: Per-test temp dir.
-    :param harness: The worker harness under test.
-    :param expected_ids: The ids that must survive the filter.
-    """
-    _isolate_config(monkeypatch, tmp_path, _DATABRICKS_DEFAULT_CONFIG)
-    _stub_workspace_creds(monkeypatch)
-    requests_seen: list[httpx.Request] = []
-
-    listing = list_models_for_worker(
-        _worker_spec(harness), harness, transport=_databricks_transport(requests_seen)
-    )
-
-    assert {m.id for m in listing.models} == expected_ids
 
 
 @pytest.mark.parametrize(
@@ -781,53 +473,6 @@ def test_model_family_token_tags_codex_compatible_families(model_id: str, expect
     :param expected: The family token it must carry.
     """
     assert model_family_token(model_id) == expected
-
-
-def test_codex_worker_listing_keeps_glm_and_kimi_endpoints(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """A codex worker's list keeps the GLM/Kimi endpoints it can serve.
-
-    The workspace serves these over the same Responses wire codex speaks,
-    so filtering them out would hide runnable models from the router while
-    the dispatch gate would have accepted them.
-
-    :param monkeypatch: Pytest monkeypatch fixture.
-    :param tmp_path: Per-test temp dir.
-    """
-    _isolate_config(monkeypatch, tmp_path, _DATABRICKS_DEFAULT_CONFIG)
-    _stub_workspace_creds(monkeypatch)
-    page = {
-        "endpoints": [
-            {
-                "name": name,
-                "creator": "system",
-                "task": "llm/v1/chat",
-                "state": {"ready": "READY"},
-            }
-            for name in (
-                "databricks-gpt-5-5",
-                "databricks-glm-5-2",
-                "databricks-kimi-k2-6",
-                "databricks-claude-sonnet-4-6",
-                "databricks-meta-llama-3-3-70b-instruct",
-            )
-        ]
-    }
-
-    def _handler(request: httpx.Request) -> httpx.Response:
-        """Serve the serving-endpoints page for the codex worker."""
-        return httpx.Response(200, json=page)
-
-    listing = list_models_for_worker(
-        _worker_spec("codex-native"), "codex-native", transport=httpx.MockTransport(_handler)
-    )
-
-    assert {m.id for m in listing.models} == {
-        "databricks-gpt-5-5",
-        "databricks-glm-5-2",
-        "databricks-kimi-k2-6",
-    }
 
 
 def test_openai_compatible_listing_maps_ids_and_context_window(
@@ -1086,14 +731,13 @@ def test_listing_cached_within_ttl_and_refetched_after_expiry(
     :param monkeypatch: Pytest monkeypatch fixture.
     :param tmp_path: Per-test temp dir.
     """
-    _isolate_config(monkeypatch, tmp_path, _DATABRICKS_DEFAULT_CONFIG)
-    _stub_workspace_creds(monkeypatch)
+    _isolate_config(monkeypatch, tmp_path, _GATEWAY_DEFAULT_CONFIG)
     now = {"t": 0.0}
     monkeypatch.setattr(
         model_catalog, "_listing_cache", TTLCache(maxsize=64, ttl=300.0, timer=lambda: now["t"])
     )
     requests_seen: list[httpx.Request] = []
-    transport = _databricks_transport(requests_seen)
+    transport = _gateway_transport(requests_seen)
 
     first = list_models_for_worker(_worker_spec("pi"), "pi", transport=transport)
     second = list_models_for_worker(_worker_spec("pi"), "pi", transport=transport)
@@ -1118,8 +762,7 @@ def test_listing_failure_reported_and_not_cached(
     :param monkeypatch: Pytest monkeypatch fixture.
     :param tmp_path: Per-test temp dir.
     """
-    _isolate_config(monkeypatch, tmp_path, _DATABRICKS_DEFAULT_CONFIG)
-    _stub_workspace_creds(monkeypatch)
+    _isolate_config(monkeypatch, tmp_path, _GATEWAY_DEFAULT_CONFIG)
     calls = {"n": 0}
 
     def _flaky_handler(request: httpx.Request) -> httpx.Response:
@@ -1127,7 +770,7 @@ def test_listing_failure_reported_and_not_cached(
         calls["n"] += 1
         if calls["n"] == 1:
             return httpx.Response(503, json={"error": "temporarily unavailable"})
-        return httpx.Response(200, json=_SERVING_ENDPOINTS_PAGE)
+        return httpx.Response(200, json=_GATEWAY_MODELS_PAGE)
 
     # Use codex-native (serving-endpoints path) to test generic failure/retry logic.
     transport = httpx.MockTransport(_flaky_handler)
@@ -1143,9 +786,8 @@ def test_listing_failure_reported_and_not_cached(
         _worker_spec("codex-native"), "codex-native", transport=transport
     )
     # Recovery proves the failure was NOT cached for the TTL window.
-    assert recovered.source == "gateway"
-    # codex-native filters to openai-family only → 1 model from _SERVING_ENDPOINTS_PAGE
-    assert len(recovered.models) == 1
+    assert recovered.source == "openai-compatible"
+    assert [m.id for m in recovered.models] == ["gpt-5.4", "gpt-5.4-mini"]
 
 
 def test_listing_cache_is_keyed_by_credential_identity(
@@ -1278,12 +920,14 @@ def test_catalog_isolates_per_worker_failures(
         "    kind: subscription\n"
         "    cli: claude\n"
         "    default: anthropic\n"
-        "  workspace:\n"
-        "    kind: databricks\n"
-        "    profile: prof-a\n"
-        "    default: openai\n",
+        "  gw:\n"
+        "    kind: gateway\n"
+        "    default: openai\n"
+        "    openai:\n"
+        "      base_url: https://gw.example.com/v1\n"
+        "      api_key: sk-gw-test\n"
+        "      wire_api: chat\n",
     )
-    _stub_workspace_creds(monkeypatch)
     parent = AgentSpec(
         spec_version=1,
         name="orchestrator",
@@ -1322,14 +966,13 @@ def test_catalog_payload_is_json_serializable_and_omits_unknown_context(
 ) -> None:
     """The payload round-trips through JSON; ``context_window`` only when known.
 
-    The serving-endpoints API reports no context windows, so gateway
+    A models page may report no context windows, so gateway
     entries must omit the key rather than carry a fabricated value.
 
     :param monkeypatch: Pytest monkeypatch fixture.
     :param tmp_path: Per-test temp dir.
     """
-    _isolate_config(monkeypatch, tmp_path, _DATABRICKS_DEFAULT_CONFIG)
-    _stub_workspace_creds(monkeypatch)
+    _isolate_config(monkeypatch, tmp_path, _GATEWAY_DEFAULT_CONFIG)
     requests_seen: list[httpx.Request] = []
     parent = AgentSpec(
         spec_version=1,
@@ -1338,9 +981,9 @@ def test_catalog_payload_is_json_serializable_and_omits_unknown_context(
         sub_agents=[_worker_spec("pi")],
     )
 
-    catalog = catalog_for_spec(parent, transport=_databricks_transport(requests_seen))
+    catalog = catalog_for_spec(parent, transport=_gateway_transport(requests_seen))
     payload = json.loads(json.dumps(catalog))
-    assert payload["worker"]["source"] == "gateway"
+    assert payload["worker"]["source"] == "openai-compatible"
     assert all("context_window" not in m for m in payload["worker"]["models"])
 
 
@@ -1505,34 +1148,6 @@ def test_resolve_catalog_default_preserves_provider_tier_policy(
     assert resolution.source == ModelResolutionSource.CONFIGURED_DEFAULT
 
 
-@pytest.mark.parametrize(
-    ("family", "expected_model"),
-    [
-        ("claude", "databricks-claude-general"),
-        ("openai", "databricks-gpt-general"),
-    ],
-)
-def test_resolve_databricks_default_requires_gateway_routable_id(
-    monkeypatch: pytest.MonkeyPatch,
-    family: str,
-    expected_model: str,
-) -> None:
-    """Databricks defaults exclude bare vendor ids the gateway rejects."""
-    models = [
-        ModelInfo(name="claude-newer", provider="databricks", mode="chat"),
-        ModelInfo(name="gpt-newer", provider="databricks", mode="chat"),
-        ModelInfo(name="databricks-claude-general", provider="databricks", mode="chat"),
-        ModelInfo(name="databricks-gpt-general", provider="databricks", mode="chat"),
-    ]
-    monkeypatch.setattr("omnigent.onboarding.providers.get_chat_models", lambda _provider: models)
-
-    resolution = resolve_catalog_model("databricks", family=family)
-
-    assert resolution.model_id == expected_model
-    assert resolution.model_id.startswith("databricks-")
-    assert resolution.family == family
-
-
 def test_resolve_catalog_model_fails_when_discovery_is_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1695,96 +1310,3 @@ def test_keychain_credential_ref_degrades_not_crashes(
     assert listing.source == "none"
     assert not listing.models
     assert listing.note, "degraded keychain row must carry an explanatory note"
-
-
-def test_model_services_listing_is_scoped_and_paginated() -> None:
-    """The UC model-services listing is scoped to ``system.ai`` and follows pages.
-
-    Unscoped and unpaged, the endpoint walks the whole metastore and returns one
-    page of whatever schemas sort first, so a workspace serving many models
-    reported a handful of unrelated user schemas with a ``next_page_token`` this
-    call never followed. Scope to ``schemas/system.ai`` and page through.
-    """
-    from omnigent.models import model_catalog
-
-    requests_seen: list[httpx.Request] = []
-
-    def _handler(request: httpx.Request) -> httpx.Response:
-        requests_seen.append(request)
-        assert request.headers["authorization"] == "Bearer token"
-        page_token = request.url.params.get("page_token")
-        if page_token is None:
-            return httpx.Response(
-                200,
-                json={
-                    "model_services": [
-                        {
-                            "name": "model-services/system.ai.gpt-5-6-sol",
-                            "supported_api_types": ["openai/v1/responses"],
-                        }
-                    ],
-                    "next_page_token": "p2",
-                },
-                request=request,
-            )
-        assert page_token == "p2"
-        return httpx.Response(
-            200,
-            json={
-                "model_services": [
-                    {
-                        "name": "model-services/system.ai.claude-opus-5",
-                        "supported_api_types": ["anthropic/v1/messages"],
-                    }
-                ]
-            },
-            request=request,
-        )
-
-    entries = model_catalog.fetch_databricks_model_service_entries(
-        "https://workspace.example.com/",
-        "token",
-        transport=httpx.MockTransport(_handler),
-    )
-
-    assert [entry.id for entry in entries] == ["system.ai.gpt-5-6-sol", "system.ai.claude-opus-5"]
-    assert len(requests_seen) == 2
-    assert requests_seen[0].url.params["parent"] == "schemas/system.ai"
-    assert requests_seen[0].url.params["max_results"]
-
-
-def test_model_services_listing_stops_on_repeated_page_token(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """A looping endpoint returns the pages collected so far instead of raising.
-
-    Every caller treats an exception as "no listing" and falls back to the
-    bundled catalog's retired ``databricks-`` ids, so failing loud would
-    reintroduce the 501 this scoping fix removes; a partial list still launches.
-    """
-    from omnigent.models import model_catalog
-
-    def _handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200,
-            json={
-                "model_services": [
-                    {
-                        "name": "model-services/system.ai.gpt-5-6-sol",
-                        "supported_api_types": ["openai/v1/responses"],
-                    }
-                ],
-                "next_page_token": "same",  # never advances
-            },
-            request=request,
-        )
-
-    with caplog.at_level("WARNING", logger="omnigent.models.model_catalog"):
-        entries = model_catalog.fetch_databricks_model_service_entries(
-            "https://workspace.example.com",
-            "token",
-            transport=httpx.MockTransport(_handler),
-        )
-
-    assert [entry.id for entry in entries]  # partial list kept, not an exception
-    assert any("repeated a page token" in record.message for record in caplog.records)

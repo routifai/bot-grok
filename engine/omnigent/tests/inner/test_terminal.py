@@ -2257,7 +2257,11 @@ def test_create_terminal_instance_propagates_keep_alive_after_exit(
     monkeypatch.setattr(terminal_mod, "_require_supported_tmux", lambda: None)
     spec = TerminalEnvSpec(
         command="bash",
-        os_env=OSEnvSpec(type="caller_process", cwd=str(tmp_path)),
+        os_env=OSEnvSpec(
+            type="caller_process",
+            cwd=str(tmp_path),
+            sandbox=OSEnvSandboxSpec(type="none"),
+        ),
         keep_alive_after_exit=keep_alive,
     )
     result = create_terminal_instance(name="bash", session_key="s1", spec=spec)
@@ -3275,8 +3279,8 @@ def test_reap_orphaned_terminals_logs_reap_when_socket_is_already_gone(
 
 
 @pytest.mark.skipif(
-    sys.platform not in ("linux", "darwin"),
-    reason="sandbox backends only resolve on Linux (bwrap) or macOS (seatbelt)",
+    sys.platform != "linux",
+    reason="the linux_bwrap sandbox backend only resolves on Linux",
 )
 def test_create_terminal_instance_denies_control_socket_but_keeps_private_dir_writable(
     tmp_path: Path,
@@ -3291,7 +3295,7 @@ def test_create_terminal_instance_denies_control_socket_but_keeps_private_dir_wr
     works, and ``private_dir`` must remain a write root so a forked
     workspace is usable. The escape is closed instead by adding the
     socket to ``deny_unix_socket_paths`` — bwrap masks it with
-    /dev/null and seatbelt emits a unix-socket deny. We assert all
+    /dev/null. We assert all
     three facts on the resolved policy at once because they are
     co-dependent: dropping any one re-opens the escape or breaks
     usability.
@@ -3301,13 +3305,12 @@ def test_create_terminal_instance_denies_control_socket_but_keeps_private_dir_wr
     # Construction enforces tmux compatibility but does not launch tmux.
     monkeypatch.setattr(terminal_mod, "_require_supported_tmux", lambda: None)
 
-    backend_type = "linux_bwrap" if sys.platform == "linux" else "darwin_seatbelt"
     spec = TerminalEnvSpec(
         command="bash",
         os_env=OSEnvSpec(
             type="caller_process",
             cwd=str(tmp_path),
-            sandbox=OSEnvSandboxSpec(type=backend_type),
+            sandbox=OSEnvSandboxSpec(type="linux_bwrap"),
         ),
     )
 

@@ -64,7 +64,6 @@ def test_database_metrics_record_bounded_retry_attributes() -> None:
         _Record(
             1,
             {
-                "db.system": "cockroachdb",
                 "db.operation": "omnigent.message.append",
                 "retry.outcome": "scheduled",
             },
@@ -72,7 +71,6 @@ def test_database_metrics_record_bounded_retry_attributes() -> None:
         _Record(
             1,
             {
-                "db.system": "cockroachdb",
                 "db.operation": "omnigent.message.append",
                 "retry.outcome": "exhausted",
             },

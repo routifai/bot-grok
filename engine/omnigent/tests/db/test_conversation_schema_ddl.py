@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import cast
 
-import pytest
 from sqlalchemy import Engine, ExecutableDDLElement, create_mock_engine
 
 from omnigent.db.db_models import ConversationBase
@@ -37,19 +36,6 @@ def test_title_trigram_metadata_index_skipped_on_postgres() -> None:
     postgres_ddl = _capture_ddl("postgresql+psycopg://", _create_metadata)
 
     assert not any(_TITLE_INDEX in statement for statement in postgres_ddl)
-
-
-def test_title_trigram_metadata_index_created_on_cockroachdb() -> None:
-    # The cockroachdb dialect plugin ships in the optional `cockroachdb`
-    # extra; lanes without it (postgres/mysql/misc) skip this half while the
-    # stores-crdb lane asserts the index is emitted.
-    pytest.importorskip("sqlalchemy_cockroachdb")
-
-    cockroachdb_ddl = _capture_ddl("cockroachdb+psycopg://", _create_metadata)
-
-    assert any(
-        _TITLE_INDEX in statement and "gin_trgm_ops" in statement for statement in cockroachdb_ddl
-    )
 
 
 def test_postgres_split_schema_does_not_require_pg_trgm() -> None:

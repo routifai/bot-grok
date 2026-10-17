@@ -26,8 +26,6 @@ def test_preferences_migration_round_trip_and_copy_failures(
     db_uri: str, failed_attempts: int, capfd: pytest.CaptureFixture[str]
 ) -> None:
     engine = get_or_create_engine(db_uri)
-    if engine.dialect.name == "cockroachdb":
-        pytest.skip("CockroachDB transaction restarts are covered in test_cockroachdb.py")
 
     # Reflect the original destination type before recreating an interrupted migration.
     _downgrade(engine, db_uri, "jj1a2b3c4d5e")

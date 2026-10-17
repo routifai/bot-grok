@@ -17,7 +17,7 @@ code over a **real** TCP socket — no transports are stubbed:
 * ``_RunnerDatabricksAuth`` on a real ``httpx.AsyncClient`` GET.
 
 The only thing simulated is the managed-sandbox *condition* — no ``omnigent
-login`` token and no Databricks config on disk — which is exactly what makes the
+login`` token and no other credential on disk — which is exactly what makes the
 fix necessary (and what a fresh sandbox actually looks like).
 
 The differential is asserted in one test, so the mint is provably the cause of
@@ -359,23 +359,12 @@ def test_managed_runner_callback_authenticates_end_to_end(
     session_id = _seed_owned_session_with_managed_runner(base_url, db_uri)
 
     # 3. Put this process in a managed-sandbox posture: the runner holds ONLY
-    #    its binding token and the server URL — no omnigent-login token, no
-    #    Databricks config. Forcing both credential sources to miss is what a
-    #    fresh sandbox actually is, and it routes _make_auth_token_factory to
-    #    the managed-mint tier under test.
-    from omnigent.inner.databricks_executor import DatabricksAuthError
-
-    def _no_databricks_creds(*args: object, **kwargs: object) -> tuple[object, str]:
-        """Stand in for _resolve_databricks_auth in a credential-less sandbox."""
-        raise DatabricksAuthError("managed sandbox has no Databricks config")
-
+    #    its binding token and the server URL — no omnigent-login token. Forcing
+    #    the credential source to miss is what a fresh sandbox actually is, and
+    #    it routes _make_auth_token_factory to the managed-mint tier under test.
     monkeypatch.setenv("RUNNER_SERVER_URL", base_url)
     monkeypatch.setenv(RUNNER_TUNNEL_BINDING_TOKEN_ENV_VAR, _BINDING_TOKEN)
     monkeypatch.setattr("omnigent.cli_auth.load_token", lambda _url, **_kw: None)
-    monkeypatch.setattr(
-        "omnigent.inner.databricks_executor._resolve_databricks_auth",
-        _no_databricks_creds,
-    )
 
     contents_path = f"/v1/sessions/{session_id}/agent/contents"
 

@@ -3,13 +3,10 @@ from __future__ import annotations
 import base64
 import http.server
 import socketserver
-import subprocess
-import sys
 import threading
 import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import replace
 from functools import partial
 from pathlib import Path
 from unittest.mock import Mock
@@ -514,50 +511,3 @@ def test_socket_deadline_bounds_dribbling_response(
             stopped.set()
             server.shutdown()
             thread.join()
-
-
-@pytest.mark.skipif(sys.platform != "darwin", reason="requires macOS sandbox-exec")
-@pytest.mark.parametrize("kind", ["file", "unix_socket"])
-def test_seatbelt_denies_sources_despite_implicit_read_grant(
-    broker: tuple[Path, dict[str, object]], sandbox: SandboxPolicy, kind: str
-) -> None:
-    from omnigent.inner.seatbelt_sandbox import _build_profile
-
-    path, _ = broker
-    path = path.resolve()
-    sandbox.backend_type = "darwin_seatbelt"
-    sandbox.allow_network = True
-    command = [
-        "/usr/bin/curl",
-        "--silent",
-        "--max-time",
-        "2",
-        "--unix-socket",
-        str(path),
-        "http://localhost/token",
-    ]
-    if kind == "file":
-        path = path.parent / "private-token"
-        path.write_text("initial")
-        command = ["/bin/cat", str(path)]
-    spec = _parse_credential_proxy(
-        [
-            {"type": "gh_basic", "source": {kind: str(path), "refresh_interval_seconds": 60}},
-        ]
-    )
-    prepare_credential_proxy_runtime(spec, parent_env={}, sandbox=sandbox)
-    for protected in (False, True):
-        policy = sandbox if protected else replace(sandbox, credential_source_paths=None)
-        profile = _build_profile(policy, sandbox.write_roots[0], extra_read_paths=[path.parent])
-        result = subprocess.run(
-            ["/usr/bin/sandbox-exec", "-p", profile, *command],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if protected:
-            assert result.returncode != 0
-            assert "initial" not in result.stdout
-        else:
-            assert result.returncode == 0, result.stderr
-            assert result.stdout == "initial"

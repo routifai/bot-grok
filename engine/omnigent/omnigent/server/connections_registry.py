@@ -1,4 +1,4 @@
-"""Registry of per-user connection providers (GitHub, Databricks, ...).
+"""Registry of per-user connection providers (GitHub, ...).
 
 Wiring a new provider into the server is a single entry here plus its
 :class:`~omnigent.server.routes.connections_base.ConnectionHooks` adapter —
@@ -43,13 +43,8 @@ def connection_providers() -> list[ConnectionProvider]:
     Imports are deferred so importing this module stays cheap and free of import
     cycles through the route modules.
     """
-    from omnigent.server.databricks_app_client import DatabricksAppClient
-    from omnigent.server.databricks_identity import resolve_databricks_credential
     from omnigent.server.github_app_client import GitHubAppClient
     from omnigent.server.github_identity import resolve_github_credential
-    from omnigent.server.routes.connections_databricks import (
-        create_connections_databricks_router,
-    )
     from omnigent.server.routes.connections_github import (
         create_connections_github_router,
     )
@@ -60,11 +55,5 @@ def connection_providers() -> list[ConnectionProvider]:
             client_factory=GitHubAppClient,
             router_factory=create_connections_github_router,
             credential_resolver=resolve_github_credential,
-        ),
-        ConnectionProvider(
-            name="databricks",
-            client_factory=DatabricksAppClient,
-            router_factory=create_connections_databricks_router,
-            credential_resolver=resolve_databricks_credential,
         ),
     ]

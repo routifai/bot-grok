@@ -284,9 +284,6 @@ def test_get_models_preserves_context_and_cache_pricing_metadata() -> None:
         ("claude-opus-4-8", "anthropic", "claude-opus-4-8"),
         ("qwen/qwen3-coder", "openrouter", "qwen/qwen3-coder"),
         ("qwen3-coder", "openrouter", "qwen/qwen3-coder"),
-        ("databricks-claude-opus-4-8", "anthropic", "claude-opus-4-8"),
-        ("databricks/databricks-claude-opus-4-8", "anthropic", "claude-opus-4-8"),
-        ("DATABRICKS-CLAUDE-OPUS-4-8", "anthropic", "claude-opus-4-8"),
         ("anthropic.claude-opus-4-8-v1:0", "anthropic", "claude-opus-4-8"),
         ("us.anthropic.claude-opus-4-8-v1:0", "anthropic", "claude-opus-4-8"),
         ("anthropic.claude-opus-4-8", "anthropic", "claude-opus-4-8"),
@@ -294,9 +291,6 @@ def test_get_models_preserves_context_and_cache_pricing_metadata() -> None:
         ("KIMI-K3", "moonshot", "kimi-k3"),
         ("kimi-k2.7-code", "moonshot", "kimi-k2.7-code"),
         ("moonshot/kimi-k3", "moonshot", "kimi-k3"),
-        ("system.ai.kimi-k3", "databricks", "databricks-kimi-k3"),
-        ("SYSTEM.AI.KIMI-K3", "databricks", "databricks-kimi-k3"),
-        ("system.ai.kimi-k2.7-code", "moonshot", "kimi-k2.7-code"),
         ("kimi-k3-databricks", "moonshot", "kimi-k3"),
     ],
 )
@@ -314,19 +308,9 @@ def test_find_catalog_models_resolves_provider_and_vendor_namespaces(
 def test_kimi_model_ids_price_and_size_from_the_catalog() -> None:
     """Kimi model ids resolve pricing and context window through the catalog.
 
-    ``system.ai.kimi-k3`` (Databricks Unity Catalog system model) prices at
-    its ``databricks-kimi-k3`` serving row; an alias such as
-    ``kimi-k3-databricks`` resolves to the Moonshot family row.
+    An alias such as ``kimi-k3-databricks`` resolves to the Moonshot family row.
     """
     from omnigent.llms.context_window import fetch_model_pricing, find_model_context_window
-
-    databricks = fetch_model_pricing("system.ai.kimi-k3")
-    assert databricks is not None
-    assert databricks.input_per_token == pytest.approx(2.99999e-6)
-    assert databricks.output_per_token == pytest.approx(15.00002e-6)
-    assert databricks.cache_read_per_token == pytest.approx(0.30002e-6)
-    assert databricks.cache_write_per_token == pytest.approx(2.99999e-6)
-    assert find_model_context_window("system.ai.kimi-k3") == 1_000_000
 
     moonshot = fetch_model_pricing("kimi-k3-databricks")
     assert moonshot is not None
@@ -335,8 +319,6 @@ def test_kimi_model_ids_price_and_size_from_the_catalog() -> None:
     assert moonshot.cache_read_per_token == pytest.approx(0.3e-6)
     assert moonshot.cache_write_per_token is None
     assert find_model_context_window("kimi-k3-databricks") == 262_144
-
-    assert fetch_model_pricing("system.ai.no-such-model") is None
 
 
 def test_find_catalog_models_matches_vendor_namespaced_families() -> None:

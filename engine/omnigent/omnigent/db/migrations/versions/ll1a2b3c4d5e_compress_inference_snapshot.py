@@ -40,13 +40,6 @@ def _plain(value: str | bytes | memoryview) -> str:
     return data.decode("utf-8")
 
 
-def _publish(bind: sa.Connection) -> None:
-    if bind.dialect.name == "cockroachdb":
-        # Schema changes must be visible before subsequent reads and writes.
-        bind.commit()
-        bind.execute(sa.text("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"))
-
-
 def _convert(to_binary: bool) -> None:
     if op.get_context().as_sql:
         raise RuntimeError("Inference snapshot compression requires an online migration")
@@ -57,12 +50,11 @@ def _convert(to_binary: bool) -> None:
     )
     columns = {col["name"]: col["type"] for col in sa.inspect(bind).get_columns(_TABLE)}
     if temporary not in columns:
-        # MySQL/CRDB may have committed the rename before Alembic recorded the revision.
+        # MySQL may have committed the rename before Alembic recorded the revision.
         is_binary = isinstance(columns[_COLUMN], sa.LargeBinary)
         if is_binary == to_binary:
             return
         op.add_column(_TABLE, sa.Column(temporary, target_type, nullable=True))
-        _publish(bind)
 
     if _COLUMN in columns:
         table = sa.table(
@@ -120,26 +112,20 @@ def _convert(to_binary: bool) -> None:
             )
             # Commit full batches; the bounded final partial batch commits with the swap.
             if len(rows) == _BATCH_SIZE:
-                if bind.dialect.name == "cockroachdb":
-                    _publish(bind)
-                else:
-                    with op.get_context().autocommit_block():
-                        pass
+                with op.get_context().autocommit_block():
+                    pass
         if cleared:
             _logger.warning(
                 "Cleared %d inference snapshots exceeding 65,535 compressed bytes", cleared
             )
-        _publish(bind)
         with op.batch_alter_table(_TABLE) as batch:
             batch.drop_column(_COLUMN)
-        _publish(bind)
 
     # Resumes safely if a nontransactional DDL backend stopped after dropping the source.
     with op.batch_alter_table(_TABLE) as batch:
         batch.alter_column(
             temporary, new_column_name=_COLUMN, existing_type=target_type, existing_nullable=True
         )
-    _publish(bind)
 
 
 def upgrade() -> None:

@@ -6,8 +6,7 @@ import logging
 from collections.abc import Iterator
 from importlib import import_module
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
-from unittest.mock import MagicMock
+from types import ModuleType
 
 import pytest
 import sqlalchemy as sa
@@ -328,68 +327,3 @@ def test_migration_statements_compile_without_value_transformation(
     if dialect.name == "mysql":
         assert migration._BINARY.compile(dialect=dialect) == "MEDIUMBLOB"
         assert "`key`" in copy
-
-
-@pytest.mark.parametrize("failure_point", ["statement", "commit"])
-@pytest.mark.parametrize("failures", [2, 3])
-def test_cockroachdb_copy_retries_entire_transaction(
-    migration: ModuleType,
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-    failure_point: str,
-    failures: int,
-) -> None:
-    connection = MagicMock(spec=sa.Connection)
-    connection.dialect = SimpleNamespace(name="cockroachdb")
-    active = True
-    failed = False
-    attempts = 0
-    delays: list[float] = []
-    monkeypatch.setattr(migration.time, "sleep", delays.append)
-    connection.in_transaction.side_effect = lambda: active
-
-    def serialization_failure() -> None:
-        nonlocal failed
-        failed = True
-        raise sa.exc.OperationalError("copy", {}, RuntimeError("restart transaction"))
-
-    def execute(statement) -> None:
-        nonlocal active, attempts
-        assert not failed, "aborted transactions must be rolled back before reuse"
-        if str(statement).startswith("SET TRANSACTION"):
-            assert not active
-            active = True
-            return
-        assert active
-        attempts += 1
-        if failure_point == "statement" and attempts <= failures:
-            serialization_failure()
-
-    def commit() -> None:
-        nonlocal active
-        assert not failed
-        if active and failure_point == "commit" and attempts <= failures:
-            serialization_failure()
-        active = False
-
-    def rollback() -> None:
-        nonlocal active, failed
-        active = False
-        failed = False
-
-    connection.execute.side_effect = execute
-    connection.commit.side_effect = commit
-    connection.rollback.side_effect = rollback
-    with caplog.at_level(logging.WARNING, logger=migration.__name__):
-        migration._copy_with_retries(connection, [sa.text("copy")], operation="migrate")
-    assert attempts == 3
-    assert connection.rollback.call_count == failures
-    connection.begin_nested.assert_not_called()
-    assert delays == [0.1, 0.2]
-    assert not active
-    if failures == 3:
-        assert "after 3 attempts" in caplog.text
-    else:
-        assert not caplog.records
-    migration._publish_crdb_changes(connection)
-    assert active

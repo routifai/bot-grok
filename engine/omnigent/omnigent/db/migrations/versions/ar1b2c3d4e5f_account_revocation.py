@@ -21,7 +21,6 @@ _TABLES = ("users", "account_tokens", "device_grants", "scheduled_tasks", "hosts
 
 def upgrade() -> None:
     bind = op.get_bind()
-    is_crdb = bind.dialect.name == "cockroachdb"
     for name in _TABLES:
         if "account_generation" in {
             column["name"] for column in sa.inspect(bind).get_columns(name)
@@ -30,11 +29,6 @@ def upgrade() -> None:
         op.add_column(name, sa.Column("account_generation", sa.String(32), nullable=True))
     if "deleted_at" not in {column["name"] for column in sa.inspect(bind).get_columns("users")}:
         op.add_column("users", sa.Column("deleted_at", sa.Integer(), nullable=True))
-    if is_crdb:
-        # CRDB publishes new columns at commit. The column checks above let
-        # startup resume if it stops between this commit and the backfill.
-        bind.commit()
-        bind.execute(sa.text("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"))
     users = sa.table(
         "users",
         sa.column("workspace_id", sa.BigInteger()),

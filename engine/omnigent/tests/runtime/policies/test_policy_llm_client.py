@@ -600,30 +600,6 @@ def test_build_policy_llm_client_constructs_from_config() -> None:
     assert result._request_timeout == 60
 
 
-def test_build_policy_llm_client_normalizes_databricks_prefix() -> None:
-    """
-    Bare ``databricks-`` model names get the ``databricks/``
-    provider prefix, on both the primary model and every fallback.
-
-    What breaks if this fails: hosted fallback calls route to
-    ``/responses`` on the Databricks gateway and 400 (the exact
-    bug the primary-model fixup already guards against).
-    """
-    llm_config = LLMConfig(
-        model="databricks-claude-sonnet-4",
-        fallback_models=["databricks-claude-3-5-haiku", "openai/gpt-4o-mini"],
-    )
-    result = _build_policy_llm_client(llm_config, None)
-
-    assert result is not None
-    assert result._model == "databricks/databricks-claude-sonnet-4"
-    # Fallbacks get the same fixup; already-prefixed ids pass through.
-    assert result._fallback_models == [
-        "databricks/databricks-claude-3-5-haiku",
-        "openai/gpt-4o-mini",
-    ]
-
-
 def test_build_policy_llm_client_empty_fallbacks_default() -> None:
     """
     A config with no ``fallback_models`` yields an empty fallback
@@ -835,41 +811,6 @@ def test_parse_server_llm_profile_not_in_extra() -> None:
     assert result is not None
     assert result.profile == "dev"
     assert result.extra == {"temperature": 0.5}
-
-
-def test_resolve_server_llm_connection_resolves_databricks_profile(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    ``_resolve_server_llm_connection`` resolves a Databricks profile
-    to connection params when ``connection`` is absent.
-
-    What breaks if this fails: specifying ``profile:`` in the
-    server config has no effect — the classifier and PolicyLLMClient
-    get ``connection=None`` and fall back to env var / OpenAI
-    defaults instead of the gateway.
-    """
-    from omnigent.runtime.credentials.databricks import WorkspaceCreds
-
-    monkeypatch.setattr(
-        "omnigent.runtime.policies.builder.resolve_databricks_workspace",
-        lambda profile: WorkspaceCreds(
-            host="https://example.cloud.databricks.com",
-            token="dapi-test-token",
-        ),
-    )
-
-    llm_config = LLMConfig(
-        model="databricks-claude-sonnet-4-6",
-        profile="my-workspace",
-    )
-    connection = _resolve_server_llm_connection(llm_config)
-
-    # Profile resolved to serving-endpoints URL + bearer token.
-    assert connection == {
-        "base_url": "https://example.cloud.databricks.com/serving-endpoints",
-        "api_key": "dapi-test-token",
-    }
 
 
 def test_resolve_server_llm_connection_connection_wins_over_profile() -> None:

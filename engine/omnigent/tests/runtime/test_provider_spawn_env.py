@@ -43,7 +43,6 @@ from omnigent.runtime.workflow import (
 from omnigent.spec.types import (
     AgentSpec,
     ApiKeyAuth,
-    DatabricksAuth,
     ExecutorSpec,
     LLMConfig,
     ProviderAuth,
@@ -52,8 +51,6 @@ from omnigent.spec.types import (
 _CATALOG_DEFAULTS = {
     ("anthropic", "claude"): "catalog-anthropic-default",
     ("openai", "openai"): "catalog-openai-default",
-    ("databricks", "claude"): "catalog-databricks-claude-default",
-    ("databricks", "openai"): "catalog-databricks-openai-default",
 }
 
 
@@ -146,9 +143,8 @@ def _make_spec(
     *,
     harness: str,
     model: str | None = None,
-    profile: str | None = None,
     use_responses: object | None = None,
-    auth: ApiKeyAuth | DatabricksAuth | ProviderAuth | None = None,
+    auth: ApiKeyAuth | ProviderAuth | None = None,
     os_env: object | None = None,
 ) -> AgentSpec:
     """
@@ -158,7 +154,6 @@ def _make_spec(
         e.g. ``"claude-sdk"`` / ``"codex"`` / ``"pi"``.
     :param model: Spec-level model, e.g. ``"my-model"``. ``None`` omits it
         so the provider family's ``models.default`` supplies the model.
-    :param profile: Legacy ``executor.config["profile"]``. ``None`` omits it.
     :param use_responses: ``executor.config["use_responses"]``. ``None`` omits
         it; strings model values produced by standard bundle parsing.
     :param auth: Typed auth on ``spec.executor.auth``. ``None`` omits it, so
@@ -168,8 +163,6 @@ def _make_spec(
     config: dict[str, object] = {"harness": harness}
     if model is not None:
         config["model"] = model
-    if profile is not None:
-        config["profile"] = profile
     if use_responses is not None:
         config["use_responses"] = use_responses
     return AgentSpec(
@@ -307,32 +300,6 @@ def test_detected_ambient_key_routes_with_no_config(
     # No pinned model on the detected entry → the catalog default fills in
     # (non-empty), rather than leaving the model unset.
     assert env["HARNESS_CLAUDE_SDK_MODEL"]
-
-
-def test_global_databricks_auth_beats_ambient_key(
-    config_home: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """An explicit global ``auth:`` block wins over an ambient-detected key.
-
-    Regression guard for the databricks/ucode user: ``omnigent setup``
-    writes a global ``auth: {type: databricks, profile: oss}`` block (not a
-    providers: entry). A spec with NO executor.auth must route through that
-    explicit databricks auth, NOT through a stray ``ANTHROPIC_API_KEY`` that
-    ambient detection would otherwise auto-default. Explicit config beats
-    ambient. Failure means a databricks user's turns silently went to their
-    env key instead of Databricks.
-    """
-    _write_config(config_home, {"auth": {"type": "databricks", "profile": "oss"}})
-    monkeypatch.setenv("HOME", str(config_home))
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-shadow")
-    spec = _make_spec(harness="claude-sdk")  # no executor.auth, no providers:
-
-    env = _build_claude_sdk_spawn_env(spec, workdir=None)
-
-    # Routed via the global databricks profile, not the ambient key.
-    assert env.get("HARNESS_CLAUDE_SDK_DATABRICKS_PROFILE") == "oss"
-    # The ambient key never leaked into the spawn env (no provider shadowing).
-    assert "sk-ant-shadow" not in repr(env)
 
 
 def test_codex_uses_openai_global_default(config_home: Path) -> None:
@@ -555,29 +522,6 @@ def test_claude_sdk_falls_back_to_first_available_anthropic_credential(
     assert env["HARNESS_CLAUDE_SDK_GATEWAY_AUTH_COMMAND"] == "printf %s sk-ant-secret"
     assert (config_home / "config.yaml").read_text() == before
     assert _resolve_provider_for_build(spec, harness_type="claude-sdk") is None
-
-
-def test_for_launch_gates_legacy_databricks_synthesis(config_home: Path) -> None:
-    """
-    A legacy Databricks credential is folded into a synthesized provider only
-    for a launch.
-
-    A legacy ``executor.profile`` resolves to a synthesized ``databricks``
-    provider when ``for_launch=True`` (the spawn-env builders), but the readout
-    resolver (``for_launch=False``, the default — used by ``/model`` / cost)
-    returns ``None``. This locks the new gating so the readout never presents a
-    synthesized provider for a legacy profile the way a launch routes one.
-    """
-    _write_config(config_home, {})
-    spec = _make_spec(harness="codex", model="some-model", profile="legacy-profile")
-
-    # Readout: strict — the legacy profile is NOT synthesized into a provider.
-    assert _resolve_provider_for_build(spec, harness_type="codex") is None
-    # Launch: the legacy profile resolves to a synthesized databricks provider.
-    launch = _resolve_provider_for_build(spec, harness_type="codex", for_launch=True)
-    assert launch is not None
-    assert launch.kind == "databricks"
-    assert launch.profile == "legacy-profile"
 
 
 def test_pi_uses_anthropic_global_default(config_home: Path) -> None:
@@ -957,53 +901,6 @@ def test_spec_model_beats_catalog_default(config_home: Path) -> None:
 # ── databricks-kind provider routes through the profile/ucode path ──────────
 
 
-def test_databricks_kind_default_routes_through_profile(
-    config_home: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """
-    A ``databricks``-kind default routes via the profile/ucode path.
-
-    A databricks-kind provider carries a ``profile`` (no inline families), so
-    the provider branch must set ``HARNESS_CLAUDE_SDK_DATABRICKS_PROFILE`` to
-    that profile and the enable flag — NOT a raw gateway base_url. ucode
-    enrichment is stubbed to a no-op so the test asserts only the profile
-    wiring this branch owns. Failure means a databricks-kind provider stopped
-    delegating to the existing ucode path (breaking nessie / the Databricks
-    coding agent).
-    """
-    config: dict[str, object] = {
-        "providers": {
-            "dbx": {
-                "kind": "databricks",
-                "default": True,
-                "profile": "my-dbx-profile",
-            }
-        }
-    }
-    _write_config(config_home, config)
-    # Stub ucode enrichment: it would otherwise read ~/.databrickscfg + ucode
-    # state for the profile. We assert the profile wiring this branch owns,
-    # independent of whether ucode state exists on the test machine.
-    import omnigent.runtime.workflow as workflow_mod
-
-    def _noop_ucode(env: dict[str, str], profile: str | None, *, harness_type: str) -> None:
-        # Record the profile passed through so the test can confirm delegation.
-        if profile is not None:
-            env["_TEST_UCODE_PROFILE"] = profile
-
-    monkeypatch.setattr(workflow_mod, "configure_agent_harness_with_ucode", _noop_ucode)
-    spec = _make_spec(harness="claude-sdk")
-
-    env = _build_claude_sdk_spawn_env(spec, workdir=None)
-
-    assert env["HARNESS_CLAUDE_SDK_GATEWAY"] == "true"
-    # The profile is set (not a raw gateway base_url) and delegated to ucode.
-    assert env["HARNESS_CLAUDE_SDK_DATABRICKS_PROFILE"] == "my-dbx-profile"
-    assert env["_TEST_UCODE_PROFILE"] == "my-dbx-profile"
-    # No raw gateway base_url for a databricks-kind provider.
-    assert "HARNESS_CLAUDE_SDK_GATEWAY_BASE_URL" not in env
-
-
 # ── Backwards-compat: no provider configured ───────────────────────────────
 
 
@@ -1028,28 +925,6 @@ def test_no_provider_api_key_path_unchanged(config_home: Path) -> None:
     assert "HARNESS_CLAUDE_SDK_GATEWAY_AUTH_COMMAND" not in env
     # api_key auth does not trigger Databricks routing.
     assert "HARNESS_CLAUDE_SDK_GATEWAY" not in env
-
-
-def test_legacy_profile_still_suppresses_global_default_provider(config_home: Path) -> None:
-    """
-    A legacy ``profile`` on the spec suppresses the global-default provider.
-
-    A spec declaring the deprecated ``executor.config["profile"]`` is an
-    explicit spec-level auth declaration: the no-auth global-default provider
-    branch must NOT override it. Failure means a user's global default
-    silently hijacks a spec that pinned a legacy profile.
-    """
-    _write_config(config_home, _openai_default_config())  # global default exists
-    spec = _make_spec(harness="codex", model="some-model", profile="legacy-profile")
-
-    env = _build_codex_spawn_env(spec, workdir=None)
-
-    # The legacy profile routes through the Databricks gateway ...
-    assert env["HARNESS_CODEX_GATEWAY"] == "true"
-    assert env["HARNESS_CODEX_DATABRICKS_PROFILE"] == "legacy-profile"
-    # ... and the global openai default's key/endpoint never leak in.
-    assert "sk-oai-secret" not in "\n".join(env.values())
-    assert "openai.example.com" not in "\n".join(env.values())
 
 
 # ── cli-config kind: model_provider pinning ─────────────────────────────────
@@ -1122,37 +997,20 @@ def test_codex_subscription_default_pins_builtin_openai(config_home: Path) -> No
     assert "HARNESS_CODEX_GATEWAY" not in env
 
 
-def test_pi_cli_config_databricks_default_routes_gateway(
+def test_pi_named_cli_config_provider_is_rejected(
     config_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A cli-config Databricks gateway default routes the pi (gateway) harness.
+    """A named cli-config provider cannot drive the pi harness; it fails loud.
 
-    Pi CAN consume a cli-config
-    Databricks AI Gateway — the gateway's Anthropic Messages surface is one Pi
-    speaks. The gateway-harness pi path must translate it into the
-    ``HARNESS_PI_GATEWAY_*`` transport (the same vars an inline gateway emits),
-    pointing at the gateway's ``/anthropic`` surface — NOT raise the
-    "can only drive the 'codex' harness" error.
+    A ``cli-config`` provider pins a ``model_provider`` in ``~/.codex/config.toml``
+    and can only drive the ``codex`` harness, exactly as for ``claude-sdk``.
     """
     _isolate_home_with_codex_config(config_home, monkeypatch)
     _write_config(config_home, _cli_config_default_config())
-    spec = _make_spec(harness="pi")
+    spec = _make_spec(harness="pi", auth=ProviderAuth(name="codex-databricks"))
 
-    env = _build_pi_spawn_env(spec, workdir=None)
-
-    assert env["HARNESS_PI_GATEWAY"] == "true"
-    # The gateway's codex /codex/v1 base_url is rewritten to the /anthropic
-    # surface Pi speaks natively, registered under pi's "claude" family key.
-    assert env["HARNESS_PI_GATEWAY_BASE_URLS"] == (
-        '{"claude": "https://example.ai-gateway.cloud.databricks.com/anthropic"}'
-    )
-    assert env["HARNESS_PI_GATEWAY_HOST"] == "https://example.ai-gateway.cloud.databricks.com"
-    # The bearer-token command comes from the codex [model_providers.X.auth]
-    # table (the "!" Pi-models.json prefix is stripped for the transport var).
-    # The fixture's [auth] declares command="jq" with no args, so it is "jq".
-    assert env["HARNESS_PI_GATEWAY_AUTH_COMMAND"] == "jq"
-    # No spec/override model: use the Databricks Claude catalog selection.
-    assert env["HARNESS_PI_MODEL"] == _CATALOG_DEFAULTS[("databricks", "claude")]
+    with pytest.raises(OmnigentError, match="can only drive the 'codex' harness"):
+        _build_pi_spawn_env(spec, workdir=None)
 
 
 def test_pi_gateway_default_pi_scope_unresolved_credential_names_var(

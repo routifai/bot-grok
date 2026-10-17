@@ -24,12 +24,6 @@ if TYPE_CHECKING:
     from alembic.config import Config
 from sqlalchemy.orm import Session, sessionmaker
 
-from omnigent.db.cockroachdb import (
-    _crdb_server_version,
-    _initialize_or_verify_crdb_schema,
-    _prepare_crdb_schema_transaction,
-    _verify_crdb_read_committed,
-)
 from omnigent.db.metrics import record_transaction_retry
 from omnigent.db.query_context import query_name_scope
 from omnigent.entities import NewConversationItem
@@ -209,19 +203,7 @@ def normalize_database_url(url: str) -> str:
     for prefix in ("postgres://", "postgresql://"):
         if url.startswith(prefix):
             return "postgresql+psycopg://" + url[len(prefix) :]
-    if url.startswith("cockroachdb://"):
-        return "cockroachdb+psycopg://" + url[len("cockroachdb://") :]
     return url
-
-
-def is_cockroachdb(dialect_name: str) -> bool:
-    """Return whether *dialect_name* is the CockroachDB dialect."""
-    return dialect_name == "cockroachdb"
-
-
-def is_postgresql_family(dialect_name: str) -> bool:
-    """Return whether a dialect accepts PostgreSQL-family DML."""
-    return dialect_name in {"postgresql", "cockroachdb"}
 
 
 def _env_int(name: str, default: int, *, minimum: int) -> int:
@@ -286,7 +268,6 @@ def _create_engine(db_uri: str) -> Engine:
     """
     db_uri = normalize_database_url(db_uri)
     is_sqlite = db_uri.startswith("sqlite")
-    is_crdb = db_uri.startswith("cockroachdb+")
     if is_sqlite:
         # ``check_same_thread=False`` lets SQLAlchemy's pool hand a
         # connection to whichever worker thread asks for it (FastAPI,
@@ -359,16 +340,9 @@ def _create_engine(db_uri: str) -> Engine:
         # error rather than a hang.
         "pool_timeout": _env_float("OMNIGENT_DB_POOL_TIMEOUT", 10.0, minimum=0.0),
     }
-    if is_crdb:
-        engine_kwargs["isolation_level"] = "READ COMMITTED"
     try:
         engine = create_engine(db_uri, **engine_kwargs)
     except (ImportError, NoSuchModuleError) as exc:
-        if is_crdb:
-            raise RuntimeError(
-                "CockroachDB support requires the optional dependencies. "
-                "Install them with `pip install 'omnigent[cockroachdb]'`."
-            ) from exc
         if isinstance(exc, ModuleNotFoundError):
             # SQLAlchemy imports the DBAPI lazily in create_engine; a missing
             # Postgres driver surfaces as an opaque "No module named 'psycopg'".
@@ -517,15 +491,7 @@ def _ensure_conversation_tables(engine: Engine) -> None:
     from omnigent.db.db_models import ConversationBase
 
     with query_name_scope("omnigent.database.ensure_conversation_schema"):
-        if is_cockroachdb(engine.dialect.name):
-            version = _crdb_server_version(engine)
-            _verify_crdb_read_committed(engine, version)
-            with engine.connect() as connection:
-                _prepare_crdb_schema_transaction(connection, version)
-                ConversationBase.metadata.create_all(bind=connection, checkfirst=True)
-                connection.commit()
-        else:
-            ConversationBase.metadata.create_all(bind=engine, checkfirst=True)
+        ConversationBase.metadata.create_all(bind=engine, checkfirst=True)
         ensure_fts_table(engine)
 
 
@@ -591,31 +557,15 @@ def _run_migrations(engine: Engine, db_uri: str) -> None:
 
     _logger.info("Running database migrations...")
     config = _build_alembic_config(db_uri)
-    # Pass a shared connection so Alembic operates within the same engine.
-    # Most dialects let Alembic own transaction demarcation. CRDB needs an
-    # externally started SERIALIZABLE transaction for schema changes; on
-    # versions that provide it, autocommit_before_ddl is also enabled.
-    with query_name_scope("omnigent.database.run_migrations"):
-        crdb_version = (
-            _crdb_server_version(engine) if is_cockroachdb(engine.dialect.name) else None
-        )
-        with engine.connect() as connection:
-            if crdb_version is not None:
-                _prepare_crdb_schema_transaction(connection, crdb_version)
-            config.attributes["connection"] = connection
-            command.upgrade(config, "head")
-            if crdb_version is not None:
-                if connection.in_transaction():
-                    connection.commit()
-                _prepare_crdb_schema_transaction(connection, crdb_version)
-                for base in (OmnigentBase, ConversationBase):
-                    base.metadata.create_all(bind=connection, checkfirst=True)
-                connection.commit()
-            else:
-                # If a future migration is added but a caller forgets to wire
-                # it into the chain, create_all still creates missing tables.
-                for base in (OmnigentBase, ConversationBase):
-                    base.metadata.create_all(bind=engine, checkfirst=True)
+    # Pass a shared connection so Alembic operates within the same engine;
+    # Alembic owns transaction demarcation.
+    with query_name_scope("omnigent.database.run_migrations"), engine.connect() as connection:
+        config.attributes["connection"] = connection
+        command.upgrade(config, "head")
+        # If a future migration is added but a caller forgets to wire
+        # it into the chain, create_all still creates missing tables.
+        for base in (OmnigentBase, ConversationBase):
+            base.metadata.create_all(bind=engine, checkfirst=True)
 
 
 def run_migrations_with_retry(
@@ -789,10 +739,6 @@ def _initialize_or_verify_schema(engine: Engine, db_uri: str) -> None:
     :raises RuntimeError: If automatic schema migration fails or does
         not bring the database to head.
     """
-    if is_cockroachdb(engine.dialect.name):
-        _initialize_or_verify_crdb_schema(engine, db_uri)
-        return
-
     head = _get_head_db_revision(db_uri)
     current = _get_current_db_revision(engine)
     _verify_db_revision_is_supported(db_uri, current, head)
@@ -1020,15 +966,6 @@ def make_named_managed_session_maker(
     return _NamedManagedSessionMaker()
 
 
-def _is_serialization_failure(exc: DBAPIError) -> bool:
-    """Return whether a DBAPI error carries SQLSTATE 40001."""
-    original = exc.orig
-    return (
-        getattr(original, "sqlstate", None) == "40001"
-        or getattr(original, "pgcode", None) == "40001"
-    )
-
-
 def run_write_transaction(
     session_maker: NamedManagedSessionMaker,
     operation_name: str,
@@ -1038,7 +975,7 @@ def run_write_transaction(
     sleep: Callable[[float], None] = time.sleep,
     random_value: Callable[[], float] = random.random,
 ) -> _T:
-    """Replay CRDB serialization failures and MySQL deadlock victims.
+    """Replay MySQL deadlock victims.
 
     The callback must contain database work only. Callers must perform cache
     invalidation and external side effects after this function returns. The
@@ -1055,9 +992,7 @@ def run_write_transaction(
             with session_maker(operation_name) as session:
                 return callback(session)
         except DBAPIError as exc:
-            retryable = (is_cockroachdb(dialect) and _is_serialization_failure(exc)) or (
-                dialect == "mysql" and getattr(exc.orig, "args", ())[:1] == (1213,)
-            )
+            retryable = dialect == "mysql" and getattr(exc.orig, "args", ())[:1] == (1213,)
             if not retryable:
                 raise
             if attempt == max_retries:

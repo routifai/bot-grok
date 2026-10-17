@@ -98,9 +98,9 @@ def test_run_migrations_uses_central_schema_initializer(
     monkeypatch.setattr(utils, "_create_engine", create_engine)
     monkeypatch.setattr(utils, "_initialize_or_verify_schema", initialize)
 
-    run_migrations("cockroachdb://root@db/omnigent")
+    run_migrations("postgresql://root@db/omnigent")
 
-    normalized = "cockroachdb+psycopg://root@db/omnigent"
+    normalized = "postgresql+psycopg://root@db/omnigent"
     create_engine.assert_called_once_with(normalized)
     initialize.assert_called_once_with(engine, normalized)
     engine.dispose.assert_called_once_with()

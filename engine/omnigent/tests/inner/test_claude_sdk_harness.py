@@ -64,16 +64,15 @@ def test_executor_factory_reads_env_vars(
     Locks in the v1 config-flow contract: env vars set in AP's
     process before spawning the subprocess (which inherits
     them) are how the wrap learns its config. Verifies model,
-    databricks, profile, cwd, permission mode all thread
+    gateway, cwd, permission mode all thread
     through.
     """
     monkeypatch.setenv("HARNESS_CLAUDE_SDK_MODEL", "test-model-id")
     monkeypatch.setenv("HARNESS_CLAUDE_SDK_GATEWAY", "true")
-    monkeypatch.setenv("HARNESS_CLAUDE_SDK_DATABRICKS_PROFILE", "test-profile")
-    monkeypatch.setenv("HARNESS_CLAUDE_SDK_GATEWAY_HOST", "https://example.databricks.com")
+    monkeypatch.setenv("HARNESS_CLAUDE_SDK_GATEWAY_HOST", "https://gateway.example.com")
     monkeypatch.setenv(
         "HARNESS_CLAUDE_SDK_GATEWAY_BASE_URL",
-        "https://example.databricks.com/ai-gateway/anthropic",
+        "https://gateway.example.com/anthropic",
     )
     monkeypatch.setenv("HARNESS_CLAUDE_SDK_GATEWAY_AUTH_COMMAND", "printf token")
     monkeypatch.setenv("HARNESS_CLAUDE_SDK_GATEWAY_AUTH_REFRESH_INTERVAL_MS", "900000")
@@ -90,7 +89,6 @@ def test_executor_factory_reads_env_vars(
         model: str | None,
         permission_mode: str,
         gateway: bool,
-        databricks_profile: str | None,
         gateway_host: str | None,
         base_url_override: str | None,
         gateway_auth_command: str | None,
@@ -102,7 +100,6 @@ def test_executor_factory_reads_env_vars(
         captured["model"] = model
         captured["permission_mode"] = permission_mode
         captured["gateway"] = gateway
-        captured["databricks_profile"] = databricks_profile
         captured["gateway_host"] = gateway_host
         captured["base_url_override"] = base_url_override
         captured["gateway_auth_command"] = gateway_auth_command
@@ -118,9 +115,8 @@ def test_executor_factory_reads_env_vars(
     # constructor kwarg.
     assert captured["model"] == "test-model-id"
     assert captured["gateway"] is True
-    assert captured["databricks_profile"] == "test-profile"
-    assert captured["gateway_host"] == "https://example.databricks.com"
-    assert captured["base_url_override"] == "https://example.databricks.com/ai-gateway/anthropic"
+    assert captured["gateway_host"] == "https://gateway.example.com"
+    assert captured["base_url_override"] == "https://gateway.example.com/anthropic"
     assert captured["gateway_auth_command"] == "printf token"
     assert captured["gateway_auth_refresh_interval_ms"] == "900000"
     assert captured["cwd"] == "/tmp/test-cwd"
@@ -234,7 +230,6 @@ def test_executor_factory_decodes_os_env_json(
         model: str | None,
         permission_mode: str,
         gateway: bool,
-        databricks_profile: str | None,
         **_kwargs: Any,
     ) -> None:
         captured["os_env"] = os_env
@@ -284,7 +279,6 @@ def test_executor_factory_falls_back_on_malformed_os_env_json(
         model: str | None,
         permission_mode: str,
         gateway: bool,
-        databricks_profile: str | None,
         **_kwargs: Any,
     ) -> None:
         captured["os_env"] = os_env
@@ -319,7 +313,7 @@ def test_executor_factory_falls_back_on_malformed_os_env_json(
         ("anything else", False),
     ],
 )
-def test_databricks_env_var_truthy_parsing(
+def test_gateway_env_var_truthy_parsing(
     raw_value: str,
     expected: bool,
     monkeypatch: pytest.MonkeyPatch,
@@ -327,10 +321,10 @@ def test_databricks_env_var_truthy_parsing(
     """``HARNESS_CLAUDE_SDK_GATEWAY`` parses truthy strings only.
 
     The env-var-based contract requires explicit truthy strings
-    to enable Databricks routing; anything else (including the
+    to enable gateway routing; anything else (including the
     empty string and unrecognized values) defaults to False.
     Catches a regression where the parser becomes loose and
-    mistakenly enables Databricks based on stray env vars.
+    mistakenly enables the gateway based on stray env vars.
     """
     monkeypatch.setenv("HARNESS_CLAUDE_SDK_GATEWAY", raw_value)
     captured: dict[str, Any] = {}

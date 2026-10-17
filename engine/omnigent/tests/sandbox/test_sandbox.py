@@ -12,10 +12,8 @@ directly.
 
 from __future__ import annotations
 
-import omnigent.inner.bwrap_sandbox as inner_bwrap
 import omnigent.inner.sandbox as inner_sandbox
 from omnigent import sandbox
-from omnigent.sandbox import bwrap
 
 
 def test_sandbox_all_symbols_importable() -> None:
@@ -56,45 +54,6 @@ def test_sandbox_reexports_are_inner_objects() -> None:
     assert sandbox.create_exec_launcher is inner_sandbox.create_exec_launcher
 
 
-def test_bwrap_all_symbols_importable() -> None:
-    """
-    Every name in ``omnigent.sandbox.bwrap.__all__`` resolves on the
-    submodule.
-
-    The bwrap wrapper exists for re-export + side-effecting
-    registration, so a typo in ``__all__`` would silently break
-    consumers.
-    """
-    for name in bwrap.__all__:
-        assert hasattr(bwrap, name), f"omnigent.sandbox.bwrap missing re-export {name!r}"
-
-
-def test_bwrap_reexports_are_inner_objects() -> None:
-    """
-    ``BwrapSandboxBackend`` re-exports the same identity as
-    ``omnigent.inner.bwrap_sandbox``.
-
-    ``isinstance`` checks against the wrapper class must succeed for
-    the registration side effect to be observable through the
-    wrapper.
-    """
-    assert bwrap.BwrapSandboxBackend is inner_bwrap.BwrapSandboxBackend
-
-
-def test_bwrap_import_triggers_backend_registration() -> None:
-    """
-    Importing the wrapper module is enough to make the
-    ``linux_bwrap`` backend resolvable via ``_get_backend``.
-
-    The contract says importing the wrapper should be functionally
-    equivalent to importing ``inner.bwrap_sandbox`` for the purpose of
-    side-effecting backend registration. A consumer that switches its
-    import path to the wrapper must not lose backend availability.
-    """
-    backend = inner_sandbox._get_backend("linux_bwrap")
-    assert isinstance(backend, bwrap.BwrapSandboxBackend)
-
-
 def test_default_sandbox_for_platform_is_bwrap_on_linux_regardless_of_binary() -> None:
     """
     The Linux platform default is ``linux_bwrap`` and the choice does
@@ -126,47 +85,3 @@ def test_default_sandbox_for_platform_is_bwrap_on_linux_regardless_of_binary() -
         "Linux default sandbox should be 'linux_bwrap' independent of "
         f"bwrap availability; got {spec.type!r}."
     )
-
-
-def test_default_sandbox_for_platform_is_seatbelt_on_macos_regardless_of_binary() -> None:
-    """
-    The macOS platform default is ``darwin_seatbelt`` and, like the
-    Linux branch, does not probe for ``sandbox-exec`` — selection is a
-    pure platform decision so parsing never depends on the resolving
-    host's PATH.
-    """
-    import sys
-    from unittest.mock import patch
-
-    from omnigent.inner.datamodel import OSEnvSandboxSpec
-
-    with (
-        patch.object(sys, "platform", "darwin"),
-        patch("omnigent.inner.sandbox.shutil.which", return_value=None),
-    ):
-        spec = inner_sandbox._default_sandbox_for_platform()
-    assert isinstance(spec, OSEnvSandboxSpec)
-    assert spec.type == "darwin_seatbelt", (
-        "macOS default sandbox should be 'darwin_seatbelt' independent of "
-        f"sandbox-exec availability; got {spec.type!r}."
-    )
-
-
-def test_default_sandbox_for_platform_raises_on_unsupported_platform() -> None:
-    """
-    A platform with no sandbox backend at all (anything other than
-    Linux or macOS, e.g. Windows) fails loud: there is no backend to
-    defer the runtime check to, so the default selector itself raises.
-    The operator's explicit opt-out remains
-    ``os_env.sandbox.type='none'``.
-    """
-    import sys
-    from unittest.mock import patch
-
-    import pytest
-
-    with (
-        patch.object(sys, "platform", "win32"),
-        pytest.raises(OSError, match="No sandbox backend is available"),
-    ):
-        inner_sandbox._default_sandbox_for_platform()

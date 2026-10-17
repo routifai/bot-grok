@@ -31,13 +31,11 @@ def has_copy_on_write(spec: OSEnvSpec | None) -> bool:
 
 
 def validate_copy_on_write_harness(spec: OSEnvSpec | None, harness: str | None) -> None:
-    """Reject harnesses whose native tools do not share the environment."""
-    from omnigent.harness_aliases import canonicalize_harness
-
-    if has_copy_on_write(spec) and canonicalize_harness(harness) != "openai-agents":
+    """Reject copy_on_write: no available harness's native tools share the environment."""
+    if has_copy_on_write(spec):
         raise ValueError(
-            "copy_on_write currently requires executor.harness=openai-agents; "
-            "other harnesses' native tools do not share its disposable filesystem"
+            f"copy_on_write is not supported by harness {harness!r}: its native tools "
+            "do not share the disposable filesystem"
         )
 
 

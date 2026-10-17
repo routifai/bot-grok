@@ -30,10 +30,7 @@ from omnigent.db.utils import (
     generate_agent_id,
     generate_item_id,
     get_or_create_engine,
-    is_cockroachdb,
-    is_postgresql_family,
     make_managed_session_maker,
-    normalize_database_url,
     run_migrations_with_retry,
     run_write_transaction,
     set_lakebase_token_provider,
@@ -94,42 +91,8 @@ def test_non_sqlite_engine_has_pool_settings(
     assert captured_kwargs.get("pool_recycle") == 1800
 
 
-def test_cockroachdb_dialect_helpers_and_url() -> None:
-    assert normalize_database_url("cockroachdb://root@host/db") == (
-        "cockroachdb+psycopg://root@host/db"
-    )
-    assert is_cockroachdb("cockroachdb")
-    assert is_postgresql_family("cockroachdb")
-    assert is_postgresql_family("postgresql")
-    assert not is_postgresql_family("mysql")
-
-
-def test_cockroachdb_engine_settings(monkeypatch: pytest.MonkeyPatch) -> None:
-    from omnigent.db import utils
-
-    captured: dict[str, Any] = {}
-    mock_engine = MagicMock()
-
-    def capture(uri: str, **kwargs: Any) -> MagicMock:
-        captured["uri"] = uri
-        captured.update(kwargs)
-        return mock_engine
-
-    monkeypatch.setattr(utils, "create_engine", capture)
-    engine = utils._create_engine("cockroachdb://root@host/db")
-
-    assert engine is mock_engine
-    assert captured["uri"] == "cockroachdb+psycopg://root@host/db"
-    assert captured["isolation_level"] == "READ COMMITTED"
-    assert captured["pool_size"] == 200
-    assert captured["max_overflow"] == 20
-    assert captured["pool_timeout"] == 10.0
-
-
-@pytest.mark.parametrize("dialect", ["cockroachdb", "mysql"])
 def test_run_write_transaction_retries_rolled_back_concurrency_failures(
     monkeypatch: pytest.MonkeyPatch,
-    dialect: str,
 ) -> None:
     from collections.abc import Iterator
     from contextlib import contextmanager
@@ -138,13 +101,13 @@ def test_run_write_transaction_retries_rolled_back_concurrency_failures(
 
     from omnigent.db import current_query_name, query_name_scope
 
-    class SerializationFailure(Exception):
-        sqlstate = "40001"
+    class DeadlockVictim(Exception):
+        pass
 
     class NamedMaker:
         def __init__(self) -> None:
             self.engine = MagicMock()
-            self.engine.dialect.name = dialect
+            self.engine.dialect.name = "mysql"
             self.query_name_prefix = "omnigent.test"
             self.sessions: list[MagicMock] = []
 
@@ -174,7 +137,7 @@ def test_run_write_transaction_retries_rolled_back_concurrency_failures(
         attempts += 1
         observed_names.append(current_query_name())
         if attempts < 3:
-            raise DBAPIError("statement", {}, SerializationFailure(1213, "deadlock"), False)
+            raise DBAPIError("statement", {}, DeadlockVictim(1213, "deadlock"), False)
         return "committed"
 
     sleeps: list[float] = []
@@ -203,24 +166,21 @@ def test_run_write_transaction_retries_rolled_back_concurrency_failures(
         run_write_transaction(maker, "write", write, sleep=sleeps.append)
     assert attempts == 1
 
-    class DeadlockFailure(Exception):
-        sqlstate = "40P01"
+    maker.engine.dialect.name = "mysql"
 
-    maker.engine.dialect.name = "cockroachdb"
-
-    def deadlock(_session: object) -> None:
-        raise DBAPIError("statement", {}, DeadlockFailure(), False)
+    def other_mysql_error(_session: object) -> None:
+        raise DBAPIError("statement", {}, DeadlockVictim(1205, "lock wait timeout"), False)
 
     session_count = len(maker.sessions)
     with pytest.raises(DBAPIError):
-        run_write_transaction(maker, "write", deadlock, sleep=sleeps.append)
+        run_write_transaction(maker, "write", other_mysql_error, sleep=sleeps.append)
     assert len(maker.sessions) == session_count + 1
 
-    def serialization_failure(_session: object) -> None:
-        raise DBAPIError("statement", {}, SerializationFailure(), False)
+    def deadlock(_session: object) -> None:
+        raise DBAPIError("statement", {}, DeadlockVictim(1213, "deadlock"), False)
 
     with pytest.raises(DBAPIError):
-        run_write_transaction(maker, "exhausted", serialization_failure, max_retries=0)
+        run_write_transaction(maker, "exhausted", deadlock, max_retries=0)
     assert retry_metrics[-1] == ("omnigent.test.exhausted", "exhausted")
 
 
