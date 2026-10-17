@@ -1,4 +1,4 @@
-"""One live stream for a Conversation, its Side Chats and its Helpers.
+"""One live stream for a Conversation and its Helpers.
 
 Events carry ids only; the client refetches what changed:
 
@@ -10,7 +10,7 @@ Events carry ids only; the client refetches what changed:
   waiting behind it; refetch to see it;
 * ``chat.reset {chat_id, item_id}``: the chat was cleared (``POST .../reset``); its transcript
   now starts after ``item_id``;
-* ``chats.changed {root_id}``: a Side Chat was opened, renamed or archived, or a Helper started;
+* ``chats.changed {root_id}``: the Conversation was renamed or archived, or a Helper started;
 * ``activities.changed {root_id}``: the Activity Feed may have changed;
 * ``session.heartbeat``: sent after ~15s of quiet.
 
@@ -77,7 +77,7 @@ async def watch_family(
     """Yield the family's events for the Super Chat *root_id*, until the caller stops.
 
     :param conv_store: Store used to resolve the chats to follow.
-    :param root_id: The Super Chat (resolve a Side Chat to its root first).
+    :param root_id: The Super Chat.
     :param debounce_s: How long the Activity Feed signal coalesces a burst.
     :param heartbeat_s: Quiet time before a heartbeat (which also re-reads the chat list).
     :param subscribe: Per-session live event source (injectable for tests).

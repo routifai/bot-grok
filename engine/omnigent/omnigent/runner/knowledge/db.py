@@ -12,8 +12,8 @@ Layout (all in ``<home>/.superchat/knowledge/index.sqlite3``, on the Computer's 
   chat keeps one row in ``files`` (kind ``turn``, path ``conversation/<chat id>``) that owns its
   passages, so they share the FTS and vector tables and the embedding pass; such a row is never a
   file (left out of :meth:`KnowledgeDb.files`, the pending counts and file searches).
-* ``refs``: the references a passage carries (``files``, ``artifacts``, ``project``, ``helpers``,
-  ``chats``; see :mod:`omnigent.runner.knowledge.refs`), from a journal line's trailing comment
+* ``refs``: the references a passage carries (``files``, ``artifacts``, ``project``, ``helpers``;
+  see :mod:`omnigent.runner.knowledge.refs`), from a journal line's trailing comment
   or a turn's tool calls, so a search can filter on them.
 
 ``search`` fuses the two rankings with reciprocal rank fusion, or returns BM25 alone when the
@@ -241,10 +241,10 @@ class ChunkRow:
 class TurnPassage:
     """One completed turn of a chat, as the ``conversation`` source stores it.
 
-    :param chat_id: The chat (main Conversation, Side chat or Fork) the turn ran in.
+    :param chat_id: The chat (the main Conversation) the turn ran in.
     :param turn_item_id: The person's message item id (what ``session_history`` reads).
     :param date: The turn's date, ``YYYY-MM-DD``.
-    :param origin: ``main``, ``side`` or ``fork``.
+    :param origin: ``main``.
     :param project: The Project folder the turn ran in, or empty.
     :param person_text: The person's words, clipped (hint snippets quote only these).
     :param text: The passage: the person's text, the final reply and the tool digests.

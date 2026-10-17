@@ -319,7 +319,6 @@ from omnigent.stores.conversation_store import (
     NameAlreadyExistsError,
     pinned_label_key,
     runner_seen_is_fresh,
-    side_chat_parent_id,
 )
 from omnigent.stores.file_store import FileStore
 from omnigent.stores.host_store import Host, HostStore, host_is_live
@@ -3634,57 +3633,6 @@ async def _maybe_relaunch_managed_sandbox(
     return True
 
 
-async def _adopt_parent_host_for_side_chat(
-    *,
-    session_id: str,
-    conv: Conversation,
-    app_state: Any,
-    conversation_store: ConversationStore,
-    runner_router: RunnerRouter | None,
-) -> Conversation:
-    """
-    Bind a Side Chat to its parent Conversation's host and wake that host.
-
-    A Side Chat opened while the parent's host was offline is left unbound
-    (the open-time bind is best-effort), and one bound earlier would
-    otherwise relaunch the shared sandbox under its own id. Resolving the
-    parent here keeps one relaunch per host: the parent's single-flight
-    launch is awaited (queueing this turn), then the normal host-bound
-    ladder launches this chat's runner on the now-online host.
-
-    :param session_id: The Side Chat session id.
-    :param conv: Its current row.
-    :param app_state: ``request.app.state``.
-    :param conversation_store: Store holding the session rows.
-    :param runner_router: The ``RunnerRouter``, or ``None`` for in-process.
-    :returns: The (possibly re-bound) Side Chat row; *conv* unchanged when
-        it is not a Side Chat, already has a reachable runner, or its parent
-        has no host.
-    :raises OmnigentError: 503 when the parent's sandbox relaunch failed.
-    """
-    parent_id = side_chat_parent_id(conv.labels)
-    if not parent_id:
-        return conv
-    if await _get_runner_client(session_id, runner_router, conversation=conv) is not None:
-        return conv
-    parent = await asyncio.to_thread(conversation_store.get_conversation, parent_id)
-    if parent is None or parent.host_id is None or parent.workspace is None:
-        return conv
-    host_registry = getattr(app_state, "host_registry", None)
-    if host_registry is not None and host_registry.get(parent.host_id) is None:
-        await _maybe_relaunch_managed_sandbox(
-            session_id=parent_id,
-            conv=parent,
-            app_state=app_state,
-            conversation_store=conversation_store,
-        )
-    if conv.host_id != parent.host_id:
-        conv = await asyncio.to_thread(
-            conversation_store.set_host_id, session_id, parent.host_id, parent.workspace
-        )
-    return conv
-
-
 async def _maybe_wake_stale_resumable_managed_sandbox(
     *,
     session_id: str,
@@ -5713,38 +5661,24 @@ def session_has_deferred_dispatch(session_id: str) -> bool:
     return _deferred_dispatch_pending.get(session_id, 0) > 0
 
 
-async def managed_wake_may_precede_dispatch(
-    conv: Conversation,
-    app_state: Any,
-    conversation_store: ConversationStore,
-) -> bool:
+async def managed_wake_may_precede_dispatch(conv: Conversation, app_state: Any) -> bool:
     """
     Whether delivering a message to *conv* may first have to wake a managed sandbox.
 
     A managed sandbox that was paused, expired or lost takes seconds to
     provision again, so the message must be stored and acknowledged before
-    that wait. A Side Chat shares its parent's host.
+    that wait.
 
     :param conv: The session row.
     :param app_state: ``request.app.state`` — supplies the host store.
-    :param conversation_store: Store holding the session rows.
     :returns: ``True`` when the session's host is a managed sandbox.
     """
     host_store = getattr(app_state, "host_store", None)
     if host_store is None:
         return False
-    host_id = conv.host_id
-    if host_id is None:
-        parent_id = side_chat_parent_id(conv.labels)
-        parent = (
-            await asyncio.to_thread(conversation_store.get_conversation, parent_id)
-            if parent_id
-            else None
-        )
-        host_id = parent.host_id if parent is not None else None
-    if host_id is None:
+    if conv.host_id is None:
         return False
-    host = await asyncio.to_thread(host_store.get_host, host_id)
+    host = await asyncio.to_thread(host_store.get_host, conv.host_id)
     return host is not None and host.sandbox_provider is not None
 
 
@@ -9548,7 +9482,6 @@ async def _get_session_snapshot(
 
 __all__ = [
     "_accumulate_session_usage",
-    "_adopt_parent_host_for_side_chat",
     "_archive_stop",
     "_best_effort_stop",
     "_bind_and_launch_managed_runner",

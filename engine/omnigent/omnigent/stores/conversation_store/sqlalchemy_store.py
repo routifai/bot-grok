@@ -95,8 +95,6 @@ from omnigent.stores.conversation_store import (
     FORK_SOURCE_LABEL_KEY,
     PINNED_LABEL_KEY,
     PROJECT_LABEL_KEY,
-    SIDE_CHAT_COPIED_UNTIL_LABEL_KEY,
-    SIDE_CHAT_PARENT_LABEL_KEY,
     SWITCH_PREVIOUS_BUILTIN_LABEL_KEY,
     ConversationAlreadyExistsError,
     ConversationNotFoundError,
@@ -2786,8 +2784,6 @@ class SqlAlchemyConversationStore(ConversationStore):
         pinned: bool = False,
         pinned_owner: str | None = None,
         title: str | None = None,
-        fork_source_id: str | None = None,
-        side_chat_parent_id: str | None = None,
     ) -> PagedList[Conversation]:
         """
         List conversations with cursor-based pagination.
@@ -2855,10 +2851,6 @@ class SqlAlchemyConversationStore(ConversationStore):
             can access but does NOT own — i.e. sessions shared with them
             by another user. Requires ``accessible_by`` to be set.
             ``False`` (default) disables the filter.
-        :param fork_source_id: When set, only return conversations whose
-            ``FORK_SOURCE_LABEL_KEY`` label equals this value.
-        :param side_chat_parent_id: When set, only return conversations whose
-            ``SIDE_CHAT_PARENT_LABEL_KEY`` label equals this value.
         :returns: A :class:`PagedList` of :class:`Conversation`
             objects.
         """
@@ -3164,23 +3156,6 @@ class SqlAlchemyConversationStore(ConversationStore):
                         select(SqlConversationLabel.conversation_id).where(
                             SqlConversationLabel.workspace_id == current_workspace_id(),
                             SqlConversationLabel.key == pinned_label_key(pinned_owner),
-                        )
-                    )
-                )
-            for label_key, label_value in (
-                (FORK_SOURCE_LABEL_KEY, fork_source_id),
-                (SIDE_CHAT_PARENT_LABEL_KEY, side_chat_parent_id),
-            ):
-                if label_value is None:
-                    continue
-                # Colocated on the AP DB (these labels, like pins, live there),
-                # so an inline IN-subquery is enough — no cross-DB prefetch.
-                stmt = stmt.where(
-                    SqlConversation.id.in_(
-                        select(SqlConversationLabel.conversation_id).where(
-                            SqlConversationLabel.workspace_id == current_workspace_id(),
-                            SqlConversationLabel.key == label_key,
-                            SqlConversationLabel.value == label_value,
                         )
                     )
                 )
@@ -4418,7 +4393,6 @@ class SqlAlchemyConversationStore(ConversationStore):
         extra_labels: dict[str, str] | None = None,
         presentation_labels: dict[str, str] | None = None,
         up_to_response_id: str | None = None,
-        up_to_item_id: str | None = None,
         project_id: str | None = None,
         file_id_map: Mapping[str, str] | None = None,
         created_by: str | None = None,
@@ -4497,16 +4471,12 @@ class SqlAlchemyConversationStore(ConversationStore):
             ``copy_terminal_launch_args``.
         :param extra_labels: Labels to stamp on the fork AFTER the copy /
             drop / presentation-label logic, so a deliberate opt-in wins over
-            the always-drop rule (e.g. the side-chat label).
+            the always-drop rule.
         :param presentation_labels: When not ``None``, drop the source's
             ``omnigent.ui`` / ``omnigent.wrapper`` labels from the clone
             and apply these instead, so the clone's Web UI mode matches the
             switched-to TARGET harness. ``None`` keeps the copied labels (same-
             agent fork).
-        :param up_to_item_id: When set, copy only the items up to and including this item (by
-            position, so later items of the same turn, errors and notices are never copied) and
-            stamp ``SIDE_CHAT_COPIED_UNTIL_LABEL_KEY``. Takes precedence over
-            *up_to_response_id*.
         :param up_to_response_id: When set, copy only the items up to and
             including the last item of this response (by position), e.g.
             ``"resp_abc123"`` — a "fork from this response" truncation.
@@ -4550,7 +4520,6 @@ class SqlAlchemyConversationStore(ConversationStore):
             extra_labels=extra_labels,
             presentation_labels=presentation_labels,
             up_to_response_id=up_to_response_id,
-            up_to_item_id=up_to_item_id,
             project_id=project_id,
             file_id_map=file_id_map,
             created_by=created_by,
@@ -4577,7 +4546,6 @@ class SqlAlchemyConversationStore(ConversationStore):
         extra_labels: dict[str, str] | None = None,
         presentation_labels: dict[str, str] | None = None,
         up_to_response_id: str | None = None,
-        up_to_item_id: str | None = None,
         project_id: str | None = None,
         file_id_map: Mapping[str, str] | None = None,
         created_by: str | None = None,
@@ -4662,20 +4630,7 @@ class SqlAlchemyConversationStore(ConversationStore):
             # Resolve the truncation cutoff: the position of the LAST item
             # of the selected response, so the fork never ends mid-turn.
             cutoff_position: int | None = None
-            if up_to_item_id is not None:
-                cutoff_position = session.execute(
-                    select(SqlConversationItem.position).where(
-                        SqlConversationItem.workspace_id == current_workspace_id(),
-                        SqlConversationItem.conversation_id == source_conversation_id,
-                        SqlConversationItem.id == up_to_item_id,
-                    )
-                ).scalar_one_or_none()
-                if cutoff_position is None:
-                    raise ValueError(
-                        f"item not found in conversation "
-                        f"{source_conversation_id!r}: {up_to_item_id!r}"
-                    )
-            elif up_to_response_id is not None:
+            if up_to_response_id is not None:
                 cutoff_position = session.execute(
                     select(func.max(SqlConversationItem.position)).where(
                         SqlConversationItem.workspace_id == current_workspace_id(),
@@ -4892,11 +4847,6 @@ class SqlAlchemyConversationStore(ConversationStore):
             # both the copy and the always-drop rules.
             if extra_labels:
                 fork_labels.update(extra_labels)
-            if up_to_item_id is not None and source_items:
-                # The explicit copy marker: nothing up to this item is the fork's own.
-                fork_labels[SIDE_CHAT_COPIED_UNTIL_LABEL_KEY] = copied_item_ids[
-                    source_items[-1].id
-                ]
 
         def insert_ap(session: Session) -> SqlConversation:
             if (

@@ -2,7 +2,7 @@
 
 A reset is a rollover whose checkpoint has no summary (:func:`~omnigent.context.rollover.
 build_reset_item`): the Muse's next turn cold-starts from the reset framing alone, so it forgets
-the chat history. Nothing else is touched: memory, files, Side Chats, Helpers and Goals stay, and
+the chat history. Nothing else is touched: memory, files, Helpers and Goals stay, and
 the earlier items stay stored (the ``session_history`` tool and ``GET .../items`` still read them).
 
 The transcript (``GET .../transcript``) then starts at the reset; ``before_reset=true`` pages
@@ -33,7 +33,6 @@ from omnigent.server.routes._auth_helpers import (
 )
 from omnigent.server.routes._errors import session_not_found as _session_not_found
 from omnigent.stores import ConversationStore
-from omnigent.stores.conversation_store import side_chat_parent_id
 from omnigent.stores.permission_store import PermissionStore
 
 #: Compaction items scanned (newest first) for the latest reset.
@@ -71,7 +70,7 @@ def register_reset_routes(
         """
         Clear a Super Chat: the Muse starts a fresh context, everything else stays.
 
-        :param session_id: The Super Chat (the Conversation; not a Side Chat or a Helper).
+        :param session_id: The Super Chat (the Conversation; not a Helper).
         :returns: ``{"session_id", "reset_item_id", "created_at"}``.
         :raises OmnigentError: 403 unless the caller owns it or it is not a Super Chat;
             404 if it does not exist; 409 while a turn is running.
@@ -85,11 +84,7 @@ def register_reset_routes(
         )
         if conv is None:
             raise _session_not_found()
-        if (
-            conv.kind == "sub_agent"
-            or not is_superside_chat(conv.labels)
-            or side_chat_parent_id(conv.labels)
-        ):
+        if conv.kind == "sub_agent" or not is_superside_chat(conv.labels):
             raise OmnigentError(
                 "Only a Super Chat's Conversation can be reset", code=ErrorCode.FORBIDDEN
             )

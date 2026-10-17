@@ -75,7 +75,7 @@ const text = {
 export const automationsContract = {
   automations: {
     list: oc.input(botInput).output(z.array(AutomationSchema)),
-    /** The engine's built-in background jobs (memory upkeep, side chat archiving, ...). */
+    /** The engine's built-in background jobs (memory upkeep, the daily note, ...). */
     system: oc.input(botInput).output(z.array(SystemJobSchema)),
     create: oc
       .input(

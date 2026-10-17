@@ -1,4 +1,4 @@
-"""References a passage carries: the files, artifacts, Project, Helpers and chats its work touched.
+"""References a passage carries: the files, artifacts, Project and Helpers its work touched.
 
 A journal line carries them in its trailing comment, after the chat id, as ``key:value,value``
 pairs (``<!-- conv_1 files:a.xlsx,b.md artifacts:art_7f2@v3 project:spring-launch -->``); a
@@ -16,7 +16,7 @@ from urllib.parse import unquote
 from omnigent.context.refs import refs_from_items
 
 #: The reference keys, in the order they are written.
-REF_KEYS = ("files", "artifacts", "project", "helpers", "chats")
+REF_KEYS = ("files", "artifacts", "project", "helpers")
 
 _COMMENT = re.compile(r"<!--(.*?)-->\s*$")
 

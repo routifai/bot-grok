@@ -1,15 +1,13 @@
 """Activity Feed derivation for ``superside-chat`` sessions.
 
 An **Activity** is never stored: it is derived on read from existing
-conversations and items — a chat turn (Super Chat / Side Chat) that
+conversations and items — a Super Chat turn that
 included at least one tool call, or a whole Sub-agent session. See
 ``rollover/CONTEXT.md`` (Activity, Activity Feed, Step) and
 ``rollover/SUPERSIDE-CHAT-PLAN.md`` (slice S5).
 
 Reuses ``_project_activity_item`` from ``omnigent.tools.builtins.spawn``
-for step/detail projection, and ``list_related_chats`` from
-``omnigent.context.rollover`` for Side Chat discovery, rather than
-re-implementing either.
+for step/detail projection rather than re-implementing it.
 """
 
 from __future__ import annotations
@@ -67,7 +65,6 @@ KIND_SUB_AGENT = "sub_agent"
 #: What an Activity is, for the icon beside it: ``kind`` says how it is stored
 #: (and keys its id); ``source`` says where the work came from.
 SOURCE_TURN = "turn"
-SOURCE_SIDE_CHAT = "side_chat"
 SOURCE_BACKGROUND = "background"
 SOURCE_SCHEDULED = "scheduled"
 #: Quiet upkeep (daily note, Dreaming, People): grouped into one row per local day.
@@ -145,11 +142,11 @@ class Activity:
         ``"sub_agent:conv_child"``.
     :param kind: ``"turn"`` or ``"sub_agent"``.
     :param chat_id: The conversation this Activity happened in (the Super
-        Chat / Side Chat for a turn; the sub-agent's own conversation for a
-        sub-agent Activity).
+        Chat for a turn; the sub-agent's own conversation for a sub-agent
+        Activity).
     :param source: Where the work came from: :data:`SOURCE_TURN`,
-        :data:`SOURCE_SIDE_CHAT`, :data:`SOURCE_BACKGROUND`,
-        :data:`SOURCE_SCHEDULED`.
+        :data:`SOURCE_BACKGROUND`, :data:`SOURCE_SCHEDULED`,
+        :data:`SOURCE_HOUSEKEEPING`.
     :param title: Short task title: model-written once generated, else the
         request tidied (see :mod:`omnigent.superchat.activity.titles`).
     :param outcome: One-line outcome, or ``None`` when nothing to report yet.
@@ -164,8 +161,8 @@ class Activity:
     :param finished_at: Unix epoch timestamp of the last item, or ``None``
         while still in progress.
     :param steps: The Activity's Steps, chronological.
-    :param parent_chat_id: For a Sub-agent, the chat that started it (the Super Chat, a
-        Side Chat, or another Sub-agent when it is a sub-worker); ``None`` for a turn.
+    :param parent_chat_id: For a Sub-agent, the chat that started it (the Super Chat, or
+        another Sub-agent when it is a sub-worker); ``None`` for a turn.
     """
 
     id: str
@@ -204,7 +201,7 @@ def step_title_for_call(tool_name: str, raw_arguments: str) -> str:
         if action == "read":
             return "Read earlier messages"
         if action == "list_chats":
-            return "Listed side chats"
+            return "Listed chats"
         return "Looked at earlier messages"
     if tool_name == "sys_session_create":
         title = args.get("title")
@@ -401,7 +398,6 @@ def _turn_activity(
     request: str | None,
     is_latest_group: bool,
     include_step_detail: bool,
-    source: str,
     stored_title: str | None,
     stored_summary: str | None = None,
 ) -> Activity | None:
@@ -437,7 +433,7 @@ def _turn_activity(
         started_at=group[0].created_at,
         finished_at=None if status == STATUS_IN_PROGRESS else group[-1].created_at,
         steps=steps,
-        source=source,
+        source=SOURCE_TURN,
         summary=_status_summary(status, group, outcome, stored_summary),
         title_prompt=(
             _turn_title_prompt(user_request, steps, result)
@@ -563,7 +559,6 @@ def _activities_for_conversation(
     conversation: Conversation,
     *,
     include_step_detail: bool,
-    super_chat_id: str,
 ) -> list[Activity]:
     # Newest-first, bounded, then reversed to chronological order: for a
     # conversation with more than _ITEMS_SCAN_LIMIT items, an ascending scan
@@ -592,7 +587,6 @@ def _activities_for_conversation(
         ]
     groups = _group_items_by_response(items)
     stored_labels = conv_store.get_activity_labels([group[0].response_id for group in groups])
-    source = SOURCE_TURN if conversation.id == super_chat_id else SOURCE_SIDE_CHAT
     activities: list[Activity] = []
     # The user message that started a turn is usually stored outside its
     # response group, so carry the latest one forward.
@@ -607,7 +601,6 @@ def _activities_for_conversation(
             request=request,
             is_latest_group=(index == len(groups) - 1),
             include_step_detail=include_step_detail,
-            source=source,
             stored_title=stored_labels.get(group[0].response_id, (None, None))[0],
             stored_summary=stored_labels.get(group[0].response_id, (None, None))[1],
         )
@@ -691,7 +684,7 @@ def list_activities(
     """The user's Activity Feed: every Activity under one Super Chat's family.
 
     :param conv_store: Store to query.
-    :param session_id: The Super Chat (or one of its Side Chats) id.
+    :param session_id: The Super Chat id.
     :param before: When set, only Activities that started strictly before
         this epoch timestamp.
     :param limit: Maximum Activities to return, newest-first (clamped to
@@ -707,24 +700,10 @@ def list_activities(
     activities: list[Activity] = []
     for conversation in chats:
         activities.extend(
-            _activities_for_conversation(
-                conv_store, conversation, include_step_detail=False, super_chat_id=super_chat_id
-            )
+            _activities_for_conversation(conv_store, conversation, include_step_detail=False)
         )
     activities.sort(key=lambda activity: activity.started_at, reverse=True)
-    # A Side Chat that knows the conversation carries copies of its items, so the same
-    # turn (same response id) is found in both chats; list it once, from the chat that
-    # came first in the family (the Super Chat itself).
-    seen_turns: set[str] = set()
-    unique: list[Activity] = []
-    for activity in activities:
-        if activity.kind == KIND_TURN:
-            response_id = activity.id.rsplit(":", 1)[-1]
-            if response_id in seen_turns:
-                continue
-            seen_turns.add(response_id)
-        unique.append(activity)
-    activities = _feed(unique, tz)
+    activities = _feed(activities, tz)
     if before is not None:
         activities = [activity for activity in activities if activity.started_at < before]
     bounded_limit = max(1, min(limit, _MAX_LIMIT))
@@ -801,7 +780,7 @@ def get_activity(
     route layer already enforces on ``session_id`` itself.
 
     :param conv_store: Store to query.
-    :param session_id: The Super Chat (or one of its Side Chats) id.
+    :param session_id: The Super Chat id.
     :param activity_id: An id previously returned by :func:`list_activities`.
     :returns: The :class:`Activity` with full step detail, or ``None``.
     """
@@ -825,7 +804,7 @@ def get_activity(
     if conversation is None:
         return None
     for activity in _activities_for_conversation(
-        conv_store, conversation, include_step_detail=True, super_chat_id=super_chat_id
+        conv_store, conversation, include_step_detail=True
     ):
         if activity.id == activity_id:
             return activity

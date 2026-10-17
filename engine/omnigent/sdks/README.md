@@ -105,32 +105,31 @@ pip install -e sdks/ui
 ```python
 import asyncio
 from omnigent_client import (
-    OmnigentClient, LocalServer, BlockStream,
+    OmnigentClient, BlockStream,
     pipe, skip_intermediate_ends,
 )
 from omnigent_ui_sdk import RichBlockFormatter, TerminalHost
 
 async def main():
-    async with LocalServer(agent_path="./my-agent/") as server:
-        client = server.client
-        session = client.session(model="my-agent")
-        block_stream = BlockStream()
-        fmt = RichBlockFormatter()
-        host = TerminalHost(model_name="my agent")
+    client = OmnigentClient("http://127.0.0.1:8000")  # a running engine
+    session = client.session(model="my-agent")
+    block_stream = BlockStream()
+    fmt = RichBlockFormatter()
+    host = TerminalHost(model_name="my agent")
 
-        async def on_input(text):
-            host.output(fmt.user_message(text))
-            async for block in pipe(
-                block_stream.stream(session, text),
-                skip_intermediate_ends(),
-            ):
-                for item in fmt.format(block):
-                    host.output(item)
-                await asyncio.sleep(0)
+    async def on_input(text):
+        host.output(fmt.user_message(text))
+        async for block in pipe(
+            block_stream.stream(session, text),
+            skip_intermediate_ends(),
+        ):
+            for item in fmt.format(block):
+                host.output(item)
+            await asyncio.sleep(0)
 
-        async with host:
-            host.output(fmt.welcome("my agent"))
-            await host.run(on_input)
+    async with host:
+        host.output(fmt.welcome("my agent"))
+        await host.run(on_input)
 
 asyncio.run(main())
 ```

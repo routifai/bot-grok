@@ -1762,7 +1762,7 @@ class SqlArtifact(OmnigentBase):
     :param delivered_at: Epoch seconds when a manual version was written back to the Computer
         and announced to the Muse; ``None`` while still pending.
     :param turn_item_id: The person's message item that opened the turn that saved it, if known.
-    :param chat_id: The chat (Conversation, Side chat, Helper or update run) that saved it.
+    :param chat_id: The chat (Conversation, Helper or update run) that saved it.
     """
 
     __tablename__ = "artifacts"
@@ -1975,9 +1975,8 @@ class SqlActivityTitle(OmnigentBase):
     SQLAlchemy model for the ``activity_titles`` table.
 
     The model-written title of one chat turn in the Activity Feed, keyed by the
-    turn's response id (a Side Chat that knows the conversation carries the same
-    response id, so the title is shared). Activities themselves are derived on
-    read; only this presentational title is stored.
+    turn's response id. Activities themselves are derived on read; only this
+    presentational title is stored.
 
     :param response_id: The turn's response id; primary key with the workspace.
     :param conversation_id: The chat the title was generated for (no DB foreign

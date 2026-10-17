@@ -27,7 +27,6 @@ from omnigent.server.redaction import (
     redactor_for,
 )
 from omnigent.server.routes.sessions.routes_items import register_items_routes
-from omnigent.stores.conversation_store import SIDE_CHAT_LABEL_KEY
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
 from omnigent.superchat.vault.store import VAULT_KEY_ENV, VaultStore
 
@@ -180,11 +179,6 @@ async def test_no_items_route_leaks_a_secret(
     _save(vault, None, vault_pw)
     leak = f"{SECRET} and {vault_pw}"
     root = conversation_store.create_conversation(kind="default", title="S", labels=_MODE)
-    side = conversation_store.create_conversation(
-        kind="default",
-        title=f"Side {SECRET}",
-        labels={**_MODE, SIDE_CHAT_LABEL_KEY: "true", "omnigent.side_chat.parent_id": root.id},
-    )
     conversation_store.create_conversation(
         kind="sub_agent", parent_conversation_id=root.id, title=f"job:{SECRET}", labels=_MODE
     )
@@ -209,7 +203,6 @@ async def test_no_items_route_leaks_a_secret(
             ),
         ],
     )
-    conversation_store.append(side.id, [_say("assistant", f"side {leak}")])
 
     activities = await client.get(f"/v1/sessions/{root.id}/activities")
     assert activities.status_code == 200 and activities.json()["data"]
@@ -217,8 +210,7 @@ async def test_no_items_route_leaks_a_secret(
     paths = [
         f"/v1/sessions/{root.id}/items",
         f"/v1/sessions/{root.id}/items/search?query=check",
-        f"/v1/sessions/{root.id}/items/search?query=side&scope=family",
-        f"/v1/sessions/{root.id}/related_chats",
+        f"/v1/sessions/{root.id}/items/search?query=done&scope=family",
         f"/v1/sessions/{root.id}/context_summary",
         f"/v1/sessions/{root.id}/child_sessions",
         f"/v1/sessions/{root.id}/activities",

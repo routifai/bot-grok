@@ -1,6 +1,6 @@
 """Transcript: a session's items projected into typed chat blocks (``GET .../transcript``).
 
-Layout: ``blocks`` (the pure projection), ``routes`` (the route, paging, seed and reset cuts,
+Layout: ``blocks`` (the pure projection), ``routes`` (the route, paging, the reset cut,
 lineage), ``reset`` (``POST .../reset``: clear a Super Chat), this module (registration).
 """
 

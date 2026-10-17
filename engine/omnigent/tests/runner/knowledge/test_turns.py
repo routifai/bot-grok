@@ -83,11 +83,11 @@ def test_a_turn_is_the_person_the_final_reply_and_the_tool_digests() -> None:
         _msg("a2", "assistant", "Booked the Harbor Hall.", "r1"),
     ]
     (turn,) = split_turns(items)
-    p = passage_of(turn, chat_id="conv_side", main_id="conv_main", origin="side", project="launch")
+    p = passage_of(turn, chat_id="conv_main", main_id="conv_main", origin="main", project="launch")
     assert p.text.startswith("Person: Book the venue\nAssistant: Booked the Harbor Hall.")
     assert "web_search" in p.text and "Looking." not in p.text
     assert (p.chat_id, p.turn_item_id, p.date, p.origin, p.project, p.person_text) == (
-        "conv_side", "u1", "2026-10-12", "side", "launch", "Book the venue"
+        "conv_main", "u1", "2026-10-12", "main", "launch", "Book the venue"
     )  # fmt: skip
 
 
@@ -227,13 +227,13 @@ def test_delete_chats_removes_their_passages_only(tmp_path: Path) -> None:
     indexer.index_turns(
         [
             _passage("u1", "Person: venue"),
-            _passage("u2", "Person: venue side", chat_id="conv_side", origin="side"),
+            _passage("u2", "Person: venue again", chat_id="conv_b"),
             _passage("u3", "Person: venue other", chat_id="conv_x", main_id="conv_x"),
         ]
     )
     run_all(indexer)
-    assert indexer.db.chats_of("conv_main") == ["conv_main", "conv_side"]
-    assert indexer.delete_chats(["conv_main", "conv_side"]) == 2
+    assert indexer.db.chats_of("conv_main") == ["conv_b", "conv_main"]
+    assert indexer.delete_chats(["conv_main", "conv_b"]) == 2
     assert [h["turn_item_id"] for h in _turn_hits(indexer, "venue")] == ["u3"]
     assert [r.name for r in indexer.db.files(turns=True)] == ["conv_x"]
 
@@ -277,7 +277,7 @@ def test_reindex_sends_passages_back_and_counts_files_only(tmp_path: Path) -> No
 LINE = (
     "- 2026-10-12 · Updated the budget · main <!-- conv_abc "
     "files:projects/spring-launch/launch-budget.xlsx,your_files/quote.pdf "
-    "artifacts:art_7f2@v3 project:spring-launch helpers:hr_41 chats:conv_side -->"
+    "artifacts:art_7f2@v3 project:spring-launch helpers:hr_41 -->"
 )
 
 
@@ -287,7 +287,6 @@ def test_a_journal_line_gives_its_references() -> None:
         "artifacts": ["art_7f2@v3"],
         "project": ["spring-launch"],
         "helpers": ["hr_41"],
-        "chats": ["conv_side"],
     }
     assert line_refs("- 2026-10-12 · Booked the venue · main <!-- conv_abc -->") == {}
     assert line_refs("- 2026-10-12 · no comment at all") == {}
@@ -313,7 +312,7 @@ def test_journal_passages_carry_their_references_and_can_be_filtered(tmp_path: P
     run_all(indexer)
     ids = indexer.db.chunks_with_ref("project", "spring-launch")
     (refs,) = indexer.db.refs_of(sorted(ids)).values()
-    assert refs["artifacts"] == ["art_7f2@v3"] and refs["chats"] == ["conv_side"]
+    assert refs["artifacts"] == ["art_7f2@v3"] and refs["helpers"] == ["hr_41"]
     (journal / "2026-10-12.md").write_text("# 2026-10-12\n\n- 2026-10-12 · plain · main\n")
     indexer.scan()
     run_all(indexer)

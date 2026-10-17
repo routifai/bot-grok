@@ -1,4 +1,4 @@
-"""Per-turn work-step limit for the Conversation (and its side chats).
+"""Per-turn work-step limit for the Conversation.
 
 The Muse keeps every work tool but does single-step work itself; long work belongs to a Helper
 so the chat stays responsive. Wording alone did not hold, so a turn may make

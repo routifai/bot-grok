@@ -250,12 +250,6 @@ def pytest_addoption(parser):
     :param parser: the pytest option parser.
     """
     parser.addoption(
-        "--integration",
-        action="store_true",
-        default=False,
-        help="Run integration tests (requires real LLM credentials)",
-    )
-    parser.addoption(
         "--model",
         action="store",
         default="databricks-claude-sonnet-4-6",
@@ -278,9 +272,7 @@ def pytest_addoption(parser):
         action="store",
         default=None,
         help=(
-            "LLM API key for integration / e2e tests. Required when running "
-            "tests/e2e/ (those tests assert it's non-None via the live_server "
-            "fixture); optional for tests/frontends/ integration tests "
+            "LLM API key for tests/frontends/ integration tests "
             "(those skip gracefully when the key is absent)."
         ),
     )

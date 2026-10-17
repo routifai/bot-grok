@@ -63,43 +63,6 @@ PROJECT_LABEL_KEY = "omni_project"
 # mirrors the canonical key as ``PINNED_LABEL_KEY``.
 PINNED_LABEL_KEY = "omnigent.pinned"
 
-# Marks a top-level fork created as a side chat. A side chat surfaces only as a
-# Workspace-rail tab, so a conversation carrying this label is hidden from the
-# left sidebar (the ``GET /v1/sessions`` list filters it out). The fork
-# otherwise behaves like any other session (its own runner, transcript).
-SIDE_CHAT_LABEL_KEY = "omnigent.side_chat"
-
-# The Super Chat a Side Chat was opened from. Stamped once at creation by
-# ``POST /v1/sessions/{id}/side_chats``. Kept apart from
-# :data:`FORK_SOURCE_LABEL_KEY`, which is a native-fork directive that switching a
-# session's agent drops: a Side Chat's parent link must survive that.
-#: Stamped on a Fork (ADR 0010): the last item copied from its parent (an item id of the fork
-#: itself). Everything up to and including it is copied context, never the fork's own message.
-SIDE_CHAT_COPIED_UNTIL_LABEL_KEY = "omnigent.side_chat.copied_until_item_id"
-SIDE_CHAT_PARENT_LABEL_KEY = "omnigent.side_chat.parent_id"
-
-
-def side_chat_parent_id(labels: Mapping[str, str]) -> str | None:
-    """
-    The Super Chat a Side Chat was opened from.
-
-    Side Chats opened before :data:`SIDE_CHAT_PARENT_LABEL_KEY` existed carry the
-    link only as :data:`FORK_SOURCE_LABEL_KEY`, so that is the fallback.
-
-    :param labels: A session's labels.
-    :returns: The parent session id, or ``None`` when this is not a Side Chat or
-        its parent is unknown.
-    """
-    if SIDE_CHAT_LABEL_KEY not in labels:
-        return None
-    return labels.get(SIDE_CHAT_PARENT_LABEL_KEY) or labels.get(FORK_SOURCE_LABEL_KEY)
-
-
-# How a Side Chat was opened: ``"with_context"`` (seeded from the Super
-# Chat's checkpoint) or ``"blank"`` (no seed). Stamped once at creation by
-# ``POST /v1/sessions/{id}/side_chats``; read back by ``list_related_chats``
-# (``omnigent/context/rollover.py``) for ``ChatSummary.start``.
-SIDE_CHAT_START_LABEL_KEY = "omnigent.side_chat.start"
 
 # Single-user / no-auth sentinel for the per-user pin key suffix, mirroring the
 # reserved ``"local"`` identity used elsewhere (see ``RESERVED_USER_LOCAL``).
@@ -171,7 +134,7 @@ _INSTANCE_SCOPED_LABEL_KEYS = frozenset(
 # fails loudly here.
 _SANDBOX_REPO_LABEL_KEY = "omnigent.sandbox.repo"
 # A person's Muse is one session: its marker and ``(user, tenant)`` key must never
-# ride along onto a fork or side chat, or the Muse lookup (newest first) would
+# ride along onto a fork, or the Muse lookup (newest first) would
 # return the fork as the person's Conversation. The literals mirror
 # ``omnigent.superchat.muse.MUSE_LABEL_KEY`` / ``MUSE_KEY_LABEL_KEY``.
 _MUSE_LABEL_KEYS = frozenset({"omnigent.superchat.muse", "omnigent.superchat.muse.key"})
@@ -734,8 +697,6 @@ class ConversationStore(ABC):
         pinned: bool = False,
         pinned_owner: str | None = None,
         title: str | None = None,
-        fork_source_id: str | None = None,
-        side_chat_parent_id: str | None = None,
     ) -> PagedList[Conversation]:
         """
         List conversations with cursor-based pagination.
@@ -847,16 +808,6 @@ class ConversationStore(ABC):
             Powers the ``(agent, title)`` child-session lookup in
             ``sys_session_send`` so the server can resolve the target
             in a single indexed query instead of fetching all children.
-        :param fork_source_id: When set, only return conversations whose
-            :data:`FORK_SOURCE_LABEL_KEY` label equals this value — forks
-            made from this session. ``None`` disables the filter. Powers
-            ``session_history``'s ``list_chats`` side-chat discovery; note
-            the label is only stamped when the fork source had a workspace
-            or bound native runner (see :data:`FORK_SOURCE_LABEL_KEY`), so
-            this is not a complete "every fork of X" index.
-        :param side_chat_parent_id: When set, only return conversations whose
-            :data:`SIDE_CHAT_PARENT_LABEL_KEY` label equals this value — the
-            Side Chats opened from this session. ``None`` disables the filter.
         :returns: A :class:`PagedList` of :class:`Conversation`
             objects.
         :raises omnigent.errors.StaleCursorError: If the ``after``/``before``
@@ -1801,7 +1752,6 @@ class ConversationStore(ABC):
         extra_labels: dict[str, str] | None = None,
         presentation_labels: dict[str, str] | None = None,
         up_to_response_id: str | None = None,
-        up_to_item_id: str | None = None,
         project_id: str | None = None,
         file_id_map: Mapping[str, str] | None = None,
         created_by: str | None = None,
@@ -1865,18 +1815,13 @@ class ConversationStore(ABC):
         :param override_terminal_launch_args_set: Whether the caller chose
             explicit launch args.
         :param extra_labels: Labels stamped on the fork AFTER copy/drop, so a
-            deliberate opt-in beats the always-drop rule (e.g. the side-chat
-            label).
+            deliberate opt-in beats the always-drop rule.
         :param presentation_labels: When not ``None``, replace the source's
             harness-presentation labels (``omnigent.ui`` /
             ``omnigent.wrapper``) on the clone with these. Used when the
             fork switches agents so the clone's UI mode matches the TARGET
             harness.
             ``None`` (default, same-agent fork) keeps the copied labels.
-        :param up_to_item_id: When set, copy only the items up to and including this item (by
-            position, so later items of the same turn, errors and notices are never copied) and
-            stamp :data:`SIDE_CHAT_COPIED_UNTIL_LABEL_KEY`. Takes precedence over
-            *up_to_response_id*.
         :param up_to_response_id: When set, copy only the items up to and
             including the last item of this response (by position), e.g.
             ``"resp_abc123"`` — a "fork from this response" truncation.

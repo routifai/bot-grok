@@ -1,10 +1,10 @@
 """A deterministic in-test ``routes:select`` service.
 
-Replaces the Databricks AI-Gateway ``task_v1`` router for the e2e routing CUJs.
+Replaces the Databricks AI-Gateway ``task_v1`` router for the routing tests.
 It speaks the exact wire contract :class:`~omnigent.server.smart_routing.ExternalRoutingClient`
 speaks — the ``omnigent.api.routing.v1`` protos, snake_case JSON, one
 ``route_selection`` entry plus a ``rationale`` — and reproduces the observed
-task_v1 behaviour the CUJ matrix in this directory is scored against:
+task_v1 behaviour the routing tests are scored against:
 
 * **Scenario inference from the arms present**, not the harness tags: Claude
   arms only → ``cc``, Codex arms only → ``codex``, both → ``both``.
@@ -22,8 +22,7 @@ task_v1 behaviour the CUJ matrix in this directory is scored against:
   deployment gets (:data:`NOT_ENABLED_MESSAGE`), which is a permanent
   condition rather than an outage.
 
-The rule table is :func:`decide`; it is the whole routing policy and is unit
-tested by ``test_mock_router.py``.
+The rule table is :func:`decide`; it is the whole routing policy.
 """
 
 from __future__ import annotations

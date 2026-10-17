@@ -15,11 +15,9 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from starlette.testclient import TestClient
 
-from omnigent.context.side_chat_seeds import wait_for_seed
 from omnigent.db.utils import builtin_agent_id
 from omnigent.entities import (
     Agent,
-    CompactionData,
     Conversation,
     ConversationItem,
     MessageData,
@@ -352,7 +350,7 @@ class _ConversationStore:
         )
 
     def append(self, conversation_id: str, items: list[Any]) -> None:
-        """Record an append call (used by the rollover side-chat seed)."""
+        """Record an append call."""
         self.appended.append((conversation_id, list(items)))
 
 
@@ -1229,72 +1227,6 @@ async def test_fork_switch_binds_target_agent_bundle() -> None:
     assert fork_call["agent_id"] != "087b7cb7ac30abf4debfaa578d052ec6"
 
 
-def _make_compaction_item(
-    item_id: str, *, last_item_id: str, summary: str = "prior summary", response_id: str = "resp_c"
-) -> ConversationItem:
-    """Build a compaction item for rollover side-chat seeding tests."""
-    return ConversationItem(
-        id=item_id,
-        type="compaction",
-        status="completed",
-        response_id=response_id,
-        created_at=1,
-        data=CompactionData(
-            summary=summary,
-            last_item_id=last_item_id,
-            model="test-model",
-            token_count=7,
-            compacted_messages=[
-                {
-                    "type": "message",
-                    "role": "assistant",
-                    "content": [{"type": "output_text", "text": summary}],
-                }
-            ],
-        ),
-    )
-
-
-def _fork_side_chat_and_wait_for_seed(conv_store: Any, source_id: str) -> Any:
-    """POST a side-chat fork, then wait for its seed (written after the response)."""
-    with TestClient(_build_app(conv_store)) as client:
-        resp = client.post(f"/v1/sessions/{source_id}/fork", json={"side_chat": True})
-        if resp.status_code == 201:
-            client.portal.call(wait_for_seed, resp.json()["id"])
-    return resp
-
-
-@pytest.mark.asyncio
-async def test_fork_side_chat_of_rollover_without_checkpoint_summarizes_now(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A side chat forked before the parent ever rolled over builds one seed now."""
-    from omnigent.context import rollover as rollover_module
-    from omnigent.context.rollover import SIDE_CHAT_SEED_HEADER
-
-    async def _fake_summarize_history(messages, *_args, **_kwargs):
-        del messages
-        return {"text": "FRESH SUMMARY", "token_count": 3}
-
-    monkeypatch.setattr(rollover_module, "summarize_history", _fake_summarize_history)
-
-    conv = _make_conversation(labels={"omnigent.context.mode": "rollover"})
-    items = [
-        _make_item("9980c8a9248139f14f4165e5d53088aa", "Hello", response_id="resp_1"),
-        _make_item("msg_2", "hi there", response_id="resp_1"),
-    ]
-    conv_store = _ConversationStore(
-        conversations={"e9f8f58523cec9a57d3bdf93be543e8c": conv},
-        items_by_conv={"e9f8f58523cec9a57d3bdf93be543e8c": items},
-    )
-    resp = _fork_side_chat_and_wait_for_seed(conv_store, "e9f8f58523cec9a57d3bdf93be543e8c")
-
-    assert resp.status_code == 201, f"got {resp.status_code}: {resp.text}"
-    assert len(conv_store.appended) == 1
-    _, new_items = conv_store.appended[0]
-    assert new_items[0].data.summary == f"{SIDE_CHAT_SEED_HEADER}\n\nFRESH SUMMARY"
-
-
 @pytest.mark.asyncio
 async def test_fork_switch_binds_session_scoped_target() -> None:
     """Switching to a session-scoped agent clones its bundle into the fork."""
@@ -1887,79 +1819,3 @@ def test_fork_attachment_check_honors_retained_history(
         json={"agent_id": "280d725b404d2915f9e9d6cccce91303", "up_to_response_id": cutoff},
     )
     assert response.status_code == expected_status, response.text
-
-
-@pytest.mark.asyncio
-async def test_fork_side_chat_seed_summarizes_on_the_sessions_reported_model(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A harness bundle names no top-level llm, so the seed uses the model the session runs on."""
-    import dataclasses
-
-    from omnigent.context import rollover as rollover_module
-
-    seen: dict[str, object] = {}
-
-    async def _fake_summarize_history(messages, *args, **kwargs):
-        del messages
-        seen["model"] = kwargs.get("model", args[1] if len(args) > 1 else None)
-        return {"text": "SUMMARY", "token_count": 3}
-
-    monkeypatch.setattr(rollover_module, "summarize_history", _fake_summarize_history)
-
-    conv = dataclasses.replace(
-        _make_conversation(labels={"omnigent.context.mode": "superside-chat"}),
-        reported_model="claude-haiku-4-5-20251001",
-    )
-    items = [
-        _make_item("9980c8a9248139f14f4165e5d53088aa", "Hello", response_id="resp_1"),
-        _make_item("msg_2", "hi there", response_id="resp_1"),
-    ]
-    conv_store = _ConversationStore(
-        conversations={"e9f8f58523cec9a57d3bdf93be543e8c": conv},
-        items_by_conv={"e9f8f58523cec9a57d3bdf93be543e8c": items},
-    )
-    resp = _fork_side_chat_and_wait_for_seed(conv_store, "e9f8f58523cec9a57d3bdf93be543e8c")
-
-    assert resp.status_code == 201, resp.text
-    assert seen["model"] == "claude-haiku-4-5-20251001"
-
-
-@pytest.mark.asyncio
-async def test_fork_side_chat_seed_uses_server_llm_when_no_runner_is_connected(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """With the parent's runner idle, the seed is summarized with the server's own llm."""
-    import types
-
-    from omnigent.context import rollover as rollover_module
-    from omnigent.spec.types import LLMConfig
-
-    seen: dict[str, object] = {}
-
-    async def _fake_summarize_history(messages, llm_client, model, *args, **kwargs):
-        del messages, args, kwargs
-        seen["model"] = model
-        seen["has_client"] = llm_client is not None
-        return {"text": "SUMMARY", "token_count": 3}
-
-    monkeypatch.setattr(rollover_module, "summarize_history", _fake_summarize_history)
-    server_llm = LLMConfig(
-        model="anthropic/claude-haiku-4-5-20251001",
-        connection={"api_key": "k", "base_url": "https://api.anthropic.com/v1"},
-    )
-    monkeypatch.setattr("omnigent.runtime.get_caps", lambda: types.SimpleNamespace(llm=server_llm))
-
-    conv = _make_conversation(labels={"omnigent.context.mode": "superside-chat"})
-    items = [
-        _make_item("9980c8a9248139f14f4165e5d53088aa", "Hello", response_id="resp_1"),
-        _make_item("msg_2", "hi there", response_id="resp_1"),
-    ]
-    conv_store = _ConversationStore(
-        conversations={"e9f8f58523cec9a57d3bdf93be543e8c": conv},
-        items_by_conv={"e9f8f58523cec9a57d3bdf93be543e8c": items},
-    )
-    resp = _fork_side_chat_and_wait_for_seed(conv_store, "e9f8f58523cec9a57d3bdf93be543e8c")
-
-    assert resp.status_code == 201, resp.text
-    assert seen == {"model": "anthropic/claude-haiku-4-5-20251001", "has_client": True}

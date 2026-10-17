@@ -1597,7 +1597,7 @@ def create_app(
                 app_inst.state.managed_sandbox_reaper = managed_sandbox_reaper
                 await managed_sandbox_reaper.start()
 
-        # Super Chat feature background jobs (Side Chat archive sweeper, quiet moment, ...).
+        # Super Chat feature background jobs (quiet moment, ...).
         await start_feature_jobs(app_inst)
 
         # Memory upkeep hourly sweep (rollover/SUPERSIDE-CHAT-PLAN.md S6):

@@ -1,10 +1,7 @@
-"""Rollover: thresholds, the checkpoint header and summarizer instruction,
-and the Omnigent-written checkpoint used to seed side chats.
+"""Rollover: thresholds, the checkpoint header and summarizer instruction.
 
 In a rollover session each native CLI compacts its own context at
 :func:`resolve_rollover_threshold` (see ``rollover/README.md``).
-:func:`build_side_chat_seed` is the one place Omnigent writes a checkpoint
-itself: a side chat starts from the parent's summary plus recent turns.
 """
 
 from __future__ import annotations
@@ -30,27 +27,14 @@ from omnigent.context.state_file import (
     split_journal,
 )
 from omnigent.context.tool_digest import digest_tool_items
-from omnigent.entities import (
-    NON_CONTENT_ITEM_TYPES,
-    CompactionData,
-    Conversation,
-    ConversationItem,
-    MessageData,
-)
+from omnigent.entities import CompactionData, ConversationItem, MessageData
 from omnigent.runtime.compaction import count_tokens, summarize_history
 from omnigent.server.auth import local_single_user_enabled
 from omnigent.server.routes._sessions.common import (
     _LAST_CONTEXT_TOKENS_LABEL_KEY,
     _LAST_CONTEXT_WINDOW_LABEL_KEY,
 )
-from omnigent.stores.conversation_store import (
-    SIDE_CHAT_COPIED_UNTIL_LABEL_KEY,
-    SIDE_CHAT_LABEL_KEY,
-    SIDE_CHAT_START_LABEL_KEY,
-    ConversationStore,
-    side_chat_parent_id,
-)
-from omnigent.superchat.side_chats.chats import SIDE_CHAT_START_WITH_CONTEXT
+from omnigent.stores.conversation_store import ConversationStore
 
 # A turn in flight, read from the durable ``Conversation.live_status`` (no runner probe).
 _MID_TURN_LIVE_STATUSES = ("running", "waiting")
@@ -122,17 +106,6 @@ def checkpoint_header(cause: CheckpointCause = "size") -> str:
 CHECKPOINT_HEADER = checkpoint_header("size")
 CHECKPOINT_HEADERS = tuple(checkpoint_header(cause) for cause in _CHECKPOINT_REASONS)
 
-# A side chat's seed reuses the checkpoint summary but not its framing: the
-# model must know it is a separate chat, not the conversation that rolled over.
-# It keeps the marker so every seed is recognised by :func:`is_checkpoint_text`.
-SIDE_CHAT_SEED_HEADER = (
-    f"{CHECKPOINT_MARKER} "
-    "[Side chat opened from the person's main Conversation. Below is a summary "
-    "of that Conversation and its recent turns, for context. This side chat is "
-    "separate: it does not send anything back to the main Conversation.]"
-)
-
-
 # A reset (``POST /sessions/{id}/reset``) is a checkpoint with no summary: the person cleared
 # the conversation. Stored as a ``compaction`` item whose ``response_id`` starts with
 # RESET_RESPONSE_PREFIX; the marker keeps it a checkpoint for :func:`is_checkpoint_text`.
@@ -141,7 +114,7 @@ RESET_HEADER = (
     f"{CHECKPOINT_MARKER} "
     "The person cleared this conversation. Earlier turns are not part of your context: start "
     "fresh and do not bring them up unless the person asks. Memory, standing instructions, "
-    "files, side chats and goals are unchanged."
+    "files and goals are unchanged."
 )
 RESET_ACK = "Understood. Starting fresh."
 
@@ -169,25 +142,19 @@ def build_reset_item(last_item_id: str, *, model: str | None) -> CompactionData:
 
 
 def is_checkpoint_text(text: str) -> bool:
-    """:returns: Whether *text* opens a rollover or side-chat seed checkpoint."""
+    """:returns: Whether *text* opens a rollover or reset checkpoint."""
     return text.startswith(CHECKPOINT_MARKER)
 
 
-# Seeds stored before the side-chat header carried the marker start with it bare.
-_SEED_HEADERS = (
-    RESET_HEADER,
-    SIDE_CHAT_SEED_HEADER,
-    SIDE_CHAT_SEED_HEADER.removeprefix(f"{CHECKPOINT_MARKER} "),
-    *CHECKPOINT_HEADERS,
-)
+_CHECKPOINT_FRAMINGS = (RESET_HEADER, *CHECKPOINT_HEADERS)
 # A heading that opens a section listing tools or capabilities: the person never reads it.
 _TOOLS_SECTION_TITLE = re.compile(r"\b(technical|tools?|capabilit)", re.IGNORECASE)
 _HEADING = re.compile(r"^#{1,6}\s+(.*)$")
 
 
-def _strip_seed_header(summary: str) -> str:
-    """:returns: *summary* without its model-facing seed or checkpoint header."""
-    for header in _SEED_HEADERS:
+def strip_checkpoint_header(summary: str) -> str:
+    """:returns: *summary* without its model-facing checkpoint header."""
+    for header in _CHECKPOINT_FRAMINGS:
         if summary.startswith(header):
             return summary.removeprefix(header).lstrip()
     return summary
@@ -195,19 +162,19 @@ def _strip_seed_header(summary: str) -> str:
 
 def person_facing_summary(summary: str | None) -> str | None:
     """
-    A seed summary as the person should read it.
+    A checkpoint summary as the person should read it.
 
     Drops the model-facing framing header, a "Context checkpoint" title and any section
     whose heading lists tools or capabilities; the rest stays markdown.
 
-    :param summary: A stored checkpoint or seed summary, or ``None``.
+    :param summary: A stored checkpoint summary, or ``None``.
     :returns: The readable body, or ``None`` when *summary* is empty or nothing remains.
     """
     if not summary:
         return None
     kept: list[str] = []
     skipping = False
-    for line in _strip_seed_header(summary).splitlines():
+    for line in strip_checkpoint_header(summary).splitlines():
         heading = _HEADING.match(line.strip())
         if heading:
             title = heading.group(1)
@@ -531,7 +498,7 @@ def _transcript_message(
     lines: list[str] = []
     if previous_summary:
         # Stored summaries carry the header; feed back only the summary itself.
-        state = _strip_seed_header(previous_summary)
+        state = strip_checkpoint_header(previous_summary)
         lines += [_SUMMARY_REQUEST_TEXT, "", state, ""]
         for first, second in likely_duplicates(state):
             # A pointer only: the model decides whether the two are one thing.
@@ -670,7 +637,7 @@ async def build_rollover_item(
         raise ValueError("rollover summarizer returned no summary text")
     today = f"{datetime.now(UTC):%Y-%m-%d}"
     reconciled = reconcile(
-        _strip_seed_header(previous_summary) if previous_summary else None,
+        strip_checkpoint_header(previous_summary) if previous_summary else None,
         state_text,
         closes=pending_closes,
         today=today,
@@ -701,217 +668,15 @@ async def build_rollover_item(
     )
 
 
-def _side_chat_framed(seed: CompactionData) -> CompactionData:
-    """Swap the rollover checkpoint header for the side chat's own framing."""
-
-    def swap(text: str) -> str:
-        for header in CHECKPOINT_HEADERS:
-            if text.startswith(header):
-                return SIDE_CHAT_SEED_HEADER + text.removeprefix(header)
-        return text
-
-    messages = seed.compacted_messages
-    if messages:
-        messages = [dict(m) for m in messages]
-        first = messages[0]
-        content = first.get("content")
-        if first.get("role") == "user" and isinstance(content, list):
-            first["content"] = [
-                {**b, "text": swap(b["text"])}
-                if isinstance(b, dict) and isinstance(b.get("text"), str)
-                else b
-                for b in content
-            ]
-    return seed.model_copy(
-        update={"summary": swap(seed.summary or ""), "compacted_messages": messages}
-    )
-
-
-def _without_opening_request(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """*items* up to the parent's last finished reply.
-
-    A Side Chat opened mid-turn must not inherit (and act on) the request that is opening it.
-    With no reply at all yet, it stops before the last user message too, unless that message
-    is all there is (keep it rather than seed from nothing).
-    """
-    last_reply_index = next(
-        (
-            i
-            for i in range(len(items) - 1, -1, -1)
-            if items[i].get("type") == "message" and items[i].get("role") == "assistant"
-        ),
-        None,
-    )
-    if last_reply_index is not None:
-        return items[: last_reply_index + 1]
-    last_user_index = next(
-        (
-            i
-            for i in range(len(items) - 1, -1, -1)
-            if items[i].get("type") == "message" and items[i].get("role") == "user"
-        ),
-        None,
-    )
-    if last_user_index is not None and last_user_index > 0:
-        return items[:last_user_index]
-    return items
-
-
-async def _side_chat_checkpoint(
-    items: list[dict[str, Any]],
-    *,
-    keep_tokens: int = DEFAULT_KEEP_TOKENS,
-    model: str,
-    llm_client: Any = None,
-    connection: dict[str, str] | None = None,
-    runner_client: Any | None = None,
-    conversation_id: str | None = None,
-    anchor_item_id: str | None = None,
-) -> CompactionData:
-    """
-    Build the seed compaction item for a rollover side chat, Muse-style.
-
-    A side chat forked from a rollover session stays a rollover session,
-    but must not inherit the parent's full transcript — its CLI opens from
-    exactly one checkpoint: the parent's latest summary (built now, over the
-    whole record, if the parent never rolled over) plus the recent tail.
-
-    :param items: The parent's full chronological record, as flat item
-        dicts. Must be non-empty.
-    :param keep_tokens: Token budget for the kept tail.
-    :param model: LLM model string for the summarization call, when one is
-        needed.
-    :param llm_client: LLM client for direct summarization. Ignored when
-        *runner_client* is set.
-    :param connection: Per-provider connection overrides, forwarded as-is.
-    :param runner_client: Preferred path — delegates to the runner's own
-        credentials, as in :func:`build_rollover_item`.
-    :param conversation_id: The PARENT session's id (the summarization call
-        runs against the parent's runner binding, not the not-yet-created
-        fork's).
-    :param anchor_item_id: A Fork's anchor (ADR 0010): the record is cut right after this
-        item, so the seed knows the parent only up to and including it. The anchor was
-        chosen on purpose, so the mid-turn trim below does not apply.
-    :returns: A :class:`CompactionData` seed, ready to post as the fork's
-        own ``compaction`` item.
-    :raises ValueError: If *items* is empty, or *anchor_item_id* is not in it.
-    """
-    # Raw session items include lifecycle entries the model never saw; keep the
-    # parent's checkpoints, which the seed builds on.
-    items = [
-        item
-        for item in items
-        if item.get("type") == "compaction" or item.get("type") not in NON_CONTENT_ITEM_TYPES
-    ]
-    if not items:
-        raise ValueError("build_side_chat_seed requires a non-empty parent record")
-    if anchor_item_id is not None:
-        anchor_index = next(
-            (i for i, item in enumerate(items) if item.get("id") == anchor_item_id), None
-        )
-        if anchor_index is None:
-            raise ValueError(f"fork anchor {anchor_item_id!r} is not in the parent record")
-        items = items[: anchor_index + 1]
-    # A reset forgot everything before it: seed from the reset onwards only.
-    reset_index = next((i for i in range(len(items) - 1, -1, -1) if is_reset_item(items[i])), None)
-    if reset_index is not None:
-        items = items[reset_index:]
-    if anchor_item_id is None:
-        items = _without_opening_request(items)
-
-    last_compaction_index = next(
-        (i for i in range(len(items) - 1, -1, -1) if items[i].get("type") == "compaction"),
-        None,
-    )
-    if last_compaction_index is None:
-        return await build_rollover_item(
-            items,
-            previous_summary=None,
-            keep_tokens=keep_tokens,
-            model=model,
-            llm_client=llm_client,
-            connection=connection,
-            runner_client=runner_client,
-            conversation_id=conversation_id,
-        )
-
-    checkpoint = items[last_compaction_index]
-    items_since = items[last_compaction_index + 1 :]
-    if not items_since:
-        # Nothing new since the parent's last checkpoint — reuse it verbatim
-        # rather than re-summarizing zero material.
-        return CompactionData(
-            summary=checkpoint.get("summary", ""),
-            last_item_id=checkpoint.get("last_item_id") or items[-1]["id"],
-            model=checkpoint.get("model"),
-            token_count=checkpoint.get("token_count", 0),
-            compacted_messages=checkpoint.get("compacted_messages"),
-        )
-    return await build_rollover_item(
-        items_since,
-        previous_summary=checkpoint.get("summary"),
-        keep_tokens=keep_tokens,
-        model=model,
-        llm_client=llm_client,
-        connection=connection,
-        runner_client=runner_client,
-        conversation_id=conversation_id,
-    )
-
-
-async def build_side_chat_seed(
-    items: list[dict[str, Any]],
-    *,
-    keep_tokens: int = DEFAULT_KEEP_TOKENS,
-    model: str,
-    llm_client: Any = None,
-    connection: dict[str, str] | None = None,
-    runner_client: Any | None = None,
-    conversation_id: str | None = None,
-    anchor_item_id: str | None = None,
-) -> CompactionData:
-    """:func:`_side_chat_checkpoint` with the side chat's own framing header.
-
-    Takes the same arguments; the checkpoint's "this conversation grew past its
-    limit" header would make the side chat believe it IS the main Conversation.
-    """
-    return _side_chat_framed(
-        await _side_chat_checkpoint(
-            items,
-            keep_tokens=keep_tokens,
-            model=model,
-            llm_client=llm_client,
-            connection=connection,
-            runner_client=runner_client,
-            conversation_id=conversation_id,
-            anchor_item_id=anchor_item_id,
-        )
-    )
-
-
 # ---------------------------------------------------------------------------
-# Related chats: Muse-style chat.list for session_history's list_chats
+# Related chats: what session_history's list_chats returns
 # ---------------------------------------------------------------------------
 
-# Hard cap on the side chats / forks ``list_related_chats`` returns for one session. No
-# consumer pages this list (sidebar, forks list, transcript ``forks[]``, the membership check
-# and the activity scan all want the whole family), so it is high enough to be effectively
-# "all" for one person while keeping a single read bounded. The parent chat, when there is
-# one, comes on top of it.
-RELATED_CHATS_MAX = 200
-# Rows read per store page while collecting a session's children (links are paged through
-# with a cursor, so a non-side-chat fork never hides a side chat behind it).
-_RELATED_CHATS_PAGE = 100
 _RELATED_CHAT_PREVIEW_MAX_CHARS = 150
 
 
 def _related_chat_preview(items: list[ConversationItem]) -> str | None:
-    """Single-line text preview from newest-first message items of one chat.
-
-    Mirrors the sub-agent rail's ``_latest_message_preview`` but kept local
-    to this module — tools/builtins and the server route both need it and
-    neither should import the other's helpers.
-    """
+    """Single-line text preview from newest-first message items of one chat."""
     for item in items:
         if not isinstance(item.data, MessageData) or item.data.is_meta:
             continue
@@ -931,225 +696,56 @@ def _related_chat_preview(items: list[ConversationItem]) -> str | None:
     return None
 
 
-def side_chat_seed_checkpoint(
-    conv_store: ConversationStore, conversation: Conversation
-) -> tuple[str | None, str | None]:
-    """``(summary, item_id)`` of a ``with_context`` Side Chat's seed, else ``(None, None)``.
-
-    One items read, limited to the first ``compaction`` item — the seed
-    ``build_side_chat_seed`` appends right after the fork's deep copy — so this
-    stays cheap per related chat. The item id marks where the chat's own
-    messages begin (everything before it is the copied parent record).
-    """
-    if conversation.labels.get(SIDE_CHAT_START_LABEL_KEY) != SIDE_CHAT_START_WITH_CONTEXT:
-        return None, None
-    # The deep copy carries the parent's own compactions BEFORE the seed, so the
-    # first compaction is not the seed: pick the one stamped for this chat, falling
-    # back to the first for seeds written without that response id.
-    seed_response_id = f"rollover_seed_{conversation.id}"
-    first = None
-    item = None
-    after: str | None = None
-    while item is None:
-        page = conv_store.list_items(
-            conversation.id, limit=200, after=after, order="asc", type="compaction"
-        )
-        for candidate in page.data:
-            if first is None:
-                first = candidate
-            if candidate.response_id == seed_response_id:
-                item = candidate
-                break
-        if not page.has_more or not page.data:
-            break
-        after = page.last_id
-    if item is None:
-        # A Fork whose seed was not written still knows where its copy ends (ADR 0010).
-        copied_until = conversation.labels.get(SIDE_CHAT_COPIED_UNTIL_LABEL_KEY)
-        if copied_until:
-            return None, copied_until
-    item = item or first
-    if item is None:
-        return None, None
-    summary = item.data.summary if isinstance(item.data, CompactionData) else None
-    return summary, item.id
-
-
-def _chat_summary(
-    conv_store: ConversationStore,
-    conversation: Conversation,
-    preview: str | None,
-    fork_count: int = 0,
-    fork_extras: Mapping[str, Any] | None = None,
-) -> dict[str, Any]:
-    from omnigent.superchat.lineage import open_project
-    from omnigent.superchat.side_chats.forks import (
-        fork_anchor_id,
-        fork_parent_id,
-        fork_state,
-        fork_summary,
-    )
-
-    seed_summary, seed_item_id = side_chat_seed_checkpoint(conv_store, conversation)
-    return {
-        "id": conversation.id,
-        "title": conversation.title,
-        "created_at": conversation.created_at,
-        "updated_at": conversation.updated_at,
-        "last_message_preview": preview,
-        "archived": conversation.archived,
-        # How it was opened (``ChatSummary.start``, docs/super-chat/WIRING.md);
-        # ``None`` for the parent entry (the Super Chat itself never carries
-        # the label) or a Side Chat from before this label existed.
-        "start": conversation.labels.get(SIDE_CHAT_START_LABEL_KEY),
-        "summary": seed_summary,
-        "summary_body": person_facing_summary(seed_summary),
-        "seed_item_id": seed_item_id,
-        "live": conversation.live_status in _MID_TURN_LIVE_STATUSES,
-        # A Fork's anchor (ADR 0010), and how many forks hang off this chat's messages.
-        "anchor_item_id": fork_anchor_id(conversation.labels),
-        "fork_count": fork_count,
-        # Fork rows only (null otherwise): the sidebar / "All forks" list reads these without
-        # loading the Conversation transcript. ``state`` and ``replies`` match the transcript's.
-        "fork_state": None,
-        "fork_summary": None,
-        "fork_parent_id": None,
-        "anchor_snippet": None,
-        "project": open_project(conversation),
-        "replies": None,
-        **(
-            {
-                "fork_state": fork_state(conversation),
-                "fork_summary": fork_summary(conversation),
-                "fork_parent_id": fork_parent_id(conversation.labels),
-                **(fork_extras or {}),
-            }
-            if fork_anchor_id(conversation.labels) is not None
-            else {}
-        ),
-    }
-
-
 def list_related_chats(
-    conv_store: ConversationStore,
-    conversation_id: str,
-    *,
-    limit: int = RELATED_CHATS_MAX,
+    conv_store: ConversationStore, conversation_id: str
 ) -> list[dict[str, Any]]:
     """
-    The side chats related to *conversation_id* — Muse's ``chat.list`` for
-    one session: side chats forked FROM it, plus its own parent when it is
-    itself a side chat.
+    The chats *conversation_id* may read besides itself (``session_history``'s ``list_chats``).
 
-    Scoped to the SAME owner as *conversation_id*, resolved from the store
-    (never an argument) exactly like ``resolve_memory_user`` scopes memory —
-    a session merely shared with another user never surfaces as "related"
-    to them, and a side chat opened before
-    :data:`SIDE_CHAT_PARENT_LABEL_KEY` whose source lost its workspace-derived
-    fork label is simply not found.
+    A scheduled or ad-hoc Helper (Study, daily note) works for its parent chat and may read it;
+    every other session, an ordinary Sub-agent included, gets ``[]``. Scoped to the SAME owner
+    as *conversation_id*, resolved from the store (never an argument) exactly like
+    ``resolve_memory_user`` scopes memory.
 
     :param conv_store: Store to query.
-    :param conversation_id: The calling (source) session id.
-    :param limit: Maximum side chats forked from the session (newest-updated first); its
-        parent is returned in addition, so a long family never loses its way back up.
-    :returns: ``[{"id", "title", "created_at", "updated_at",
-        "last_message_preview", "archived", "start", "summary", "summary_body", "seed_item_id",
-        "live", "anchor_item_id", "fork_count", "fork_state", "fork_summary", "fork_parent_id",
-        "anchor_snippet", "project", "replies"},
-        ...]`` (all but ``project`` are null on a non-fork row), newest-updated child first,
-        parent last; ``[]`` when *conversation_id* does not exist.
+    :param conversation_id: The calling session id.
+    :returns: ``[{"id", "title", "created_at", "updated_at", "last_message_preview",
+        "archived", "live", "project"}]``; ``[]`` when *conversation_id* does not exist.
     """
-    from omnigent.superchat.side_chats.forks import (
-        REPLIES_SCANNED,
-        anchor_snippets,
-        fork_anchor_id,
-        fork_counts,
-        fork_replies,
-        list_forks,
-    )
+    from omnigent.superchat.lineage import open_project
 
     caller = conv_store.get_conversation(conversation_id)
-    if caller is None:
+    if caller is None or not caller.parent_conversation_id:
+        return []
+    if not (
+        SCHEDULED_HELPER_LABEL_KEY in caller.labels or ADHOC_HELPER_LABEL_KEY in caller.labels
+    ):
+        return []
+    parent = conv_store.get_conversation(caller.parent_conversation_id)
+    if parent is None:
         return []
     owner_id = conv_store.get_session_owner(conversation_id)
-
-    def same_owner(other_id: str) -> bool:
-        other_owner_id = conv_store.get_session_owner(other_id)
-        # A session with no owner grant reads back as ``None`` regardless of
-        # who it actually belongs to. On a single-user server (no permission
-        # store ever writing grants) every session reads back ``None``, and
-        # they are all the one user's — that's the only case two ``None``s
-        # may be treated as the same owner. Otherwise two unrelated sessions
-        # that both happen to lack an owner grant must never match.
-        if owner_id is None and other_owner_id is None:
-            return local_single_user_enabled()
-        return other_owner_id == owner_id
-
-    related: list[Conversation] = []
-    # Side Chats opened before SIDE_CHAT_PARENT_LABEL_KEY only carry the fork label.
-    children: dict[str, Conversation] = {}
-    for link in ({"side_chat_parent_id": conversation_id}, {"fork_source_id": conversation_id}):
-        after: str | None = None
-        while True:
-            page = conv_store.list_conversations(
-                limit=_RELATED_CHATS_PAGE,
-                after=after,
-                kind="default",
-                order="desc",
-                sort_by="updated_at",
-                # Archived Side Chats stay readable; the ``archived`` flag lets a UI hide them.
-                include_archived=True,
-                **link,
-            )
-            children.update((child.id, child) for child in page.data)
-            if not page.has_more or not page.data or len(children) >= limit * 2:
-                break
-            after = page.data[-1].id
-    side_chats = [
-        child
-        for child in sorted(children.values(), key=lambda c: c.updated_at, reverse=True)
-        if SIDE_CHAT_LABEL_KEY in child.labels and same_owner(child.id)
-    ]
-    related.extend(side_chats[:limit])
-
-    parent_id = side_chat_parent_id(caller.labels)
-    if parent_id:
-        parent = conv_store.get_conversation(parent_id)
-        if parent is not None and same_owner(parent.id):
-            related.append(parent)
-
-    # A scheduled or ad-hoc Helper (Study, daily note) works for its parent chat and may
-    # read it; an ordinary Sub-agent stays confined to its Brief.
-    if (
-        SCHEDULED_HELPER_LABEL_KEY in caller.labels or ADHOC_HELPER_LABEL_KEY in caller.labels
-    ) and caller.parent_conversation_id:
-        parent = conv_store.get_conversation(caller.parent_conversation_id)
-        if parent is not None and same_owner(parent.id):
-            related.append(parent)
-
-    ids = [conversation.id for conversation in related]
-    previews_by_id = conv_store.list_latest_message_items_for_conversations(ids, 10)
-    # The Super Chat's own children are all its forks; from a Side Chat, read the family's.
-    family_root = side_chat_parent_id(caller.labels)
-    counts = fork_counts(list_forks(conv_store, family_root) if family_root else children.values())
-    # Fork rows: replies and anchor snippets, each one batched read for all forks.
-    fork_rows = [c for c in related if fork_anchor_id(c.labels) is not None]
-    latest = conv_store.list_latest_message_items_for_conversations(
-        [c.id for c in fork_rows], REPLIES_SCANNED
-    )
-    snippets = anchor_snippets(conv_store, fork_rows)
+    parent_owner_id = conv_store.get_session_owner(parent.id)
+    # A session with no owner grant reads back as ``None`` regardless of who it belongs to.
+    # On a single-user server (no permission store ever writing grants) every session reads
+    # back ``None`` and they are all the one user's; otherwise two ``None``s never match.
+    if owner_id is None and parent_owner_id is None:
+        if not local_single_user_enabled():
+            return []
+    elif owner_id != parent_owner_id:
+        return []
+    previews = conv_store.list_latest_message_items_for_conversations([parent.id], 10)
     return [
-        _chat_summary(
-            conv_store,
-            conversation,
-            _related_chat_preview(previews_by_id.get(conversation.id, [])),
-            counts.get(conversation.id, 0),
-            {
-                "replies": fork_replies(latest.get(conversation.id, []), conversation),
-                "anchor_snippet": snippets.get(conversation.id),
-            },
-        )
-        for conversation in related
+        {
+            "id": parent.id,
+            "title": parent.title,
+            "created_at": parent.created_at,
+            "updated_at": parent.updated_at,
+            "last_message_preview": _related_chat_preview(previews.get(parent.id, [])),
+            "archived": parent.archived,
+            "live": parent.live_status in _MID_TURN_LIVE_STATUSES,
+            "project": open_project(parent),
+        }
     ]
 
 

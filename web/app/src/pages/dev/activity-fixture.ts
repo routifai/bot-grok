@@ -185,7 +185,7 @@ export const INITIAL_ACTIVITIES: Activity[] = [
   {
     id: "act-turn-cancelled",
     kind: "turn",
-    source: "side_chat",
+    source: "turn",
     chatId: "conv-1",
     title: "Pull last quarter's branch KPIs",
     outcome: null,

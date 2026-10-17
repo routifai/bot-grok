@@ -216,7 +216,7 @@ async def test_list_chats_via_rest() -> None:
         assert request.url.path == f"/v1/sessions/{CONV}/related_chats"
         return httpx.Response(
             200,
-            json={"data": [{"id": "conv_side_1", "title": "Side chat"}]},
+            json={"data": [{"id": "conv_main_1", "title": "Main chat"}]},
         )
 
     client = _client(handler)
@@ -228,7 +228,7 @@ async def test_list_chats_via_rest() -> None:
         )
     finally:
         await client.aclose()
-    assert result["chats"] == [{"id": "conv_side_1", "title": "Side chat"}]
+    assert result["chats"] == [{"id": "conv_main_1", "title": "Main chat"}]
 
 
 @pytest.mark.asyncio
@@ -253,7 +253,7 @@ async def test_list_chats_via_rest_reports_http_errors() -> None:
 
 @pytest.mark.asyncio
 async def test_read_with_chat_id_targets_the_related_chat() -> None:
-    other_chat = "conv_side_1"
+    other_chat = "conv_main_1"
     seen_paths: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -262,7 +262,7 @@ async def test_read_with_chat_id_targets_the_related_chat() -> None:
             return httpx.Response(200, json={"data": [{"id": other_chat}]})
         assert request.url.path == f"/v1/sessions/{other_chat}/items"
         return httpx.Response(
-            200, json={"data": [_item("1", "user", "side chat question")], "has_more": False}
+            200, json={"data": [_item("1", "user", "main chat question")], "has_more": False}
         )
 
     client = _client(handler)
@@ -276,7 +276,7 @@ async def test_read_with_chat_id_targets_the_related_chat() -> None:
         )
     finally:
         await client.aclose()
-    assert [m["content"] for m in result["turns"][0]["messages"]] == ["side chat question"]
+    assert [m["content"] for m in result["turns"][0]["messages"]] == ["main chat question"]
     assert f"/v1/sessions/{CONV}/related_chats" in seen_paths
 
 
@@ -306,7 +306,7 @@ async def test_read_with_own_id_as_chat_id_skips_the_related_chats_lookup() -> N
 async def test_read_with_unrelated_chat_id_is_denied() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == f"/v1/sessions/{CONV}/related_chats"
-        return httpx.Response(200, json={"data": [{"id": "conv_side_1"}]})
+        return httpx.Response(200, json={"data": [{"id": "conv_main_1"}]})
 
     client = _client(handler)
     try:
@@ -324,7 +324,7 @@ async def test_read_with_unrelated_chat_id_is_denied() -> None:
 
 @pytest.mark.asyncio
 async def test_search_with_chat_id_targets_the_related_chat() -> None:
-    other_chat = "conv_side_1"
+    other_chat = "conv_main_1"
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == f"/v1/sessions/{CONV}/related_chats":

@@ -2008,23 +2008,18 @@ class SessionProject(BaseModel):
 class SessionSuperchat(BaseModel):
     """Where a session sits in a Super Chat family.
 
-    :param kind: ``"super"``, ``"side"``, ``"helper"``, or ``None``.
+    :param kind: ``"super"``, ``"helper"``, or ``None``.
     :param root_id: The family's Super Chat.
-    :param parent_id: A Side Chat's Super Chat (a Fork's: the chat holding its anchor,
-        which for a fork of a fork is that fork), or a Helper's direct parent.
-    :param seed_item_id: The item a with-context Side Chat's own messages start after.
-    :param anchor_item_id: A Fork's anchor: the message it started from (ADR 0010).
+    :param parent_id: A Helper's direct parent.
     :param project: The Project the session has open, or ``None``.
     :param folder: The working directory relative to the workspace, e.g. ``"reports/q3"``;
         ``None`` at the workspace root.
     :param workspace_chosen: The person chose this folder themselves (the Muse keeps it).
     """
 
-    kind: Literal["super", "side", "helper"] | None = None
+    kind: Literal["super", "helper"] | None = None
     root_id: str | None = None
     parent_id: str | None = None
-    seed_item_id: str | None = None
-    anchor_item_id: str | None = None
     project: SessionProject | None = None
     folder: str | None = None
     workspace_chosen: bool = False
@@ -2577,15 +2572,6 @@ class SessionForkRequest(BaseModel):
     host_type: Literal["external", "managed"] = "external"
     sandbox_provider: str | None = None
     workspace: str | None = None
-    # Marks the fork as a side chat: it is stamped with the side-chat label so
-    # it is hidden from the left sidebar (it surfaces only as a Workspace-rail
-    # side-chat tab). The fork otherwise behaves normally (its own runner).
-    side_chat: bool = False
-    # A Fork's anchor (ADR 0010): a rollover side chat's seed ends at this item
-    # of the source instead of at its last reply. Only with ``side_chat``; set by
-    # ``POST /sessions/{id}/side_chats``, which validates it.
-    side_chat_anchor_item_id: str | None = None
-
     model_config = ConfigDict(extra="forbid")
 
     @model_validator(mode="after")
@@ -2612,8 +2598,6 @@ class SessionForkRequest(BaseModel):
         # at module scope would risk import cycles.
         from omnigent.server.managed_hosts import parse_repo_workspace
 
-        if self.side_chat_anchor_item_id is not None and not self.side_chat:
-            raise ValueError("side_chat_anchor_item_id only applies to a side_chat fork")
         if self.host_type == "managed":
             if self.workspace is not None:
                 try:
@@ -2635,79 +2619,6 @@ class SessionForkRequest(BaseModel):
                 "fork picks its directory when it binds a host"
             )
         return self
-
-
-class SideChatOpenRequest(BaseModel):
-    """
-    Request body for ``POST /v1/sessions/{id}/side_chats``.
-
-    Opens a Side Chat branched from a superside-chat Super Chat — the same
-    operation the model-facing ``side_chat_open`` tool performs (see
-    ``omnigent/superchat/side_chats/chats.py``). Refused unless the target session is
-    itself the Super Chat (never a Side Chat, never a Sub-agent).
-
-    :param start: ``"with_context"`` forks the Super Chat with a seeded
-        checkpoint summary; ``"blank"`` creates a fresh top-level session
-        carrying only the discovery labels.
-    :param title: Optional title for the new Side Chat. ``None`` titles it
-        from ``first_message`` (then a short model-written title replaces that
-        in the background), or leaves it untitled until its first message.
-    :param first_message: Optional first user message, posted to the new
-        Side Chat once it exists — after its seed when it starts
-        ``"with_context"``, so then after this request has answered.
-    :param anchor_item_id: Opens a Fork (ADR 0010): a visible user or assistant
-        message of the chat this is posted to (the Super Chat, or a fork of it).
-        The fork knows that chat only up to and including this message. Requires
-        ``start: "with_context"``.
-    """
-
-    start: Literal["with_context", "blank"]
-    title: str | None = Field(default=None, max_length=USER_SESSION_TITLE_MAX_CHARS)
-    first_message: str | None = None
-    anchor_item_id: str | None = None
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class SideChatOpenResponse(BaseModel):
-    """
-    Response body for ``POST /v1/sessions/{id}/side_chats``.
-
-    :param conversation_id: The new Side Chat's session id.
-    :param title: Its actual title — the caller's own, or the one the
-        server derived.
-    :param start: Echoes the request's ``start``.
-    :param first_message_error: Set when the Side Chat was created but its
-        ``first_message`` could not be delivered, after the server's own bounded retry;
-        the caller may resend it. Never set for a message sent after the response
-        (``"with_context"``): that one shows as unanswered instead.
-    :param first_message_error_code: The failure's code: the events route's error code
-        (e.g. ``runner_unavailable``, ``invalid_input``) or ``transport_error``.
-    :param anchor_item_id: A Fork's anchor (echoes the request), else ``None``.
-    :param parent_id: A Fork's parent: the chat holding its anchor (the Super Chat, or
-        the fork it was forked from), else ``None``.
-    """
-
-    conversation_id: str
-    title: str | None = None
-    start: Literal["with_context", "blank"]
-    first_message_error: str | None = None
-    first_message_error_code: str | None = None
-    anchor_item_id: str | None = None
-    parent_id: str | None = None
-
-
-class ForkAddRequest(BaseModel):
-    """
-    Request body for ``POST /v1/sessions/{fork_id}/add_to_conversation``.
-
-    :param summary: The one line to add under the fork's anchor. ``None`` lets
-        the engine write it from the fork.
-    """
-
-    summary: str | None = Field(default=None, max_length=500)
-
-    model_config = ConfigDict(extra="forbid")
 
 
 class ReadStatePutRequest(BaseModel):

@@ -14,7 +14,6 @@ from omnigent.context.rollover import (
     MIN_ROLLOVER_THRESHOLD_TOKENS,
     SUMMARIZER_DATE_PLACEHOLDER,
     build_rollover_item,
-    build_side_chat_seed,
     is_checkpoint_text,
     person_facing_summary,
     resolve_keep_tokens,
@@ -691,11 +690,8 @@ def test_list_related_chats_does_not_match_two_unowned_sessions(
     """Two sessions with no owner grant on record must not read as
     related to each other — ``None == None`` is not "same owner" outside
     single-user mode, where every session's owner reads back ``None``."""
+    from omnigent.context.labels import SCHEDULED_HELPER_LABEL_KEY
     from omnigent.context.rollover import list_related_chats
-    from omnigent.stores.conversation_store import (
-        FORK_SOURCE_LABEL_KEY,
-        SIDE_CHAT_LABEL_KEY,
-    )
     from omnigent.stores.conversation_store.sqlalchemy_store import (
         SqlAlchemyConversationStore,
     )
@@ -705,7 +701,9 @@ def test_list_related_chats_does_not_match_two_unowned_sessions(
 
     unowned_parent = conv_store.create_conversation()
     unowned_child = conv_store.create_conversation(
-        labels={FORK_SOURCE_LABEL_KEY: unowned_parent.id, SIDE_CHAT_LABEL_KEY: "1"}
+        kind="sub_agent",
+        parent_conversation_id=unowned_parent.id,
+        labels={SCHEDULED_HELPER_LABEL_KEY: "t1"},
     )
 
     assert list_related_chats(conv_store, unowned_child.id) == []
@@ -717,11 +715,8 @@ def test_list_related_chats_single_user_mode_still_matches_unowned_sessions(
     """On a single-user server (no permission store ever writes grants),
     every session's owner reads back ``None`` — the one case two ``None``s
     are the same (one) user, so related chats keep working."""
+    from omnigent.context.labels import SCHEDULED_HELPER_LABEL_KEY
     from omnigent.context.rollover import list_related_chats
-    from omnigent.stores.conversation_store import (
-        FORK_SOURCE_LABEL_KEY,
-        SIDE_CHAT_LABEL_KEY,
-    )
     from omnigent.stores.conversation_store.sqlalchemy_store import (
         SqlAlchemyConversationStore,
     )
@@ -731,78 +726,13 @@ def test_list_related_chats_single_user_mode_still_matches_unowned_sessions(
 
     parent = conv_store.create_conversation()
     child = conv_store.create_conversation(
-        labels={FORK_SOURCE_LABEL_KEY: parent.id, SIDE_CHAT_LABEL_KEY: "1"}
+        kind="sub_agent",
+        parent_conversation_id=parent.id,
+        labels={SCHEDULED_HELPER_LABEL_KEY: "t1"},
     )
 
     related_ids = [chat["id"] for chat in list_related_chats(conv_store, child.id)]
     assert related_ids == [parent.id]
-
-
-def test_list_related_chats_finds_side_chats_by_parent_label_and_old_fork_label(
-    db_uri: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A Side Chat opened now links by its parent label; an older one only by the fork label."""
-    from omnigent.context.rollover import list_related_chats
-    from omnigent.stores.conversation_store import (
-        FORK_SOURCE_LABEL_KEY,
-        SIDE_CHAT_LABEL_KEY,
-        SIDE_CHAT_PARENT_LABEL_KEY,
-    )
-    from omnigent.stores.conversation_store.sqlalchemy_store import (
-        SqlAlchemyConversationStore,
-    )
-
-    monkeypatch.setenv("OMNIGENT_LOCAL_SINGLE_USER", "1")
-    conv_store = SqlAlchemyConversationStore(db_uri)
-    parent = conv_store.create_conversation()
-    new = conv_store.create_conversation(
-        labels={SIDE_CHAT_PARENT_LABEL_KEY: parent.id, SIDE_CHAT_LABEL_KEY: "1"}
-    )
-    old = conv_store.create_conversation(
-        labels={FORK_SOURCE_LABEL_KEY: parent.id, SIDE_CHAT_LABEL_KEY: "1"}
-    )
-
-    assert {c["id"] for c in list_related_chats(conv_store, parent.id)} == {new.id, old.id}
-    assert [c["id"] for c in list_related_chats(conv_store, new.id)] == [parent.id]
-
-
-def test_list_related_chats_returns_every_side_chat_past_twenty_and_the_page_size(
-    db_uri: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A family of >20 (and >one store page of) Side Chats is returned whole, never cut at 20,
-    and non-Side-Chat forks do not hide any; ``limit`` caps the children but keeps the parent."""
-    from omnigent.context.rollover import RELATED_CHATS_MAX, list_related_chats
-    from omnigent.stores.conversation_store import (
-        FORK_SOURCE_LABEL_KEY,
-        SIDE_CHAT_LABEL_KEY,
-        SIDE_CHAT_PARENT_LABEL_KEY,
-    )
-    from omnigent.stores.conversation_store.sqlalchemy_store import (
-        SqlAlchemyConversationStore,
-    )
-
-    monkeypatch.setenv("OMNIGENT_LOCAL_SINGLE_USER", "1")
-    conv_store = SqlAlchemyConversationStore(db_uri)
-    parent = conv_store.create_conversation()
-    side_ids = {
-        conv_store.create_conversation(
-            labels={SIDE_CHAT_PARENT_LABEL_KEY: parent.id, SIDE_CHAT_LABEL_KEY: "1"}
-        ).id
-        for _ in range(120)
-    }
-    for _ in range(3):  # a plain fork that is not a Side Chat
-        conv_store.create_conversation(labels={FORK_SOURCE_LABEL_KEY: parent.id})
-
-    assert RELATED_CHATS_MAX > 120
-    assert {c["id"] for c in list_related_chats(conv_store, parent.id)} == side_ids
-
-    capped = [c["id"] for c in list_related_chats(conv_store, parent.id, limit=30)]
-    assert len(capped) == 30 and set(capped) <= side_ids
-
-    # From a Side Chat of a long family the parent still comes back.
-    one = next(iter(side_ids))
-    assert list_related_chats(conv_store, one)[-1]["id"] == parent.id
-    assert [c["id"] for c in list_related_chats(conv_store, one, limit=0)] == [parent.id]
 
 
 def test_list_related_chats_scheduled_helper_sees_parent_but_plain_subagent_does_not(
@@ -840,81 +770,8 @@ def test_list_related_chats_scheduled_helper_sees_parent_but_plain_subagent_does
     assert list_related_chats(conv_store, plain.id) == []
 
 
-@pytest.mark.asyncio
-async def test_side_chat_seed_stops_at_parents_last_reply() -> None:
-    """A Side Chat opened mid-turn must not inherit the request opening it."""
-    items = _turn(1) + _turn(2) + [_msg("u3", "user", "open a side chat")]
-    client = _ReturnsTextClient("SUMMARY")
-
-    data = await build_side_chat_seed(
-        items, keep_tokens=100_000, model="gpt-4o", llm_client=client
-    )
-
-    assert data.last_item_id == "a2"
-    assert data.compacted_messages is not None
-    assert all(m.get("id") != "u3" for m in data.compacted_messages)
-
-
 def test_summarizer_instruction_forbids_listing_tool_names() -> None:
     assert "Never list tool names" in state_file_summarizer_instruction()
-
-
-@pytest.mark.asyncio
-async def test_side_chat_seed_with_no_reply_yet_still_excludes_the_trailing_request() -> None:
-    """Even with NO assistant reply anywhere in the record yet, the seed
-    must not inherit the unanswered request opening this fork — it stops
-    before the last user message too, not just the last reply."""
-    items = [_msg("u1", "user", "first message"), _msg("u2", "user", "open a side chat")]
-    client = _ReturnsTextClient("SUMMARY")
-
-    data = await build_side_chat_seed(
-        items, keep_tokens=100_000, model="gpt-4o", llm_client=client
-    )
-
-    assert data.last_item_id == "u1"
-    assert data.compacted_messages is not None
-    assert all(m.get("id") != "u2" for m in data.compacted_messages)
-
-
-@pytest.mark.asyncio
-async def test_fork_seed_ends_at_its_anchor_even_a_question() -> None:
-    """A Fork (ADR 0010) knows the parent up to and including its anchor, nothing later."""
-    items = _turn(1) + _turn(2) + _turn(3)
-
-    data = await build_side_chat_seed(
-        items,
-        keep_tokens=100_000,
-        model="gpt-4o",
-        llm_client=_ReturnsTextClient("SUMMARY"),
-        anchor_item_id="u2",
-    )
-
-    assert data.last_item_id == "u2"  # a chosen question is kept, unlike the mid-turn trim
-    assert data.compacted_messages is not None
-    kept = {m.get("id") for m in data.compacted_messages}
-    assert "u2" in kept and not kept & {"a2", "u3", "a3"}
-    with pytest.raises(ValueError, match="fork anchor"):
-        await build_side_chat_seed(
-            items,
-            keep_tokens=100_000,
-            model="gpt-4o",
-            llm_client=_ReturnsTextClient("S"),
-            anchor_item_id="missing",
-        )
-
-
-@pytest.mark.asyncio
-async def test_side_chat_seed_with_only_one_unanswered_message_keeps_it() -> None:
-    """Truncating before the lone trailing user message would leave nothing
-    to seed from — keep it rather than seed from an empty record."""
-    items = [_msg("u1", "user", "open a side chat right away")]
-    client = _ReturnsTextClient("SUMMARY")
-
-    data = await build_side_chat_seed(
-        items, keep_tokens=100_000, model="gpt-4o", llm_client=client
-    )
-
-    assert data.last_item_id == "u1"
 
 
 def test_state_file_instruction_stamps_time_and_zone_by_default() -> None:
@@ -945,39 +802,11 @@ def test_summarizer_instruction_forbids_recording_tool_errors_as_facts() -> None
     assert "never claim earlier messages are inaccessible" in text
 
 
-def test_side_chat_seed_is_this_chats_checkpoint_not_the_copied_parents() -> None:
-    """The fork's deep copy carries the parent's own compactions before the seed."""
-    from types import SimpleNamespace
-
-    from omnigent.context.rollover import side_chat_seed_checkpoint
-    from omnigent.entities import CompactionData
-    from omnigent.stores.conversation_store import SIDE_CHAT_START_LABEL_KEY
-
-    def compaction(item_id: str, response_id: str, summary: str) -> Any:
-        data = CompactionData(summary=summary, last_item_id="m", model=None, token_count=1)
-        return SimpleNamespace(id=item_id, response_id=response_id, data=data)
-
-    items = [
-        compaction("cmp_parent", "resp_parent", "parent's own rollover"),
-        compaction("cmp_seed", "rollover_seed_side1", "the seed"),
-    ]
-
-    class Store:
-        def list_items(self, *_a: Any, **_k: Any) -> Any:
-            return SimpleNamespace(data=items, has_more=False, last_id=items[-1].id)
-
-    conv = SimpleNamespace(id="side1", labels={SIDE_CHAT_START_LABEL_KEY: "with_context"})
-    assert side_chat_seed_checkpoint(Store(), conv) == ("the seed", "cmp_seed")  # type: ignore[arg-type]
-
-
-@pytest.mark.parametrize("header_name", ["SIDE_CHAT_SEED_HEADER", "CHECKPOINT_HEADER"])
-def test_person_facing_summary_drops_framing_title_and_tool_sections(header_name: str) -> None:
-    """A seed reads to the person as its body only, never as the model's framing."""
-    from omnigent.context import rollover
-
+def test_person_facing_summary_drops_framing_title_and_tool_sections() -> None:
+    """A checkpoint reads to the person as its body only, never as the model's framing."""
     raw = "\n".join(
         [
-            getattr(rollover, header_name),
+            CHECKPOINT_HEADER,
             "",
             "## Context checkpoint — 2026-10-04 10:00 UTC",
             "**Goal**: plan Q4",
@@ -992,6 +821,7 @@ def test_person_facing_summary_drops_framing_title_and_tool_sections(header_name
     assert person_facing_summary(raw) == (
         "**Goal**: plan Q4\n\n## Current position / next step\nDraft the checklist."
     )
+    assert person_facing_summary(None) is None
 
 
 # ── checkpoint headers name their cause ──────────────────────────────────
@@ -1078,52 +908,6 @@ def test_the_reset_checkpoint_keeps_its_own_wording() -> None:
     assert "cleared this conversation" in RESET_HEADER
     assert "grew past" not in RESET_HEADER
     assert person_facing_summary(RESET_HEADER) is None
-
-
-@pytest.mark.parametrize("cause", ["size", "return", "manual"])
-def test_a_side_chat_seed_replaces_any_cause_header_with_its_own_framing(cause: Any) -> None:
-    """A parent checkpoint reused as a seed is reframed, whatever made it."""
-    from omnigent.context.rollover import (
-        SIDE_CHAT_SEED_HEADER,
-        _side_chat_framed,
-        checkpoint_header,
-    )
-    from omnigent.entities import CompactionData
-
-    header = checkpoint_header(cause)
-    seed = CompactionData(
-        summary=f"{header}\n\nSTATE",
-        last_item_id="a1",
-        model="gpt-4o",
-        token_count=5,
-        compacted_messages=[
-            {
-                "type": "message",
-                "role": "user",
-                "content": [{"type": "input_text", "text": header}],
-            },
-            {
-                "type": "message",
-                "role": "assistant",
-                "content": [{"type": "output_text", "text": "STATE"}],
-            },
-        ],
-    )
-
-    data = _side_chat_framed(seed)
-
-    assert data.summary == f"{SIDE_CHAT_SEED_HEADER}\n\nSTATE"
-    assert data.compacted_messages is not None
-    assert data.compacted_messages[0]["content"][0]["text"] == SIDE_CHAT_SEED_HEADER
-
-
-def test_person_facing_summary_reads_a_seed_stored_before_the_marker_prefix() -> None:
-    from omnigent.context.rollover import CHECKPOINT_MARKER, SIDE_CHAT_SEED_HEADER
-
-    legacy = SIDE_CHAT_SEED_HEADER.removeprefix(f"{CHECKPOINT_MARKER} ")
-    assert person_facing_summary(f"{legacy}\n\nBody") == "Body"
-    assert person_facing_summary(None) is None
-    assert person_facing_summary(SIDE_CHAT_SEED_HEADER) is None
 
 
 # ── split_at_latest_compaction ────────────────────────────────────────────

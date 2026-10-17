@@ -191,7 +191,6 @@ from omnigent.stores.conversation_store import (
     PINNED_LABEL_KEY,
     PROJECT_LABEL_KEY,
     RUNNER_LIVENESS_TTL_S,
-    SIDE_CHAT_LABEL_KEY,
     ConversationNotFoundError,
     pinned_label_key,
     runner_seen_is_fresh,
@@ -1420,10 +1419,6 @@ def register_core_routes(
             # Pins are per-user: filter to the caller's own pin key.
             pinned_owner=user_id,
         )
-        # Side chats surface only as Workspace-rail tabs, so drop any
-        # side-chat-labeled fork from the sidebar list (it is still a normal
-        # session, just not listed as a top-level one here).
-        page.data = [conv for conv in page.data if SIDE_CHAT_LABEL_KEY not in (conv.labels or {})]
         # list_conversations may return rows with agent_id=None for
         # legacy conversations; skip them before building the batch IDs.
         conv_ids = [conv.id for conv in page.data if conv.agent_id is not None]
@@ -2657,122 +2652,6 @@ def register_core_routes(
             request=request,
         )
 
-    async def _seed_rollover_side_chat(
-        new_conv_id: str, source_id: str, anchor_item_id: str | None = None
-    ) -> None:
-        """
-        Append the fork's seed checkpoint: parent summary + recent tail.
-
-        A rollover side chat must not inherit the parent's full transcript.
-        Reuses the parent's latest compaction summary when one exists
-        (folding in only what happened since); builds one now, over the
-        whole record, when the parent never rolled over yet. With
-        *anchor_item_id* (a Fork, ADR 0010) the record ends at that item.
-        """
-        from omnigent.context.rollover import (
-            build_side_chat_seed,
-            resolve_keep_tokens,
-        )
-        from omnigent.context.side_chat_seeds import SIDE_CHAT_SEED_TIMEOUT_S
-        from omnigent.entities import NewConversationItem
-
-        items: list[dict[str, Any]] = []
-        after: str | None = None
-        while True:
-            page = await asyncio.to_thread(
-                conversation_store.list_items,
-                source_id,
-                limit=500,
-                after=after,
-                order="asc",
-            )
-            items.extend(m.to_api_dict() for m in page.data)
-            if not page.has_more:
-                break
-            after = page.last_id
-        if not items:
-            return
-
-        source_conv = await asyncio.to_thread(conversation_store.get_conversation, source_id)
-        # A harness bundle (e.g. claude-sdk) names its model under executor.config, so
-        # fall back to the model the session actually runs on before the generic default.
-        model = (
-            _resolve_llm_model(source_conv, agent_store=agent_store)
-            or (source_conv.model_override if source_conv else None)
-            or (concrete_reported_model(source_conv.reported_model) if source_conv else None)
-            or ROLLOVER_SUMMARY_FALLBACK_MODEL
-        )
-        runner_client = await _get_runner_client(
-            source_id, runner_router, conversation=source_conv
-        )
-        llm_client = None
-        connection = None
-        if runner_client is None:
-            # The parent's runner isn't connected (idle or restarting): summarize with the
-            # server's own background model rather than failing the seed.
-            from omnigent.llms.background import resolve_background_llm
-            from omnigent.llms.client import Client
-
-            owner_of = getattr(conversation_store, "get_session_owner", None)
-            owner = await asyncio.to_thread(owner_of, source_id) if owner_of else None
-            background = await resolve_background_llm(owner)
-            if background is not None:
-                llm_client = Client()
-                model, connection = background
-        seed_labels = source_conv.labels if source_conv else None
-        # Bounded: a message to the new chat waits for this seed.
-        async with asyncio.timeout(SIDE_CHAT_SEED_TIMEOUT_S):
-            seed = await build_side_chat_seed(
-                items,
-                keep_tokens=resolve_keep_tokens(seed_labels),
-                model=model,
-                llm_client=llm_client,
-                connection=connection,
-                runner_client=runner_client,
-                conversation_id=source_id,
-                anchor_item_id=anchor_item_id,
-            )
-        await asyncio.to_thread(
-            conversation_store.append,
-            new_conv_id,
-            [
-                NewConversationItem(
-                    type="compaction",
-                    response_id=f"rollover_seed_{new_conv_id}",
-                    data=seed,
-                )
-            ],
-        )
-
-    async def _seed_side_chat_in_background(
-        new_conv_id: str, source_id: str, anchor_item_id: str | None
-    ) -> None:
-        """
-        Write a side chat's seed after its fork has returned; never raises.
-
-        Appended AFTER the deep copy so it is the fork's LATEST item — resume
-        rebuilders restart there. Best-effort: on failure a Fork's copy marker
-        still ends its copied context, and a plain side chat keeps the full copy.
-        """
-        try:
-            await _seed_rollover_side_chat(new_conv_id, source_id, anchor_item_id)
-        except Exception:
-            _logger.warning(
-                "rollover side-chat seed failed for fork %s of %s; "
-                "leaving the copied history in place",
-                new_conv_id,
-                source_id,
-                exc_info=True,
-            )
-            return
-        # The family's chat rows carry the seed summary ("Knows our conversation").
-        from omnigent.superchat.family.signals import notify_session_changed
-
-        try:
-            await notify_session_changed(conversation_store, new_conv_id)
-        except Exception:
-            _logger.warning("side-chat seed notify failed for %s", new_conv_id, exc_info=True)
-
     # ── POST /sessions/{source_id}/fork ─────────────────────────
 
     @router.post(
@@ -3043,17 +2922,7 @@ def register_core_routes(
                     code=ErrorCode.INVALID_INPUT,
                 ) from exc
 
-        # A side chat forked from a rollover super chat stays a rollover
-        # session (labels carry over untouched) — seeded from the parent's
-        # checkpoint below, not its full transcript.
-        source_is_rollover = uses_omnigent_context(source.labels)
-
         extra_labels: dict[str, str] = {}
-
-        # A side-chat fork is hidden from the left sidebar (it surfaces only as a
-        # Workspace-rail tab). Stamp the label the sessions-list filter reads.
-        if body.side_chat:
-            extra_labels[SIDE_CHAT_LABEL_KEY] = "1"
 
         # On an agent switch, or for a sub-agent source, drop the source's
         # Web UI presentation labels so the clone isn't left in the source's
@@ -3181,12 +3050,6 @@ def register_core_routes(
                 copy_terminal_launch_args=not switching_agent,
                 presentation_labels=presentation_labels,
                 up_to_response_id=body.up_to_response_id,
-                # A Fork's copy ends at its anchor item, not at the end of the anchor's turn.
-                **(
-                    {"up_to_item_id": body.side_chat_anchor_item_id}
-                    if body.side_chat_anchor_item_id
-                    else {}
-                ),
                 project_id=fork_project_id,
                 file_id_map=fork_file_id_map,
                 created_by=user_id,
@@ -3203,18 +3066,6 @@ def register_core_routes(
                 str(exc),
                 code=ErrorCode.INVALID_INPUT,
             ) from exc
-
-        if body.side_chat and source_is_rollover:
-            # The seed is model-written (tens of seconds), so it is built in the
-            # background: a message to the fork waits for it (``side_chat_seeds``).
-            from omnigent.context.side_chat_seeds import start_seed
-
-            start_seed(
-                new_conv.id,
-                _seed_side_chat_in_background(
-                    new_conv.id, source_id, body.side_chat_anchor_item_id
-                ),
-            )
 
         # Create the fork-owned rows the rewritten items now reference —
         # before the fork is announced or returned, so no reader sees the ids
@@ -3267,12 +3118,8 @@ def register_core_routes(
         if permission_store is not None and user_id is not None:
             await asyncio.to_thread(permission_store.ensure_user, user_id)
             await asyncio.to_thread(permission_store.grant, user_id, new_conv.id, LEVEL_OWNER)
-        # Push the forked session to this user's other open tabs — but NOT a
-        # side chat: it surfaces only as a Workspace-rail tab, never a sidebar
-        # row, so announcing it would leak it into every open sidebar (the
-        # real-time path bypasses the list-endpoint's side-chat filter).
-        if not body.side_chat:
-            _announce_session_added(user_id, new_conv.id)
+        # Push the forked session to this user's other open tabs.
+        _announce_session_added(user_id, new_conv.id)
 
         from omnigent.server.managed_hosts import read_managed_repo_workspaces
 
@@ -3301,9 +3148,8 @@ def register_core_routes(
                 workspaces=fork_workspaces,
             )
         # Default-public grant only after the managed launch was accepted (see
-        # the create paths). A side chat is a private scratch fork of the
-        # caller's own view.
-        if user_id is not None and not body.side_chat:
+        # the create paths).
+        if user_id is not None:
             await _grant_default_public(
                 request.app.state,
                 permission_store,

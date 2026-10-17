@@ -39,7 +39,7 @@ os_env:
 max_sessions: 5
 
 tools:
-  # The Muse's work toolset. Conversation-only tools (cards, side chats, Goals, scheduling,
+  # The Muse's work toolset. Conversation-only tools (cards, Goals, scheduling,
   # Ideas, memory writes) stay with the Muse; a worker reads memory and history, never writes it.
   allow:
     - "sys_os_*"

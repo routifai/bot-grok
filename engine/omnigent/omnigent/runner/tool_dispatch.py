@@ -6145,7 +6145,7 @@ async def _session_history_list_chats_via_rest(
     conversation_id: str,
     server_client: httpx.AsyncClient,
 ) -> str:
-    """List related side chats via ``GET .../related_chats``."""
+    """List the chats this session may read via ``GET .../related_chats``."""
     try:
         resp = await server_client.get(
             f"/v1/sessions/{conversation_id}/related_chats", timeout=30.0

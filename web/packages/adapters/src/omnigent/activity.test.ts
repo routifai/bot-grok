@@ -33,7 +33,7 @@ describe("mapActivity", () => {
       mapActivity({
         id: "turn:conv_abc:resp_xyz",
         kind: "turn",
-        source: "side_chat",
+        source: "turn",
         chat_id: "conv_abc",
         title: "Check Q4 totals",
         outcome: null,
@@ -47,7 +47,7 @@ describe("mapActivity", () => {
       id: "turn:conv_abc:resp_xyz",
       kind: "turn",
       chatId: "conv_abc",
-      source: "side_chat",
+      source: "turn",
       title: "Check Q4 totals",
       outcome: null,
       summary: null,

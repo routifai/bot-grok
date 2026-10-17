@@ -501,10 +501,7 @@ def test_rollover_instruction_mentions_session_history_tool() -> None:
     assert "session_history" in ROLLOVER_CONTEXT_INSTRUCTION
 
 
-def test_rollover_instruction_mentions_list_chats_for_side_chats() -> None:
-    """The model must be told how to look into another (side) chat."""
-    assert "list_chats" in ROLLOVER_CONTEXT_INSTRUCTION
-
+def test_raw_author_instructions_is_none_when_absent_or_blank() -> None:
     absent = cast(AgentSpec, SimpleNamespace(instructions=None))
     assert raw_author_instructions(absent) is None
 

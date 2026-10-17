@@ -21,7 +21,6 @@ export function WorkingDot() {
 /** Where a settled piece of work came from, as a tile color. */
 const SOURCE_TONE: Record<ActivitySource, TileTone> = {
   turn: "blue",
-  side_chat: "teal",
   background: "indigo",
   housekeeping: "yellow",
   scheduled: "orange",

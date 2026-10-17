@@ -8,8 +8,6 @@ tests.
 
 from __future__ import annotations
 
-import logging
-
 import pytest
 
 from omnigent.superchat.subagents import (
@@ -25,7 +23,6 @@ from omnigent.superchat.subagents import (
     resolve_default_concurrency_cap,
     resolve_helper_dispatch,
     resolve_scheduled_helper,
-    resolve_wake_target,
 )
 
 # ── resolve_default_concurrency_cap ────────────────────────────────────────
@@ -275,59 +272,6 @@ def test_wake_notice_truncates_and_points_at_full_history() -> None:
     assert "truncated" in notice
     assert "conv_child123" in notice
     assert long_text not in notice
-
-
-# ── resolve_wake_target ──────────────────────────────────────────────────────
-
-
-def test_wake_target_unchanged_for_a_live_chat() -> None:
-    target, note = resolve_wake_target(
-        parent_id="conv_parent",
-        archived=False,
-        is_side_chat=True,
-        fork_source_id="conv_super",
-    )
-    assert target == "conv_parent"
-    assert note is None
-
-
-def test_wake_target_unchanged_when_not_a_side_chat() -> None:
-    # The Super Chat itself is never archived-and-redirected.
-    target, note = resolve_wake_target(
-        parent_id="conv_super", archived=True, is_side_chat=False, fork_source_id=None
-    )
-    assert target == "conv_super"
-    assert note is None
-
-
-def test_wake_target_redirects_archived_side_chat() -> None:
-    target, note = resolve_wake_target(
-        parent_id="conv_side",
-        archived=True,
-        is_side_chat=True,
-        fork_source_id="conv_super",
-    )
-    assert target == "conv_super"
-    assert note is not None
-    assert "conv_side" in note
-    assert "archived Side Chat" in note
-
-
-def test_wake_target_unchanged_when_fork_source_unknown(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Delivery still goes to the archived chat (no Super Chat to redirect
-    to), but this must not happen silently — the chat is hidden from the
-    user's list, so a missing fork_source label is logged."""
-    with caplog.at_level(logging.WARNING, logger="omnigent.superchat.subagents"):
-        target, note = resolve_wake_target(
-            parent_id="conv_side", archived=True, is_side_chat=True, fork_source_id=None
-        )
-    assert target == "conv_side"
-    assert note is None
-    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
-    assert len(warnings) == 1
-    assert "conv_side" in warnings[0].getMessage()
 
 
 # ── resolve_scheduled_helper ────────────────────────────────────────────────

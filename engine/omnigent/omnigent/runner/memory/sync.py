@@ -1,8 +1,7 @@
 """What feeds ``memory/``: a stored checkpoint, a Helper's Result, or a rebuild from the chats.
 
 Also what feeds the index's ``conversation`` source: the passages of the turns a checkpoint
-retires (:func:`index_retired_turns`), the turns an archived Side chat or Fork still held in
-context (:func:`index_archived_chats`), the turns from before that (:func:`backfill_turns`), and
+retires (:func:`index_retired_turns`), the turns from before that (:func:`backfill_turns`), and
 their removal with a deleted Conversation (:func:`reconcile`). A turn of the current epoch is
 still in context, so it is not a passage until the compaction that retires it.
 
@@ -16,7 +15,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import time
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -30,14 +28,12 @@ from omnigent.runner.knowledge.db import TurnPassage
 from omnigent.runner.knowledge.runtime import KnowledgeRuntime, default_workspace
 from omnigent.runner.knowledge.turns import Turn, passage_of, split_turns
 from omnigent.runner.memory import files
-from omnigent.stores.conversation_store import SIDE_CHAT_LABEL_KEY, side_chat_parent_id
 from omnigent.superchat.feature import is_helper
 from omnigent.superchat.projects.card import project_slug_from_workspace
 from omnigent.superchat.rollover import (
     ItemsPageFetchError,
     _get_items_page,
     fetch_latest_checkpoint,
-    iter_items_from_checkpoint,
 )
 
 _logger = logging.getLogger(__name__)
@@ -54,12 +50,6 @@ _BACKFILL_TURNS = 300
 #: Versioned: bumped when what a passage holds changes, so the backfill writes it once again.
 CURSOR_KEY = "turns_cursor.v3:"
 BACKFILLED_KEY = "turns_backfilled.v3:"
-#: Index meta key: the ``updated_at`` of an archived chat whose last turns were written.
-ARCHIVED_KEY = "turns_archived:"
-#: How often one process looks for newly archived chats of a Conversation (auto-archive is
-#: hourly).
-_ARCHIVE_CHECK_SECONDS = 600.0
-_archive_checked: dict[str, float] = {}
 
 
 async def _snapshot(server_client: Any, chat_id: str) -> dict[str, Any]:
@@ -81,35 +71,22 @@ async def _gone(server_client: Any, chat_id: str) -> bool:
     return resp.status_code == 404
 
 
-async def _origin(server_client: Any, chat_id: str, labels: dict[str, str] | None) -> files.Origin:
-    body = await _snapshot(server_client, chat_id)
-    found = labels if labels is not None else body.get("labels")
-    title = body.get("title")
-    return files.origin_of(
-        chat_id,
-        found if isinstance(found, dict) else None,
-        title if isinstance(title, str) else "",
-    )
-
-
 async def record_checkpoint(
-    server_client: Any,
     chat_id: str,
     labels: dict[str, str] | None,
     item: CompactionData,
     *,
     workspace: Path | None = None,
 ) -> None:
-    """Journal a stored checkpoint of a real chat; write ``STATE.md`` when it is the main one.
+    """Journal a stored checkpoint of the Conversation and write its ``STATE.md``.
 
-    A Helper writes nothing. Side chat and Fork seeds never come here (they are not checkpoints
-    of work done). Never raises.
+    A Helper writes nothing. Never raises.
     """
     try:
         if is_helper(labels):
             return
         root = workspace or default_workspace()
-        origin = await _origin(server_client, chat_id, labels)
+        origin = files.Origin("main", chat_id)
         entries = files.checkpoint_lines(
             origin,
             item.journal_lines,
@@ -118,11 +95,8 @@ async def record_checkpoint(
             refs=item.journal_refs,
         )
         await asyncio.to_thread(files.append_lines, root, entries)
-        if origin.kind == "main":
-            await asyncio.to_thread(files.write_state, root, files.state_text_of(item.summary))
-        main_id = _main_id(chat_id, labels)
-        if main_id:
-            await asyncio.to_thread(files.write_owner, root, main_id, keep_existing=True)
+        await asyncio.to_thread(files.write_state, root, files.state_text_of(item.summary))
+        await asyncio.to_thread(files.write_owner, root, chat_id, keep_existing=True)
     except Exception:  # noqa: BLE001 - a copy must never fail the turn
         _logger.warning("memory: could not record the checkpoint of %s", chat_id, exc_info=True)
 
@@ -141,7 +115,7 @@ async def record_helper_result(
     The line names the Helper and, when its working directory is in one, the Project.
     """
     try:
-        origin = await _origin(server_client, parent_id, None)
+        origin = files.Origin("main", parent_id)
         workspace_dir = (await _snapshot(server_client, session_id)).get("workspace")
         entry = files.helper_result_line(
             origin,
@@ -180,8 +154,7 @@ async def record_hand_edits(
         labels = body.get("labels") if isinstance(body.get("labels"), dict) else None
         if is_helper(labels):
             return
-        title = body.get("title")
-        origin = files.origin_of(chat_id, labels, title if isinstance(title, str) else "")
+        origin = files.Origin("main", chat_id)
         entries = [
             files.hand_edit_line(
                 origin,
@@ -234,14 +207,6 @@ def _item_date(item: dict[str, Any]) -> str:
     return files.today()
 
 
-def _main_id(chat_id: str, labels: dict[str, str] | None) -> str | None:
-    """The main Conversation of a chat, or ``None`` when a Side chat parent is unknown."""
-    found = labels or {}
-    if SIDE_CHAT_LABEL_KEY in found:
-        return side_chat_parent_id(found)
-    return chat_id
-
-
 def _reset_entry(item: dict[str, Any], main_id: str) -> tuple[str, str]:
     return files.format_line(_item_date(item), files.RESET_TEXT, files.Origin("main", main_id))
 
@@ -251,62 +216,33 @@ def _is_checkpoint(item: dict[str, Any]) -> bool:
     return isinstance(summary, str) and any(summary.startswith(h) for h in CHECKPOINT_HEADERS)
 
 
-async def _related_rows(server_client: Any, main_id: str) -> list[dict[str, Any]] | None:
-    """The ``related_chats`` rows of a main Conversation, or ``None`` when they cannot be read."""
-    resp = await server_client.get(f"/v1/sessions/{main_id}/related_chats", timeout=30.0)
-    if resp.status_code != 200:
-        return None
-    rows = resp.json().get("data", [])
-    return [row for row in rows if isinstance(row, dict) and isinstance(row.get("id"), str)]
-
-
-def _row_origin(row: dict[str, Any]) -> files.Origin:
-    kind = "fork" if row.get("anchor_item_id") else "side"
-    return files.Origin(kind, row["id"], row.get("title") or "")
-
-
-async def _related_chats(server_client: Any, main_id: str) -> list[files.Origin] | None:
-    """The Side chats and Forks of a main Conversation, or ``None`` when they cannot be read."""
-    rows = await _related_rows(server_client, main_id)
-    return None if rows is None else [_row_origin(row) for row in rows]
-
-
 async def rebuild(server_client: Any, chat_id: str, *, workspace: Path | None = None) -> None:
     """Regenerate ``memory/journal/*.md`` and ``STATE.md`` from stored checkpoints, no model call.
 
-    Reads the compaction items of the Conversation and of its Side chats and Forks (seeds hold
-    no journal lines and are not checkpoints, so they add nothing). A line already in a day file
-    is not added again, so running it twice gives the same files. Helper-result lines exist only
+    Reads the compaction items of the Conversation. A line already in a day file is not added
+    again, so running it twice gives the same files. Helper-result lines exist only
     as notices and are not replayed. Never raises.
     """
     try:
         root = workspace or default_workspace()
-        snapshot = await _snapshot(server_client, chat_id)
-        labels = snapshot.get("labels")
-        labels = labels if isinstance(labels, dict) else {}
-        main_id = side_chat_parent_id(labels) or chat_id
-        related = await _related_chats(server_client, main_id) or []
-        chats = [files.Origin("main", main_id), *related]
+        main_id = chat_id
+        origin = files.Origin("main", main_id)
         entries: list[tuple[str, str]] = []
         state: str | None = None
         reset_id: str | None = None
-        for origin in chats:
-            items = await _compaction_items(server_client, origin.chat_id)
-            for item in items:
-                entries += files.checkpoint_lines(
-                    origin,
-                    item.get("journal_lines"),
-                    item.get("evicted_entries"),
-                    default_date=_item_date(item),
-                    refs=item.get("journal_refs"),
-                )
-                if origin.kind != "main":
-                    continue
-                if is_reset_item(item):
-                    entries.append(_reset_entry(item, main_id))
-                    state, reset_id = files.reset_state_text(_item_date(item)), item.get("id")
-                elif not is_placeholder_summary(item.get("summary")) and _is_checkpoint(item):
-                    state = files.state_text_of(item.get("summary"))
+        for item in await _compaction_items(server_client, main_id):
+            entries += files.checkpoint_lines(
+                origin,
+                item.get("journal_lines"),
+                item.get("evicted_entries"),
+                default_date=_item_date(item),
+                refs=item.get("journal_refs"),
+            )
+            if is_reset_item(item):
+                entries.append(_reset_entry(item, main_id))
+                state, reset_id = files.reset_state_text(_item_date(item)), item.get("id")
+            elif not is_placeholder_summary(item.get("summary")) and _is_checkpoint(item):
+                state = files.state_text_of(item.get("summary"))
         notes = await _daily_notes(server_client)
         # Made only after the reads worked, so a failed read is retried on a later turn.
         files.memory_dir(root).mkdir(parents=True, exist_ok=True)
@@ -364,16 +300,14 @@ async def reconcile(
     * No folder (new or lost volume): rebuild it.
     * A folder owned by another main Conversation that was deleted: remove it, rebuild. While
       the other one still exists (or its state is unknown) the folder is left alone. The deleted
-      Conversation's passages (its Side chats' and Forks' too) leave the index with it.
+      Conversation's passages leave the index with it.
     * An unmarked folder (made before the marker): adopt it.
     * A reset the files have not seen: write it once.
 
-    A Side chat or Fork resolves to its main Conversation, so it never counts as another one.
-    When the main Conversation cannot be resolved nothing is touched.
     """
     try:
-        main_id = _main_id(chat_id, labels)
-        if main_id is None or is_helper(labels):
+        main_id = chat_id
+        if is_helper(labels):
             return
         root = workspace or default_workspace()
         if not files.memory_dir(root).exists():
@@ -453,61 +387,20 @@ async def index_retired_turns(
 
     *window* is the record the checkpoint summarized (the items after the previous anchor, up to
     its own), already read by the rollover: nothing is read again. Called once the compaction
-    item is stored, for the main Conversation, a Side chat or a Fork alike. *project* is the
+    item is stored. *project* is the
     Project folder the chat runs in. A Helper's turns, steers and runtime notices are never
     passages (:mod:`.turns`).
     """
     try:
-        main_id = _main_id(chat_id, labels)
         found = _knowledge(server_client, runtime)
-        if main_id is None or is_helper(labels) or found is None:
+        if is_helper(labels) or found is None:
             return
-        origin = files.origin_of(chat_id, labels)
-        passages = _passages(split_turns(window), origin, main_id, project)
+        origin = files.Origin("main", chat_id)
+        passages = _passages(split_turns(window), origin, chat_id, project)
         if passages:
             await asyncio.to_thread(found.indexer.index_turns, passages)
     except Exception:  # noqa: BLE001 - indexing must never fail the turn
         _logger.warning("recall: could not index the retired turns of %s", chat_id, exc_info=True)
-
-
-async def index_archived_chats(
-    server_client: Any,
-    chat_id: str,
-    labels: dict[str, str] | None,
-    *,
-    runtime: KnowledgeRuntime | None = None,
-) -> None:
-    """Index the turns an archived Side chat or Fork held past its last checkpoint. Never raises.
-
-    No compaction retires them: the chat stopped. Each archived chat of the Conversation is read
-    from its last anchor once per archive (its ``updated_at`` then is kept); a chat unarchived
-    and archived again is read again. Looked up at most every :data:`_ARCHIVE_CHECK_SECONDS` per
-    Conversation.
-    """
-    try:
-        main_id = _main_id(chat_id, labels)
-        found = _knowledge(server_client, runtime)
-        if main_id is None or is_helper(labels) or found is None:
-            return
-        now = time.monotonic()
-        last = _archive_checked.get(main_id)
-        if last is not None and now - last < _ARCHIVE_CHECK_SECONDS:
-            return
-        _archive_checked[main_id] = now
-        db = found.indexer.db
-        for row in await _related_rows(server_client, main_id) or []:
-            key, mark = f"{ARCHIVED_KEY}{row['id']}", str(row.get("updated_at"))
-            if not row.get("archived") or await asyncio.to_thread(db.meta, key) == mark:
-                continue
-            items: list[dict[str, Any]] = []
-            async for page in iter_items_from_checkpoint(
-                server_client, row["id"], skip_placeholders=True
-            ):
-                items.extend(page)
-            passages = _passages(split_turns(items), _row_origin(row), main_id)
-            await asyncio.to_thread(found.indexer.index_turns, passages, cursor=(key, mark))
-    except Exception:  # noqa: BLE001 - indexing must never fail the turn
-        _logger.warning("recall: could not index the archived chats of %s", chat_id, exc_info=True)
 
 
 def _backfill_step(
@@ -590,29 +483,24 @@ async def backfill_turns(
 ) -> None:
     """Index, once, the turns a Conversation had before turns were indexed. Never raises.
 
-    Reads the record of the main Conversation, then of each Side chat and Fork, from its first
-    item to its latest checkpoint's anchor (every retired turn, none of the current epoch), at
-    most :data:`_BACKFILL_PAGES` pages and :data:`_BACKFILL_TURNS` turns per run. Each chat's
-    progress (the last item read) is saved with its passages, so a restart resumes where it
-    stopped and never writes a turn twice. Once every chat was read to its anchor the
-    Conversation is marked done; from then on its turns arrive with each compaction.
+    Reads the record of the Conversation from its first item to its latest checkpoint's anchor
+    (every retired turn, none of the current epoch), at most :data:`_BACKFILL_PAGES` pages and
+    :data:`_BACKFILL_TURNS` turns per run. Progress (the last item read) is saved with the
+    passages, so a restart resumes where it stopped and never writes a turn twice. Once it was
+    read to its anchor the Conversation is marked done; from then on its turns arrive with each
+    compaction.
     """
     try:
-        main_id = _main_id(chat_id, labels)
+        main_id = chat_id
         found = _knowledge(server_client, runtime)
-        if main_id is None or is_helper(labels) or found is None:
+        if is_helper(labels) or found is None:
             return
         db = found.indexer.db
         if await asyncio.to_thread(db.meta, f"{BACKFILLED_KEY}{main_id}"):
             return
-        related = await _related_chats(server_client, main_id)
-        done = related is not None
         budget = {"pages": _BACKFILL_PAGES, "turns": _BACKFILL_TURNS}
-        for origin in [files.Origin("main", main_id), *(related or [])]:
-            if not await _backfill_chat(server_client, found, origin, main_id, budget):
-                done = False
-                break
-        if done:
+        origin = files.Origin("main", main_id)
+        if await _backfill_chat(server_client, found, origin, main_id, budget):
             await asyncio.to_thread(db.set_meta, f"{BACKFILLED_KEY}{main_id}", "done")
     except Exception:  # noqa: BLE001 - indexing must never fail the turn
         _logger.warning("recall: could not backfill the turns of %s", chat_id, exc_info=True)
@@ -621,7 +509,7 @@ async def backfill_turns(
 async def _forget_conversation(
     server_client: Any, main_id: str, runtime: KnowledgeRuntime | None
 ) -> None:
-    """Remove a deleted Conversation's passages, its Side chats' and Forks' too, from the index."""
+    """Remove a deleted Conversation's passages from the index."""
     try:
         found = _knowledge(server_client, runtime)
         if found is None:
@@ -629,7 +517,7 @@ async def _forget_conversation(
         chats = [main_id, *await asyncio.to_thread(found.indexer.db.chats_of, main_id)]
         keys = [
             f"{BACKFILLED_KEY}{main_id}",
-            *(f"{prefix}{chat}" for chat in chats for prefix in (CURSOR_KEY, ARCHIVED_KEY)),
+            *(f"{CURSOR_KEY}{chat}" for chat in chats),
         ]
         await asyncio.to_thread(found.indexer.delete_chats, chats, meta_keys=keys)
     except Exception:  # noqa: BLE001 - a copy must never fail the turn

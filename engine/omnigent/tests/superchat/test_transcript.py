@@ -1,5 +1,5 @@
 """The transcript projection (omnigent.superchat.transcript): rules on item fixtures, then the
-route's paging, seed cut and access over a real store."""
+route's paging, reset cut and access over a real store."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ import pytest
 from fastapi import APIRouter, FastAPI
 
 from omnigent.entities import (
-    CompactionData,
     ErrorData,
     FunctionCallData,
     FunctionCallOutputData,
@@ -19,7 +18,6 @@ from omnigent.entities import (
     NewConversationItem,
 )
 from omnigent.errors import OmnigentError
-from omnigent.stores.conversation_store import SIDE_CHAT_LABEL_KEY
 from omnigent.stores.conversation_store.sqlalchemy_store import SqlAlchemyConversationStore
 from omnigent.superchat.artifact_kinds import KIND_MIME
 from omnigent.superchat.transcript.blocks import project_items
@@ -386,7 +384,7 @@ def test_error_item_carries_a_code_and_no_text() -> None:
     assert "Too many" not in json.dumps(message)
 
 
-# ── route: paging, seed, access ──────────────────────────────────────────
+# ── route: paging, access ────────────────────────────────────────────
 
 
 def _new(kind: str, data: Any, response_id: str = "r1") -> NewConversationItem:
@@ -435,47 +433,6 @@ async def test_pages_walk_back_with_before_and_unknown_session_is_not_found(
     assert last["has_more"] is False and last["older_cursor"] is None
     with pytest.raises(OmnigentError, match="not found"):
         await client.get("/v1/sessions/ad563e906854634c49e1a6fd2fbb31d4/transcript")
-
-
-async def test_side_chat_seed_is_left_out_unless_asked(
-    client: httpx.AsyncClient, conversation_store: SqlAlchemyConversationStore
-) -> None:
-    root = conversation_store.create_conversation(kind="default", title="S", labels=_MODE)
-    side = conversation_store.create_conversation(
-        kind="default",
-        title="Side",
-        labels={
-            **_MODE,
-            SIDE_CHAT_LABEL_KEY: "true",
-            "omnigent.side_chat.parent_id": root.id,
-            "omnigent.side_chat.start": "with_context",
-        },
-    )
-    seed = _new(
-        "compaction",
-        CompactionData(summary="s", last_item_id="x", model="m", token_count=1),
-        response_id=f"rollover_seed_{side.id}",
-    )
-    conversation_store.append(
-        side.id, [_say("user", "copied"), seed, _say("user", "mine"), _say("assistant", "reply")]
-    )
-    url = f"/v1/sessions/{side.id}/transcript"
-    own = (await client.get(url)).json()
-    assert [m["blocks"][0]["text"] for m in own["data"]] == ["mine", "reply"]
-    assert own["lineage"] == {
-        "kind": "side",
-        "root_id": root.id,
-        "parent_id": root.id,
-        "seed_item_id": own["lineage"]["seed_item_id"],
-        "anchor_item_id": None,
-    }
-    assert own["lineage"]["seed_item_id"]
-    everything = (await client.get(url, params={"include_seed": "true"})).json()
-    assert [m["blocks"][0]["text"] for m in everything["data"]] == [
-        "copied",
-        "mine",
-        "reply",
-    ]
 
 
 async def test_store_items_project_end_to_end_with_error_code_and_helper_status(
@@ -576,13 +533,11 @@ async def test_reset_is_refused_mid_turn_and_outside_a_super_chat(
     conversation_store.set_session_live_status(root.id, "running")
     with pytest.raises(OmnigentError, match="turn is running"):
         await reset_client.post(f"/v1/sessions/{root.id}/reset")
-    side = conversation_store.create_conversation(
-        kind="default",
-        title="Side",
-        labels={**_MODE, SIDE_CHAT_LABEL_KEY: "true", "omnigent.side_chat.parent_id": root.id},
+    helper = conversation_store.create_conversation(
+        kind="sub_agent", parent_conversation_id=root.id, title="job", labels=_MODE
     )
     plain = conversation_store.create_conversation(kind="default", title="P")
-    for other in (side, plain):
+    for other in (helper, plain):
         with pytest.raises(OmnigentError, match="Only a Super Chat"):
             await reset_client.post(f"/v1/sessions/{other.id}/reset")
 

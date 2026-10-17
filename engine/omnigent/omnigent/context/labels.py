@@ -3,8 +3,8 @@
 ``omnigent.context.mode`` selects the lifecycle: unset means upstream
 behavior, untouched; ``"rollover"`` means each native CLI compacts its own
 context at Omnigent's threshold, and the session gets the recall tool and
-instruction; ``"superside-chat"`` means the Super Chat, its Side Chats and
-Sub-agents run on the Claude SDK engine with Omnigent owning context,
+instruction; ``"superside-chat"`` means the Super Chat and its Sub-agents
+run on the Claude SDK engine with Omnigent owning context,
 sub-agents and memory. See ``rollover/README.md`` and
 ``rollover/SUPERSIDE-CHAT-PLAN.md``.
 """
@@ -21,8 +21,8 @@ CONTEXT_MODE_LABEL = "omnigent.context.mode"
 #: the CLI, decides what the model carries forward.
 ROLLOVER_MODE_VALUE = "rollover"
 
-#: ``CONTEXT_MODE_LABEL`` value for the Super Chat, its Side Chats and its
-#: Sub-agents on the Claude SDK engine. Distinct from ``ROLLOVER_MODE_VALUE``
+#: ``CONTEXT_MODE_LABEL`` value for the Super Chat and its Sub-agents on the
+#: Claude SDK engine. Distinct from ``ROLLOVER_MODE_VALUE``
 #: (native CLIs): a session is in exactly one mode. See
 #: ``rollover/CONTEXT.md``.
 SUPERSIDE_CHAT_MODE_VALUE = "superside-chat"
@@ -113,10 +113,8 @@ def uses_omnigent_context(labels: Mapping[str, str] | None) -> bool:
     return is_rollover(labels) or is_superside_chat(labels)
 
 
-# Every label that configures rollover mode for a session. A side chat forked
-# from the super chat KEEPS these — it stays a rollover session, seeded from
-# the parent's checkpoint rather than dropped back to upstream behavior. Also
-# the set a superside-chat session forwards to a sub-agent it creates (see
+# Every label that configures rollover mode for a session: the set a
+# superside-chat session forwards to a sub-agent it creates (see
 # ``inheritable_context_labels``): the keys are mode-agnostic, so the same
 # set covers a rollover session's tuning labels and a superside-chat
 # session's mode label alike.

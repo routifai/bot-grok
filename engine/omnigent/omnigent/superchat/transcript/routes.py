@@ -26,7 +26,6 @@ from omnigent.stores import ConversationStore
 from omnigent.stores.permission_store import PermissionStore
 from omnigent.superchat.family.tree import sub_agent_status
 from omnigent.superchat.lineage import session_lineage
-from omnigent.superchat.side_chats.forks import attach_forks, forks_by_anchor
 from omnigent.superchat.transcript.blocks import helper_session_ids, project_items
 from omnigent.superchat.transcript.reset import latest_reset_item
 
@@ -66,17 +65,13 @@ def read_transcript(
     *,
     before: str | None,
     limit: int,
-    include_seed: bool,
     before_reset: bool = False,
-    viewer_id: str | None = None,
 ) -> dict[str, Any]:
     """One page of a session's transcript, oldest message first.
 
     Pages walk back from the newest items (``before`` is the ``older_cursor`` of the page
-    after). A Side Chat's seeded context is cut unless ``include_seed``. Paging stops at the
-    latest reset; ``before_reset`` pages the items older than it instead. Each message
-    carries the ``forks`` anchored on it (``unread`` is *viewer_id*'s), so forks anchored
-    before a reset show only on the ``before_reset`` pages.
+    after). Paging stops at the latest reset; ``before_reset`` pages the items older than it
+    instead.
     """
     lineage = session_lineage(conv_store, conversation)
     reset = latest_reset_item(conv_store, conversation.id)
@@ -89,12 +84,9 @@ def read_transcript(
     # Newest first, so "further along" the store's sort is older: the older page is `after`.
     page = conv_store.list_items(conversation.id, limit=limit, after=before, order="desc")
     newest_first = [item.to_api_dict() for item in page.data]
-    seed_id = lineage["seed_item_id"]
     has_more = page.has_more
-    cuts = [seed_id] if seed_id and not include_seed else []
-    if reset is not None and not before_reset:
-        cuts.append(reset.id)
-    index = next((i for i, item in enumerate(newest_first) if item["id"] in cuts), -1)
+    cut = reset.id if reset is not None and not before_reset else None
+    index = next((i for i, item in enumerate(newest_first) if item["id"] == cut), -1)
     if index != -1:
         newest_first, has_more = newest_first[:index], False
     items = list(reversed(newest_first))
@@ -116,11 +108,8 @@ def read_transcript(
     if helper_ids:
         for helper_id, helper in conv_store.get_conversations(helper_ids).items():
             statuses[helper_id] = sub_agent_status(helper)
-    messages = project_items(items, helper_statuses=statuses)
-    can_fork = lineage["kind"] == "super" or lineage["anchor_item_id"] is not None
-    grouped = forks_by_anchor(conv_store, conversation, viewer_id) if can_fork and messages else {}
     return _page(
-        attach_forks(messages, grouped),
+        project_items(items, helper_statuses=statuses),
         has_more=has_more,
         older_cursor=newest_first[-1]["id"] if newest_first and has_more else None,
         lineage=lineage,
@@ -163,7 +152,6 @@ def register_transcript_routes(
         session_id: str,
         limit: int = Query(default=50, ge=1, le=200),
         before: str | None = Query(default=None),
-        include_seed: bool = Query(default=False),
         before_reset: bool = Query(default=False),
     ) -> dict[str, Any]:
         """
@@ -173,15 +161,12 @@ def register_transcript_routes(
         :param session_id: Any session the caller can READ (same gate as ``.../items``).
         :param limit: Items per page, newest page first.
         :param before: Cursor: the ``older_cursor`` of the page after this one.
-        :param include_seed: Also return a with-context Side Chat's copied context.
         :param before_reset: Page the history before the latest reset instead (empty when the
             session was never reset).
         :returns: ``{"data": [message], "has_more", "older_cursor", "lineage", "reset", "live"}``:
             ``reset`` is ``{"item_id", "created_at"}`` of the latest reset or ``None``; ``live``
-            is whether a turn is in flight. Each message has ``forks`` (``[]`` when none:
-            ``{session_id, title, replies, live, unread, state, summary, created_at}``) and an
-            added fork's ``fork_summary`` block. A user message still waiting behind the
-            running turn has ``delivered: "queued"`` (from the runner's live queue).
+            is whether a turn is in flight. A user message still waiting behind the running
+            turn has ``delivered: "queued"`` (from the runner's live queue).
         :raises OmnigentError: 403 without READ; 404 if no session exists.
         """
         user_id = _get_user_id(request, auth_provider)
@@ -199,9 +184,7 @@ def register_transcript_routes(
             conversation,
             before=before,
             limit=limit,
-            include_seed=include_seed,
             before_reset=before_reset,
-            viewer_id=user_id,
         )
         if page["live"]:
             # A message waiting behind the running turn: the runner's live queue says which.

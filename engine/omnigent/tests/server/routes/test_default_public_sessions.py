@@ -322,21 +322,6 @@ async def test_local_create_follows_policy(
 
 
 @pytest.mark.asyncio
-async def test_side_chat_fork_stays_private(
-    db_uri: str, tmp_path: Path, client_factory: Any
-) -> None:
-    write_default_public_sessions_override(DefaultPublicSessions.ALL)
-    app, perms = _build_app(db_uri, tmp_path)
-    alice = client_factory(app, _USER)
-    agent = await create_test_agent(alice, name="side-chat-agent", user=_USER)
-    source = await _json_create(alice, agent["id"])
-    side = await alice.post(f"/v1/sessions/{source}/fork", json={"side_chat": True})
-    assert side.status_code == 201, side.text
-    assert _is_public(perms, source)
-    assert not _is_public(perms, side.json()["id"])
-
-
-@pytest.mark.asyncio
 async def test_fork_stays_private_under_restricted_read_only(
     db_uri: str, tmp_path: Path, client_factory: Any
 ) -> None:

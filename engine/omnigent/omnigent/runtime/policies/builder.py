@@ -81,7 +81,7 @@ _ASK_ON_ADD_POLICY_SPEC = FunctionPolicySpec(
 
 # Asks before a Super Chat session sends, posts, deletes, spends, uploads or shares
 # (omnigent.superchat.approvals.policy). Installed only when the server bound an
-# approval store, and only for the Super Chat's tree (side chats, Helpers).
+# approval store, and only for the Super Chat's tree (the Conversation and its Helpers).
 _APPROVALS_POLICY_SPEC = FunctionPolicySpec(
     name=_approvals.POLICY_NAME,
     on=None,

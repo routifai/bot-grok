@@ -1,6 +1,6 @@
 """In-process signals for family changes that no session stream carries.
 
-Producers (a store-persisted assistant message, a Side Chat opened, a rename or archive) call
+Producers (a store-persisted assistant message, a rename or archive) call
 ``notify_*``; each family stream listening for that chat or root gets the event. Thread-safe:
 producers may run on worker threads.
 """

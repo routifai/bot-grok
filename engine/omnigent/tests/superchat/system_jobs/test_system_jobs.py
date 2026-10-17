@@ -36,9 +36,6 @@ async def test_jobs_report_last_and_next_run() -> None:
     app = FastAPI()
     app.state.memory_upkeep_coordinator = SimpleNamespace(upkeep_store=_Store())
     app.state.memory_upkeep_scheduler = SimpleNamespace(sweep_interval_s=3600, last_sweep_at=1000)
-    app.state.side_chat_archive_sweeper = SimpleNamespace(
-        interval_s=7200.0, last_sweep_at=500, enabled_for=lambda _key: False
-    )
     async with _client(app) as http:
         jobs = (await http.get("/v1/me/system-jobs")).json()["jobs"]
     by_id = {j["id"]: j for j in jobs}
@@ -48,10 +45,6 @@ async def test_jobs_report_last_and_next_run() -> None:
     assert upkeep["next_run_at"] == 4600
     assert upkeep["enabled"] is True
     assert upkeep["schedule"].startswith("Every hour")
-    archiving = by_id["side_chat_archiving"]
-    assert archiving["schedule"] == "Every 2 hours"
-    assert archiving["next_run_at"] == 7700
-    assert archiving["enabled"] is False
 
 
 async def test_jobs_listed_disabled_with_unknown_times_when_nothing_runs() -> None:
@@ -60,7 +53,6 @@ async def test_jobs_listed_disabled_with_unknown_times_when_nothing_runs() -> No
         jobs = (await http.get("/v1/me/system-jobs")).json()["jobs"]
     assert [j["id"] for j in jobs] == [
         "memory_upkeep",
-        "side_chat_archiving",
         "daily_note",
         "dreaming",
         "people",

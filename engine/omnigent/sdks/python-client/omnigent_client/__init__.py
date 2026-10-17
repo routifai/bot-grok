@@ -60,7 +60,6 @@ from ._errors import (
 )
 from ._events import MCP_ELICITATION_METHOD, ElicitationRequest
 from ._query import QueryResult, QueryStream
-from ._server import LocalServer
 from ._session import Session
 from ._sessions import RegisteredAgent, SessionsNamespace
 from ._sessions_chat import SessionsChat, SessionToolCallInfo, ToolCallable
@@ -93,7 +92,6 @@ __all__ = [
     "ErrorBlock",
     "File",
     "FileBlock",
-    "LocalServer",
     "NativeToolBlock",
     "OmnigentClient",
     "OmnigentError",

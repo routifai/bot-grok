@@ -144,7 +144,6 @@ from omnigent.superchat.helpers.saved_files import (
 from omnigent.superchat.prompt_prefix import message_needs_own_turn, turn_prefix_blocks
 from omnigent.superchat.subagents import (
     format_subagent_wake_notice_with_result,
-    resolve_wake_target,
 )
 from omnigent.terminals.control_bridge import bridge_tmux_control_to_websocket
 from omnigent.terminals.ws_common import WS_CLOSE_TERMINAL_NOT_FOUND
@@ -5175,7 +5174,7 @@ def create_runner_app(
         from omnigent.superchat.projects.card import project_slug_from_workspace
 
         async def _record(item: CompactionData, window: list[dict[str, Any]]) -> None:
-            await record_checkpoint(server_client, conv_id, dict(labels or {}), item)
+            await record_checkpoint(conv_id, dict(labels or {}), item)
             workspace = await _session_workspace_value(conv_id)
             await index_retired_turns(
                 server_client,
@@ -5193,10 +5192,9 @@ def create_runner_app(
         """Heal ``memory/`` in the background: missing folder, new owner, a reset not yet seen.
 
         Then a bounded step of indexing the Conversation's turns from before they were indexed
-        at compaction, and the last turns of its archived Side chats and Forks (the
-        ``conversation`` source).
+        at compaction (the ``conversation`` source).
         """
-        from omnigent.runner.memory.sync import backfill_turns, index_archived_chats, reconcile
+        from omnigent.runner.memory.sync import backfill_turns, reconcile
 
         if _memory_rebuilds:
             return
@@ -5206,7 +5204,6 @@ def create_runner_app(
             try:
                 await reconcile(server_client, conv_id, dict(labels or {}))
                 await backfill_turns(server_client, conv_id, dict(labels or {}))
-                await index_archived_chats(server_client, conv_id, dict(labels or {}))
             finally:
                 _memory_rebuilds.discard(conv_id)
 
@@ -5882,29 +5879,6 @@ def create_runner_app(
 
     app.state.check_and_start_next_turn = _check_and_start_next_turn
 
-    async def _resolve_subagent_wake_target(parent_id: str) -> tuple[str, str | None]:
-        """Redirect an archived Side Chat's wake to its Super Chat (slice S3)."""
-        from omnigent.stores.conversation_store import SIDE_CHAT_LABEL_KEY, side_chat_parent_id
-
-        try:
-            resp = await server_client.get(f"/v1/sessions/{parent_id}", timeout=10.0)
-        except httpx.HTTPError:
-            return parent_id, None
-        if resp.status_code != 200:
-            return parent_id, None
-        data = resp.json()
-        if not isinstance(data, dict):
-            return parent_id, None
-        raw_labels = data.get("labels")
-        labels = raw_labels if isinstance(raw_labels, dict) else {}
-        super_chat_id = side_chat_parent_id(labels)
-        return resolve_wake_target(
-            parent_id=parent_id,
-            archived=bool(data.get("archived")),
-            is_side_chat=SIDE_CHAT_LABEL_KEY in labels,
-            fork_source_id=super_chat_id,
-        )
-
     async def _post_subagent_wake_notice(
         parent_id: str,
         notice: str,
@@ -5912,16 +5886,10 @@ def create_runner_app(
         created_by: str | None,
         *,
         is_rewake: bool = False,
-        check_archived_redirect: bool = False,
         journal_result: tuple[str, str] | None = None,
     ) -> None:
-        target_id = parent_id
-        if check_archived_redirect:
-            target_id, note = await _resolve_subagent_wake_target(parent_id)
-            if note is not None:
-                notice = f"{note}\n{notice}"
         delivered = await _deliver_subagent_wake_post(
-            server_client, target_id, notice, created_by=created_by
+            server_client, parent_id, notice, created_by=created_by
         )
         if delivered:
             forget_saved_files(child_id, _subagent_children)
@@ -5995,7 +5963,6 @@ def create_runner_app(
                 entry.child_session_id,
                 entry.created_by,
                 is_rewake=is_rewake,
-                check_archived_redirect=entry.superside_chat,
                 journal_result=(entry.title, entry.status) if entry.superside_chat else None,
             )
         )
@@ -6141,12 +6108,12 @@ def create_runner_app(
         """
         if labels is None:
             return
-        from omnigent.stores.conversation_store import SIDE_CHAT_LABEL_KEY
-
-        # Both are fixed at creation; the side-chat label gates side_chat_open.
-        _session_rollover_labels_cache[session_id] = {
-            key: labels[key] for key in (CONTEXT_MODE_LABEL, SIDE_CHAT_LABEL_KEY) if key in labels
-        }
+        # Fixed at creation.
+        _session_rollover_labels_cache[session_id] = (
+            {CONTEXT_MODE_LABEL: labels[CONTEXT_MODE_LABEL]}
+            if CONTEXT_MODE_LABEL in labels
+            else {}
+        )
 
     async def _rollover_labels_for_session(session_id: str) -> dict[str, str]:
         """Durable per-session lookup of just the rollover-mode label.

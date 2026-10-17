@@ -257,15 +257,14 @@ class SqlAlchemyDailyNoteStore:
     def recent_user_messages(self, *, since: int) -> dict[str, list[int]]:
         """Person messages (epoch seconds, oldest first) per live Super Chat since ``since``.
 
-        Derived from the persisted conversation items so idleness survives a restart. Side
-        Chats, Sub-agents and archived chats are left out.
+        Derived from the persisted conversation items so idleness survives a restart.
+        Sub-agents and archived chats are left out.
         """
         from omnigent.context.labels import (
             CONTEXT_MODE_LABEL,
             SUBAGENT_LABEL_KEY,
             SUPERSIDE_CHAT_MODE_VALUE,
         )
-        from omnigent.stores.conversation_store import SIDE_CHAT_LABEL_KEY
 
         workspace = current_workspace_id()
         with self._session("select_recent_user_messages") as session:
@@ -282,7 +281,7 @@ class SqlAlchemyDailyNoteStore:
                 select(SqlConversationLabel.conversation_id)
                 .where(
                     SqlConversationLabel.workspace_id == workspace,
-                    SqlConversationLabel.key.in_([SIDE_CHAT_LABEL_KEY, SUBAGENT_LABEL_KEY]),
+                    SqlConversationLabel.key == SUBAGENT_LABEL_KEY,
                 )
                 .scalar_subquery()
             )
