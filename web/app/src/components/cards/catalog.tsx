@@ -218,9 +218,12 @@ function Ask({
   title,
   data,
   answer,
+  cardId,
 }: Props<"ask"> & {
   /** What the person replied (their next message); locks the card. */
   answer?: string;
+  /** Names this card in the structured answer sent beside the label. */
+  cardId?: string;
 }) {
   const send = useReplyCardSend();
   const [picked, setPicked] = useState<string | null>(null);
@@ -232,7 +235,9 @@ function Ask({
     if (locked || pickedRef.current) return;
     pickedRef.current = true;
     setPicked(label);
-    send?.(label);
+    const option = data.options.find((o) => o.label === label);
+    if (cardId && option) send?.(label, { cardId, optionId: option.id, label });
+    else send?.(label);
   };
   // Options that preview something (deck themes) are drawn by that capability's own tiles.
   const previewKind = data.options.find((o) => o.preview)?.preview?.kind;

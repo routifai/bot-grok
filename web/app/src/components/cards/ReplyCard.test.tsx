@@ -123,6 +123,21 @@ it("sends the option label and locks the card", () => {
   expect(send).toHaveBeenCalledTimes(1);
 });
 
+it("sends the picked option's id beside its label (ADR 0025)", () => {
+  const send = vi.fn();
+  const host = mount(
+    <ReplyCardSendProvider send={send}>
+      <ReplyCard block={ask} cardId="m1:0" />
+    </ReplyCardSendProvider>,
+  );
+  act(() => [...host.querySelectorAll("button")][1]?.click());
+  expect(send).toHaveBeenCalledExactlyOnceWith("Seoul", {
+    cardId: "m1:0",
+    optionId: "b",
+    label: "Seoul",
+  });
+});
+
 it("two clicks on different options in the same tick still send exactly once", () => {
   const send = vi.fn();
   const host = mount(

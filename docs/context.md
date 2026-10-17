@@ -22,10 +22,15 @@ In the order the model reads it:
 4. **The per-turn prefix.** Built fresh by `superchat/prompt_prefix.py` (`turn_prefix_blocks`) and
    put in front of the person's latest message, for the model only; never stored, so it never
    reaches the transcript, a summary, search or memory upkeep. Read top to bottom:
+   - on a message that answers a question card, the pick line first: `They picked Pitch Deck.
+     Continue the task; do not plan it again.`
+     ([ADR 0025](adr/0025-act-by-default-tasks-have-state.md));
    - the person's local time (from the timezone in `GET /v1/me/proactivity`, UTC if unknown), and
      one gap line on the first message back from an idle break;
    - feature notes, such as "the person edited this file by hand" (see
      [artifacts.md](artifacts.md#write-back));
+   - the open tasks, one line each: `Open task: deck "RBC vs TD" · look Pitch Deck · data: mock ·
+     next: build`;
    - the Projects list: one line per `PROJECT.md` card under `~/workspace/projects/`, the 15 most
      recent plus the open one;
    - the memory profile (below);

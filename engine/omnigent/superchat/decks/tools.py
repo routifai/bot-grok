@@ -14,7 +14,7 @@ DECK_TOOL_NAMES = ("deck_export", "deck_new", "deck_check", "deck_themes", "deck
 DECK_AUTHORING_TOOL_NAMES = ("deck_new", "deck_check", "deck_themes", "deck_theme_set")
 DECK_EXPORT_FORMATS = ("pptx", "pdf")
 # Where a new deck's look came from (``deck_new``'s ``look_from``), checked by ``decks.look``.
-# ``ask`` (or a claim the records do not back) returns the "Which look?" card instead of a deck.
+# ``ask`` (or a claim the records do not back) builds in a look the engine chooses for the topic.
 DECK_LOOK_SOURCES = ("named", "picked", "you_choose", "background", "ask")
 
 
@@ -110,13 +110,12 @@ class DeckNewTool(Tool):
                             "enum": list(DECK_LOOK_SOURCES),
                             "description": (
                                 "Where this look came from: named (their latest message "
-                                "names the theme or a mood), picked (their answer to the "
-                                "'Which look?' card), you_choose (they said you choose / just "
-                                "do it), background (scheduled work, no person). Checked "
-                                "against the person's chat (a Helper's: the chat that started "
-                                "it). ask, or a claim it does not back, shows the 'Which look?' "
-                                "card instead and ends your turn (a Helper is refused and "
-                                "reports back). A remembered taste never settles the look."
+                                "names the theme or a mood), picked (their answer to a look "
+                                "card), you_choose (they said you choose / just do it), "
+                                "background (scheduled work, no person), ask (nothing was "
+                                "said). For ask, or a claim their words do not back, the "
+                                "engine chooses the look for the topic and their taste and the "
+                                "file card offers 'Change look'."
                             ),
                         },
                         "title": {"type": "string", "description": "The deck's title."},
@@ -130,7 +129,7 @@ class DeckNewTool(Tool):
                             ),
                         },
                     },
-                    "required": ["path", "template", "look_from", "title"],
+                    "required": ["path", "template", "title"],
                     "additionalProperties": False,
                 },
             },

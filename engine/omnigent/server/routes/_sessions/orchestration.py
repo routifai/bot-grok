@@ -4927,6 +4927,9 @@ def _runner_reject_detail(response: httpx.Response) -> str:
 #: already sees what the context recorded (the artifact open beside the chat). Set by a
 #: feature's install; a failing hook is logged and never fails the send.
 ON_MESSAGE_CONTEXT: dict[str, Callable[[str, str, dict[str, Any]], None]] = {}
+#: ``feature name -> hook(session_id)``, called once a session is deleted so a feature drops what
+#: it keeps for it. Set by a feature's install; a failing hook is logged, never fails the delete.
+ON_SESSION_DELETED: dict[str, Callable[[str], None]] = {}
 
 
 async def _persist_user_event_item(

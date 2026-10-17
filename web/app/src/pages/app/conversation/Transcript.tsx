@@ -15,6 +15,7 @@ import {
   useRef,
   useState,
 } from "react";
+import type { CardAnswer } from "../../../components/cards/context";
 import {
   ReplyCardBotProvider,
   ReplyCardSendProvider,
@@ -49,8 +50,9 @@ export function Transcript({
   onSendCard,
   ...props
 }: ComponentProps<typeof TranscriptView> & {
-  /** A reply card's button sends this text as the person's next message. */
-  onSendCard?: (text: string) => void;
+  /** A reply card's button sends this text as the person's next message (an ask card's pick
+   * with its structured answer). */
+  onSendCard?: (text: string, answer?: CardAnswer) => void;
 }) {
   // Follow-up chips that are not shown leave no row behind (no ghost bubble or Copy action).
   const { messages: allMessages, running } = props;

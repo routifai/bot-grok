@@ -1,10 +1,12 @@
 import { ORPCError } from "@orpc/server";
+import type { OmnigentMessageContext } from "@superchat/adapters/omnigent/browser";
 import {
   confineWorkspacePath,
   getOmnigentTranscript,
   getOmnigentWorkingPlace,
   getOmnigentWorkspaceRoot,
   interruptOmnigentSession,
+  mapSessionStatusFrame,
   mapTranscriptMessage,
   mapTranscriptPage,
   markOmnigentRead,
@@ -16,6 +18,7 @@ import {
   resolveChatOwnership,
   setOmnigentMessageArtifact,
   streamOmnigentFamily,
+  streamOmnigentSession,
 } from "@superchat/adapters/omnigent/browser";
 import type { FamilyEvent } from "@superchat/contracts";
 import { promptTextForWorkspaceAttachments } from "@superchat/core";
@@ -173,7 +176,7 @@ export async function sendToChat(input: {
   text?: string;
   attachments?: Parameters<typeof validateWorkspaceAttachments>[0];
   folders?: string[];
-  context?: { openArtifact?: { artifactId: string; version: number } };
+  context?: OmnigentMessageContext;
 }): Promise<{ ok: true }> {
   const sessionId = await targetChat(input);
   const text = promptTextForWorkspaceAttachments(
@@ -184,12 +187,17 @@ export async function sendToChat(input: {
   if (!text) throw new ORPCError("BAD_REQUEST", { message: "Nothing to send." });
   const client = engineClient();
   const images = await readTurnImages(client, NO_EMAIL, sessionId, text);
-  const openArtifact = input.context?.openArtifact;
+  const context = input.context;
   await onSuperChat(
-    openArtifact
-      ? postOmnigentMessage(client, NO_EMAIL, sessionId, text, images.length ? images : undefined, {
-          openArtifact,
-        })
+    context?.openArtifact || context?.cardAnswer
+      ? postOmnigentMessage(
+          client,
+          NO_EMAIL,
+          sessionId,
+          text,
+          images.length ? images : undefined,
+          context,
+        )
       : images.length
         ? postOmnigentMessage(client, NO_EMAIL, sessionId, text, images)
         : postOmnigentMessage(client, NO_EMAIL, sessionId, text),
@@ -248,6 +256,22 @@ export const chatsRouter = {
         throw error;
       }
       return { ok: true as const };
+    }),
+    watchStatus: os.chats.watchStatus.handler(async function* ({ input, signal }) {
+      await requireOwnHelper(input.botId, input.chatId);
+      try {
+        for await (const frame of streamOmnigentSession(
+          engineClient(),
+          NO_EMAIL,
+          input.chatId,
+          signal,
+        )) {
+          const status = mapSessionStatusFrame(frame);
+          if (status) yield status;
+        }
+      } catch (error) {
+        if (!signal?.aborted) throw error;
+      }
     }),
     watch: os.chats.watch.handler(async function* ({ input, signal }) {
       yield* watchFamily(input, signal);

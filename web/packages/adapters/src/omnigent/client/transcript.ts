@@ -36,7 +36,9 @@ export type OmnigentTranscriptBlock =
 
 export interface OmnigentTranscriptMessage {
   id: string;
-  role: "user" | "assistant";
+  /** `system`: a runtime note the engine shows only in a file's studio chat (ADR 0024), such as
+   * a version saved elsewhere during a turn. */
+  role: "user" | "assistant" | "system";
   created_at: number | null;
   blocks: OmnigentTranscriptBlock[];
   /** `queued` while this user message waits behind the running turn. */

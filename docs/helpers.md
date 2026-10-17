@@ -42,7 +42,9 @@ Limits:
 - **Step limit.** A conversation turn may make 3 work tool calls (search and fetch, browser, shell
   and files, artifact writes); the next is refused with an instruction to hand the rest to a
   helper (`superchat/step_limit/policy.py`). Memory, cards, scheduling, vault and helper management
-  never count. The person saying "do it here" lifts it for that turn.
+  never count. The person saying "do it here" lifts it for that turn. A turn that is refused
+  must start the helper in the same turn; one that ends without it is a stall
+  ([ADR 0025](adr/0025-act-by-default-tasks-have-state.md)).
 - **Approvals.** Sending, posting, deleting, spending, uploading and sharing in the person's name
   ask first, for helpers too (`superchat/approvals/`). A helper's ask is shown where the
   conversation's asks show (`GET /v1/me/asks`) and waits up to 7 days; after 120 seconds the parent

@@ -2040,6 +2040,48 @@ class SqlActivityTitle(OmnigentBase):
     created_at: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
+class SqlTask(OmnigentBase):
+    """
+    SQLAlchemy model for the ``tasks`` table: one deliverable in progress in a Conversation
+    (ADR 0025). The engine writes it from what happened (a tool call, a card answered, a helper
+    started, a save), never from the model's word.
+
+    :param id: The task's id (32 hex).
+    :param owner: The Conversation owner's key.
+    :param conversation_id: The Conversation it belongs to (no DB foreign key, Rule R032).
+    :param kind: ``deck``, ``page``, ``document``, ``sheet`` or ``file``.
+    :param title: What the deliverable is called.
+    :param fields: JSON object of what the kind needs (a deck: look, slides) and the answers.
+    :param status: ``open``, ``building``, ``done`` or ``dropped``.
+    :param artifact_group_ids: JSON list of the artifact groups it produced.
+    :param helper_ids: JSON list of the Helpers started for it.
+    :param created_at: Epoch seconds at creation.
+    :param updated_at: Epoch seconds of the last change.
+    """
+
+    __tablename__ = "tasks"
+    __table_args__ = (Index("ix_tasks_conversation", "workspace_id", "conversation_id", "status"),)
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        nullable=False,
+        server_default="0",
+        default=current_workspace_id,
+    )
+    id: Mapped[str] = mapped_column(Uuid16, primary_key=True)
+    owner: Mapped[str] = mapped_column(String(128), nullable=False)
+    conversation_id: Mapped[str] = mapped_column(Uuid16, nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    title: Mapped[str] = mapped_column(String(256), nullable=False)
+    fields: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    artifact_group_ids: Mapped[str] = mapped_column(Text, nullable=False)
+    helper_ids: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 class SqlObjective(OmnigentBase):
     """
     SQLAlchemy model for the ``objectives`` table.

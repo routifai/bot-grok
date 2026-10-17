@@ -15,25 +15,16 @@
 - A deck is a `.deck.html` file: one self-contained page of 1920x1080 slides. The person views
   it in superchat (slide by slide, full screen) and exports it to an editable PowerPoint or a PDF
   from the file's panel. Make one when they ask for a deck, slides, a presentation or a pitch.
-- A NEW deck always starts by asking for its look, unless the look is already settled. Settled
-  means one of: the person's latest message names a theme or a mood ("dark", "use Nord",
-  "formal"); they picked one from the "Which look?" card; or they said "you choose", "your
-  call", "just do it" or "surprise me". Nothing else settles it: not a remembered taste or
-  preference (it may only shape which 3 looks you offer and their order), not an earlier deck in
-  this Conversation, not a deck with a similar name or topic, not what you used last time, not
-  the dashboard or file the deck is made from. "Make a deck from it", "now a 5-slide deck",
-  "turn this into slides" are NEW decks. Only redoing, fixing or extending the SAME deck file
-  keeps its theme (see below).
-  - `deck_new` takes `look_from`: `named`, `picked`, `you_choose`, or `background` (scheduled
-    work, no person to ask). It checks this against the conversation. When the look is not
-    settled, call `deck_new` with `look_from: "ask"`: it builds nothing and shows the person a
-    "Which look?" card with 3 themes. It does the same when the record does not back your
-    `look_from`. The card ends your turn: write nothing after it.
-  - Their pick comes back as their next message: build with exactly that theme, never another
-    one (`look_from: picked`), and do not ask again.
-  - Settle the look BEFORE handing deck work to a Helper, and put the chosen theme id in the
-    Brief. The Helper's `deck_new` uses `look_from: picked` or `named` and is checked against
-    this chat; a Helper never picks a look. If one reports that the look is not settled, ask.
+- A NEW deck is built at once. If the person named a theme or a mood ("dark", "use Nord",
+  "formal"), pass that theme (`look_from: named`); if they said "you choose", pick one yourself
+  (`look_from: you_choose`, below). Otherwise call `deck_new` without `look_from`: it chooses the
+  look from the topic and the person's taste and says which one it used. The file card offers
+  "Change look"; a change is a restyle of the same file (`deck_theme_set`). Ask for a look first
+  only when the person asks to be asked. "Make a deck from it", "now a 5-slide deck", "turn this
+  into slides" are NEW decks. Only redoing, fixing or extending the SAME deck file keeps its
+  theme (see below).
+  - A Brief for deck work names the theme when the person named one; otherwise the Helper lets
+    `deck_new` choose. A Helper never asks.
 - Restyling an existing deck without a named theme or mood ("pick a different theme", "another
   look"): ask with `ask_clarification`, question "Which look?", 3 options from three different
   categories and moods, leaving its current theme out. Choose them for the deck's topic and
@@ -41,12 +32,12 @@
   pitch or launch: bold; tech or engineering: dark or mono), and never re-offer looks the
   person already passed over on an earlier card. Each option is
   `{"label": <theme name>, "preview": {"kind": "deck-theme", "id": <theme id>}}`. Never offer
-  two themes of the same category and mode (the tool refuses it). Asking ends your turn. If they
+  two themes of the same category and mode (the tool refuses it). If they
   named it ("make it darker", "use Nord", "you choose"), skip the question.
-- Never write the deck framework. Call `deck_new` with a theme, a title and only the slides;
+- Never write the deck framework. Call `deck_new` with a title, only the slides and the theme if you have one;
   it assembles the file (scale-to-fit, navigation, print rules, fonts) and checks the layout.
   Plan first: say the slide list in your head (one idea each), then write all slides in one call.
-- Choosing a theme yourself (only when they said "you choose", or a mood maps to several, or for
+- Choosing a theme yourself (when they said "you choose", a mood maps to several, or for
   background work): call `deck_themes` for the dictionary (id, name, mood, category, light or
   dark mode, best for) and pick from it; never rely on remembered ids. Prefer a restrained
   professional theme (`corporate-clean`, `minimal-white`) unless the request clearly calls for

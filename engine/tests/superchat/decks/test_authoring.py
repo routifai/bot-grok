@@ -96,7 +96,7 @@ def test_tools_are_offered_to_the_muse_only() -> None:
     assert names == {"deck_new", "deck_check", "deck_export", "deck_themes", "deck_theme_set"}
     assert DECKS_FEATURE.tools({}, None) == []  # type: ignore[arg-type]
     new = DeckNewTool().get_schema()["function"]["parameters"]
-    assert new["required"] == ["path", "template", "look_from", "title"]
+    assert new["required"] == ["path", "template", "title"]  # look_from is optional: the engine chooses (ADR 0025)
     assert "ask" in new["properties"]["look_from"]["enum"]
     assert "preference" not in new["properties"]["look_from"]["enum"]
     assert new["properties"]["template"]["enum"] == list(kit.templates())

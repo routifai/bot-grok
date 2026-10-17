@@ -23,6 +23,7 @@ see NOTICE.
 from __future__ import annotations
 
 import json
+import re
 import unicodedata
 from collections.abc import Callable
 from typing import Any
@@ -374,39 +375,67 @@ def register_preview_kind(
         PREVIEW_CHECKS[kind] = check
 
 
-def _split_options(raw: Any) -> tuple[list[Any], list[Any], str | None]:
-    """Labels and previews of ``options`` entries (a string, or ``{label, preview?}``)."""
+#: What a model-given option id may be (the web sends it back with the pick).
+_OPTION_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
+
+
+def _split_options(raw: Any) -> tuple[list[Any], list[Any], list[Any], str | None]:
+    """Labels, previews and ids of ``options`` (each a string or ``{id?, label, preview?}``)."""
     if not isinstance(raw, list):
-        return [], [], "options must be an array"
+        return [], [], [], "options must be an array"
     labels: list[Any] = []
     previews: list[Any] = []
+    given_ids: list[Any] = []
     for i, item in enumerate(raw):
         if not isinstance(item, dict):
             labels.append(item)
             previews.append(None)
+            given_ids.append(None)
             continue
-        if set(item) - {"label", "preview"}:
-            return [], [], f"options[{i}] allows only label and preview"
+        if set(item) - {"id", "label", "preview"}:
+            return [], [], [], f"options[{i}] allows only id, label and preview"
+        option_id = item.get("id")
+        if option_id is not None and (
+            not isinstance(option_id, str) or not _OPTION_ID.fullmatch(option_id)
+        ):
+            return [], [], [], f"options[{i}].id must be 1-64 letters, digits, - or _"
         preview = item.get("preview")
         if preview is not None:
             if not isinstance(preview, dict) or set(preview) != {"kind", "id"}:
-                return [], [], f"options[{i}].preview must be {{kind, id}}"
+                return [], [], [], f"options[{i}].preview must be {{kind, id}}"
             ids = PREVIEW_KINDS.get(preview["kind"]) if isinstance(preview["kind"], str) else None
             if ids is None:
                 return (
                     [],
                     [],
+                    [],
                     f"options[{i}].preview.kind must be one of {', '.join(PREVIEW_KINDS)}",
                 )
             if preview["id"] not in ids():
-                return [], [], f"options[{i}].preview.id is not a known {preview['kind']}"
+                return [], [], [], f"options[{i}].preview.id is not a known {preview['kind']}"
         labels.append(item.get("label"))
         previews.append(preview)
+        given_ids.append(option_id)
     for kind, check in PREVIEW_CHECKS.items():
         problem = check([p["id"] for p in previews if p and p["kind"] == kind])
         if problem:
-            return [], [], problem
-    return labels, previews, None
+            return [], [], [], problem
+    return labels, previews, given_ids, None
+
+
+def _option_ids(given: list[Any], labels: list[str]) -> tuple[list[str], str | None]:
+    """Each option's id: the model's, else one made from its label; all distinct."""
+    out: list[str] = []
+    for i, (option_id, label) in enumerate(zip(given, labels, strict=True)):
+        if option_id is None:
+            base = "-".join(re.findall(r"[a-z0-9]+", label.lower()))[:56] or f"opt-{i + 1}"
+            option_id, n = base, 2
+            while option_id in out or option_id in given:
+                option_id, n = f"{base}-{n}", n + 1
+        elif option_id in out:
+            return [], f"options[{i}].id repeats another option's id"
+        out.append(option_id)
+    return out, None
 
 
 def build_clarification(args: dict[str, Any]) -> dict[str, Any]:
@@ -421,7 +450,7 @@ def build_clarification(args: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(question, str) or not question.strip():
         return {"error": "question must be a non-empty string"}
     question = " ".join(question.split())
-    raw_labels, previews, err = _split_options(args.get("options"))
+    raw_labels, previews, given_ids, err = _split_options(args.get("options"))
     if err is not None:
         return {"error": err}
     options, err = _clean_strings(
@@ -433,6 +462,9 @@ def build_clarification(args: dict[str, Any]) -> dict[str, Any]:
     )
     if err is not None:
         return {"error": err}
+    ids, err = _option_ids(given_ids, options)
+    if err is not None:
+        return {"error": err}
     fallback = question + "\n\n" + "\n".join(f"- {option}" for option in options)
     out = _build_card(
         {
@@ -440,8 +472,8 @@ def build_clarification(args: dict[str, Any]) -> dict[str, Any]:
             "data": {
                 "question": question,
                 "options": [
-                    {"id": f"opt-{i}", "label": o, **({"preview": p} if p else {})}
-                    for i, (o, p) in enumerate(zip(options, previews, strict=True), 1)
+                    {"id": i, "label": o, **({"preview": p} if p else {})}
+                    for i, o, p in zip(ids, options, previews, strict=True)
                 ],
             },
             "fallback": fallback,
@@ -550,6 +582,10 @@ class AskClarificationTool(_CardSiblingTool):
                                     {
                                         "type": "object",
                                         "properties": {
+                                            "id": {
+                                                "type": "string",
+                                                "description": "Stable option id (optional).",
+                                            },
                                             "label": {"type": "string"},
                                             "preview": {
                                                 "type": "object",

@@ -195,6 +195,7 @@ from omnigent.server.routes._sessions.helpers import (
     require_filesystem_attachment_runtime,
 )
 from omnigent.server.routes._sessions.orchestration import (
+    ON_SESSION_DELETED,
     _best_effort_stop,
     _child_session_summaries_from_conversations,
     _dispatch_session_event_to_runner,
@@ -2748,6 +2749,11 @@ def register_events_routes(
         deleted = await conversation_store.delete_conversation(session_id)
         if not deleted:
             raise _session_not_found()
+        for hook in list(ON_SESSION_DELETED.values()):
+            try:
+                await asyncio.to_thread(hook, session_id)
+            except Exception:  # a feature's leftovers never fail the delete
+                _logger.warning("session delete hook failed for %s", session_id, exc_info=True)
         # The session is gone, so is its launch-progress state. Failed
         # launches are retained in the cache for reload visibility while
         # the session exists; without this eviction every deleted

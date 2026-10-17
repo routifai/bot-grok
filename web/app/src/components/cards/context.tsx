@@ -2,19 +2,20 @@ import type { ThreadMessage } from "@superchat/contracts";
 import { type ComponentType, createContext, type ReactNode, useContext, useMemo } from "react";
 import { type ResolvedReplyCard, replyCardKey, resolveReplyCards } from "./thread";
 
+/** Which ask card option a message answers, sent beside its text (ADR 0025). */
+export interface CardAnswer {
+  cardId: string;
+  optionId: string;
+  label: string;
+}
 /** How a card talks back: the person's next message, through the thread's own send path. */
-const SendContext = createContext<((text: string) => void) | null>(null);
+type CardSend = (text: string, answer?: CardAnswer) => void;
+const SendContext = createContext<CardSend | null>(null);
 const ThreadContext = createContext<Map<string, ResolvedReplyCard> | null>(null);
 /** Whether the Muse is working on this thread; follow-up chips stay hidden meanwhile. */
 const RunningContext = createContext(false);
 
-export function ReplyCardSendProvider({
-  send,
-  children,
-}: {
-  send: (text: string) => void;
-  children: ReactNode;
-}) {
+export function ReplyCardSendProvider({ send, children }: { send: CardSend; children: ReactNode }) {
   return <SendContext.Provider value={send}>{children}</SendContext.Provider>;
 }
 

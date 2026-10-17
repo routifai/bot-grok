@@ -61,6 +61,7 @@ def _load() -> list[Feature]:
     from omnigent.superchat.state_file import FEATURE as state_file
     from omnigent.superchat.step_limit import FEATURE as step_limit
     from omnigent.superchat.system_jobs import FEATURE as system_jobs
+    from omnigent.superchat.tasks import FEATURE as tasks
     from omnigent.superchat.transcript import FEATURE as transcript
     from omnigent.superchat.vault import FEATURE as vault
 
@@ -83,6 +84,7 @@ def _load() -> list[Feature]:
         recall_hint,
         step_limit,
         state_file,
+        tasks,
         transcript,
         family,
         system_jobs,

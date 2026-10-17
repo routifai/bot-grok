@@ -17,7 +17,7 @@ from omnigent.superchat._handler_http import error
 from omnigent.superchat.artifacts import workspace_roots
 from omnigent.superchat.decks import kit
 from omnigent.superchat.decks.handlers import run_helper
-from omnigent.superchat.decks.look import HELPER_REFUSAL, look_card, verify_look
+from omnigent.superchat.decks.look import Look, settle_look
 from omnigent.superchat.decks.names import DECK_SUFFIX, is_deck_name
 
 if TYPE_CHECKING:
@@ -87,11 +87,41 @@ def _verdict(report: dict[str, Any]) -> dict[str, Any]:
     return report
 
 
+def _look_note(look: Look, written: bool) -> str:
+    """What the model is told about a look the engine chose."""
+    name = kit.templates()[look.theme].name
+    if written:
+        return (
+            f"Built in {name}, chosen for the topic: {look.why}. The file card offers "
+            '"Change look"; do not ask about the look.'
+        )
+    return (
+        f"Use template {look.theme} ({name}), chosen for the topic ({look.why}), when you add "
+        "the slides."
+    )
+
+
+def _deck_record(look: Look, title: str, slides: object, target: Path | None) -> dict[str, Any]:
+    """What the tasks feature records about this deck (``deck`` in the result)."""
+    count = slides.count('<section class="slide') if isinstance(slides, str) else 0
+    record: dict[str, Any] = {
+        "title": title.strip(),
+        "look": kit.templates()[look.theme].name,
+        "look_id": look.theme,
+        "look_from": look.look_from,
+        "slides": count,
+    }
+    if target is not None:
+        record["file"] = target.name
+    return record
+
+
 async def handle_deck_new(args: dict[str, Any], ctx: HandlerCtx | None = None) -> str:
     """Assemble a new deck file from a template and the Muse's slides, then check it.
 
-    Only in a look the person chose (:mod:`~omnigent.superchat.decks.look`): otherwise nothing is
-    built and the "Which look?" card is returned instead, which ends the turn.
+    The look is kept when the records back ``look_from``, else chosen for the topic
+    (:mod:`~omnigent.superchat.decks.look`); the result says which, and the file card offers
+    "Change look".
     """
     raw = args.get("path")
     template = args.get("template")
@@ -103,25 +133,23 @@ async def handle_deck_new(args: dict[str, Any], ctx: HandlerCtx | None = None) -
         return error("deck_new requires a title")
     if not isinstance(template, str) or template not in kit.templates():
         return error(f"deck_new template must be one of: {', '.join(kit.templates())}")
-    check = await verify_look(ctx, args.get("look_from"), template)
-    if check.problem is not None:
-        if check.in_helper:  # no one would see a card: the Helper reports back, the Muse asks
-            return error(f"{HELPER_REFUSAL} ({check.problem})")
-        hint = f"{title} {check.message}"
-        card = look_card(check.problem, hint, seed=f"{check.chat}|{hint}", avoid=check.declined)
-        return json.dumps(card, ensure_ascii=False)
+    look = await settle_look(ctx, args.get("look_from"), template, title)
+    if look.refusal is not None:
+        return error(look.refusal)
     if not isinstance(slides, str) or not slides.strip():
-        return json.dumps(
-            {
-                "ok": True,
-                "written": False,
-                "note": (
-                    "No slides were given, so nothing was written. "
-                    "Call deck_new again with the slides."
-                ),
-                "layouts": kit.menu(),
-            }
-        )
+        menu: dict[str, Any] = {
+            "ok": True,
+            "written": False,
+            "note": (
+                "No slides were given, so nothing was written. "
+                "Call deck_new again with the slides."
+            ),
+            "layouts": kit.menu(),
+            "deck": _deck_record(look, title, None, None),
+        }
+        if look.chosen:
+            menu["note"] += " " + _look_note(look, written=False)
+        return json.dumps(menu)
     target = _resolve(raw.strip(), must_exist=False)
     if isinstance(target, str):
         return error(target)
@@ -134,7 +162,7 @@ async def handle_deck_new(args: dict[str, Any], ctx: HandlerCtx | None = None) -
     if errors:
         return json.dumps({"ok": False, "written": False, "errors": errors, "warnings": warnings})
     try:
-        document = kit.build_deck(template, title, slides)
+        document = kit.build_deck(look.theme, title, slides)
     except kit.KitError as exc:
         return error(str(exc))
     await asyncio.to_thread(target.parent.mkdir, parents=True, exist_ok=True)
@@ -142,7 +170,10 @@ async def handle_deck_new(args: dict[str, Any], ctx: HandlerCtx | None = None) -
     report = await _layout_report(target)
     report["errors"] = report.get("errors", [])
     report["warnings"] = warnings + report.get("warnings", [])
-    report.update(written=True, path=str(target))
+    report.update(written=True, path=str(target), template=look.theme)
+    report["deck"] = _deck_record(look, title, slides, target)
+    if look.chosen:
+        report["look_note"] = _look_note(look, written=True)
     return json.dumps(_verdict(report))
 
 

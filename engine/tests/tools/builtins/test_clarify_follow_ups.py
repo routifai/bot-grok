@@ -34,9 +34,9 @@ def test_clarification_builds_an_ask_card_with_option_ids() -> None:
     assert out["data"] == {
         "question": "Which quarter?",
         "options": [
-            {"id": "opt-1", "label": "Q1"},
-            {"id": "opt-2", "label": "Q2"},
-            {"id": "opt-3", "label": "Q3"},
+            {"id": "q1", "label": "Q1"},
+            {"id": "q2", "label": "Q2"},
+            {"id": "q3", "label": "Q3"},
         ],
     }
     assert out["fallback"] == "Which quarter?\n\n- Q1\n- Q2\n- Q3"
@@ -217,7 +217,7 @@ def test_clarification_options_may_preview_a_deck_theme() -> None:
     out = _ask(question="Which look?", options=_themed("corporate-clean", "nord", "bauhaus"))
     assert out["card"] == "ask"
     assert out["data"]["options"][1] == {
-        "id": "opt-2",
+        "id": "look-nord",
         "label": "Look nord",
         "preview": {"kind": "deck-theme", "id": "nord"},
     }
@@ -251,3 +251,14 @@ def test_transcript_carries_the_option_previews() -> None:
     (message,) = project_items(items)
     options = message["blocks"][0]["card"]["data"]["options"]
     assert [o["preview"]["id"] for o in options] == ["nord", "bauhaus"]
+
+
+def test_clarification_keeps_the_models_option_ids_and_makes_the_rest_distinct() -> None:
+    """The web sends the picked option's id back with the label (``context.card_answer``)."""
+    out = _ask(
+        question="Data?", options=[{"id": "mock", "label": "Use mock data"}, "Real!", "Real"]
+    )
+    assert [o["id"] for o in out["data"]["options"]] == ["mock", "real", "real-2"]
+    assert "id" in _ask(question="Q?", options=[{"id": "a b", "label": "A"}, "B"])["error"]
+    clash = _ask(question="Q?", options=[{"id": "x", "label": "A"}, {"id": "x", "label": "B"}])
+    assert "repeats" in clash["error"]

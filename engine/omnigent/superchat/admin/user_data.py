@@ -86,6 +86,7 @@ USER_DATA: dict[str, Rule] = {
     "vault_requests": Direct(),
     "vault_audit": Direct(),
     "daily_notes": Direct("owner"),
+    "tasks": Direct("owner"),
     # -- rows that hang off those, with no foreign key ------------------------------------
     "artifact_views": Child("artifact_publications", "slug", "slug"),
     "objective_tasks": Child("objectives", "objective_id", "id"),

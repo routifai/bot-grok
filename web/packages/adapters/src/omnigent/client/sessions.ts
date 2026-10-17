@@ -86,6 +86,8 @@ export interface OmnigentPostedMessage {
 /** What is beside the chat when a message is sent (docs/conversation.md "Send"). */
 export interface OmnigentMessageContext {
   openArtifact?: { artifactId: string; version: number };
+  /** The ask card option the message answers (ADR 0025). */
+  cardAnswer?: { cardId: string; optionId: string; label: string };
 }
 
 /** `POST /v1/sessions/{id}/events` with a `message` event carrying the user's turn text and,
@@ -115,13 +117,26 @@ export async function postOmnigentMessage(
       body: JSON.stringify({
         type: "message",
         data: { role: "user", content },
-        ...(context?.openArtifact
+        ...(context?.openArtifact || context?.cardAnswer
           ? {
               context: {
-                open_artifact: {
-                  artifact_id: context.openArtifact.artifactId,
-                  version: context.openArtifact.version,
-                },
+                ...(context.openArtifact
+                  ? {
+                      open_artifact: {
+                        artifact_id: context.openArtifact.artifactId,
+                        version: context.openArtifact.version,
+                      },
+                    }
+                  : {}),
+                ...(context.cardAnswer
+                  ? {
+                      card_answer: {
+                        card_id: context.cardAnswer.cardId,
+                        option_id: context.cardAnswer.optionId,
+                        label: context.cardAnswer.label,
+                      },
+                    }
+                  : {}),
               },
             }
           : {}),

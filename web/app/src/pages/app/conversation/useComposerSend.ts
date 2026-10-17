@@ -9,6 +9,7 @@ import {
   promptTextForWorkspaceAttachments,
 } from "@superchat/core";
 import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CardAnswer } from "../../../components/cards/context";
 import { notifyAsksChanged } from "../../../features/approvals";
 import type { ShownArtifact } from "../../../features/artifacts/useChatArtifacts";
 import { requestBrowserNotificationPermission } from "../../../lib/browser-notifications";
@@ -297,7 +298,7 @@ export function useComposerSend({
   /** Resolves `true` only when the message (or its routine action) really went out; every other
    * path resolves `false` so the composer gives the person's words back. */
   const sendMessage = useCallback(
-    async (text: string): Promise<boolean> => {
+    async (text: string, cardAnswer?: CardAnswer): Promise<boolean> => {
       const botTarget = activeBotId.current;
       if (!botTarget || sending) return false;
       setFollowSignal((current) => current + 1);
@@ -384,10 +385,15 @@ export function useComposerSend({
             text: quoted || undefined,
             attachments: workspaceAttachments.length ? workspaceAttachments : undefined,
             folders: folders.length ? folders : undefined,
-            ...(about
+            ...(about || cardAnswer
               ? {
                   context: {
-                    openArtifact: { artifactId: about.artifactId, version: about.version },
+                    ...(about
+                      ? {
+                          openArtifact: { artifactId: about.artifactId, version: about.version },
+                        }
+                      : {}),
+                    ...(cardAnswer ? { cardAnswer } : {}),
                   },
                 }
               : {}),
@@ -434,7 +440,10 @@ export function useComposerSend({
       userId,
     ],
   );
-  const sendCardReply = useCallback((text: string) => void sendMessage(text), [sendMessage]);
+  const sendCardReply = useCallback(
+    (text: string, answer?: CardAnswer) => void sendMessage(text, answer),
+    [sendMessage],
+  );
   /** Stops the turn; the engine cancels the messages waiting behind it. */
   const stopRun = useCallback(async () => {
     const botId = activeBotId.current;

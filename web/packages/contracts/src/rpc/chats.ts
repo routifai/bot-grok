@@ -27,6 +27,14 @@ export const FamilyEventSchema = z.discriminatedUnion("type", [
 ]);
 export type FamilyEvent = z.infer<typeof FamilyEventSchema>;
 
+/** One chat's status: `blockedOn` is the engine's words while its running turn waits for a slot
+ * ("Finishing another file first", ADR 0024), null otherwise. */
+export const ChatStatusSchema = z.object({
+  status: z.string(),
+  blockedOn: z.string().nullable(),
+});
+export type ChatStatus = z.infer<typeof ChatStatusSchema>;
+
 export const chatsContract = {
   chats: {
     /** The Conversation (no `chatId`) or one of its Helpers, as typed blocks.
@@ -49,6 +57,10 @@ export const chatsContract = {
     reset: oc.input(z.object({ botId: Id })).output(z.object({ ok: z.literal(true) })),
     /** The Muse's live family stream: ids only, refetch what changed. */
     watch: oc.input(z.object({ botId: Id })).output(eventIterator(FamilyEventSchema)),
+    /** One of the Muse's chats' status as it changes (a file's studio chat). */
+    watchStatus: oc
+      .input(z.object({ botId: Id, chatId: Id }))
+      .output(eventIterator(ChatStatusSchema)),
     /** Sends the person's message to the Muse's Conversation. Files are already in the
      * workspace (`files.uploadAttachment`); the engine queues or steers a message sent while a
      * turn runs. */
@@ -69,6 +81,14 @@ export const chatsContract = {
               .object({
                 openArtifact: z
                   .object({ artifactId: Id, version: z.number().int().min(1) })
+                  .optional(),
+                /** The message answers an ask card: which card and option (the text is its label). */
+                cardAnswer: z
+                  .object({
+                    cardId: z.string().min(1).max(200),
+                    optionId: z.string().min(1).max(64),
+                    label: z.string().min(1).max(200),
+                  })
                   .optional(),
               })
               .optional(),

@@ -17,8 +17,17 @@ function Fallback({ text }: { text: string }) {
 }
 
 /** One `reply_card` block: skeleton while pending, the catalog component when it parses,
- * otherwise its markdown fallback. `answer` is the person's reply to it, when there is one. */
-export function ReplyCard({ block, answer }: { block: ReplyCardBlock; answer?: string }) {
+ * otherwise its markdown fallback. `answer` is the person's reply to it, when there is one;
+ * `cardId` names it in an ask card's structured answer. */
+export function ReplyCard({
+  block,
+  answer,
+  cardId,
+}: {
+  block: ReplyCardBlock;
+  answer?: string;
+  cardId?: string;
+}) {
   if (block.pending) return <CardSkeleton card={block.card} />;
   // The chart card was retired; old transcripts still hold it.
   if (block.card === "chart") return <LegacyChartNote />;
@@ -33,7 +42,7 @@ export function ReplyCard({ block, answer }: { block: ReplyCardBlock; answer?: s
     case "plan":
       return <catalog.plan title={title} data={parsed.data} />;
     case "ask":
-      return <catalog.ask title={title} data={parsed.data} answer={answer} />;
+      return <catalog.ask title={title} data={parsed.data} answer={answer} cardId={cardId} />;
     case "follow_ups":
       return <catalog.follow_ups data={parsed.data} />;
     case "quote":
@@ -74,7 +83,7 @@ export function ReplyCardBlockView({
   if (shown.card === "follow_ups" && (!resolved || running)) return null;
   return (
     <div className="flex w-full justify-start py-1">
-      <ReplyCard block={shown} answer={resolved?.answer} />
+      <ReplyCard block={shown} answer={resolved?.answer} cardId={`${messageId}:${index}`} />
     </div>
   );
 }
