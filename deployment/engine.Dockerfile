@@ -8,7 +8,7 @@
 #
 # Build from the repo root (deployment/build.sh does this with the right tags):
 #   docker build -f deployment/engine.Dockerfile -t superchat/engine:local .
-# deployment/README.md explains what each stage is for.
+# docs/setup.md (Builds) explains what each stage is for.
 
 ARG NODE_IMAGE=node:22-slim
 ARG PYTHON_IMAGE=python:3.12-slim

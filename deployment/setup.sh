@@ -2,7 +2,7 @@
 # One-command local setup: writes .env from .env.docker.example, fills its secrets, builds the two
 # images and starts the stack. Safe to re-run: existing values are kept.
 #
-# The same by hand, from the repo root (deployment/README.md explains each step):
+# The same by hand, from the repo root (docs/setup.md explains each step):
 #   docker compose --env-file .env -f deployment/compose.yaml --profile build build computer
 #   docker compose --env-file .env -f deployment/compose.yaml build engine
 #   docker compose --env-file .env -f deployment/compose.yaml up -d --wait

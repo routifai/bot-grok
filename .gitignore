@@ -13,7 +13,7 @@ playwright-report
 .env
 .env.local
 .env.*.local
-# A machine's own Compose overrides (mirrors, CA bundle): docs/SETUP.md, Restricted networks.
+# A machine's own Compose overrides (mirrors, CA bundle): docs/setup.md, Builds.
 docker-compose.local.yaml
 .env.computers
 data
