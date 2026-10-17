@@ -4,7 +4,7 @@
 Usage: superchat-deck-export --format pptx|pdf --html PATH --out PATH
        superchat-deck-export --format lint --html PATH
 
-Runs a separate headless Chromium on this computer over CDP (the same CdpClient as
+Runs a separate headless Chromium on this host over CDP (the same CdpClient as
 ``superchat-page-browser``; the person's visible browser is never touched), then:
 
 * pptx: the Open Design pipeline. Lay out every slide, inject the vendored dom-to-pptx bundle,
@@ -101,7 +101,7 @@ def find_chromium() -> str:
     mac = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
     if Path(mac).is_file():
         return mac
-    raise ExportError("Chromium is not installed on this computer", "NO_BROWSER")
+    raise ExportError("Chromium is not installed on this host", "NO_BROWSER")
 
 
 def find_asset(env: str, names: list[str]) -> Path:

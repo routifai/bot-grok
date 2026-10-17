@@ -178,7 +178,7 @@ function SettingsForm({
           <div key={index} className="flex items-center gap-1">
             <Input
               aria-label={t`File`}
-              placeholder={t`File in your Computer`}
+              placeholder={t`File on your machine`}
               value={source}
               onChange={(event) => editSource(index, event.target.value)}
             />

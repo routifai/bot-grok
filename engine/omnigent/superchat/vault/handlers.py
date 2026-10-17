@@ -2,7 +2,7 @@
 
 ``vault_request_secret`` opens a secure-entry request (the value is entered on a secure form,
 never here). ``vault_fill`` fetches the value with the runner's session auth and types it into
-the Computer's browser; the value stays in local variables, is never logged, and the result only
+the host's browser; the value stays in local variables, is never logged, and the result only
 says it was filled.
 """
 
@@ -78,7 +78,7 @@ async def handle_vault_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:
         if field not in ("username", "password") or not isinstance(ref, int):
             return error("vault_fill needs field (username|password) and ref")
         if not local_browser_backend_enabled():
-            return error("vault_fill needs the Computer's browser")
+            return error("vault_fill needs the host's browser")
 
         async def fetch() -> tuple[str, str]:
             resp = await client.post(

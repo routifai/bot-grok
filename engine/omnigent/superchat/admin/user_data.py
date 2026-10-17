@@ -1,6 +1,6 @@
 """Everything the engine stores per person, and how deleting a person removes it.
 
-``delete_user`` used to remove what it knew about (sessions, Computers, keys, schedules) and left
+``delete_user`` used to remove what it knew about (sessions, hosts, keys, schedules) and left
 the rest behind: skills, artifacts and their blobs, publications, memory rows. Every row is keyed
 by the person's id (their email), which a returning account reuses, so whatever was left came
 back with it, published apps included.

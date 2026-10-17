@@ -6,9 +6,9 @@ import { artifactsContract } from "./rpc/artifacts.js";
 import { automationsContract } from "./rpc/automations.js";
 import { botsContract } from "./rpc/bots.js";
 import { chatsContract } from "./rpc/chats.js";
-import { computerContract } from "./rpc/computer.js";
 import { dailyNotesContract } from "./rpc/daily-notes.js";
 import { decksContract } from "./rpc/decks.js";
+import { filesContract } from "./rpc/files.js";
 import { knowledgeContract } from "./rpc/knowledge.js";
 import { liveContract } from "./rpc/live.js";
 import { memoryContract } from "./rpc/memory.js";
@@ -26,7 +26,7 @@ export const appContract = {
   ...automationsContract,
   ...botsContract,
   ...chatsContract,
-  ...computerContract,
+  ...filesContract,
   ...dailyNotesContract,
   ...decksContract,
   ...engineModelsContract,

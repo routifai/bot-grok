@@ -83,7 +83,7 @@ async def test_discovered_catalog_filters_other_vendors() -> None:
         "api_key_ref": "env:POD_INFERENCE_KEY",
     }
     snapshot = await SandboxInferenceService(state, transport=_transport(ids)).prepare(
-        "computer", "claude-sdk", "alice"
+        "docker", "claude-sdk", "alice"
     )
     assert [m["id"] for m in snapshot["catalog"]["models"]] == [
         "claude-sonnet-5-5",

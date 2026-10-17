@@ -1,7 +1,7 @@
 """Built-in tools for searching and reading the person's files.
 
 Schema-only classes: the runner dispatches each to :mod:`omnigent.superchat.knowledge.handlers`,
-which answers from the index in the person's Computer. The surface follows qmd (MIT, via the
+which answers from the index in the person's host. The surface follows qmd (MIT, via the
 pi-qmd extension; see NOTICE): three searches that trade speed for quality, two ways to read a
 file whole, one status, plus ``files_read_page`` for the picture of a page.
 
@@ -51,7 +51,7 @@ _FILE: dict[str, Any] = {
 
 
 class FilesSearchTool(ArtifactTool):
-    """Keyword (BM25) search; answered by the index in their Computer."""
+    """Keyword (BM25) search; answered by the index in their host."""
 
     _NAME = "files_search"
     _DESC = (
@@ -66,7 +66,7 @@ class FilesSearchTool(ArtifactTool):
 
 
 class FilesVsearchTool(ArtifactTool):
-    """Vector search; answered by the index in their Computer."""
+    """Vector search; answered by the index in their host."""
 
     _NAME = "files_vsearch"
     _DESC = (
@@ -79,7 +79,7 @@ class FilesVsearchTool(ArtifactTool):
 
 
 class FilesQueryTool(ArtifactTool):
-    """Hybrid search with a model rerank; answered by the index in their Computer."""
+    """Hybrid search with a model rerank; answered by the index in their host."""
 
     _NAME = "files_query"
     _DESC = (
@@ -101,7 +101,7 @@ class FilesQueryTool(ArtifactTool):
 
 
 class RecallTool(ArtifactTool):
-    """Recall's one search over everything earlier; answered by the index in their Computer."""
+    """Recall's one search over everything earlier; answered by the index in their host."""
 
     _NAME = "recall"
     _DESC = (
@@ -146,7 +146,7 @@ class RecallTool(ArtifactTool):
 
 
 class RecallGetTool(ArtifactTool):
-    """Read Recall hits by id; answered by the index in their Computer."""
+    """Read Recall hits by id; answered by the index in their host."""
 
     _NAME = "recall_get"
     _DESC = (
@@ -168,7 +168,7 @@ class RecallGetTool(ArtifactTool):
 
 
 class FilesGetTool(ArtifactTool):
-    """A file's Markdown; answered by the index in their Computer."""
+    """A file's Markdown; answered by the index in their host."""
 
     _NAME = "files_get"
     _DESC = (
@@ -189,7 +189,7 @@ class FilesGetTool(ArtifactTool):
 
 
 class FilesMultiGetTool(ArtifactTool):
-    """Several files' Markdown by glob; answered by the index in their Computer."""
+    """Several files' Markdown by glob; answered by the index in their host."""
 
     _NAME = "files_multi_get"
     _DESC = (
@@ -205,7 +205,7 @@ class FilesMultiGetTool(ArtifactTool):
 
 
 class FilesReadPageTool(ArtifactTool):
-    """Read one page of an indexed file; answered by the index in their Computer."""
+    """Read one page of an indexed file; answered by the index in their host."""
 
     _NAME = "files_read_page"
     _DESC = (
@@ -226,7 +226,7 @@ class FilesReadPageTool(ArtifactTool):
 
 
 class FilesStatusTool(ArtifactTool):
-    """The state of the index; answered by the index in their Computer."""
+    """The state of the index; answered by the index in their host."""
 
     _NAME = "files_status"
     _DESC = (

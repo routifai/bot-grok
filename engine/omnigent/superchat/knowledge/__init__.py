@@ -1,13 +1,13 @@
-"""Knowledge: a person's own file search (a small RAG over the files in their Computer).
+"""Knowledge: a person's own file search (a small RAG over the files in their host).
 
-The Computer's workspace is the one copy of a person's files, and the index lives there too. The
+The host's workspace is the one copy of a person's files, and the index lives there too. The
 engine's side holds no file data: ``tools`` / ``handlers`` register the Muse's qmd-style
-``files_*`` tools (the handler runs in the Computer), and ``routes`` relays ingest (an attachment
+``files_*`` tools (the handler runs in the host), and ``routes`` relays ingest (an attachment
 read before its message is sent), status, search and page thumbnails to it for Superchat.
 Embeddings and the search rerank are made through the engine's model proxy (``models``), so no key
-enters the Computer.
+enters the host.
 
-The Computer side keeps parsing, passages, thumbnails and the index on the home volume
+The host side keeps parsing, passages, thumbnails and the index on the home volume
 (``~/.superchat/knowledge``): ``chunking`` / ``parse`` / ``pdf`` (text and renders, no ML), ``db``
 (SQLite: FTS5 BM25 plus sqlite-vec), ``embedder`` (the model proxy client), ``indexer``
 (reconcile, passes, search), ``runtime`` (the background thread and the handlers' way in).

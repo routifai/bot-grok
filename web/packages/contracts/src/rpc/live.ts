@@ -68,7 +68,7 @@ export const LivePageSchema = z.object({
   /** The page's Automation (its scheduled task); its runs are listed with `automations.runs`. */
   taskId: Id,
   schedule: AutomationScheduleSchema.nullable(),
-  /** Also updates when a source file changes in the Computer. */
+  /** Also updates when a source file changes in the host. */
   onChange: z.boolean(),
   sources: z.array(z.string()),
   /** Epoch seconds. */

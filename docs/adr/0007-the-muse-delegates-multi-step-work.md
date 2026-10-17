@@ -4,7 +4,7 @@ The Muse had every work tool (browser, shell, files, web, artifacts) and a soft 
 
 There is one general Helper type, `worker`, with the Muse's full toolset. A `worker` may coordinate other `worker`s, one level deep. When starting a Helper the Muse picks one of two models, `fast` or `strong` (mapped to real models in config, never named in the prompt), plus a reasoning level; the engine rejects anything else. Background passes stay pinned to the fast model.
 
-The Computer's workspace follows one layout so delegated work lands where the person can find it: `your_files/` for what the person is meant to see, `goals/<goal>/files/` and `goals/<goal>/hidden_files/`, `user/` and `user/media_library/` for what the person hands over, `Downloads/` for the browser, and `/tmp` for scratch. Deliverables are written straight into their home, never copied in afterwards.
+The host's workspace follows one layout so delegated work lands where the person can find it: `your_files/` for what the person is meant to see, `goals/<goal>/files/` and `goals/<goal>/hidden_files/`, `user/` and `user/media_library/` for what the person hands over, `Downloads/` for the browser, and `/tmp` for scratch. Deliverables are written straight into their home, never copied in afterwards.
 
 ## Considered options
 

@@ -1,4 +1,4 @@
-"""The Computer's indexer: PDF pages and thumbnails, hybrid ranking, reconcile, delete."""
+"""The host's indexer: PDF pages and thumbnails, hybrid ranking, reconcile, delete."""
 
 from __future__ import annotations
 

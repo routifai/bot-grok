@@ -87,13 +87,13 @@ def register_fire_deferral(kind: str, hook: Callable[[ScheduledTask], float | No
 #: time while the parent Conversation's own turn runs).
 _QUEUED_KINDS = frozenset({"live_artifact", "automation"})
 
-#: ``hook(task)``: how many queued runs the owner's Computer has room for now, or ``None`` when
+#: ``hook(task)``: how many queued runs the owner's host has room for now, or ``None`` when
 #: nobody measured it lately.
 _ROOM: list[Callable[[ScheduledTask], int | None]] = []
 
 
 def register_room(hook: Callable[[ScheduledTask], int | None]) -> None:
-    """Let ``hook`` size the owner's cap on queued runs from their Computer's load."""
+    """Let ``hook`` size the owner's cap on queued runs from their host's load."""
     _ROOM[:] = [hook]
 
 
@@ -447,19 +447,19 @@ def _append_note(conversation_store: Any, parent_session_id: str, message: str) 
         _publish_external_conversation_item(parent_session_id, persisted[0])
 
 
-# How long a scheduled Helper run waits for its parent's Computer to wake and its runner connect.
+# How long a scheduled Helper run waits for its parent's host to wake and its runner connect.
 _PARENT_WAKE_TIMEOUT_S = 120.0
 
 
 async def _wake_parent_runner(deps: FireDeps, parent: Conversation) -> Conversation:
-    """Bring the parent's runner online, waking its sleeping managed Computer first.
+    """Bring the parent's runner online, waking its sleeping managed host first.
 
     Reuses the path a user message takes (:func:`ensure_runner_connected`: resume or relaunch the
     managed sandbox, launch a runner on it, wait for the tunnel), so a scheduled run needs no
     separate launch logic. A parent whose runner is already connected returns at once.
 
     :returns: The parent row re-read after the wake (its runner id may have been rebound).
-    :raises RuntimeError: When the Computer could not be brought online.
+    :raises RuntimeError: When the host could not be brought online.
     """
     from omnigent.server.routes._sessions.orchestration import ensure_runner_connected
 
@@ -477,11 +477,11 @@ async def _wake_parent_runner(deps: FireDeps, parent: Conversation) -> Conversat
             timeout=_PARENT_WAKE_TIMEOUT_S,
         )
     except TimeoutError as exc:
-        raise RuntimeError("your Computer didn't start in time") from exc
+        raise RuntimeError("your machine didn't start in time") from exc
     except OmnigentError as exc:
-        raise RuntimeError(f"your Computer didn't start: {exc.message}") from exc
+        raise RuntimeError(f"your machine didn't start: {exc.message}") from exc
     if client is None:
-        raise RuntimeError("your Computer didn't start: the parent's runner is not connected")
+        raise RuntimeError("your machine didn't start: the parent's runner is not connected")
     return woken
 
 
@@ -569,7 +569,7 @@ async def _launch_helper(
             f"helper launch/dispatch failed: {exc}",
             "launch_failed",
             retryable=True,
-            reason="your Computer didn't start",
+            reason="your machine didn't start",
         )
         return
 

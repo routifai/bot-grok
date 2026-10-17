@@ -1,12 +1,12 @@
-"""Drop the central file index: the Computer holds a person's files and their index.
+"""Drop the central file index: the host holds a person's files and their index.
 
 Revision ID: kn2b3c4d5e6f
 Revises: kn1b2c3d4e5f
 Create Date: 2026-10-09 18:00:00.000000
 
 ``file_index_jobs`` and ``file_chunks`` held the knowledge worker's state in the engine database.
-File search now runs in the person's Computer (``omnigent.superchat.knowledge``), with its index
-on the Computer's home volume, so nothing is kept here. The downgrade recreates the empty tables.
+File search now runs in the person's host (``omnigent.superchat.knowledge``), with its index
+on the host's home volume, so nothing is kept here. The downgrade recreates the empty tables.
 """
 
 from __future__ import annotations

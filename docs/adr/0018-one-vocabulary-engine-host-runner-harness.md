@@ -1,5 +1,7 @@
 # One vocabulary: engine, host, runner, harness
 
+> **Status:** Done 2026-10-17: the Computer → host rename (`9d4fd977d`..`a2cbfb745`) applied it to code, config, routes, labels, env, the database, docs and copy.
+
 The per-person container had four names. The UI, the environment variables and the Docker labels called it a Computer; the launcher config and the database columns called it a sandbox; the hosts table called it a managed host; the readiness endpoint reported "runner connected". The word sandbox alone meant three things (the OS process jail, the environment launcher, an iframe), and native meant three (a terminal harness, PowerPoint shapes, the package that held the OS jail). A developer reading the code could not tell which thing a name pointed at.
 
 We fix the words before we move the files. One word per thing, used in code, config, docs and UI copy.
@@ -22,7 +24,7 @@ We fix the words before we move the files. One word per thing, used in code, con
 ## Consequences
 
 - Environment variables, Docker labels, container and volume names, routes, config keys and database columns are renamed in one wave ([ADR 0019](0019-repository-layout-and-layers.md), wave 3). The database is fresh at the time of the rename, so no migration carries the old names and the legacy `superchat.*` labels are dropped rather than read.
-- `onboarding/sandboxes/computer.py` becomes `host/providers/docker.py`; `server/managed_hosts.py` becomes `server/hosts.py`; the `sandbox:` config block becomes `host:` with `provider: docker`.
+- `onboarding/sandboxes/computer.py` becomes `hosts/docker.py` (with the launcher contract, types and registry beside it in `omnigent/hosts/`); `server/managed_hosts.py` becomes `server/hosts.py`; the `sandbox:` config block becomes `host:` with `provider: docker`. The provider lives in `omnigent/hosts/`, not `host/providers/`, because `omnigent/host/` is the HOST layer that runs inside the container (ADR 0019) while the launcher runs in the engine.
 - The glossary in `docs/glossary.md` is the reference; a pull request that introduces a second word for one of these things is sent back.
 
 ## Considered options

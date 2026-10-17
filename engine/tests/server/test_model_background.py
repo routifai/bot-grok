@@ -14,7 +14,7 @@ from omnigent.llms.background import (
     resolve_background_llm,
 )
 from omnigent.onboarding.provider_config import load_providers
-from omnigent.server.managed_hosts import parse_sandbox_config
+from omnigent.server.hosts import parse_host_section
 from omnigent.superchat.models import tiers
 from omnigent.superchat.models.background import BackgroundModels, background_harness
 from omnigent.superchat.models.selection import ModelPicks
@@ -95,7 +95,7 @@ async def test_an_operator_gateway_is_called_through_its_own_family(
     raw = yaml.safe_load(
         DEFAULT_TEMPLATE.read_text().replace("__ENGINE_PUBLIC_URL__", "https://eng.example")
     )
-    deployment = parse_sandbox_config(raw["sandbox"])
+    deployment = parse_host_section(raw["host"])
     state = SimpleNamespace(
         sandbox_config=deployment,
         databricks_store=None,

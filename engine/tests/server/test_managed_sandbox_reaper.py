@@ -10,10 +10,10 @@ from dataclasses import replace
 import pytest
 
 from omnigent.db.db_models import current_workspace_id
-from omnigent.server.managed_hosts import (
-    ManagedSandboxConfig,
-    ManagedSandboxDeployment,
-    ManagedSandboxReaperConfig,
+from omnigent.server.hosts import (
+    HostDeployment,
+    HostProviderConfig,
+    HostReaperConfig,
 )
 from omnigent.server.managed_sandbox_reaper import ManagedSandboxReaper
 from omnigent.stores.host_store import Host, ManagedSandboxScanCursor, ManagedSandboxScanRow
@@ -207,7 +207,7 @@ def _deployment(
     *,
     terminate_after_offline_days: int = 1,
     sweep_interval_s: int = 86400,
-) -> ManagedSandboxDeployment:
+) -> HostDeployment:
     configs = []
     for launcher in launchers:
 
@@ -216,16 +216,16 @@ def _deployment(
             return launcher
 
         configs.append(
-            ManagedSandboxConfig(
+            HostProviderConfig(
                 server_url="https://s.example.com",
                 launcher_factory=launcher_factory,
                 token_ttl_s=3600,
                 provider=launcher.provider,
             )
         )
-    return ManagedSandboxDeployment(
+    return HostDeployment(
         configs=tuple(configs),
-        reaper=ManagedSandboxReaperConfig(
+        reaper=HostReaperConfig(
             enabled=True,
             terminate_after_offline_days=terminate_after_offline_days,
             sweep_interval_s=sweep_interval_s,

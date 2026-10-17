@@ -5,7 +5,7 @@ import { rpc } from "../lib/rpc";
 
 const thumbnails = new Map<string, Promise<string | null>>();
 
-/** An image from the Computer workspace as a data URL, read once per path for the life of the tab. */
+/** An image from the host workspace as a data URL, read once per path for the life of the tab. */
 function loadThumbnail(botId: string, ref: WorkspaceAttachmentRef): Promise<string | null> {
   const key = `${botId}:${ref.path}`;
   let found = thumbnails.get(key);

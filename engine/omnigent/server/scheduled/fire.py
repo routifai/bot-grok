@@ -100,7 +100,7 @@ def _max_concurrent(measured: int | None = None) -> int:
     """Queued-kind runs one owner may have at once.
 
     ``OMNIGENT_AUTOMATION_MAX_CONCURRENT`` fixes it when set; else ``measured`` (what the owner's
-    Computer has room for right now), else the default.
+    host has room for right now), else the default.
     """
     try:
         fixed = int(os.environ[_MAX_CONCURRENT_ENV])
@@ -1174,7 +1174,7 @@ def _make_managed_sandbox_dispatch(deps: FireDeps) -> LaunchDispatch:
     """Build the managed-sandbox launch+dispatch seam.
 
     Reuses the exact ``host_type="managed"`` pipeline ``POST /v1/sessions`` uses:
-    :func:`_run_managed_launch` provisions a FRESH sandbox (``relaunch_host`` left
+    :func:`_run_managed_launch` provisions a FRESH sandbox (``host_to_relaunch`` left
     unset), binds a clean ``$HOME/workspace`` + a new host to the session, launches
     the runner, and waits for its tunnel. That pipeline does not dispatch the
     prompt, so once it settles successfully this seam re-reads the bound runner and

@@ -1,7 +1,7 @@
-"""The Computer's index service: one background thread per runner, and the handlers' way to it.
+"""The host's index service: one background thread per runner, and the handlers' way to it.
 
 It is a service of the runner process (not a daemon of its own): it starts with the runner in a
-managed Computer, reconciles the files area with the index, then waits for a nudge (an upload, a
+managed host, reconciles the files area with the index, then waits for a nudge (an upload, a
 saved artifact) or a slow tick and indexes whatever is due. Tool handlers reach it through
 :func:`get_runtime`. The index lives under the home volume (``~/.superchat/knowledge``), so it
 moves with
@@ -148,7 +148,7 @@ def _build() -> KnowledgeRuntime:
 
 
 def start_for_runner(server_url: str | None) -> KnowledgeRuntime | None:
-    """Start the service when this runner is a managed Computer (``IS_SANDBOX=1``)."""
+    """Start the service when this runner is a managed host (``IS_SANDBOX=1``)."""
     configure(server_url)
     if os.environ.get("IS_SANDBOX") != "1":
         return None

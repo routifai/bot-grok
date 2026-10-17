@@ -1,6 +1,6 @@
 Superchat's fixes to PptxGenJS 4.0.1 (MIT), applied by ../install.sh to dist/pptxgen.cjs.js (the
 package "main") and dist/pptxgen.es.js ("module"). The browser bundles (bundle, min) are not used
-in the Computer and are left as published. Each change is the upstream fix, ported from src/ to
+in the host and are left as published. Each change is the upstream fix, ported from src/ to
 the built files:
 
   1. gitbrent/PptxGenJS#1531, PR #1537: a category chart's embedded workbook wrote its table

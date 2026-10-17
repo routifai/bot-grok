@@ -142,7 +142,7 @@ class EmbeddingResult:
 
 @dataclass(frozen=True)
 class EmbeddingPlan:
-    """How a Computer should embed for its owner through the model proxy.
+    """How a host should embed for its owner through the model proxy.
 
     :param provider: Upstream the proxy forwards to (the ``{provider}`` of its route).
     :param model: Model id as the provider spells it.
@@ -221,7 +221,7 @@ class ModelEmbeddings:
         return _tag(connection.provider, self._settings.get())
 
     def plan(self, owner_id: str) -> EmbeddingPlan:
-        """The provider and model *owner_id*'s Computer embeds with through the model proxy.
+        """The provider and model *owner_id*'s host embeds with through the model proxy.
 
         Same resolution, suspension and budget checks as :meth:`embed`; the call itself and its
         cost then go through the proxy.
@@ -240,7 +240,7 @@ class ModelEmbeddings:
 
     def check(self, owner_id: str) -> None:
         """Refuse a suspended owner or one whose "stop" budget is used up (shared by every
-        helper that calls a model for a Computer).
+        helper that calls a model for a host).
 
         :raises EmbeddingUnavailable: ``suspended`` or ``budget``.
         """

@@ -52,8 +52,8 @@ vi.mock("@superchat/ui-web", () => ({
 vi.mock("./app/settings/GeneralPanel", () => ({
   GeneralPanel: () => <div data-testid="general-panel" />,
 }));
-vi.mock("./app/settings/ComputerStatusPanel", () => ({
-  ComputerStatusPanel: () => <div data-testid="computer-panel" />,
+vi.mock("./app/settings/HostStatusPanel", () => ({
+  HostStatusPanel: () => <div data-testid="machine-panel" />,
 }));
 vi.mock("./app/SuperchatSettingsPanel", () => ({
   SuperchatSettingsPanel: ({ bot }: { bot: Bot }) => (
@@ -100,13 +100,13 @@ const baseProps = {
   onClose: () => undefined,
 };
 
-it("lists Superchat first, then General and Computer", async () => {
+it("lists Superchat first, then General and Machine", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   engine.status = null;
   const { container, root } = render();
   try {
     await act(async () => root.render(<SettingsOverlay {...baseProps} />));
-    expect(navIds(container)).toEqual(["superchat", "general", "computer"]);
+    expect(navIds(container)).toEqual(["superchat", "general", "machine"]);
     expect(
       container.querySelector('[data-testid="settings-nav-superchat"]')?.textContent,
     ).toContain("Superchat");
@@ -142,7 +142,7 @@ it("offers Models when the engine has them", async () => {
   try {
     engine.status = { enabled: true, harnesses: [], ready: true };
     await act(async () => root.render(<SettingsOverlay {...baseProps} />));
-    expect(navIds(container)).toEqual(["superchat", "general", "models", "computer"]);
+    expect(navIds(container)).toEqual(["superchat", "general", "models", "machine"]);
     await act(async () =>
       container.querySelector<HTMLButtonElement>('[data-testid="settings-nav-models"]')?.click(),
     );

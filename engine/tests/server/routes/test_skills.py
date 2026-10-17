@@ -320,7 +320,7 @@ async def test_managed_host_bundle_token_is_bound_to_session_host(
         name="sandbox",
         user_id="owner",
         token="valid",
-        provider="computer",
+        provider="docker",
         sandbox_id="sandbox",
         token_expires_at=int(time.time()) + (-60 if expired else 3600),
     )

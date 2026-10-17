@@ -9,8 +9,8 @@ from contextlib import suppress
 
 from omnigent.db.db_models import workspace_scope
 from omnigent.db.utils import now_epoch
-from omnigent.server.managed_hosts import (
-    ManagedSandboxDeployment,
+from omnigent.server.hosts import (
+    HostDeployment,
     _launcher_for_teardown,
 )
 from omnigent.stores.host_store import (
@@ -45,7 +45,7 @@ class ManagedSandboxReaper:
         self,
         *,
         host_store: HostStore,
-        sandbox_config: ManagedSandboxDeployment,
+        sandbox_config: HostDeployment,
         clock: Callable[[], int] = now_epoch,
         scan_batch_size: int = _DEFAULT_SCAN_BATCH_SIZE,
     ) -> None:
@@ -195,8 +195,7 @@ class ManagedSandboxReaper:
             launcher = _launcher_for_teardown(candidates[0], self._sandbox_config)
             if launcher is None:
                 _logger.warning(
-                    "No launcher available for managed sandbox provider %s; "
-                    "skipping %s candidate(s)",
+                    "No launcher available for host provider %s; skipping %s candidate(s)",
                     provider,
                     len(candidates),
                 )

@@ -11,7 +11,7 @@ The engine keeps what the two production processes import, plus the shared layer
 | Removed | Why |
 |---|---|
 | Omnigent's web app, deploy recipes, docs, designs, editors, Slack integration, dev tools, example agents, release scripts (2026-10-16, commit `5d014befe`) | Superchat has its own web and one deployment folder |
-| Harnesses other than `claude-sdk`, `claude-native`, `pi`; sandboxes other than `computer`; adapters other than Anthropic and OpenAI; tools other than Tavily (2026-10-16, `6380c515e`) | first cut |
+| Harnesses other than `claude-sdk`, `claude-native`, `pi`; host providers other than the Docker one (now `docker`); adapters other than Anthropic and OpenAI; tools other than Tavily (2026-10-16, `6380c515e`) | first cut |
 | Tavily `web_search` (2026-10-16, `aba39ea7c`) | no bundle enabled it and no deployment passed its key |
 | Codex: `harnesses/codex_native`, `inner/codex_*`, `runner/codex`, approval modes, elicitation routes, plugin skills | not a Superchat harness |
 | `claude-native`: `harnesses/claude_native`, `native/`, `terminals/`, `runner/native`, the tmux bridge and forwarders | wrapped the Claude Code terminal app; no bundle used it; the SDK harness is the one shape |

@@ -1045,8 +1045,8 @@ def test_session_metadata_managed_accepts_sandbox_provider() -> None:
     """
     from omnigent.server.schemas import SessionCreateMetadata
 
-    meta = SessionCreateMetadata(host_type="managed", sandbox_provider="computer")
-    assert meta.sandbox_provider == "computer"
+    meta = SessionCreateMetadata(host_type="managed", sandbox_provider="docker")
+    assert meta.sandbox_provider == "docker"
 
 
 def test_session_metadata_external_rejects_sandbox_provider() -> None:
@@ -1057,7 +1057,7 @@ def test_session_metadata_external_rejects_sandbox_provider() -> None:
     from omnigent.server.schemas import SessionCreateMetadata
 
     with pytest.raises(ValidationError, match="sandbox_provider only applies"):
-        SessionCreateMetadata(sandbox_provider="computer")
+        SessionCreateMetadata(sandbox_provider="docker")
 
 
 def test_session_metadata_external_rejects_repo_url_workspace() -> None:
@@ -1093,10 +1093,10 @@ def test_session_fork_managed_accepts_provider_and_repo_workspace() -> None:
 
     req = SessionForkRequest(
         host_type="managed",
-        sandbox_provider="computer",
+        sandbox_provider="docker",
         workspace="https://github.com/org/repo#release-1.2",
     )
-    assert req.sandbox_provider == "computer"
+    assert req.sandbox_provider == "docker"
     assert req.workspace == "https://github.com/org/repo#release-1.2"
 
 
@@ -1120,7 +1120,7 @@ def test_session_fork_external_rejects_sandbox_provider() -> None:
     from omnigent.server.schemas import SessionForkRequest
 
     with pytest.raises(ValidationError, match="sandbox_provider only applies"):
-        SessionForkRequest(sandbox_provider="computer")
+        SessionForkRequest(sandbox_provider="docker")
 
 
 @pytest.mark.parametrize(

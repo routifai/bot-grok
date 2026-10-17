@@ -1,4 +1,4 @@
-"""The relays ask the Computer's runner for status, search, thumbnails; the engine keeps
+"""The relays ask the host's runner for status, search, thumbnails; the engine keeps
 nothing."""
 
 from __future__ import annotations
@@ -98,7 +98,7 @@ def test_status_relays_the_index_and_marks_library_files(world: World) -> None:
         source_path=absolute,
     )
     body = world.client.get(f"{BASE}/status").json()
-    assert body["computer"] == "awake" and body["updated_at"]
+    assert body["host"] == "awake" and body["updated_at"]
     (file,) = body["files"]
     assert (file["state"], file["artifact_id"], file["path"]) == (
         "searchable",
@@ -114,7 +114,7 @@ def test_asleep_status_is_the_last_known_and_never_wakes(world: World) -> None:
     world.awake, world.wake_ok = False, False
     calls = len(world.runner.calls)
     asleep = world.client.get(f"{BASE}/status").json()
-    assert asleep["computer"] == "asleep" and asleep["files"][0]["state"] == "searchable"
+    assert asleep["host"] == "asleep" and asleep["files"][0]["state"] == "searchable"
     assert len(world.runner.calls) == calls and world.awake is False
 
 
@@ -124,12 +124,12 @@ def test_asleep_with_nothing_known_is_an_empty_status(world: World) -> None:
     assert body == {
         "files": [],
         "embeddings": {"available": False, "reason": None},
-        "computer": "asleep",
+        "host": "asleep",
         "updated_at": None,
     }
 
 
-def test_search_wakes_the_computer_and_returns_passages(world: World) -> None:
+def test_search_wakes_the_host_and_returns_passages(world: World) -> None:
     put_pdf(world.runtime)
     world.awake = False
     found = world.client.post(f"{BASE}/search", json={"query": "currency exposure"}).json()
@@ -138,7 +138,7 @@ def test_search_wakes_the_computer_and_returns_passages(world: World) -> None:
     assert "type" not in found and "abs_path" not in found["results"][0]
 
 
-def test_ingest_wakes_the_computer_and_answers_when_the_file_is_searchable(world: World) -> None:
+def test_ingest_wakes_the_host_and_answers_when_the_file_is_searchable(world: World) -> None:
     world.awake = False
     path = world.runtime.indexer.workspace / "your_files/uploads/2026-10-09/r.pdf"
     path.parent.mkdir(parents=True)
@@ -157,7 +157,7 @@ def test_ingest_wakes_the_computer_and_answers_when_the_file_is_searchable(world
     assert world.client.post(f"{BASE}/ingest", json={"path": "x", "extra": 1}).status_code == 422
 
 
-def test_search_when_the_computer_wont_start_is_a_calm_503(world: World) -> None:
+def test_search_when_the_host_wont_start_is_a_calm_503(world: World) -> None:
     world.awake, world.wake_ok = False, False
     r = world.client.post(f"{BASE}/search", json={"query": "x"})
     assert r.status_code == 503 and "still starting" in r.json()["message"]
@@ -180,7 +180,7 @@ def test_thumbnail_is_served_cached_and_never_wakes(world: World) -> None:
     assert world.awake is False
 
 
-def test_reindex_only_runs_on_an_awake_computer(world: World) -> None:
+def test_reindex_only_runs_on_an_awake_host(world: World) -> None:
     assert world.client.post(f"{BASE}/reindex").json() == {"queued": 0}
     world.awake = False
     assert world.client.post(f"{BASE}/reindex").json() == {"queued": 0}
@@ -210,7 +210,7 @@ def test_ingest_needs_write_access_and_only_reads_uploads(world: World, monkeypa
     assert seen == [2]  # refused before any access check or wake
 
 
-def test_an_ingest_timeout_is_its_own_error_not_a_starting_computer(world: World) -> None:
+def test_an_ingest_timeout_is_its_own_error_not_a_starting_host(world: World) -> None:
     import httpx
 
     async def slow(_request):

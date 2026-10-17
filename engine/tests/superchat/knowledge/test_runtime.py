@@ -56,7 +56,7 @@ def test_an_upload_is_indexed_immediately_not_on_the_idle_tick(tmp_path: Path) -
     )
 
 
-def test_the_first_upload_starts_the_service_in_a_computer(
+def test_the_first_upload_starts_the_service_in_a_host(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     workspace = tmp_path / "workspace"

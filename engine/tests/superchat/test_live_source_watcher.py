@@ -1,4 +1,4 @@
-"""The Computer's poll of live page sources."""
+"""The host's poll of live page sources."""
 
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ def test_a_failed_report_is_sent_again_next_pass(tmp_path: Path) -> None:
     assert watcher.poll() == ["tea.csv"]
 
 
-def test_the_poll_carries_the_computers_load(tmp_path: Path, monkeypatch) -> None:
+def test_the_poll_carries_the_hosts_load(tmp_path: Path, monkeypatch) -> None:
     from omnigent.superchat.live import watcher as watcher_mod
 
     seen: list[dict[str, str]] = []

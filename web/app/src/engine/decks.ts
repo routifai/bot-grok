@@ -10,7 +10,7 @@ import { artifactNotFound, toArtifact } from "./artifact-shape";
 import { engineClient, NO_EMAIL } from "./client";
 import { os } from "./context";
 
-/** `decks.*`: a `.deck.html` themed and exported to PowerPoint or PDF in the person's Computer
+/** `decks.*`: a `.deck.html` themed and exported to PowerPoint or PDF in the person's host
  * (hand edits are `artifacts.edit`). */
 export const decksRouter = {
   decks: {
@@ -54,7 +54,7 @@ export const decksRouter = {
         if (error instanceof OmnigentApiError) {
           if (error.code === "runner_unavailable") {
             throw new ORPCError("SERVICE_UNAVAILABLE", {
-              message: "Your Computer is still starting. Try again in a moment.",
+              message: "Your machine is still starting. Try again in a moment.",
             });
           }
           if (error.code === "invalid_input") {

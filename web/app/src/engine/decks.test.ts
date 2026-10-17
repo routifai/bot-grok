@@ -44,7 +44,7 @@ describe("deck export", () => {
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({ format: "pptx" });
   });
 
-  it("says the Computer is starting when the engine has no runner", async () => {
+  it("says the host is starting when the engine has no runner", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => json({ error: { code: "runner_unavailable", message: "starting" } }, 503)),

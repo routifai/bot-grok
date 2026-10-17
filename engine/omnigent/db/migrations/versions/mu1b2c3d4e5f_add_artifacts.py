@@ -5,7 +5,7 @@ Revises: vt2b2c3d4e5f
 Create Date: 2026-10-04 00:00:00.000000
 
 An artifact version is a deliverable file (HTML page, document, sheet, deck...) the Muse saved
-from its Computer into a Conversation; the bytes live in the artifact store.
+from its host into a Conversation; the bytes live in the artifact store.
 """
 
 from __future__ import annotations

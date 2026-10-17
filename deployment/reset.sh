@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stop the Docker stack and delete all its data: the Postgres volume, bot computer state under
+# Stop the Docker stack and delete all its data: the Postgres volume, host state under
 # ./data, and stopped containers. Asks for confirmation first. Pass -y / --yes to skip the prompt.
 set -euo pipefail
 
@@ -18,7 +18,7 @@ for arg in "$@"; do
 done
 
 if [[ "$assume_yes" -ne 1 ]]; then
-  echo "This deletes the Postgres database and all bot computer data for this stack."
+  echo "This deletes the Postgres database and all host data for this stack."
   echo "That includes every account, conversation, and file created in this local Superchat."
   read -r -p "Type 'delete' to continue: " confirm
   if [[ "$confirm" != "delete" ]]; then

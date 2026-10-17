@@ -798,7 +798,7 @@ def _register_managed(
         name=f"managed-{host_id}",
         user_id="alice@example.com",
         token=token,
-        provider="computer",
+        provider="docker",
         sandbox_id="sb-tunnel-1",
         token_expires_at=now_epoch() + expires_in_s,
     )

@@ -41,7 +41,7 @@ export const knowledgeRouter = {
           artifactId: file.artifact_id,
         })),
         embeddings: status.embeddings,
-        computer: status.computer,
+        host: status.host,
         updatedAt: status.updated_at,
       };
     }),

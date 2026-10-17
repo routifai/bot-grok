@@ -1,10 +1,10 @@
-"""In-Computer side of the engine model proxy (:mod:`omnigent.superchat.models.proxy`).
+"""In-host side of the engine model proxy (:mod:`omnigent.superchat.models.proxy`).
 
-The owner's model API key never enters the Computer. The harness is pointed at the engine's proxy
+The owner's model API key never enters the host. The harness is pointed at the engine's proxy
 and its gateway auth command (``python3 -m omnigent.host.model_credential token``) prints the only
-credential the proxy accepts: this Computer's own launch token, as ``<host_id>:<token>``. The token
-is a lesser, expiring credential already present in the Computer (the Databricks and git brokers
-persist it the same way); it only lets the Computer use the proxy as its owner, and stops working
+credential the proxy accepts: this host's own launch token, as ``<host_id>:<token>``. The token
+is a lesser, expiring credential already present in the host (the Databricks and git brokers
+persist it the same way); it only lets the host use the proxy as its owner, and stops working
 when the host row is deleted.
 
 :func:`configure_host_model` runs at ``omnigent host`` startup (managed sandboxes only) and records

@@ -100,7 +100,7 @@ it("falls back to a generic line for a code it has no copy for, never the code i
 
 it("shows an info notice as what happened, never as a failure to retry", async () => {
   expect(await render("workspace_reset", "info")).toBe(
-    "My computer was replaced, so files I hadn't saved elsewhere are gone.",
+    "My machine was replaced, so files I hadn't saved elsewhere are gone.",
   );
   expect(await render("some_new_notice", "info")).toBeUndefined();
 });

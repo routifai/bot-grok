@@ -28,7 +28,7 @@ _FRONT_MATTER_RE = re.compile(r"\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)"
 
 
 def workspace_root() -> Path:
-    """The Muse's workspace on the Computer (``~/workspace``)."""
+    """The Muse's workspace on the host (``~/workspace``)."""
     return Path.home() / "workspace"
 
 

@@ -5,7 +5,7 @@ Revises: mc1b2c3d4e5f
 Create Date: 2026-10-08 00:00:00.000000
 
 A version can now be saved by the Muse (``ai``), edited by hand (``manual``) or restored
-(``restore``); ``delivered_at`` marks a manual version already written back to the Computer.
+(``restore``); ``delivered_at`` marks a manual version already written back to the host.
 The ``(workspace, session, name, version)`` uniqueness is made real so concurrent saves cannot
 mint the same version number.
 """

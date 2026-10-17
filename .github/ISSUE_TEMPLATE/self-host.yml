@@ -19,7 +19,7 @@ body:
         - Docker Compose / Postgres
         - pnpm install
         - pnpm db:generate or db:migrate
-        - pnpm sandbox:build
+        - pnpm host:build
         - pnpm dev (API, worker, web, or supervisor)
         - Health check / first login
         - Other
@@ -30,7 +30,7 @@ body:
     id: command
     attributes:
       label: Command you ran
-      placeholder: pnpm sandbox:build
+      placeholder: pnpm host:build
     validations:
       required: true
 

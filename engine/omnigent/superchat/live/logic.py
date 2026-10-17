@@ -11,12 +11,12 @@ from typing import Any
 
 from omnigent.superchat.artifacts.parts import PartEditor, PartError
 
-#: Most update runs a Computer takes at once, however idle it is.
+#: Most update runs a host takes at once, however idle it is.
 MAX_ROOM = 6
 
 
 def room_for(mem_free: float | None, load: float | None) -> int:
-    """How many runs a Computer has room for: 1 to :data:`MAX_ROOM`.
+    """How many runs a host has room for: 1 to :data:`MAX_ROOM`.
 
     ``mem_free`` is the share of its memory still free (0 to 1) and ``load`` its one-minute load
     per CPU; the tighter of the two decides, and a load of 1.5 per CPU or more leaves room for one.

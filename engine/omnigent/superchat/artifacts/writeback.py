@@ -1,7 +1,7 @@
-"""Hand edits -> the Computer workspace, plus the one-shot "you changed X" note.
+"""Hand edits -> the host workspace, plus the one-shot "you changed X" note.
 
-Runs on the runner at the start of the Muse's turn (the runner sits next to the Computer's
-files, so this works whenever a turn can run at all, including after the Computer was asleep
+Runs on the runner at the start of the Muse's turn (the runner sits next to the host's
+files, so this works whenever a turn can run at all, including after the host was asleep
 when the person saved). For every hand-edited version the server still lists as pending:
 
 1. write the newest manual version's bytes to its ``source_path`` (idempotent: skipped when the

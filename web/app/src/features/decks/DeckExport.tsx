@@ -14,7 +14,7 @@ export type ExportState =
 export const EXPORT_DONE_MS = 3500;
 
 /**
- * Export a deck and hand the result to the browser: the engine renders the file in the Computer
+ * Export a deck and hand the result to the browser: the engine renders the file in the host
  * (it also lands in the Library as an artifact), then it is downloaded at once. One export at a
  * time; `cancel` abandons the wait.
  */

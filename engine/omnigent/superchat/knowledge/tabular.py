@@ -1,6 +1,6 @@
 """A spreadsheet or CSV file as a schema, never as rows of text.
 
-Numbers in a table are answered by code (pandas, duckdb) in the Computer, not by reading rows as
+Numbers in a table are answered by code (pandas, duckdb) in the host, not by reading rows as
 text, so the index holds no row of a CSV or workbook. What it keeps instead:
 
 * a **profile** per sheet: where the header row really is, the columns with an inferred type, the
@@ -455,7 +455,7 @@ def manifest_pages(profile: TableProfile, file_name: str) -> list[ParsedPage]:
                 Block(
                     f"Table file {file_name}: {total} sheet(s){more}. The rows are not indexed "
                     "or shown as text; compute on the file with code (pandas, duckdb) in the "
-                    "Computer."
+                    "host."
                 )
             )
         if not sheet.columns:

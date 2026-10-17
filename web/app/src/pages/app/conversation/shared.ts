@@ -1,7 +1,7 @@
 import { ATTACHMENT_ALLOWED_MIME_TYPES } from "@superchat/contracts";
 
-/** Where a Muse attachment is before its message can go: written to the Computer, waiting for a
- * sleeping Computer to wake, read there (converted, indexed), ready, or failed. Absent for chats
+/** Where a Muse attachment is before its message can go: written to the host, waiting for a
+ * sleeping host to wake, read there (converted, indexed), ready, or failed. Absent for chats
  * that do not read files first. */
 export type AttachmentStatus = "uploading" | "starting" | "reading" | "ready" | "error";
 

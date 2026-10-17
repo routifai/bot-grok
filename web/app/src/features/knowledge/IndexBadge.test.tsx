@@ -65,7 +65,7 @@ it.each([
   status.mockResolvedValue({
     files: [file({ state })],
     embeddings: { available: true, reason: null },
-    computer: "awake",
+    host: "awake",
     updatedAt: 1,
   });
   const host = await mount(<IndexBadge artifactId="a-1" />);
@@ -74,11 +74,11 @@ it.each([
   expect(badge?.getAttribute("data-state")).toBe(state);
 });
 
-it("pulses while indexing, but shows the last-known state calmly when the Computer sleeps", async () => {
-  const answer = (computer: "awake" | "asleep") => ({
+it("pulses while indexing, but shows the last-known state calmly when the host sleeps", async () => {
+  const answer = (host: "awake" | "asleep") => ({
     files: [file({ state: "indexing" })],
     embeddings: { available: true, reason: null },
-    computer,
+    host,
     updatedAt: 1,
   });
   status.mockResolvedValue(answer("awake"));
@@ -95,7 +95,7 @@ it("shows nothing for a file the index does not hold", async () => {
   status.mockResolvedValue({
     files: [],
     embeddings: { available: true, reason: null },
-    computer: "awake",
+    host: "awake",
     updatedAt: 1,
   });
   const host = await mount(<IndexBadge artifactId="a-1" />);

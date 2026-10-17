@@ -606,7 +606,7 @@ already uploaded or registered an agent. The response is the full
     caller-managed compute — a host registered via `omnigent host`
     (pass `host_id`) or a caller-managed runner (no `host_id`).
     `"managed"`: the SERVER provisions a sandbox host from its
-    `sandbox:` config (see `omnigent/server/managed_hosts.py`),
+    `sandbox:` config (see `omnigent/server/hosts.py`),
     starts `omnigent host` inside it, binds the session to it, and
     launches the runner there. With `"managed"`, `host_id` and
     `workspace` must NOT be set (422) — the server chooses both.
@@ -1180,7 +1180,7 @@ Request body matches `SessionForkRequest`:
     credentials, never the source session owner's.
 
   sandbox_provider (string | null, optional)
-    Which configured sandbox provider to provision (one of the
+    Which configured host provider to provision (one of the
     server's `sandbox_providers`); null takes the server's first.
     Only valid with `host_type: "managed"` (422 otherwise).
 

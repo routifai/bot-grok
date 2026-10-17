@@ -16,7 +16,7 @@ vi.mock("react-dom/client", async (orig) =>
   (await import("../test/i18n")).withI18nRoot(await orig<typeof import("react-dom/client")>()),
 );
 
-const api = vi.hoisted(() => ({ computer: { status: vi.fn() } }));
+const api = vi.hoisted(() => ({ host: { status: vi.fn() } }));
 vi.mock("./rpc", () => ({ rpc: api }));
 const notifyAsksChanged = vi.hoisted(() => vi.fn());
 vi.mock("../features/approvals", () => ({
@@ -51,18 +51,18 @@ beforeEach(() => {
   host = document.createElement("div");
   root = createRoot(host);
   latest = undefined;
-  api.computer.status.mockReset();
+  api.host.status.mockReset();
 });
 afterEach(() => act(() => root.unmount()));
 
-it("says the Computer is starting while a running turn waits on its launch", async () => {
-  api.computer.status.mockResolvedValue({ launch: { stage: "starting" } });
+it("says the host is starting while a running turn waits on its launch", async () => {
+  api.host.status.mockResolvedValue({ launch: { stage: "starting" } });
   await mount("running");
-  expect(latest?.label).toBe("Starting your Computer…");
+  expect(latest?.label).toBe("Starting your machine…");
 });
 
 it("keeps the usual label when there is no launch in progress", async () => {
-  api.computer.status.mockResolvedValue({});
+  api.host.status.mockResolvedValue({});
   await mount("leased");
   expect(latest?.label).toBe("Thinking…");
   await mount("running");
@@ -70,14 +70,14 @@ it("keeps the usual label when there is no launch in progress", async () => {
 });
 
 it("does not call a failed launch a start", async () => {
-  api.computer.status.mockResolvedValue({ launch: { stage: "failed" } });
+  api.host.status.mockResolvedValue({ launch: { stage: "failed" } });
   await mount("running");
   expect(latest?.label).toBe("Working…");
 });
 
-it("does not read the Computer while idle", async () => {
+it("does not read the host while idle", async () => {
   await mount("completed");
-  expect(api.computer.status).not.toHaveBeenCalled();
+  expect(api.host.status).not.toHaveBeenCalled();
   expect(latest?.label).toBeUndefined();
 });
 
@@ -94,7 +94,7 @@ it("returns the active run's real start from startedAt, falling back to createdA
 });
 
 it("refetches the open Asks when a run starts waiting on the person", async () => {
-  api.computer.status.mockResolvedValue({});
+  api.host.status.mockResolvedValue({});
   await mount("running");
   notifyAsksChanged.mockClear();
   await mount("running");
@@ -120,7 +120,7 @@ const reply = (role: ThreadMessage["role"], blocks: ThreadMessage["blocks"]): Th
 });
 
 it("names the step the Muse is on from what it has written since the person's last message", async () => {
-  api.computer.status.mockResolvedValue({});
+  api.host.status.mockResolvedValue({});
   probeMessages = [
     reply("user", [{ kind: "text", text: "find it" }]),
     reply("bot", [{ kind: "steps", steps: [{ label: "Search the web" }] } as never]),

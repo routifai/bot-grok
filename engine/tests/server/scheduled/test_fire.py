@@ -230,7 +230,7 @@ class _FakeHost:
 
 
 class _FakeSandboxConfig:
-    """Minimal stand-in for ManagedSandboxDeployment in fire tests."""
+    """Minimal stand-in for HostDeployment in fire tests."""
 
     def __init__(self, *, managed_launch_supported: bool = True) -> None:
         self.managed_launch_supported = managed_launch_supported
@@ -1343,19 +1343,19 @@ async def test_managed_fires_use_regular_launch_with_unchanged_server_config(
     monkeypatch: pytest.MonkeyPatch, dispatch_fails: bool
 ) -> None:
     """Each fire uses a fresh managed launch with the server's lifecycle settings."""
-    from omnigent.server.managed_hosts import (
+    from omnigent.server.hosts import (
+        HostDeployment,
+        HostProviderConfig,
         ManagedLaunchTracker,
-        ManagedSandboxConfig,
-        ManagedSandboxDeployment,
     )
     from omnigent.server.routes import sessions
 
-    config = ManagedSandboxDeployment.single(
-        ManagedSandboxConfig(
+    config = HostDeployment.single(
+        HostProviderConfig(
             server_url="https://server.example.com",
             launcher_factory=lambda: pytest.fail("managed launch is stubbed"),
             token_ttl_s=90000,
-            provider="computer",
+            provider="docker",
             host_config={"runner": {"idle_timeout_s": 7200}},
         )
     )
@@ -1369,7 +1369,7 @@ async def test_managed_fires_use_regular_launch_with_unchanged_server_config(
         hosts.hosts[host_id] = _FakeHost(
             host_id,
             RESERVED_USER_LOCAL,
-            sandbox_provider="computer",
+            sandbox_provider="docker",
             sandbox_id=f"sandbox_{session_id}",
         )
         bound[session_id] = _FakeConversation(
@@ -1390,7 +1390,7 @@ async def test_managed_fires_use_regular_launch_with_unchanged_server_config(
     monkeypatch.setattr(sessions, "_wait_for_runner_client", AsyncMock(return_value=runner_client))
     monkeypatch.setattr(sessions, "_ensure_runner_session_initialized", AsyncMock())
     monkeypatch.setattr(sessions, "_dispatch_session_event_to_runner", dispatch)
-    monkeypatch.setattr("omnigent.server.managed_hosts.terminate_managed_host", terminate)
+    monkeypatch.setattr("omnigent.server.hosts.terminate_host", terminate)
     store = FakeScheduledTaskStore(rows={"task_1": _task(execution_target="managed_sandbox")})
     on_fire = build_on_fire(
         _deps(
@@ -1412,7 +1412,7 @@ async def test_managed_fires_use_regular_launch_with_unchanged_server_config(
     for call in managed_launch.await_args_list:
         assert call.kwargs["sandbox_config"] is config
         assert call.kwargs["owner"] == RESERVED_USER_LOCAL
-        assert call.kwargs.get("relaunch_host") is None
+        assert call.kwargs.get("host_to_relaunch") is None
         assert call.kwargs["repos"] == ()
     assert config.default.host_config == {"runner": {"idle_timeout_s": 7200}}
     assert dispatch.await_count == 2
@@ -1435,7 +1435,7 @@ async def test_legacy_pinned_sandbox_fails_before_host_rpc(
     host = _FakeHost(
         "host_1",
         "alice@example.com",
-        sandbox_provider="computer",
+        sandbox_provider="docker",
         sandbox_id=sandbox_id,
     )
     store = FakeScheduledTaskStore(
@@ -1468,7 +1468,7 @@ async def test_resolve_owner_host_skips_sandbox_hosts() -> None:
     # is a real connected host. The resolver must skip the sandbox and pick the
     # connected host rather than reusing the sandbox.
     hosts = {
-        "sandbox_1": _FakeHost("sandbox_1", "alice@example.com", sandbox_provider="computer"),
+        "sandbox_1": _FakeHost("sandbox_1", "alice@example.com", sandbox_provider="docker"),
         "host_2": _FakeHost("host_2", "alice@example.com"),
     }
     deps = _deps(

@@ -26,11 +26,11 @@ from omnigent.entities import (
 )
 from omnigent.errors import OmnigentError
 from omnigent.server.auth import AuthProvider, UnifiedAuthProvider
-from omnigent.server.managed_hosts import (
+from omnigent.server.hosts import (
     MANAGED_REPO_LABEL_KEY,
+    HostDeployment,
     ManagedLaunchTracker,
-    ManagedSandboxDeployment,
-    parse_sandbox_config,
+    parse_host_section,
     resolve_managed_agent_label,
 )
 from omnigent.server.routes import _session_create_validation as create_validation
@@ -1293,17 +1293,17 @@ def _arm_managed_app(
 
     :param app: The app under test.
     :param monkeypatch: Fixture used to swap the background launch.
-    :param multi_repo: ``False`` (default) configures the single-repo ``computer``
+    :param multi_repo: ``False`` (default) configures the single-repo ``docker``
         provider; ``True`` swaps in a launcher declaring ``multi_repo``.
     :returns: The list the recorder appends each launch's kwargs to.
     """
-    deployment = parse_sandbox_config(
-        {"provider": "computer", "server_url": "https://managed-test.example.com"}
+    deployment = parse_host_section(
+        {"provider": "docker", "server_url": "https://managed-test.example.com"}
     )
     assert deployment is not None
     if multi_repo:
         launcher = _MultiRepoLauncher()
-        deployment = ManagedSandboxDeployment.single(
+        deployment = HostDeployment.single(
             replace(deployment.default, launcher_factory=lambda: launcher)
         )
     app.state.sandbox_config = deployment
@@ -1349,7 +1349,7 @@ async def test_fork_managed_schedules_sandbox_launch(
 
     resp = client.post(
         "/v1/sessions/e9f8f58523cec9a57d3bdf93be543e8c/fork",
-        json={"host_type": "managed", "sandbox_provider": "computer"},
+        json={"host_type": "managed", "sandbox_provider": "docker"},
     )
 
     assert resp.status_code == 201, f"got {resp.status_code}: {resp.text}"
@@ -1357,7 +1357,7 @@ async def test_fork_managed_schedules_sandbox_launch(
     assert len(launches) == 1, "a managed fork must schedule exactly one sandbox launch"
     launch = launches[0]
     assert launch["session_id"] == body["id"]
-    assert launch["provider"] == "computer"
+    assert launch["provider"] == "docker"
     # No repository on either side, so the clone gets an empty sandbox.
     assert launch["repos"] == []
     assert _repo_label_writes(conv_store) == []
@@ -1722,7 +1722,7 @@ async def test_fork_managed_rejects_multiple_repos_on_single_repo_provider(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A multi-repo source forked onto a single-repo provider fails the POST with
-    a clear 400 (computer is exec-model → single-repo), rather than a background
+    a clear 400 (host is exec-model → single-repo), rather than a background
     clone failure. The web picker caps this per provider; this guards the API."""
     conv = _make_conversation(
         labels={
@@ -1732,7 +1732,7 @@ async def test_fork_managed_rejects_multiple_repos_on_single_repo_provider(
     )
     conv_store = _ConversationStore(conversations={"e9f8f58523cec9a57d3bdf93be543e8c": conv})
     app = _build_app(conv_store)
-    launches = _arm_managed_app(app, monkeypatch)  # provider "computer" (single-repo)
+    launches = _arm_managed_app(app, monkeypatch)  # provider "docker" (single-repo)
     client = TestClient(app)
 
     resp = client.post(

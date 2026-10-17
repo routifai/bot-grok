@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Drive the live Chromium on this computer over CDP (stdlib only).
+"""Drive the live Chromium on this host over CDP (stdlib only).
 
 Attaches to the Chrome already showing on DISPLAY. Used by the host
 BrowserProvider. Not a vendor SDK. On failure prints JSON with

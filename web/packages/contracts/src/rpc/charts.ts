@@ -1,5 +1,5 @@
 /** A dashboard page: one self-contained HTML file of KPIs and Chart.js charts, built in the
- * Computer by `superchat-dashboard` and named `*.dashboard.html`. */
+ * host by `superchat-dashboard` and named `*.dashboard.html`. */
 export const DASHBOARD_PAGE_NAME_SUFFIX = ".dashboard.html";
 
 /** True when an artifact file name marks a dashboard page (`*.dashboard.html`, any case). */

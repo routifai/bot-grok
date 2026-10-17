@@ -5,11 +5,11 @@ import { appsRouter } from "./apps";
 import { artifactsRouter } from "./artifacts";
 import { automationsRouter } from "./automations";
 import { chatsRouter } from "./chats";
-import { computerRouter } from "./computer";
 import { os } from "./context";
 import { dailyNotesRouter } from "./daily-notes";
 import { decksRouter } from "./decks";
 import { filesRouter } from "./files";
+import { hostRouter } from "./host";
 import { knowledgeRouter } from "./knowledge";
 import { liveRouter } from "./live";
 import { memoryRouter } from "./memory";
@@ -28,7 +28,7 @@ export const router = os.router({
   ...artifactsRouter,
   ...automationsRouter,
   ...chatsRouter,
-  ...computerRouter,
+  ...hostRouter,
   ...dailyNotesRouter,
   ...decksRouter,
   ...engineModelsRouter,

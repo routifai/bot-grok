@@ -5,7 +5,7 @@ and what it remembers, as of 2026-10-17. The code paths are the "Memory and reca
 [`engine/README.md`](../engine/README.md); paths below are relative to `engine/omnigent/`. The
 decisions are [ADR 0006](adr/0006-omnigent-owns-everything.md) (the engine owns context, the harness
 only runs the loop), [ADR 0016](adr/0016-recall-is-a-bounded-hint-and-a-deep-pull-over-one-index.md)
-(recall) and [ADR 0017](adr/0017-the-working-list-is-tagged-and-the-journal-lives-in-the-computer.md)
+(recall) and [ADR 0017](adr/0017-the-working-list-is-tagged-and-the-journal-lives-in-the-host.md)
 (the working list and the journal).
 
 ## What the assistant sees each turn
@@ -133,7 +133,7 @@ Finding earlier work is split by cost ([ADR 0016](adr/0016-recall-is-a-bounded-h
 ## The knowledge index in the host
 
 The person's files and their index live in the host
-([ADR 0014](adr/0014-files-live-in-the-computer.md)). The index is SQLite with FTS5 (BM25) and
+([ADR 0014](adr/0014-files-live-in-the-host.md)). The index is SQLite with FTS5 (BM25) and
 sqlite-vec on the home volume at `~/.superchat/knowledge`, kept by one background thread
 (`superchat/knowledge/indexer.py`, `runtime.py`). It covers `~/workspace/your_files/`,
 `~/workspace/memory/` and each `goals/<goal>/files/` folder, plus the `conversation` source: one

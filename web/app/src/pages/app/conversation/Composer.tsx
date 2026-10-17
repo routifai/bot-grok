@@ -89,7 +89,7 @@ export const Composer = memo(function Composer({
   onAttachFolder?: () => void;
   onRemoveFolder?: (path: string) => void;
   attachmentNotice?: string | null;
-  /** Progress while attachments are written to the Computer ("Uploading 2 of 3"). */
+  /** Progress while attachments are written to the host ("Uploading 2 of 3"). */
   uploadStatus?: string | null;
   sendError?: string | null;
   /** The latest reply failed for a model-layer reason the person can fix (a key, a budget). */
@@ -206,7 +206,7 @@ export const Composer = memo(function Composer({
     clearComposerAttachments();
     void onSend(withComposerAttachments(text, attachments)).then((sent) => {
       if (sent !== false) return;
-      // The send failed (the Computer never started, say): nothing is lost.
+      // The send failed (the host never started, say): nothing is lost.
       setDraft((current) => (current ? current : kept.draft));
       for (const item of kept.attachments) setComposerAttachment(item.kind, item);
     });
@@ -462,7 +462,7 @@ export const Composer = memo(function Composer({
                 {attachment.status === "uploading"
                   ? t`Uploading ${attachment.file.name}…`
                   : attachment.status === "starting"
-                    ? t`Starting your Computer…`
+                    ? t`Starting your machine…`
                     : attachment.status === "reading"
                       ? t`Reading ${attachment.file.name}…`
                       : attachment.file.name}
@@ -561,7 +561,7 @@ export const Composer = memo(function Composer({
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={onAttachFolder}>
                     <Folder size={15} aria-hidden="true" />
-                    {t`Attach a folder from the Computer`}
+                    {t`Attach a folder from your machine`}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

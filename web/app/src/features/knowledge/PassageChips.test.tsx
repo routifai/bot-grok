@@ -18,7 +18,7 @@ vi.mock("../../lib/rpc", () => ({
   rpc: { knowledge: { pageThumbnail: (...a: unknown[]) => pageThumbnail(...a) } },
 }));
 
-vi.mock("../computer", () => ({
+vi.mock("../files", () => ({
   FilePreviewDialog: ({ botId, path, page }: { botId: string; path: string; page?: number }) => (
     <div data-testid="file-preview">{`${botId}|${path}|${page}`}</div>
   ),
@@ -110,7 +110,7 @@ it("shows a skeleton while the thumbnail loads, then a page icon only if it has 
   expect(first?.querySelector("svg")).not.toBeNull();
 });
 
-it("a path-only chip opens the Computer file preview at that page", async () => {
+it("a path-only chip opens the host file preview at that page", async () => {
   const open = vi.fn();
   const host = await mount(
     <ReplyCardBotProvider botId="bot-1">

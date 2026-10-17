@@ -1,6 +1,6 @@
 """Runner-side handlers for the artifact tools.
 
-``artifact_save`` runs where the Computer's files are (the runner), reads the file from the
+``artifact_save`` runs where the host's files are (the runner), reads the file from the
 workspace and uploads it to the server; list/delete proxy the REST endpoints.
 """
 

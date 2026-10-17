@@ -3,7 +3,7 @@ import {
   adoptOmnigentMuse,
   answerOmnigentAsk,
   forgetOmnigentMemoryClaim,
-  getOmnigentComputer,
+  getOmnigentHost,
   getOmnigentMemoryProfile,
   getOmnigentMuse,
   getOmnigentProactivity,
@@ -357,21 +357,21 @@ describe("throwOnError redaction (an earlier wiring review)", () => {
   });
 });
 
-describe("computer", () => {
+describe("host status", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("computer status hits the session-scoped route with identity/proxy headers", async () => {
+  it("host status hits the session-scoped route with identity/proxy headers", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ ready: true, launch: null }));
     vi.stubGlobal("fetch", fetchMock);
 
-    expect(await getOmnigentComputer(CONFIG, "p@example.test", "s 1")).toEqual({
+    expect(await getOmnigentHost(CONFIG, "p@example.test", "s 1")).toEqual({
       ready: true,
       launch: null,
     });
 
     const calls = fetchMock.mock.calls as unknown as [URL, RequestInit][];
     expect(calls.map(([url, init]) => `${init?.method ?? "GET"} ${url.pathname}`)).toEqual([
-      "GET /v1/sessions/s%201/computer",
+      "GET /v1/sessions/s%201/host",
     ]);
     expect((calls[0]![1].headers as Record<string, string>)["X-Omnigent-Proxy-Secret"]).toBe(
       "proxy-secret",

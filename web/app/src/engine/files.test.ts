@@ -218,7 +218,7 @@ describe("engine attachment upload", () => {
       return { puts, finds };
     }
 
-    it("asks the Computer once, by hash, and reuses the stored copy: nothing is written", async () => {
+    it("asks the host once, by hash, and reuses the stored copy: nothing is written", async () => {
       const { puts, finds } = world({
         found: true,
         file_id: "ab",
@@ -340,7 +340,7 @@ describe("engine attachment upload", () => {
     museOr(() => json({ error: { code: "runner_unavailable" } }, 503));
     await expect(uploadAttachment(input(), day)).rejects.toMatchObject({
       code: "SERVICE_UNAVAILABLE",
-      message: "Your Computer is starting. Try again in a moment.",
+      message: "Your machine is starting. Try again in a moment.",
     });
   });
 
@@ -402,7 +402,7 @@ describe("engine attachment ingest", () => {
     });
   });
 
-  it("maps a starting Computer to the calm message", async () => {
+  it("maps a starting host to the calm message", async () => {
     stub(() => json({ error: { code: "runner_unavailable" } }, 503));
     await expect(ingestAttachment({ path })).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
   });

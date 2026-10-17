@@ -470,7 +470,7 @@ async def test_rejects_existing_sandbox_before_workspace_rpc(
         name="existing-sandbox",
         user_id="alice@example.com",
         token="test-launch-token",
-        provider="computer",
+        provider="docker",
         sandbox_id="sandbox-existing",
         token_expires_at=2_000_000_000,
     )
@@ -530,7 +530,7 @@ async def test_existing_sandbox_pin_checks_ownership_first(
         name="bobs-sandbox",
         user_id="bob@example.com",
         token="test-launch-token",
-        provider="computer",
+        provider="docker",
         sandbox_id="sandbox-bob",
         token_expires_at=2_000_000_000,
     )

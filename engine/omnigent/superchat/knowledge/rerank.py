@@ -1,7 +1,7 @@
 """LLM rerank of the best search hits, through the engine's model proxy.
 
 The reranking step of the qmd design (``qmd_query``: hybrid retrieval, then a model reorders the
-top candidates). Like embeddings, it never holds a key: the Computer presents its launch token to
+top candidates). Like embeddings, it never holds a key: the host presents its launch token to
 ``GET /v1/model/rerank`` (which cheap chat model, or why not) and then calls
 ``POST /v1/model/{provider}/v1/chat/completions``; the model layer resolves the person's (or the
 organization's) connection, enforces suspension and budgets, and records the cost. Without a
@@ -88,7 +88,7 @@ def parse_order(text: str, count: int) -> list[int]:
 
 
 class ProxyReranker(Reranker):
-    """Reranks through the engine's model proxy with the Computer's launch token."""
+    """Reranks through the engine's model proxy with the host's launch token."""
 
     def __init__(
         self,

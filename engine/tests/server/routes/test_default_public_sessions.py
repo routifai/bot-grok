@@ -35,7 +35,7 @@ from omnigent.server.auth import (
     SharingMode,
     UnifiedAuthProvider,
 )
-from omnigent.server.managed_hosts import parse_sandbox_config
+from omnigent.server.hosts import parse_host_section
 from omnigent.server.routes._sessions.helpers import _grant_default_public
 from omnigent.server.sharing_settings import (
     DefaultPublicSessions,
@@ -53,7 +53,7 @@ from tests.server.helpers import (
     FakeSandboxLauncher,
     build_agent_bundle,
     create_test_agent,
-    install_fake_computer_launcher,
+    install_fake_host_launcher,
 )
 
 _ADMIN = "admin@public-default.test"
@@ -87,9 +87,9 @@ def _build_app(
     extra: dict[str, Any] = {}
     if managed:
         extra["host_store"] = HostStore(db_uri)
-        extra["sandbox_config"] = parse_sandbox_config(
+        extra["sandbox_config"] = parse_host_section(
             {
-                "provider": "computer",
+                "provider": "docker",
                 "server_url": "https://managed-test.example.com",
             }
         )
@@ -445,9 +445,9 @@ async def test_managed_create_follows_policy(
 ) -> None:
     """A ``host_type="managed"`` (cloud sandbox) session is public under ``sandbox``,
     while a local session on the same server stays private."""
-    install_fake_computer_launcher(monkeypatch, FakeSandboxLauncher())
+    install_fake_host_launcher(monkeypatch, FakeSandboxLauncher())
     # Keep the background launch from outliving the test.
-    monkeypatch.setattr("omnigent.server.managed_hosts.MANAGED_HOST_ONLINE_TIMEOUT_S", 0.1)
+    monkeypatch.setattr("omnigent.server.hosts.HOST_ONLINE_TIMEOUT_S", 0.1)
     write_default_public_sessions_override(DefaultPublicSessions(policy))
     app, perms = _build_app(db_uri, tmp_path, managed=True)
     alice = client_factory(app, _USER)

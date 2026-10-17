@@ -15,7 +15,6 @@ playwright-report
 .env.*.local
 # A machine's own Compose overrides (mirrors, CA bundle): docs/setup.md, Builds.
 docker-compose.local.yaml
-.env.computers
 data
 web/app/**/data
 .tmp

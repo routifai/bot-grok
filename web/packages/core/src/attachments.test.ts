@@ -170,7 +170,7 @@ describe("workspace attachment references", () => {
     });
   });
 
-  it("knows a spreadsheet is an attachment the Computer reads", () => {
+  it("knows a spreadsheet is an attachment the host reads", () => {
     expect(
       isIngestableAttachmentMimeType(
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

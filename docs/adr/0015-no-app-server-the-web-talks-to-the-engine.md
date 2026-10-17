@@ -2,7 +2,7 @@
 
 Superchat ran a Node app server (API, background worker and a web server) between the browser and the engine. By [0009](0009-the-engine-is-the-whole-backend.md) the engine already owned the Conversation, memory, files, approvals and scheduled work, so the app server had shrunk to sign-in, accounts and a thin pass-through. It was a second service, a second database schema and a second language to run for almost no behaviour.
 
-We delete it. The deployment is Postgres, the engine and one Computer per person. The engine serves the built web and the published apps (`/apps/<slug>`), and the web calls the engine's REST API on its own origin.
+We delete it. The deployment is Postgres, the engine and one host per person. The engine serves the built web and the published apps (`/apps/<slug>`), and the web calls the engine's REST API on its own origin.
 
 ## Decision
 

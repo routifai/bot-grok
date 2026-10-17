@@ -875,7 +875,7 @@ async def test_a_helper_turn_is_not_indexed_and_a_failing_write_does_not_raise(
 
 
 @pytest.mark.asyncio
-async def test_outside_a_computer_nothing_is_indexed(
+async def test_outside_a_host_nothing_is_indexed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from omnigent.runner.memory.sync import backfill_turns, index_retired_turns

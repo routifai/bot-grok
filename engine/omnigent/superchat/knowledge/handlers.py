@@ -1,4 +1,4 @@
-"""Runner-side handler for the knowledge tools: runs in the Computer, answers from its index.
+"""Runner-side handler for the knowledge tools: runs in the host, answers from its index.
 
 The Muse's tools are the qmd-style set in :mod:`omnigent.superchat.knowledge.tools`.
 ``files_ingest`` / ``files_thumbnail`` / ``files_reindex`` / ``files_find`` are never offered to a
@@ -40,7 +40,7 @@ _SEARCH_MODES = {"files_search": "keyword", "files_vsearch": "vector", "files_qu
 
 
 def runtime_for(server_client: Any) -> KnowledgeRuntime:
-    """The Computer's index service, started, pointed at the engine for the model proxy."""
+    """The host's index service, started, pointed at the engine for the model proxy."""
     if server_client is not None:
         configure(str(server_client.base_url))
     runtime = get_runtime()
@@ -54,7 +54,7 @@ def _runtime(ctx: HandlerCtx) -> KnowledgeRuntime:
 
 async def handle_knowledge_tool(ctx: HandlerCtx, args: dict[str, Any]) -> str:
     """
-    Run one knowledge tool against the Computer's index.
+    Run one knowledge tool against the host's index.
 
     :param ctx: The call context.
     :param args: Parsed tool arguments.

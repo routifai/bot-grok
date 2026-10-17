@@ -1,7 +1,7 @@
 """Add parent binding to scheduled tasks and the owner_preferences table.
 
 Revision ID: sp1b2c3d4e5f
-Revises: hc1b2c3d4e5f
+Revises: nn1a2b3c4d5e
 Create Date: 2026-10-03 00:00:00.000000
 
 ``scheduled_tasks.parent_session_id`` / ``agent_type`` bind a task's fires to a
@@ -20,7 +20,7 @@ from alembic import op
 from omnigent.db.db_models import Uuid16
 
 revision: str = "sp1b2c3d4e5f"
-down_revision: str | None = "hc1b2c3d4e5f"
+down_revision: str | None = "nn1a2b3c4d5e"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

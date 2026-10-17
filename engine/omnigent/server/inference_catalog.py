@@ -206,7 +206,7 @@ class SandboxInferenceService:
         if target is None:
             offered = ", ".join(deployment.launchable_providers()) or "none"
             raise _invalid(
-                f"sandbox provider '{provider}' is not configured "
+                f"host provider '{provider}' is not configured "
                 f"on this server — available: {offered}"
             )
         raw: dict[str, Any] = copy.deepcopy(target.host_config or {})
@@ -231,7 +231,7 @@ class SandboxInferenceService:
             "providers": copy.deepcopy(raw.get("providers", {})),
             "inference": copy.deepcopy(raw.get("inference", {})),
         }
-        # ``connection: model`` gateways: the owner's saved key stays in the engine; the Computer
+        # ``connection: model`` gateways: the owner's saved key stays in the engine; the host
         # is pointed at the engine's model proxy and authenticates with its own launch token.
         model_names = [
             name
@@ -387,8 +387,7 @@ class SandboxInferenceService:
         discovery = snapshot.get("model_discovery", {}).get(provider.name)
         if not isinstance(discovery, dict):
             raise _invalid(
-                f"Configure sandbox.model_discovery.{provider.name} "
-                "for server-side model discovery."
+                f"Configure host.model_discovery.{provider.name} for server-side model discovery."
             )
         if discovery.get("connection") == MODEL_CONNECTION:
             return self._connection_models(snapshot, discovery)
@@ -427,7 +426,7 @@ class SandboxInferenceService:
         """
         if binding.model_allowlist is None:
             result["error"] = (
-                "Configure sandbox.model_discovery for this provider "
+                "Configure host.model_discovery for this provider "
                 "or a model_allowlist for this harness."
             )
             return result

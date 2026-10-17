@@ -69,8 +69,8 @@ class Host:
         a status change (connect/disconnect) or a tunnel heartbeat.
         Used as the host's last-seen for the liveness freshness gate
         (see :data:`HOST_LIVENESS_TTL_S`).
-    :param sandbox_provider: Sandbox provider backing a SERVER-MANAGED
-        host (``host_type="managed"`` sessions), e.g. ``"computer"``.
+    :param sandbox_provider: Host provider backing a SERVER-MANAGED
+        host (``host_type="managed"`` sessions), e.g. ``"docker"``.
         ``None`` for external (user-connected) hosts — non-``None``
         marks the host as server-managed.
     :param sandbox_id: Provider-assigned id of the sandbox generation
@@ -871,40 +871,9 @@ class HostStore:
                 return None
             return _row_to_host(row)
 
-    def get_computer_control_token(self, host_id: str) -> str | None:
-        """
-        Return the computer control token held on a host, if a person is in control.
-
-        :param host_id: Host identifier, e.g. ``"host_a1b2c3d4..."``.
-        :returns: The token, or ``None`` when nobody is in control or the host is gone.
-        """
-        with self._session("select_host_computer_control_token") as session:
-            return session.execute(
-                select(SqlHost.computer_control_token).where(
-                    SqlHost.workspace_id == current_workspace_id(),
-                    SqlHost.host_id == host_id,
-                    SqlHost.deleted_at.is_(None),
-                )
-            ).scalar_one_or_none()
-
-    def set_computer_control_token(self, host_id: str, token: str | None) -> None:
-        """
-        Record (or clear, with ``None``) the computer control token on a host.
-
-        :param host_id: Host identifier, e.g. ``"host_a1b2c3d4..."``.
-        :param token: Control token, or ``None`` to release control.
-        """
-        with self._session("update_host_computer_control_token") as session:
-            session.execute(
-                update(SqlHost)
-                .where(
-                    SqlHost.workspace_id == current_workspace_id(),
-                    SqlHost.host_id == host_id,
-                    SqlHost.deleted_at.is_(None),
-                )
-                .values(computer_control_token=token)
-            )
-
+    # "managed" stays in the next three names: this store also holds external hosts (a machine
+    # that ran ``omnigent host`` itself, with no provider), and these touch only the hosts the
+    # engine started through a host provider.
     def register_managed_host(
         self,
         *,
@@ -935,7 +904,7 @@ class HostStore:
             ``"alice@example.com"``.
         :param token: The RAW launch token (hashed here, never stored),
             e.g. the value of ``secrets.token_urlsafe(32)``.
-        :param provider: Sandbox provider name, e.g. ``"computer"``.
+        :param provider: Host provider name, e.g. ``"docker"``.
         :param sandbox_id: Provider-assigned sandbox id, e.g.
             ``"sb-a1b2c3"``.
         :param token_expires_at: Unix epoch seconds after which the
@@ -1004,9 +973,7 @@ class HostStore:
                 existing.terminating_sandbox_id is not None
                 and existing.sandbox_provider != provider
             ):
-                raise ValueError(
-                    "cannot change managed sandbox provider while termination is pending"
-                )
+                raise ValueError("cannot change host provider while termination is pending")
             if existing.terminating_sandbox_id == sandbox_id:
                 raise ValueError(
                     f"sandbox {sandbox_id!r} is still pending termination; refusing to re-arm it"

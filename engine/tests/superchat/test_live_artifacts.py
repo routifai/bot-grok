@@ -215,7 +215,7 @@ def test_changes_that_cannot_be_placed_pause_the_schedule_at_the_second_run(env)
 def test_three_failed_runs_in_a_row_pause_and_post_one_note_and_success_resets(env) -> None:
     live = env.service.live.get(_SESSION, "prices.html")
     task = env.service.tasks.get(live.task_id)
-    assert env.service.on_run_outcome(task, "your Computer didn't start") is None
+    assert env.service.on_run_outcome(task, "your machine didn't start") is None
     assert env.service.on_run_outcome(task, None) is None  # a success starts the count again
     state = env.service.live.get(_SESSION, "prices.html").state
     assert state["failures"] == 0 and state["last_failure"] is None
@@ -480,9 +480,7 @@ def test_room_follows_the_tighter_of_memory_and_load() -> None:
     assert room_for(0.05, 0.0) == 1 and room_for(0.9, 3.0) == 1 and room_for(-1.0, None) == 1
 
 
-def test_a_computers_load_report_sizes_its_owners_room_until_it_goes_stale(
-    env, monkeypatch
-) -> None:
+def test_a_hosts_load_report_sizes_its_owners_room_until_it_goes_stale(env, monkeypatch) -> None:
     from omnigent.superchat.live import service as service_mod
 
     task = env.service.tasks.get(env.service.live.get(_SESSION, "prices.html").task_id)

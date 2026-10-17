@@ -515,12 +515,12 @@ export const TOOL_PRESENTATION: Record<string, ToolPresentation> = {
     snippet: () => null,
   },
 
-  // ── the Computer: shell, files and browser (sys_os_*, browser_*) ─────────
+  // ── the host: shell, files and browser (sys_os_*, browser_*) ─────────
   // Not bundle `builtins`, so the completeness test doesn't force these; registered so a
   // Step reads in plain words. Titles never echo a command; a path is the file's own name.
   sys_os_shell: {
     icon: "generic",
-    title: () => "Ran a command on the Computer",
+    title: () => "Ran a command on your machine",
     snippet: (output) => genericSnippet(output),
   },
 

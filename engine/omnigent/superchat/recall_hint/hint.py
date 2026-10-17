@@ -2,7 +2,7 @@
 
 Runs in the runner beside the other turn prefix fetches, only when the owner turned
 ``recall_hint`` on. A planner call (or, past its cap, code) writes up to three sub-queries;
-``recall_search`` runs them over the Computer's index with the current epoch left out; the hits
+``recall_search`` runs them over the host's index with the current epoch left out; the hits
 become at most eight lines and 300 tokens of identifiers, fenced as data. Built within
 :data:`HINT_CAP_SECONDS` or not at all, never stored, and never a reason to fail a turn.
 """

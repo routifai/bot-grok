@@ -7035,7 +7035,7 @@
           },
           "host_resumable": {
             "default": false,
-            "description": "Whether this session is bound to a dormant managed host the server can wake in place (its provider sets `SandboxLauncher.can_resume`). The open view reads it only when `host_online` is `False`, to split a confirmed host-down into a recoverable \"asleep\" state (send a message \u2014 the relaunch path resumes the sandbox) versus the terminal `host_offline` dead-end (reconnect from your machine / fork). `False` for non-managed or non-resumable hosts.",
+            "description": "Whether this session is bound to a dormant managed host the server can wake in place (its provider sets `ExecModelHostLauncher.can_resume`). The open view reads it only when `host_online` is `False`, to split a confirmed host-down into a recoverable \"asleep\" state (send a message \u2014 the relaunch path resumes the sandbox) versus the terminal `host_offline` dead-end (reconnect from your machine / fork). `False` for non-managed or non-resumable hosts.",
             "title": "Host Resumable",
             "type": "boolean"
           },
@@ -10936,7 +10936,7 @@
     },
     "/v1/me/muse/adopt": {
       "post": {
-        "description": "Claim an existing Super Chat the caller owns as their Super Chat for this tenant.\n\nLabels it with the Muse marker, its key and (when absent) the tenant; every other\nlabel, including the ones placing its computer, is left as is. Adopting the same\nsession again is a no-op.\n\n**Raises**\n\n- `OmnigentError` \u2014 404 unless the caller owns the session; 422 `not_a_super_chat` for a side chat, Helper or plain session; 409 `muse_already_set` when another Super Chat is already theirs here; 409 `muse_tenant_mismatch` when the session sits in another tenant.",
+        "description": "Claim an existing Super Chat the caller owns as their Super Chat for this tenant.\n\nLabels it with the Muse marker, its key and (when absent) the tenant; every other\nlabel, including the ones placing its host, is left as is. Adopting the same\nsession again is a no-op.\n\n**Raises**\n\n- `OmnigentError` \u2014 404 unless the caller owns the session; 422 `not_a_super_chat` for a side chat, Helper or plain session; 409 `muse_already_set` when another Super Chat is already theirs here; 409 `muse_tenant_mismatch` when the session sits in another tenant.",
         "operationId": "adopt_my_muse_v1_me_muse_adopt_post",
         "requestBody": {
           "content": {
@@ -10978,7 +10978,7 @@
     },
     "/v1/model/embeddings": {
       "get": {
-        "description": "How the calling Computer's owner embeds (provider, model, size), or why they cannot.",
+        "description": "How the calling host's owner embeds (provider, model, size), or why they cannot.",
         "operationId": "embedding_plan_v1_model_embeddings_get",
         "responses": {
           "200": {
@@ -10998,7 +10998,7 @@
     },
     "/v1/model/rerank": {
       "get": {
-        "description": "Which cheap chat model reorders the calling Computer's search hits, or why none can.",
+        "description": "Which cheap chat model reorders the calling host's search hits, or why none can.",
         "operationId": "rerank_plan_v1_model_rerank_get",
         "responses": {
           "200": {

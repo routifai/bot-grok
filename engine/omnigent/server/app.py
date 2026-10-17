@@ -70,14 +70,14 @@ from omnigent.runtime import (
 )
 from omnigent.runtime.agent_cache import AgentCache
 from omnigent.runtime.harnesses.process_manager import HarnessProcessManager
-from omnigent.server import managed_host_keepalive, session_live_state, shutdown_state
+from omnigent.server import host_keepalive, session_live_state, shutdown_state
 from omnigent.server.auth import AuthProvider, SharingMode
 from omnigent.server.background_session_titles import (
     BackgroundSessionTitleCoordinator,
     RunnerBackgroundTitleGenerator,
 )
 from omnigent.server.feature_flags import Feature, FeatureFlags, resolve_feature_flags
-from omnigent.server.managed_hosts import ManagedSandboxDeployment
+from omnigent.server.hosts import HostDeployment
 from omnigent.server.managed_sandbox_reaper import ManagedSandboxReaper
 from omnigent.server.mcp_pool import ServerMcpPool
 from omnigent.server.performance_metrics import (
@@ -172,7 +172,7 @@ class ServerInfoResponse(BaseModel):
     sandbox_provider: str | None
     sandbox_providers: list[str]
     # UI-relevant capability flags per launchable provider, e.g.
-    # ``{"computer": {"multi_repo": true}}``. The web branches on these
+    # ``{"docker": {"multi_repo": true}}``. The web branches on these
     # (multi-repo picker vs single). Providers absent from the map default off.
     sandbox_provider_capabilities: dict[str, dict[str, bool]] = {}
     enabled_connections: list[str]
@@ -989,7 +989,7 @@ def create_app(
     debug_router_modules: list[str] | None = None,
     admins: list[str] | None = None,
     allowed_domains: list[str] | None = None,
-    sandbox_config: ManagedSandboxDeployment | None = None,
+    sandbox_config: HostDeployment | None = None,
     github_config: Any | None = None,  # GitHubAppConfig — GitHub App integration
     github_store: Any | None = None,  # GithubConnectionStore — GitHub App integration
     sharing_mode: SharingMode | Callable[[], SharingMode] | None = None,
@@ -1082,7 +1082,7 @@ def create_app(
         config's ``allowed_domains:`` key (OIDC), e.g. ``["example.com"]``.
         Union'd with ``OMNIGENT_OIDC_ALLOWED_DOMAINS`` and the
         runtime-editable domains file.
-    :param sandbox_config: Parsed ``sandbox:`` section of the server
+    :param sandbox_config: Parsed ``host:`` section of the server
         config — which provider to provision managed hosts
         (``host_type="managed"`` sessions) from and the URL they dial
         back to. ``None`` disables managed hosts (a
@@ -1680,7 +1680,7 @@ def create_app(
     # racing the provision can rendezvous instead of failing with
     # "no runner bound". Always wired — cheap, and post_event probes
     # it regardless of whether managed hosts are configured.
-    from omnigent.server.managed_hosts import ManagedLaunchTracker
+    from omnigent.server.hosts import ManagedLaunchTracker
 
     app.state.managed_launches = ManagedLaunchTracker()
     app.state.server_metrics = server_metrics
@@ -1708,8 +1708,8 @@ def create_app(
     # _publish_status when a fired conversation's turn reaches terminal.
     session_live_state.configure(conversation_store, scheduled_task_store)
     # Extend a managed sandbox while its runner tunnel is live (the managed-path
-    # caller for SandboxHostLauncher.keep_alive); no-op without a sandbox config.
-    managed_host_keepalive.configure(conversation_store, host_store, sandbox_config)
+    # caller for HostLauncher.keep_alive); no-op without a sandbox config.
+    host_keepalive.configure(conversation_store, host_store, sandbox_config)
     pending_elicitations.set_count_persist_hook(session_live_state.persist_pending_count)
 
     @app.middleware("http")
@@ -2545,7 +2545,7 @@ def create_app(
         source, the login URL, whether first-run admin setup is
         still pending (``needs_setup``), coarse capability
         booleans (``managed_sandboxes_enabled``, ``dictation_available``,
-        ``single_user``), the short sandbox provider name
+        ``single_user``), the short host provider name
         (``sandbox_provider``) the web UI labels the new-session
         sandbox option with, and the installed
         ``server_version`` (already public via ``/api/version``).
@@ -2574,11 +2574,11 @@ def create_app(
         if accounts_enabled and account_store is not None:
             needs_setup = not any(u.has_password for u in account_store.list_users())
         # managed_sandboxes_enabled gates the web UI's sandbox
-        # option on the new-session screen: true only when a `sandbox:`
+        # option on the new-session screen: true only when a `host:`
         # config is wired AND its provider can actually serve a managed
         # launch (staged providers parse but reject at launch — they
         # must not advertise the option).
-        # sandbox_provider names the backing provider (e.g. "computer")
+        # sandbox_provider names the backing provider (e.g. "docker")
         # so the web UI can label the option per provider instead of the
         # generic "New Sandbox". Only surfaced when the option is
         # actually offered; None when no provider is named (embedding
@@ -3497,7 +3497,7 @@ def create_app(
             prefix="/v1",
             tags=["hosts"],
         )
-        # Model proxy: a Computer's model calls are made with its owner's own key, which
+        # Model proxy: a host's model calls are made with its owner's own key, which
         # stays in the engine (see omnigent.superchat.models.proxy). The saved-key store is
         # read at request time; without it the route answers model_key_required.
         from omnigent.superchat.models.proxy import create_model_proxy_router

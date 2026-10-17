@@ -20,7 +20,7 @@ from httpx import ASGITransport, AsyncClient, Request, Response
 from omnigent.db.utils import generate_agent_id
 from omnigent.runtime.agent_cache import AgentCache
 from omnigent.server.app import create_app
-from omnigent.server.managed_hosts import ManagedSandboxConfig, ManagedSandboxDeployment
+from omnigent.server.hosts import HostDeployment, HostProviderConfig
 from omnigent.server.routes import sessions as sessions_module
 from omnigent.server.routes.sessions import routes_core, routes_events
 from omnigent.stores.agent_store.sqlalchemy_store import SqlAlchemyAgentStore
@@ -72,7 +72,7 @@ class _Catalog:
         self.calls.append((provider, harness, user_id))
         return {
             "version": 1,
-            "target_id": "sandbox:computer",
+            "target_id": "sandbox:host",
             "configuration_revision": self.revision,
             "harness": harness,
             "owner_id": self.owner,
@@ -123,8 +123,8 @@ async def env(
     artifact_dir = tmp_path / "artifacts"
     artifact_store = LocalArtifactStore(str(artifact_dir))
     catalog = _Catalog()
-    config = ManagedSandboxConfig(
-        provider="computer",
+    config = HostProviderConfig(
+        provider="docker",
         server_url="http://test",
         launcher_factory=lambda: None,
         token_ttl_s=100,
@@ -139,7 +139,7 @@ async def env(
         agent_cache=AgentCache(artifact_store=artifact_store, cache_dir=tmp_path / "cache"),
         comment_store=SqlAlchemyCommentStore(db_uri),
         host_store=HostStore(db_uri),
-        sandbox_config=ManagedSandboxDeployment.single(config),
+        sandbox_config=HostDeployment.single(config),
     )
     app.state.inference_catalog = catalog
     launch = AsyncMock()
@@ -159,7 +159,7 @@ async def _json_create(env: _Env, **overrides: Any):
         json={
             "agent_id": agent["id"],
             "host_type": "managed",
-            "sandbox_provider": "computer",
+            "sandbox_provider": "docker",
             "inference_configuration_revision": "revision-1",
             **overrides,
         },
@@ -190,7 +190,7 @@ async def test_literal_credentials_rejected_before_session_or_artifact_writes(en
         json={
             "agent_id": agent["id"],
             "host_type": "managed",
-            "sandbox_provider": "computer",
+            "sandbox_provider": "docker",
         },
     )
     assert response.status_code == 400, response.text
@@ -207,7 +207,7 @@ async def _multipart_create(env: _Env, **metadata: Any):
             "metadata": json.dumps(
                 {
                     "host_type": "managed",
-                    "sandbox_provider": "computer",
+                    "sandbox_provider": "docker",
                     "inference_configuration_revision": "revision-1",
                     **metadata,
                 }
@@ -299,7 +299,7 @@ async def test_stale_revision_rejects_before_rows_artifacts_or_provisioning(env:
             json={
                 "agent_id": agent["id"],
                 "host_type": "managed",
-                "sandbox_provider": "computer",
+                "sandbox_provider": "docker",
                 "inference_configuration_revision": "revision-1",
             },
         )

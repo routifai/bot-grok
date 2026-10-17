@@ -4,7 +4,7 @@ import { FileText } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useArtifactPanel, useReplyCardBotId } from "../../components/cards/context";
 import { rpc } from "../../lib/rpc";
-import { FilePreviewDialog } from "../computer";
+import { FilePreviewDialog } from "../files";
 
 const thumbnails = new Map<string, Promise<string | null>>();
 
@@ -56,13 +56,13 @@ function Thumbnail({ fileId, page }: { fileId: string; page: number }) {
 }
 
 /** The pages a search found, as small page-thumbnail chips under the answer. A chip opens the
- * file at that page: in the side panel for a Library artifact, in the Computer's file preview for
+ * file at that page: in the side panel for a Library artifact, in the host's file preview for
  * any other workspace file. */
 export function PassageChips({ data }: { data: ReplyCardDataOf<"passages"> }) {
   const { t } = useLingui();
   const panel = useArtifactPanel();
   const botId = useReplyCardBotId();
-  // A file that is not a Library artifact opens in the Computer's workspace preview.
+  // A file that is not a Library artifact opens in the host's workspace preview.
   const [preview, setPreview] = useState<{ path: string; page: number } | null>(null);
   return (
     <>

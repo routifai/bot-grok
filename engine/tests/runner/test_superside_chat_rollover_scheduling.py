@@ -1116,7 +1116,7 @@ async def test_a_failed_checkpoint_post_writes_no_memory_files(
 
 
 @pytest.mark.asyncio
-async def test_a_turn_in_a_computer_with_no_memory_folder_rebuilds_it(
+async def test_a_turn_in_a_host_with_no_memory_folder_rebuilds_it(
     monkeypatch: pytest.MonkeyPatch, _isolated_knowledge_workspace: Path
 ) -> None:
     (_isolated_knowledge_workspace / "memory").rmdir()

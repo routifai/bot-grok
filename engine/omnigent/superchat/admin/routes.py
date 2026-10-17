@@ -1,7 +1,7 @@
 """Organization admin routes (``/v1/admin/...``), admin-only; the organization is the workspace.
 
 * ``GET /admin/users``: every person with role, status, spend, sessions, connections, budget and
-  Computer; ``GET /admin/usage?window=day|month``: org totals, per-person and per-day.
+  host; ``GET /admin/usage?window=day|month``: org totals, per-person and per-day.
 * ``POST /admin/users/{id}/suspend`` and ``/resume``: stop and restore a person's usage.
 * ``DELETE /admin/users/{id}``: remove a person and what they own.
 
@@ -85,7 +85,7 @@ def create_org_admin_router(
 
     # ---- people and usage ----------------------------------------------------------------
 
-    def _computer(host_store: Any, user_id: str) -> dict[str, Any] | None:
+    def _host(host_store: Any, user_id: str) -> dict[str, Any] | None:
         from omnigent.stores.host_store import host_is_live
 
         hosts = host_store.list_hosts(user_id)
@@ -138,7 +138,7 @@ def create_org_admin_router(
                         "monthly_limit_usd": budget.monthly_limit_usd,
                         "at_limit": budget.at_limit,
                     },
-                    "computer": _computer(host_store, account.id) if host_store else None,
+                    "host": _host(host_store, account.id) if host_store else None,
                 }
             )
         return sorted(rows, key=lambda r: r["id"])
@@ -308,7 +308,7 @@ def create_org_admin_router(
 
     @router.delete("/admin/users/{user_id}")
     async def delete_user(request: Request, user_id: str) -> dict[str, Any]:
-        """Delete a person: sessions, Computer, keys, preferences, memory, the account. Idempotent.
+        """Delete a person: sessions, host, keys, preferences, memory, the account. Idempotent.
 
         Refuses the caller's own account and the last admin. A person already gone is a no-op.
         """
@@ -339,13 +339,11 @@ def create_org_admin_router(
         hosts_stopped = 0
         host_store = getattr(state, "host_store", None)
         if host_store is not None:
-            from omnigent.server.managed_hosts import terminate_managed_host
+            from omnigent.server.hosts import terminate_host
 
             for host in await asyncio.to_thread(host_store.list_hosts, user_id):
                 if host.sandbox_provider is not None:
-                    await terminate_managed_host(
-                        host, host_store, getattr(state, "sandbox_config", None)
-                    )
+                    await terminate_host(host, host_store, getattr(state, "sandbox_config", None))
                     hosts_stopped += 1
 
         keys = 0
@@ -385,7 +383,7 @@ def create_org_admin_router(
             "id": user_id,
             "deleted": removed,
             "sessions_deleted": sessions,
-            "computers_stopped": hosts_stopped,
+            "hosts_stopped": hosts_stopped,
             "model_connections_deleted": keys,
             "memory_claims_forgotten": memory_forgotten,
             "rows_removed": rows_removed,

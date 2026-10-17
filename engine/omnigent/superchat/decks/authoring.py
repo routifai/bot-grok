@@ -1,7 +1,7 @@
 """Runner-side handlers for ``deck_new`` and ``deck_check``: authoring a deck that exports exactly.
 
 ``deck_new`` assembles the deck file (skeleton, template, embedded fonts, the Muse's slides) so the
-model only ever writes slides; ``deck_check`` measures the laid-out deck in the Computer's Chromium
+model only ever writes slides; ``deck_check`` measures the laid-out deck in the host's Chromium
 (the same render the PowerPoint export reads) and reports what would not survive one-to-one.
 """
 

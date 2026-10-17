@@ -1,4 +1,4 @@
-"""The Computer's indexer: keep the index in step with the files area, and answer from it.
+"""The host's indexer: keep the index in step with the files area, and answer from it.
 
 The files area is ``your_files/``, each Goal's ``files/`` and ``memory/`` (the journal and the
 working list copy) under the workspace (uploads, what the Muse saves, what it writes there).
@@ -97,7 +97,7 @@ GET_MAX_CHARS = 60_000
 #: Said with a table file's manifest, in place of its rows.
 TABULAR_NOTE = (
     "This is the table's schema, not its rows. Compute numbers with code (pandas, duckdb) in "
-    "the Computer, and edit it with the sheet tools."
+    "the host, and edit it with the sheet tools."
 )
 MULTI_GET_MAX_FILES = 20
 #: Kinds by file extension (lower case, with the dot).

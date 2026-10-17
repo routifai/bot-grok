@@ -1495,8 +1495,8 @@ class _SessionCreateRequestBase(BaseModel):
         host launch flow (generate binding token, write runner_id,
         send launch frame). ``None`` for CLI-initiated sessions.
         Must be ``None`` when ``host_type`` is ``"managed"``.
-    :param sandbox_provider: Which configured sandbox provider to
-        provision on, e.g. ``"computer"`` — one of the names ``GET /v1/info``
+    :param sandbox_provider: Which configured host provider to
+        provision on, e.g. ``"docker"`` — one of the names ``GET /v1/info``
         reports in ``sandbox_providers``. Only valid with
         ``host_type: "managed"``; ``None`` takes the server's first.
     :param workspace: Where the session works. For external hosts:
@@ -1658,7 +1658,7 @@ class _SessionCreateRequestBase(BaseModel):
         # Lazy import: schemas is imported by nearly every module, so
         # pulling the (FastAPI/click-importing) managed-hosts module in
         # at module scope would risk import cycles.
-        from omnigent.server.managed_hosts import is_repo_workspace, parse_repo_workspace
+        from omnigent.server.hosts import is_repo_workspace, parse_repo_workspace
 
         if self.host_type == "managed":
             if self.host_id is not None:
@@ -1791,7 +1791,7 @@ class SessionCreateMetadata(BaseModel):
         sandbox host). The uploaded bundle's session-scoped agent runs
         on the provisioned sandbox; its spec is fetched by the managed
         runner over its tunnel, same as any session-scoped agent.
-    :param sandbox_provider: Which configured sandbox provider to
+    :param sandbox_provider: Which configured host provider to
         provision on ``host_type: "managed"`` (one of the server's
         ``sandbox_providers``); ``None`` takes the server's first. Only
         valid with ``host_type: "managed"``.
@@ -1835,7 +1835,7 @@ class SessionCreateMetadata(BaseModel):
         # Lazy import: schemas is imported nearly everywhere, so pulling
         # the FastAPI/click-importing managed-hosts module in at module
         # scope would risk import cycles.
-        from omnigent.server.managed_hosts import is_repo_workspace, parse_repo_workspace
+        from omnigent.server.hosts import is_repo_workspace, parse_repo_workspace
 
         if self.host_type == "managed":
             if self.host_id is not None:
@@ -2101,7 +2101,7 @@ class SessionResponse(BaseModel):
         fork". Never participates in the reachability decision.
     :param host_resumable: Whether this session is bound to a dormant
         managed host the server can wake in place (its provider sets
-        :attr:`SandboxLauncher.can_resume`). The open view reads it only
+        :attr:`ExecModelHostLauncher.can_resume`). The open view reads it only
         when ``host_online`` is ``False``, to split a confirmed host-down
         into a recoverable "asleep" state (send a message — the relaunch
         path resumes the sandbox) versus the terminal ``host_offline``
@@ -2546,7 +2546,7 @@ class SessionForkRequest(BaseModel):
         ``PATCH /v1/sessions/{id}`` from the REPL) or ``"managed"`` (the
         server provisions a sandbox host for the fork, the same
         background launch a ``host_type: "managed"`` create schedules).
-    :param sandbox_provider: Which configured sandbox provider to
+    :param sandbox_provider: Which configured host provider to
         provision on ``host_type: "managed"`` (one of the server's
         ``sandbox_providers``); ``None`` takes the server's first. Only
         valid with ``host_type: "managed"``.
@@ -2593,7 +2593,7 @@ class SessionForkRequest(BaseModel):
         # Lazy import: schemas is imported by nearly every module, so
         # pulling the (FastAPI/click-importing) managed-hosts module in
         # at module scope would risk import cycles.
-        from omnigent.server.managed_hosts import parse_repo_workspace
+        from omnigent.server.hosts import parse_repo_workspace
 
         if self.host_type == "managed":
             if self.workspace is not None:

@@ -1,4 +1,4 @@
-"""``/v1/artifacts``: deliverable files the Muse saved from its Computer.
+"""``/v1/artifacts``: deliverable files the Muse saved from its host.
 
 ``POST`` takes the raw file bytes (the runner-side ``artifact_save`` tool uploads them) and
 adds a version when the name already exists in the Conversation. ``GET`` lists the newest
@@ -385,7 +385,7 @@ def create_artifacts_router(
 
     @router.get("/artifacts/pending-edits")
     async def pending_edits(request: Request, parent_session_id: str = Query()) -> dict[str, Any]:
-        """Hand-edited versions in a session not yet written back to its Computer.
+        """Hand-edited versions in a session not yet written back to its host.
 
         The runner calls this at the start of the Muse's turn: it writes each ``latest``
         edit's bytes to ``source_path``, tells the Muse (``note``) and then acks the ids via
@@ -502,7 +502,7 @@ def create_artifacts_router(
 
         Nothing is rewritten in place, so the versions in between stay in the history (and a
         restore can itself be restored over). Like a hand edit it is written back to the
-        Computer and announced to the Muse at the start of its next turn.
+        host and announced to the Muse at the start of its next turn.
         """
         item = await _load(request, artifact_id)
         head = await asyncio.to_thread(store.newest, item)

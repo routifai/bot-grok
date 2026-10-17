@@ -2,7 +2,7 @@
 
 The value goes in once, from the client's secure form, and is never echoed: every response
 carries metadata only, except ``/fill`` which the runner calls to type a value into the
-Computer's browser and which returns the saved origin with the value so the page helper can
+host's browser and which returns the saved origin with the value so the page helper can
 refuse any other site.
 Owner-scoped.
 """

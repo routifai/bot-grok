@@ -2,8 +2,8 @@
 
 One word per thing, as of 2026-10-17. The infrastructure words come from
 [ADR 0018](adr/0018-one-vocabulary-engine-host-runner-harness.md); a pull request that introduces a
-second word for one of these is sent back. Code still uses some deprecated words until the rename
-wave; they are marked here with what replaced them.
+second word for one of these is sent back. Deprecated words are marked here with what replaced
+them; where code still uses one, the entry says so.
 
 - **Activity**: one piece of multi-step work in the activity panel, either a conversation turn that did real work or a whole helper task; derived on read, never stored ([helpers.md](helpers.md#the-activity-panel)).
 - **Archived**: a session hidden from the default list (`PATCH /v1/sessions/{id}` with `archived: true`); nothing archives on its own.
@@ -14,7 +14,7 @@ wave; they are marked here with what replaced them.
 - **Checkpoint**: the `compaction` item a rollover stores: a fixed header written by code, the working list, and the kept tail.
 - **Chip**: the pointer on a message to the artifact, or part of one, the message is about ([conversation.md](conversation.md)).
 - **Claim**: one sentence about the person in long-term memory, with its quote, evidence, kind and confidence (table `memory_claims`).
-- **Computer**: deprecated, now **host**. Still the name in env vars (`OMNIGENT_COMPUTER_*`), Docker labels, container and volume names, routes and the provider name `computer` until the rename wave.
+- **Computer**: old name for **host**, gone from code, config and copy since the rename wave (ADR 0018). The person's word for their host is "your machine"; the web tab is Files.
 - **Conversation**: the one chat between a person and the assistant; the engine calls it the Super Chat.
 - **Daily note**: one note per person per local day, kept by background `notes` helper passes; the person's own edits are protected ([context.md](context.md#daily-notes-and-the-working-list)).
 - **Deck**: an HTML artifact named `*.deck.html` with 1920x1080 slides, exported to PowerPoint or PDF in the host ([decks.md](decks.md)).
@@ -25,8 +25,8 @@ wave; they are marked here with what replaced them.
 - **Harness**: the model loop inside a runner, `claude-sdk` or `pi`. Replaces executor, inner, native.
 - **Helper**: a child session the assistant starts with `start_helper` for one bounded job; read-only to the person, its result goes back to the chat that started it ([helpers.md](helpers.md)). Replaces sub-agent.
 - **Helper type**: what a helper is configured as: `worker`, `subworker` or `notes` (`engine/agents/templates/agents/`).
-- **Host**: a person's execution environment, today a Docker container the engine starts (the Computer container); runs `omnigent host`. Replaces Computer, sandbox (as a provider), managed host.
-- **Host provider**: how a host is launched; `computer` in code today, `docker` after the rename.
+- **Host**: a person's execution environment, today a Docker container the engine starts (`superchat-host-<key>`, labelled `omnigent.host.owner`); runs `omnigent host`. Replaces Computer, sandbox (as a provider), managed host. In copy it is "your machine".
+- **Host provider**: how a host is launched; `docker` today (`engine/omnigent/hosts/docker.py`), set by the server config's `host:` block and `OMNIGENT_HOST_PROVIDER`.
 - **Journal**: dated lines under `~/workspace/memory/journal/` in the host, written by code from checkpoints and helper results; a copy for search, never read back as state.
 - **Kept tail**: the most recent whole turns a checkpoint keeps word for word (up to 16,000 tokens).
 - **Knowledge index**: the search index in the host (SQLite with FTS5 and sqlite-vec) over the person's files, the journal and retired conversation turns; behind the `files_*` tools and `recall`.
@@ -39,7 +39,7 @@ wave; they are marked here with what replaced them.
 - **Result**: a helper's final message, posted to the chat that started it as a system notice.
 - **Rollover**: replacing older turns with a checkpoint when the conversation grows large or the person returns after a long break.
 - **Runner**: the per-session process a host launches; runs one harness.
-- **Sandbox**: only the OS process jail (bubblewrap). The `sandbox:` config block and "sandbox provider" are old names for the host provider.
+- **Sandbox**: only the OS process jail (bubblewrap). "Sandbox provider" and the server config's `sandbox:` block are old names for the host provider and its `host:` block. Some code still says sandbox for the host (`sandbox_id`, `sandbox_provider`, `sandbox_status`, `managed_sandbox_reaper`).
 - **Side chat**: deprecated and removed ([ADR 0021](adr/0021-one-conversation-messages-link-to-artifacts.md)); there is one conversation.
 - **Steer**: a message sent while a turn runs, delivered into that turn instead of starting a new one.
 - **Step limit**: a conversation turn may make 3 work tool calls; the next is refused with an instruction to hand the rest to a helper ([ADR 0007](adr/0007-the-muse-delegates-multi-step-work.md)).

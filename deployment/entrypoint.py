@@ -43,7 +43,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
-    from omnigent.server.managed_hosts import ManagedSandboxDeployment
+    from omnigent.server.hosts import HostDeployment
     from omnigent.stores.artifact_store import ArtifactStore
 
 logging.basicConfig(level=logging.INFO, stream=sys.stderr, force=True)
@@ -315,16 +315,16 @@ def _resolve_execution_timeout(cfg: dict[str, Any]) -> int:
 
 
 def log_capabilities(
-    sandbox_config: ManagedSandboxDeployment | None,
+    sandbox_config: HostDeployment | None,
     github_config: object | None,
     github_store: object | None,
 ) -> None:
     """
-    Log the same flags ``/v1/info`` exposes, so a missing ``sandbox:``
+    Log the same flags ``/v1/info`` exposes, so a missing ``host:``
     block or GitHub App env shows up in pod logs without curling.
 
     Reads ``sandbox_config.default.provider``, not ``.provider``:
-    :class:`ManagedSandboxDeployment` wraps one config PER PROVIDER and has
+    :class:`HostDeployment` wraps one config PER PROVIDER and has
     no ``provider`` of its own, so the bare attribute raises
     ``AttributeError`` and kills the server at boot. Split out of
     :func:`build_app` so the expression is reachable from a test without
@@ -365,7 +365,7 @@ def build_app(resolved_config: _ResolvedConfig | None = None) -> _BuiltApp:
     from omnigent.runtime import telemetry
     from omnigent.runtime.agent_cache import AgentCache
     from omnigent.runtime.caps import RuntimeCaps
-    from omnigent.server.managed_hosts import parse_sandbox_config
+    from omnigent.server.hosts import parse_host_section
     from omnigent.stores.agent_store.sqlalchemy_store import SqlAlchemyAgentStore
     from omnigent.stores.comment_store.sqlalchemy_store import (
         SqlAlchemyCommentStore,
@@ -406,10 +406,10 @@ def build_app(resolved_config: _ResolvedConfig | None = None) -> _BuiltApp:
     memory_upkeep_store = (
         build_memory_upkeep_store(database_url) if memory_service is not None else None
     )
-    # Fail startup loud on a malformed `sandbox:` section (an operator
+    # Fail startup loud on a malformed `host:` section (an operator
     # typo should not surface as a runtime 502 on the first managed
     # session); the startup catch-all below logs it.
-    sandbox_config = parse_sandbox_config(cfg.get("sandbox"))
+    sandbox_config = parse_host_section(cfg.get("host"))
     artifact_store = _select_artifact_store(resolved_config)
 
     agent_cache = AgentCache(

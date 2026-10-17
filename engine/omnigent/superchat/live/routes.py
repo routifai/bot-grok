@@ -26,7 +26,7 @@ from omnigent.superchat.artifacts import (
 from omnigent.superchat.artifacts.parts import part_editor
 from omnigent.superchat.live.service import LiveService
 
-#: A web page URL or a Computer file path a page's facts come from.
+#: A web page URL or a host file path a page's facts come from.
 Sources = Annotated[
     list[Annotated[str, Field(min_length=1, max_length=2048)]], Field(max_length=50)
 ]
@@ -78,14 +78,14 @@ def create_live_router(
     Settings (``GET``/``PUT /artifacts/{id}/live``): ``rrule`` (schedule), ``sources``, ``tell``,
     ``follow_publish`` (default true; an unusual update is ``held`` until
     ``POST .../live/publish``), ``note`` (what to update) and ``on_change`` (default true: also
-    update ~2 minutes after a source file changes in the Computer). The Computer's file watcher
+    update ~2 minutes after a source file changes in the host). The host's file watcher
     uses ``GET /live/watch`` and ``POST /live/changed`` with its launch token
     (``Authorization: Bearer <host_id>:<token>``).
     """
     router = APIRouter()
 
-    async def _computer_owner(request: Request) -> str | None:
-        """The owner of the Computer whose launch token the request carries (else 401)."""
+    async def _host_owner(request: Request) -> str | None:
+        """The owner of the host whose launch token the request carries (else 401)."""
         auth = request.headers.get("authorization", "")
         host_id, _, token = (auth[7:] if auth.lower().startswith("bearer ") else "").partition(":")
         store = host_store() if host_store else None
@@ -148,10 +148,10 @@ def create_live_router(
     ) -> dict[str, Any]:
         """File paths to watch: sources of this owner's pages that update on change.
 
-        The Computer also says how busy it is (``mem_free``: share of memory free, ``load``:
+        The host also says how busy it is (``mem_free``: share of memory free, ``load``:
         load per CPU), which sizes how many of the owner's runs go at once.
         """
-        owner = await _computer_owner(request)
+        owner = await _host_owner(request)
         if mem_free is not None or load is not None:
             service.note_load(owner, mem_free, load)
         return {"paths": await asyncio.to_thread(service.watched, owner)}
@@ -159,7 +159,7 @@ def create_live_router(
     @router.post("/live/changed", status_code=202)
     async def live_changed(request: Request, body: ChangedBody) -> dict[str, Any]:
         """Source files changed: start each affected page's update after the debounce."""
-        owner = await _computer_owner(request)
+        owner = await _host_owner(request)
         keys = await asyncio.to_thread(service.changed, owner, body.paths)
         for key in keys:
             service.arm(key)

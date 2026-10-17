@@ -1,6 +1,6 @@
 """Decks: a saved HTML deck (``*.deck.html``) exported to editable PowerPoint or vector PDF.
 
-Layout: ``tools`` (the ``deck_export`` tool def), ``handlers`` (runner side: runs the Computer's
+Layout: ``tools`` (the ``deck_export`` tool def), ``handlers`` (runner side: runs the host's
 ``superchat-deck-export`` helper and saves the result), ``routes`` (``/v1/decks/{id}/export`` for
 the panel's Export buttons), ``feature`` (registration). Sits on top of artifacts.
 """

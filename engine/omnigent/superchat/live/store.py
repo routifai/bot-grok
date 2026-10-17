@@ -24,7 +24,7 @@ def new_state() -> dict[str, Any]:
     the person undid; ``facts``: what the sources said last time; ``last_update``:
     ``{version, applied, suggestions, at}``; ``misses``: runs in a row with unplaced changes;
     ``failures``: failed runs in a row; ``last_failure``: ``{at, reason}`` of the latest;
-    ``on_change``: start an update when a source file changes in the Computer (a setting, kept here
+    ``on_change``: start an update when a source file changes in the host (a setting, kept here
     so the table stays as it is); ``note``: the person's own "what to update" text, read by
     every run; ``held``: ``{version, reason}`` of an update the published copy did not take
     (``suggestions``, ``unplaced`` or ``edits``: hand edits since the last publish), until the

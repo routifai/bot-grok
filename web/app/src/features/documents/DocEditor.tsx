@@ -425,7 +425,7 @@ export const docEditorKind: ArtifactEditorKind = {
   useEditor: useDocEditor,
 };
 
-/** A markdown file read-only (a Computer file's preview): the same page, no editing. */
+/** A markdown file read-only (a host file's preview): the same page, no editing. */
 export function DocReader({ bytes }: { bytes: Uint8Array }) {
   const blocks = useMemo(() => splitBlocks(new TextDecoder("utf-8").decode(bytes)), [bytes]);
   return (

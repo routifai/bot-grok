@@ -17,10 +17,10 @@ import httpx
 import yaml
 from fastapi import FastAPI
 
-from omnigent.onboarding.sandboxes import (
+from omnigent.hosts import (
+    ExecModelHostLauncher,
     RemoteCommandResult,
     RemoteProcess,
-    SandboxLauncher,
 )
 from omnigent.runner.transports.ws_tunnel.frames import HelloFrame
 from omnigent.runtime import session_stream
@@ -127,9 +127,9 @@ class HostStartInvocation:
     command: str
 
 
-class FakeSandboxLauncher(SandboxLauncher):
+class FakeSandboxLauncher(ExecModelHostLauncher):
     """
-    Recording :class:`SandboxLauncher` for managed-host tests.
+    Recording :class:`ExecModelHostLauncher` for managed-host tests.
 
     Provisions nothing: ``provision`` returns a fixed sandbox id,
     ``run`` records commands and answers the two the managed flow
@@ -163,7 +163,7 @@ class FakeSandboxLauncher(SandboxLauncher):
         provisions immediately.
     """
 
-    provider: ClassVar[str] = "computer"
+    provider: ClassVar[str] = "docker"
 
     def __init__(
         self,
@@ -307,27 +307,27 @@ def _parse_host_start(command: str) -> HostStartInvocation:
     )
 
 
-def install_fake_computer_launcher(
+def install_fake_host_launcher(
     monkeypatch: Any,  # pytest.MonkeyPatch — Any avoids importing pytest in a helpers module
     fake: FakeSandboxLauncher,
 ) -> None:
     """
-    Substitute the fake for ``ComputerSandboxLauncher`` at its public seam.
+    Substitute the fake for ``DockerHostLauncher`` at its public seam.
 
-    The YAML ``provider: computer`` path constructs ``ComputerSandboxLauncher()``
+    The YAML ``provider: docker`` path constructs ``DockerHostLauncher()``
     (lazily, through its launcher factory); the shim hands the fake back, so
     production code runs unmodified against it.
 
     :param monkeypatch: The test's ``pytest.MonkeyPatch``.
     :param fake: The fake launcher to substitute.
     """
-    import omnigent.onboarding.sandboxes.computer as computer_mod
+    import omnigent.hosts.docker as host_mod
 
     def _ctor() -> FakeSandboxLauncher:
         """Stand-in constructor handing back the fake."""
         return fake
 
-    monkeypatch.setattr(computer_mod, "ComputerSandboxLauncher", _ctor)
+    monkeypatch.setattr(host_mod, "DockerHostLauncher", _ctor)
 
 
 async def wait_for_completion(

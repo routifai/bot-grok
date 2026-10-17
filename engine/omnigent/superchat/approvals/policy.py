@@ -236,7 +236,7 @@ def _shell_segment_risk(tokens: list[str], text: str) -> Risk | None:
         who = tuple(dict.fromkeys(_EMAIL_RE.findall(text))) or (prog,)
         return Risk("send", who, f"Send an email to {', '.join(who)}")
     if prog == "osascript" and re.search(r'application\s+"(mail|messages)"', low_text):
-        return Risk("send", ("Mail/Messages",), "Send a message from this computer")
+        return Risk("send", ("Mail/Messages",), "Send a message from your machine")
     if re.search(r"\b(smtplib|chat\.postmessage|sendmessage)\b", low_text):
         return Risk("send", ("messaging",), "Send a message")
 
@@ -307,9 +307,7 @@ def _shell_segment_risk(tokens: list[str], text: str) -> Risk | None:
 
     # share
     if prog in _TUNNEL_PROGRAMS or (prog == "tailscale" and "funnel" in lowered):
-        return Risk(
-            "share", (prog,), "Make something on this computer reachable from the internet"
-        )
+        return Risk("share", (prog,), "Make something on your machine reachable from the internet")
     if prog == "gh" and "repo" in lowered and "--visibility" in lowered and "public" in lowered:
         return Risk("share", ("github repo",), "Make a repository public")
     return None

@@ -41,7 +41,7 @@ from omnigent.host.frames import (
 from omnigent.runner.identity import token_bound_runner_id
 from omnigent.runtime.agent_cache import AgentCache
 from omnigent.server.app import create_app
-from omnigent.server.managed_hosts import parse_sandbox_config
+from omnigent.server.hosts import parse_host_section
 from omnigent.stores.agent_store.sqlalchemy_store import SqlAlchemyAgentStore
 from omnigent.stores.artifact_store.local import LocalArtifactStore
 from omnigent.stores.comment_store.sqlalchemy_store import SqlAlchemyCommentStore
@@ -54,7 +54,7 @@ from tests.server.helpers import (
     FakeSandboxLauncher,
     HostStartInvocation,
     create_test_agent,
-    install_fake_computer_launcher,
+    install_fake_host_launcher,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -106,7 +106,7 @@ async def teardown_env(
     """Full app wired for managed-host sessions (no real sandbox).
 
     Builds the production ``create_app`` with host + managed-host
-    stores and a computer ``sandbox:`` config, so a ``host_type="managed"``
+    stores and a host ``sandbox:`` config, so a ``host_type="managed"``
     create exercises the real route, tunnel, and store paths end to
     end. Only the sandbox itself is fake.
 
@@ -129,9 +129,9 @@ async def teardown_env(
         ),
         comment_store=SqlAlchemyCommentStore(db_uri),
         host_store=host_store,
-        sandbox_config=parse_sandbox_config(
+        sandbox_config=parse_host_section(
             {
-                "provider": "computer",
+                "provider": "docker",
                 "server_url": "https://managed-test.example.com",
             }
         ),
@@ -251,7 +251,7 @@ async def _wait_for_sandbox_teardown(
 ) -> None:
     """Wait for the failed launch's sandbox teardown to land.
 
-    Teardown means both halves of ``terminate_managed_host``: the
+    Teardown means both halves of ``terminate_host``: the
     provider-side terminate fired for the sandbox, and the managed
     host row (whose existence keeps the launch token resolvable) is
     deleted. The launch-settled status precedes the teardown by a
@@ -293,7 +293,7 @@ async def test_harness_refusal_failure_tears_down_managed_sandbox(
     env = teardown_env
     # A healthy fake host registers in well under a second; shrink the
     # online-poll budget so a registration regression fails in seconds.
-    monkeypatch.setattr("omnigent.server.managed_hosts.MANAGED_HOST_ONLINE_TIMEOUT_S", 10)
+    monkeypatch.setattr("omnigent.server.hosts.HOST_ONLINE_TIMEOUT_S", 10)
     loop = asyncio.get_running_loop()
     host_futures: list[asyncio.Future[ApplicationCommunicator]] = []
     launched_host_ids: list[str] = []
@@ -314,7 +314,7 @@ async def test_harness_refusal_failure_tears_down_managed_sandbox(
         host_futures.append(asyncio.wrap_future(future, loop=loop))
 
     fake = FakeSandboxLauncher(on_host_start=_start_fake_sandbox_host)
-    install_fake_computer_launcher(monkeypatch, fake)
+    install_fake_host_launcher(monkeypatch, fake)
 
     agent = await create_test_agent(env.client, name="managed-refusal-teardown-agent")
     resp = await env.client.post(
@@ -366,7 +366,7 @@ async def test_runner_connect_timeout_failure_tears_down_managed_sandbox(
     left to ever delete it.
     """
     env = teardown_env
-    monkeypatch.setattr("omnigent.server.managed_hosts.MANAGED_HOST_ONLINE_TIMEOUT_S", 10)
+    monkeypatch.setattr("omnigent.server.hosts.HOST_ONLINE_TIMEOUT_S", 10)
     # No runner ever connects in this test by design; shrink the
     # connect grace so the launch settles in milliseconds, not 30s.
     monkeypatch.setattr(
@@ -392,7 +392,7 @@ async def test_runner_connect_timeout_failure_tears_down_managed_sandbox(
         host_futures.append(asyncio.wrap_future(future, loop=loop))
 
     fake = FakeSandboxLauncher(on_host_start=_start_fake_sandbox_host)
-    install_fake_computer_launcher(monkeypatch, fake)
+    install_fake_host_launcher(monkeypatch, fake)
 
     agent = await create_test_agent(env.client, name="managed-connect-timeout-agent")
     resp = await env.client.post(

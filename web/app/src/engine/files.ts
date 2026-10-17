@@ -1,4 +1,4 @@
-// `files.*`: the Computer workspace browser. Browse the Muse's Conversation workspace on the
+// `files.*`: the host workspace browser. Browse the Muse's Conversation workspace on the
 // engine (the engine session's filesystem routes), preview one file, save one to the Library, and
 // take composer attachments into the workspace (`your_files/uploads/<date>/`) and read them.
 import { ORPCError } from "@orpc/server";
@@ -37,8 +37,8 @@ function hasEngineCode(error: unknown, ...codes: string[]): boolean {
   );
 }
 
-/** The Computer's runner is still (re)connecting; the panel shows "starting" and retries. */
-function isComputerStarting(error: unknown): boolean {
+/** The host's runner is still (re)connecting; the panel shows "starting" and retries. */
+function isHostStarting(error: unknown): boolean {
   return hasEngineCode(error, "runner_unavailable", "runner_capability_mismatch");
 }
 
@@ -50,8 +50,8 @@ function mapError(error: unknown): never {
   if (hasEngineCode(error, "not_found")) {
     throw new ORPCError("NOT_FOUND", { message: "File not found" });
   }
-  if (isComputerStarting(error)) {
-    throw new ORPCError("SERVICE_UNAVAILABLE", { message: "Starting the Computer" });
+  if (isHostStarting(error)) {
+    throw new ORPCError("SERVICE_UNAVAILABLE", { message: "Starting your machine" });
   }
   throw error;
 }
@@ -114,7 +114,7 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
 }
 
 /** Writes a composer attachment into the Muse's workspace under
- * `your_files/uploads/<date>/` and returns where it landed. Wakes the Computer. */
+ * `your_files/uploads/<date>/` and returns where it landed. Wakes the host. */
 export async function uploadAttachment(
   input: { name: string; mimeType: string; contentBase64: string },
   now: Date = new Date(),
@@ -135,7 +135,7 @@ export async function uploadAttachment(
   try {
     const chosen = safeUploadName(input.name, input.mimeType);
     // The same file attached again reuses the stored copy and its index entry. Only a file the
-    // Computer indexes is looked up (an image never is), and only a copy that carries the name the
+    // host indexes is looked up (an image never is), and only a copy that carries the name the
     // person chose is reused, so the name they see is the name they picked.
     if (isIngestableAttachmentMimeType(input.mimeType)) {
       const sha256 = await sha256Hex(bytes);
@@ -165,17 +165,17 @@ export async function uploadAttachment(
     }
     throw new ORPCError("CONFLICT", { message: "Could not pick a free name for this file" });
   } catch (error) {
-    if (isComputerStarting(error)) {
+    if (isHostStarting(error)) {
       throw new ORPCError("SERVICE_UNAVAILABLE", {
-        message: "Your Computer is starting. Try again in a moment.",
+        message: "Your machine is starting. Try again in a moment.",
       });
     }
     return mapError(error);
   }
 }
 
-/** Reads an uploaded attachment in the Computer and answers when it is searchable. One awaited
- * call: the composer keeps Send disabled until it returns. Wakes the Computer. */
+/** Reads an uploaded attachment in the host and answers when it is searchable. One awaited
+ * call: the composer keeps Send disabled until it returns. Wakes the host. */
 export async function ingestAttachment(input: {
   path: string;
 }): Promise<{ fileId: string; name: string; pages: number; chars: number }> {
@@ -194,12 +194,12 @@ export async function ingestAttachment(input: {
     });
     return { fileId: read.file_id, name: read.name, pages: read.pages, chars: read.chars };
   } catch (error) {
-    if (isComputerStarting(error)) {
+    if (isHostStarting(error)) {
       throw new ORPCError("SERVICE_UNAVAILABLE", {
-        message: "Your Computer is starting. Try again in a moment.",
+        message: "Your machine is starting. Try again in a moment.",
       });
     }
-    // The Computer is awake but the read did not finish in time: its own message, never "starting".
+    // The host is awake but the read did not finish in time: its own message, never "starting".
     if (hasEngineCode(error, "knowledge_timeout")) {
       throw new ORPCError("GATEWAY_TIMEOUT", {
         message: "Reading this file is taking too long. Try again in a moment.",

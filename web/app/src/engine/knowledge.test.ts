@@ -41,7 +41,7 @@ describe("knowledge", () => {
             },
           ],
           embeddings: { available: false, reason: "no_connection" },
-          computer: "asleep",
+          host: "asleep",
           updated_at: 1760000000,
         });
       }),
@@ -63,7 +63,7 @@ describe("knowledge", () => {
         },
       ],
       embeddings: { available: false, reason: "no_connection" },
-      computer: "asleep",
+      host: "asleep",
       updatedAt: 1760000000,
     });
   });

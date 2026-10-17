@@ -20,8 +20,8 @@ from omnigent.harnesses.pi_executor import _build_models_json, _only_configured_
 from omnigent.models import model_catalog
 from omnigent.onboarding.provider_config import load_providers
 from omnigent.runtime.workflow import _apply_provider_to_pi
+from omnigent.server.hosts import parse_host_section
 from omnigent.server.inference_catalog import SandboxInferenceService
-from omnigent.server.managed_hosts import parse_sandbox_config
 from omnigent.superchat.models.proxy import create_model_proxy_router
 from omnigent.superchat.models.store import ModelConnectionStore
 from omnigent.superchat.vault.store import VAULT_KEY_ENV
@@ -54,7 +54,7 @@ def _hosted_state(creds: dict[str, tuple[str, str]]) -> SimpleNamespace:
     raw = yaml.safe_load(
         TEMPLATE.read_text().replace("__ENGINE_PUBLIC_URL__", "https://eng.example")
     )
-    deployment = parse_sandbox_config(raw["sandbox"])
+    deployment = parse_host_section(raw["host"])
     assert deployment is not None
 
     class _Store:
@@ -92,7 +92,7 @@ def _pi_models_json(snapshot: dict, model: str) -> tuple[dict, dict[str, str]]:
 @pytest.mark.asyncio
 async def test_hosted_template_parses_and_pi_on_anthropic_is_ready() -> None:
     state = _hosted_state({"alice": ("anthropic", "sk-ant-x")})
-    snapshot = await _service(state).prepare("computer", "pi", "alice")
+    snapshot = await _service(state).prepare("docker", "pi", "alice")
     assert snapshot is not None and snapshot["catalog"]["status"] == "ready"
     assert snapshot["catalog"]["default_model"] == "claude-sonnet-5-5"
     config, env = _pi_models_json(snapshot, "claude-sonnet-5-5")
@@ -107,7 +107,7 @@ async def test_hosted_template_parses_and_pi_on_anthropic_is_ready() -> None:
 @pytest.mark.asyncio
 async def test_pi_on_openrouter_uses_chat_completions_through_the_proxy() -> None:
     state = _hosted_state({"bob": ("openrouter", "sk-or-x")})
-    snapshot = await _service(state).prepare("computer", "pi", "bob")
+    snapshot = await _service(state).prepare("docker", "pi", "bob")
     assert snapshot is not None and snapshot["catalog"]["status"] == "ready"
     ids = [m["id"] for m in snapshot["catalog"]["models"]]
     assert "deepseek/deepseek-chat" in ids and "anthropic/claude-sonnet-4.5" in ids
@@ -133,7 +133,7 @@ async def test_pi_on_openrouter_uses_chat_completions_through_the_proxy() -> Non
 @pytest.mark.asyncio
 async def test_claude_sdk_binding_is_unchanged_on_openrouter() -> None:
     state = _hosted_state({"bob": ("openrouter", "sk-or-x")})
-    snapshot = await _service(state).prepare("computer", "claude-sdk", "bob")
+    snapshot = await _service(state).prepare("docker", "claude-sdk", "bob")
     assert snapshot is not None
     family = snapshot["runtime_config"]["providers"]["byok"]["anthropic"]
     assert family["base_url"] == "https://eng.example/v1/model/openrouter"
@@ -145,7 +145,7 @@ async def test_pi_without_a_key_needs_one() -> None:
     from omnigent.errors import OmnigentError
 
     with pytest.raises(OmnigentError) as caught:
-        await _service(_hosted_state({})).prepare("computer", "pi", "carol")
+        await _service(_hosted_state({})).prepare("docker", "pi", "carol")
     assert str(caught.value.code) == "model_key_required"
 
 

@@ -6,16 +6,16 @@ import { type ComponentType, useEffect, useRef, useState } from "react";
 import { SuperchatTile, type TileTone } from "../components/chrome/SuperchatTile";
 import { ModelsPanel, useEngineModelsStatus } from "../features/models";
 import { SuperchatSettingsPanel } from "./app/SuperchatSettingsPanel";
-import { ComputerStatusPanel } from "./app/settings/ComputerStatusPanel";
 import { GeneralPanel } from "./app/settings/GeneralPanel";
+import { HostStatusPanel } from "./app/settings/HostStatusPanel";
 
-export type SettingsSection = "superchat" | "general" | "models" | "computer";
+export type SettingsSection = "superchat" | "general" | "models" | "machine";
 
 /** Superchat's Settings sidebar: one colored tile per section, Mac style. */
 const SETTINGS_TONE: Record<SettingsSection, TileTone> = {
   superchat: "blue",
   general: "gray",
-  computer: "blue",
+  machine: "blue",
   models: "indigo",
 };
 
@@ -36,7 +36,7 @@ export function SettingsOverlay({
   name: string;
   initialSection?: SettingsSection;
   onClose: () => void;
-  /** The person's one Muse; the Superchat and Computer sections need it. */
+  /** The person's one Muse; the Superchat and Machine sections need it. */
   museBot?: Bot | null;
 }) {
   const { t } = useLingui();
@@ -62,7 +62,7 @@ export function SettingsOverlay({
       : []),
     { id: "general", label: t`General`, icon: Settings },
     ...(showEngineModels ? [{ id: "models" as const, label: t`Models`, icon: Cpu }] : []),
-    ...(museBot ? [{ id: "computer" as const, label: t`Computer`, icon: Monitor }] : []),
+    ...(museBot ? [{ id: "machine" as const, label: t`Machine`, icon: Monitor }] : []),
   ];
 
   const sectionTitle =
@@ -133,9 +133,9 @@ export function SettingsOverlay({
                 <SuperchatSettingsPanel bot={museBot} userId={email ?? undefined} />
               ) : null}
               {section === "general" ? <GeneralPanel name={name} email={email} /> : null}
-              {section === "computer" && museBot ? (
+              {section === "machine" && museBot ? (
                 <div className="space-y-5">
-                  <ComputerStatusPanel botId={museBot.id} />
+                  <HostStatusPanel botId={museBot.id} />
                 </div>
               ) : null}
               {section === "models" && engineModels?.enabled ? (

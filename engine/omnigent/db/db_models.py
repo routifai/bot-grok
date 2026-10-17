@@ -1360,8 +1360,8 @@ class SqlHost(OmnigentBase):
         expiry is set past the provider's maximum sandbox lifetime so a
         live sandbox can always reconnect while a token leaked from a
         dead one cannot. ``NULL`` for external hosts.
-    :param sandbox_provider: Sandbox provider backing a managed host,
-        e.g. ``"computer"``. ``NULL`` for external hosts — non-NULL is the
+    :param sandbox_provider: Host provider backing a managed host,
+        e.g. ``"docker"``. ``NULL`` for external hosts — non-NULL is the
         "this host is server-managed" discriminator.
     :param sandbox_id: Provider-assigned id of the sandbox currently
         backing the host, e.g. ``"sb-a1b2c3"`` — what termination is
@@ -1373,8 +1373,6 @@ class SqlHost(OmnigentBase):
     :param deleted_at: Logical deletion timestamp for a managed host whose
         provider sandbox cleanup is still pending. The row is physically
         removed after every recorded sandbox id terminates successfully.
-    :param computer_control_token: Control token held while a person has taken over
-        the host's computer screen. ``NULL`` when nobody is in control.
     :param configured_harnesses: JSON-encoded per-harness readiness map
         reported in the host's last ``host.hello`` frame, e.g.
         ``'{"claude-sdk": true, "codex": false}'``. ``NULL`` when the
@@ -1411,8 +1409,6 @@ class SqlHost(OmnigentBase):
     sandbox_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
     terminating_sandbox_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
     deleted_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    # Token held while a person controls the host's computer screen; NULL when nobody does.
-    computer_control_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # Opaque; never SQL-filtered — stored compressed (CompressedText).
     configured_harnesses: Mapped[str | None] = mapped_column(CompressedText, nullable=True)
 
@@ -1740,7 +1736,7 @@ class SqlArtifact(OmnigentBase):
     SQLAlchemy model for the ``artifacts`` table.
 
     One row per *version* of a deliverable file (HTML page, document, sheet, deck...) the Muse
-    saved from its Computer. Versions of one deliverable share ``(user_id, parent_session_id,
+    saved from its host. Versions of one deliverable share ``(user_id, parent_session_id,
     name)``; the bytes live in the artifact store under ``blob_key``.
 
     :param id: UUID primary key of this version (bare 32-char hex string).
@@ -1757,9 +1753,9 @@ class SqlArtifact(OmnigentBase):
     :param published: Reserved for a later "publish" feature.
     :param origin: ``"ai"`` (saved by the Muse), ``"manual"`` (edited by hand) or ``"restore"``.
     :param parent_version_id: The version this one was derived from, if any.
-    :param source_path: Computer workspace path the bytes were read from / are written back to.
+    :param source_path: host workspace path the bytes were read from / are written back to.
     :param edit_summary: Short human text describing a manual edit.
-    :param delivered_at: Epoch seconds when a manual version was written back to the Computer
+    :param delivered_at: Epoch seconds when a manual version was written back to the host
         and announced to the Muse; ``None`` while still pending.
     :param turn_item_id: The person's message item that opened the turn that saved it, if known.
     :param chat_id: The chat (Conversation, Helper or update run) that saved it.
@@ -1906,7 +1902,7 @@ class SqlArtifactLive(OmnigentBase):
     SQLAlchemy model for the ``artifact_live`` table: one row per live page (an artifact group).
 
     The schedule is the scheduled task ``task_id``; ``sources`` is a JSON list of web page URLs
-    or Computer file paths; ``state`` is what the updates remember (``superchat/live/store.py``).
+    or host file paths; ``state`` is what the updates remember (``superchat/live/store.py``).
     """
 
     __tablename__ = "artifact_live"

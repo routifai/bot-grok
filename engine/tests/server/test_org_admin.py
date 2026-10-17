@@ -118,7 +118,7 @@ def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
         terminated.append(host.host_id)
         hosts.hosts[host.user_id] = [h for h in hosts.hosts[host.user_id] if h is not host]
 
-    monkeypatch.setattr("omnigent.server.managed_hosts.terminate_managed_host", terminate)
+    monkeypatch.setattr("omnigent.server.hosts.terminate_host", terminate)
 
     state = _hosted_state({})
 
@@ -204,7 +204,7 @@ def _seed_people(world: World) -> None:
     world.connections.put("user", "alice", "anthropic", "sk-ant-secret-1234")
     world.budgets.store.set("alice", Budget(25.0, "stop"))
     world.suspensions.suspend("bob", "root")
-    world.hosts.hosts["alice"] = [_host("c1", "computer"), _host("laptop", None, "offline")]
+    world.hosts.hosts["alice"] = [_host("c1", "docker"), _host("laptop", None, "offline")]
     conv = world.ledger.create_conversation()
     world.perms.grant("alice", conv.id, LEVEL_OWNER)
     child = world.ledger.create_conversation(parent_conversation_id=conv.id)
@@ -225,12 +225,12 @@ def test_users_list_every_person_with_stats(world: World) -> None:
         {"provider": "anthropic", "hint": "1234", "status": "valid"}
     ]
     assert "sk-ant-secret" not in str(users)
-    assert alice["computer"]["provider"] == "computer" and alice["computer"]["managed"] is True
-    assert alice["computer"]["state"] in ("online", "offline")
+    assert alice["host"]["provider"] == "docker" and alice["host"]["managed"] is True
+    assert alice["host"]["state"] in ("online", "offline")
     bob = users["bob"]
     assert bob["status"] == "suspended" and bob["suspended_at"] == NOW
     assert bob["spend_month_usd"] == pytest.approx(4.0) and bob["spend_today_usd"] == 4.0
-    assert bob["computer"] is None and bob["model_connections"] == []
+    assert bob["host"] is None and bob["model_connections"] == []
     assert users["root"]["is_admin"] is True and users["root"]["session_count"] == 0
     assert users["root"]["spend_month_usd"] == 0.0
 
@@ -346,7 +346,7 @@ def test_delete_removes_the_person_and_everything_they_own_and_is_idempotent(
     from omnigent.superchat.models.selection import ModelPreferenceStore
 
     _seed_people(world)
-    world.hosts.hosts["alice"] = [_host("c1", "computer"), _host("laptop", None)]
+    world.hosts.hosts["alice"] = [_host("c1", "docker"), _host("laptop", None)]
     world.connections.put("user", "alice", "openrouter", "sk-or-secret-5678")
     ModelPreferenceStore(world.uri).set("alice", {"claude-sdk": "claude-haiku-4-5"})
     world.budgets.store.set_approval("alice", "2026-10", "user", 1.25)
@@ -364,11 +364,11 @@ def test_delete_removes_the_person_and_everything_they_own_and_is_idempotent(
         "id": "alice",
         "deleted": True,
         "sessions_deleted": 1,
-        "computers_stopped": 1,
+        "hosts_stopped": 1,
         "model_connections_deleted": 2,
         "memory_claims_forgotten": 0,  # no memory service in this world
     }
-    assert world.terminated == ["host-c1"]  # the managed Computer only; no user-owned host left
+    assert world.terminated == ["host-c1"]  # the managed host only; no user-owned host left
     assert world.perms.get_user("alice") is None
     assert world.connections.list("user", "alice") == []
     assert _preference_keys(world, "alice") == set()  # budget, defaults, approvals, flag

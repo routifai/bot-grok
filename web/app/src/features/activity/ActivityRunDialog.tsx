@@ -243,7 +243,7 @@ export function ActivityRunDialog({
 
   if (!activity) return null;
   const steps = detail?.steps ?? [];
-  // A failed run with no steps never got going (e.g. its Computer didn't start): it
+  // A failed run with no steps never got going (e.g. its host didn't start): it
   // "couldn't run", it didn't "not finish" — and it always says why.
   const neverRan = activity.status === "failed" && detail !== null && steps.length === 0;
   const outcome =

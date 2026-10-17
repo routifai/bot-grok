@@ -1,8 +1,8 @@
-"""Artifacts: deliverable files the Muse saved from its Computer, openable in the app.
+"""Artifacts: deliverable files the Muse saved from its host, openable in the app.
 
 Layout: ``store`` (table + blobs, versioned by name per Conversation), ``routes``
 (``/v1/artifacts``), ``tools`` (tool defs), ``handlers`` (runner side), ``writeback`` (hand
-edits -> the Computer workspace, run as a turn prefix), ``feature`` (registration).
+edits -> the host workspace, run as a turn prefix), ``feature`` (registration).
 """
 
 from __future__ import annotations

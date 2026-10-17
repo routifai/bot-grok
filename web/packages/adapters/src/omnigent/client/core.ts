@@ -19,7 +19,7 @@ export interface OmnigentConnection {
 }
 
 /** A connection bound to the caller's tenant: the Superchat space id, sent on every call so the
- * engine scopes per-person resources (`/v1/me/muse`, the Muse's Computer) to that space. Empty
+ * engine scopes per-person resources (`/v1/me/muse`, the Muse's host) to that space. Empty
  * when the engine alone decides the tenant. */
 export interface OmnigentClientConfig extends OmnigentConnection {
   tenant: string;

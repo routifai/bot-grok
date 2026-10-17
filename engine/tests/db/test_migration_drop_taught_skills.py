@@ -1,4 +1,4 @@
-"""The migration that drops the computer recording and taught-skill tables."""
+"""The migration that drops the screen recording and taught-skill tables."""
 
 from pathlib import Path
 

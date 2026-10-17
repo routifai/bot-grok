@@ -8,7 +8,7 @@ catalog still serves it, then the catalog default (the connection's own; see
 :func:`omnigent.server.routes.sandbox_inference.selected_catalog_model`). Light is resolved in
 :mod:`omnigent.superchat.models.tiers`.
 ``GET /v1/me/model-providers`` lists the providers a key can be saved for on this deployment.
-``GET /v1/sessions/{id}/helper-models?harness=<h>`` answers a Computer's runner which model the
+``GET /v1/sessions/{id}/helper-models?harness=<h>`` answers a host's runner which model the
 ``fast`` (Light) and ``strong`` (Default) Helper choices run on for the session's owner.
 """
 

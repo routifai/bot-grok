@@ -115,7 +115,7 @@ class _Harness:
             return JSONResponse(status_code=exc.http_status, content={"error": str(exc)})
 
         app.include_router(router)
-        provider = "computer" if managed else None
+        provider = "docker" if managed else None
         app.state.host_store = SimpleNamespace(
             get_host=lambda host_id: SimpleNamespace(sandbox_provider=provider)
         )

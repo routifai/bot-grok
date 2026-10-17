@@ -4,7 +4,7 @@ A message that attaches files is stored as the person's words plus one reference
 Older gateways also stored the files' text, in an ``<attachment_context>`` block after the lines.
 That text is document data, not the person speaking, so every reader of a user's message (the
 transcript, search, the Memory Profile's evidence, Helper activity titles) cuts it with this one
-function. Messages stored today never carry the block: the Computer builds it at turn start.
+function. Messages stored today never carry the block: the host builds it at turn start.
 """
 
 from __future__ import annotations

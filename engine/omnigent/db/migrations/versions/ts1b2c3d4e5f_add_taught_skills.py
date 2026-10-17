@@ -1,10 +1,10 @@
-"""Add computer recordings, keyframes and taught skills.
+"""Add screen recordings, keyframes and taught skills.
 
 Revision ID: ts1b2c3d4e5f
 Revises: as1b2c3d4e5f
 Create Date: 2026-10-04 00:00:00.000000
 
-A recording is what a person did on a session's computer (semantic actions plus downscaled
+A recording is what a person did on a session's host (semantic actions plus downscaled
 keyframes); a taught skill is the draft written from it, versioned as the person edits it.
 """
 

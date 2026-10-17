@@ -422,7 +422,7 @@ def test_failed_launch_says_so_in_plain_words() -> None:
 
 
 def test_scheduled_run_that_could_not_launch_is_failed_with_its_reason() -> None:
-    """A scheduled Helper marked failed by the fire path (no Computer) never reads Done."""
+    """A scheduled Helper marked failed by the fire path (no host) never reads Done."""
     conv = _conv(
         "conv_child",
         kind="sub_agent",
@@ -431,14 +431,14 @@ def test_scheduled_run_that_could_not_launch_is_failed_with_its_reason() -> None
         live_status="failed",
         sub_agent_name="worker",
     )
-    items = [_error("e1", "Your Computer didn't start.", response_id="resp_x", created_at=2)]
+    items = [_error("e1", "Your machine didn't start.", response_id="resp_x", created_at=2)]
     [activity] = _activities_for_conversation(
         _FakeItemsStore(items), conv, include_step_detail=False
     )
     assert activity.status == STATUS_FAILED
     assert activity.source == "scheduled"
-    assert activity.outcome == "Your Computer didn't start."
-    assert activity.summary == "Your Computer didn't start."
+    assert activity.outcome == "Your machine didn't start."
+    assert activity.summary == "Your machine didn't start."
 
 
 def test_sub_agent_activity_names_the_chat_that_started_it() -> None:

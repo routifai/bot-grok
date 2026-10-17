@@ -5,7 +5,7 @@
 // (Copyright the Open Design authors; see /NOTICE). Changes: the in-page functions that Open Design
 // serializes into its Electron render window (`executeJavaScript(`(${fn.toString()})(...)`)`) are
 // extracted verbatim with TypeScript types stripped (no logic edits) and exported from one module,
-// so the Computer's export helper can load them into a headless Chromium over CDP and tests can
+// so the host's export helper can load them into a headless Chromium over CDP and tests can
 // import them directly. Source line ranges in deck-capture.ts@802708f:
 //   countRealSlides 2038-2042, showAllSlides 2048-2062, collectImportedStylesheetUrls 2064-2079,
 //   cjkPromotedFontFamily 2098-2119, runDomToPptx 2128-2938, prepareDeckStage 2944-2964,

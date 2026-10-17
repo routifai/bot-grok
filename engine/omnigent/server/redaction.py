@@ -6,7 +6,7 @@ items, the Activity Feed, the Feed or the asks inbox. The values come from two p
 * **This server's environment.** Every variable whose *name* marks it as a secret
   (``*_API_KEY``, ``*_KEY``, ``*TOKEN``, ``*SECRET*``, ``*PASSWORD*``, ``*CREDENTIAL*``),
   which covers the configured provider keys (``ANTHROPIC_API_KEY``, ``OPENAI_API_KEY``, …),
-  the vault key and every ``sandbox.runner_env`` / passthrough credential forwarded to
+  the vault key and every ``host.runner_env`` / passthrough credential forwarded to
   runners. :data:`EXTRA_NAMES_ENV` adds names the pattern misses (comma-separated).
 * **The vault.** The saved passwords of the people a response concerns (the session owner
   and the caller), decrypted in-process only and never logged.
