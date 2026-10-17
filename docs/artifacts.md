@@ -67,6 +67,11 @@ The person edited launch-budget.xlsx by hand (v2 → v3): Changed the Q4 venue l
 A failed write is not acknowledged, so the next turn retries, and the note tells the assistant not
 to overwrite the person's edits.
 
+The pending list is scoped by the session id the runner passes, and artifacts are keyed to the
+Conversation, so a child session's turn finds nothing today. A file's studio session
+([ADR 0024](adr/0024-the-artifact-studio.md)) resolves the Conversation the way saves do and writes
+back only its own file, at the start of each of its turns.
+
 ## Publishing
 
 An HTML artifact can be published as a web page (`apps/`): `POST /v1/artifacts/{id}/publish` with

@@ -1,6 +1,6 @@
 # The plan is visible and the work is alive
 
-> **Status:** Accepted 2026-10-17. Extends [ADR 0022](0022-the-orchestrator-narrates-while-helpers-work.md).
+> **Status:** Done 2026-10-17 (merge `d18372e18`). Extends [ADR 0022](0022-the-orchestrator-narrates-while-helpers-work.md).
 
 ADR 0022 made the assistant talk while helpers work. In use, the reply still reads flat: one grey line under it ("Done · 0:48"), no sign of what the assistant set out to do, and nothing that says "this is running right now" except a seven-pixel dot. The interaction mock-up showed a plan whose steps tick over and a strip that is visibly alive; the build kept the words and lost the shape. A person waiting on work needs two things at a glance: what the assistant is doing in what order, and that it is doing it now.
 
