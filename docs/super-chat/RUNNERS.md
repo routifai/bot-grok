@@ -156,7 +156,7 @@ In order, each depending on the one before:
 - **Egress unfiltered.** The computer container has no outbound network
   restriction. Tools (web search, browser use) and the harness can reach the
   open internet; there is no allowlist or firewall layer in
-  `deployment/computer` today.
+  the Computer image (`deployment/computer.Dockerfile`) today.
 - **Home path keying in team mode.** The provider keys a Muse's persistent
   home by `bot_id` alone (`<root>/homes/<bot_id>`, `computer.py`). A bot
   shared across users/spaces would resolve to one home; no per-user or

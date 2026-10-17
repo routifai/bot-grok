@@ -62,7 +62,7 @@ only with that secret.
 | `chromium` | copies Chromium alone out of Playwright's pinned image | deck and dashboard export and the browser tools need a browser; nothing else from Playwright |
 | `node` | pins Node 22 by image digest | the claude and pi CLIs are npm packages |
 | `venv` | installs `engine/omnigent` (its runner half is what runs here) on the same Ubuntu as the runtime | a venv built on one distro and copied to another breaks interpreter paths |
-| `computer` | `ubuntu:24.04` + the system packages the runner and the model's shell use + the data stack + Chromium + the pptx runtime + the two CLIs + the venv + `deployment/computer` helpers; user `superchat` (uid 1000) | the model works in a plain Ubuntu with Python; everything it can call is pinned here |
+| `computer` | `ubuntu:24.04` + the system packages the runner and the model's shell use + the data stack + Chromium + the pptx runtime + the two CLIs + the venv + the `host/` helpers and assets; user `superchat` (uid 1000) | the model works in a plain Ubuntu with Python; everything it can call is pinned here |
 
 PID 1 is `superchat-computer`, which only keeps the container alive; the runner and every tool
 arrive through `docker exec` from the engine.
@@ -86,6 +86,8 @@ set in `.env` and runs `docker compose … pull && up -d`.
 | `setup.sh`, `stop.sh`, `reset.sh` | one-command local start, stop, and wipe |
 | `entrypoint.py` | the engine's server entrypoint (config, migrations, app) |
 | `engine/` | `start.sh` and the config templates it renders; `agents/` (the bundles the engine offers) generated from `templates/` by `render-agents.mjs` |
-| `computer/` | the Computer's helper commands, the pptx runtime and skill, deck export and dashboard assets, with their tests |
 | `postgres/schemas.sql` | creates the `engine` schema on first init |
 | `systemd/` | a backup timer for a production host |
+
+The Computer's helper commands, the pptx runtime and skill, deck export and dashboard assets, with
+their tests, live in [`host/`](../host) at the repository root; `computer.Dockerfile` copies them in.

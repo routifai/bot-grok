@@ -22,7 +22,7 @@ flowchart LR
 - **engine** (`engine/omnigent`): the agent server. It owns sessions, the Conversation and side
   chats, Helpers, memory, approvals, artifacts, scheduled tasks (Automations), the model layer, who is asking (from an SSO broker header) and
   the agent bundle (`deployment/engine`). Any website can drive it.
-- **Computer** (`deployment/computer`): a container per person where the agent actually runs:
+- **Computer** (`deployment/computer.Dockerfile`, with what it ships from `host/`): a container per person where the agent actually runs:
   Omnigent's runner (host) image plus Superchat's additions, started by the engine over the Docker
   socket (the Docker counterpart of Omnigent's Kubernetes launcher), home on its own volume.
   It holds the person's files, indexes them for search, and renders decks and dashboards to
@@ -83,7 +83,8 @@ cannot register a host for a person. Each person's Computer is their runner host
 | `web/packages/*` | shared contracts, the engine client, UI |
 | `engine/omnigent` | engine |
 | `deployment/engine` | agent instructions and tool bundle |
-| `deployment/computer` | Computer image |
+| `deployment/computer.Dockerfile` | Computer image |
+| `host/` | what ships into each Computer besides the engine package: helper commands (`bin/`), the dashboard template, deck export and pptx assets (`share/`), and their tests (`tests/`) |
 
 ## License
 
