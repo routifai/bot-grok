@@ -93,7 +93,7 @@ export function WaitingSheet({
           ]}
         />
       </DockSheetHeader>
-      <div className="rk-scroll flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto">
+      <div className="sc-scroll flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto">
         <div data-testid="waiting-open">
           {asks.length === 0 && loading ? (
             <CardSkeletonList count={2} />

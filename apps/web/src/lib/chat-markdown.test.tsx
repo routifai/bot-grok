@@ -30,7 +30,7 @@ describe("ChatMarkdown", () => {
 
     expect(html).toContain("<pre>");
     expect(html).toContain("const live = true;");
-    expect(html).toContain("rk-chat-markdown-cursor");
+    expect(html).toContain("sc-chat-markdown-cursor");
   });
 
   it("renders a copy button alongside each code block", () => {
@@ -38,9 +38,9 @@ describe("ChatMarkdown", () => {
       <ChatMarkdown>{"```ts\nconst value = 1;\n```"}</ChatMarkdown>,
     );
 
-    expect(html).toContain("rk-chat-markdown-pre-wrap");
+    expect(html).toContain("sc-chat-markdown-pre-wrap");
     expect(html).toContain('aria-label="Copy code"');
-    expect(html).toContain("rk-chat-markdown-copy");
+    expect(html).toContain("sc-chat-markdown-copy");
   });
 
   it("renders GFM tables as an interactive table card", () => {
@@ -65,13 +65,13 @@ describe("ChatMarkdown", () => {
       <ChatMarkdown>{"| Item | Qty |\n| --- | --- |\n| widget | 12 |"}</ChatMarkdown>,
     );
 
-    expect(html).toContain("rk-align-right");
+    expect(html).toContain("sc-align-right");
   });
 
   it("respects explicit left alignment for numeric columns", () => {
     const html = renderToStaticMarkup(<ChatMarkdown>{"| Qty |\n| :--- |\n| 12 |"}</ChatMarkdown>);
 
-    expect(html).not.toContain("rk-align-right");
+    expect(html).not.toContain("sc-align-right");
   });
 
   it("preserves sanitized inline markdown in table headers and cells", () => {
@@ -86,7 +86,7 @@ describe("ChatMarkdown", () => {
     expect(html).toContain('aria-label="Sort by Name"');
     expect(html).toContain('aria-label="Sort by Qty"');
     const head = html.slice(0, html.indexOf("<tbody"));
-    expect(head).toContain('class="rk-table-sort-label"');
+    expect(head).toContain('class="sc-table-sort-label"');
     expect(head).toContain('href="https://example.com/name"');
     expect(head).toContain("<strong>Qty</strong>");
     const nameSort = head.slice(head.indexOf('aria-label="Sort by Name"'));

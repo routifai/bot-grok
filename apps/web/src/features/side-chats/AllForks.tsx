@@ -137,7 +137,7 @@ export function AllForks({
           ))}
         </fieldset>
       </div>
-      <div className="rk-scroll min-h-0 flex-1 overflow-y-auto px-3 pt-2 pb-6 md:px-5">
+      <div className="sc-scroll min-h-0 flex-1 overflow-y-auto px-3 pt-2 pb-6 md:px-5">
         {groups.length === 0 ? (
           <p className="p-8 text-center text-[13px] text-ink-3">
             <Trans>No forks match.</Trans>

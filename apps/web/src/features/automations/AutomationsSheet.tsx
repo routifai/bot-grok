@@ -462,7 +462,7 @@ export function AutomationsSheet({
             </button>
           )}
         </DockSheetHeader>
-        <div className="rk-scroll flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+        <div className="sc-scroll flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
           {creating ? (
             <NewAutomationForm
               botId={botId}

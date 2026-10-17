@@ -180,14 +180,14 @@ export const TableCard = memo(function TableCard({
   );
 
   const pager = showPagination ? (
-    <div className="rk-table-footer">
-      <span className="rk-table-range">
+    <div className="sc-table-footer">
+      <span className="sc-table-range">
         {safePage * TABLE_PAGE_SIZE + 1}–
         {Math.min((safePage + 1) * TABLE_PAGE_SIZE, sortedRows.length)} of {sortedRows.length} rows
       </span>
       <button
         type="button"
-        className="rk-table-tool"
+        className="sc-table-tool"
         aria-label="Previous page"
         disabled={safePage === 0}
         onClick={() => {
@@ -199,7 +199,7 @@ export const TableCard = memo(function TableCard({
       </button>
       <button
         type="button"
-        className="rk-table-tool"
+        className="sc-table-tool"
         aria-label="Next page"
         disabled={safePage >= pageCount - 1}
         onClick={() => {
@@ -211,18 +211,18 @@ export const TableCard = memo(function TableCard({
       </button>
     </div>
   ) : (
-    <div className="rk-table-footer">
-      <span className="rk-table-range">
+    <div className="sc-table-footer">
+      <span className="sc-table-range">
         {sortedRows.length} {sortedRows.length === 1 ? "row" : "rows"}
       </span>
     </div>
   );
 
   const tools = (mode: "card" | "dialog") => (
-    <div className="rk-table-head">
+    <div className="sc-table-head">
       <button
         type="button"
-        className="rk-table-tool"
+        className="sc-table-tool"
         onClick={copyRows}
         aria-label={copied ? "Copied" : "Copy rows"}
       >
@@ -230,7 +230,7 @@ export const TableCard = memo(function TableCard({
       </button>
       <button
         type="button"
-        className="rk-table-tool"
+        className="sc-table-tool"
         onClick={downloadCsv}
         aria-label="Download CSV"
       >
@@ -239,7 +239,7 @@ export const TableCard = memo(function TableCard({
       {mode === "card" ? (
         <button
           type="button"
-          className="rk-table-tool"
+          className="sc-table-tool"
           ref={expandButtonRef}
           onClick={() => setExpanded(true)}
           aria-label="Expand table"
@@ -250,7 +250,7 @@ export const TableCard = memo(function TableCard({
         <DialogClose
           ref={closeButtonRef}
           aria-label="Close table"
-          render={<button type="button" className="rk-table-tool" />}
+          render={<button type="button" className="sc-table-tool" />}
         >
           <CloseIcon />
         </DialogClose>
@@ -259,20 +259,20 @@ export const TableCard = memo(function TableCard({
   );
 
   const status = (
-    <div role="status" className="rk-sr-only">
+    <div role="status" className="sc-sr-only">
       {announcement}
     </div>
   );
 
   return (
     <Dialog open={expanded} onOpenChange={setExpanded}>
-      <div className="rk-table-card rk-table-box" data-testid="table-card">
+      <div className="sc-table-card sc-table-box" data-testid="table-card">
         {/* Keep the live region in the active view — dialog content is outside the card. */}
         {expanded ? null : status}
         {tools("card")}
         {/* biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must
             be keyboard-focusable (WCAG 2.1.1 / axe scrollable-region-focusable). */}
-        <section className="rk-table-scroll" aria-label="Table" tabIndex={0}>
+        <section className="sc-table-scroll" aria-label="Table" tabIndex={0}>
           {tableView("card")}
         </section>
         {pager}
@@ -281,14 +281,14 @@ export const TableCard = memo(function TableCard({
         showCloseButton={false}
         initialFocus={closeButtonRef}
         finalFocus={expandButtonRef}
-        className="rk-table-dialog rk-table-box rk-chat-markdown w-auto sm:max-w-none"
+        className="sc-table-dialog sc-table-box sc-chat-markdown w-auto sm:max-w-none"
       >
-        <DialogTitle className="rk-table-dialog-title">Table</DialogTitle>
+        <DialogTitle className="sc-table-dialog-title">Table</DialogTitle>
         {expanded ? status : null}
         {tools("dialog")}
         {/* biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must
             be keyboard-focusable (WCAG 2.1.1 / axe scrollable-region-focusable). */}
-        <section className="rk-table-scroll rk-table-dialog-scroll" aria-label="Table" tabIndex={0}>
+        <section className="sc-table-scroll sc-table-dialog-scroll" aria-label="Table" tabIndex={0}>
           {tableView("dialog")}
         </section>
         {pager}
@@ -327,16 +327,16 @@ function TableView({
   // Numeric columns right-align unless the author declared an alignment.
   const alignClass = (index: number) => {
     const align = aligns[index] ?? (numericColumns.has(index) ? "right" : "left");
-    return align && align !== "left" ? `rk-align-${align}` : undefined;
+    return align && align !== "left" ? `sc-align-${align}` : undefined;
   };
   // Sort labels need disambiguation: empty headers and duplicate names would
   // otherwise produce identical or blank "Sort by" announcements.
   const sortLabel = (index: number) => columnSortLabel(columns, index);
   return (
-    <table className="rk-table" aria-label="Markdown table">
+    <table className="sc-table" aria-label="Markdown table">
       <thead>
         <tr>
-          <th className="rk-table-gutter" scope="col" aria-label="Row" />
+          <th className="sc-table-gutter" scope="col" aria-label="Row" />
           {columns.map((column, i) => (
             <SortableColumnHeader
               key={i}
@@ -352,14 +352,14 @@ function TableView({
       <tbody>
         {rows.length === 0 ? (
           <tr>
-            <td colSpan={columns.length + 1} className="rk-table-empty">
+            <td colSpan={columns.length + 1} className="sc-table-empty">
               No rows
             </td>
           </tr>
         ) : (
           rows.map((row, rowIndex) => (
             <tr key={rowKeys.get(row)}>
-              <td className="rk-table-gutter">{rowOffset + rowIndex + 1}</td>
+              <td className="sc-table-gutter">{rowOffset + rowIndex + 1}</td>
               {columns.map((_, columnIndex) => {
                 const value = row[columnIndex] ?? "";
                 return (
@@ -369,7 +369,7 @@ function TableView({
                     className={alignClass(columnIndex)}
                   >
                     <span
-                      className="rk-table-cell-text"
+                      className="sc-table-cell-text"
                       title={!expanded && value ? value : undefined}
                     >
                       {renderedRows.get(row)?.[columnIndex] ?? value}
@@ -402,11 +402,11 @@ function SortableColumnHeader({
   const sortButton = (
     <button
       type="button"
-      className={rich ? "rk-table-sort-trigger" : "rk-table-sort"}
+      className={rich ? "sc-table-sort-trigger" : "sc-table-sort"}
       onClick={onToggleSort}
       aria-label={`Sort by ${column}`}
     >
-      {rich ? null : <span className="rk-table-sort-label">{content}</span>}
+      {rich ? null : <span className="sc-table-sort-label">{content}</span>}
       <SortIndicator direction={direction} />
     </button>
   );
@@ -417,8 +417,8 @@ function SortableColumnHeader({
       scope="col"
     >
       {rich ? (
-        <div className="rk-table-sort">
-          <span className="rk-table-sort-label">{content}</span>
+        <div className="sc-table-sort">
+          <span className="sc-table-sort-label">{content}</span>
           {sortButton}
         </div>
       ) : (
@@ -475,7 +475,7 @@ function cellChildren(row: ElementWithChildren, type: "th" | "td"): ReactNode[] 
 
 function SortIndicator({ direction }: { direction: TableSortDirection | null }) {
   return (
-    <span className="rk-table-sort-icon" aria-hidden="true">
+    <span className="sc-table-sort-icon" aria-hidden="true">
       <ChevronUpIcon active={direction === "asc"} />
       <ChevronDownIcon active={direction === "desc"} />
     </span>
@@ -532,7 +532,7 @@ function ChevronUpIcon({ active = false }: { active?: boolean }) {
       viewBox="0 0 24 24"
       fill="none"
       aria-hidden="true"
-      className={active ? "rk-sort-on" : "rk-sort-off"}
+      className={active ? "sc-sort-on" : "sc-sort-off"}
     >
       <path
         d="m6 15 6-6 6 6"
@@ -553,7 +553,7 @@ function ChevronDownIcon({ active = false }: { active?: boolean }) {
       viewBox="0 0 24 24"
       fill="none"
       aria-hidden="true"
-      className={active ? "rk-sort-on" : "rk-sort-off"}
+      className={active ? "sc-sort-on" : "sc-sort-off"}
     >
       <path
         d="m6 9 6 6 6-6"

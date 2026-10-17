@@ -128,7 +128,7 @@ export function SettingsOverlay({
               </DialogClose>
             </div>
 
-            <div className="rk-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pb-6 pt-5 sm:px-8 sm:pb-8">
+            <div className="sc-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pb-6 pt-5 sm:px-8 sm:pb-8">
               {section === "superchat" && museBot ? (
                 <SuperchatSettingsPanel bot={museBot} userId={email ?? undefined} />
               ) : null}

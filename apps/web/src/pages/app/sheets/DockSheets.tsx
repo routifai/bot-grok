@@ -71,7 +71,7 @@ export function LibrarySheet({
         {open ? (
           <div
             ref={scroller}
-            className="rk-scroll -mx-1 flex min-h-0 flex-1 flex-col overflow-y-auto px-1"
+            className="sc-scroll -mx-1 flex min-h-0 flex-1 flex-col overflow-y-auto px-1"
           >
             <LibraryScreen botId={botId} onSendIdea={onSendIdea} onOpenArtifact={openFile} />
           </div>
@@ -176,7 +176,7 @@ function FilesSheet({
               <span className="text-[13px] text-destructive">{uploadError}</span>
             ) : null}
           </div>
-          <div className="rk-scroll min-h-0 flex-1 overflow-y-auto">
+          <div className="sc-scroll min-h-0 flex-1 overflow-y-auto">
             <FilesTab
               botId={botId}
               refreshKey={refreshKey + uploads}

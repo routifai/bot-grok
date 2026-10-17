@@ -165,7 +165,7 @@ export function ChatsPopover({
         </div>
         <div
           role="tabpanel"
-          className="rk-scroll -mx-1 flex max-h-[min(56vh,440px)] flex-col gap-px overflow-y-auto px-1"
+          className="sc-scroll -mx-1 flex max-h-[min(56vh,440px)] flex-col gap-px overflow-y-auto px-1"
         >
           {tab === "chats" ? (
             <>

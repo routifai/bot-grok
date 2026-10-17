@@ -222,7 +222,7 @@ export function ContextPanel({
         <IdentityHeader museName={museName} connection={connection} />
         <PanelTabBar tab={tab} onChange={setTab} />
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto rk-scroll px-3 pb-3.5">
+      <div className="min-h-0 flex-1 overflow-y-auto sc-scroll px-3 pb-3.5">
         {tab === "activity" ? (
           <div className="flex flex-col gap-4">
             {topAsks.length > 0 ? (

@@ -204,7 +204,7 @@ function WorkInMenu({
       }}
     >
       <CommandInput placeholder={t`Search folders`} value={query} onValueChange={setQuery} />
-      <CommandList className="rk-scroll max-h-[min(52vh,360px)] p-1">
+      <CommandList className="sc-scroll max-h-[min(52vh,360px)] p-1">
         {dir === "" ? (
           pickRow(
             null,

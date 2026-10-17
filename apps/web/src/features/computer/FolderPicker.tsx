@@ -38,7 +38,7 @@ export function FolderPicker({
             {t`superchat reads it where it is; nothing is copied.`}
           </DialogDescription>
         </div>
-        <div className="rk-scroll min-h-[240px] flex-1 overflow-y-auto rounded-2xl bg-black/20 p-1.5">
+        <div className="sc-scroll min-h-[240px] flex-1 overflow-y-auto rounded-2xl bg-black/20 p-1.5">
           {open ? (
             <FilesTab
               botId={botId}

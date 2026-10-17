@@ -183,7 +183,7 @@ export function MuseScreen({
           event.currentTarget.dataset.scrolled = String(event.currentTarget.scrollTop > 4);
           onScroll?.(event);
         }}
-        className={cn("rk-scroll min-w-0 flex-1 overflow-y-auto pb-24", className)}
+        className={cn("sc-scroll min-w-0 flex-1 overflow-y-auto pb-24", className)}
         {...props}
       >
         {children}

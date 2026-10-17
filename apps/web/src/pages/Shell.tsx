@@ -746,7 +746,7 @@ export function ShellPage() {
         }`}
       >
         {panel && active ? (
-          <div className="rk-scroll h-full w-full overflow-y-auto px-5 py-[17px] md:w-[400px]">
+          <div className="sc-scroll h-full w-full overflow-y-auto px-5 py-[17px] md:w-[400px]">
             <SidePanelHeader panel={panel} setPanel={setPanel} active={active} />
             {panel === "settings" && active ? (
               <BotSettingsPanel onClear={() => setClearTarget(active)} />
