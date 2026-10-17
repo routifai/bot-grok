@@ -7,7 +7,7 @@ afterEach(() => vi.useRealTimers());
 
 const status = (state: HostStatus["state"]) => ({ state }) as HostStatus;
 
-it("reads the Computer's status only while a step listens, at once and then on an interval", async () => {
+it("reads the host's status only while a step listens, at once and then on an interval", async () => {
   const read = vi.fn(async () => status("booting"));
   const feed = pollingHostFeed(read, 1_000);
   await vi.advanceTimersByTimeAsync(5_000);

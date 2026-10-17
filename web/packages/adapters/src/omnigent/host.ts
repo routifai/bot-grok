@@ -13,7 +13,7 @@ export function hostStatusUrl(config: OmnigentClientConfig, sessionId: string): 
   return new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/host`, config.baseUrl);
 }
 
-/** `GET /v1/sessions/{id}/host` — whether the session's Computer is ready and how its launch
+/** `GET /v1/sessions/{id}/host` — whether the session's host is ready and how its launch
  * is going (engine/omnigent/superchat/host_status/routes.py). */
 export async function getOmnigentHost(
   config: OmnigentClientConfig,
@@ -27,7 +27,7 @@ export async function getOmnigentHost(
   return (await response.json()) as OmnigentHostState;
 }
 
-// The Muse's Computer workspace on the Omnigent side: the session filesystem routes
+// The Muse's host workspace on the Omnigent side: the session filesystem routes
 // (`/v1/sessions/{id}/resources/environments/default/filesystem`) backed by the runner's os_env.
 // Read-only listing and file reads, with every path confined to the workspace before it is sent.
 
@@ -151,7 +151,7 @@ export async function readOmnigentFile(
 }
 
 /** `PUT .../filesystem/{path}` — writes bytes into the workspace (base64 on the wire, parent
- * folders created; `exclusive` fails instead of replacing). Wakes a sleeping Computer; a 503 means it could not start. */
+ * folders created; `exclusive` fails instead of replacing). Wakes a sleeping host; a 503 means it could not start. */
 export async function writeOmnigentFile(
   config: OmnigentClientConfig,
   email: string,

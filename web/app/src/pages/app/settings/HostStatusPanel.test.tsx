@@ -49,7 +49,7 @@ async function render(wire: HostStatusWire) {
   };
 }
 
-it("shows the Computer's state, the harness and the model", async () => {
+it("shows the machine's state, the harness and the model", async () => {
   const view = await render(makeWire());
   try {
     const text = view.container.textContent ?? "";
@@ -61,7 +61,7 @@ it("shows the Computer's state, the harness and the model", async () => {
   }
 });
 
-it("says the Computer is starting while its launch is in progress", async () => {
+it("says the machine is starting while its launch is in progress", async () => {
   const view = await render(
     makeWire({
       status: async () => ({ botId: "bot-1", state: "stopped", launch: { stage: "starting" } }),

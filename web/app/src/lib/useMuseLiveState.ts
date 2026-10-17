@@ -110,10 +110,10 @@ export function useMuseLiveState({
   const launch = useHostLaunch(botId, busy);
   const activeRun = activeRunFor(runs);
   const activityMessage = activeRun ? liveMessage(messages) : undefined;
-  // While the Computer is starting nothing else is happening, so say that instead of "Thinking…".
+  // While the host is starting nothing else is happening, so say that instead of "Thinking…".
   const starting = busy && launch !== undefined && launch.stage !== "failed";
   const label = starting
-    ? t`Starting your Computer…`
+    ? t`Starting your machine…`
     : museActivityLabel(state, currentToolName(activityMessage?.blocks));
   return { state, label, askCount, runStartedAt: runStartMs(activeRun) };
 }

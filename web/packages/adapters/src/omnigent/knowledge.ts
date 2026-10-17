@@ -1,4 +1,4 @@
-// The person's file search on the Omnigent side. The index lives in the person's Computer; the
+// The person's file search on the Omnigent side. The index lives in the person's host; the
 // engine only relays it through the Muse session's routes (`/v1/sessions/{id}/knowledge/*`).
 // Plain fetch client.
 import { type OmnigentClientConfig, omnigentHeaders, throwOnError } from "./client/core.js";
@@ -24,7 +24,7 @@ export interface OmnigentKnowledgeFile {
 export interface OmnigentKnowledgeStatus {
   files: OmnigentKnowledgeFile[];
   embeddings: { available: boolean; reason: string | null };
-  /** `asleep`: `files` is the last-known snapshot; the call never wakes the Computer. */
+  /** `asleep`: `files` is the last-known snapshot; the call never wakes the host. */
   host: "awake" | "asleep";
   updated_at: number | null;
 }
@@ -69,7 +69,7 @@ export async function getOmnigentKnowledgeStatus(
   return (await response.json()) as OmnigentKnowledgeStatus;
 }
 
-/** `POST .../knowledge/search` — passages from the Muse's files, best first (wakes the Computer). */
+/** `POST .../knowledge/search` — passages from the Muse's files, best first (wakes the host). */
 export async function searchOmnigentKnowledge(
   config: OmnigentClientConfig,
   email: string,
@@ -127,14 +127,14 @@ export interface OmnigentKnowledgeIngest {
   chars: number;
   /** The file's kind (`pdf`, `txt`, `md`, `csv`, `xlsx`); a table's `markdown` is its manifest. */
   kind?: string;
-  /** Where the Markdown version lives in the Computer. */
+  /** Where the Markdown version lives in the host. */
   markdown_path: string;
   search: "hybrid" | "keyword";
 }
 
 /**
  * `POST .../knowledge/ingest` — reads one workspace file through every pass (Markdown, passages,
- * embeddings, index) and answers when it is searchable. Wakes the Computer. Idempotent.
+ * embeddings, index) and answers when it is searchable. Wakes the host. Idempotent.
  */
 export async function ingestOmnigentKnowledge(
   config: OmnigentClientConfig,
@@ -161,7 +161,7 @@ export interface OmnigentKnowledgeFound {
 
 /**
  * `POST .../knowledge/find` — the searchable upload that already holds exactly these bytes
- * (SHA-256, hex), if the Computer has one. Wakes the Computer. A new attachment of a file that is
+ * (SHA-256, hex), if the host has one. Wakes the host. A new attachment of a file that is
  * already stored reuses it and its index entry.
  */
 export async function findOmnigentKnowledge(

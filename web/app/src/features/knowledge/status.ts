@@ -7,7 +7,7 @@ import { rpc } from "../../lib/rpc";
 const FAST_MS = 3_000;
 const IDLE_MS = 20_000;
 const FAILED_MS = 60_000;
-/** The Computer is asleep: the answer is the last-known state and nothing is changing. */
+/** The host is asleep: the answer is the last-known state and nothing is changing. */
 const ASLEEP_MS = 60_000;
 /** A card for a file the last answer didn't list asks again, but not more often than this. */
 const REFRESH_FLOOR_MS = 4_000;
@@ -88,7 +88,7 @@ export function resetKnowledgeStatus() {
   listeners.clear();
 }
 
-/** Whether the Computer is asleep, so the shown state is the last-known one and not live. */
+/** Whether the host is asleep, so the shown state is the last-known one and not live. */
 export function useKnowledgeAsleep(): boolean {
   return useSyncExternalStore(
     subscribe,

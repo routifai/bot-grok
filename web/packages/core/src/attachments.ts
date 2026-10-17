@@ -186,7 +186,7 @@ export function userTurnMessageForRun<
   );
 }
 
-// Muse chats keep a person's files in their Computer workspace, not in Superchat's database. A message
+// Muse chats keep a person's files in their host workspace, not in Superchat's database. A message
 // refers to such a file with one reference line; this is the only definition of that format (the
 // api writes it, the web and the worker parse it).
 
@@ -216,7 +216,7 @@ export function folderReferenceLine(path: string): string {
   return `${FOLDER_PREFIX}${path}/`;
 }
 
-/** The attachment types the Computer reads (`files_ingest`): documents into Markdown and an
+/** The attachment types the host reads (`files_ingest`): documents into Markdown and an
  * index, spreadsheets into a schema manifest (never row text). Images go to the model as images;
  * the other allowed types stay a path line. */
 const INGESTABLE_MIME_TYPES: readonly string[] = [
@@ -237,7 +237,7 @@ const CONTEXT_CLOSE = "</attachment_context>";
 /** The leading reference lines of a message and the caption after them. Lines that do not match
  * the format end the scan, so ordinary text is never mistaken for an attachment. A message stored
  * by an older gateway has an `<attachment_context>` block right after the lines; it is skipped
- * (it is document text for the model, not the person's words). Today the Computer builds that
+ * (it is document text for the model, not the person's words). Today the host builds that
  * context at turn start and it is never stored, so a message is only the lines and the caption. */
 export function parseAttachmentReferences(text: string): {
   attachments: WorkspaceAttachmentRef[];

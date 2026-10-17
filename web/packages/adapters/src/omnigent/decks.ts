@@ -1,5 +1,5 @@
 // Decks on the Omnigent side: a saved `.deck.html` exported to editable PowerPoint or vector PDF
-// in the person's Computer (engine/omnigent/superchat/decks/routes.py). The result is a
+// in the person's host (engine/omnigent/superchat/decks/routes.py). The result is a
 // new artifact row in the deck's chat.
 import type { OmnigentArtifact } from "./artifacts.js";
 import { type OmnigentClientConfig, omnigentHeaders, throwOnError } from "./client.js";

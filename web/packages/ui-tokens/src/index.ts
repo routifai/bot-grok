@@ -184,7 +184,7 @@ export type ColorTokens = {
   "welcome-amber"?: string;
   /** Signed-out welcome page (light in both themes): the ask icon glyph. */
   "welcome-amber-ink"?: string;
-  /** Signed-out welcome page (light in both themes): Superchat's computer window. */
+  /** Signed-out welcome page (light in both themes): Superchat's machine window. */
   "welcome-pc"?: string;
   /** Signed-out welcome page (light in both themes): its text. */
   "welcome-pc-ink"?: string;
@@ -261,7 +261,7 @@ export type ColorTokens = {
   "welcome-night-switch"?: string;
   /** Signed-out welcome page (same in both themes): the film's Sound and Close pills. */
   "welcome-night-pill"?: string;
-  /** Signed-out welcome page (same in both themes): the computer's status bar. */
+  /** Signed-out welcome page (same in both themes): the machine's status bar. */
   "welcome-night-bar"?: string;
   /** Signed-out welcome page (same in both themes): the recording label on night. */
   "welcome-night-rec-ink"?: string;
@@ -269,11 +269,11 @@ export type ColorTokens = {
   "welcome-night-star"?: string;
   /** Signed-out welcome page (same in both themes): a hairline on night. */
   "welcome-night-line"?: string;
-  /** Signed-out welcome page (same in both themes): the computer's desktop, lit corner. */
+  /** Signed-out welcome page (same in both themes): the machine's desktop, lit corner. */
   "welcome-screen-hi"?: string;
-  /** Signed-out welcome page (same in both themes): the computer's desktop, middle. */
+  /** Signed-out welcome page (same in both themes): the machine's desktop, middle. */
   "welcome-screen-mid"?: string;
-  /** Signed-out welcome page (same in both themes): the computer's desktop, far corner. */
+  /** Signed-out welcome page (same in both themes): the machine's desktop, far corner. */
   "welcome-screen-lo"?: string;
   /** Signed-out welcome page (same in both themes): the light sheet under the night. */
   "welcome-sheet"?: string;
@@ -289,13 +289,13 @@ export type ColorTokens = {
   "welcome-doc"?: string;
   /** Signed-out welcome page (same in both themes): the created document's text. */
   "welcome-doc-ink"?: string;
-  /** Signed-out welcome page (same in both themes): a window dot in the computer's browser. */
+  /** Signed-out welcome page (same in both themes): a window dot in the machine's browser. */
   "welcome-app-dot"?: string;
-  /** Signed-out welcome page (same in both themes): an input border in the computer's browser. */
+  /** Signed-out welcome page (same in both themes): an input border in the machine's browser. */
   "welcome-app-line"?: string;
-  /** Signed-out welcome page (same in both themes): a row border in the computer's browser. */
+  /** Signed-out welcome page (same in both themes): a row border in the machine's browser. */
   "welcome-app-line-2"?: string;
-  /** Signed-out welcome page (same in both themes): a placeholder in the computer's browser. */
+  /** Signed-out welcome page (same in both themes): a placeholder in the machine's browser. */
   "welcome-app-hint"?: string;
 };
 

@@ -6,7 +6,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-/** The Computer status the composer waits on, driven by the tests. */
+/** The host status the composer waits on, driven by the tests. */
 const hostBus = (() => {
   const listeners = new Set<(status: HostStatus | null) => void>();
   let current: HostStatus | null = null;
@@ -201,7 +201,7 @@ it("goes uploading, reading, ready, and holds the message back until then", asyn
   expect(await act(async () => latest.sendMessage("hi"))).toBe(true);
 });
 
-it("waits for the Computer's own 'up' event while uploading, with no timer retry", async () => {
+it("waits for the host's own 'up' event while uploading, with no timer retry", async () => {
   vi.useFakeTimers();
   try {
     await mount();
@@ -237,7 +237,7 @@ it("waits for the Computer's own 'up' event while uploading, with no timer retry
   }
 });
 
-it("shows a calm error on the chip when the Computer never comes up, and retries", async () => {
+it("shows a calm error on the chip when the host never comes up, and retries", async () => {
   vi.useFakeTimers();
   try {
     await mount();
@@ -250,7 +250,7 @@ it("shows a calm error on the chip when the Computer never comes up, and retries
     });
     expect(statuses()).toEqual(["error"]);
     expect(latest.activePendingAttachments[0]?.error).toBe(
-      "Your Computer is starting. Try again in a moment.",
+      "Your machine is starting. Try again in a moment.",
     );
     expect(api.files.uploadAttachment).toHaveBeenCalledTimes(1);
     expect(await act(async () => latest.sendMessage("hi"))).toBe(false);
@@ -294,7 +294,7 @@ it("sends an image without reading it", async () => {
   expect(api.files.ingestAttachment).not.toHaveBeenCalled();
 });
 
-it("makes one ingest call and follows the Computer's status while it wakes", async () => {
+it("makes one ingest call and follows the host's status while it wakes", async () => {
   await mount();
   let finish: () => void = () => undefined;
   api.files.ingestAttachment.mockImplementation(
@@ -333,7 +333,7 @@ it("cancels the wait and the read when the chip is removed", async () => {
   expect(latest.activePendingAttachments).toHaveLength(0);
 });
 
-it("cancels the wait for a starting Computer when the person leaves the chat", async () => {
+it("cancels the wait for a starting host when the person leaves the chat", async () => {
   await mount();
   api.files.uploadAttachment.mockRejectedValue(
     new ORPCError("SERVICE_UNAVAILABLE", { message: "starting" }),
@@ -346,7 +346,7 @@ it("cancels the wait for a starting Computer when the person leaves the chat", a
   expect(api.files.uploadAttachment).toHaveBeenCalledTimes(1);
 });
 
-it("says a slow read is slow, not that the Computer is starting", async () => {
+it("says a slow read is slow, not that the host is starting", async () => {
   await mount();
   api.files.ingestAttachment.mockRejectedValueOnce(
     new ORPCError("GATEWAY_TIMEOUT", { message: "slow" }),
@@ -369,7 +369,7 @@ it("gives every picked attachment its own id, even for identical files picked to
   expect(new Set(latest.activePendingAttachments.map((a) => a.id)).size).toBe(3);
 });
 
-it("decides a starting Computer by the error code, not by words in the message", async () => {
+it("decides a starting host by the error code, not by words in the message", async () => {
   await mount();
   api.files.ingestAttachment.mockRejectedValueOnce(
     new ORPCError("INTERNAL_SERVER_ERROR", { message: "omnigent read failed (503): starting" }),
@@ -377,7 +377,7 @@ it("decides a starting Computer by the error code, not by words in the message",
   await pickFiles(["a.pdf", "aaa", "application/pdf"]);
   await settled();
   expect(statuses()).toEqual(["error"]);
-  expect(latest.activePendingAttachments[0]?.error).not.toContain("Your Computer is starting");
+  expect(latest.activePendingAttachments[0]?.error).not.toContain("Your machine is starting");
 });
 
 it("does not wait for an 'up' event that already happened", async () => {
@@ -390,7 +390,7 @@ it("does not wait for an 'up' event that already happened", async () => {
       mimeType: "application/pdf",
       size: 3,
     });
-  hostBus.emit(UP); // the Computer came up in the moment between the call and the wait
+  hostBus.emit(UP); // the host came up in the moment between the call and the wait
   await pickFiles(["a.pdf", "aaa", "application/pdf"]);
   await settled();
   expect(statuses()).toEqual(["ready"]);

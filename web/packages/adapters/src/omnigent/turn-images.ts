@@ -4,7 +4,7 @@ import type { OmnigentClientConfig } from "./client.js";
 import { readOmnigentFile, WORKSPACE_FILE_MAX_BYTES } from "./client.js";
 
 /**
- * The images a turn refers to, read back from the Computer so the model sees them: every
+ * The images a turn refers to, read back from the host so the model sees them: every
  * `image/*` attachment line under `your_files/uploads/` (<= 5 MiB each). Best effort: a file
  * that cannot be read stays a path line in the text.
  */

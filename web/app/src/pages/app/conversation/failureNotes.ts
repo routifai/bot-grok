@@ -17,7 +17,7 @@ export type TranscriptRow =
   | { kind: "failures"; messages: ThreadMessage[] };
 
 /**
- * The transcript as rows, with consecutive failure notes ("My computer restarted. Try
+ * The transcript as rows, with consecutive failure notes ("My host restarted. Try
  * again." three times over) folded into one `failures` row. A lone failure stays a message,
  * and anything between two failures (the person's retry, a real reply) breaks the run.
  */

@@ -85,7 +85,7 @@ it("hides dotfiles until toggled", async () => {
   await act(async () => root.unmount());
 });
 
-it("shows a quiet starting state and retries until the Computer answers", async () => {
+it("shows a quiet starting state and retries until the host answers", async () => {
   vi.useFakeTimers();
   const { ORPCError } = await import("@orpc/client");
   api.list.mockReset();
@@ -96,7 +96,7 @@ it("shows a quiet starting state and retries until the Computer answers", async 
   document.body.append(container);
   const root = createRoot(container);
   await act(async () => root.render(<FilesTab botId="bot-3" refreshKey={0} />));
-  expect(container.textContent).toContain("Starting the Computer");
+  expect(container.textContent).toContain("Starting your machine");
   expect(container.textContent).not.toContain("Could not load");
   await act(async () => {
     await vi.advanceTimersByTimeAsync(2600);

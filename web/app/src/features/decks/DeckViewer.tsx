@@ -406,7 +406,7 @@ function previewArtifact(
   };
 }
 
-/** A deck where the editor shell is not (a Computer file's preview): its rail and stage only,
+/** A deck where the editor shell is not (a host file's preview): its rail and stage only,
  * read-only. */
 export function DeckPreview({ html, title }: { html: string; title: string }) {
   const bytes = useMemo(() => new TextEncoder().encode(html), [html]);

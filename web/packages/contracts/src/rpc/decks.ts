@@ -57,7 +57,7 @@ export const decksContract = {
     sample: oc
       .input(z.object({ themeId: z.string().min(1).max(60) }))
       .output(z.object({ html: z.string() })),
-    /** Exports a deck to editable PowerPoint or vector PDF in the person's Computer; the result
+    /** Exports a deck to editable PowerPoint or vector PDF in the person's host; the result
      * is a new artifact in the deck's chat. */
     export: oc
       .input(z.object({ artifactId: Id, format: DeckExportFormatSchema }))

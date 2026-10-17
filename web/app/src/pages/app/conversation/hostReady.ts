@@ -1,18 +1,18 @@
 import type { HostStatus } from "@superchat/contracts";
 
-/** How long a step waits for a Computer that is starting (the managed launch window). */
+/** How long a step waits for a host that is starting (the managed launch window). */
 export const HOST_LAUNCH_WINDOW_MS = 120_000;
 
-/** The Computer's status as a step that waits on it sees it: it changes only while a step listens. */
+/** The host's status as a step that waits on it sees it: it changes only while a step listens. */
 export interface HostFeed {
   current(): HostStatus | null;
   subscribe(listener: (status: HostStatus | null) => void): () => void;
 }
 
-/** How often a waiting step reads the Computer's status. */
+/** How often a waiting step reads the host's status. */
 const HOST_STATUS_POLL_MS = 3_000;
 
-/** A feed that reads the Computer's status (at once, then every few seconds) only while someone
+/** A feed that reads the host's status (at once, then every few seconds) only while someone
  * is subscribed, so nothing polls while no step is waiting. */
 export function pollingHostFeed(
   read: () => Promise<HostStatus | null>,
@@ -62,12 +62,12 @@ function launchFailed(status: HostStatus | null): boolean {
 
 export class HostStartTimeout extends Error {
   constructor() {
-    super("The Computer did not start in time");
+    super("Your machine did not start in time");
     this.name = "HostStartTimeout";
   }
 }
 
-/** Resolves when a status event says the Computer is up. Rejects when `signal` aborts, when the
+/** Resolves when a status event says the host is up. Rejects when `signal` aborts, when the
  * launch fails, or when `windowMs` passes. */
 export function waitForHostUp(
   feed: HostFeed,
@@ -96,8 +96,8 @@ export function waitForHostUp(
 }
 
 /**
- * Runs one step that needs the Computer (a workspace write). If the engine answers "starting",
- * `onStarting` fires, the step waits for the status event that says the Computer is up (or for
+ * Runs one step that needs the host (a workspace write). If the engine answers "starting",
+ * `onStarting` fires, the step waits for the status event that says the host is up (or for
  * `signal` to abort), then runs once more. No timer retries.
  */
 export async function runWhenHostReady<T>(
@@ -126,7 +126,7 @@ export async function runWhenHostReady<T>(
   return attempt();
 }
 
-/** Calls `onStarting` / `onUp` as status events say the Computer goes down or up while a call
+/** Calls `onStarting` / `onUp` as status events say the host goes down or up while a call
  * that wakes it (the engine's ingest) is in flight. Returns the unsubscribe. */
 export function followHostStart(
   feed: HostFeed,

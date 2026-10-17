@@ -60,8 +60,8 @@ it("reads as one line with a count, and lists each note behind Show", async () =
     await act(async () => toggle?.click());
     const notes = [...host.querySelectorAll("[data-testid=message-error-note]")];
     expect(notes.map((note) => note.textContent)).toEqual([
-      "My computer restarted. Try again.",
-      "My computer restarted. Try again.",
+      "My machine restarted. Try again.",
+      "My machine restarted. Try again.",
       "That took too long. Try again.",
     ]);
     expect(toggle?.textContent).toBe("Hide");

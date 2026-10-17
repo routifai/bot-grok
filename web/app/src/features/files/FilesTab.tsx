@@ -14,7 +14,7 @@ type Dir =
   | { status: "error" }
   | { status: "ready"; entries: Entry[] };
 
-// The Computer's runner can take a while to rebind after a restart: retry quietly meanwhile.
+// The host's runner can take a while to rebind after a restart: retry quietly meanwhile.
 const START_RETRY_MS = 2500;
 const START_RETRY_MAX = 40;
 const HIDDEN_KEY = "superchat.files.showHidden";
@@ -41,7 +41,7 @@ function formatSize(bytes: number | null): string {
 }
 
 /**
- * The Computer panel's Files view: the Muse's workspace as a lazy-expanding tree, newest first,
+ * The Files tab: the Muse's workspace as a lazy-expanding tree, newest first,
  * with a filter and refresh. Opening a file shows the shared preview. `refreshKey` bumps when a
  * turn completes so the tree follows the Muse's work; `reveal` opens one folder (the Project chip).
  */
@@ -238,7 +238,7 @@ export function FilesTab({
           className="py-1.5 text-[12.5px] text-muted-foreground"
           style={{ paddingInlineStart: `${depth * 14 + 8}px` }}
         >
-          <Trans>Starting the Computer…</Trans>
+          <Trans>Starting your machine…</Trans>
         </p>
       );
     }
@@ -280,7 +280,7 @@ export function FilesTab({
     : [];
 
   return (
-    <div data-testid="computer-files">
+    <div data-testid="files-tab">
       <div className="mb-3 flex items-center gap-2">
         <Input
           value={filter}
@@ -314,7 +314,7 @@ export function FilesTab({
       </div>
       {root?.status === "starting" ? (
         <p className="text-[13.5px] text-muted-foreground">
-          <Trans>Starting the Computer…</Trans>
+          <Trans>Starting your machine…</Trans>
         </p>
       ) : !root || root.status === "loading" ? (
         <p className="text-[13.5px] text-muted-foreground">

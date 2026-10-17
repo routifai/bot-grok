@@ -44,8 +44,8 @@ export const HostStatusSchema = z.object({
   state: z.enum(["stopped", "booting", "running", "suspended", "error"]),
   /** The Conversation's runner is connected (Files and tools can reach it); absent when unknown. */
   runnerReady: z.boolean().optional(),
-  /** Where the Computer's start-up is, while the engine is launching it or it failed; absent
-   * once it is up. Drives "Starting your Computer…" and the failure note. */
+  /** Where the host's start-up is, while the engine is launching it or it failed; absent
+   * once it is up. Drives "Starting your machine…" and the failure note. */
   launch: z
     .object({ stage: z.enum(["provisioning", "cloning", "starting", "connecting", "failed"]) })
     .optional(),

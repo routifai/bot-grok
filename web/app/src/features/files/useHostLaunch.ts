@@ -4,7 +4,7 @@ import { rpc } from "../../lib/rpc";
 
 type Launch = NonNullable<HostStatus["launch"]>;
 
-/** The Computer's start-up is brief and its stages move in seconds, so a short poll while a turn
+/** The host's start-up is brief and its stages move in seconds, so a short poll while a turn
  * is running is enough; nothing polls while idle. */
 const POLL_INTERVAL_MS = 3_000;
 /** The header and the transcript read the launch at once: they share one request. */
@@ -21,8 +21,8 @@ function readLaunch(botId: string): Promise<Launch | undefined> {
   return request;
 }
 
-/** The stage of a Computer start-up in progress (or failed), polled only while `active`; `undefined`
- * when the Computer is up, there is none, or the status cannot be read. */
+/** The stage of a host start-up in progress (or failed), polled only while `active`; `undefined`
+ * when the host is up, there is none, or the status cannot be read. */
 export function useHostLaunch(botId: string, active: boolean): Launch | undefined {
   const [launch, setLaunch] = useState<Launch | undefined>();
   useEffect(() => {

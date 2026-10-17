@@ -74,7 +74,7 @@ it.each([
   expect(badge?.getAttribute("data-state")).toBe(state);
 });
 
-it("pulses while indexing, but shows the last-known state calmly when the Computer sleeps", async () => {
+it("pulses while indexing, but shows the last-known state calmly when the host sleeps", async () => {
   const answer = (host: "awake" | "asleep") => ({
     files: [file({ state: "indexing" })],
     embeddings: { available: true, reason: null },

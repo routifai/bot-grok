@@ -126,7 +126,7 @@ it("does not ask to embed while the person still has no connection", async () =>
   expect(reindex).not.toHaveBeenCalled();
 });
 
-it("an asleep Computer is polled slowly and never asked to reindex", async () => {
+it("an asleep host is polled slowly and never asked to reindex", async () => {
   status.mockResolvedValue(
     answer([file("a", { state: "indexing", search: "keyword" })], true, "asleep"),
   );

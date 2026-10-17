@@ -56,7 +56,7 @@ const VERB_RULES: ReadonlyArray<readonly [string, string]> = [
   ["plot", "Making a chart"],
   ["mcp", "Connecting a tool"],
   ["browser", "Browsing"],
-  ["computer", "Using the computer"],
+  ["computer", "Using your machine"],
   ["subagent", "Running a task"],
   ["space", "Setting things up"],
   ["remember", "Saving a note"],

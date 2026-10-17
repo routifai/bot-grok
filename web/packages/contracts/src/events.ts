@@ -120,7 +120,7 @@ export const MessageBlock = z.discriminatedUnion("kind", [
     status: z.string().optional(),
   }),
   z.object({
-    /** Compact card for a remote cloud coding agent (not the bot computer). */
+    /** Compact card for a remote cloud coding agent (not the person's host). */
     kind: z.literal("cloud_agent"),
     agentId: z.string(),
     title: z.string(),

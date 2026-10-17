@@ -264,8 +264,8 @@ msgstr "Attach {name}"
 msgid "Attach a folder"
 msgstr "Attach a folder"
 
-msgid "Attach a folder from the Computer"
-msgstr "Attach a folder from the Computer"
+msgid "Attach a folder from your machine"
+msgstr "Attach a folder from your machine"
 
 msgid "Attach file"
 msgstr "Attach file"
@@ -385,9 +385,6 @@ msgstr "Color"
 
 msgid "Commitments"
 msgstr "Commitments"
-
-msgid "Computer"
-msgstr "Computer"
 
 msgid "Connected"
 msgstr "Connected"
@@ -761,8 +758,8 @@ msgstr "Failed."
 msgid "File"
 msgstr "File"
 
-msgid "File in your Computer"
-msgstr "File in your Computer"
+msgid "File on your machine"
+msgstr "File on your machine"
 
 msgid "Files"
 msgstr "Files"
@@ -1011,6 +1008,9 @@ msgstr "Loading preview…"
 msgid "Loading…"
 msgstr "Loading…"
 
+msgid "Machine"
+msgstr "Machine"
+
 msgid "Main"
 msgstr "Main"
 
@@ -1068,11 +1068,11 @@ msgstr "More actions for {0}"
 msgid "More actions for {title}"
 msgstr "More actions for {title}"
 
-msgid "My computer restarted. Try again."
-msgstr "My computer restarted. Try again."
+msgid "My machine restarted. Try again."
+msgstr "My machine restarted. Try again."
 
-msgid "My computer was replaced, so files I hadn't saved elsewhere are gone."
-msgstr "My computer was replaced, so files I hadn't saved elsewhere are gone."
+msgid "My machine was replaced, so files I hadn't saved elsewhere are gone."
+msgstr "My machine was replaced, so files I hadn't saved elsewhere are gone."
 
 msgid "My organization"
 msgstr "My organization"
@@ -1690,11 +1690,8 @@ msgstr "Start with"
 msgid "Starting"
 msgstr "Starting"
 
-msgid "Starting the Computer…"
-msgstr "Starting the Computer…"
-
-msgid "Starting your Computer…"
-msgstr "Starting your Computer…"
+msgid "Starting your machine…"
+msgstr "Starting your machine…"
 
 msgid "Starts fresh at the next update"
 msgstr "Starts fresh at the next update"
@@ -2092,8 +2089,8 @@ msgstr "You've reached your monthly model budget."
 msgid "Your account is paused. Contact your admin."
 msgstr "Your account is paused. Contact your admin."
 
-msgid "Your Computer is starting. Try again in a moment."
-msgstr "Your Computer is starting. Try again in a moment."
+msgid "Your machine is starting. Try again in a moment."
+msgstr "Your machine is starting. Try again in a moment."
 
 msgid "Your workspace."
 msgstr "Your workspace."

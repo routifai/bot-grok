@@ -9,7 +9,7 @@ export type KnowledgeFileState = z.infer<typeof KnowledgeFileStateSchema>;
 
 /** One indexed file's state (engine `GET /v1/sessions/{id}/knowledge/status`). */
 export const KnowledgeFileSchema = z.object({
-  /** The Computer index's id for the file (a hex digest of its workspace path). */
+  /** The host index's id for the file (a hex digest of its workspace path). */
   fileId: z.string(),
   /** Workspace-relative path, e.g. `your_files/uploads/2026-10-09/report.pdf`. */
   path: z.string(),

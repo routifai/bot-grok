@@ -55,7 +55,7 @@ export const filesContract = {
           size: z.number().int(),
         }),
       ),
-    /** Reads an uploaded attachment in the Computer (Markdown, passages, embeddings, index) and
+    /** Reads an uploaded attachment in the host (Markdown, passages, embeddings, index) and
      * answers when it is searchable. The composer awaits it before Send is enabled. */
     ingestAttachment: oc.input(z.object({ botId: Id, path: z.string().min(1).max(1024) })).output(
       z.object({

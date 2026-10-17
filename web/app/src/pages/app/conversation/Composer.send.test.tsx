@@ -5,7 +5,7 @@ import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-/** The Computer status the composer waits on, driven by the tests. */
+/** The host status the composer waits on, driven by the tests. */
 const hostBus = (() => {
   const listeners = new Set<(status: HostStatus | null) => void>();
   let current: HostStatus | null = null;
@@ -221,13 +221,13 @@ it("shows Reading on the chip and keeps Send disabled until the file is ready", 
   expect(sendButton.disabled).toBe(false);
 });
 
-it("shows Starting your Computer on the chip while the Computer wakes", async () => {
+it("shows Starting your machine on the chip while the host wakes", async () => {
   api.files.ingestAttachment.mockImplementation(() => new Promise(() => undefined));
   hostBus.emit(STARTING);
   const { host } = await mountWithAttachmentAndText("hi");
   const chip = host.querySelector('[data-testid="composer-attachment"]') as HTMLElement;
   expect(chip.dataset.status).toBe("starting");
-  expect(chip.textContent).toContain("Starting your Computer…");
+  expect(chip.textContent).toContain("Starting your machine…");
   expect(chip.textContent).not.toContain("Uploading");
   expect((host.querySelector('button[aria-label="Send"]') as HTMLButtonElement).disabled).toBe(
     true,

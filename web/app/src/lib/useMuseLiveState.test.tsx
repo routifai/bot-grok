@@ -55,10 +55,10 @@ beforeEach(() => {
 });
 afterEach(() => act(() => root.unmount()));
 
-it("says the Computer is starting while a running turn waits on its launch", async () => {
+it("says the host is starting while a running turn waits on its launch", async () => {
   api.host.status.mockResolvedValue({ launch: { stage: "starting" } });
   await mount("running");
-  expect(latest?.label).toBe("Starting your Computer…");
+  expect(latest?.label).toBe("Starting your machine…");
 });
 
 it("keeps the usual label when there is no launch in progress", async () => {
@@ -75,7 +75,7 @@ it("does not call a failed launch a start", async () => {
   expect(latest?.label).toBe("Working…");
 });
 
-it("does not read the Computer while idle", async () => {
+it("does not read the host while idle", async () => {
   await mount("completed");
   expect(api.host.status).not.toHaveBeenCalled();
   expect(latest?.label).toBeUndefined();

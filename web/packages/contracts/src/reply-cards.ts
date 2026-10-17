@@ -95,10 +95,10 @@ export const ReplyCardData = {
       .array(
         z
           .object({
-            /** The file in the Computer's index; `artifactId` only on rows from before. */
+            /** The file in the host's index; `artifactId` only on rows from before. */
             fileId: Text.optional(),
             artifactId: Text.optional(),
-            /** The file's workspace path; opens it in the Computer when it is not a Library artifact. */
+            /** The file's workspace path; opens it in the host when it is not a Library artifact. */
             path: Text.optional(),
             name: Text,
             page: z.number().int().positive(),

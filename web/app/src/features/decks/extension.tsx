@@ -31,7 +31,7 @@ export const decksExtension: ArtifactExtension = {
         onMeta={artifact.onMeta}
       />
     ) : null,
-  // Where the editor shell is not (a Computer file's preview): a deck still reads as a deck.
+  // Where the editor shell is not (a host file's preview): a deck still reads as a deck.
   view: ({ artifact, bytes, fallback }) =>
     isPptxArtifact(artifact) ? (
       <PptxPreview bytes={bytes} fallback={fallback} />

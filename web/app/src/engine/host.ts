@@ -5,7 +5,7 @@ import { os } from "./context";
 
 const LAUNCH_STAGES = new Set(["provisioning", "cloning", "starting", "connecting", "failed"]);
 
-/** Whether the engine's Computer is ready and how its launch is going. The page keeps no Computer
+/** Whether the engine's host is ready and how its launch is going. The page keeps no host
  * state: the engine owns it and is always on. */
 async function hostStatus(botId: string): Promise<HostStatus> {
   const { ready, launch } = await getOmnigentHost(engineClient(), NO_EMAIL, await museSessionId());

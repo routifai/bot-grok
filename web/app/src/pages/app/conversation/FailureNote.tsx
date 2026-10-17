@@ -25,7 +25,7 @@ export function useFailureNoteText(): (code: string) => string {
       case "context_too_long":
         return t`This conversation is too long for the model.`;
       case "sandbox_unavailable":
-        return t`My computer restarted. Try again.`;
+        return t`My machine restarted. Try again.`;
       case "model_key_required":
         return t`I need your API key to think.`;
       case "model_budget_exhausted":
@@ -66,7 +66,7 @@ export function useInfoNoteText(): (code: string) => string | null {
   return (code) => {
     switch (code) {
       case "workspace_reset":
-        return t`My computer was replaced, so files I hadn't saved elsewhere are gone.`;
+        return t`My machine was replaced, so files I hadn't saved elsewhere are gone.`;
       default:
         return null;
     }

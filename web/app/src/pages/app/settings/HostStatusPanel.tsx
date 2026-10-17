@@ -29,7 +29,7 @@ const POLL_MS = 10_000;
 
 const HARNESS_LABEL: Record<string, string> = { "claude-sdk": "Claude Agent SDK", pi: "Pi" };
 
-/** Settings > Computer: whether the Computer is up, and the harness and model the Conversation runs on. */
+/** Settings > Machine: whether the host is up, and the harness and model the Conversation runs on. */
 export function HostStatusPanel({
   botId,
   wire = LIVE_WIRE,
@@ -83,9 +83,9 @@ export function HostStatusPanel({
     : null;
 
   return (
-    <div className="space-y-5" data-testid="computer-status-settings">
+    <div className="space-y-5" data-testid="machine-settings">
       <SettingsGroup
-        title={t`Computer`}
+        title={t`Machine`}
         footer={t`The machine your Conversation runs on. It starts when it is needed.`}
       >
         <SettingsRow label={t`Status`} value={stateLabel} />
