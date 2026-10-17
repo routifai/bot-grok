@@ -774,8 +774,6 @@ def _resolve_root(cwd: Path, root: str) -> Path:
     the whole filesystem. Spec authors should write literal paths
     or ``~`` and let the operator audit them; ``$`` in a spec is
     now warned about so over-broad expansions stand out in logs.
-    See :data:`omnigent.inner.seatbelt_sandbox._resolve_root`
-    for the parallel hardening on the macOS backend.
 
     :param cwd: The agent's effective working directory; relative
         paths in the spec are resolved against it.

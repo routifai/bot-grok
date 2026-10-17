@@ -45,11 +45,11 @@ _LAUNCHER_WRAPPED_ENV = "OMNIGENT_LAUNCHER_SPAWN_WRAPPED"
 # write root that merely happens to sit under the system tempdir.
 _LAUNCHER_PRIVATE_TMPDIR_ENV = "OMNIGENT_LAUNCHER_SPAWN_PRIVATE_TMPDIR"
 
-# Backends that need a spawn-time wrap (parent-side ``bwrap`` /
-# ``sandbox-exec`` invocation) in addition to whatever in-process
-# work ``activate_sandbox`` does. ``none`` is a no-op backend so it
+# Backends that need a spawn-time wrap (parent-side ``bwrap``
+# invocation) in addition to whatever in-process work
+# ``activate_sandbox`` does. ``none`` is a no-op backend so it
 # doesn't need a wrap.
-_SPAWN_WRAP_BACKENDS = frozenset({"linux_bwrap", "darwin_seatbelt"})
+_SPAWN_WRAP_BACKENDS = frozenset({"linux_bwrap"})
 
 
 def _json_string_list(values: Sequence[object]) -> list[JsonValue]:
@@ -1313,27 +1313,16 @@ def _get_backend(type_name: str) -> SandboxBackend:
 def _ensure_builtin_backends() -> None:
     if "linux_bwrap" not in _BACKENDS:
         from . import bwrap_sandbox  # noqa: F401
-    if "darwin_seatbelt" not in _BACKENDS:
-        from . import seatbelt_sandbox  # noqa: F401
-    # Windows-only: the backend module touches ctypes.windll, so import it
-    # solely on Windows to keep the POSIX import graph clean.
-    if os.name == "nt" and "windows_jobobject" not in _BACKENDS:
-        from . import windows_jobobject_sandbox  # noqa: F401
 
 
 def _default_sandbox_for_platform() -> OSEnvSandboxSpec:
     """
-    Pick the platform-preferred sandbox backend for the host OS.
+    Pick the default sandbox backend: ``linux_bwrap`` (mount/PID/UTS/IPC
+    namespaces + seccomp via the ``bwrap`` binary), the only built-in
+    backend — the engine runs on Linux.
 
-    - **Linux**: ``linux_bwrap`` (mount/PID/UTS/IPC namespaces +
-      seccomp via the ``bwrap`` binary).
-    - **macOS**: ``darwin_seatbelt`` (SBPL via ``sandbox-exec``).
-    - **Windows**: ``windows_jobobject`` (Job Object process-tree
-      containment + resource limits; no filesystem/network isolation).
-
-    This is a pure *platform* decision — it does **not** probe for the
-    backend's binary. The default is resolved at spec **parse** time
-    (e.g. :func:`omnigent.inner.loader._parse_os_env_sandbox_spec`
+    This does **not** probe for the backend's binary. The default is
+    resolved at spec **parse** time (e.g. :func:`omnigent.inner.loader._parse_os_env_sandbox_spec`
     and :func:`omnigent.spec.parser._parse_os_env_sandbox`) to fill
     in an absent ``type:``; parsing a YAML must not depend on whether
     the host that happens to be loading it has ``bwrap`` installed
@@ -1350,28 +1339,13 @@ def _default_sandbox_for_platform() -> OSEnvSandboxSpec:
     spec is parsed. The only explicit opt-out remains
     ``os_env.sandbox.type='none'``.
 
-    Spec-self-containment is preserved: a YAML that explicitly
-    declares ``sandbox.type: linux_bwrap`` still routes to the bwrap
-    backend and errors loudly on macOS (the author asked for it). The
-    default fires when ``sandbox:`` is omitted, when its ``type:`` is
-    omitted, or when ``type: auto`` is selected explicitly.
+    The default fires when ``sandbox:`` is omitted, when its ``type:``
+    is omitted, or when ``type: auto`` is selected explicitly; on a host
+    without ``bwrap`` it fails loudly when the sandbox is built.
 
-    :returns: :class:`OSEnvSandboxSpec` with the OS-appropriate
-        ``type``.
-    :raises OSError: When the host platform has no sandbox backend at
-        all (anything other than Linux, macOS, or Windows). Set
-        ``os_env.sandbox.type='none'`` explicitly to run without one.
+    :returns: :class:`OSEnvSandboxSpec` with ``type="linux_bwrap"``.
     """
-    if sys.platform.startswith("linux"):
-        return OSEnvSandboxSpec(type="linux_bwrap")
-    if sys.platform == "darwin":
-        return OSEnvSandboxSpec(type="darwin_seatbelt")
-    if os.name == "nt":
-        return OSEnvSandboxSpec(type="windows_jobobject")
-    raise OSError(
-        f"No sandbox backend is available on platform {sys.platform!r}. "
-        "Set os_env.sandbox.type='none' explicitly to run without a sandbox."
-    )
+    return OSEnvSandboxSpec(type="linux_bwrap")
 
 
 def _resolve_sandbox_type(raw_type: str | None) -> str:

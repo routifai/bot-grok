@@ -1,7 +1,7 @@
 """Tests for the cross-platform process/platform primitives and Windows backend.
 
 Covers omnigent._platform, omnigent.inner._proc, the harness IPC endpoint
-abstraction, and the windows_jobobject sandbox backend. The platform-specific
+abstraction. The platform-specific
 assertions are gated with ``posix_only`` / ``windows_only`` markers so the
 file runs on both Linux CI and a Windows box.
 """
@@ -436,44 +436,6 @@ def test_endpoint_create_picks_platform_transport() -> None:
     assert ep.is_uds == (os.name != "nt")
 
 
-# --------------------------------------------------------------------------
-# windows_jobobject backend
-# --------------------------------------------------------------------------
-
-
-@pytest.mark.windows_only
-def test_windows_jobobject_is_platform_default() -> None:
-    from omnigent.inner import sandbox
-
-    assert sandbox._default_sandbox_for_platform().type == "windows_jobobject"
-
-
-@pytest.mark.windows_only
-def test_windows_jobobject_kill_on_close_terminates_tree() -> None:
-    from omnigent.inner.sandbox import SandboxPolicy
-    from omnigent.inner.windows_jobobject_sandbox import WindowsJobObjectSandboxBackend
-
-    backend = WindowsJobObjectSandboxBackend()
-    policy = SandboxPolicy(
-        backend_type="windows_jobobject",
-        active=True,
-        read_roots=None,
-        write_roots=[],
-        write_files=[],
-        allow_network=True,
-    )
-    proc = subprocess.Popen(_spin_cmd())
-    handle = backend.post_spawn(policy, proc.pid)
-    assert handle is not None
-    assert _proc.process_alive(proc.pid) is True
-    # Closing the job handle must terminate the contained process.
-    handle.close()
-    time.sleep(0.5)
-    assert _proc.process_alive(proc.pid) is False
-    if _proc.process_alive(proc.pid):
-        proc.kill()
-
-
 @pytest.mark.windows_only
 def test_explicit_bwrap_errors_loudly_on_windows() -> None:
     from omnigent.inner import sandbox
@@ -489,7 +451,7 @@ def test_explicit_bwrap_errors_loudly_on_windows() -> None:
 def test_posix_default_sandbox_is_not_jobobject() -> None:
     from omnigent.inner import sandbox
 
-    assert sandbox._default_sandbox_for_platform().type in {"linux_bwrap", "darwin_seatbelt"}
+    assert sandbox._default_sandbox_for_platform().type == "linux_bwrap"
 
 
 @pytest.mark.windows_only

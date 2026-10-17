@@ -8,20 +8,17 @@ exercise the helper subprocess end-to-end. They are parametrized
 over the active backend on the current host
 (:func:`tests.inner.sandbox.conftest.active_sandbox_type`):
 
-- ``linux_bwrap`` when the host is Linux + ``bwrap`` is on ``PATH``,
-- ``darwin_seatbelt`` when the host is macOS + ``sandbox-exec`` is
-  on ``PATH``.
+- ``linux_bwrap`` when the host is Linux + ``bwrap`` is on ``PATH``.
 
-A regression that violates the contract on either backend fails the
-*same* test on the platform that runs the broken backend. The tests
-do not branch on ``sys.platform`` — the fixture handles skip/run.
+A regression that violates the contract fails the test on the
+platform that runs the broken backend. The tests do not branch on
+``sys.platform`` — the fixture handles skip/run.
 
 Tests intentionally check **observable** properties (exit codes,
 stdout/stderr text, host filesystem state) and never reach into
-backend internals (``--bind`` argv tokens, SBPL profile shape).
-Backend-specific emit assertions live in the per-backend modules
-(``tests/inner/test_bwrap_sandbox.py``,
-``tests/inner/test_seatbelt_sandbox.py``).
+backend internals (``--bind`` argv tokens).
+Backend-specific emit assertions live in
+``tests/inner/test_bwrap_sandbox.py``.
 """
 
 from __future__ import annotations
@@ -122,8 +119,7 @@ def test_sandbox_blocks_shell_write_outside_cwd(
     appeared at the target path).
 
     Failure here means the backend leaked write access to an
-    arbitrary host path — either by binding too much (bwrap) or by
-    emitting too broad an ``allow file-write*`` rule (seatbelt).
+    arbitrary host path by binding too much.
     """
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -232,145 +228,10 @@ def test_sandbox_empty_write_paths_blocks_cwd_writes_but_allows_tmpdir(
 # attempt the read so a regression where the profile says "deny" but the
 # kernel doesn't enforce it (wrong SBPL syntax, wrong path
 # canonicalisation, wrong bwrap mount shape) fails here. The
-# profile-shape unit tests in ``tests/inner/test_seatbelt_sandbox.py`` /
+# profile-shape unit tests in
 # ``tests/inner/test_bwrap_sandbox.py`` catch profile-generation bugs;
 # these catch kernel-enforcement bugs.
 # ---------------------------------------------------------------------------
-
-
-def test_sandbox_blocks_home_library_when_home_read_granted_without_optin(
-    tmp_path: Path,
-    active_sandbox_type: str,
-    active_sandbox_spec_factory: Callable[..., OSEnvSandboxSpec],
-    sandbox_pythonpath_env: None,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    S5 (darwin_seatbelt): granting ``$HOME`` in ``read_paths`` does
-    NOT silently expose ``$HOME/Library`` — the kernel denies reads
-    under it even though a broader allow covers the subtree.
-
-    Spawns a real sandboxed helper, drops a known secret into
-    ``$HOME/Library/Preferences/<file>``, and verifies the helper
-    cannot read the secret content. A control read of a non-Library
-    path under the same HOME grant succeeds — proves the deny is
-    targeted and didn't accidentally lock down everything.
-
-    Skipped on Linux because the macOS-specific ``$HOME/Library``
-    layout doesn't exist there; the cross-platform dotfile defence
-    is covered by the next two tests.
-    """
-    if active_sandbox_type != "darwin_seatbelt":
-        pytest.skip(
-            "$HOME/Library default-deny is macOS-specific; Linux relies "
-            "on dotfile masking for credential paths (~/.aws etc.)."
-        )
-
-    fake_home = tmp_path / "home"
-    (fake_home / "Library" / "Preferences").mkdir(parents=True)
-    (fake_home / "Library" / "Preferences" / "com.example.creds.plist").write_text(
-        "OMNI_S5_LIBRARY_SECRET=must-never-leak"
-    )
-    (fake_home / "Library" / "Cookies").mkdir()
-    (fake_home / "Library" / "Cookies" / "Cookies.binarycookies").write_text(
-        "OMNI_S5_COOKIES_SECRET=must-never-leak"
-    )
-    (fake_home / "Documents").mkdir()
-    (fake_home / "Documents" / "report.txt").write_text(
-        "OMNI_S5_DOCUMENTS_OK=visible-control-string"
-    )
-    monkeypatch.setenv("HOME", str(fake_home))
-
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    spec = active_sandbox_spec_factory(extra_read_paths=[str(fake_home)])
-    os_env = create_os_environment(
-        OSEnvSpec(type="caller_process", cwd=str(workspace), sandbox=spec)
-    )
-    try:
-        preferences_read = run_async(
-            os_env.shell(
-                f"cat {fake_home}/Library/Preferences/com.example.creds.plist 2>&1; echo END=$?"
-            )
-        )
-        cookies_read = run_async(
-            os_env.shell(
-                f"cat {fake_home}/Library/Cookies/Cookies.binarycookies 2>&1; echo END=$?"
-            )
-        )
-        documents_read = run_async(
-            os_env.shell(f"cat {fake_home}/Documents/report.txt 2>&1; echo END=$?")
-        )
-    finally:
-        os_env.close()
-
-    assert "OMNI_S5_LIBRARY_SECRET=must-never-leak" not in (
-        preferences_read.get("stdout", "") + preferences_read.get("stderr", "")
-    ), (
-        "$HOME/Library/Preferences was readable despite the default-deny. "
-        f"Helper saw: stdout={preferences_read.get('stdout')!r} "
-        f"stderr={preferences_read.get('stderr')!r}"
-    )
-    assert "OMNI_S5_COOKIES_SECRET=must-never-leak" not in (
-        cookies_read.get("stdout", "") + cookies_read.get("stderr", "")
-    ), (
-        "$HOME/Library/Cookies was readable — the Library deny is too "
-        "narrow (should cover all of Library, not specific subdirs)."
-    )
-    assert "OMNI_S5_DOCUMENTS_OK=visible-control-string" in documents_read.get("stdout", ""), (
-        "$HOME/Documents control read failed — the Library deny is too "
-        "broad and locked down the rest of HOME as a side effect. "
-        f"stdout={documents_read.get('stdout')!r} stderr={documents_read.get('stderr')!r}"
-    )
-
-
-def test_sandbox_allows_home_library_when_explicit_optin(
-    tmp_path: Path,
-    active_sandbox_type: str,
-    active_sandbox_spec_factory: Callable[..., OSEnvSandboxSpec],
-    sandbox_pythonpath_env: None,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """
-    S5 (darwin_seatbelt): explicitly naming ``$HOME/Library`` (or a
-    subtree under it) in ``read_paths`` opts the operator in — the
-    default-deny is suppressed and reads under Library succeed.
-
-    This is the escape hatch for legitimate workloads
-    (``~/Library/Logs`` debugging tools, app-specific data analysis,
-    etc.). Without this assertion a too-aggressive default could
-    refuse explicit grants and break operator-intended behaviour.
-    """
-    if active_sandbox_type != "darwin_seatbelt":
-        pytest.skip("$HOME/Library default-deny is macOS-specific.")
-
-    fake_home = tmp_path / "home"
-    (fake_home / "Library" / "Logs").mkdir(parents=True)
-    (fake_home / "Library" / "Logs" / "app.log").write_text(
-        "OMNI_S5_LOGS_VISIBLE=opted-in-content"
-    )
-    monkeypatch.setenv("HOME", str(fake_home))
-
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    spec = active_sandbox_spec_factory(
-        extra_read_paths=[str(fake_home), str(fake_home / "Library")]
-    )
-    os_env = create_os_environment(
-        OSEnvSpec(type="caller_process", cwd=str(workspace), sandbox=spec)
-    )
-    try:
-        logs_read = run_async(
-            os_env.shell(f"cat {fake_home}/Library/Logs/app.log 2>&1; echo END=$?")
-        )
-    finally:
-        os_env.close()
-
-    assert "OMNI_S5_LOGS_VISIBLE=opted-in-content" in logs_read.get("stdout", ""), (
-        "Explicit ~/Library opt-in didn't take effect. The helper should "
-        "be able to read this file. "
-        f"stdout={logs_read.get('stdout')!r} stderr={logs_read.get('stderr')!r}"
-    )
 
 
 def test_sandbox_blocks_credential_dotfiles_under_granted_read_path(

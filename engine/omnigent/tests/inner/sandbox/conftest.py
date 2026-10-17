@@ -5,10 +5,9 @@ The tests under :mod:`tests.inner.sandbox` exercise the *observable*
 contract every active sandbox backend must uphold: cwd RO-by-default,
 writable scratch tmpdir, dotfile masking, env passthrough, hard
 network deny, etc. They run against whichever spawn-time backend the
-current host can use — ``linux_bwrap`` on Linux + ``bwrap`` installed,
-``darwin_seatbelt`` on macOS + ``sandbox-exec`` on ``PATH``. A host
-that satisfies neither (e.g. a bare Linux box without ``bwrap``)
-simply skips every test in the suite — the assertions stay correct,
+current host can use — ``linux_bwrap`` on Linux + ``bwrap`` installed.
+A host that doesn't satisfy that (e.g. macOS or a bare Linux box
+without ``bwrap``) simply skips every test in the suite — the assertions stay correct,
 they just don't run.
 
 The fixtures here are the one source of truth for:
@@ -43,7 +42,6 @@ import pytest
 from omnigent.inner.datamodel import CredentialProxySpec, OSEnvSandboxSpec
 
 _BWRAP_AVAILABLE = shutil.which("bwrap") is not None
-_SANDBOX_EXEC_AVAILABLE = shutil.which("sandbox-exec") is not None
 
 
 def _repo_root_for_pythonpath() -> str:
@@ -73,14 +71,6 @@ def _repo_root_for_pythonpath() -> str:
                 reason="linux_bwrap requires Linux + bwrap on PATH",
             ),
         ),
-        pytest.param(
-            "darwin_seatbelt",
-            id="darwin_seatbelt",
-            marks=pytest.mark.skipif(
-                not (sys.platform == "darwin" and _SANDBOX_EXEC_AVAILABLE),
-                reason="darwin_seatbelt requires macOS + sandbox-exec on PATH",
-            ),
-        ),
     ]
 )
 def active_sandbox_type(request: pytest.FixtureRequest) -> str:
@@ -88,12 +78,10 @@ def active_sandbox_type(request: pytest.FixtureRequest) -> str:
     Yield each spawn-time sandbox backend supported on the current host.
 
     The parametrization runs once per backend; skip marks ensure
-    Linux CI only runs the ``linux_bwrap`` branch and macOS CI only
-    runs the ``darwin_seatbelt`` branch. A host that can't satisfy
-    either branch skips every parametrization.
+    Linux CI runs the ``linux_bwrap`` branch; a host that can't
+    satisfy it skips every parametrization.
 
-    :returns: The backend identifier ``"linux_bwrap"`` or
-        ``"darwin_seatbelt"``.
+    :returns: The backend identifier ``"linux_bwrap"``.
     """
     backend_type: str = request.param
     return backend_type
