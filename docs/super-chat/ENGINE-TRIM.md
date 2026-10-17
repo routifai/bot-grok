@@ -106,6 +106,13 @@ don't use, so it can be removed before production.
 | CockroachDB dialect branches, `db/cockroachdb.py`, the CRDB DDL lock in `tests/db/conftest.py` (1,218 lines) | 2026-10-16 | `5a850efda`, ADR 0020 |
 | macOS seatbelt and Windows job-object sandboxes, `sandbox/bwrap.py` (unreachable); `_default_sandbox_for_platform()` is always `linux_bwrap` (5,972 lines) | 2026-10-16 | `c7a18240d`, ADR 0020 |
 | Dead harness and provider strings (OpenAI agents, ACP, OpenCode, Cursor, Goose, Kiro, Hermes, Qwen, Antigravity, `GEMINI_API_KEY` forwarding; Gemini stays as a model vendor a gateway can serve) and the `uv.toml` exemptions (245 lines) | 2026-10-16 | `13fa2cf9a`, ADR 0020 |
+| Web: `packages/charts`, the `*.chart.json` / `*.dashboard.json` renderers, chart cards and thumbnails, the canvas block and `ui-web/canvas`, Observable Plot, the `chart` and `canvas` message blocks, dead event kinds (`app_connect`, `child_bot`, `choice`, `computer`, `connect`), `bot-secrets`, `cron`, `avatar-motion`, `AuroraBackground`, `ConversationHeader`, transcript grouping, chart and canvas dev previews, turbo and stale ignore entries. Old transcripts show "This chart was made with an older version"; `*.dashboard.html` pages stay (14,020 lines) | 2026-10-16 | `1bc32b5ca`..`88bf660fe`, ADR 0020 |
+
+## Follow-ups from the web cut
+
+- Root `NOTICE` still credits the nao-derived chart code that no longer exists; trim the entry.
+- `pnpm check` fails on a pre-existing error in `packages/adapters` (`BodyInit` not found in `src/omnigent/artifacts.ts`); CI's web job has been red on it since before the cut. Fix with the CI work in wave 5.
+- `tool-presentation.completeness.test.ts` fails because the `superchat-claude` bundle declares no `builtins`; decide whether the test or the bundle is right in wave 5.
 
 ## Follow-ups from the Databricks cut
 
