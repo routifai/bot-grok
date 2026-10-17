@@ -30,7 +30,6 @@ from starlette.responses import Response
 from starlette.routing import Match, Mount, Route
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from omnigent._platform import resolve_repo_symlink
 from omnigent.db.db_models import InvalidUuidError
 from omnigent.debug_logging import (
     add_audit_attrs,
@@ -61,7 +60,6 @@ from omnigent.extensions.assets import (
 )
 from omnigent.extensions.registry import plugin_state as load_extension_plugin_state
 from omnigent.memory.service import MemoryService
-from omnigent.resources import examples as _examples_resources
 from omnigent.runtime import (
     get_terminal_registry,
     pending_elicitations,
@@ -483,8 +481,6 @@ class BasePathMiddleware:
 # older desktop shell.
 WELL_KNOWN_MANIFEST_VERSION = 1
 _WEB_UI_GZIP_MINIMUM_SIZE = 1024
-_DEBBY_AGENT_NAME = "debby"
-_POLLY_AGENT_NAME = "polly"
 _UNMATCHED_ROUTE_TEMPLATE = "<unmatched>"
 _SESSION_PATH_RE = re.compile(r"/v1/sessions/([^/]+)")
 
@@ -539,16 +535,6 @@ def _error_audit_extra(
         phase=phase,
         **attributes,
     )
-
-
-# polly's and debby's multi-file bundles are packaged under
-# omnigent.resources.examples (see pyproject package-data), so they resolve
-# in both a repo checkout and an installed wheel. The presence check in each
-# seeder is a safety net.
-# resolve_repo_symlink dereferences the packaged symlink on a no-symlink
-# Windows checkout (where Git leaves it as a stub text file); a no-op elsewhere.
-_DEBBY_BUNDLE_SOURCE = resolve_repo_symlink(Path(_examples_resources.__file__).parent / "debby")
-_POLLY_BUNDLE_SOURCE = resolve_repo_symlink(Path(_examples_resources.__file__).parent / "polly")
 
 
 class _FastAPICallNext(Protocol):
@@ -845,7 +831,7 @@ def _ensure_builtin_agent(
     :param artifact_store: Store for agent bundles.
     :param agent_cache: Cache for loaded agent specs; exposes
         ``replace`` and ``evict``.
-    :param name: Built-in agent's unique name, e.g. ``"polly"``.
+    :param name: Built-in agent's unique name, e.g. ``"superchat-claude"``.
     :param bundle_bytes: Freshly built gzipped tarball of the spec.
     """
     import hashlib
@@ -909,13 +895,10 @@ def _ensure_default_agents(
     :param artifact_store: Store for agent bundles.
     :param agent_cache: Cache for loaded agent specs.
     """
-    _ensure_default_debby_agent(agent_store, artifact_store, agent_cache)
-    _ensure_default_polly_agent(agent_store, artifact_store, agent_cache)
     _ensure_extra_builtin_agents(agent_store, artifact_store, agent_cache)
 
 
-# Env var listing extra built-in agent specs to seed at startup, in addition
-# to the packaged debby / polly set. Each
+# Env var listing extra built-in agent specs to seed at startup. Each
 # ``os.pathsep``-separated entry is a path to an agent spec (single-file
 # YAML or a bundle dir); it is registered as a built-in (``session_id NULL``)
 # under the spec path's stem (file) or directory name. Lets a deployment —
@@ -981,121 +964,6 @@ def _ensure_extra_builtin_agents(
             )
             continue
         _logger.info("Registered extra built-in agent %r from %s", name, source)
-
-
-def _build_debby_bundle() -> bytes:
-    """
-    Build a gzipped tarball of the ``examples/debby`` agent bundle.
-
-    debby is a multi-file image (``config.yaml`` plus ``agents/`` and
-    ``skills/`` subdirectories), so the source is the directory itself
-    rather than a generated single YAML.
-
-    :returns: Gzipped tarball bytes suitable for the artifact store.
-    """
-    import tempfile
-
-    from omnigent.spec import materialize_bundle
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        bundle_dir = materialize_bundle(_DEBBY_BUNDLE_SOURCE, Path(tmpdir) / "bundle")
-        return _tar_gz_dir(bundle_dir)
-
-
-def _ensure_default_debby_agent(
-    agent_store: AgentStore,
-    artifact_store: ArtifactStore,
-    agent_cache: Any,
-) -> None:
-    """
-    Register the debby brainstorming agent if its bundle ships here.
-
-    Called during server lifespan startup so the Web UI's new-session
-    picker can offer debby as a host-launchable card next to Claude
-    Code, Codex, and polly. When the bundle is absent (generic
-    deployment that didn't package it), seeding is skipped so no card
-    is offered for an agent that can't be launched here — same pattern
-    as :func:`_ensure_default_polly_agent`. Content-aware via
-    :func:`_ensure_builtin_agent`: when a new wheel ships a changed
-    debby spec, the existing row is refreshed in place instead of
-    being ignored.
-
-    :param agent_store: Store for agent metadata.
-    :param artifact_store: Store for agent bundles.
-    :param agent_cache: Cache for loaded agent specs.
-    """
-    if not (_DEBBY_BUNDLE_SOURCE / "config.yaml").is_file():
-        _logger.debug(
-            "debby bundle not found at %s; skipping seed",
-            _DEBBY_BUNDLE_SOURCE,
-        )
-        return
-
-    _ensure_builtin_agent(
-        agent_store,
-        artifact_store,
-        agent_cache,
-        name=_DEBBY_AGENT_NAME,
-        bundle_bytes=_build_debby_bundle(),
-    )
-
-
-def _build_polly_bundle() -> bytes:
-    """
-    Build a gzipped tarball of the ``examples/polly`` agent bundle.
-
-    polly is a multi-file image (``config.yaml`` plus ``agents/`` and
-    ``skills/`` subdirectories), so the source is the directory itself
-    rather than a generated single YAML.
-
-    :returns: Gzipped tarball bytes suitable for the artifact store.
-    """
-    import tempfile
-
-    from omnigent.spec import materialize_bundle
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        bundle_dir = materialize_bundle(_POLLY_BUNDLE_SOURCE, Path(tmpdir) / "bundle")
-        return _tar_gz_dir(bundle_dir)
-
-
-def _ensure_default_polly_agent(
-    agent_store: AgentStore,
-    artifact_store: ArtifactStore,
-    agent_cache: Any,
-) -> None:
-    """
-    Register the polly orchestrator agent if its bundle ships here.
-
-    polly is the multi-agent coding orchestrator (successor to the
-    deleted nessie example); seeding it lets the Web UI's new-session
-    picker offer it as a host-launchable card next to Claude Code and
-    Codex. When the bundle is absent (generic deployment that didn't
-    package it), seeding is skipped so no card is offered for an agent
-    that can't be launched here — mirroring the ``_WEB_UI_DIST``
-    "asset present → enable feature" pattern. Content-aware via
-    :func:`_ensure_builtin_agent`: when a new wheel ships a changed
-    polly spec, the existing row is refreshed in place instead of
-    being ignored.
-
-    :param agent_store: Store for agent metadata.
-    :param artifact_store: Store for agent bundles.
-    :param agent_cache: Cache for loaded agent specs.
-    """
-    if not (_POLLY_BUNDLE_SOURCE / "config.yaml").is_file():
-        _logger.debug(
-            "polly bundle not found at %s; skipping seed",
-            _POLLY_BUNDLE_SOURCE,
-        )
-        return
-
-    _ensure_builtin_agent(
-        agent_store,
-        artifact_store,
-        agent_cache,
-        name=_POLLY_AGENT_NAME,
-        bundle_bytes=_build_polly_bundle(),
-    )
 
 
 def create_app(

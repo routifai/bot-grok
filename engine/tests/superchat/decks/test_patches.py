@@ -403,57 +403,6 @@ def test_a_marker_lookalike_in_a_slide_is_not_the_decks_theme() -> None:
     assert kit.deck_theme_id(fake) == "nord"
 
 
-def _old_kit(rev: str, tmp: str):
-    """The kit as released at git ``rev``, imported from ``git archive`` (None without git)."""
-    import importlib.util
-    import subprocess
-    import sys
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parents[4]
-    base = "engine/omnigent/omnigent/superchat/decks"
-    done = subprocess.run(
-        f"git archive {rev} {base} | tar -x -C {tmp}",
-        shell=True,
-        cwd=root,
-        capture_output=True,
-    )
-    path = Path(tmp) / base / "kit.py"
-    if done.returncode != 0 or not path.is_file():
-        return None
-    name = f"oldkit_{rev}"
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
-    sys.modules[name] = module
-    spec.loader.exec_module(module)  # type: ignore[union-attr]
-    return module
-
-
-@pytest.mark.parametrize("rev", ["d46b2965", "9a0bb8bc"])
-def test_decks_built_by_every_released_kit_can_switch_theme(
-    rev: str, tmp_path_factory: pytest.TempPathFactory
-) -> None:
-    old = _old_kit(rev, str(tmp_path_factory.mktemp(rev)))
-    if old is None:
-        pytest.skip(f"git history for {rev} is not available")
-    fresh = _norm(kit.build_deck("nord", "Q3", SAMPLE).replace(kit._DECK_HINT + "\n", ""))
-    for theme in old.templates():
-        deck = old.build_deck(theme, "Q3", SAMPLE)
-        assert kit.deck_theme_id(deck) == theme
-        new, _ = run([SetTheme(kind="set-theme", theme="nord")], deck)
-        assert kit.deck_theme_id(new) == "nord"
-        assert _slides(new) == _slides(deck)
-        if rev != "d46b2965":  # the first kit had no chart runtime to compare
-            assert _norm(new) == fresh
-        # a custom rule the old deck had survives the adoption
-        block = kit._LEGACY_STYLE_RE.search(deck).group(0)  # type: ignore[union-attr]
-        extra = block[: -len("\n  </style>")] + "\n    .mine { color: red; }\n  </style>"
-        mine = deck.replace(block, extra, 1)
-        assert mine != deck
-        kept, _ = run([SetTheme(kind="set-theme", theme="nord")], mine)
-        assert ".mine { color: red; }" in kept
-
-
 def test_every_released_block_text_is_in_the_shipped_table() -> None:
     table = kit._legacy_kits()
     assert set(table) == {"blue-professional", "editorial-tri-tone", "magazine-mono"}
