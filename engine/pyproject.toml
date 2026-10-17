@@ -193,6 +193,8 @@ lint = [
     # (antigravity) also loads 6.x gencode under the forward-compat guarantee,
     # so 6.x gencode satisfies all install forks.
     "grpcio-tools>=1.68,<=1.81.1",
+    # Enforces the package layers ([tool.importlinter] below); run `lint-imports` from engine/.
+    "import-linter>=2.1,<3",
 ]
 test = [
     "pytest>=7.0",
@@ -345,6 +347,73 @@ markers = [
 # relative to the repo root, which is where pytest is always invoked.
 playwright_visual_snapshots_path = "tests/e2e_ui/visual/snapshots"
 playwright_visual_snapshot_failures_path = "tests/e2e_ui/visual/snapshot_failures"
+
+# The package layers (docs/adr/0019-repository-layout-and-layers.md, engine/README.md). Run
+# `lint-imports` from engine/. The contracts check direct imports: transitively almost every
+# package still reaches server and superchat through the shared and data layers (for example
+# db.account_authority -> server.auth), which the layering waves untangle.
+# deployment/entrypoint.py also imports superchat; it sits outside the package, so no contract
+# covers it.
+[tool.importlinter]
+root_package = "omnigent"
+
+[[tool.importlinter.contracts]]
+name = "HOST (host, runner, harnesses) never imports the engine server"
+type = "forbidden"
+source_modules = ["omnigent.host", "omnigent.runner", "omnigent.harnesses"]
+forbidden_modules = ["omnigent.server"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "Only the engine server and the runner's dispatch import superchat"
+type = "forbidden"
+source_modules = [
+    "omnigent._platform",
+    "omnigent._startup_profile",
+    "omnigent._wrapper_labels",
+    "omnigent.api",
+    "omnigent.cli",
+    "omnigent.cli_auth",
+    "omnigent.config",
+    "omnigent.connections",
+    "omnigent.context",
+    "omnigent.db",
+    "omnigent.debug_logging",
+    "omnigent.entities",
+    "omnigent.errors",
+    "omnigent.extensions",
+    "omnigent.gateway_inference",
+    "omnigent.git_credential_github",
+    "omnigent.harness_aliases",
+    "omnigent.harness_availability",
+    "omnigent.harness_capabilities",
+    "omnigent.harness_install_spec",
+    "omnigent.harness_plugins",
+    "omnigent.harness_startup_config",
+    "omnigent.harnesses",
+    "omnigent.host",
+    "omnigent.inference_config",
+    "omnigent.llms",
+    "omnigent.memory",
+    "omnigent.models",
+    "omnigent.onboarding",
+    "omnigent.policies",
+    "omnigent.process_logging",
+    "omnigent.resources",
+    "omnigent.runtime",
+    "omnigent.sandbox",
+    "omnigent.session_event_batch",
+    "omnigent.spec",
+    "omnigent.stores",
+    "omnigent.telemetry",
+    "omnigent.terminals",
+    "omnigent.tools",
+    "omnigent.util",
+    "omnigent.version",
+    "omnigent.workspace_fs",
+]
+forbidden_modules = ["omnigent.superchat"]
+allow_indirect_imports = true
 
 [tool.coverage.run]
 # Measure the shipped package only; tests live under tests/.
