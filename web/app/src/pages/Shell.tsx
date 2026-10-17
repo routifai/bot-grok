@@ -40,6 +40,7 @@ import { sheetsExtension } from "../features/sheets";
 import type { ArtifactTarget } from "../lib/artifact-open";
 import { markAfterPaint, markOnce } from "../lib/performance";
 import { rpc } from "../lib/rpc";
+import { ShowMessageProvider } from "../lib/show-message";
 import { type MuseLiveRun, useTurnRuns } from "../lib/useMuseLiveState";
 import { ContourGround } from "./app/chrome/ContourGround";
 import { ConversationActivity } from "./app/chrome/ConversationActivity";
@@ -153,6 +154,19 @@ export function ShellPage() {
     }
   }, [active?.id, searchParams, setSearchParams]);
   const revealMessageRef = useRef<(messageId: string) => Promise<boolean>>(async () => false);
+  // A version's "from your message": the same reveal-and-scroll a search hit uses (`?m=`).
+  const showMessage = useCallback(
+    (itemId: string) =>
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          next.set("m", itemId);
+          return next;
+        },
+        { replace: true },
+      ),
+    [setSearchParams],
+  );
   // Bumps each time a turn finishes, so the Files view follows the Muse's work.
   const [filesRefreshKey, setFilesRefreshKey] = useState(0);
   // The folder to show in the Files tab, set by the "Working in" chip.
@@ -521,26 +535,28 @@ export function ShellPage() {
   return (
     <AvatarStyleProvider value={bootstrapMe?.avatarStyle ?? "robot"}>
       <ArtifactPanelProvider value={chatArtifacts.api}>
-        <ArtifactRegistryProvider value={ARTIFACT_EXTENSIONS}>
-          <AskPreviewsProvider value={ASK_PREVIEWS}>
-            {/* The window ground around Superchat's rounded content window. */}
-            <div className="muse-wash pt-safe pb-safe ps-safe pe-safe flex h-full md:p-2">
-              {active ? (
-                <OrbHomeProvider home={orbHome}>
-                  <SuperchatPresence
-                    botId={active.id}
-                    runs={turnRuns}
-                    messages={museTranscript.messages}
-                  >
-                    {shell}
-                  </SuperchatPresence>
-                </OrbHomeProvider>
-              ) : (
-                shell
-              )}
-            </div>
-          </AskPreviewsProvider>
-        </ArtifactRegistryProvider>
+        <ShowMessageProvider value={showMessage}>
+          <ArtifactRegistryProvider value={ARTIFACT_EXTENSIONS}>
+            <AskPreviewsProvider value={ASK_PREVIEWS}>
+              {/* The window ground around Superchat's rounded content window. */}
+              <div className="muse-wash pt-safe pb-safe ps-safe pe-safe flex h-full md:p-2">
+                {active ? (
+                  <OrbHomeProvider home={orbHome}>
+                    <SuperchatPresence
+                      botId={active.id}
+                      runs={turnRuns}
+                      messages={museTranscript.messages}
+                    >
+                      {shell}
+                    </SuperchatPresence>
+                  </OrbHomeProvider>
+                ) : (
+                  shell
+                )}
+              </div>
+            </AskPreviewsProvider>
+          </ArtifactRegistryProvider>
+        </ShowMessageProvider>
       </ArtifactPanelProvider>
     </AvatarStyleProvider>
   );

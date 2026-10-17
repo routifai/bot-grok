@@ -10,8 +10,9 @@ import {
   DropdownMenuTrigger,
 } from "@superchat/ui-web";
 import { Check, ChevronDown, History } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { Fragment, type ReactNode, useState } from "react";
 import { formatRelativeTime } from "../../../lib/relative-time";
+import { useShowMessage } from "../../../lib/show-message";
 import { isHandOrigin } from "./editor-state";
 
 /**
@@ -41,11 +42,13 @@ export function VersionMenu({
   note?: ReactNode;
 }) {
   const { t } = useLingui();
+  const showMessage = useShowMessage();
   const [restoring, setRestoring] = useState(false);
   const [failed, setFailed] = useState(false);
   const shown = versions.find((entry) => entry.id === shownId) ?? versions[0];
   const label = t`${kindLabel} · version ${shown?.version ?? version}`;
-  if (versions.length < 2 && !note) {
+  // One version opens the menu only to reach the message it came from.
+  if (versions.length < 2 && !note && !(versions[0]?.itemId && showMessage)) {
     return (
       <span data-testid="version-label" className="shrink-0 text-[12px] text-muted-foreground">
         {label}
@@ -55,13 +58,15 @@ export function VersionMenu({
   const latest = versions[0];
   const older = !!shown && !!latest && shown.id !== latest.id;
   const origin = (entry: ArtifactVersion) =>
-    entry.origin === "update"
-      ? t`updated`
-      : !isHandOrigin(entry.origin)
-        ? t`by superchat`
-        : entry.origin === "restore"
-          ? t`restored`
-          : t`by you`;
+    entry.itemId
+      ? t`from your message`
+      : entry.origin === "update"
+        ? t`updated`
+        : !isHandOrigin(entry.origin)
+          ? t`by superchat`
+          : entry.origin === "restore"
+            ? t`restored`
+            : t`by you`;
 
   return (
     <DropdownMenu>
@@ -75,28 +80,50 @@ export function VersionMenu({
       <DropdownMenuContent align="start" className="w-64">
         <DropdownMenuGroup>
           <DropdownMenuLabel>{t`Versions`}</DropdownMenuLabel>
-          {versions.map((entry, index) => (
-            <DropdownMenuItem
-              key={entry.id}
-              data-testid="version-item"
-              onClick={() => onPick(entry.id)}
-              className="gap-2"
-            >
-              <Check
-                size={14}
-                aria-hidden="true"
-                className={entry.id === shown?.id ? "" : "invisible"}
-              />
-              <span className="flex min-w-0 flex-1 flex-col">
-                <span className="text-[13px]">
-                  {index === 0 ? t`Version ${entry.version} · latest` : t`Version ${entry.version}`}
-                </span>
-                <span className="truncate text-[11.5px] text-muted-foreground">
-                  {[origin(entry), formatRelativeTime(entry.createdAt)].filter(Boolean).join(" · ")}
-                </span>
-              </span>
-            </DropdownMenuItem>
-          ))}
+          {versions.map((entry, index) => {
+            const originLine = [origin(entry), formatRelativeTime(entry.createdAt)]
+              .filter(Boolean)
+              .join(" · ");
+            // The message it came from is its own row, so choosing it scrolls the conversation
+            // instead of picking the version.
+            const messageId = entry.itemId && showMessage ? entry.itemId : null;
+            return (
+              <Fragment key={entry.id}>
+                <DropdownMenuItem
+                  data-testid="version-item"
+                  onClick={() => onPick(entry.id)}
+                  className="gap-2"
+                >
+                  <Check
+                    size={14}
+                    aria-hidden="true"
+                    className={entry.id === shown?.id ? "" : "invisible"}
+                  />
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="text-[13px]">
+                      {index === 0
+                        ? t`Version ${entry.version} · latest`
+                        : t`Version ${entry.version}`}
+                    </span>
+                    {messageId ? null : (
+                      <span className="truncate text-[11.5px] text-muted-foreground">
+                        {originLine}
+                      </span>
+                    )}
+                  </span>
+                </DropdownMenuItem>
+                {messageId ? (
+                  <DropdownMenuItem
+                    data-testid="version-message"
+                    onClick={() => showMessage?.(messageId)}
+                    className="-mt-1 py-0.5 ps-8 text-[11.5px] text-muted-foreground"
+                  >
+                    <span className="truncate">{originLine}</span>
+                  </DropdownMenuItem>
+                ) : null}
+              </Fragment>
+            );
+          })}
         </DropdownMenuGroup>
         {older ? (
           <>

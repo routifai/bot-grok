@@ -276,6 +276,13 @@ const TranscriptView = memo(function Transcript({
     window.clearTimeout(jumpScrollTimer.current);
     jumpScrollTimer.current = window.setTimeout(endJumpScroll, 2_000);
     row.scrollIntoView({ behavior: "smooth", block: "center" });
+    // One wash on the row so the eye lands on it (styles.css `sc-message-flash`).
+    row.classList.remove("sc-message-flash");
+    void (row as HTMLElement).offsetWidth;
+    row.classList.add("sc-message-flash");
+    row.addEventListener("animationend", () => row.classList.remove("sc-message-flash"), {
+      once: true,
+    });
     onScrollRequestHandled();
   }, [messages, scrollRequest, scrollRef, endJumpScroll, onScrollRequestHandled]);
 

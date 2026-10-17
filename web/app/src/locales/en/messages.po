@@ -805,6 +805,9 @@ msgstr "Forget"
 msgid "From {sourceLabel} · {0}"
 msgstr "From {sourceLabel} · {0}"
 
+msgid "from your message"
+msgstr "from your message"
+
 msgid "Full screen"
 msgstr "Full screen"
 

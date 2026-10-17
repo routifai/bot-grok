@@ -287,6 +287,26 @@ body {
   -webkit-app-region: no-drag;
 }
 
+/* A message brought into view on purpose (a version's "from your message", a search hit):
+   one soft wash that fades, so the eye lands on it. */
+@keyframes sc-message-flash {
+  from {
+    background-color: var(--accent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.sc-message-flash {
+  border-radius: 18px;
+  animation: sc-message-flash 1.6s ease-out 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sc-message-flash {
+    animation: none;
+  }
+}
+
 @keyframes rkPulse {
   0%,
   100% {
