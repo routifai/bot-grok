@@ -2,7 +2,7 @@
 
 Covers list_chat_family / list_activities / get_activity against a real
 SqlAlchemyConversationStore (sqlite, per-test file) — the wiring between
-the Super Chat, its Side Chats, and their Sub-agents, plus owner/family
+the Super Chat and its Sub-agents, plus owner/family
 scoping. Pure derivation logic is covered in test_activity.py.
 """
 
@@ -43,7 +43,7 @@ def _add_turn_with_tool_call(
                 type="message",
                 response_id=response_id,
                 data=MessageData(
-                    role="user", content=[{"type": "input_text", "text": "research side chats"}]
+                    role="user", content=[{"type": "input_text", "text": "research auth flows"}]
                 ),
             ),
             NewConversationItem(
@@ -52,7 +52,7 @@ def _add_turn_with_tool_call(
                 data=FunctionCallData(
                     agent="brain",
                     name="memory_search",
-                    arguments=json.dumps({"query": "side chat"}),
+                    arguments=json.dumps({"query": "auth flow"}),
                     call_id="call_1",
                 ),
             ),
@@ -62,7 +62,7 @@ def _add_turn_with_tool_call(
                 data=MessageData(
                     role="assistant",
                     agent="brain",
-                    content=[{"type": "output_text", "text": "Researched side chats"}],
+                    content=[{"type": "output_text", "text": "Researched auth flows"}],
                 ),
             ),
         ],

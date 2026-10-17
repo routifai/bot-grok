@@ -6197,9 +6197,9 @@ async def test_sys_session_create_forwards_superside_chat_mode_to_child() -> Non
     """
     A superside-chat caller's ``sys_session_create`` stamps
     ``omnigent.context.mode=superside-chat`` on the child's create body —
-    Side Chats inherit the mode by the fork store copying labels wholesale,
-    but a sub-agent create sends a fresh body, so the mode must be
-    forwarded explicitly (see ``inheritable_context_labels``).
+    a fork inherits the mode by the store copying labels wholesale, but a
+    sub-agent create sends a fresh body, so the mode must be forwarded
+    explicitly (see ``inheritable_context_labels``).
     """
     from omnigent.runner.tool_dispatch import execute_tool
 

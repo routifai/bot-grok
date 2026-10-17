@@ -3282,7 +3282,7 @@ def test_set_host_id_keeps_git_branch_with_its_workspace(
     git_branch: str | None,
     expected_branch: str | None,
 ) -> None:
-    """A moved session must not reuse its former worktree branch for side chats."""
+    """A moved session must not reuse its former worktree branch."""
     original_host = "292dfcdf8a31f1319b469f4fa179ac6b"
     other_host = "8f48061706cb92d5e7cd7c4aadc56ef0"
     _register_host(db_uri, original_host)

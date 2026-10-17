@@ -140,7 +140,7 @@ async def test_activities_list_and_detail_for_superside_chat_session(
                 response_id=response_id,
                 data=MessageData(
                     role="user",
-                    content=[{"type": "input_text", "text": "research side chat mechanics"}],
+                    content=[{"type": "input_text", "text": "research auth flow mechanics"}],
                 ),
             ),
             NewConversationItem(
@@ -149,7 +149,7 @@ async def test_activities_list_and_detail_for_superside_chat_session(
                 data=FunctionCallData(
                     agent="brain",
                     name="memory_search",
-                    arguments=json.dumps({"query": "side chat"}),
+                    arguments=json.dumps({"query": "auth flow"}),
                     call_id="call_1",
                 ),
             ),
@@ -159,7 +159,7 @@ async def test_activities_list_and_detail_for_superside_chat_session(
                 data=MessageData(
                     role="assistant",
                     agent="brain",
-                    content=[{"type": "output_text", "text": "Researched side chat mechanics"}],
+                    content=[{"type": "output_text", "text": "Researched auth flow mechanics"}],
                 ),
             ),
         ],
@@ -180,10 +180,10 @@ async def test_activities_list_and_detail_for_superside_chat_session(
 
     turn = by_kind["turn"]
     assert turn["chat_id"] == session["id"]
-    assert turn["outcome"] == "Researched side chat mechanics"
+    assert turn["outcome"] == "Researched auth flow mechanics"
     assert turn["status"] == "done"
     assert "date" in turn
-    assert turn["steps"][0]["title"] == "Searched memory for 'side chat'"
+    assert turn["steps"][0]["title"] == "Searched memory for 'auth flow'"
     assert "detail" not in turn["steps"][0]
 
     sub = by_kind["sub_agent"]
@@ -210,8 +210,7 @@ async def test_activity_detail_404_for_unknown_activity_id(
     assert resp.status_code == 404
 
 
-# ── Family leak: a caller shared only one Side Chat of the family must
-# never see the Super Chat's or a sibling's activities ───────────────────
+# ── Access: an app with permissions on ───────────────────────────────
 
 
 @pytest.fixture()

@@ -203,12 +203,12 @@ def test_is_superside_chat_true_only_for_exact_value() -> None:
 
 
 def test_turn_with_tool_call_becomes_one_activity_with_a_step() -> None:
-    conv = _conv(title="Side chat mechanics")
+    conv = _conv(title="Auth flow mechanics")
     items = [
-        _msg("u1", "user", "research side chat mechanics", created_at=1),
-        _call("fc1", "memory_search", {"query": "side chat"}, created_at=2),
+        _msg("u1", "user", "research auth flow mechanics", created_at=1),
+        _call("fc1", "memory_search", {"query": "auth flow"}, created_at=2),
         _call_output("fo1", "found 3 notes", created_at=3),
-        _msg("a1", "assistant", "Researched side chat mechanics with quotes", created_at=4),
+        _msg("a1", "assistant", "Researched auth flow mechanics with quotes", created_at=4),
     ]
     activities = _activities_for_conversation(
         _FakeItemsStore(items), conv, include_step_detail=False
@@ -217,17 +217,17 @@ def test_turn_with_tool_call_becomes_one_activity_with_a_step() -> None:
     activity = activities[0]
     assert activity.kind == "turn"
     assert activity.chat_id == "conv_1"
-    assert activity.title == "Research side chat mechanics", "titled by the tidied request"
+    assert activity.title == "Research auth flow mechanics", "titled by the tidied request"
     assert activity.source == "turn"
-    assert activity.summary == "Researched side chat mechanics with quotes"
+    assert activity.summary == "Researched auth flow mechanics with quotes"
     assert activity.title_prompt is not None, "a model title is still to be written"
-    assert "What was done for it: Searched memory for 'side chat'" in activity.title_prompt
-    assert activity.outcome == "Researched side chat mechanics with quotes"
+    assert "What was done for it: Searched memory for 'auth flow'" in activity.title_prompt
+    assert activity.outcome == "Researched auth flow mechanics with quotes"
     assert activity.status == STATUS_DONE
     assert activity.started_at == 1
     assert activity.finished_at == 4
     assert len(activity.steps) == 1
-    assert activity.steps[0].title == "Searched memory for 'side chat'"
+    assert activity.steps[0].title == "Searched memory for 'auth flow'"
     assert activity.steps[0].detail is None  # not requested
 
 
@@ -459,7 +459,7 @@ def test_sub_agent_activity_names_the_chat_that_started_it() -> None:
 
 
 def test_system_started_turn_is_titled_by_the_chat() -> None:
-    conv = _conv(title="Side chat mechanics")
+    conv = _conv(title="Auth flow mechanics")
     items = [
         _msg("u1", "user", "[System: sub-agent researcher/x finished (completed)]", created_at=1),
         _call("fc1", "sys_read_inbox", {}, created_at=2),
@@ -475,7 +475,7 @@ def test_system_started_turn_is_titled_by_the_chat() -> None:
 
 def test_flagged_notice_without_the_legacy_prefix_is_still_system_started() -> None:
     # A wake notice is recognised by the runtime's flag, not by how its text opens.
-    conv = _conv(title="Side chat mechanics")
+    conv = _conv(title="Auth flow mechanics")
     items = [
         _msg("u1", "user", "Researcher finished: the result", created_at=1, is_system_notice=True),
         _call("fc1", "sys_read_inbox", {}, created_at=2),
@@ -623,7 +623,7 @@ def test_generic_helper_title_falls_back_to_the_delegated_task_and_asks_for_a_ti
 
 
 def test_a_machine_readable_reply_gives_no_summary_and_no_title() -> None:
-    conv = _conv(title="Side chat mechanics")
+    conv = _conv(title="Auth flow mechanics")
     items = [
         _msg("u1", "user", "[System: sub-agent analyst/x finished (completed)]", created_at=1),
         _call("fc1", "sys_read_inbox", {}, created_at=2),
@@ -633,7 +633,7 @@ def test_a_machine_readable_reply_gives_no_summary_and_no_title() -> None:
         _FakeItemsStore(items), conv, include_step_detail=False
     )
     assert activity.summary is None
-    assert activity.title == "Side chat mechanics"
+    assert activity.title == "Auth flow mechanics"
     assert activity.title_prompt is None
 
 
