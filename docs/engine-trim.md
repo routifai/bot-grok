@@ -115,16 +115,16 @@ don't use, so it can be removed before production.
 
 ## Follow-ups from the web cut
 
-- Host folder (2026-10-17, `38eb06fc0`, `df9118488`): `deployment/computer/*` is `host/bin`, `host/share`, `host/tests` (ADR 0019). Image, service and Dockerfile names unchanged until the Computer → host rename wave. `host/tests/test_dashboard.py` needs pandas, which the engine venv lacks; the CI Python job must install the host test extras or run it in the host image.
+- Host folder (2026-10-17, `38eb06fc0`, `df9118488`): `deployment/computer/*` is `host/bin`, `host/share`, `host/tests` (ADR 0019). Image, service and Dockerfile names unchanged until the Computer → host rename wave. `host/tests/test_dashboard.py` needs pandas, which the engine venv lacks. Closed 2026-10-17, `7493c3b88`: CI's `host-tests` job runs `host/tests` with pandas and pytest.
 
 - Web move (2026-10-17, `edda299ee`, `100d359bd`): `apps/web` is `web/app`, `packages` is `web/packages` (ADR 0019). Package names unchanged. Root `NOTICE` still names paths that no longer exist (`infra/sandboxes`, `features/decks/edit/bridge.js`); rewrite it in the docs wave.
 
 - Web structure pass (2026-10-17, `241f34937`..`bcb7e66f9`): features no longer import from pages; `pages/muse` is `pages/app`; CSS prefix `rk-` is `sc-`. Two seams remain: `lib/useMuseLiveState` composes `features/approvals` and `features/computer`, and `components/conversation` imports features because the fork thread renders the message bubble. Both resolve when side chats and forks go (ADR 0021).
-- `web/packages/chat-ui` `markdown.test.ts` fails on a dropped React Native markdown package; delete the test or the native code path with it.
+- `web/packages/chat-ui` `markdown.test.ts` failed on a dropped React Native markdown package. Closed 2026-10-17, `2ad649d8f`: `linkifyExplicitUrls` (the native parser setup) and its test are deleted.
 
 - Root `NOTICE` still credits the nao-derived chart code that no longer exists; trim the entry.
 - `pnpm check` fails on a pre-existing error in `web/packages/adapters` (`BodyInit` not found in `src/omnigent/artifacts.ts`); CI's web job has been red on it since before the cut. Fix with the CI work in wave 5.
-- `tool-presentation.completeness.test.ts` fails because the `superchat-claude` bundle declares no `builtins`; decide whether the test or the bundle is right in wave 5.
+- `tool-presentation.completeness.test.ts` failed because the `superchat-claude` bundle declares no `builtins`. Closed 2026-10-17, `5c02e247a`: the bundle is right; the test reads the `tools: allow:` lists. 23 enabled tools still have no presentation entry and are listed in `NOT_YET_PRESENTED` (a shrink-only list) for the web side to register.
 
 ## Built on top (not removals)
 
@@ -133,17 +133,17 @@ don't use, so it can be removed before production.
 
 ## Follow-ups from the flatten
 
-- Import-linter contracts are written and both report direct-import violations: HOST → server (`runner/app.py` and `runner/tool_dispatch.py` → `server/schemas`; `runner/routing` → `server/host_registry`; `runner/subagent_routing` → `server/routing_backend`, `server/smart_routing`) and shared → superchat (`context/rollover` → `superchat/lineage`; `runtime/policies/{builder,engine}` → `superchat/{approvals,feature,models.budget,step_limit}`; `tools/manager` → `superchat/{feature,features}`). Fix by moving the shared shapes down (schemas the runner needs into `runtime/` or `entities/`, the policy hooks into a registry the features fill). Needs its own small record.
-- Bundles are still committed; render at image build and in the test fixture.
-- `uv.lock` still lists `omnigent-ui-sdk`; regenerate.
-- `decks/test_patches.py::test_decks_built_by_every_released_kit_can_switch_theme` fails (2 cases); not confirmed on the baseline.
+- Import-linter contracts reported direct-import violations (HOST → server and shared → superchat). Closed 2026-10-17, `4efee2e31`, `a12b346f3`, `fc7402988`: both contracts pass. Runner wire shapes moved to `runtime/runner_wire.py`; the subagent routing policy to `server/subagent_route_policy.py` and the family table to `models/model_fallbacks.py`; `runner/routing.py` types the host registry as a `HostPresence` protocol; `context/rollover` reads `entities/session_project.py`; `tools/manager` and `runtime/policies` take product tools, policies and owner budgets from registries `superchat/features.py` fills at import.
+- Bundles are still committed; render at image build and in the test fixture. Image half closed 2026-10-17, `3fb20de60`: the engine image renders them in its `agents` stage. The committed copy stays for the tests (the drift test compares it with a fresh render); delete it once the fixtures render.
+- `uv.lock` still listed `omnigent-ui-sdk`. Closed 2026-10-17, `7493c3b88`.
+- `decks/test_patches.py::test_decks_built_by_every_released_kit_can_switch_theme` failed (2 cases). Closed 2026-10-17, `7f913d509`: deleted. The product rename changed the deck markers (`data-nova-*` → `data-superchat-*`) and the legacy table text, so decks from the Nova-era kits cannot be adopted, and ADR 0020's database reset means none exist.
 
 ## Follow-ups from the engine side-chat cut
 
 - Web adapter types still name `lineage.kind "side"`, `seed_item_id` and `includeSeed` (`web/packages/adapters/src/omnigent/client/{transcript,sessions}.ts`); drop with the chip work.
-- Dead live-UI test infra: `tests/helpers/ui_server_compat.py`, `tests/test_ui_server_compat.py`, the `--omnigent-server-url` option.
+- Dead live-UI test infra: `tests/helpers/ui_server_compat.py`, `tests/test_ui_server_compat.py`, the `--omnigent-server-url` option. Closed 2026-10-17, `782ddf35c` (with the guardrail's base-URL check that read the option).
 - `CONTEXT.md` still defines Side chat and Fork; `openapi.json` is hand-edited and stale (regenerate in the docs wave with `engine/scripts/dump_openapi.py`).
-- `tests/server/test_app.py` (7 fail, 3 errors), `test_sessions_crud` (1), `test_manager` web_search (3), `test_me_muse` (1), `test_superside_chat_subagent_wake` (3) were already failing before these cuts; triage in the flatten wave.
+- `tests/server/test_app.py` (7 fail, 3 errors), `test_sessions_crud` (1), `test_manager` web_search (3), `test_me_muse` (1), `test_superside_chat_subagent_wake` (3) were already failing before these cuts. Closed 2026-10-17, `b32238e17` (fixed) and `7f913d509` (deleted with their subject: polly/debby seeders, codex label guard, web_search).
 
 ## Follow-ups from the legacy CLI cut
 
@@ -162,7 +162,7 @@ don't use, so it can be removed before production.
 
 - Codex SDK-family vocabulary remains in onboarding (`ambient`, `provider_config`, `harness_install`, `configure_models`, `detected`, `codex_auth_readiness`, `ucode_state`), models (`codex_model_vocabulary`, `model_catalog`, `model_override`, `model_fallbacks`), `runtime/workflow.py`, `cli_config.py`, `server/smart_routing.py`, `server/schemas.py`, `runner/subagent_routing.py`, `host/frames.py`; `inner/hook_scripts/subagent_router.py` still names `codex-native`; `CODEX_ACCESS_TOKEN` is still forwarded in `host/connect.py`. Cut with the legacy CLI.
 - `chat.py` imports the deleted `databricks_executor`; it goes with the legacy CLI.
-- Tests needing `asgiref` or `opentelemetry.sdk` fail to collect in the engine venv; the CI Python job must install the `dev` extras.
+- Tests needing `asgiref` or `opentelemetry.sdk` failed to collect in the engine venv. Closed 2026-10-17, `7493c3b88`: both are in the `test` group, and the suite collects with no errors.
 
 ## Follow-ups from the Databricks cut
 
@@ -170,3 +170,12 @@ don't use, so it can be removed before production.
 - `sandbox/copy_on_write.py` only ever accepted the removed OpenAI-agents harness; its gate now rejects every harness. Delete the feature whole with its `inner/os_env.py` import.
 - The executors' `gateway=True` path is NOT Databricks-only: `runtime/workflow.py` sets it for every `kind: gateway` provider, which the deployment config templates use for LiteLLM. Kept. (Corrected 2026-10-17.)
 - `databricks-sdk` stays in the `all` extra until the references above are gone; `uv.lock` was already stale before the cut.
+
+## Follow-ups from the layering and CI wave
+
+- `runner/routing.py` (`RunnerRouter`) is server-side code under `runner/`: only the server, Superchat's approvals and type hints import it, and it routes over the server's tunnel registry (`runner/transports/ws_tunnel/registry.py`, check that one's importers too). Move it to `server/` in a layering wave; the `HostPresence` protocol then goes.
+- The deck kit's legacy adoption (`_adopt_markers`, `_legacy_kits`, `kit/legacy.json`, the `_LEGACY_*` patterns, `test_every_released_block_text_is_in_the_shipped_table`) only serves decks saved by pre-marker kits, which were all Nova-era; cut it whole.
+- Runner tests that still drive `external_session_status`, which the runner no longer takes: the codex-native cases of `test_native_subagent_inbox_delivery.py` (32 fail), `test_runner_idle_active_work.py` (6), `test_suppress_recovery_turn.py` (4), `test_native_subagent_status_laundering.py` (2). Rewrite on `mark_subagent_terminal_and_wake` or delete with their native subject.
+- The full engine suite has not been run on a laptop since the cuts; the first CI run of the `engine` job will show what else is red. The job is not in `deploy-production`'s `needs` yet; add it once it is green.
+- `docs/setup.md` has no GitHub App section, though three engine modules now point at it for one.
+- `server/subagent_route_policy.py` still offers `claude-native` / `codex-native` counterparts (`_COUNTERPART_HARNESS`), with the smart routing tables noted under the legacy CLI cut.
