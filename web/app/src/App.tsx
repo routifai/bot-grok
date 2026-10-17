@@ -12,6 +12,7 @@ import { CardsPreviewPage } from "./pages/dev/CardsPreviewPage";
 import { DeckPreviewPage } from "./pages/dev/DeckPreviewPage";
 import { MemoryPreviewPage } from "./pages/dev/MemoryPreviewPage";
 import { SheetPreviewPage } from "./pages/dev/SheetPreviewPage";
+import { StudioPreviewPage } from "./pages/dev/StudioPreviewPage";
 import { ShellPage } from "./pages/Shell";
 
 export function App() {
@@ -37,6 +38,9 @@ export function App() {
   }
   if (import.meta.env.DEV && window.location.pathname === "/dev/deck") {
     return <DeckPreviewPage />;
+  }
+  if (import.meta.env.DEV && window.location.pathname === "/dev/studio") {
+    return <StudioPreviewPage />;
   }
   if (import.meta.env.DEV && window.location.pathname === "/dev/automations") {
     return <AutomationsPreviewPage />;

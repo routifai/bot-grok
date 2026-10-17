@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { watchFamily } from "../../../lib/family-stream";
 import { rpc } from "../../../lib/rpc";
 import { useVisiblePoll } from "../../../lib/use-visible-poll";
+import { notifyArtifactsChanged } from "../artifactChanges";
 
 /** How often an open studio re-reads its chat (a request just sent shows before its reply). */
 const CHAT_POLL_MS = 3000;
@@ -85,6 +86,8 @@ export function useStudioChat({
         void read();
       } else if (event.type === "artifactsChanged" && event.groupId === groupId) {
         onSavedRef.current?.();
+        // The card and the Library under the studio follow the new version too.
+        notifyArtifactsChanged();
       } else if (event.type === "open") {
         void read();
       }

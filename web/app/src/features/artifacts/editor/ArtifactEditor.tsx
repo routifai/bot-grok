@@ -595,18 +595,25 @@ function WorkingCanvas({ slides, selectable }: { slides: boolean; selectable: bo
     <div
       data-testid="studio-working"
       className={cn(
-        "sc-work absolute inset-2 z-10 flex items-center justify-center",
+        "absolute inset-2 z-10",
         selectable ? "pointer-events-none" : "pointer-events-auto",
       )}
-      data-live=""
     >
-      <div className="absolute inset-[1.5px] rounded-[12.5px] bg-content/55 backdrop-blur-[2px]" />
-      <div
-        role="status"
-        className="relative flex items-center gap-2 rounded-full bg-content px-3 py-1.5 text-[13px] text-foreground shadow-float"
-      >
-        <SuperchatOrb size={16} state="working" flies={false} />
-        {slides ? t`superchat is updating this slide…` : t`superchat is updating this file…`}
+      <div className="absolute inset-0 rounded-[14px] bg-content/65 backdrop-blur-[2px]" />
+      {/* The work strip's lit edge (ADR 0023), turning while the turn runs. */}
+      <span
+        aria-hidden="true"
+        className="sc-live-ring"
+        style={{ borderRadius: 14, padding: 1.5 }}
+      />
+      <div className="relative flex h-full items-center justify-center">
+        <div
+          role="status"
+          className="flex items-center gap-2 rounded-full bg-content px-3 py-1.5 text-[13px] text-foreground shadow-float"
+        >
+          <SuperchatOrb size={16} state="working" flies={false} />
+          {slides ? t`superchat is updating this slide…` : t`superchat is updating this file…`}
+        </div>
       </div>
     </div>
   );
