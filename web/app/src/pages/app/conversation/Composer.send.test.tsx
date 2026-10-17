@@ -1,26 +1,26 @@
 // @vitest-environment jsdom
 
-import type { Bot, ComputerStatus } from "@superchat/contracts";
+import type { Bot, HostStatus } from "@superchat/contracts";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 /** The Computer status the composer waits on, driven by the tests. */
-const computerBus = (() => {
-  const listeners = new Set<(status: ComputerStatus | null) => void>();
-  let current: ComputerStatus | null = null;
+const hostBus = (() => {
+  const listeners = new Set<(status: HostStatus | null) => void>();
+  let current: HostStatus | null = null;
   return {
     feed: {
       current: () => current,
-      subscribe: (listener: (status: ComputerStatus | null) => void) => {
+      subscribe: (listener: (status: HostStatus | null) => void) => {
         listeners.add(listener);
         return () => {
           listeners.delete(listener);
         };
       },
     },
-    emit(status: Partial<ComputerStatus> | null) {
-      current = status as ComputerStatus | null;
+    emit(status: Partial<HostStatus> | null) {
+      current = status as HostStatus | null;
       for (const listener of listeners) listener(current);
     },
     reset() {
@@ -38,9 +38,9 @@ const api = vi.hoisted(() => ({
   routines: { testRun: vi.fn() },
 }));
 vi.mock("../../../lib/rpc", () => ({ rpc: api }));
-vi.mock("./computerReady", async (orig) => ({
-  ...(await orig<typeof import("./computerReady")>()),
-  pollingComputerFeed: () => computerBus.feed,
+vi.mock("./hostReady", async (orig) => ({
+  ...(await orig<typeof import("./hostReady")>()),
+  pollingHostFeed: () => hostBus.feed,
 }));
 vi.mock("react-dom/client", async (orig) =>
   (await import("../../../test/i18n")).withI18nRoot(
@@ -128,7 +128,7 @@ async function mountWithAttachmentAndText(text: string) {
 }
 
 beforeEach(() => {
-  computerBus.reset();
+  hostBus.reset();
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.stubGlobal(
     "URL",
@@ -223,7 +223,7 @@ it("shows Reading on the chip and keeps Send disabled until the file is ready", 
 
 it("shows Starting your Computer on the chip while the Computer wakes", async () => {
   api.files.ingestAttachment.mockImplementation(() => new Promise(() => undefined));
-  computerBus.emit(STARTING);
+  hostBus.emit(STARTING);
   const { host } = await mountWithAttachmentAndText("hi");
   const chip = host.querySelector('[data-testid="composer-attachment"]') as HTMLElement;
   expect(chip.dataset.status).toBe("starting");

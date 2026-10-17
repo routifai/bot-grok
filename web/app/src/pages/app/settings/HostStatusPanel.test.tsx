@@ -20,9 +20,9 @@ vi.mock("@lingui/react/macro", () => {
 });
 vi.mock("../../../lib/rpc", () => ({ rpc: {} }));
 
-import { ComputerStatusPanel, type ComputerStatusWire } from "./ComputerStatusPanel";
+import { HostStatusPanel, type HostStatusWire } from "./HostStatusPanel";
 
-function makeWire(overrides: Partial<ComputerStatusWire> = {}) {
+function makeWire(overrides: Partial<HostStatusWire> = {}) {
   return {
     status: async () => ({ botId: "bot-1", state: "running", runnerReady: true }),
     sessionModel: async () => ({
@@ -31,14 +31,14 @@ function makeWire(overrides: Partial<ComputerStatusWire> = {}) {
       catalog: { defaultModel: "sonnet-5", models: [{ id: "sonnet-5", label: "Sonnet 5" }] },
     }),
     ...overrides,
-  } as unknown as ComputerStatusWire;
+  } as unknown as HostStatusWire;
 }
 
-async function render(wire: ComputerStatusWire) {
+async function render(wire: HostStatusWire) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
-  await act(async () => root.render(<ComputerStatusPanel botId="bot-1" wire={wire} />));
+  await act(async () => root.render(<HostStatusPanel botId="bot-1" wire={wire} />));
   await act(async () => {});
   return {
     container,

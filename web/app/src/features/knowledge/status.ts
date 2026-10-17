@@ -24,14 +24,14 @@ function emit() {
 }
 
 function nextDelay(): number {
-  if (snapshot?.computer === "asleep") return ASLEEP_MS;
+  if (snapshot?.host === "asleep") return ASLEEP_MS;
   return snapshot?.files.some((file) => file.state === "indexing") ? FAST_MS : IDLE_MS;
 }
 
 /** Keyword-only files get embedded once the person has a connection that can (their key was
  * added after the files were). Asked once per page load. */
 function maybeReindex(status: KnowledgeStatus) {
-  if (reindexAsked || status.computer === "asleep" || !status.embeddings.available) return;
+  if (reindexAsked || status.host === "asleep" || !status.embeddings.available) return;
   if (!status.files.some((file) => file.state === "searchable" && file.search === "keyword"))
     return;
   reindexAsked = true;
@@ -72,7 +72,7 @@ function subscribe(listener: () => void) {
 
 /** Ask for fresh state soon (a file just appeared): now, or once the floor has passed. */
 export function refreshKnowledge() {
-  if (listeners.size === 0 || inflight || snapshot?.computer === "asleep") return;
+  if (listeners.size === 0 || inflight || snapshot?.host === "asleep") return;
   clearTimeout(timer);
   timer = setTimeout(() => void poll(), Math.max(0, REFRESH_FLOOR_MS - (Date.now() - fetchedAt)));
 }
@@ -92,7 +92,7 @@ export function resetKnowledgeStatus() {
 export function useKnowledgeAsleep(): boolean {
   return useSyncExternalStore(
     subscribe,
-    () => snapshot?.computer === "asleep",
+    () => snapshot?.host === "asleep",
     () => false,
   );
 }

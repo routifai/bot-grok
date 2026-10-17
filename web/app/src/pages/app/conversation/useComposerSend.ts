@@ -19,13 +19,13 @@ import { revokePendingAttachmentPreviews } from "../../../lib/pending-attachment
 import { rpc } from "../../../lib/rpc";
 import { userFacingError } from "../../../lib/user-facing-error";
 import { markFirstRunSeen } from "../intro";
-import { followComputerStart, pollingComputerFeed, runWhenComputerReady } from "./computerReady";
 import { latestModelFailure } from "./failureNotes";
+import { followHostStart, pollingHostFeed, runWhenHostReady } from "./hostReady";
 import { attachmentsBlockSend, type PendingAttachment, readFileAsBase64 } from "./shared";
 import type { useMuseTranscript } from "./useMuseTranscript";
 
 /** The Computer is asleep and still waking: the upload could not land yet. */
-function isComputerStarting(error: unknown): boolean {
+function isHostStarting(error: unknown): boolean {
   return error instanceof ORPCError && error.code === "SERVICE_UNAVAILABLE";
 }
 
@@ -66,11 +66,11 @@ export function useComposerSend({
 }) {
   const { t } = useLingui();
   // What the steps that wait for a sleeping Computer read its status from.
-  const computerFeed = useMemo(
+  const hostFeed = useMemo(
     () =>
-      pollingComputerFeed(async () => {
+      pollingHostFeed(async () => {
         const botId = activeBotId.current;
-        return botId ? rpc.computer.status({ botId }) : null;
+        return botId ? rpc.host.status({ botId }) : null;
       }),
     [],
   );
@@ -193,16 +193,16 @@ export function useComposerSend({
           setAttachmentState(attachment.id, "uploading");
           const contentBase64 = await readFileAsBase64(attachment.file);
           signal.throwIfAborted();
-          stored = await runWhenComputerReady(
+          stored = await runWhenHostReady(
             () =>
               rpc.files.uploadAttachment(
                 { botId, name: attachment.file.name, mimeType, contentBase64 },
                 { signal },
               ),
             {
-              isStarting: isComputerStarting,
+              isStarting: isHostStarting,
               onStarting: () => setAttachmentState(attachment.id, "starting"),
-              feed: computerFeed,
+              feed: hostFeed,
               signal,
             },
           );
@@ -213,7 +213,7 @@ export function useComposerSend({
           setAttachmentState(attachment.id, "reading");
           // One call: the engine wakes the Computer and waits for the read. The chip follows the
           // Computer's own status while it does.
-          unfollow = followComputerStart(computerFeed, {
+          unfollow = followHostStart(hostFeed, {
             onStarting: () => setAttachmentState(attachment.id, "starting"),
             onUp: () => setAttachmentState(attachment.id, "reading"),
           });
@@ -227,7 +227,7 @@ export function useComposerSend({
         setAttachmentState(
           attachment.id,
           "error",
-          isComputerStarting(error)
+          isHostStarting(error)
             ? t`Your Computer is starting. Try again in a moment.`
             : isReadTimeout(error)
               ? t`Reading ${attachment.file.name} is taking too long. Try again in a moment.`
@@ -240,7 +240,7 @@ export function useComposerSend({
         }
       }
     },
-    [abortAttachment, computerFeed, setAttachmentState, t],
+    [abortAttachment, hostFeed, setAttachmentState, t],
   );
   const retryAttachment = useCallback(
     (attachment: PendingAttachment) => {
@@ -338,7 +338,7 @@ export function useComposerSend({
             setUploadStatus(t`Uploading ${uploaded + 1} of ${attachments.length}`);
             const contentBase64 = await readFileAsBase64(pending.file);
             const progress = t`Uploading ${uploaded + 1} of ${attachments.length}`;
-            stored = await runWhenComputerReady(
+            stored = await runWhenHostReady(
               () =>
                 rpc.files.uploadAttachment({
                   botId: botTarget,
@@ -347,9 +347,9 @@ export function useComposerSend({
                   contentBase64,
                 }),
               {
-                isStarting: isComputerStarting,
+                isStarting: isHostStarting,
                 onStarting: () => setUploadStatus(t`Starting your Computer…`),
-                feed: computerFeed,
+                feed: hostFeed,
                 signal: sendAbort.current.signal,
               },
             );
@@ -405,7 +405,7 @@ export function useComposerSend({
         if (showing) failSend();
         if (activeBotId.current === botTarget) {
           setSendError(
-            isComputerStarting(error)
+            isHostStarting(error)
               ? t`Your Computer is starting. Try again in a moment.`
               : userFacingError(error, t`Failed to send message`),
           );
@@ -421,7 +421,7 @@ export function useComposerSend({
       beginSend,
       botsRef,
       clearReply,
-      computerFeed,
+      hostFeed,
       failSend,
       flushPendingBrowserNotifications,
       openArtifact,

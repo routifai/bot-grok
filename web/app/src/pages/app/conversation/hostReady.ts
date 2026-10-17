@@ -1,26 +1,26 @@
-import type { ComputerStatus } from "@superchat/contracts";
+import type { HostStatus } from "@superchat/contracts";
 
 /** How long a step waits for a Computer that is starting (the managed launch window). */
-export const COMPUTER_LAUNCH_WINDOW_MS = 120_000;
+export const HOST_LAUNCH_WINDOW_MS = 120_000;
 
 /** The Computer's status as a step that waits on it sees it: it changes only while a step listens. */
-export interface ComputerFeed {
-  current(): ComputerStatus | null;
-  subscribe(listener: (status: ComputerStatus | null) => void): () => void;
+export interface HostFeed {
+  current(): HostStatus | null;
+  subscribe(listener: (status: HostStatus | null) => void): () => void;
 }
 
 /** How often a waiting step reads the Computer's status. */
-const COMPUTER_STATUS_POLL_MS = 3_000;
+const HOST_STATUS_POLL_MS = 3_000;
 
 /** A feed that reads the Computer's status (at once, then every few seconds) only while someone
  * is subscribed, so nothing polls while no step is waiting. */
-export function pollingComputerFeed(
-  read: () => Promise<ComputerStatus | null>,
-  intervalMs: number = COMPUTER_STATUS_POLL_MS,
-): ComputerFeed {
-  let latest: ComputerStatus | null = null;
+export function pollingHostFeed(
+  read: () => Promise<HostStatus | null>,
+  intervalMs: number = HOST_STATUS_POLL_MS,
+): HostFeed {
+  let latest: HostStatus | null = null;
   let timer: ReturnType<typeof setInterval> | undefined;
-  const listeners = new Set<(status: ComputerStatus | null) => void>();
+  const listeners = new Set<(status: HostStatus | null) => void>();
   const poll = () =>
     void read().then(
       (status) => {
@@ -49,30 +49,30 @@ export function pollingComputerFeed(
 }
 
 /** Up: running, its runner connected (or not known to be missing), and no launch in progress. */
-export function computerIsUp(status: ComputerStatus | null): boolean {
+export function hostIsUp(status: HostStatus | null): boolean {
   return Boolean(
     status && status.state === "running" && status.runnerReady !== false && !status.launch,
   );
 }
 
 /** The launch failed, so waiting longer cannot help. */
-function launchFailed(status: ComputerStatus | null): boolean {
+function launchFailed(status: HostStatus | null): boolean {
   return status?.launch?.stage === "failed" || status?.state === "error";
 }
 
-export class ComputerStartTimeout extends Error {
+export class HostStartTimeout extends Error {
   constructor() {
     super("The Computer did not start in time");
-    this.name = "ComputerStartTimeout";
+    this.name = "HostStartTimeout";
   }
 }
 
 /** Resolves when a status event says the Computer is up. Rejects when `signal` aborts, when the
  * launch fails, or when `windowMs` passes. */
-export function waitForComputerUp(
-  feed: ComputerFeed,
+export function waitForHostUp(
+  feed: HostFeed,
   signal: AbortSignal,
-  windowMs: number = COMPUTER_LAUNCH_WINDOW_MS,
+  windowMs: number = HOST_LAUNCH_WINDOW_MS,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) return reject(signal.reason);
@@ -83,13 +83,13 @@ export function waitForComputerUp(
       done();
     };
     const onAbort = () => finish(() => reject(signal.reason));
-    const react = (status: ComputerStatus | null) => {
-      if (computerIsUp(status)) finish(resolve);
-      else if (launchFailed(status)) finish(() => reject(new ComputerStartTimeout()));
+    const react = (status: HostStatus | null) => {
+      if (hostIsUp(status)) finish(resolve);
+      else if (launchFailed(status)) finish(() => reject(new HostStartTimeout()));
     };
     // An event that landed before this wait began is not lost: look at the status as it is now.
     const unsubscribe = feed.subscribe(react);
-    const timer = setTimeout(() => finish(() => reject(new ComputerStartTimeout())), windowMs);
+    const timer = setTimeout(() => finish(() => reject(new HostStartTimeout())), windowMs);
     signal.addEventListener("abort", onAbort, { once: true });
     react(feed.current());
   });
@@ -100,12 +100,12 @@ export function waitForComputerUp(
  * `onStarting` fires, the step waits for the status event that says the Computer is up (or for
  * `signal` to abort), then runs once more. No timer retries.
  */
-export async function runWhenComputerReady<T>(
+export async function runWhenHostReady<T>(
   attempt: () => Promise<T>,
   options: {
     isStarting: (error: unknown) => boolean;
     onStarting: () => void;
-    feed: ComputerFeed;
+    feed: HostFeed;
     signal: AbortSignal;
     windowMs?: number;
   },
@@ -117,9 +117,9 @@ export async function runWhenComputerReady<T>(
     if (!options.isStarting(error)) throw error;
     options.onStarting();
     try {
-      await waitForComputerUp(options.feed, options.signal, options.windowMs);
+      await waitForHostUp(options.feed, options.signal, options.windowMs);
     } catch (waitError) {
-      if (waitError instanceof ComputerStartTimeout) throw error;
+      if (waitError instanceof HostStartTimeout) throw error;
       throw waitError;
     }
   }
@@ -128,13 +128,13 @@ export async function runWhenComputerReady<T>(
 
 /** Calls `onStarting` / `onUp` as status events say the Computer goes down or up while a call
  * that wakes it (the engine's ingest) is in flight. Returns the unsubscribe. */
-export function followComputerStart(
-  feed: ComputerFeed,
+export function followHostStart(
+  feed: HostFeed,
   handlers: { onStarting: () => void; onUp: () => void },
 ): () => void {
-  const apply = (status: ComputerStatus | null) => {
+  const apply = (status: HostStatus | null) => {
     if (status === null) return;
-    if (computerIsUp(status)) handlers.onUp();
+    if (hostIsUp(status)) handlers.onUp();
     else handlers.onStarting();
   };
   apply(feed.current());

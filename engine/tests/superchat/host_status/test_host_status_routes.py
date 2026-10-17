@@ -1,4 +1,4 @@
-"""``GET /sessions/{id}/computer``: ready is a connected runner."""
+"""``GET /sessions/{id}/host``: ready is a connected runner."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
-from omnigent.superchat.computer.routes import register_computer_routes
+from omnigent.superchat.host_status.routes import register_host_status_routes
 
 
 class _Conversations:
@@ -29,7 +29,7 @@ class _Tunnels:
 
 def _client(conv: Any, tunnels: _Tunnels) -> TestClient:
     router = APIRouter()
-    register_computer_routes(router, conversation_store=_Conversations(conv))  # type: ignore[arg-type]
+    register_host_status_routes(router, conversation_store=_Conversations(conv))  # type: ignore[arg-type]
     app = FastAPI()
     app.include_router(router)
     app.state.tunnel_registry = tunnels
@@ -38,11 +38,11 @@ def _client(conv: Any, tunnels: _Tunnels) -> TestClient:
 
 def test_a_connected_runner_is_ready() -> None:
     conv = SimpleNamespace(runner_id="runner_1", host_id=None)
-    body = _client(conv, _Tunnels("runner_1")).get("/sessions/conv_1/computer").json()
+    body = _client(conv, _Tunnels("runner_1")).get("/sessions/conv_1/host").json()
     assert body == {"ready": True, "launch": None}
 
 
 def test_a_runner_that_is_not_connected_is_not_ready() -> None:
     conv = SimpleNamespace(runner_id="runner_1", host_id=None)
-    body = _client(conv, _Tunnels()).get("/sessions/conv_1/computer").json()
+    body = _client(conv, _Tunnels()).get("/sessions/conv_1/host").json()
     assert body == {"ready": False, "launch": None}

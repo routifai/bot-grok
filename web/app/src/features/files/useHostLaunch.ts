@@ -1,8 +1,8 @@
-import type { ComputerStatus } from "@superchat/contracts";
+import type { HostStatus } from "@superchat/contracts";
 import { useEffect, useState } from "react";
 import { rpc } from "../../lib/rpc";
 
-type Launch = NonNullable<ComputerStatus["launch"]>;
+type Launch = NonNullable<HostStatus["launch"]>;
 
 /** The Computer's start-up is brief and its stages move in seconds, so a short poll while a turn
  * is running is enough; nothing polls while idle. */
@@ -13,7 +13,7 @@ const inFlight = new Map<string, Promise<Launch | undefined>>();
 function readLaunch(botId: string): Promise<Launch | undefined> {
   const pending = inFlight.get(botId);
   if (pending) return pending;
-  const request = rpc.computer
+  const request = rpc.host
     .status({ botId })
     .then((status) => status.launch)
     .finally(() => inFlight.delete(botId));
@@ -23,7 +23,7 @@ function readLaunch(botId: string): Promise<Launch | undefined> {
 
 /** The stage of a Computer start-up in progress (or failed), polled only while `active`; `undefined`
  * when the Computer is up, there is none, or the status cannot be read. */
-export function useComputerLaunch(botId: string, active: boolean): Launch | undefined {
+export function useHostLaunch(botId: string, active: boolean): Launch | undefined {
   const [launch, setLaunch] = useState<Launch | undefined>();
   useEffect(() => {
     if (!active || !botId) {

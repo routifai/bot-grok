@@ -7,7 +7,7 @@ import { WaitingSheet } from "../../../features/approvals";
 import { LibraryScreen } from "../../../features/artifacts/LibraryScreen";
 import { LibraryArtifactView } from "../../../features/artifacts/library/LibraryArtifactView";
 import { AutomationsSheet } from "../../../features/automations";
-import { FilesTab } from "../../../features/computer/FilesTab";
+import { FilesTab } from "../../../features/files/FilesTab";
 import { rpc } from "../../../lib/rpc";
 import type { DockKey } from "../chrome/Dock";
 import { readFileAsBase64 } from "../conversation/shared";

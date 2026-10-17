@@ -98,7 +98,7 @@ def test_status_relays_the_index_and_marks_library_files(world: World) -> None:
         source_path=absolute,
     )
     body = world.client.get(f"{BASE}/status").json()
-    assert body["computer"] == "awake" and body["updated_at"]
+    assert body["host"] == "awake" and body["updated_at"]
     (file,) = body["files"]
     assert (file["state"], file["artifact_id"], file["path"]) == (
         "searchable",
@@ -114,7 +114,7 @@ def test_asleep_status_is_the_last_known_and_never_wakes(world: World) -> None:
     world.awake, world.wake_ok = False, False
     calls = len(world.runner.calls)
     asleep = world.client.get(f"{BASE}/status").json()
-    assert asleep["computer"] == "asleep" and asleep["files"][0]["state"] == "searchable"
+    assert asleep["host"] == "asleep" and asleep["files"][0]["state"] == "searchable"
     assert len(world.runner.calls) == calls and world.awake is False
 
 
@@ -124,7 +124,7 @@ def test_asleep_with_nothing_known_is_an_empty_status(world: World) -> None:
     assert body == {
         "files": [],
         "embeddings": {"available": False, "reason": None},
-        "computer": "asleep",
+        "host": "asleep",
         "updated_at": None,
     }
 

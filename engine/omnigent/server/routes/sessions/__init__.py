@@ -761,7 +761,7 @@ def create_sessions_router(
     from omnigent.server.routes.sessions.routes_permissions import register_permissions_routes
     from omnigent.server.routes.sessions.routes_resources import register_resources_routes
     from omnigent.server.routes.sessions.routes_workspace import register_workspace_routes
-    from omnigent.superchat.computer.routes import register_computer_routes
+    from omnigent.superchat.host_status.routes import register_host_status_routes
     from omnigent.superchat.muse import register_muse_routes
 
     core_ops = register_core_routes(
@@ -839,7 +839,7 @@ def create_sessions_router(
         permission_store=permission_store,
     )
 
-    register_computer_routes(
+    register_host_status_routes(
         router,
         conversation_store=conversation_store,
         auth_provider=auth_provider,

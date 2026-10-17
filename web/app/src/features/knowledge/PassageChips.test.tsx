@@ -18,7 +18,7 @@ vi.mock("../../lib/rpc", () => ({
   rpc: { knowledge: { pageThumbnail: (...a: unknown[]) => pageThumbnail(...a) } },
 }));
 
-vi.mock("../computer", () => ({
+vi.mock("../files", () => ({
   FilePreviewDialog: ({ botId, path, page }: { botId: string; path: string; page?: number }) => (
     <div data-testid="file-preview">{`${botId}|${path}|${page}`}</div>
   ),

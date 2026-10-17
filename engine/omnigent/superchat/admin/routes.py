@@ -85,7 +85,7 @@ def create_org_admin_router(
 
     # ---- people and usage ----------------------------------------------------------------
 
-    def _computer(host_store: Any, user_id: str) -> dict[str, Any] | None:
+    def _host(host_store: Any, user_id: str) -> dict[str, Any] | None:
         from omnigent.stores.host_store import host_is_live
 
         hosts = host_store.list_hosts(user_id)
@@ -138,7 +138,7 @@ def create_org_admin_router(
                         "monthly_limit_usd": budget.monthly_limit_usd,
                         "at_limit": budget.at_limit,
                     },
-                    "computer": _computer(host_store, account.id) if host_store else None,
+                    "host": _host(host_store, account.id) if host_store else None,
                 }
             )
         return sorted(rows, key=lambda r: r["id"])
@@ -383,7 +383,7 @@ def create_org_admin_router(
             "id": user_id,
             "deleted": removed,
             "sessions_deleted": sessions,
-            "computers_stopped": hosts_stopped,
+            "hosts_stopped": hosts_stopped,
             "model_connections_deleted": keys,
             "memory_claims_forgotten": memory_forgotten,
             "rows_removed": rows_removed,

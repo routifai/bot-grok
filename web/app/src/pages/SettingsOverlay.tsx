@@ -6,8 +6,8 @@ import { type ComponentType, useEffect, useRef, useState } from "react";
 import { SuperchatTile, type TileTone } from "../components/chrome/SuperchatTile";
 import { ModelsPanel, useEngineModelsStatus } from "../features/models";
 import { SuperchatSettingsPanel } from "./app/SuperchatSettingsPanel";
-import { ComputerStatusPanel } from "./app/settings/ComputerStatusPanel";
 import { GeneralPanel } from "./app/settings/GeneralPanel";
+import { HostStatusPanel } from "./app/settings/HostStatusPanel";
 
 export type SettingsSection = "superchat" | "general" | "models" | "computer";
 
@@ -135,7 +135,7 @@ export function SettingsOverlay({
               {section === "general" ? <GeneralPanel name={name} email={email} /> : null}
               {section === "computer" && museBot ? (
                 <div className="space-y-5">
-                  <ComputerStatusPanel botId={museBot.id} />
+                  <HostStatusPanel botId={museBot.id} />
                 </div>
               ) : null}
               {section === "models" && engineModels?.enabled ? (

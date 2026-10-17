@@ -25,7 +25,7 @@ export interface OmnigentKnowledgeStatus {
   files: OmnigentKnowledgeFile[];
   embeddings: { available: boolean; reason: string | null };
   /** `asleep`: `files` is the last-known snapshot; the call never wakes the Computer. */
-  computer: "awake" | "asleep";
+  host: "awake" | "asleep";
   updated_at: number | null;
 }
 

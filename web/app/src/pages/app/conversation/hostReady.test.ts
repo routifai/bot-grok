@@ -1,19 +1,19 @@
-import type { ComputerStatus } from "@superchat/contracts";
+import type { HostStatus } from "@superchat/contracts";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { pollingComputerFeed } from "./computerReady";
+import { pollingHostFeed } from "./hostReady";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
-const status = (state: ComputerStatus["state"]) => ({ state }) as ComputerStatus;
+const status = (state: HostStatus["state"]) => ({ state }) as HostStatus;
 
 it("reads the Computer's status only while a step listens, at once and then on an interval", async () => {
   const read = vi.fn(async () => status("booting"));
-  const feed = pollingComputerFeed(read, 1_000);
+  const feed = pollingHostFeed(read, 1_000);
   await vi.advanceTimersByTimeAsync(5_000);
   expect(read).not.toHaveBeenCalled();
 
-  const seen: Array<ComputerStatus | null> = [];
+  const seen: Array<HostStatus | null> = [];
   const unsubscribe = feed.subscribe((next) => seen.push(next));
   await vi.advanceTimersByTimeAsync(0);
   expect(read).toHaveBeenCalledTimes(1);
@@ -29,9 +29,9 @@ it("reads the Computer's status only while a step listens, at once and then on a
 });
 
 it("keeps what it last saw when a read fails", async () => {
-  const read = vi.fn<() => Promise<ComputerStatus | null>>();
+  const read = vi.fn<() => Promise<HostStatus | null>>();
   read.mockResolvedValueOnce(status("running")).mockRejectedValue(new Error("down"));
-  const feed = pollingComputerFeed(read, 1_000);
+  const feed = pollingHostFeed(read, 1_000);
   const unsubscribe = feed.subscribe(() => undefined);
   await vi.advanceTimersByTimeAsync(2_000);
   expect(feed.current()?.state).toBe("running");

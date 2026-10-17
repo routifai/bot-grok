@@ -1,15 +1,15 @@
 import { oc } from "@orpc/contract";
 import * as z from "zod";
 import { ARTIFACT_NAME_MAX_LENGTH, ATTACHMENT_MAX_BASE64_LENGTH } from "../attachments.js";
-import { ComputerStatusSchema } from "../domain.js";
+import { HostStatusSchema } from "../domain.js";
 import { Id } from "../ids.js";
 
 import { ArtifactSchema } from "./artifacts.js";
 import { botId } from "./shared.js";
 
-export const computerContract = {
-  computer: {
-    status: oc.input(botId).output(ComputerStatusSchema),
+export const filesContract = {
+  host: {
+    status: oc.input(botId).output(HostStatusSchema),
   },
   files: {
     list: oc.input(z.object({ botId: Id, path: z.string().max(1024).default("") })).output(

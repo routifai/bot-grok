@@ -1,4 +1,4 @@
-"""Session computer status route: whether the Computer is ready, and how its launch is going."""
+"""Session host status route: whether the host is ready, and how its launch is going."""
 
 from __future__ import annotations
 
@@ -18,23 +18,23 @@ from omnigent.stores import ConversationStore
 from omnigent.stores.permission_store import PermissionStore
 
 
-def register_computer_routes(
+def register_host_status_routes(
     router: APIRouter,
     *,
     conversation_store: ConversationStore,
     auth_provider: AuthProvider | None = None,
     permission_store: PermissionStore | None = None,
 ) -> None:
-    """Register the computer status route on router."""
+    """Register the host status route on router."""
 
     @router.get(
-        "/sessions/{session_id}/computer",
+        "/sessions/{session_id}/host",
         include_in_schema=False,
         response_model=None,
     )
-    async def get_computer(request: Request, session_id: str) -> dict[str, Any]:
+    async def get_host_status(request: Request, session_id: str) -> dict[str, Any]:
         """
-        Report whether the session's Computer is ready and how its launch is going.
+        Report whether the session's host is ready and how its launch is going.
 
         :param session_id: Session identifier, e.g. ``"conv_abc123"``.
         :returns: ``{"ready": bool, "launch": ...}``; ``ready`` is whether the Conversation's

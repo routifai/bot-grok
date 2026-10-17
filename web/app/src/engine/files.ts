@@ -38,7 +38,7 @@ function hasEngineCode(error: unknown, ...codes: string[]): boolean {
 }
 
 /** The Computer's runner is still (re)connecting; the panel shows "starting" and retries. */
-function isComputerStarting(error: unknown): boolean {
+function isHostStarting(error: unknown): boolean {
   return hasEngineCode(error, "runner_unavailable", "runner_capability_mismatch");
 }
 
@@ -50,7 +50,7 @@ function mapError(error: unknown): never {
   if (hasEngineCode(error, "not_found")) {
     throw new ORPCError("NOT_FOUND", { message: "File not found" });
   }
-  if (isComputerStarting(error)) {
+  if (isHostStarting(error)) {
     throw new ORPCError("SERVICE_UNAVAILABLE", { message: "Starting the Computer" });
   }
   throw error;
@@ -165,7 +165,7 @@ export async function uploadAttachment(
     }
     throw new ORPCError("CONFLICT", { message: "Could not pick a free name for this file" });
   } catch (error) {
-    if (isComputerStarting(error)) {
+    if (isHostStarting(error)) {
       throw new ORPCError("SERVICE_UNAVAILABLE", {
         message: "Your Computer is starting. Try again in a moment.",
       });
@@ -194,7 +194,7 @@ export async function ingestAttachment(input: {
     });
     return { fileId: read.file_id, name: read.name, pages: read.pages, chars: read.chars };
   } catch (error) {
-    if (isComputerStarting(error)) {
+    if (isHostStarting(error)) {
       throw new ORPCError("SERVICE_UNAVAILABLE", {
         message: "Your Computer is starting. Try again in a moment.",
       });

@@ -2,7 +2,7 @@ import { useLingui } from "@lingui/react/macro";
 import type { MuseState, Run, ThreadMessage } from "@superchat/contracts";
 import { useEffect, useMemo } from "react";
 import { notifyAsksChanged, useAsks } from "../features/approvals";
-import { useComputerLaunch } from "../features/computer/useComputerLaunch";
+import { useHostLaunch } from "../features/files/useHostLaunch";
 import { currentToolName, deriveMuseState, museActivityLabel } from "./museState";
 
 /** A run as the Muse surfaces see it. `startedAt`/`createdAt` is when it really began, so every
@@ -107,7 +107,7 @@ export function useMuseLiveState({
   }, [botId, waiting]);
   const state = deriveMuseState(runs, askCount);
   const busy = state === "thinking" || state === "working";
-  const launch = useComputerLaunch(botId, busy);
+  const launch = useHostLaunch(botId, busy);
   const activeRun = activeRunFor(runs);
   const activityMessage = activeRun ? liveMessage(messages) : undefined;
   // While the Computer is starting nothing else is happening, so say that instead of "Thinking…".

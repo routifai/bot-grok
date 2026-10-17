@@ -263,16 +263,16 @@ def create_knowledge_router(
                     "updated_at": int(time.time()),
                 }
                 remembered.remember_status(session_id, snapshot)
-                return {**snapshot, "computer": "awake"}
+                return {**snapshot, "host": "awake"}
         last = remembered.status.get(session_id)
         if last is None:
             return {
                 "files": [],
                 "embeddings": {"available": False, "reason": None},
-                "computer": "asleep",
+                "host": "asleep",
                 "updated_at": None,
             }
-        return {**last, "computer": "asleep"}
+        return {**last, "host": "asleep"}
 
     @router.post("/sessions/{session_id}/knowledge/search")
     async def search(request: Request, session_id: str, body: SearchBody) -> dict[str, Any]:

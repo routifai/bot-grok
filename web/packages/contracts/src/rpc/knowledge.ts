@@ -32,7 +32,7 @@ export const KnowledgeStatusSchema = z.object({
   files: z.array(KnowledgeFileSchema),
   embeddings: z.object({ available: z.boolean(), reason: z.string().nullable() }),
   /** `asleep`: the files are the last-known snapshot (possibly empty); status never wakes it. */
-  computer: z.enum(["awake", "asleep"]),
+  host: z.enum(["awake", "asleep"]),
   updatedAt: z.number().nullable(),
 });
 export type KnowledgeStatus = z.infer<typeof KnowledgeStatusSchema>;

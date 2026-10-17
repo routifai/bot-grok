@@ -52,8 +52,8 @@ vi.mock("@superchat/ui-web", () => ({
 vi.mock("./app/settings/GeneralPanel", () => ({
   GeneralPanel: () => <div data-testid="general-panel" />,
 }));
-vi.mock("./app/settings/ComputerStatusPanel", () => ({
-  ComputerStatusPanel: () => <div data-testid="computer-panel" />,
+vi.mock("./app/settings/HostStatusPanel", () => ({
+  HostStatusPanel: () => <div data-testid="computer-panel" />,
 }));
 vi.mock("./app/SuperchatSettingsPanel", () => ({
   SuperchatSettingsPanel: ({ bot }: { bot: Bot }) => (

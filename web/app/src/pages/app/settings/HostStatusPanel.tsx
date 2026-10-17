@@ -1,5 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
-import type { ComputerStatus } from "@superchat/contracts";
+import type { HostStatus } from "@superchat/contracts";
 import { useCallback, useEffect, useState } from "react";
 import { SettingsGroup, SettingsRow } from "../../../components/settings/kit";
 import { rpc } from "../../../lib/rpc";
@@ -7,8 +7,8 @@ import { rpc } from "../../../lib/rpc";
 type SessionModel = { harness: string; model: string | null; defaultModel: string | null };
 
 /** The calls the panel makes; the live RPC unless a test supplies its own. */
-export type ComputerStatusWire = {
-  status: (input: { botId: string }) => Promise<ComputerStatus>;
+export type HostStatusWire = {
+  status: (input: { botId: string }) => Promise<HostStatus>;
   sessionModel: (input: { botId: string }) => Promise<{
     harness: string;
     model: string | null;
@@ -17,11 +17,11 @@ export type ComputerStatusWire = {
 };
 
 /**
- * Made once: the RPC client hands out a new `rpc.computer` object on every read, so using it
+ * Made once: the RPC client hands out a new `rpc.host` object on every read, so using it
  * as a default would change the effect's deps each render and reload forever.
  */
-const LIVE_WIRE: ComputerStatusWire = {
-  status: (input) => rpc.computer.status(input),
+const LIVE_WIRE: HostStatusWire = {
+  status: (input) => rpc.host.status(input),
   sessionModel: (input) => rpc.engineModels.sessionModel(input),
 };
 
@@ -30,15 +30,15 @@ const POLL_MS = 10_000;
 const HARNESS_LABEL: Record<string, string> = { "claude-sdk": "Claude Agent SDK", pi: "Pi" };
 
 /** Settings > Computer: whether the Computer is up, and the harness and model the Conversation runs on. */
-export function ComputerStatusPanel({
+export function HostStatusPanel({
   botId,
   wire = LIVE_WIRE,
 }: {
   botId: string;
-  wire?: ComputerStatusWire;
+  wire?: HostStatusWire;
 }) {
   const { t } = useLingui();
-  const [status, setStatus] = useState<ComputerStatus | null>(null);
+  const [status, setStatus] = useState<HostStatus | null>(null);
   const [model, setModel] = useState<SessionModel | null>(null);
   const [failed, setFailed] = useState(false);
 

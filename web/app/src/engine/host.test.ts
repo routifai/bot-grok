@@ -6,7 +6,7 @@ vi.mock("./client", () => ({
   NO_EMAIL: "",
 }));
 
-const { computerRouter } = await import("./computer");
+const { hostRouter } = await import("./host");
 const { call } = await import("@orpc/server");
 
 function stubEngine(...bodies: unknown[]) {
@@ -20,18 +20,18 @@ function stubEngine(...bodies: unknown[]) {
   return fetchMock;
 }
 
-const status = () => call(computerRouter.computer.status, { botId: "muse-1" });
+const status = () => call(hostRouter.host.status, { botId: "muse-1" });
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe("computer status", () => {
-  it("reports status from the engine's Computer route", async () => {
+describe("host status", () => {
+  it("reports status from the engine's host route", async () => {
     const fetchMock = stubEngine({ ready: true, launch: null });
     expect(await status()).toEqual({ botId: "muse-1", state: "running", runnerReady: true });
-    expect((fetchMock.mock.calls[0] as [URL])[0].pathname).toBe("/v1/sessions/muse-1/computer");
+    expect((fetchMock.mock.calls[0] as [URL])[0].pathname).toBe("/v1/sessions/muse-1/host");
   });
 
-  it("reports the launch stage while the Computer starts, and drops it once ready", async () => {
+  it("reports the launch stage while the host starts, and drops it once ready", async () => {
     stubEngine(
       { ready: false, launch: { stage: "starting", error: null } },
       { ready: true, launch: null },

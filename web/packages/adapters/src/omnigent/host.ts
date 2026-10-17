@@ -2,29 +2,29 @@ import { base64ToBytes, bytesToBase64 } from "./base64.js";
 import type { OmnigentClientConfig } from "./client/core.js";
 import { omnigentHeaders, throwOnError } from "./client/core.js";
 
-export interface OmnigentComputerState {
+export interface OmnigentHostState {
   /** The session's runner is connected (Files and tools can reach it). */
   ready: boolean;
   /** The managed launch's progress while it is in flight or failed; `null` once it is up. */
   launch: { stage: string; error: string | null } | null;
 }
 
-export function computerUrl(config: OmnigentClientConfig, sessionId: string): URL {
-  return new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/computer`, config.baseUrl);
+export function hostStatusUrl(config: OmnigentClientConfig, sessionId: string): URL {
+  return new URL(`/v1/sessions/${encodeURIComponent(sessionId)}/host`, config.baseUrl);
 }
 
-/** `GET /v1/sessions/{id}/computer` — whether the session's Computer is ready and how its launch
- * is going (engine/omnigent/superchat/computer/routes.py). */
-export async function getOmnigentComputer(
+/** `GET /v1/sessions/{id}/host` — whether the session's Computer is ready and how its launch
+ * is going (engine/omnigent/superchat/host_status/routes.py). */
+export async function getOmnigentHost(
   config: OmnigentClientConfig,
   email: string,
   sessionId: string,
-): Promise<OmnigentComputerState> {
-  const response = await fetch(computerUrl(config, sessionId), {
+): Promise<OmnigentHostState> {
+  const response = await fetch(hostStatusUrl(config, sessionId), {
     headers: omnigentHeaders(config, email),
   });
-  await throwOnError(response, "get computer", config.secrets);
-  return (await response.json()) as OmnigentComputerState;
+  await throwOnError(response, "get host status", config.secrets);
+  return (await response.json()) as OmnigentHostState;
 }
 
 // The Muse's Computer workspace on the Omnigent side: the session filesystem routes

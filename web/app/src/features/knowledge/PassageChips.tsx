@@ -4,7 +4,7 @@ import { FileText } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useArtifactPanel, useReplyCardBotId } from "../../components/cards/context";
 import { rpc } from "../../lib/rpc";
-import { FilePreviewDialog } from "../computer";
+import { FilePreviewDialog } from "../files";
 
 const thumbnails = new Map<string, Promise<string | null>>();
 

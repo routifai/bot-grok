@@ -39,7 +39,7 @@ export const ActionApprovalRuleSchema = z.object({
 });
 export type ActionApprovalRule = z.infer<typeof ActionApprovalRuleSchema>;
 
-export const ComputerStatusSchema = z.object({
+export const HostStatusSchema = z.object({
   botId: Id,
   state: z.enum(["stopped", "booting", "running", "suspended", "error"]),
   /** The Conversation's runner is connected (Files and tools can reach it); absent when unknown. */
@@ -50,7 +50,7 @@ export const ComputerStatusSchema = z.object({
     .object({ stage: z.enum(["provisioning", "cloning", "starting", "connecting", "failed"]) })
     .optional(),
 });
-export type ComputerStatus = z.infer<typeof ComputerStatusSchema>;
+export type HostStatus = z.infer<typeof HostStatusSchema>;
 
 export const RunSchema = z.object({
   id: Id,
