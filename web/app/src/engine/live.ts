@@ -1,4 +1,4 @@
-// `live.*`: a page kept up to date on a schedule (engine/omnigent/omnigent/superchat/live). The
+// `live.*`: a page kept up to date on a schedule (engine/omnigent/superchat/live). The
 // engine owns the schedule, the sources and the update versions; this maps its rows to the shapes
 // the page speaks. The engine 404s another owner's page.
 import {

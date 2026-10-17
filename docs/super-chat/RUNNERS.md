@@ -18,12 +18,12 @@ managed by Superchat's sandbox supervisor (`deployment/computer/supervisor`,
 Superchat's gateway (`web/packages/adapters/src/omnigent/gateway.ts`,
 `resolveRunnerBinding`) picks "computer" by selecting the Omnigent
 `"computer"` sandbox provider
-(`engine/omnigent/omnigent/onboarding/sandboxes/computer.py`). The engine
+(`engine/omnigent/onboarding/sandboxes/computer.py`). The engine
 server provisions the container through Superchat's supervisor, starts
 `omnigent host` inside it, and that host spawns runners for every turn —
-see `engine/omnigent/omnigent/server/managed_hosts.py`
+see `engine/omnigent/server/managed_hosts.py`
 (`launch_managed_host`) and
-`engine/omnigent/omnigent/onboarding/sandboxes/base.py`
+`engine/omnigent/onboarding/sandboxes/base.py`
 (`ExecModelHostLauncher.start_host`).
 
 The computer container is Superchat's, not the session's: it outlives any one
@@ -35,7 +35,7 @@ launch for the same Muse reuses the same container and the same supervised
 
 A runner only ever sees what its agent spec gives it, plus a small
 allowlist of process essentials (`PATH`, `HOME`, locale, …) — see
-`_RUNNER_ENV_ALLOWLIST` in `engine/omnigent/omnigent/host/connect.py`. Two
+`_RUNNER_ENV_ALLOWLIST` in `engine/omnigent/host/connect.py`. Two
 things widen that on purpose:
 
 - **Harness credentials** (`ANTHROPIC_API_KEY` and friends —
@@ -69,7 +69,7 @@ global ids do not apply: set `OMNIGENT_HELPER_MODEL_FAST_PI` / `OMNIGENT_HELPER_
 `OMNIGENT_BROWSER_BACKEND=local` (set in the Omnigent server's own environment,
 and named in `runner_env` above) makes the `browser_*` tools drive the
 Chromium on the Computer's own screen (via `superchat-browser` /
-`superchat-page-browser`, `engine/omnigent/omnigent/tools/browser_backend.py`)
+`superchat-page-browser`, `engine/omnigent/tools/browser_backend.py`)
 instead of relaying to the desktop app. Unset, the default desktop backend
 applies, so a Computer without this variable has no working browser tools.
 
@@ -129,7 +129,7 @@ only relays.
 - The computer provider re-resolves a recreated container by Muse identity
   (bot + space), so a supervisor-side recreate does not strand the session.
 - The session route `GET /v1/sessions/{id}/computer`
-  (`engine/omnigent/omnigent/superchat/computer/routes.py`) answers
+  (`engine/omnigent/superchat/computer/routes.py`) answers
   `{ready, launch}`: whether the Conversation's runner is connected, and the launch stage
   while it is in flight or failed. Superchat's API
   (`apps/api/src/features/computer/service.ts`) turns that into the Computer status the

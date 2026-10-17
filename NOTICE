@@ -18,12 +18,12 @@ rules, infra/sandboxes/computer/deck-export/deck-capture-page.js and superchat-d
 apps/desktop/tests/main/pptx-editable-fidelity, pptx-layered-background and pptx-cjk-typeface
 tests (infra/sandboxes/computer/deck-export/*.test.ts), and packages/contracts/src/prompts/
 deck-framework.ts with runtime/deck-protocol.ts (the deck skeleton and navigation protocol,
-engine/omnigent/omnigent/superchat/decks/kit/skeleton.html).
+engine/omnigent/superchat/decks/kit/skeleton.html).
 
 Deck editing on the canvas ports ideas and code from Open Design's edit mode, also Apache-2.0
 at commit 802708f: apps/web/src/edit-mode/bridge.ts (the in-frame selection, inline text edit and
 hover logic, rewritten as web/app/src/features/decks/edit/bridge.js), apps/web/src/edit-mode/
-source-patches.ts (the patch kinds, rewritten in Python as engine/omnigent/omnigent/superchat/
+source-patches.ts (the patch kinds, rewritten in Python as engine/omnigent/superchat/
 decks/patches.py), the manual edit panel (rewritten small as StylePanel.tsx), and the
 attached-preview-comments block (deck-ask.ts). The untrusted-text sanitizer comes from this
 repository's Omnigent web client (engine/omnigent/web/src/lib/designModePrompt.ts).
@@ -33,16 +33,16 @@ MIT License, Copyright (c) 2025 Atharva Dharmendra Jagtap and dom-to-pptx contri
 browser bundle Open Design ships; its license is kept in
 infra/sandboxes/computer/deck-export/vendor/dom-to-pptx/LICENSE.
 
-Charts in HTML decks. The chart slide recipes (engine/omnigent/omnigent/superchat/decks/kit/charts)
+Charts in HTML decks. The chart slide recipes (engine/omnigent/superchat/decks/kit/charts)
 are the chart-bar, chart-line, chart-pie and chart-radar slides of Open Design's html-ppt
 design template (design-templates/html-ppt/templates/single-page, commit 802708f), MIT, Copyright
 (c) 2026 lewis (charts/LICENSE-html-ppt), plus the fixed-height chart container rule of its
 skills/data-report skill; each recipe carries its "Portions modified from" header. They draw with
 Chart.js 4.4.3 (MIT, Copyright (c) 2014-2024 Chart.js Contributors), vendored unchanged in
-engine/omnigent/omnigent/superchat/decks/kit/vendor/chart.js. The PowerPoint export reads each
+engine/omnigent/superchat/decks/kit/vendor/chart.js. The PowerPoint export reads each
 Chart.js chart and writes a native chart through a small patch to the vendored dom-to-pptx
 (infra/sandboxes/computer/deck-export/vendor/dom-to-pptx/README.md). The native-object test helper
-(engine/omnigent/tests/superchat/decks/pptx_native.py) is ported from Open Design's humanize-ppt
+(engine/tests/superchat/decks/pptx_native.py) is ported from Open Design's humanize-ppt
 plugin (plugins/community/humanize-ppt/scripts/pptx_qa.py, commit 802708f), MIT, Copyright (c) 2026
 LearnPrompt.
 
@@ -53,7 +53,7 @@ from" header: the report header, the KPI cards with a sparkline and change, the 
 fixed-height chart boxes and the data table. It inlines the same vendored Chart.js 4.4.3 (MIT) as
 the decks.
 
-The deck themes (engine/omnigent/omnigent/superchat/decks/kit/templates, 18 of them) are rewritten
+The deck themes (engine/omnigent/superchat/decks/kit/templates, 18 of them) are rewritten
 from MIT-licensed Open Design design templates, each keeping its LICENSE file beside the theme and a
 "Design derived from ..." header in its theme.css. From zarazhangrui/beautiful-html-templates
 (Copyright (c) 2026 Zara Zhang): Blue Professional, Editorial Tri-Tone, Cartesian. From
@@ -83,10 +83,10 @@ Two small chat behaviors port ideas and wording from nao (https://github.com/get
 2025 nao Labs, commit 5bde830), Apache-2.0 (see LICENSE); only files without the "@license
 Enterprise" header were used. Each ported file carries a "Portions modified from getnao/nao
 <path>@5bde830, Apache-2.0; changes: ..." header:
-engine/omnigent/omnigent/superchat/cards/tools.py (the `ask_clarification` and `suggest_follow_ups`
+engine/omnigent/superchat/cards/tools.py (the `ask_clarification` and `suggest_follow_ups`
 tools, from apps/shared/src/tools/clarification.ts and suggest-follow-ups.ts; they emit Superchat's reply
 cards instead of nao's tool-call UI), and the memory extraction rules in
-engine/omnigent/omnigent/memory/upkeep.py, engine/omnigent/omnigent/superchat/daily_notes/
+engine/omnigent/memory/upkeep.py, engine/omnigent/superchat/daily_notes/
 quiet_moment.py and infra/omnigent/templates/AGENTS.md (from apps/backend/src/components/ai/
 memory-system-prompt.tsx and agents/memory/memory-extractor-llm.ts: standing instructions apart
 from profile facts, instructions gated on permanence signals, supersede on change). Superchat's
@@ -101,9 +101,9 @@ and multi-get; status) are adapted from the pi-qmd extension and its qmd-knowled
 hjanuschka, licensed under the MIT License (declared in its package.json and README; the repository
 ships no separate LICENSE file), which wraps qmd (https://github.com/tobi/qmd, MIT, Copyright (c)
 Tobi Lutke). No qmd or pi-qmd code is included: the tools are re-implemented in Python over SQLite
-FTS5 and sqlite-vec (omnigent/runner/knowledge).
+FTS5 and sqlite-vec (omnigent/superchat/knowledge).
 
-Charts. The chart capability (packages/charts, engine/omnigent/omnigent/superchat/charts,
+Charts. The chart capability (packages/charts, engine/omnigent/superchat/charts,
 apps/api/src/features/charts, web/app/src/features/charts) contains portions modified from nao
 (https://github.com/getnao/nao, commit 5bde830), Copyright 2025 nao Labs, licensed under the Apache
 License 2.0 (see LICENSE); files under nao's `@license Enterprise` headers were not used. Each ported

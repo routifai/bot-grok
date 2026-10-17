@@ -2,7 +2,7 @@ import type { OmnigentClientConfig } from "./core.js";
 import { omnigentHeaders, throwOnError } from "./core.js";
 import { streamOmnigentSse } from "./sessions.js";
 
-/** One block of a transcript message (engine/omnigent/omnigent/superchat/transcript/blocks.py). */
+/** One block of a transcript message (engine/omnigent/superchat/transcript/blocks.py). */
 export type OmnigentTranscriptBlock =
   | { type: "text"; text: string }
   | {

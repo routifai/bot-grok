@@ -56,16 +56,15 @@ RUN --mount=type=secret,id=ca_bundle,target=/usr/local/share/ca-certificates/ca_
 ENV PIP_CERT=/etc/ssl/certs/ca-certificates.crt \
     REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 WORKDIR /src
-# The package, its two sibling SDKs (hard dependencies, installed from the same tree) and the
+# The package, its sibling SDK (a hard dependency, installed from the same tree) and the
 # attribution files the image redistributes.
-COPY engine/omnigent/pyproject.toml engine/omnigent/setup.py engine/omnigent/LICENSE engine/omnigent/NOTICE ./
-COPY engine/omnigent/sdks/python-client/ ./sdks/python-client/
-COPY engine/omnigent/sdks/ui/ ./sdks/ui/
-COPY engine/omnigent/omnigent/ ./omnigent/
+COPY engine/pyproject.toml engine/setup.py engine/LICENSE engine/NOTICE ./
+COPY engine/sdks/python-client/ ./sdks/python-client/
+COPY engine/omnigent/ ./omnigent/
 RUN python -m venv /opt/venv
 ENV PATH=/opt/venv/bin:${PATH}
 RUN if [ -n "${TORCH_INDEX_URL}" ]; then pip install --index-url "${TORCH_INDEX_URL}" torch; fi \
- && pip install --index-url "${PYPI_INDEX_URL}" ".[${ENGINE_EXTRAS}]" ./sdks/python-client ./sdks/ui \
+ && pip install --index-url "${PYPI_INDEX_URL}" ".[${ENGINE_EXTRAS}]" ./sdks/python-client \
  && ! grep -R --include='*.pth' -nE '/src(/|$)' /opt/venv/lib/python*/site-packages
 
 # ── engine: the image that runs ────────────────────────────────────────────────
@@ -86,7 +85,7 @@ COPY --from=python /src/LICENSE /src/NOTICE /opt/engine/
 COPY deployment/entrypoint.py /app/entrypoint.py
 # The agent bundles the engine offers, the config templates and the start script that renders one
 # of them from the environment, then runs the entrypoint.
-COPY deployment/engine/agents/ /opt/bundle/agents/
+COPY engine/agents/bundles/ /opt/bundle/agents/
 COPY --chmod=755 deployment/engine/start.sh deployment/engine/config.yaml.tmpl \
      deployment/engine/config.litellm.yaml.tmpl deployment/engine/config.byok.yaml.tmpl /opt/bundle/engine/
 # The web, served at "/" with an SPA fallback; /v1 and /health stay the API, /apps/<slug> the

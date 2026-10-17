@@ -63,7 +63,7 @@ HERE = Path(__file__).resolve().parent
 SHARE = Path("/usr/local/share/superchat/dashboard")
 CHARTJS_IN_REPO = (
     HERE.parent.parent
-    / "engine/omnigent/omnigent/superchat/decks/kit/vendor/chart.js/chart.umd.js"
+    / "engine/omnigent/superchat/decks/kit/vendor/chart.js/chart.umd.js"
 )
 
 SUFFIX = ".dashboard.html"

@@ -16,6 +16,9 @@
       "!**/test-report",
       "!**/data",
       "!engine/omnigent",
+      "!engine/tests",
+      "!engine/sdks",
+      "!engine/openapi.json",
       "!host/share/deck-export/fixtures"
     ]
   },

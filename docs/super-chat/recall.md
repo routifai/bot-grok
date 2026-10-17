@@ -3,7 +3,7 @@
 Status: proposal, 2026-10-14. Builds on `context-memory-plan.md` slices 1–3, which are now in the code
 (`1d08b78c4` … `f41ae4765`): anchor reads, tool digests in replay, prefix delta, the tagged state file,
 `state_close`, the journal under `~/workspace/memory/`, and `memory/` as an index root. Paths starting with
-`omnigent/` are relative to `engine/omnigent/`.
+`omnigent/` are relative to `engine/`.
 
 ## 1. The question
 
@@ -23,7 +23,7 @@ Order the model reads it in, after slices 1–3. Sizes are the budgets in code.
 | # | Layer | Source | Size | Notes |
 |---|-------|--------|------|-------|
 | 1 | System prompt | bundle `AGENTS.md` + framework rules + tool-name note | ≈ 11k tok, cached | Rebuilt on hash change; the client now cold-starts with history (`claude_sdk_executor.py`) |
-| 2 | Tools | allow list `deployment/engine/templates/config.yaml.tmpl:48-70` | fixed | `memory_*`, `session_history`, `state_close`, `files_*`, `open_project`, `side_chat_open`, `start_helper`, … |
+| 2 | Tools | allow list `engine/agents/templates/config.yaml.tmpl:48-70` | fixed | `memory_*`, `session_history`, `state_close`, `files_*`, `open_project`, `side_chat_open`, `start_helper`, … |
 | 3 | Checkpoint | tagged state file + header | ≤ budget (`context/state_file.py:fit_budget`) | Entries `[tag · date]`, repaired and clipped by code after each rewrite |
 | 4 | Kept tail | whole turns since the anchor, tool calls as digests | ≤ 16k tok rendered | `context/tool_digest.py` |
 | 5 | Turns since the anchor | the record, read from the anchor | until threshold | `after=<anchor>` |
@@ -334,7 +334,7 @@ the same question with different shapes. The cut keeps every capability and remo
 
 ### 9.1 Model-facing tools
 
-| Today (allow list `deployment/engine/templates/config.yaml.tmpl:48-70`) | Fate | Replaced by |
+| Today (allow list `engine/agents/templates/config.yaml.tmpl:48-70`) | Fate | Replaced by |
 |------|------|-------------|
 | `files_search`, `files_vsearch`, `files_query` | **Cut** two, rename one | `recall`: `queries[≤3]`, `sources`, filters `project` / `file` / `chat` / `since` / `until`, `recency: on|off`, `rerank`. Hybrid by default; keyword-only is what the index returns when the owner cannot embed, with the reason, as today |
 | `memory_search` | **Cut** | `recall` with `sources: memory` (fused) or `sources: [memory]` alone |
@@ -381,4 +381,4 @@ consolidation follows the web's switch, route by route.
 - Memory layer comparisons consulted: https://dev.to/plur9/mem0-vs-letta-vs-zep-which-should-you-use-for-agent-memory-1n8m ,
   https://mcp.directory/blog/mem0-vs-letta-vs-zep-vs-cognee-2026 , https://vectorize.io/articles/langchain-memory-alternatives
 - This repo: `docs/adr/0014-files-live-in-the-computer.md`, `docs/super-chat/context-memory-plan.md`,
-  `omnigent/runner/knowledge/indexer.py`, `omnigent/runner/memory/files.py`.
+  `omnigent/superchat/knowledge/indexer.py`, `omnigent/runner/memory/files.py`.

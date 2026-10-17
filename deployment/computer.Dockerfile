@@ -36,12 +36,11 @@ RUN --mount=type=secret,id=ca_bundle,target=/usr/local/share/ca-certificates/ca_
 ENV PIP_CERT=/etc/ssl/certs/ca-certificates.crt \
     REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 WORKDIR /src
-COPY engine/omnigent/pyproject.toml engine/omnigent/setup.py engine/omnigent/LICENSE engine/omnigent/NOTICE ./
-COPY engine/omnigent/sdks/python-client/ ./sdks/python-client/
-COPY engine/omnigent/sdks/ui/ ./sdks/ui/
-COPY engine/omnigent/omnigent/ ./omnigent/
+COPY engine/pyproject.toml engine/setup.py engine/LICENSE engine/NOTICE ./
+COPY engine/sdks/python-client/ ./sdks/python-client/
+COPY engine/omnigent/ ./omnigent/
 RUN python3 -m venv /opt/venv \
- && /opt/venv/bin/pip install --index-url "${PYPI_INDEX_URL}" . ./sdks/python-client ./sdks/ui \
+ && /opt/venv/bin/pip install --index-url "${PYPI_INDEX_URL}" . ./sdks/python-client \
  && ! grep -R --include='*.pth' -nE '/src(/|$)' /opt/venv/lib/python*/site-packages
 
 # ── computer: the image that runs ──────────────────────────────────────────────
@@ -130,8 +129,8 @@ COPY --chmod=644 host/share/deck-export/deck-capture-page.js \
      host/share/deck-export/vendor/dom-to-pptx/dom-to-pptx.bundle.js.gz /usr/local/share/superchat/deck-export/
 COPY --chmod=644 host/share/deck-export/vendor/dom-to-pptx/LICENSE /usr/local/share/superchat/deck-export/dom-to-pptx.LICENSE
 COPY --chmod=644 host/share/dashboard/template.html /usr/local/share/superchat/dashboard/template.html
-COPY --chmod=644 engine/omnigent/omnigent/superchat/decks/kit/vendor/chart.js/chart.umd.js /usr/local/share/superchat/dashboard/chart.umd.js
-COPY --chmod=644 engine/omnigent/omnigent/superchat/decks/kit/vendor/chart.js/LICENSE.md /usr/local/share/superchat/dashboard/chart.js.LICENSE.md
+COPY --chmod=644 engine/omnigent/superchat/decks/kit/vendor/chart.js/chart.umd.js /usr/local/share/superchat/dashboard/chart.umd.js
+COPY --chmod=644 engine/omnigent/superchat/decks/kit/vendor/chart.js/LICENSE.md /usr/local/share/superchat/dashboard/chart.js.LICENSE.md
 COPY host/share/pptx/skill/pptx-generator/ /usr/local/share/superchat/skills/pptx-generator/
 
 # The Computer user is uid 1000 with its home at /home/superchat (a per-person volume at runtime).

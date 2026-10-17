@@ -33,7 +33,7 @@ export interface PresentedStep {
   snippet: string | null;
 }
 
-/** The engine's always-on superside-chat tools (engine/omnigent/omnigent/tools/builtins/
+/** The engine's always-on superside-chat tools (engine/omnigent/tools/builtins/
  * memory.py, session_history.py, spawn.py, async_inbox.py) — registered for
  * every `omnigent.context.mode=superside-chat` session regardless of the agent bundle's own
  * `tools.builtins` list. Kept next to the registry so the completeness test

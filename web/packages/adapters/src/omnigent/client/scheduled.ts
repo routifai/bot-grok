@@ -1,7 +1,7 @@
 import type { OmnigentClientConfig } from "./core.js";
 import { omnigentHeaders, throwOnError } from "./core.js";
 
-/** A scheduled task (engine/omnigent/omnigent/server/routes/scheduled_tasks.py `_to_response`);
+/** A scheduled task (engine/omnigent/server/routes/scheduled_tasks.py `_to_response`);
  * `parent_session_id` and `agent_type` tie a followed topic to its Muse's Super Chat. */
 export interface OmnigentScheduledTask {
   id: string;
@@ -160,7 +160,7 @@ export async function deleteOmnigentScheduledTask(
 }
 
 /** One of the engine's own recurring background jobs (`GET /v1/me/system-jobs`,
- * engine/omnigent/omnigent/superchat/system_jobs/routes.py). Times are epoch seconds. */
+ * engine/omnigent/superchat/system_jobs/routes.py). Times are epoch seconds. */
 export interface OmnigentSystemJob {
   id: string;
   name: string;

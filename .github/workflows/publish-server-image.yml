@@ -12,7 +12,7 @@ on:
       - ".github/workflows/publish-server-image.yml"
       - "web/**"
       - "deployment/**"
-      - "engine/omnigent/**"
+      - "engine/**"
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"

@@ -1,7 +1,7 @@
 // The engine's transcript page -> Superchat's `ThreadMessagePage`. Mechanical only: snake_case to
 // camelCase and engine block types onto the chat's existing block types. Every rule (de-duping,
 // dropping system notices, error codes) is the engine's
-// (engine/omnigent/omnigent/superchat/transcript/). The wording of the file and secure-entry
+// (engine/omnigent/superchat/transcript/). The wording of the file and secure-entry
 // fallbacks is Superchat's.
 import type {
   MessageArtifact,

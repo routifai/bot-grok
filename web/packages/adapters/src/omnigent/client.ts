@@ -1,5 +1,5 @@
-// Minimal typed client for the Omnigent REST API (engine/omnigent/omnigent/server/API.md,
-// engine/omnigent/openapi.json): the barrel over ./client/*.
+// Minimal typed client for the Omnigent REST API (engine/omnigent/server/API.md,
+// engine/openapi.json): the barrel over ./client/*.
 export * from "./activity.js";
 export * from "./approvals.js";
 export * from "./chat-ownership.js";

@@ -3,7 +3,7 @@ import type { Activity, ActivityStep, ThreadMessage } from "@superchat/contracts
 // Fixture data for /dev/activity (ActivityPreviewPage.tsx): the Activity panel on in-memory
 // data, so the panel's grouping, live line, and run page can be reviewed without the
 // Omnigent backend (`activities.*` isn't served by the local dev API). Steps use real engine tool names and realistic
-// payloads (engine/omnigent/omnigent/tools/builtins/) so the icon + title + snippet registry
+// payloads (engine/omnigent/tools/builtins/) so the icon + title + snippet registry
 // (web/packages/core/src/tool-presentation.ts) has something true to life to present.
 
 const now = Date.now();
@@ -35,7 +35,7 @@ export const DEV_MEMORY_PROFILE = [
 const HELPER_STARTED = minutesAgo(4);
 const HELPER_CHAT_ID = "helper-1";
 
-/** A tool call's detail in the engine's own shape (engine/omnigent/omnigent/tools/builtins/
+/** A tool call's detail in the engine's own shape (engine/omnigent/tools/builtins/
  * spawn.py `_project_activity_item`/`_step_detail`): the call's JSON-encoded arguments
  * string, and the result's raw output string (often itself JSON-encoded). */
 function toolDetail(tool: string, args: Record<string, unknown>, content: string) {

@@ -1,5 +1,5 @@
-// Minimal typed client for the Omnigent REST API (engine/omnigent/omnigent/server/API.md,
-// engine/omnigent/openapi.json). Every call carries the identity/proxy headers Omnigent's
+// Minimal typed client for the Omnigent REST API (engine/omnigent/server/API.md,
+// engine/openapi.json). Every call carries the identity/proxy headers Omnigent's
 // header auth mode expects — no SDK dependency, just fetch and a tiny SSE line parser.
 import { MODEL_ERROR_COPY, redactSecrets } from "@superchat/core";
 
@@ -61,7 +61,7 @@ export function omnigentHeaders(
 }
 
 /** An Omnigent error response's `error.code` (e.g. `"stale_cursor"`,
- * engine/omnigent/omnigent/server/routes/_errors.py `STALE_CURSOR_RESPONSE`), when the body
+ * engine/omnigent/server/routes/_errors.py `STALE_CURSOR_RESPONSE`), when the body
  * parses as the documented `{error: {code, message}}` shape. */
 export class OmnigentApiError extends Error {
   code: string | undefined;

@@ -7,13 +7,13 @@ This guide is for two readers:
 - a **developer** wiring a website to the engine,
 - a **product person** who wants to know what the Muse can and cannot do.
 
-Names: the product is **Superchat**. The engine is **Omnigent**, vendored at `engine/omnigent`
-(Python package `engine/omnigent/omnigent`). All paths below are relative to the repo root. Route
+Names: the product is **Superchat**. The engine is **Omnigent**, vendored at `engine/`
+(Python package `engine/omnigent`). All paths below are relative to the repo root. Route
 paths start with `/v1`.
 
 Related pages: [WIRING.md](WIRING.md) (screen to engine call), [RUNNERS.md](RUNNERS.md) (where turns
 run, how runners get keys), [ENGINE-TRIM.md](ENGINE-TRIM.md) (engine code we may drop). The glossary
-is [CONTEXT.md](../../CONTEXT.md). Engine-side design notes live in `engine/omnigent/rollover/`.
+is [CONTEXT.md](../../CONTEXT.md). Engine-side design notes live in `docs/rollover/`.
 Delegation, Activity masking, session labels and failure modes: [delegation-and-activity.md](delegation-and-activity.md).
 What the model sees on each turn (instructions, history, Rollover, per-turn blocks, memory): [context-assembly.md](context-assembly.md).
 
@@ -70,16 +70,16 @@ Where each concept lives in the engine:
 
 | Concept | Engine code |
 |---|---|
-| Find or create the Muse | `engine/omnigent/omnigent/superchat/muse.py` |
-| Rollover | `engine/omnigent/omnigent/superchat/rollover.py`, `engine/omnigent/omnigent/context/rollover.py` |
-| Transcript | `engine/omnigent/omnigent/superchat/transcript/` |
-| Family event stream | `engine/omnigent/omnigent/superchat/family/` |
-| Helpers | `engine/omnigent/omnigent/superchat/helpers/`, `engine/omnigent/omnigent/superchat/subagents.py` |
-| Activity | `engine/omnigent/omnigent/superchat/activity/` |
-| Memory | `engine/omnigent/omnigent/memory/`, `engine/omnigent/omnigent/superchat/memory/` |
-| The Computer | `engine/omnigent/omnigent/superchat/computer/`, `engine/omnigent/omnigent/onboarding/sandboxes/computer.py` |
+| Find or create the Muse | `engine/omnigent/superchat/muse.py` |
+| Rollover | `engine/omnigent/superchat/rollover.py`, `engine/omnigent/context/rollover.py` |
+| Transcript | `engine/omnigent/superchat/transcript/` |
+| Family event stream | `engine/omnigent/superchat/family/` |
+| Helpers | `engine/omnigent/superchat/helpers/`, `engine/omnigent/superchat/subagents.py` |
+| Activity | `engine/omnigent/superchat/activity/` |
+| Memory | `engine/omnigent/memory/`, `engine/omnigent/superchat/memory/` |
+| The Computer | `engine/omnigent/superchat/computer/`, `engine/omnigent/onboarding/sandboxes/computer.py` |
 
-Each of these is a "feature" registered once in `engine/omnigent/omnigent/superchat/features.py`.
+Each of these is a "feature" registered once in `engine/omnigent/superchat/features.py`.
 
 The model loop runs on the **Claude SDK** harness by default, or on **Pi** (engine setting
 `OMNIGENT_SUPERCHAT_DEFAULT_AGENT=superchat-pi`, which also runs non-Claude models through OpenRouter; see
@@ -90,12 +90,12 @@ The model loop runs on the **Claude SDK** harness by default, or on **Pi** (engi
 
 **What it is.** The one long-running chat between a person and their Muse. In the engine it is a
 session with the label `omnigent.context.mode=superside-chat` and without the Helper label
-(`is_super_chat` in `engine/omnigent/omnigent/superchat/feature.py`). Helpers carry the same mode
+(`is_super_chat` in `engine/omnigent/superchat/feature.py`). Helpers carry the same mode
 label, which is how they get the same tools.
 
 ### How `GET /v1/me/muse` finds or creates it
 
-Code: `engine/omnigent/omnigent/superchat/muse.py`.
+Code: `engine/omnigent/superchat/muse.py`.
 
 1. The engine builds a **key** from the person and the tenant (space): a SHA-256 of
    `("omnigent-muse-v1", tenant, user)`, cut to 32 hex characters (`muse_key`). The same person in
@@ -126,7 +126,7 @@ Other Muse routes:
 
 **A fork never carries the Muse labels.** When a session is forked, the store drops
 `omnigent.superchat.muse` and `omnigent.superchat.muse.key` (`_MUSE_LABEL_KEYS` in
-`engine/omnigent/omnigent/stores/conversation_store/__init__.py`, applied in the fork path of
+`engine/omnigent/stores/conversation_store/__init__.py`, applied in the fork path of
 `.../sqlalchemy_store.py`), so a fork can never be returned as "my Conversation".
 
 ### Rollover: the Conversation never fills up
@@ -136,11 +136,11 @@ recent turns word for word. This is a **Rollover**. The summary is stored as a `
 The full history stays stored: the Muse reads it with its `session_history` tool, and the person
 still sees every message.
 
-Two triggers (`engine/omnigent/omnigent/superchat/rollover.py`):
+Two triggers (`engine/omnigent/superchat/rollover.py`):
 
 - **Size.** After a turn, if the reported context size reaches the threshold. The threshold is 60%
   of the model's window, capped at 200,000 tokens and never below 100,000
-  (`resolve_rollover_threshold` in `engine/omnigent/omnigent/context/rollover.py`).
+  (`resolve_rollover_threshold` in `engine/omnigent/context/rollover.py`).
 - **Idle.** The first message after a quiet period (default 12 hours,
   `OMNIGENT_ROLLOVER_IDLE_REFRESH_SECONDS`). This one runs before the turn, on purpose, so stale
   context is refreshed first.
@@ -151,7 +151,7 @@ The next turn waits (at most 60 seconds) only if the context is at or past **95%
 (`HARD_CONTEXT_WINDOW_FRACTION`). Only one rollover runs per session at a time. A turn that runs
 while the summary is being written is not lost: both readers split the record at the latest
 checkpoint with `split_at_latest_compaction`. Details:
-`engine/omnigent/rollover/NON-BLOCKING-ROLLOVER.md`.
+`docs/rollover/NON-BLOCKING-ROLLOVER.md`.
 
 After each rollover, memory Upkeep is scheduled for the owner (see [Memory](#6-memory)).
 
@@ -159,25 +159,25 @@ After each rollover, memory Upkeep is scheduled for the owner (see [Memory](#6-m
 runs) is a rollover with no summary: the Muse starts fresh. Memory, files, Helpers and
 Goals stay, and the old items stay stored. The transcript then starts at the reset, and
 `?before_reset=true` pages the history before it
-(`engine/omnigent/omnigent/superchat/transcript/reset.py`).
+(`engine/omnigent/superchat/transcript/reset.py`).
 
 ### Transcript API
 
-`GET /v1/sessions/{id}/transcript` (`engine/omnigent/omnigent/superchat/transcript/routes.py`)
+`GET /v1/sessions/{id}/transcript` (`engine/omnigent/superchat/transcript/routes.py`)
 returns a chat as **typed blocks**. It works for the Conversation and a Helper.
 
 - Query: `limit` (1 to 200, default 50), `before` (cursor), `before_reset`.
 - Response: `{data, has_more, older_cursor, lineage, reset, live}`.
 - `data` is a list of messages `{id, role, created_at, blocks}`. Block types:
   `text`, `card`, `helper`, `file`, `secure_entry`, `error`
-  (`engine/omnigent/omnigent/superchat/transcript/blocks.py`).
+  (`engine/omnigent/superchat/transcript/blocks.py`).
 - The engine does the work a client would otherwise copy: one block per `call_id`, system notices
   and hidden context dropped, a failed card or file call shows nothing, a running card is
   `pending`, a `start_helper` call becomes a `helper` block under the next assistant message, and an
   `error` item becomes an `error` block with a **code** (never text).
 - `lineage` tells a client what kind of session it holds: `{kind: super | helper, root_id,
   parent_id}`
-  (`engine/omnigent/omnigent/superchat/lineage.py`). The session snapshot has the same data in a
+  (`engine/omnigent/superchat/lineage.py`). The session snapshot has the same data in a
   `superchat` block.
 - `live` is true while a turn is in flight.
 - Every string is redacted of the secrets the engine knows.
@@ -230,7 +230,7 @@ still arrives in the inbox.
 
 `GET /v1/sessions/{id}/family/stream` is **one** stream for a Conversation and its Helpers. `{id}` is
 the Super Chat.
-Code: `engine/omnigent/omnigent/superchat/family/stream.py`.
+Code: `engine/omnigent/superchat/family/stream.py`.
 
 Events carry **ids only**. The client refetches what changed.
 
@@ -275,23 +275,23 @@ A Helper is a short-lived worker the Muse starts for one task while the conversa
 engine it is a **sub-agent** session (CONTEXT.md: "In the engine it is a Sub-agent").
 
 - The Muse calls the `start_helper` tool
-  (`engine/omnigent/omnigent/superchat/helpers/tools.py`). Arguments: `task` (the whole brief; the
+  (`engine/omnigent/superchat/helpers/tools.py`). Arguments: `task` (the whole brief; the
   Helper does not see the conversation), `model` (`fast` or `strong`, default `strong`), `reasoning`
   (optional), `files` (optional uploaded file ids). It can be called several times in one step to
   run Helpers in parallel. A repeat of the same task from the same chat within 10 seconds is
   treated as the same hand-off (`DEDUP_WINDOW_S` in
-  `engine/omnigent/omnigent/superchat/helpers/handlers.py`).
+  `engine/omnigent/superchat/helpers/handlers.py`).
 - The tool is offered only where a Helper type is declared in the agent bundle. In Superchat the
-  type is `worker`, which can start `subworker` parts (`deployment/engine/templates/agents/worker/config.yaml`).
+  type is `worker`, which can start `subworker` parts (`engine/agents/templates/agents/worker/config.yaml`).
   A `subworker` cannot start more. The nesting cap is: chat, Helper, one level of parts
-  (`refuse_subagent_nesting` in `engine/omnigent/omnigent/superchat/subagents.py`).
+  (`refuse_subagent_nesting` in `engine/omnigent/superchat/subagents.py`).
 - `fast` and `strong` are mapped to real models by engine config (`OMNIGENT_HELPER_MODEL_FAST`,
   `OMNIGENT_HELPER_MODEL_STRONG`, and `..._PI` variants for Pi). A choice with no model configured
   uses the parent's model. The Muse never names a model id.
 - **Concurrency.** At most 10 live Helpers per chat tree by default
   (`OMNIGENT_SUBAGENT_MAX_CONCURRENT`), plus each type's own `max_sessions`.
 - **What a Helper starts with.** Its Brief with the Memory Profile put in front
-  (`prepend_memory_profile`, called from `engine/omnigent/omnigent/runner/tool_dispatch.py`), only
+  (`prepend_memory_profile`, called from `engine/omnigent/runner/tool_dispatch.py`), only
   when a new Helper is created. See the note on conversation summaries in the last section of this
   page.
 - **Quiet background Helpers** (the daily Study, quiet-moment notes) run as scheduled or ad-hoc
@@ -304,7 +304,7 @@ engine it is a **sub-agent** session (CONTEXT.md: "In the engine it is a Sub-age
    containing the Helper's final message (first 4,000 characters; for more, the Muse is pointed at
    the Helper's history) and the names of files it saved
    (`format_subagent_wake_notice_with_result`; `_deliver_subagent_wake_post` in
-   `engine/omnigent/omnigent/runner/app.py`).
+   `engine/omnigent/runner/app.py`).
 2. That message starts a Muse turn, so the Muse can tell the person without the person writing
    anything. This is "the Muse speaks first". The notice instructs the Muse to deliver the finished
    thing, not a status update.
@@ -320,7 +320,7 @@ to it. Only its Originating Chat can cancel it, and only when the person asks.
 ### Activity
 
 An **Activity** is one piece of multi-step work. It is **never stored**: the engine derives it on
-read from conversations and items (`engine/omnigent/omnigent/superchat/activity/derive.py`).
+read from conversations and items (`engine/omnigent/superchat/activity/derive.py`).
 
 - One Activity is either a **Conversation turn** or a **whole Helper task**.
 - A chat turn is shown only when it did real work: at least 3 steps, or at least one work tool
@@ -339,12 +339,12 @@ read from conversations and items (`engine/omnigent/omnigent/superchat/activity/
 Routes: `GET /v1/sessions/{id}/activities` (`limit` 1 to 100, `before`, `tz` for day grouping),
 `GET /v1/sessions/{id}/activities/{activity_id}` (full steps), and the stream above. `{id}` is the
 Super Chat. Registered in
-`engine/omnigent/omnigent/server/routes/sessions/routes_items.py`.
+`engine/omnigent/server/routes/sessions/routes_items.py`.
 
 **Registering a tool in the Activity panel (Superchat).** A step never shows the tool's raw name, only an
 icon, a plain title and (when useful) a short snippet. All three come from one registry,
 `TOOL_PRESENTATION` in `web/packages/core/src/tool-presentation.ts`. When a tool is added to the agent
-bundle (`deployment/engine/agents/superchat-claude/`) or to the engine's always-on tools
+bundle (`engine/agents/bundles/superchat-claude/`) or to the engine's always-on tools
 (`ALWAYS_ON_SUPERSIDE_CHAT_TOOLS`), add an entry there with an icon (`ToolIconKey`), a
 `title(args)` derived only from the call's arguments, and a `snippet(output)`, or
 `tool-presentation.completeness.test.ts` fails. Map any new icon key in
@@ -354,7 +354,7 @@ bundle (`deployment/engine/agents/superchat-claude/`) or to the engine's always-
 
 An **Ask** is anything the Muse is waiting on the person for. Open Asks are listed by
 `GET /v1/me/asks` and answered with `POST /v1/me/asks/{ask_id}/answer`
-(`engine/omnigent/omnigent/superchat/approvals/`). Approvals have their own routes under
+(`engine/omnigent/superchat/approvals/`). Approvals have their own routes under
 `/v1/me/approvals/` (see the table in section 10).
 
 ## 6. Memory
@@ -363,15 +363,15 @@ The Muse remembers lasting facts about the person. Memory belongs to the **perso
 the Conversation and every Helper read and write the same set. The
 user is always resolved from the **owner of the calling session** on the server, never from tool
 arguments (`resolve_memory_user` in
-`engine/omnigent/omnigent/superchat/memory/tools.py`; `_resolve_user` in
-`engine/omnigent/omnigent/server/routes/session_memory.py`). A session merely shared with someone
+`engine/omnigent/superchat/memory/tools.py`; `_resolve_user` in
+`engine/omnigent/server/routes/session_memory.py`). A session merely shared with someone
 never exposes the owner's memory, even at edit level.
 
 ### What is stored
 
 A **claim** is one sentence about the person, plus where it came from. Table `memory_claims`
-(`engine/omnigent/omnigent/db/db_models.py`, store in
-`engine/omnigent/omnigent/stores/memory_store/`).
+(`engine/omnigent/db/db_models.py`, store in
+`engine/omnigent/stores/memory_store/`).
 
 | Field | Meaning |
 |---|---|
@@ -390,7 +390,7 @@ A **claim** is one sentence about the person, plus where it came from. Table `me
 
 When shown to a client, each claim gets an `origin`: `edited` (the person's edit), `said` (stated),
 or `noticed` (inferred). Search uses a rebuildable **hybrid index** (BM25 plus embeddings, txtai)
-over active claims, kept in step on every write (`engine/omnigent/omnigent/memory/index.py`). The
+over active claims, kept in step on every write (`engine/omnigent/memory/index.py`). The
 table is the source of truth.
 
 Memory needs the optional `memory` extra of the engine (`uv sync --extra memory`) and an embeddings
@@ -403,7 +403,7 @@ profile is empty, and the memory tools answer "long-term memory is not configure
 Two ways:
 
 1. **Right away, by the model.** Every superside-chat session has five tools
-   (`engine/omnigent/omnigent/superchat/memory/`): `memory_remember`, `memory_search`,
+   (`engine/omnigent/superchat/memory/`): `memory_remember`, `memory_search`,
    `memory_get`, `memory_explain` and `memory_forget`.
    - `memory_remember` saves a claim and indexes it immediately. A near-duplicate (high hybrid score
      and high word overlap) is **reinforced** instead of added (confidence +0.05). A claim is only
@@ -413,8 +413,8 @@ Two ways:
    - `memory_forget` is two steps: `confirm=false` returns a plan, `confirm=true` marks the claim
      `forgotten` and removes it from the index.
 2. **In the background, by Upkeep.** A job reads what the person wrote recently and extracts claims.
-   Code: `engine/omnigent/omnigent/memory/upkeep.py`, scheduling in
-   `engine/omnigent/omnigent/server/memory_upkeep.py`. It runs
+   Code: `engine/omnigent/memory/upkeep.py`, scheduling in
+   `engine/omnigent/server/memory_upkeep.py`. It runs
    - after every Rollover of a Super Chat family session, and
    - on an hourly sweep for every recently active owner
      (`OMNIGENT_UPKEEP_SWEEP_INTERVAL_SECONDS`), at most 4 owners at a time
@@ -452,8 +452,8 @@ claims expire from the profile after 30 days).
 
 - **Per-turn Memory Profile.** Before every turn in a superside-chat session, the runner fetches the
   person's profile from `GET /v1/sessions/{id}/memory/profile` and puts it in front of the
-  person's message (`engine/omnigent/omnigent/superchat/prompt_prefix.py`, called by
-  `_apply_turn_prefix_blocks` in `engine/omnigent/omnigent/runner/app.py`). It is fetched fresh each
+  person's message (`engine/omnigent/superchat/prompt_prefix.py`, called by
+  `_apply_turn_prefix_blocks` in `engine/omnigent/runner/app.py`). It is fetched fresh each
   turn because the SDK's system prompt is frozen per warm client. The block is wrapped:
   `[Standing memory about the user ... not a message from the user]` ... `[End of standing memory]`.
   The same prefix also carries the Projects list and a local-time line. Any failure means "no
@@ -474,7 +474,7 @@ claims expire from the profile after 30 days).
 ### Editing and forgetting (the Memory tab)
 
 All routes are under `/v1/sessions/{id}/memory/...` and need the caller to be the owner of the
-session (`engine/omnigent/omnigent/server/routes/session_memory.py`):
+session (`engine/omnigent/server/routes/session_memory.py`):
 
 - `GET .../memory/claims?kinds=a,b` lists active claims, newest first, including expired ones
   (`status: "expired"`; Superchat shows them dimmed, marked Expired, with only Forget).
@@ -491,7 +491,7 @@ showing them.
 ### Daily notes
 
 Besides claims, the engine keeps one **daily note** per person per local day
-(`engine/omnigent/omnigent/superchat/daily_notes/`). A person's edit to a section is protected;
+(`engine/omnigent/superchat/daily_notes/`). A person's edit to a section is protected;
 background writers only append to it.
 
 - `GET /v1/me/daily-notes?from&to&limit`, `GET /v1/me/daily-notes/{date}` (`today` works),
@@ -506,7 +506,7 @@ background writers only append to it.
 
 ### Not part of Superchat's memory
 
-The engine also has generic `hindsight_*` tools (`engine/omnigent/omnigent/tools/builtins/hindsight.py`)
+The engine also has generic `hindsight_*` tools (`engine/omnigent/tools/builtins/hindsight.py`)
 for an external memory service. They are not part of the Muse's memory described here, and I found
 no use of them in the Superchat agent bundles.
 
@@ -516,21 +516,21 @@ The Computer is the Muse's own machine: its screen, files and browser. Each Muse
 and every turn runs inside it (CONTEXT.md, [ADR 0004](../adr/0004-engine-owns-the-computer.md)).
 
 - **One per person per space.** The engine's `computer` sandbox provider
-  (`engine/omnigent/omnigent/onboarding/sandboxes/computer.py`) asks the supervisor for a container
+  (`engine/omnigent/onboarding/sandboxes/computer.py`) asks the supervisor for a container
   keyed by the session's `omnigent.computer.owner` label (the Muse key) and `omnigent.tenant`. The
   Muse's Helpers run on the same host.
 - **The home directory persists.** The provider registers
-  `workspace_survives_recreate=True` (`engine/omnigent/omnigent/onboarding/sandboxes/registry.py`).
+  `workspace_survives_recreate=True` (`engine/omnigent/onboarding/sandboxes/registry.py`).
   The Computer's home is a per-owner directory on the supervisor's disk
   (`<OMNIGENT_COMPUTER_HOME_ROOT>/homes/<key>`), so when the container is recreated, the files are
   still there. For a provider without this flag, a recreate stores an `info`-level `workspace_reset`
   notice in the chat (see [Errors and notices](#9-errors-and-notices)). Setup and the shared-path
   rule are in [RUNNERS.md](RUNNERS.md).
-- **Status route** (`engine/omnigent/omnigent/superchat/computer/routes.py`):
+- **Status route** (`engine/omnigent/superchat/computer/routes.py`):
   `GET /v1/sessions/{id}/computer` (`{ready, launch}`): whether the Conversation's runner is
   connected, and how the managed launch is going while it is in flight or failed.
 - **Files and artifacts.** The Muse saves deliverables with the `artifact_save` tool. The engine
-  stores them (`/v1/artifacts`, `engine/omnigent/omnigent/superchat/artifacts/`): a name that exists
+  stores them (`/v1/artifacts`, `engine/omnigent/superchat/artifacts/`): a name that exists
   gets a new version. Allowed kinds are `html`, `md`, `pdf`, `docx`, `xlsx`, `csv`, `pptx`, `png`,
   `jpg`, `txt`, `json`, up to 25 MB. HTML previews are served with a strict content security policy.
 - **In the transcript.** An `artifact_save` call that succeeded becomes a `file` block
@@ -545,7 +545,7 @@ and every turn runs inside it (CONTEXT.md, [ADR 0004](../adr/0004-engine-owns-th
 list; `{"archived": false}` restores it. The archived flag and an `omnigent.archived_at` label are
 set, the family gets `chats.changed`, the person's read state for that chat is dropped, and the
 runner is stopped after a delay that leaves room for an Undo
-(`engine/omnigent/omnigent/server/routes/sessions/routes_core.py`, `_spawn_archive_stop` in
+(`engine/omnigent/server/routes/sessions/routes_core.py`, `_spawn_archive_stop` in
 `.../_sessions/orchestration.py`). Nothing archives on its own: the side-chat auto-archive job went
 with Side Chats (ADR 0021).
 
@@ -555,7 +555,7 @@ with Side Chats (ADR 0021).
 
 A failed turn is stored as an `error` item. The transcript shows it as an `error` block carrying one
 of the **public error codes**, a closed set in
-`engine/omnigent/omnigent/runtime/public_error_codes.py`. Old stored codes and exception names are
+`engine/omnigent/runtime/public_error_codes.py`. Old stored codes and exception names are
 mapped into the set at read time (`public_error_code`); anything unknown becomes `internal`.
 
 | Code | Meaning |
@@ -573,12 +573,12 @@ mapped into the set at read time (`public_error_code`); anything unknown becomes
 
 **`workspace_reset` is info-level.** The engine stores it with `level: "info"` when it relaunches a
 sandbox whose provider does not keep the workspace (`_note_workspace_reset_on_recreate` in
-`engine/omnigent/omnigent/server/routes/_sessions/orchestration.py`). The transcript block is
+`engine/omnigent/server/routes/_sessions/orchestration.py`). The transcript block is
 `{type: "error", code: "workspace_reset", level: "info"}`. A client should draw it as a quiet note,
 not as a failed reply. With the `computer` provider the home survives, so this notice should not
 appear there. The old stored code `managed_sandbox_workspace_reset` maps to it.
 
-Route errors use the engine's `ErrorCode` values (`engine/omnigent/omnigent/errors.py`). The ones
+Route errors use the engine's `ErrorCode` values (`engine/omnigent/errors.py`). The ones
 in this guide: `superchat_not_configured` (503), `not_a_super_chat` (422), `muse_already_set` (409),
 `muse_tenant_mismatch` (409),
 `invalid_input` (400/422), `forbidden` (403), `not_found` (404), `conflict` (409),
@@ -655,7 +655,7 @@ Superchat's own side of the gateway (`web/packages/adapters/src/omnigent/env.ts`
 - Glossary: [CONTEXT.md](../../CONTEXT.md). Use its words exactly: Muse, Conversation, Helper,
   Activity, Ask, Archived, Computer. The engine words differ: Conversation is the
   **Super Chat**, a Helper is a **sub-agent**, and the Activity panel is the **Activity Feed**
-  (engine glossary: `engine/omnigent/rollover/CONTEXT.md`). Superchat's "Task" is a plan item of a Goal and is not a Helper.
+  (engine glossary: `docs/rollover/CONTEXT.md`). Superchat's "Task" is a plan item of a Goal and is not a Helper.
 - [ADR 0001](../adr/0001-one-muse-per-person.md): one Muse per person.
 - [ADR 0004](../adr/0004-engine-owns-the-computer.md): the engine owns the Computer.
 - [ADR 0007](../adr/0007-the-muse-delegates-multi-step-work.md): the Muse delegates multi-step work.
@@ -666,8 +666,8 @@ Superchat's own side of the gateway (`web/packages/adapters/src/omnigent/env.ts`
 ### Things this guide could not confirm
 
 - How a Helper gets the Conversation's context: by design, the **Muse writes a short summary of
-  the Conversation into the Brief** (its instructions say so: `deployment/engine/templates/AGENTS.md`)
+  the Conversation into the Brief** (its instructions say so: `engine/agents/templates/AGENTS.md`)
   and the engine puts the Memory Profile in front of it (`prepend_memory_profile` in
-  `engine/omnigent/omnigent/runner/tool_dispatch.py`). There is no engine-made summary.
+  `engine/omnigent/runner/tool_dispatch.py`). There is no engine-made summary.
 - The per-turn profile check is the context mode label, so by the same rule a Helper session also
   gets it each turn. Only the Muse case was traced end to end.
